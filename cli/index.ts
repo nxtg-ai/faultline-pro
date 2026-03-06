@@ -84,7 +84,14 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
 
   switch (command) {
     case 'version':
+    case '--version':
+    case '-v':
       return { exitCode: 0, output: `Faultline v${VERSION}` };
+
+    case 'help':
+    case '--help':
+    case '-h':
+      return { exitCode: 0, output: usage() };
 
     case 'rules': {
       const rules = listRules();
