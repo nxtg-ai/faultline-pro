@@ -74,7 +74,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260306-03 — Faultline Pro DX Fix: Real-First Experience
 **From**: NXTG-AI CoS (Wolf, relaying Emma P0 — Human Oracle findings) | **Priority**: P0
-**Injected**: 2026-03-06 22:30 | **Estimate**: S | **Status**: PENDING
+**Injected**: 2026-03-06 22:30 | **Estimate**: S | **Status**: DONE
 
 **Context**: Asif ran the Human Oracle on Faultline Pro. Two critical DX failures found — both are ship-stoppers for npm publish. The product works (868 tests, CI green), but the first-run experience destroys credibility for a trust & verification product.
 
