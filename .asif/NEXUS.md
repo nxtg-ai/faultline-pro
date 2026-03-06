@@ -62,13 +62,38 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
-_(No active directives.)_
+### DIRECTIVE-NXTG-20260305-03 — Adopt CI Gate Protocol + Test Reconciliation
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P0
+**Injected**: 2026-03-05 17:30 | **Estimate**: S | **Status**: PENDING
+
+> **Estimate key**: S = hours (same session), M = 1-2 days, L = 3+ days
+
+**Context**: Every NXTG-AI project has adopted the CI Gate Protocol (pre-push hook) — except Faultline-Pro, which was split after the 2026-03-04 push. Also: the Kaggle repo (P-08) has 893 tests vs Pro's 868 — a 25-test gap that may contain useful tests added post-split.
+
+**Action Items**:
+1. [ ] Install pre-push hook: `cp ~/ASIF/scripts/templates/pre-push-hook.sh .git/hooks/pre-push && chmod +x .git/hooks/pre-push`
+2. [ ] Verify it works: make a no-op commit, `git push` should run `npm test` and show 868 passing
+3. [ ] Check test gap: `diff <(cd ~/projects/Faultline && find tests -name "*.test.*" | sort) <(cd ~/projects/Faultline-Pro && find tests -name "*.test.*" | sort)` — identify which 25 tests exist in Kaggle but not Pro
+4. [ ] If any tests are FM-agnostic (not Kaggle/Google-ADK-specific), port them to Pro
+5. [ ] Update NEXUS test count if it changes
+
+**Constraints**:
+- Do NOT port Kaggle-specific tests (Google ADK, Gemini-only). Pro is FM-agnostic.
+- Do NOT modify CI workflow files — they're already set up.
+
+**Response** (filled by project team):
+>
 
 ---
 
 ## Portfolio Intelligence
+> Injected by CLX9 CoS (Emma) — Enrichment Cycle 2026-03-05
 
-_Cross-project insights injected by ASIF CoS._
+- **npm publish**: Decision pending with Asif. Market research queued.
+- **Market opportunity**: $15.7B deepfake detection market (from P-08 PI-002). EU AI Act compliance driver.
+- **Provider architecture**: 4 providers (Gemini/OpenAI/Claude/Mock) is a competitive differentiator. No other open-source tool has FM-agnostic trust testing.
+- **Portfolio context**: 16,442 tests portfolio-wide. Faultline Pro at 868 tests with 13/15 features shipped.
+- **Orphan repo**: `awaliuddin/Faultline-Pro` still exists on GitHub (cannot delete without `delete_repo` scope). Ignore it.
 
 ---
 
