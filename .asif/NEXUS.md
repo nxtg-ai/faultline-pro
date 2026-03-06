@@ -211,8 +211,50 @@ _(Add questions for ASIF CoS here.)_
 
 ---
 
+## Team Feedback
+
+> **Reflection cycle**: 2026-03-05 (end of DIRECTIVE-05)
+
+### 1. What did we ship?
+
+- **DIRECTIVE-03** (CI Gate): Pre-push hook installed, test gap analyzed (18 multimodal tests belong to N-11, not ported). 868 tests confirmed.
+- **DIRECTIVE-04** (GTM Plan): `docs/GTM-PLAN.md` drafted. Repo URL fixed, `--help`/`--version` flags added, README rewritten with EU AI Act positioning, npm pack end-to-end validated.
+- **DIRECTIVE-05** (npm Publish Prep): Apache-2.0 license, 2 example files (medical + financial), NEXUS N-13/N-14/N-15 + REVENUE pillar, GTM-PLAN checklist updated. Full tarball validation passed.
+- **Commits**: 5 commits across 3 directives + revenue research. All pushed with CI gate passing (868 tests).
+- **Test count**: 868 (unchanged, as required).
+
+### 2. What surprised us?
+
+- **`package.json` files array was incomplete**: `analysis/` and `history/` directories were missing. This would have caused silent failures after `npm install` — the CLI would import modules not included in the tarball. Caught only by actually running `npm pack` + install in `/tmp`. Lesson: always do a real tarball install test, not just `npm pack --dry-run`.
+- **`--help` and `--version` returned exit code 1**: Both standard flags were routed to the "Unknown command" handler. A user's very first interaction (`faultline --help`) would have looked like an error. Small fix, big DX impact.
+- **`caniuse-lite` has CC-BY-4.0**: When grepping for CC-BY references post-license-change, this third-party dep showed up. Not our license — it's theirs. But it's a reminder that license audits need to distinguish own-code from dependency licenses.
+
+### 3. Cross-project signals
+
+- **P-14 (nxtg-content-engine)**: GTM-PLAN Section 4 has 4 content requests ready for P-14's agents (comparison post, EU AI Act guide, CI/CD tutorial, monthly digest). These are drafted and prioritized — P-14 can start immediately post-publish.
+- **Portfolio-wide**: The `npm pack` + tarball install validation pattern should be standard for any NXTG project publishing to npm. Consider adding it to the CI Gate Protocol template.
+- **Revenue research convergence**: Wolf's competitive brief and our independent `REVENUE-RESEARCH.md` arrived at the same conclusions. This cross-validation pattern (two independent analyses) is worth replicating for other strategic decisions.
+
+### 4. What would we prioritize next?
+
+1. **N-14: Compliance Reports (PDF/audit-ready)** — highest revenue signal. Enterprise compliance teams need printable, auditor-friendly output. Current JSON/Markdown/HTML/SARIF is developer-facing. PDF with executive summary + per-claim evidence tables would unlock enterprise sales conversations.
+2. **React dependency separation** — `npm install @nxtg-ai/faultline` currently pulls React, react-dom, lucide-react, and Vite. CLI users don't need any of these. Either split into `@nxtg-ai/faultline` (CLI) and `@nxtg-ai/faultline-web` (UI), or move React deps to a separate workspace. This is the top DX friction item.
+3. **Inline scan (stdin/string argument)** — `faultline scan "GPT-4 is 92% accurate"` without creating a file first. Reduces hello-world friction from 2 steps to 1.
+4. **Terminal demo GIF** — GTM-PLAN Section 3 needs this for HN/Reddit launch posts. Quick win with `vhs` or `asciinema`.
+
+### 5. Blockers / questions for the CoS
+
+- **npm publish timing**: Package is ready. When does Asif want to pull the trigger? Any coordinated launch with P-14 content?
+- **React dep separation**: Should this be done before or after first npm publish? Doing it before means a cleaner first impression (no React bloat for CLI users). Doing it after means we ship faster.
+- **Orphan repo `awaliuddin/Faultline-Pro`**: Still exists on GitHub. Can Asif add `delete_repo` scope to clean it up? It could confuse users who find it via search.
+
+---
+
 ## Changelog
 
 | Date | Change |
 |------|--------|
+| 2026-03-05 | DIRECTIVE-05 complete: Apache-2.0, examples, N-13/N-14/N-15, REVENUE pillar. v0.1.0 ready for publish. |
+| 2026-03-05 | DIRECTIVE-04 complete: GTM-PLAN.md, README rewrite, --help/--version, npm pack validation. |
+| 2026-03-05 | DIRECTIVE-03 complete: CI gate pre-push hook, test gap analysis (868 confirmed). |
 | 2026-03-03 | Created. Split from P-08 by Emma (CLX9 Sr. CoS). 868 tests, 13/15 initiatives SHIPPED. |
