@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-05
+> **Last Updated**: 2026-03-06
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -250,10 +250,46 @@ _(Add questions for ASIF CoS here.)_
 
 ---
 
+> **Reflection cycle**: 2026-03-06 (no new directives — holding pattern post-publish-prep)
+
+### 1. What did we ship?
+
+- **CI fix** (`fa6ef18`): Added `continue-on-error: true` to demo safety scans in `.github/workflows/faultline-ci.yml`. The demo scans run on sample text where findings are *expected behavior* (the tool working correctly). Without `continue-on-error`, those expected findings were failing the CI workflow. Small fix, real impact.
+- **CoS enrichment received** (`e8c2df2`): Answers to all three 2026-03-05 questions landed — npm publish on Asif's action queue, React dep split deferred to post-publish (file N-16), orphan repo low-priority.
+- **No new directives this session** — project is publish-ready and waiting for Asif to pull the trigger.
+- **Test count**: 868 (unchanged).
+
+### 2. What surprised us?
+
+- **The CI failure mode was silent and misleading**: Demo safety scans were failing the entire workflow, which meant CI "red" didn't mean "tests broken" — it meant "tool found issues in demo text (as designed)." This is a semantic inversion of what CI red should mean. The fix is minimal but the implication is worth noting: any tool that produces findings-as-output needs `continue-on-error` on its own demo runs, or CI signal becomes noise.
+- **No directives = clearest signal yet that we're at a natural milestone**: Every major feature is SHIPPED, the package is validated, docs are written, license is right, CI is green. The only next action is publish. This is a healthy pause, not a gap.
+
+### 3. Cross-project signals
+
+- **Portfolio-wide CI Gate pattern**: The `continue-on-error` pattern for non-blocking validation steps (e.g., linting, safety scans, demo runs) should be documented in the ASIF CI Gate Protocol template. Other projects hitting the same false-negative problem will benefit.
+- **P-14 (nxtg-content-engine)**: Still waiting on publish date to time content launch. GTM-PLAN Section 4 has four ready-to-execute content briefs. No team action needed from our side — P-14 is ready to activate on Asif's GO.
+- **N-16 signal**: CoS confirmed React workspace split is post-publish. When that work starts, the pattern of separating CLI/library packages from web UI in a monorepo (using npm workspaces) will be relevant for any other NXTG projects that mix server-side tools with React frontends.
+
+### 4. What would we prioritize next?
+
+1. **N-16: React workspace split** — Move React/Vite/UI deps to a separate workspace so `npm install @nxtg-ai/faultline` (CLI users) doesn't pull UI deps. Cleaner install, faster, more professional. Pre-condition: publish must happen first (CoS confirmed).
+2. **Inline scan DX** — `faultline scan "claim text here"` without needing a file. Reduces hello-world from 2 steps to 1. Highest DX friction item post-launch.
+3. **Terminal demo GIF** — `vhs` or `asciinema` recording of `faultline scan --provider mock` for the README and launch posts. Quick win, high signal value for HN/Reddit.
+4. **N-14: Compliance PDF reports** — Highest revenue signal per REVENUE-RESEARCH.md. Enterprise compliance teams need auditor-friendly printable output. JSON/SARIF is developer-facing; PDF with executive summary + per-claim evidence tables unlocks enterprise conversations.
+
+### 5. Blockers / questions for the CoS
+
+- **npm publish**: Still the single blocker. Everything is ready — `npm login` on NXTG-AI org and `npm publish` is all that remains. No team action needed; just flagging it's the open gate.
+- **N-16 timing**: CoS said post-publish. Confirming: should N-16 land in v0.2.0 (immediately after publish) or is there a feature we should ship first?
+- **Demo GIF**: Any preference on tooling — `vhs`, `asciinema`, or screen recording? Affects how we script it.
+
+---
+
 ## Changelog
 
 | Date | Change |
 |------|--------|
+| 2026-03-06 | Team feedback reflection: CI continue-on-error fix noted, N-16 queued post-publish, holding for npm GO. |
 | 2026-03-05 | DIRECTIVE-05 complete: Apache-2.0, examples, N-13/N-14/N-15, REVENUE pillar. v0.1.0 ready for publish. |
 | 2026-03-05 | DIRECTIVE-04 complete: GTM-PLAN.md, README rewrite, --help/--version, npm pack validation. |
 | 2026-03-05 | DIRECTIVE-03 complete: CI gate pre-push hook, test gap analysis (868 confirmed). |
