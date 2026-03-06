@@ -72,6 +72,30 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
+### DIRECTIVE-NXTG-20260306-03 — Faultline Pro DX Fix: Real-First Experience
+**From**: NXTG-AI CoS (Wolf, relaying Emma P0 — Human Oracle findings) | **Priority**: P0
+**Injected**: 2026-03-06 22:30 | **Estimate**: S | **Status**: PENDING
+
+**Context**: Asif ran the Human Oracle on Faultline Pro. Two critical DX failures found — both are ship-stoppers for npm publish. The product works (868 tests, CI green), but the first-run experience destroys credibility for a trust & verification product.
+
+**Finding #1**: Quick Start uses `--provider mock`. Output shows "Mock Provider" header and "Mock verification: supported" with flat 0.30 confidence on every claim. For a product that sells TRUST AND VERIFICATION, the first impression is fake results.
+
+**Finding #2**: `--help` shows a wall of flags with no concrete example of what the tool does.
+
+**Action Items**:
+1. [ ] **README Quick Start rewrite**: First command MUST use a real provider (Gemini free tier). Replace `--provider mock` with `--provider gemini` and add `export GEMINI_API_KEY=...` with link to https://aistudio.google.com/apikey
+2. [ ] **No-API-key detection**: When user runs `scan` without any API key set AND without `--provider mock`, print a helpful message: "No API key found. Get a free Gemini key at https://aistudio.google.com/apikey — then: export GEMINI_API_KEY=your-key". Do NOT default to mock silently.
+3. [ ] **Mock provider repositioned**: Move mock documentation to a "Testing & CI" section in README. Mock is a test double, not a feature. Remove mock from Quick Start entirely.
+4. [ ] **First-output verification**: Run `scan --input examples/medical-claims.txt --provider gemini` with a real key. Verify the output shows varying confidence scores, real verdicts, and real explanations — not flat 0.30 across the board.
+5. [ ] **CLI help improvement**: `--help` should show a concrete example with expected output snippet, not just flags. Show what the tool DOES, not just how to invoke it.
+
+**Constraints**: Minimal code changes. This is README + CLI UX, not architecture. Do NOT restructure the provider system.
+
+**Response** (filled by project team):
+>
+
+---
+
 ### DIRECTIVE-NXTG-20260306-01 — CRUCIBLE Protocol Phase 1: Gates 2, 4, 6, 7 (Critical Tier)
 **From**: NXTG-AI CoS (via Emma, CLX9 Sr. CoS) | **Priority**: P2
 **Injected**: 2026-03-06 13:20 | **Estimate**: S | **Status**: DONE
