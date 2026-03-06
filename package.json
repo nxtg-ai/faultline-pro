@@ -9,7 +9,9 @@
   "files": [
     "bin/",
     "cli/",
+    "analysis/",
     "compliance/",
+    "history/",
     "providers/",
     "rules/",
     "templates/",
