@@ -64,7 +64,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260305-03 — Adopt CI Gate Protocol + Test Reconciliation
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P0
-**Injected**: 2026-03-05 17:30 | **Estimate**: S | **Status**: PENDING
+**Injected**: 2026-03-05 17:30 | **Estimate**: S | **Status**: DONE
 
 > **Estimate key**: S = hours (same session), M = 1-2 days, L = 3+ days
 
@@ -91,7 +91,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260305-04 — Read Competitive Brief + Draft GTM Plan — Read Competitive Brief + Draft GTM Plan
 **From**: NXTG-AI CoS (Wolf) via Asif | **Priority**: P0
-**Injected**: 2026-03-05 18:15 | **Estimate**: M | **Status**: IN PROGRESS — GTM plan drafted (prior session); critical gaps now executed (this session)
+**Injected**: 2026-03-05 18:15 | **Estimate**: M | **Status**: DONE
 
 > **Estimate key**: S = hours (same session), M = 1-2 days, L = 3+ days
 
