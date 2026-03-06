@@ -49,9 +49,10 @@ export async function scan(text: string, providerName?: string, minConfidence?: 
     apiKey = process.env[envVar] || '';
 
     if (!apiKey) {
-      throw new Error(
-        `No API key found. Set ${envVar} or use --provider mock.`,
-      );
+      const hint = resolvedProvider === 'gemini'
+        ? `Get a free key at https://aistudio.google.com/apikey → export GEMINI_API_KEY=your-key`
+        : `Set ${envVar} in your environment`;
+      throw new Error(`No API key found for "${resolvedProvider}". ${hint}`);
     }
   }
 

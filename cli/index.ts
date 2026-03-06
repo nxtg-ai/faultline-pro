@@ -27,34 +27,68 @@ import { formatCritique } from './critique.js';
 
 const VERSION = '0.1.0';
 
+const API_KEY_MAP: Record<string, string> = {
+  claude: 'ANTHROPIC_API_KEY',
+  openai: 'OPENAI_API_KEY',
+  gemini: 'GEMINI_API_KEY',
+};
+
+function checkApiKey(providerName: string | undefined): { exitCode: number; output: string } | null {
+  const resolved = providerName || 'gemini';
+  if (resolved === 'mock') return null;
+  const envVar = API_KEY_MAP[resolved] || 'GEMINI_API_KEY';
+  if (process.env[envVar]) return null;
+  const hint = resolved === 'gemini'
+    ? `Get a free Gemini key at https://aistudio.google.com/apikey\n  Then: export GEMINI_API_KEY=your-key`
+    : `Set ${envVar} in your environment`;
+  return { exitCode: 1, output: `No API key found for provider "${resolved}".\n\n  ${hint}\n\nFor CI/testing without an API key: --provider mock` };
+}
+
 function usage(): string {
-  return `Faultline CLI v${VERSION}
+  return `Faultline CLI v${VERSION} — AI Claim Forensics
+
+Quick start (free Gemini key: https://aistudio.google.com/apikey):
+  export GEMINI_API_KEY="your-key"
+  faultline scan --input doc.txt --provider gemini
+
+Example output:
+  === FAULTLINE COMPLIANCE REPORT ===
+  Provider:     Google Gemini
+  Overall Risk: HIGH
+  --- Claim Verifications ---
+    [OK] c1: supported — Confirmed by census data. (confidence: 0.82)
+    [!!] c2: contradicted — Audit found significant bias. (confidence: 0.91)
+    [??] c3: mixed — Evidence varies by region. (confidence: 0.63)
+  --- Triggered EU AI Act Articles ---
+    Annex III §4: Employment and recruitment AI (affects: c2)
 
 Usage:
   faultline scan --input <file> [--provider gemini|claude|openai|mock] [--min-confidence 0.0-1.0] [--output-format json|markdown|html|sarif] [--sarif] [--rules pii,bias,toxicity] [--fail-on critical|high|medium|low]
-  faultline scan --dir <path> [--glob "*.txt"] [--provider mock] [--min-confidence 0.0-1.0] [--output-format json|markdown|html|sarif] [--sarif] [--rules pii] [--fail-on high]
+  faultline scan --dir <path> [--glob "*.txt"] [--provider gemini] [--output-format sarif] [--fail-on high]
   faultline aggregate --dir <path> [--output-format json|markdown|html|sarif]  Aggregate scan results
   faultline report --input <results.json> [--output-format json|markdown|html|sarif]
-  faultline watch --dir <path> [--provider mock] [--output-format json]   Watch for changes
+  faultline watch --dir <path> [--provider gemini] [--output-format json]   Watch for changes
   faultline scan --templates injection,bias                         Red-team scan with template categories
   faultline templates list [--category injection]                   List red-team prompt templates
   faultline history [--all] [--history-dir <path>]                  List past scans
   faultline trend --file <path> [--history-dir <path>]             Show finding trend for a file
-  faultline weakest --input <file> [--provider mock] [--top N]         Identify the weakest-link claim
-  faultline graph --input <file> [--provider mock] [--format mermaid|dot]  Export claim graph
-  faultline critique --input <file> [--provider mock]              Critique failed claims + improved prompt
-  faultline rules                                                  List available rules
-  faultline init                                                   Generate .faultlinerc.json
-  faultline version                                                Print version
+  faultline weakest --input <file> [--provider gemini] [--top N]       Identify the weakest-link claim
+  faultline graph --input <file> [--format mermaid|dot]             Export claim graph
+  faultline critique --input <file> [--provider gemini]             Critique failed claims + improved prompt
+  faultline rules                                                   List available rules
+  faultline init                                                    Generate .faultlinerc.json
+  faultline version                                                 Print version
 
 Config:
   Reads .faultlinerc.json from cwd (walks up). CLI flags override config values.
 
 Environment:
-  GEMINI_API_KEY       API key for Gemini provider
+  GEMINI_API_KEY       API key for Gemini provider (free: https://aistudio.google.com/apikey)
   ANTHROPIC_API_KEY    API key for Claude provider
   OPENAI_API_KEY       API key for OpenAI provider
-  FAULTLINE_PROVIDER   Default provider (gemini|claude|openai)`;
+  FAULTLINE_PROVIDER   Default provider (gemini|claude|openai)
+
+For CI/testing without an API key, use --provider mock (returns synthetic results).`;
 }
 
 // Boolean flags that take no value argument
@@ -402,6 +436,9 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
           return { exitCode: 1, output: `Error: Unknown template category "${unknown[0]}". Available: ${listCategories().join(', ')}` };
         }
 
+        const apiKeyErr = checkApiKey(providerName);
+        if (apiKeyErr) return apiKeyErr;
+
         const templates = getTemplatesByCategories(categories as TemplateCategory[]);
         if (templates.length === 0) {
           return { exitCode: 1, output: `Error: No templates found for categories: ${categories.join(', ')}` };
@@ -458,6 +495,9 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
           return { exitCode: 1, output: `Error: Cannot read: ${resolvedDir}` };
         }
 
+        const apiKeyErrBatch = checkApiKey(providerName);
+        if (apiKeyErrBatch) return apiKeyErrBatch;
+
         const globPattern = flags['glob'] || undefined;
         const batchResult = await batchScan(resolvedDir, providerName, minConfidence, globPattern);
 
@@ -494,6 +534,9 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
       if (!text) {
         return { exitCode: 1, output: 'Error: Input file is empty.' };
       }
+
+      const apiKeyErrSingle = checkApiKey(providerName);
+      if (apiKeyErrSingle) return apiKeyErrSingle;
 
       const result = await scan(text, providerName, minConfidence, ruleNames);
 

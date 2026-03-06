@@ -14,19 +14,52 @@ The EU AI Act mandates conformity assessments for high-risk AI systems. Faultlin
 
 ## Quick Start
 
-Zero-config. No API key needed to try it:
+**Step 1**: Get a free Gemini key (30 seconds, no credit card): [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+
+**Step 2**: Run your first scan:
 
 ```bash
-npx @nxtg-ai/faultline scan --input your-ai-output.txt --provider mock
+export GEMINI_API_KEY="your-key"
+npx @nxtg-ai/faultline scan --input your-ai-output.txt --provider gemini
 ```
 
-With a live provider:
+**Expected output:**
+
+```
+=== FAULTLINE COMPLIANCE REPORT ===
+
+Provider:     Google Gemini
+Overall Risk: HIGH
+EU Risk Tier: HIGH
+Generated:    2026-03-06T14:00:00.000Z
+
+--- EU AI Act Risk Summary ---
+  Unacceptable: 0
+  High:         1
+  Limited:      1
+  Minimal:      1
+  Total Claims: 3
+
+--- Claim Verifications ---
+  [OK] c1: supported — Confirmed by census data. (confidence: 0.82)
+  [!!] c2: contradicted — Audit found significant bias. (confidence: 0.91)
+  [??] c3: mixed — Evidence varies by region. (confidence: 0.63)
+
+--- Triggered EU AI Act Articles ---
+  Annex III §4: Employment and recruitment AI (affects: c2)
+
+--- Recommended Mitigations ---
+  High-risk domain detected. Ensure a risk management system is in place (Article 9).
+```
+
+**Other providers:**
 
 ```bash
-export GEMINI_API_KEY="your-key"    # or ANTHROPIC_API_KEY / OPENAI_API_KEY
-npx @nxtg-ai/faultline scan --input your-ai-output.txt --provider gemini
-npx @nxtg-ai/faultline scan --input your-ai-output.txt --provider claude --output-format markdown
-npx @nxtg-ai/faultline --help
+export ANTHROPIC_API_KEY="..."
+npx @nxtg-ai/faultline scan --input doc.txt --provider claude --output-format markdown
+
+export OPENAI_API_KEY="..."
+npx @nxtg-ai/faultline scan --input doc.txt --provider openai
 ```
 
 ---
@@ -92,19 +125,19 @@ Input: AI-generated text
 ## CLI Commands
 
 ```bash
-# Scan a file
+# Scan a file (set GEMINI_API_KEY / ANTHROPIC_API_KEY / OPENAI_API_KEY first)
 faultline scan --input doc.txt --provider gemini
 faultline scan --input doc.txt --provider claude --output-format markdown
 faultline scan --input doc.txt --sarif               # writes results.sarif
 faultline scan --input doc.txt --fail-on high        # exit 1 if high/critical findings
 
 # Batch scan a directory
-faultline scan --dir ./outputs --provider mock --glob "*.txt"
+faultline scan --dir ./outputs --provider gemini --glob "*.txt"
 
 # Forensics
-faultline weakest --input doc.txt --provider mock    # weakest-link claim
+faultline weakest --input doc.txt --provider gemini  # weakest-link claim
 faultline graph   --input doc.txt --format mermaid   # claim dependency graph
-faultline critique --input doc.txt --provider mock   # critique + improved prompt
+faultline critique --input doc.txt --provider gemini # critique + improved prompt
 
 # Red-team
 faultline scan --templates injection,bias            # run template library
@@ -123,6 +156,30 @@ faultline --help
 
 ---
 
+## Testing & CI (No API Key Required)
+
+For automated pipelines, pre-commit hooks, and local development without API access, use the **mock provider**:
+
+```bash
+npx @nxtg-ai/faultline scan --input doc.txt --provider mock
+```
+
+The mock provider returns deterministic results without network calls. It is a **test double** — all verdicts are "supported" with flat 0.30 confidence. Use it to validate pipeline shape and CI integration, not to evaluate real claims.
+
+**GitHub Action example** (mock for CI, real provider for nightly audits):
+
+```yaml
+- name: Faultline AI Claim Audit (CI)
+  run: |
+    npx @nxtg-ai/faultline scan \
+      --input ai-output.txt \
+      --provider mock \
+      --output-format sarif \
+      --fail-on high
+```
+
+---
+
 ## Output Formats
 
 | Format | Flag | Use Case |
@@ -136,17 +193,9 @@ faultline --help
 
 ## GitHub Action
 
-```yaml
-- name: Faultline AI Claim Audit
-  run: |
-    npx @nxtg-ai/faultline scan \
-      --input ai-output.txt \
-      --provider mock \
-      --output-format sarif \
-      --fail-on high
-```
+See the [Testing & CI](#testing--ci-no-api-key-required) section above for CI examples. For production audits with real verdicts, set `GEMINI_API_KEY` as a repository secret and use `--provider gemini`.
 
-Upload the SARIF to GitHub Security tab for PR-level claim annotations.
+Upload the SARIF output to GitHub Security tab for PR-level claim annotations.
 
 ---
 
