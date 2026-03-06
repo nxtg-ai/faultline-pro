@@ -72,6 +72,30 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
+### DIRECTIVE-NXTG-20260306-01 — CRUCIBLE Protocol Phase 1: Gates 2, 4, 6, 7 (Critical Tier)
+**From**: NXTG-AI CoS (via Emma, CLX9 Sr. CoS) | **Priority**: P2
+**Injected**: 2026-03-06 13:20 | **Estimate**: S | **Status**: PENDING
+
+**Context**: New portfolio-wide test quality standard (`~/ASIF/standards/crucible-protocol.md`). Faultline Pro is safety-critical and gets Gates 2, 4, 6 (future), 7 (future) at Critical tier.
+
+**Action Items**:
+1. [ ] Add CRUCIBLE Protocol section to CLAUDE.md:
+   ```
+   ## CRUCIBLE Protocol (Test Quality)
+   This project follows the CRUCIBLE Protocol (`~/ASIF/standards/crucible-protocol.md`).
+   - Gate 2: Non-empty assertions — tests that verify claims must assert result is non-empty
+   - Gate 4: Delta gate — test count must not decrease between commits
+   - Gate 6: Mutation testing (future) — mutation score tracking
+   - Gate 7: Spec-test traceability (future) — tests map to spec requirements
+   - Oracle tier: CRITICAL — all 4 oracle types on claim forensics
+   ```
+2. [ ] Run full test suite. 868 baseline must not decrease.
+
+**Response** (filled by project team):
+>
+
+---
+
 ### DIRECTIVE-NXTG-20260305-03 — Adopt CI Gate Protocol + Test Reconciliation
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P0
 **Injected**: 2026-03-05 17:30 | **Estimate**: S | **Status**: DONE
