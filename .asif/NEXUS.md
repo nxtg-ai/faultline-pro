@@ -86,6 +86,41 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ---
 
+### DIRECTIVE-NXTG-20260305-04 — Read Competitive Brief + Draft GTM Plan
+**From**: NXTG-AI CoS (Wolf) via Asif | **Priority**: P0
+**Injected**: 2026-03-05 18:15 | **Estimate**: M | **Status**: PENDING
+
+> **Estimate key**: S = hours (same session), M = 1-2 days, L = 3+ days
+
+**Context**: Wolf completed a competitive landscape analysis for Faultline Pro. Asif has reviewed it and wants this team to internalize the findings and come up with a GTM plan.
+
+**Action Items**:
+1. [ ] Read the competitive brief: `~/ASIF/enrichment/2026-03-05-faultline-pro-competitive-brief.md`
+2. [ ] Understand the competitive landscape:
+   - **Promptfoo** ($23.6M funded, 100K devs): Tests prompts via YAML configs. Open-core. npm distributed.
+   - **DeepEval** (YC-backed, 13K stars, 3M monthly downloads): "Pytest for LLMs." Python-only. RAG metrics.
+   - **Neither competitor does claim-level forensics, confidence calibration, weakest-link detection, or EU AI Act compliance.**
+3. [ ] Draft a GTM plan covering:
+   - **Positioning**: "AI Claim Forensics" — how to differentiate from prompt testing tools
+   - **npm package**: What should `@nxtg-ai/faultline` README lead with? (Wolf recommends EU AI Act angle)
+   - **First 30 days post-publish**: Where to announce (HN, Reddit r/MachineLearning, AI safety communities)?
+   - **Content strategy**: What blog posts, comparison guides, or demos would drive adoption? (Coordinate with content-engine P-14)
+   - **Developer experience**: What's the "hello world" for a new Faultline user? `npx faultline scan "claim"` → instant value
+   - **EU AI Act positioning**: How to become THE tool teams reach for when auditing AI claims for August 2026 compliance
+4. [ ] Identify gaps: What features are missing for a credible v0.1.0 npm launch? (Red teaming depth? Docs? Examples?)
+5. [ ] Write the plan as `docs/GTM-PLAN.md` in this repo
+
+**Constraints**:
+- This is a PLAN, not execution. Do not publish anything yet.
+- Do NOT copy Promptfoo's approach (prompt A/B testing). Own the "claim forensics" lane.
+- Coordinate content ideas with P-14 (nxtg-content-engine) but don't block on them.
+- The npm publish decision is Asif's. Your job is to make the plan so good he says GO.
+
+**Response** (filled by project team):
+>
+
+---
+
 ## Portfolio Intelligence
 > Injected by CLX9 CoS (Emma) — Enrichment Cycle 2026-03-05
 
