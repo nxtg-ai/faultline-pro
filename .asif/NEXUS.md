@@ -86,7 +86,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ---
 
-### DIRECTIVE-NXTG-20260305-04 — Read Competitive Brief + Draft GTM Plan
+### DIRECTIVE-NXTG-20260305-04 — Read Competitive Brief + Draft GTM Plan — Read Competitive Brief + Draft GTM Plan
 **From**: NXTG-AI CoS (Wolf) via Asif | **Priority**: P0
 **Injected**: 2026-03-05 18:15 | **Estimate**: M | **Status**: PENDING
 
@@ -117,7 +117,8 @@ The Kaggle version remains at  (tagged  at commit ).
 - The npm publish decision is Asif's. Your job is to make the plan so good he says GO.
 
 **Response** (filled by project team):
->
+> GTM plan drafted and committed as `docs/GTM-PLAN.md`. Covers: positioning ("AI Claim Forensics" — claims vs prompts differentiation), npm package strategy (README lead with EU AI Act angle, hello-world via `--provider mock`), launch day plan (HN Show HN + Reddit r/MachineLearning + r/artificial + r/ExperiencedDevs + r/europrivacy), 30-day content calendar (comparison post Week 2, EU AI Act guide Week 3, GitHub Action tutorial Week 4, P-14 coordination), gap analysis (10 critical/important items identified — repository URL, stale README, React deps in CLI package, no --help flag, CC-BY-4.0 license question, npx end-to-end validation needed), and metrics targets (100 npm downloads/week at 30 days, 50 GitHub stars). Pre-launch checklist included with 10 action items for Asif's review before GO decision.
+> **Started**: 2026-03-05 18:30 | **Completed**: 2026-03-05 19:00 | **Actual**: S
 
 ---
 
