@@ -18,7 +18,8 @@
     "types.ts",
     "services/",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "examples/"
   ],
   "scripts": {
     "dev": "vite",
@@ -44,7 +45,7 @@
     "claude"
   ],
   "author": "Asif Waliuddin",
-  "license": "CC-BY-4.0",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/nxtg-ai/faultline-pro.git"

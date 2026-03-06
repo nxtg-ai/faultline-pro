@@ -270,13 +270,13 @@ Faultline does not compete in prompt testing or RAG evaluation. It owns the "cla
 
 Before Asif gives the GO for npm publish:
 
-- [ ] Fix repository URL in package.json (`nxtg-ai/faultline-pro`)
-- [ ] Validate `npm pack` + `npx @nxtg-ai/faultline scan` end-to-end
-- [ ] Rewrite README.md for npm (lead with positioning, not Kaggle origin)
-- [ ] Add `--help` flag support
+- [x] Fix repository URL in package.json (`nxtg-ai/faultline-pro`)
+- [x] Validate `npm pack` + `npx @nxtg-ai/faultline scan` end-to-end
+- [x] Rewrite README.md for npm (lead with positioning, not Kaggle origin)
+- [x] Add `--help` flag support
 - [ ] Remove React dependencies from CLI package (or split packages)
-- [ ] Confirm license choice with Asif (CC-BY-4.0 vs Apache-2.0)
-- [ ] Add 2-3 more example files (medical claims, financial claims)
+- [x] Confirm license choice with Asif (CC-BY-4.0 vs Apache-2.0) — Apache-2.0 chosen
+- [x] Add 2-3 more example files (medical claims, financial claims)
 - [ ] Record terminal demo GIF
 - [ ] Draft HN and Reddit posts (have them ready, not improvised)
 - [ ] Prepare EU AI Act disclaimer for README

@@ -1,0 +1,17 @@
+A recent meta-analysis found that GPT-4 achieves 87.3% diagnostic accuracy on
+standardized clinical vignettes, outperforming the average physician score of
+72.1% reported in the same study. The model correctly identified acute
+myocardial infarction from ECG descriptions in 94% of cases, though it
+misclassified Brugada syndrome as benign early repolarization in 3 of 12
+test cases.
+
+Patients treated with the AI-assisted triage protocol at Memorial General
+Hospital experienced a 31% reduction in emergency department wait times
+during the six-month pilot, with no statistically significant difference in
+adverse outcomes compared to the control group (p=0.42). However, the study
+was limited to a single site with 1,847 patients and has not been replicated.
+
+The FDA cleared the AI diagnostic tool under the De Novo pathway in January
+2025, making it the first LLM-based system authorized for clinical decision
+support in radiology. The clearance covers chest X-ray interpretation only
+and requires physician oversight for all findings.

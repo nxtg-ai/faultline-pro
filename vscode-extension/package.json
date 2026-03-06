@@ -4,7 +4,7 @@
   "description": "Scan files for AI safety issues, PII, bias, toxicity, and EU AI Act compliance.",
   "version": "0.1.0",
   "publisher": "nxtg-ai",
-  "license": "CC-BY-4.0",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/awaliuddin/Faultline.git"

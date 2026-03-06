@@ -8,7 +8,7 @@ The EU AI Act mandates conformity assessments for high-risk AI systems. Faultlin
 [![npm](https://img.shields.io/npm/v/@nxtg-ai/faultline.svg)](https://www.npmjs.com/package/@nxtg-ai/faultline)
 [![Tests](https://img.shields.io/badge/tests-868%20passing-brightgreen)](tests/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![License](https://img.shields.io/badge/license-CC%20BY%204.0-green.svg)](https://creativecommons.org/licenses/by/4.0/)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 
 ---
 

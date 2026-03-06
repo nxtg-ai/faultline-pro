@@ -1,0 +1,17 @@
+Our quantitative model predicts a 73% probability that the S&P 500 will
+exceed 6,200 by Q3 2026, based on regression analysis of 40 years of
+earnings-to-price ratios and Federal Reserve interest rate decisions. The
+model's backtested Sharpe ratio of 1.42 places it in the top decile of
+comparable systematic strategies over the 2015-2025 period.
+
+The stress test results indicate that the portfolio maintains a Value-at-Risk
+below 4.2% at the 99th percentile under the Basel III Fundamental Review of
+the Trading Book framework. Tier 1 capital adequacy remains above 12.5% even
+in the severely adverse scenario, which assumes a 35% equity market decline
+combined with a 200 basis point credit spread widening.
+
+According to our ESG scoring methodology, companies with sustainability
+ratings above 75 on our proprietary index delivered 2.3% annualized alpha
+relative to the benchmark over the past five years, after adjusting for
+sector and market-cap exposure. This outperformance was statistically
+significant at the 95% confidence level (t-stat = 2.17, n = 842 firms).

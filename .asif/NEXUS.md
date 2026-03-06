@@ -22,6 +22,9 @@
 | N-10 | npm Package + GitHub Action | DISTRIBUTION | SHIPPED | P1 | 2026-02 |
 | N-11 | Multimodal Upload (PDF/OCR) | MULTIMODAL | IDEA | P2 | 2026-02 |
 | N-12 | Enterprise Features (SSO/audit) | ENTERPRISE | IDEA | P2 | — |
+| N-13 | Cloud Platform (hosted API + dashboard) | REVENUE | IDEA | P1 | 2026-03 |
+| N-14 | Compliance Reports (PDF/audit-ready) | REVENUE | IDEA | P1 | 2026-03 |
+| N-15 | Revenue Infrastructure (Stripe/metering) | REVENUE | IDEA | P2 | 2026-03 |
 
 ---
 
@@ -49,6 +52,13 @@
 ### SYNTHESIS — "Not Just Finding, Fixing"
 - Critique of reasoning gaps + improved prompt generation
 - **Shipped**: N-09
+
+### REVENUE — "Open-Core + Compliance Wedge"
+- Phase 1: Free CLI adoption (npm publish, community growth)
+- Phase 2: Cloud platform with hosted API + team dashboard (N-13)
+- Phase 3: Audit-ready compliance reports for EU AI Act (N-14)
+- Infrastructure: Stripe billing, API keys, usage metering (N-15)
+- **Planned**: N-13, N-14, N-15
 
 ---
 
@@ -132,7 +142,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260305-05 — ASIF GO: npm Publish + Revenue Phase 1 Execution
 **From**: NXTG-AI CoS (Wolf) — DIRECT ORDER FROM ASIF | **Priority**: P0
-**Injected**: 2026-03-05 20:00 | **Estimate**: M | **Status**: PENDING
+**Injected**: 2026-03-05 20:00 | **Estimate**: M | **Status**: DONE
 
 > **Estimate key**: S = hours (same session), M = 1-2 days, L = 3+ days
 
@@ -170,7 +180,14 @@ The Kaggle version remains at  (tagged  at commit ).
 - React dependencies in package.json: note as known issue, do NOT fix in this pass (it's a larger refactor).
 
 **Response** (filled by project team):
->
+> All Phase 1 action items complete:
+> 1. **License changed**: CC-BY-4.0 -> Apache-2.0. Updated `LICENSE` (full Apache-2.0 text, Copyright 2026 Asif Waliuddin), `package.json`, `vscode-extension/package.json`, and README badge. Historical references in `docs/` left untouched.
+> 2. **Pre-publish checklist**: `docs/GTM-PLAN.md` Section 8 updated — checked off completed items (repo URL, npm pack validation, README rewrite, --help, license choice, example files).
+> 3. **Example files added**: `examples/medical-claims.txt` (3 claims — diagnostic accuracy, triage pilot, FDA clearance) and `examples/financial-claims.txt` (3 claims — market prediction, stress test, ESG alpha). Both have mix of verifiable facts and statistical claims.
+> 4. **NEXUS updated**: Added N-13 (Cloud Platform), N-14 (Compliance Reports), N-15 (Revenue Infrastructure) to Executive Dashboard. Added REVENUE vision pillar.
+> 5. **npm pack validated**: `npm pack --dry-run` confirms LICENSE and examples included. Tarball install + `faultline --version` / `faultline --help` / `faultline scan --provider mock` all pass. 868 tests passing.
+> 6. **NOT published** — ready for Asif to pull the trigger.
+> **Started**: 2026-03-05 | **Completed**: 2026-03-05 | **Actual**: S
 
 ---
 
