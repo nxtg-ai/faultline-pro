@@ -130,53 +130,44 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ---
 
-### DIRECTIVE-NXTG-20260305-05 — Revenue Model: Align on Monetization Strategy
-**From**: NXTG-AI CoS (Wolf) via Asif | **Priority**: P0
-**Injected**: 2026-03-05 19:45 | **Estimate**: S | **Status**: PENDING
+### DIRECTIVE-NXTG-20260305-05 — ASIF GO: npm Publish + Revenue Phase 1 Execution
+**From**: NXTG-AI CoS (Wolf) — DIRECT ORDER FROM ASIF | **Priority**: P0
+**Injected**: 2026-03-05 20:00 | **Estimate**: M | **Status**: PENDING
 
 > **Estimate key**: S = hours (same session), M = 1-2 days, L = 3+ days
 
-**Context**: Asif asked "how are we going to make money off of this?" Wolf conducted live market research on competitor pricing and revenue models. This directive delivers findings and asks the team to align on an approach, incorporating their own GTM research from `docs/GTM-PLAN.md`.
+**Context**: Asif reviewed both Wolf's market research AND your `docs/REVENUE-RESEARCH.md`. Both analyses converge on the same conclusion: **the money is in EU AI Act compliance, and the clock is ticking (August 2026)**. Asif says **GO**.
 
-**Wolf's Research Findings (2026-03-05)**:
+**Your revenue research was excellent.** Wolf's independent research confirmed the same findings — Promptfoo open-core, DeepEval $19.99-79.99/user/mo, $340M market growing 28% CAGR, compliance is the wedge. You were already ahead. Now execute.
 
-1. **Competitor Revenue Models**:
-   - **Promptfoo**: Open-core. Free CLI (10K probes/month) → Enterprise custom pricing (team sharing, continuous monitoring, SSO, managed cloud). 30+ Fortune 500 customers.
-   - **DeepEval/Confident AI**: Freemium SaaS. Free ($0, 2 users) → Starter ($19.99/user/mo) → Premium ($79.99/user/mo) → Enterprise (custom). Usage-based: traces, eval runs, storage.
+**IMPORTANT — Execution Strategy**:
+- **USE PLAN MODE** — this touches multiple files, architecture, and new initiatives. Think before you code. Outline your approach first.
+- **USE AGENT TEAMS** — break the work into parallel sub-tasks. You have sub-agents. Use them for independent workstreams (e.g., one agent on license + package.json, another on new example files, another on NEXUS updates).
+- Test counts never decrease. 868 is the floor.
 
-2. **Market Size**:
-   - AI governance market: ~$340M (2025), 28%+ CAGR → $1B+ by 2030
-   - EU AI Act penalties: up to €35M or 7% global revenue
-   - **August 2026 high-risk deadline**: 5 months away, >60% of SMEs NOT prepared
-   - Enterprise compliance budgets: $2-15M initial, $500K-2M annual
-   - Current enterprise tools charge €50K-200K/year
+**Decisions Made by Asif**:
+1. **License**: Change CC-BY-4.0 → **Apache-2.0** (enterprise-friendly, patent grant, attribution required)
+2. **npm publish**: **GO** for `@nxtg-ai/faultline@0.1.0`
+3. **Revenue model**: Open-core + EU AI Act compliance wedge (your Option A + Option B combined)
+4. **Phase 1 is adoption**: Free CLI, no paywalls. Revenue comes in Phase 2 (Month 3-6).
 
-3. **Wolf's Recommended Revenue Phases**:
-   - **Phase 1 (Now → 90 days)**: Free CLI on npm. Build adoption. $0 revenue.
-   - **Phase 2 (90 days → 6 months)**: EU AI Act compliance reports. `faultline audit --format pdf`. $29/month cloud-hosted. UNIQUE wedge — neither competitor does this.
-   - **Phase 3 (6 months+)**: Full SaaS platform. Team dashboards, continuous monitoring, API. $99-499/team/month. Enterprise custom.
-   - **Adjacent**: Consulting/professional services using Faultline ($5K-25K/engagement). Asif's 23 years of enterprise delivery = credibility.
-
-**Action Items**:
-1. [ ] Read Wolf's research above and cross-reference with your GTM plan (`docs/GTM-PLAN.md`)
-2. [ ] Evaluate: Does our current architecture support a cloud/SaaS layer? What would need to change? (Scan results stored where? Auth? Multi-tenancy?)
-3. [ ] Identify which N-12 (Enterprise Features) initiatives are prerequisites for revenue:
-   - Persistent scan history (database-backed, not filesystem)
-   - PDF/audit-ready compliance report generation
-   - User accounts + API keys
-   - Usage metering
-4. [ ] Draft a `docs/REVENUE-MODEL.md` that covers:
-   - **Chosen pricing model** (open-core vs usage-based vs compliance-per-audit)
-   - **Free vs paid feature split** (what stays in the CLI forever vs what's cloud-only)
-   - **Phase 1 technical requirements** (what must exist before charging money)
-   - **Revenue targets** (aligned with GTM-PLAN.md metrics)
-5. [ ] Add any new initiatives to the NEXUS Executive Dashboard (e.g., N-13 Cloud Platform, N-14 Compliance Reports)
+**Action Items — Phase 1 (this directive)**:
+1. [ ] Change license from CC-BY-4.0 to Apache-2.0 — update `LICENSE` file, `package.json` license field, and any license references in README
+2. [ ] Final pre-publish checklist — run through `docs/GTM-PLAN.md` Section 8 (Pre-Launch Checklist). Fix anything still open.
+3. [ ] Add 2 more example files — medical claim example + financial claim example (GTM-PLAN.md Section 5 gap)
+4. [ ] Validate `npm pack` + `npx @nxtg-ai/faultline scan --provider mock` one final time after all changes
+5. [ ] Update NEXUS Executive Dashboard:
+   - Add N-13: Cloud Platform (IDEA, P1) — hosted API + team dashboard
+   - Add N-14: Compliance Reports (IDEA, P1) — PDF/audit-ready EU AI Act reports
+   - Add N-15: Revenue Infrastructure (IDEA, P2) — Stripe, API keys, usage metering
+6. [ ] Commit all changes with message: `chore: prepare v0.1.0 for npm publish — Apache-2.0, examples, pre-publish checklist`
+7. [ ] **DO NOT run `npm publish` yet** — Asif will do this himself. Just get everything ready.
 
 **Constraints**:
-- This is STRATEGY, not implementation. Draft the plan, don't build infrastructure.
-- The CLI must remain genuinely useful for free — crippled free tiers kill developer adoption.
-- EU AI Act compliance is our unique wedge. Revenue model should lead with this.
-- Asif makes final call. Your job: present options so clearly he can decide on the spot.
+- Do NOT publish to npm. Prepare only. Asif pulls the trigger.
+- Do NOT remove any free features. The CLI stays fully functional without payment.
+- Do NOT build Phase 2 infrastructure yet (no backend, no Stripe, no auth). Just plan it in NEXUS.
+- React dependencies in package.json: note as known issue, do NOT fix in this pass (it's a larger refactor).
 
 **Response** (filled by project team):
 >
