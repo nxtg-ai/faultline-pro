@@ -89,10 +89,13 @@ The Kaggle version remains at  (tagged  at commit ).
 ## Portfolio Intelligence
 > Injected by CLX9 CoS (Emma) — Enrichment Cycle 2026-03-05
 
-- **npm publish**: Decision pending with Asif. Market research queued.
-- **Market opportunity**: $15.7B deepfake detection market (from P-08 PI-002). EU AI Act compliance driver.
-- **Provider architecture**: 4 providers (Gemini/OpenAI/Claude/Mock) is a competitive differentiator. No other open-source tool has FM-agnostic trust testing.
-- **Portfolio context**: 16,442 tests portfolio-wide. Faultline Pro at 868 tests with 13/15 features shipped.
+- **npm publish**: Decision pending with Asif. **Competitive brief delivered**: `~/ASIF/enrichment/2026-03-05-faultline-pro-competitive-brief.md`. Wolf recommends GO.
+- **Market opportunity**: $15.7B deepfake detection market. EU AI Act high-risk deadline **August 2026**.
+- **Primary competitor**: Promptfoo — $23.6M funded (Insight Partners + a16z), 100K+ devs, 5.6K GitHub stars. Tests PROMPTS not CLAIMS.
+- **Secondary competitor**: DeepEval (Confident AI) — YC-backed, 13K stars, 3M monthly downloads. Python-only. Tests RAG metrics, not trust forensics.
+- **Faultline Pro's moat**: Claim-level forensics (graphs, confidence calibration, weakest-link detection) + EU AI Act compliance module. Nobody else has this combination.
+- **Positioning**: "AI Claim Forensics" — NOT "another prompt testing tool." Avoid Promptfoo's and DeepEval's lanes.
+- **Provider architecture**: 4 providers (Gemini/OpenAI/Claude/Mock) is a competitive differentiator.
 - **Orphan repo**: `awaliuddin/Faultline-Pro` still exists on GitHub (cannot delete without `delete_repo` scope). Ignore it.
 
 ---
