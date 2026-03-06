@@ -163,6 +163,7 @@ describe('analyzeWeakestLinks - sorting', () => {
     };
     const report = makeEmptyComplianceReport();
     const result = analyzeWeakestLinks(claims, verifications, report);
+    expect(result.rankedClaims).toHaveLength(3); // CRUCIBLE Gate 2: non-empty before sort check
     for (let i = 0; i < result.rankedClaims.length - 1; i++) {
       expect(result.rankedClaims[i].fragilityScore).toBeGreaterThanOrEqual(
         result.rankedClaims[i + 1].fragilityScore,

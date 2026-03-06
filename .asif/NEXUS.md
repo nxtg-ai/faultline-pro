@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-06
+> **Last Updated**: 2026-03-06 (DIRECTIVE-01 DONE)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -74,7 +74,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260306-01 — CRUCIBLE Protocol Phase 1: Gates 2, 4, 6, 7 (Critical Tier)
 **From**: NXTG-AI CoS (via Emma, CLX9 Sr. CoS) | **Priority**: P2
-**Injected**: 2026-03-06 13:20 | **Estimate**: S | **Status**: PENDING
+**Injected**: 2026-03-06 13:20 | **Estimate**: S | **Status**: DONE
 
 **Context**: New portfolio-wide test quality standard (`~/ASIF/standards/crucible-protocol.md`). Faultline Pro is safety-critical and gets Gates 2, 4, 6 (future), 7 (future) at Critical tier.
 
@@ -92,7 +92,27 @@ The Kaggle version remains at  (tagged  at commit ).
 2. [ ] Run full test suite. 868 baseline must not decrease.
 
 **Response** (filled by project team):
+> All action items complete.
 >
+> 1. **CLAUDE.md updated**: Added `## CRUCIBLE Protocol (Test Quality)` section documenting Gates 2, 4, 6 (future), 7 (future), and Critical oracle tier with current coverage status.
+>
+> 2. **Gate 2 audit — 2 violations found and fixed**:
+>    - `tests/integration.test.ts` "low risk all-supported" test: `filterClaimsForVerification` result was never length-checked. If filter silently dropped both claims, `calculateRisk({})` returns `'low'` — test passes with 0 verified claims. Fixed: `expect(toVerify).toHaveLength(2)` added before the verification loop.
+>    - `tests/weakest-link.test.ts` "sort descending" test: `for (let i = 0; i < rankedClaims.length - 1; i++)` is vacuously true on empty array. Fixed: `expect(result.rankedClaims).toHaveLength(3)` added before the loop.
+>    - All other integration and forensics tests already had adequate non-empty assertions.
+>
+> 3. **Gate 4 implemented**: Pre-push hook updated to capture `npm test` output, extract test count from Vitest's `Tests N passed` line, compare with `.git/test-count-baseline`, and fail with a Gate 4 message if decrease > 5 (unless commit message contains `CRUCIBLE-G4: <reason>`). Baseline is written on every successful push.
+>
+> 4. **868 tests confirmed passing** post-fix. Gate 4 baseline set.
+>
+> **Oracle tier status — Critical (claim forensics)**:
+> - Example-based: ✅ 868 tests
+> - Property-based: ❌ pending (fast-check, N-CRUCIBLE-P1)
+> - Contract: ❌ pending (API schema tests, N-CRUCIBLE-P2)
+> - Integration: ✅ partial (4 integration test files covering full pipeline)
+>
+> **Status**: COMPLETE
+> **Started**: 2026-03-06 | **Completed**: 2026-03-06 | **Actual**: S
 
 ---
 
@@ -313,6 +333,7 @@ _(Add questions for ASIF CoS here.)_
 
 | Date | Change |
 |------|--------|
+| 2026-03-06 | DIRECTIVE-01 complete: CRUCIBLE Protocol adopted — Gate 2 (2 fixes), Gate 4 delta hook, CLAUDE.md section. |
 | 2026-03-06 | Team feedback reflection: CI continue-on-error fix noted, N-16 queued post-publish, holding for npm GO. |
 | 2026-03-05 | DIRECTIVE-05 complete: Apache-2.0, examples, N-13/N-14/N-15, REVENUE pillar. v0.1.0 ready for publish. |
 | 2026-03-05 | DIRECTIVE-04 complete: GTM-PLAN.md, README rewrite, --help/--version, npm pack validation. |

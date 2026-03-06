@@ -112,6 +112,7 @@ describe('Integration: Full Pipeline (Mocked)', () => {
 
     const extracted = await extractClaims('Science facts', 'test-key');
     const toVerify = filterClaimsForVerification(extracted);
+    expect(toVerify).toHaveLength(2); // CRUCIBLE Gate 2: assert non-empty before verifying
 
     // All supported
     for (const claim of toVerify) {

@@ -69,3 +69,18 @@ Do NOT skip planning on complex directives. Plan mode and agent teams are your s
 **Escalation via Team Questions**: When you hit a blocker, need an architecture review, or have a portfolio-level question, add it under `## Team Questions` in your `.asif/NEXUS.md`. Your CoS checks these 3x daily during scheduled enrichment cycles and will respond inline or issue follow-up directives.
 
 **Key constraint**: Do NOT touch `git stash@{0}`. It contains the FM-agnostic version (future P-08b).
+
+---
+
+## CRUCIBLE Protocol (Test Quality)
+
+This project follows the CRUCIBLE Protocol (`~/ASIF/standards/crucible-protocol.md`).
+Rules that apply to this project (Critical tier — claim forensics is safety-critical):
+
+- **Gate 2**: Non-empty assertions — data-producing tests must assert result is non-empty. If a test creates data then queries it, assert `length > 0` or exact count before checking downstream behavior.
+- **Gate 4**: Delta gate — test count decreases > 5 require justification in commit message: `CRUCIBLE-G4: <reason>`. Enforced by pre-push hook.
+- **Gate 6**: Mutation testing (future) — `@stryker-mutator/core` on claim forensics critical paths. Threshold: 60% mutation score.
+- **Gate 7**: Spec-test traceability (future) — new integration tests must cite a NEXUS acceptance criterion.
+- **Oracle tier: CRITICAL** — all 4 oracle types required on claim forensics (example-based, property-based, contract, integration).
+
+Current oracle coverage: example-based (✅ 868 tests), property-based (❌ pending), contract (❌ pending), integration (✅ partial).
