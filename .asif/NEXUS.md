@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-03
+> **Last Updated**: 2026-03-05
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -127,6 +127,59 @@ The Kaggle version remains at  (tagged  at commit ).
 > 4. **README rewritten** — leads with EU AI Act angle ("Verify AI-generated claims. Required by August 2026"), competitive matrix vs Promptfoo/DeepEval, zero-config hello-world (`npx @nxtg-ai/faultline scan --provider mock`). Kaggle branding removed. Repo URLs updated.
 > Remaining gap: CC-BY-4.0 license — pending Asif's decision (recommend MIT or Apache-2.0 for enterprise adoption). Not changed without explicit approval.
 > **Started**: 2026-03-05 18:30 | **Completed**: 2026-03-05 (both sessions) | **Actual**: M
+
+---
+
+### DIRECTIVE-NXTG-20260305-05 — Revenue Model: Align on Monetization Strategy
+**From**: NXTG-AI CoS (Wolf) via Asif | **Priority**: P0
+**Injected**: 2026-03-05 19:45 | **Estimate**: S | **Status**: PENDING
+
+> **Estimate key**: S = hours (same session), M = 1-2 days, L = 3+ days
+
+**Context**: Asif asked "how are we going to make money off of this?" Wolf conducted live market research on competitor pricing and revenue models. This directive delivers findings and asks the team to align on an approach, incorporating their own GTM research from `docs/GTM-PLAN.md`.
+
+**Wolf's Research Findings (2026-03-05)**:
+
+1. **Competitor Revenue Models**:
+   - **Promptfoo**: Open-core. Free CLI (10K probes/month) → Enterprise custom pricing (team sharing, continuous monitoring, SSO, managed cloud). 30+ Fortune 500 customers.
+   - **DeepEval/Confident AI**: Freemium SaaS. Free ($0, 2 users) → Starter ($19.99/user/mo) → Premium ($79.99/user/mo) → Enterprise (custom). Usage-based: traces, eval runs, storage.
+
+2. **Market Size**:
+   - AI governance market: ~$340M (2025), 28%+ CAGR → $1B+ by 2030
+   - EU AI Act penalties: up to €35M or 7% global revenue
+   - **August 2026 high-risk deadline**: 5 months away, >60% of SMEs NOT prepared
+   - Enterprise compliance budgets: $2-15M initial, $500K-2M annual
+   - Current enterprise tools charge €50K-200K/year
+
+3. **Wolf's Recommended Revenue Phases**:
+   - **Phase 1 (Now → 90 days)**: Free CLI on npm. Build adoption. $0 revenue.
+   - **Phase 2 (90 days → 6 months)**: EU AI Act compliance reports. `faultline audit --format pdf`. $29/month cloud-hosted. UNIQUE wedge — neither competitor does this.
+   - **Phase 3 (6 months+)**: Full SaaS platform. Team dashboards, continuous monitoring, API. $99-499/team/month. Enterprise custom.
+   - **Adjacent**: Consulting/professional services using Faultline ($5K-25K/engagement). Asif's 23 years of enterprise delivery = credibility.
+
+**Action Items**:
+1. [ ] Read Wolf's research above and cross-reference with your GTM plan (`docs/GTM-PLAN.md`)
+2. [ ] Evaluate: Does our current architecture support a cloud/SaaS layer? What would need to change? (Scan results stored where? Auth? Multi-tenancy?)
+3. [ ] Identify which N-12 (Enterprise Features) initiatives are prerequisites for revenue:
+   - Persistent scan history (database-backed, not filesystem)
+   - PDF/audit-ready compliance report generation
+   - User accounts + API keys
+   - Usage metering
+4. [ ] Draft a `docs/REVENUE-MODEL.md` that covers:
+   - **Chosen pricing model** (open-core vs usage-based vs compliance-per-audit)
+   - **Free vs paid feature split** (what stays in the CLI forever vs what's cloud-only)
+   - **Phase 1 technical requirements** (what must exist before charging money)
+   - **Revenue targets** (aligned with GTM-PLAN.md metrics)
+5. [ ] Add any new initiatives to the NEXUS Executive Dashboard (e.g., N-13 Cloud Platform, N-14 Compliance Reports)
+
+**Constraints**:
+- This is STRATEGY, not implementation. Draft the plan, don't build infrastructure.
+- The CLI must remain genuinely useful for free — crippled free tiers kill developer adoption.
+- EU AI Act compliance is our unique wedge. Revenue model should lead with this.
+- Asif makes final call. Your job: present options so clearly he can decide on the spot.
+
+**Response** (filled by project team):
+>
 
 ---
 
