@@ -45,7 +45,7 @@
   "license": "CC-BY-4.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/awaliuddin/Faultline.git"
+    "url": "https://github.com/nxtg-ai/faultline-pro.git"
   },
   "engines": {
     "node": ">=20"
