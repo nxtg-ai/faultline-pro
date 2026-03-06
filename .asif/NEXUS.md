@@ -116,6 +116,35 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ---
 
+### DIRECTIVE-NXTG-20260306-02 — Faultline Pro Automated UAT (Pre-Publish)
+**From**: NXTG-AI CoS (Wolf, relaying Emma P0) | **Priority**: P0
+**Injected**: 2026-03-06 13:45 | **Estimate**: S | **Status**: DONE
+
+**Context**: Pre-publish UAT before `npm publish`. Machine checks completed by Wolf directly. Results: **8 PASS, 2 WARN, 0 FAIL. READY FOR PUBLISH.**
+
+**Results summary** (full report: `~/ASIF/learning/UAT-faultline-pro-2026-03-06-machine.md`):
+1. Build: PASS — clean, 0 errors
+2. Tests: PASS — 868 passed, 0 failures
+3. package.json: WARN — `homepage` field missing (cosmetic, npmjs.com listing)
+4. LICENSE: PASS — Apache 2.0
+5. --help: PASS
+6. --version: PASS — 0.1.0
+7. Invalid provider: WARN — helpful error but prints twice (cosmetic)
+8. Secrets scan: PASS — 0 hardcoded secrets
+9. npm pack: PASS — 46 files, 61.3 kB, no test fixtures
+10. README: PASS — install cmd matches, example copy-pasteable
+
+**Non-blocking fixes** (can be done before or after publish):
+- Add `"homepage": "https://github.com/nxtg-ai/faultline-pro#readme"` to package.json
+- Fix doubled error output in CLI error handler
+
+**Next step**: Asif runs Human Oracle (H15-H24 in `standards/uat-guide.md`), then `npm login && npm publish --access public`.
+
+**Response**: Completed by Wolf directly (read-only audit, not team work).
+> **Started**: 2026-03-06 13:30 | **Completed**: 2026-03-06 13:45 | **Actual**: S
+
+---
+
 ### DIRECTIVE-NXTG-20260305-03 — Adopt CI Gate Protocol + Test Reconciliation
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P0
 **Injected**: 2026-03-05 17:30 | **Estimate**: S | **Status**: DONE
