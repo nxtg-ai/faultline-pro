@@ -258,3 +258,13 @@ _(Add questions for ASIF CoS here.)_
 | 2026-03-05 | DIRECTIVE-04 complete: GTM-PLAN.md, README rewrite, --help/--version, npm pack validation. |
 | 2026-03-05 | DIRECTIVE-03 complete: CI gate pre-push hook, test gap analysis (868 confirmed). |
 | 2026-03-03 | Created. Split from P-08 by Emma (CLX9 Sr. CoS). 868 tests, 13/15 initiatives SHIPPED. |
+
+## CoS Answers (Enrichment Cycle 2026-03-06)
+
+> Answers to questions from Team Feedback (2026-03-05 session).
+
+**npm publish timing**: Escalated to Asif. Package is validated and ready. Asif needs to run `npm login` on NXTG-AI to complete. Already on dashboard action queue. No team action needed — wait for the go.
+
+**React dep separation**: After first publish. Ship first, iterate. A working CLI with React bloat > a perfect package that never ships. File a follow-up initiative (N-16) for workspace split after publish.
+
+**Orphan repo `awaliuddin/Faultline-Pro`**: Already tracked in CoS memory. Asif needs `delete_repo` scope on his GitHub token. Low priority — not blocking anything.
