@@ -106,7 +106,7 @@ The Kaggle version remains at  (tagged  at commit ).
 >
 > **Test count**: 868/868 — baseline held. 4 tests briefly broke (file-validation tests that relied on API key error short-circuiting before file check — fixed by placing `checkApiKey()` after input validation, not before).
 >
-> **Status**: COMPLETE
+> **Status**: DONE
 > **Started**: 2026-03-06 | **Completed**: 2026-03-06 | **Actual**: S
 
 ---
@@ -150,7 +150,7 @@ The Kaggle version remains at  (tagged  at commit ).
 > - Contract: ❌ pending (API schema tests, N-CRUCIBLE-P2)
 > - Integration: ✅ partial (4 integration test files covering full pipeline)
 >
-> **Status**: COMPLETE
+> **Status**: DONE
 > **Started**: 2026-03-06 | **Completed**: 2026-03-06 | **Actual**: S
 
 ---
@@ -206,7 +206,7 @@ The Kaggle version remains at  (tagged  at commit ).
 **Response** (filled by project team):
 > Pre-push hook installed: `cp ~/ASIF/scripts/templates/pre-push-hook.sh .git/hooks/pre-push && chmod +x`. Verified file exists and is executable.
 > Test gap analysis: Kaggle has one additional test file — `tests/multimodal-extractor.test.ts` (18 tests). This tests `multimodal/extractor.ts`, which is the N-11 Multimodal Upload feature (`IDEA` status, not yet implemented in Pro). All 18 tests are FM-agnostic in isolation, but the source module doesn't exist in Pro and porting would require implementing N-11. Decision: do not port — aligns with constraint ("Do NOT port Kaggle-specific tests"). Remaining 7-test gap is within that same Kaggle file (25 total = 18 multimodal + 7 counted differently). Pro stays at 868 tests. NEXUS test count unchanged.
-> **Status**: COMPLETE
+> **Status**: DONE
 > **Started**: 2026-03-05 | **Completed**: 2026-03-05 | **Actual**: S
 
 ---
