@@ -133,14 +133,14 @@ describe('geminiService.ts', () => {
       });
     });
 
-    it('should use gemini-2.0-flash model', async () => {
+    it('should use gemini-2.5-flash model', async () => {
       mockGenerateContent.mockResolvedValueOnce({
         text: '[]',
       });
 
       await extractClaims('Input', 'test-key');
       const callArgs = mockGenerateContent.mock.calls[0][0];
-      expect(callArgs.model).toBe('gemini-2.0-flash');
+      expect(callArgs.model).toBe('gemini-2.5-flash');
     });
 
     it('should request JSON response schema', async () => {

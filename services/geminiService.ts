@@ -2,7 +2,7 @@
 import { GoogleGenAI } from "@google/genai";
 import type { Claim, VerificationResult, ClaimStatus } from '../types';
 
-const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash';
+const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 
 /** Resolved Gemini model ID, overridable via FAULTLINE_GEMINI_MODEL env var. */
 export const GEMINI_MODEL: string =
