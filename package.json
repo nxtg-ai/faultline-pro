@@ -1,6 +1,6 @@
 {
   "name": "@nxtg/faultline",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "AI Trust & Safety Platform — Verify AI claims, assess risk, ensure EU AI Act compliance.",
   "type": "module",
   "bin": {
