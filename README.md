@@ -5,7 +5,7 @@
 The EU AI Act mandates conformity assessments for high-risk AI systems. Faultline decomposes AI output into atomic claims, stress-tests each against live evidence, and maps findings to EU AI Act risk tiers — so you can ship with confidence, not hope.
 
 [![CI](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/@nxtg-ai/faultline.svg)](https://www.npmjs.com/package/@nxtg-ai/faultline)
+[![npm](https://img.shields.io/npm/v/@nxtg/faultline.svg)](https://www.npmjs.com/package/@nxtg/faultline)
 [![Tests](https://img.shields.io/badge/tests-868%20passing-brightgreen)](tests/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
@@ -20,7 +20,7 @@ The EU AI Act mandates conformity assessments for high-risk AI systems. Faultlin
 
 ```bash
 export GEMINI_API_KEY="your-key"
-npx @nxtg-ai/faultline scan --input your-ai-output.txt --provider gemini
+npx @nxtg/faultline scan --input your-ai-output.txt --provider gemini
 ```
 
 **Expected output:**
@@ -56,10 +56,10 @@ Generated:    2026-03-06T14:00:00.000Z
 
 ```bash
 export ANTHROPIC_API_KEY="..."
-npx @nxtg-ai/faultline scan --input doc.txt --provider claude --output-format markdown
+npx @nxtg/faultline scan --input doc.txt --provider claude --output-format markdown
 
 export OPENAI_API_KEY="..."
-npx @nxtg-ai/faultline scan --input doc.txt --provider openai
+npx @nxtg/faultline scan --input doc.txt --provider openai
 ```
 
 ---
@@ -161,7 +161,7 @@ faultline --help
 For automated pipelines, pre-commit hooks, and local development without API access, use the **mock provider**:
 
 ```bash
-npx @nxtg-ai/faultline scan --input doc.txt --provider mock
+npx @nxtg/faultline scan --input doc.txt --provider mock
 ```
 
 The mock provider returns deterministic results without network calls. It is a **test double** — all verdicts are "supported" with flat 0.30 confidence. Use it to validate pipeline shape and CI integration, not to evaluate real claims.
@@ -171,7 +171,7 @@ The mock provider returns deterministic results without network calls. It is a *
 ```yaml
 - name: Faultline AI Claim Audit (CI)
   run: |
-    npx @nxtg-ai/faultline scan \
+    npx @nxtg/faultline scan \
       --input ai-output.txt \
       --provider mock \
       --output-format sarif \

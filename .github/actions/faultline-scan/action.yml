@@ -72,8 +72,8 @@ runs:
     - name: Install Faultline
       shell: bash
       run: |
-        npm install -g @nxtg-ai/faultline || {
-          echo "::notice::@nxtg-ai/faultline not published yet, installing from source"
+        npm install -g @nxtg/faultline || {
+          echo "::notice::@nxtg/faultline not published yet, installing from source"
           cd ${{ github.action_path }}/../../..
           npm ci
         }

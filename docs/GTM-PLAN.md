@@ -20,7 +20,7 @@ One-liner for npm: *The open-source CLI that decomposes AI-generated text into a
 
 ### Package Identity
 
-- **Name**: `@nxtg-ai/faultline` (already configured in package.json)
+- **Name**: `@nxtg/faultline` (already configured in package.json)
 - **Version**: `0.1.0`
 - **License**: CC-BY-4.0 (current). **GAP**: Consider switching to Apache-2.0 or MIT for broader adoption — CC-BY is unusual for software packages and may cause enterprise legal teams to pause. See Gap Analysis below.
 
@@ -46,7 +46,7 @@ Followed immediately by the hello-world command (see below), then the feature ma
 **Current state**: The quickest zero-config experience is:
 
 ```bash
-npx @nxtg-ai/faultline scan --input document.txt --provider mock
+npx @nxtg/faultline scan --input document.txt --provider mock
 ```
 
 The `--provider mock` flag gives instant results without any API key setup. This is critical for the "try it in 10 seconds" experience.
@@ -56,19 +56,19 @@ The `--provider mock` flag gives instant results without any API key setup. This
 ```bash
 # 1. Scan a document (no API key needed — mock provider)
 echo "GPT-4 achieves 92% accuracy on medical diagnosis tasks" > claim.txt
-npx @nxtg-ai/faultline scan --input claim.txt --provider mock
+npx @nxtg/faultline scan --input claim.txt --provider mock
 
 # 2. See the EU AI Act compliance report
-npx @nxtg-ai/faultline scan --input claim.txt --provider mock --output-format markdown
+npx @nxtg/faultline scan --input claim.txt --provider mock --output-format markdown
 
 # 3. Find the weakest claim in a document
-npx @nxtg-ai/faultline weakest --input claim.txt --provider mock
+npx @nxtg/faultline weakest --input claim.txt --provider mock
 
 # 4. Visualize the claim dependency graph
-npx @nxtg-ai/faultline graph --input claim.txt --provider mock --format mermaid
+npx @nxtg/faultline graph --input claim.txt --provider mock --format mermaid
 ```
 
-**GAP**: `npx @nxtg-ai/faultline` requires the bin entry to work after npm install. Currently `bin.faultline` points to `./bin/faultline.js` which shells out to `tsx cli/index.ts`. This needs testing end-to-end after `npm pack` to confirm the npx flow works. See Gap Analysis.
+**GAP**: `npx @nxtg/faultline` requires the bin entry to work after npm install. Currently `bin.faultline` points to `./bin/faultline.js` which shells out to `tsx cli/index.ts`. This needs testing end-to-end after `npm pack` to confirm the npx flow works. See Gap Analysis.
 
 ### npm Keywords (for discoverability)
 
@@ -122,9 +122,9 @@ Current keywords are good. Add these for better search coverage:
 Record a terminal GIF (using `asciinema` or `vhs`) showing:
 
 1. `echo "GPT-4 achieves 92% accuracy on medical diagnosis" > claim.txt`
-2. `npx @nxtg-ai/faultline scan --input claim.txt --provider mock`
+2. `npx @nxtg/faultline scan --input claim.txt --provider mock`
 3. Show the JSON output with claims decomposed and risk levels assigned
-4. `npx @nxtg-ai/faultline scan --input claim.txt --provider mock --output-format markdown`
+4. `npx @nxtg/faultline scan --input claim.txt --provider mock --output-format markdown`
 5. Show the formatted compliance report with EU AI Act article mappings
 
 Keep it under 30 seconds. No music, no fluff. Terminal output speaks for itself.
@@ -185,8 +185,8 @@ Keep it under 30 seconds. No music, no fluff. Terminal output speaks for itself.
 
 | Gap | Impact | Effort |
 |-----|--------|--------|
-| **npx end-to-end test**: `npm pack` then `npx @nxtg-ai/faultline scan` has not been validated. The `bin/faultline.js` entry shells out to `tsx cli/index.ts`, which may fail if `tsx` is not bundled. The `files` array in package.json includes `cli/` and `bin/` but these are TypeScript — consumers need `tsx` as a runtime dep. | Users get a broken first experience | S |
-| **`tsx` is a runtime dependency**: Listed in `dependencies` (good), but `bin/faultline.js` uses `--import tsx` which requires tsx to be resolvable. After `npm install -g @nxtg-ai/faultline`, tsx should be available. Needs manual verification. | Broken global install | S |
+| **npx end-to-end test**: `npm pack` then `npx @nxtg/faultline scan` has not been validated. The `bin/faultline.js` entry shells out to `tsx cli/index.ts`, which may fail if `tsx` is not bundled. The `files` array in package.json includes `cli/` and `bin/` but these are TypeScript — consumers need `tsx` as a runtime dep. | Users get a broken first experience | S |
+| **`tsx` is a runtime dependency**: Listed in `dependencies` (good), but `bin/faultline.js` uses `--import tsx` which requires tsx to be resolvable. After `npm install -g @nxtg/faultline`, tsx should be available. Needs manual verification. | Broken global install | S |
 | **Repository URL**: package.json points to `awaliuddin/Faultline.git` (the old Kaggle repo). Must update to `nxtg-ai/faultline-pro`. | Incorrect GitHub link on npmjs.com | S |
 | **README is stale**: References "829 tests" (actual: 868), links to Kaggle demo/video, says "Built for the Gemini 3 Kaggle competition." The npm README IS the landing page — it must lead with the AI Claim Forensics positioning, not Kaggle origin. | First impression is "a Kaggle project" instead of "a professional tool" | M |
 | **No `--help` flag**: Running `faultline --help` returns "Unknown command: --help". Should show usage. | Standard CLI convention broken | S |
@@ -202,7 +202,7 @@ Keep it under 30 seconds. No music, no fluff. Terminal output speaks for itself.
 | **No `--version` flag**: `faultline version` works but `faultline --version` does not. Both are expected. | Minor CLI convention | S |
 | **Sample text is EU AI Act focused**: `examples/sample.txt` is perfect for the compliance angle but should be supplemented with a medical claim example and a financial claim example to show breadth. | Narrow first impression | S |
 | **Error messages could be friendlier**: Missing API key error is clear, but could suggest `--provider mock` for testing. | Minor DX improvement | S |
-| **No programmatic API documented**: The package exports nothing for use as a library. `import { scan } from '@nxtg-ai/faultline'` would enable embedding in other tools. CLI-only limits integration. | Limits ecosystem adoption | M |
+| **No programmatic API documented**: The package exports nothing for use as a library. `import { scan } from '@nxtg/faultline'` would enable embedding in other tools. CLI-only limits integration. | Limits ecosystem adoption | M |
 
 ### Nice to Have (post-launch)
 
@@ -271,7 +271,7 @@ Faultline does not compete in prompt testing or RAG evaluation. It owns the "cla
 Before Asif gives the GO for npm publish:
 
 - [x] Fix repository URL in package.json (`nxtg-ai/faultline-pro`)
-- [x] Validate `npm pack` + `npx @nxtg-ai/faultline scan` end-to-end
+- [x] Validate `npm pack` + `npx @nxtg/faultline scan` end-to-end
 - [x] Rewrite README.md for npm (lead with positioning, not Kaggle origin)
 - [x] Add `--help` flag support
 - [ ] Remove React dependencies from CLI package (or split packages)

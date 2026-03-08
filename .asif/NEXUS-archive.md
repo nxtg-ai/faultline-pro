@@ -688,8 +688,8 @@
 
 **Action Items**:
 1. [x] Verify CI pipeline is GREEN (from DIRECTIVE-14)
-2. [x] Add npm package configuration in package.json — name: `@nxtg-ai/faultline`, bin entry, files array
-3. [x] Add `npx @nxtg-ai/faultline scan --help` entry point
+2. [x] Add npm package configuration in package.json — name: `@nxtg/faultline`, bin entry, files array
+3. [x] Add `npx @nxtg/faultline scan --help` entry point
 4. [x] Verify `npm pack` creates valid tarball with correct files included
 5. [x] Tests for CLI via npx, package contents — zero regressions
 
@@ -699,7 +699,7 @@
 > **1. CI verified GREEN**: `npx tsc --noEmit` passes (0 errors), `npm test` passes (338 tests, 16 files, 0 failures). CI workflow from Directive 14 includes typecheck + test + build steps.
 >
 > **2. package.json updated**:
-> - `name`: `@nxtg-ai/faultline` (scoped package)
+> - `name`: `@nxtg/faultline` (scoped package)
 > - `version`: `0.1.0`
 > - `private`: removed (was `true`)
 > - `description`: "AI Trust & Safety Platform — Verify AI claims, assess risk, ensure EU AI Act compliance."

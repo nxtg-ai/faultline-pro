@@ -116,7 +116,7 @@ The Kaggle version remains at  (tagged  at commit ).
 1. [ ] Archive all 6 DONE directives from this `## CoS Directives` section into a `## CoS Archive` section at the bottom of this NEXUS file (or into `NEXUS-archive.md` if one exists). Move the full directive text — do not summarize.
 2. [ ] Leave only this PENDING directive in the `## CoS Directives` section. Add an archive note with count and date.
 3. [ ] Add a new section `## What's Next After Publish` (above `## Portfolio Intelligence`) documenting the post-publish roadmap:
-   - **(a)** Monitor npm download counts weekly (link: `https://www.npmjs.com/package/@nxtg-ai/faultline`)
+   - **(a)** Monitor npm download counts weekly (link: `https://www.npmjs.com/package/@nxtg/faultline`)
    - **(b)** Create GitHub Discussions on `nxtg-ai/faultline-pro` for community feedback and feature requests
    - **(c)** Write a "Getting Started" guide in README (expand beyond Quick Start — cover all 4 providers, batch mode, output formats, CI integration)
    - **(d)** Plan N-13 Cloud Platform MVP: define minimum viable API surface (hosted scan endpoint, API key auth, usage metering)
@@ -287,7 +287,7 @@ The Kaggle version remains at  (tagged  at commit ).
    - **Neither competitor does claim-level forensics, confidence calibration, weakest-link detection, or EU AI Act compliance.**
 3. [ ] Draft a GTM plan covering:
    - **Positioning**: "AI Claim Forensics" — how to differentiate from prompt testing tools
-   - **npm package**: What should `@nxtg-ai/faultline` README lead with? (Wolf recommends EU AI Act angle)
+   - **npm package**: What should `@nxtg/faultline` README lead with? (Wolf recommends EU AI Act angle)
    - **First 30 days post-publish**: Where to announce (HN, Reddit r/MachineLearning, AI safety communities)?
    - **Content strategy**: What blog posts, comparison guides, or demos would drive adoption? (Coordinate with content-engine P-14)
    - **Developer experience**: What's the "hello world" for a new Faultline user? `npx faultline scan "claim"` → instant value
@@ -306,7 +306,7 @@ The Kaggle version remains at  (tagged  at commit ).
 > 1. **Repository URL fixed** — `package.json` now points to `nxtg-ai/faultline-pro.git` (was orphaned `awaliuddin/Faultline.git`)
 > 2. **`--help` and `--version` flags fixed** — CLI now handles `--help`/`-h` (exit 0 + usage) and `--version`/`-v` (exit 0 + version). Previously showed "Unknown command" with exit 1.
 > 3. **npm pack end-to-end validated** — discovered `analysis/` and `history/` directories missing from `files` in `package.json`; added them. Validated full flow: `npm pack` → install tarball → `faultline --version` → `faultline scan --provider mock`. All pass.
-> 4. **README rewritten** — leads with EU AI Act angle ("Verify AI-generated claims. Required by August 2026"), competitive matrix vs Promptfoo/DeepEval, zero-config hello-world (`npx @nxtg-ai/faultline scan --provider mock`). Kaggle branding removed. Repo URLs updated.
+> 4. **README rewritten** — leads with EU AI Act angle ("Verify AI-generated claims. Required by August 2026"), competitive matrix vs Promptfoo/DeepEval, zero-config hello-world (`npx @nxtg/faultline scan --provider mock`). Kaggle branding removed. Repo URLs updated.
 > Remaining gap: ~~CC-BY-4.0 license~~ RESOLVED — Apache-2.0 selected by Asif on 2026-03-05. License changed.
 > **Started**: 2026-03-05 18:30 | **Completed**: 2026-03-05 (both sessions) | **Actual**: M
 
@@ -329,7 +329,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 **Decisions Made by Asif**:
 1. **License**: Change CC-BY-4.0 → **Apache-2.0** (enterprise-friendly, patent grant, attribution required)
-2. **npm publish**: **GO** for `@nxtg-ai/faultline@0.1.0`
+2. **npm publish**: **GO** for `@nxtg/faultline@0.1.0`
 3. **Revenue model**: Open-core + EU AI Act compliance wedge (your Option A + Option B combined)
 4. **Phase 1 is adoption**: Free CLI, no paywalls. Revenue comes in Phase 2 (Month 3-6).
 
@@ -337,7 +337,7 @@ The Kaggle version remains at  (tagged  at commit ).
 1. [ ] Change license from CC-BY-4.0 to Apache-2.0 — update `LICENSE` file, `package.json` license field, and any license references in README
 2. [ ] Final pre-publish checklist — run through `docs/GTM-PLAN.md` Section 8 (Pre-Launch Checklist). Fix anything still open.
 3. [ ] Add 2 more example files — medical claim example + financial claim example (GTM-PLAN.md Section 5 gap)
-4. [ ] Validate `npm pack` + `npx @nxtg-ai/faultline scan --provider mock` one final time after all changes
+4. [ ] Validate `npm pack` + `npx @nxtg/faultline scan --provider mock` one final time after all changes
 5. [ ] Update NEXUS Executive Dashboard:
    - Add N-13: Cloud Platform (IDEA, P1) — hosted API + team dashboard
    - Add N-14: Compliance Reports (IDEA, P1) — PDF/audit-ready EU AI Act reports
@@ -410,7 +410,7 @@ _(Add questions for ASIF CoS here.)_
 ### 4. What would we prioritize next?
 
 1. **N-14: Compliance Reports (PDF/audit-ready)** — highest revenue signal. Enterprise compliance teams need printable, auditor-friendly output. Current JSON/Markdown/HTML/SARIF is developer-facing. PDF with executive summary + per-claim evidence tables would unlock enterprise sales conversations.
-2. **React dependency separation** — `npm install @nxtg-ai/faultline` currently pulls React, react-dom, lucide-react, and Vite. CLI users don't need any of these. Either split into `@nxtg-ai/faultline` (CLI) and `@nxtg-ai/faultline-web` (UI), or move React deps to a separate workspace. This is the top DX friction item.
+2. **React dependency separation** — `npm install @nxtg/faultline` currently pulls React, react-dom, lucide-react, and Vite. CLI users don't need any of these. Either split into `@nxtg/faultline` (CLI) and `@nxtg/faultline-web` (UI), or move React deps to a separate workspace. This is the top DX friction item.
 3. **Inline scan (stdin/string argument)** — `faultline scan "GPT-4 is 92% accurate"` without creating a file first. Reduces hello-world friction from 2 steps to 1.
 4. **Terminal demo GIF** — GTM-PLAN Section 3 needs this for HN/Reddit launch posts. Quick win with `vhs` or `asciinema`.
 
@@ -444,7 +444,7 @@ _(Add questions for ASIF CoS here.)_
 
 ### 4. What would we prioritize next?
 
-1. **N-16: React workspace split** — Move React/Vite/UI deps to a separate workspace so `npm install @nxtg-ai/faultline` (CLI users) doesn't pull UI deps. Cleaner install, faster, more professional. Pre-condition: publish must happen first (CoS confirmed).
+1. **N-16: React workspace split** — Move React/Vite/UI deps to a separate workspace so `npm install @nxtg/faultline` (CLI users) doesn't pull UI deps. Cleaner install, faster, more professional. Pre-condition: publish must happen first (CoS confirmed).
 2. **Inline scan DX** — `faultline scan "claim text here"` without needing a file. Reduces hello-world from 2 steps to 1. Highest DX friction item post-launch.
 3. **Terminal demo GIF** — `vhs` or `asciinema` recording of `faultline scan --provider mock` for the README and launch posts. Quick win, high signal value for HN/Reddit.
 4. **N-14: Compliance PDF reports** — Highest revenue signal per REVENUE-RESEARCH.md. Enterprise compliance teams need auditor-friendly printable output. JSON/SARIF is developer-facing; PDF with executive summary + per-claim evidence tables unlocks enterprise conversations.
