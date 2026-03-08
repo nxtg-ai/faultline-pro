@@ -97,7 +97,8 @@ providers/perplexity_provider.ts(78,9): error TS2322: Type 'string[]' is not ass
 **Constraints**: S-sized. Do NOT change the `VerificationResult` type — fix the provider to conform to it.
 
 **Response** (filled by project team):
->
+> Fixed. `sources: result.citations` was assigning `string[]` to `Array<{title: string; uri: string}>`. Fixed with `.map(url => ({ title: url, uri: url }))`. Updated 2 citation tests to assert the correct object shape. tsc: 0 errors. Tests: 909/909. GH Issue #1 closed. CI green.
+> **Commit**: 2ba0d0d | **Status**: DONE | **Actual**: S
 
 ---
 
