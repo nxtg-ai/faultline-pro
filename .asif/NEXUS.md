@@ -74,7 +74,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260308-06 — [SHIP-STOPPER] CLI Progress + Model ID Fix
 **From**: NXTG-AI CoS | **Priority**: P0
-**Injected**: 2026-03-08 10:15 | **Estimate**: S | **Status**: PENDING
+**Injected**: 2026-03-08 10:15 | **Estimate**: S | **Status**: DONE
 
 > **Context**: Asif's Human Oracle (2026-03-06) scored 2/10 NO-GO. Three of five findings were accidentally dropped from DIRECTIVE-NXTG-20260306-03. These are the missing items. **npm publish is blocked until all are resolved.**
 
@@ -98,8 +98,13 @@ The Kaggle version remains at  (tagged  at commit ).
 - All existing tests must pass
 - Spinner must NOT interfere with `--format json` or piped output (check if stdout is a TTY before showing spinner)
 
-**Response** (filled by project team):
->
+**Response** (filled by Wolf — executed directly with agent teams):
+> All 3 items resolved. Commit `fc81b82`. Tests: 873 (868 + 5 new).
+> - Item 1: `ora` spinner added (`cli/spinner.ts`). TTY-aware, stderr output, silent for json/sarif/piped.
+> - Item 2: OpenAI `gpt-4o` → `gpt-4o-2024-11-20`, Gemini `gemini-3-pro-preview` → `gemini-2.0-flash`. DRY'd to single constant. `FAULTLINE_OPENAI_MODEL` + `FAULTLINE_GEMINI_MODEL` env overrides added.
+> - Item 3: `homepage` + `bugs` fields added to package.json.
+> **Started**: 2026-03-08 11:05 | **Completed**: 2026-03-08 11:09 | **Actual**: S
+> **Commit**: fc81b82
 
 ---
 
