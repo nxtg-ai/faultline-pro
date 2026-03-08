@@ -72,6 +72,37 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
+### DIRECTIVE-NXTG-20260308-06 — [SHIP-STOPPER] CLI Progress + Model ID Fix
+**From**: NXTG-AI CoS | **Priority**: P0
+**Injected**: 2026-03-08 10:15 | **Estimate**: S | **Status**: PENDING
+
+> **Context**: Asif's Human Oracle (2026-03-06) scored 2/10 NO-GO. Three of five findings were accidentally dropped from DIRECTIVE-NXTG-20260306-03. These are the missing items. **npm publish is blocked until all are resolved.**
+
+**Traceability** (Human Oracle → this directive):
+| Oracle Finding | Severity | Action Item |
+|---------------|----------|-------------|
+| F1: Blank terminal 5-15s during scan | SHIP-STOPPER | Item 1 |
+| F4: Broken model IDs (gpt-4o retired, Gemini dying) | Critical | Item 2 |
+| — cosmetic: missing homepage | WARN | Item 3 |
+
+**Action Items**:
+1. [SHIP-STOPPER] [ ] **Add CLI progress indicator**: Install `ora` or `nanospinner`. Show spinner with status messages during scan: "Extracting claims..." → "Verifying claim 1/N..." → "Generating report...". Must appear immediately after user hits Enter. The scan takes 5-15 seconds — zero feedback is unacceptable for a trust product. Files: `cli/scan.ts`, `cli/index.ts`.
+2. [ ] **Fix model IDs + add env var overrides for ALL providers**:
+   - `providers/openai_provider.ts:13` — update `gpt-4o` to current model (e.g., `gpt-4o-2024-11-20` or latest)
+   - `providers/gemini_provider.ts:14` AND `services/geminiService.ts:49,106,191` — verify `gemini-3-pro-preview` still works (it was flagged as dying March 9). If dead, update to `gemini-2.0-flash` or current stable. DRY the model ID — extract to a single constant, don't duplicate in 4 places.
+   - Add `FAULTLINE_GEMINI_MODEL` and `FAULTLINE_OPENAI_MODEL` env var overrides (Claude already has `FAULTLINE_CLAUDE_MODEL` — match that pattern).
+3. [ ] **Add `homepage` field to package.json**: `"homepage": "https://github.com/nxtg-ai/faultline-pro#readme"`
+
+**Constraints**:
+- Test count must not decrease (868 baseline)
+- All existing tests must pass
+- Spinner must NOT interfere with `--format json` or piped output (check if stdout is a TTY before showing spinner)
+
+**Response** (filled by project team):
+>
+
+---
+
 ### DIRECTIVE-NXTG-20260308-05 — Archive DONE Directives + Post-Publish Roadmap
 **From**: NXTG-AI CoS | **Priority**: P2
 **Injected**: 2026-03-08 09:55 | **Estimate**: S | **Status**: PENDING
