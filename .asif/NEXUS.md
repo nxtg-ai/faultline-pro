@@ -25,6 +25,8 @@
 | N-13 | Cloud Platform (hosted API + dashboard) | REVENUE | IDEA | P1 | 2026-03 |
 | N-14 | Compliance Reports (PDF/audit-ready) | REVENUE | IDEA | P1 | 2026-03 |
 | N-15 | Revenue Infrastructure (Stripe/metering) | REVENUE | IDEA | P2 | 2026-03 |
+| N-16 | Perplexity Provider (search-native verification) | PROVIDER | BUILDING | P0 | 2026-03 |
+| N-17 | Provider Documentation + Search Gap Callout | DEVELOPER-X | BUILDING | P0 | 2026-03 |
 
 ---
 
@@ -71,6 +73,85 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## CoS Directives
+
+### DIRECTIVE-NXTG-20260308-08 — P0: Perplexity Provider + Provider Documentation + Search Gap Callout
+**From**: NXTG-AI CoS (Wolf) — DIRECT ORDER FROM ASIF | **Priority**: P0
+**Injected**: 2026-03-08 22:00 | **Estimate**: S | **Status**: PENDING
+
+**Context**: Asif reviewed our dogfood results and research proposal. **Decision: GO on Perplexity provider.** More importantly, Asif flagged that our current product looks "half-baked" because:
+1. OpenAI and Claude providers have **NO web search** — they guess from training data
+2. There's zero documentation about what each provider can and can't do
+3. Users have no guidance on where to get API keys or which model to choose
+
+**This is not optional. The search gap makes 2 of our 4 real providers fundamentally broken for claim VERIFICATION (they can extract claims, but they're guessing when they "verify"). Asif's exact words: "WE HAVE TO HAVE TOOL USE BRO for search.. otherwise it looks half-baked."**
+
+**IMPORTANT — Execution Strategy**:
+- **USE PLAN MODE** — this touches 3+ files and adds a new provider. Think before you code.
+- **USE AGENT TEAMS** — provider implementation + documentation are independent workstreams.
+- Test count must not decrease (873 baseline from v0.1.3).
+
+**Action Items**:
+
+**Part A — Perplexity Provider (N-16)**:
+1. [ ] **Create `providers/perplexity_provider.ts`**: Reuse OpenAI provider's `callAPI()` pattern — Perplexity uses the same `chat/completions` format.
+   - Base URL: `https://api.perplexity.ai`
+   - Default model: `sonar-pro` ($3/$15 per 1M tokens)
+   - Env var: `PERPLEXITY_API_KEY` for key, `FAULTLINE_PERPLEXITY_MODEL` for model override
+   - **Citation extraction**: Perplexity returns citations in `response.citations[]` (top-level array). Map these to the `sources` field in `VerificationResult`.
+   - Implement all 3 LLMProvider methods: `extractClaims`, `verifyClaim`, `generateCritiqueAndPrompt`
+2. [ ] **Register in `providers/registry.ts`**: Add `perplexity` as 5th provider
+3. [ ] **Tests**: Follow existing provider test patterns (see `tests/openai-provider.test.ts`). Test: interface compliance, extractClaims, verifyClaim with citations, error fallbacks, env var override, API call structure. Mock fetch, NOT real API.
+4. [ ] **CLI**: Ensure `--provider perplexity` works in CLI. Update `--help` text to list perplexity.
+
+**Part B — Provider Documentation (N-17)**:
+5. [ ] **Add `docs/PROVIDERS.md`**: Comprehensive guide for ALL 5 providers:
+
+   For each provider, document:
+   - **Name + one-line description** (e.g., "Perplexity — search-native, every response grounded in live web results")
+   - **Where to get API key** (exact URL — e.g., `https://aistudio.google.com/apikey` for Gemini)
+   - **Env var name** (e.g., `GEMINI_API_KEY`)
+   - **Default model + alternatives** with pricing
+   - **Search capability**: YES/NO — and what that means for verification quality
+   - **Best for** (one sentence)
+
+   Provider details:
+   - **Gemini**: Key at `https://aistudio.google.com/apikey` (free tier). Models: `gemini-2.5-flash` (default), `gemini-2.5-pro`. **HAS Google Search grounding** — returns cited web sources. Best for: general verification with web evidence.
+   - **OpenAI**: Key at `https://platform.openai.com/api-keys`. Models: `gpt-5-mini` (default), `gpt-5.4`. **NO web search** — uses training data only. Best for: nuanced legal/regulatory analysis from parametric knowledge.
+   - **Claude**: Key at `https://console.anthropic.com/settings/keys`. Models: `claude-sonnet-4-6` (default), `claude-haiku-4-5`. **NO web search** — uses training data only. Best for: detailed reasoning on complex claims.
+   - **Perplexity**: Key at `https://docs.perplexity.ai/guides/getting-started`. Models: `sonar-pro` (default, $3/$15 per 1M), `sonar` ($1/$1, cheaper), `sonar-reasoning-pro` ($2/$8, multi-step). **SEARCH-NATIVE** — every response grounded in live web results with citations. 93.9% SimpleQA accuracy (best in class). Best for: factual verification with real-time web evidence and citations.
+   - **Mock**: No API key needed. **NO verification** — returns synthetic results. Best for: testing, CI, offline development.
+
+6. [ ] **CRITICAL: Add a "Search Capabilities" callout in PROVIDERS.md and README**:
+   ```
+   ## ⚠️ Search Capabilities Matter
+
+   Not all providers can search the web. For **claim verification**, this matters:
+
+   | Provider | Web Search | What This Means |
+   |----------|-----------|-----------------|
+   | Perplexity | ✅ Native | Every verification grounded in live web results with citations |
+   | Gemini | ✅ Google Search | Verification uses Google Search grounding for evidence |
+   | OpenAI | ❌ None | Verifies from training data only — may miss recent facts |
+   | Claude | ❌ None | Verifies from training data only — may miss recent facts |
+   | Mock | ❌ None | Synthetic results — for testing only |
+
+   **Recommendation**: Use Perplexity or Gemini for verification that requires factual accuracy
+   with real-world evidence. Use OpenAI or Claude when you need deep reasoning analysis.
+   ```
+
+7. [ ] **Update README**: Add a link to `docs/PROVIDERS.md` from Quick Start. Add the search capabilities table above.
+
+**Constraints**:
+- Test count must not decrease (873 baseline)
+- Perplexity provider must follow exact same interface as existing providers — no special cases
+- Documentation must be accurate — verify API key URLs are correct
+- Do NOT add web search to OpenAI or Claude providers — that's a different initiative
+- Keep provider selection user-decided — do NOT auto-select or default to Perplexity
+
+**Response** (filled by project team):
+>
+
+---
 
 ### DIRECTIVE-NXTG-20260308-06 — [SHIP-STOPPER] CLI Progress + Model ID Fix
 **From**: NXTG-AI CoS | **Priority**: P0
