@@ -35,7 +35,10 @@ function filterClaimsForVerification(claims: Claim[]): Claim[] {
     .slice(0, 8);
 }
 
-export async function scan(text: string, providerName?: string, minConfidence?: number, ruleNames?: string[]): Promise<ScanResult> {
+/** Callback for reporting scan progress to the caller (e.g., a CLI spinner). */
+export type ScanProgressCallback = (message: string) => void;
+
+export async function scan(text: string, providerName?: string, minConfidence?: number, ruleNames?: string[], onProgress?: ScanProgressCallback): Promise<ScanResult> {
   const resolvedProvider = providerName || 'gemini';
 
   let apiKey = '';
@@ -58,14 +61,17 @@ export async function scan(text: string, providerName?: string, minConfidence?: 
 
   const provider: LLMProvider = getProvider(apiKey, resolvedProvider);
 
+  onProgress?.('Extracting claims...');
   const claims = await provider.extractClaims(text);
   const toVerify = filterClaimsForVerification(claims);
 
   const verifications: Record<string, VerificationResult> = {};
-  for (const claim of toVerify) {
-    verifications[claim.id] = await provider.verifyClaim(claim);
+  for (let i = 0; i < toVerify.length; i++) {
+    onProgress?.(`Verifying claim ${i + 1}/${toVerify.length}...`);
+    verifications[toVerify[i].id] = await provider.verifyClaim(toVerify[i]);
   }
 
+  onProgress?.('Generating report...');
   const overallRisk = calculateRisk(verifications);
   const complianceReport = generateComplianceReport(toVerify, verifications, overallRisk, minConfidence);
 

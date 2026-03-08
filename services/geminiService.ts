@@ -2,6 +2,12 @@
 import { GoogleGenAI } from "@google/genai";
 import type { Claim, VerificationResult, ClaimStatus } from '../types';
 
+const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash';
+
+/** Resolved Gemini model ID, overridable via FAULTLINE_GEMINI_MODEL env var. */
+export const GEMINI_MODEL: string =
+  (typeof process !== 'undefined' ? process.env?.FAULTLINE_GEMINI_MODEL : undefined) || DEFAULT_GEMINI_MODEL;
+
 // Helper to sanitize JSON strings by finding the first { or [ and last } or ]
 const cleanJson = (text: string): string => {
   if (!text) return '';
@@ -46,7 +52,7 @@ const getClient = (apiKey: string) => {
 export const extractClaims = async (text: string, apiKey: string, image?: { data: string, mimeType: string }): Promise<Claim[]> => {
   if ((!text && !image) || !apiKey) return [];
 
-  const model = 'gemini-3-pro-preview';
+  const model = GEMINI_MODEL;
   
   const prompt = `
     Analyze the following ${image ? 'image and text' : 'text'} and decompose it into "structural elements" (atomic claims). 
@@ -103,7 +109,7 @@ export const extractClaims = async (text: string, apiKey: string, image?: { data
 export const verifyClaim = async (claim: Claim, apiKey: string): Promise<VerificationResult> => {
   if (!apiKey) throw new Error("API Key required");
 
-  const model = 'gemini-3-pro-preview';
+  const model = GEMINI_MODEL;
 
   const prompt = `
     You are a structural engineer for information integrity. 
@@ -188,7 +194,7 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
 export const generateCritiqueAndPrompt = async (originalText: string, failedClaims: Claim[], apiKey: string): Promise<{ critique: string; improvedPrompt: string }> => {
   if (!apiKey) return { critique: "Auth Error", improvedPrompt: "Missing API Key" };
   
-  const model = 'gemini-3-pro-preview';
+  const model = GEMINI_MODEL;
   
   const prompt = `
     I have performed a structural integrity test on a text and found these fractures (contradicted or mixed claims):

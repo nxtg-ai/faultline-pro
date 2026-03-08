@@ -24,6 +24,7 @@ import { formatWeakestLinkAnalysis } from './weakest.js';
 import { buildClaimGraph, renderMermaid, renderDot } from '../analysis/claim-graph.js';
 import { extractFailedClaims, buildCritiqueAnalysis } from '../analysis/critique.js';
 import { formatCritique } from './critique.js';
+import { createScanSpinner } from './spinner.js';
 
 const VERSION = '0.1.0';
 
@@ -538,7 +539,15 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
       const apiKeyErrSingle = checkApiKey(providerName);
       if (apiKeyErrSingle) return apiKeyErrSingle;
 
-      const result = await scan(text, providerName, minConfidence, ruleNames);
+      const spinner = await createScanSpinner(outputFormat);
+      let result;
+      try {
+        result = await scan(text, providerName, minConfidence, ruleNames, spinner.onProgress);
+        spinner.succeed('Scan complete');
+      } catch (err) {
+        spinner.fail('Scan failed');
+        throw err;
+      }
 
       // Save to history
       const scanHistoryDir = flags['history-dir'] || undefined;

@@ -50,6 +50,10 @@
     "type": "git",
     "url": "https://github.com/nxtg-ai/faultline-pro.git"
   },
+  "homepage": "https://github.com/nxtg-ai/faultline-pro#readme",
+  "bugs": {
+    "url": "https://github.com/nxtg-ai/faultline-pro/issues"
+  },
   "engines": {
     "node": ">=20"
   },
@@ -57,6 +61,7 @@
     "@google/genai": "^1.32.0",
     "js-yaml": "^4.1.1",
     "lucide-react": "^0.556.0",
+    "ora": "^9.3.0",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
     "tsx": "^4.21.0"

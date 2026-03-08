@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { LLMProvider, ImageInput, CritiqueResult, ProviderFactory } from '../providers/base_provider';
 import type { Claim } from '../types';
 
@@ -20,8 +20,16 @@ function mockOpenAIResponse(content: string, status = 200) {
 }
 
 describe('OpenAIProvider', () => {
+  const originalEnv = process.env;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env = { ...originalEnv };
+    delete process.env.FAULTLINE_OPENAI_MODEL;
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
   });
 
   describe('interface compliance', () => {
@@ -41,7 +49,7 @@ describe('OpenAIProvider', () => {
 
     it('should expose correct model ID', () => {
       const provider = createOpenAIProvider('test-key');
-      expect(provider.modelId).toBe('gpt-4o');
+      expect(provider.modelId).toBe('gpt-4o-2024-11-20');
     });
 
     it('factory should satisfy ProviderFactory type', () => {
@@ -152,7 +160,7 @@ describe('OpenAIProvider', () => {
 
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
       expect(body.response_format).toEqual({ type: 'json_object' });
-      expect(body.model).toBe('gpt-4o');
+      expect(body.model).toBe('gpt-4o-2024-11-20');
     });
 
     it('should handle empty choices array', async () => {
@@ -294,6 +302,46 @@ describe('OpenAIProvider', () => {
     });
   });
 
+  describe('FAULTLINE_OPENAI_MODEL env var', () => {
+    it('should use default model when env var is not set', () => {
+      const provider = createOpenAIProvider('test-key');
+      expect(provider.modelId).toBe('gpt-4o-2024-11-20');
+    });
+
+    it('should use custom model from FAULTLINE_OPENAI_MODEL', () => {
+      process.env.FAULTLINE_OPENAI_MODEL = 'gpt-4-turbo';
+      const provider = createOpenAIProvider('test-key');
+      expect(provider.modelId).toBe('gpt-4-turbo');
+    });
+
+    it('should send custom model in API request body', async () => {
+      process.env.FAULTLINE_OPENAI_MODEL = 'gpt-4-turbo';
+      mockFetch.mockResolvedValueOnce(
+        mockOpenAIResponse(JSON.stringify({ claims: [] })),
+      );
+
+      const provider = createOpenAIProvider('test-key');
+      await provider.extractClaims('Test');
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.model).toBe('gpt-4-turbo');
+    });
+
+    it('should fall back to default when env var is empty string', () => {
+      process.env.FAULTLINE_OPENAI_MODEL = '';
+      const provider = createOpenAIProvider('test-key');
+      expect(provider.modelId).toBe('gpt-4o-2024-11-20');
+    });
+
+    it('different instances can have different models if env changes between constructions', () => {
+      const p1 = createOpenAIProvider('key-1');
+      process.env.FAULTLINE_OPENAI_MODEL = 'gpt-4-turbo';
+      const p2 = createOpenAIProvider('key-2');
+      expect(p1.modelId).toBe('gpt-4o-2024-11-20');
+      expect(p2.modelId).toBe('gpt-4-turbo');
+    });
+  });
+
   describe('API call structure', () => {
     it('should use POST method', async () => {
       mockFetch.mockResolvedValueOnce(
@@ -326,7 +374,7 @@ describe('OpenAIProvider', () => {
       await provider.extractClaims('Test');
 
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(body.model).toBe('gpt-4o');
+      expect(body.model).toBe('gpt-4o-2024-11-20');
     });
   });
 });

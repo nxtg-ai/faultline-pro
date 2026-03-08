@@ -39,7 +39,7 @@ describe('Provider Abstraction Layer', () => {
 
     it('should expose correct model ID', () => {
       const provider = createGeminiProvider('test-key');
-      expect(provider.modelId).toBe('gemini-3-pro-preview');
+      expect(provider.modelId).toBe('gemini-2.0-flash');
     });
 
     it('name and modelId should be string properties', () => {

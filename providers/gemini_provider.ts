@@ -1,6 +1,6 @@
 import type { Claim, VerificationResult } from '../types';
 import type { LLMProvider, ImageInput, CritiqueResult, ProviderFactory } from './base_provider';
-import { extractClaims, verifyClaim, generateCritiqueAndPrompt } from '../services/geminiService';
+import { extractClaims, verifyClaim, generateCritiqueAndPrompt, GEMINI_MODEL } from '../services/geminiService';
 
 /**
  * Gemini provider — wraps the existing geminiService.ts functions
@@ -11,11 +11,12 @@ import { extractClaims, verifyClaim, generateCritiqueAndPrompt } from '../servic
  */
 class GeminiProvider implements LLMProvider {
   readonly name = 'Google Gemini';
-  readonly modelId = 'gemini-3-pro-preview';
+  readonly modelId: string;
   private apiKey: string;
 
   constructor(apiKey: string) {
     this.apiKey = apiKey;
+    this.modelId = GEMINI_MODEL;
   }
 
   async extractClaims(text: string, image?: ImageInput): Promise<Claim[]> {

@@ -8,13 +8,16 @@ import type { LLMProvider, ImageInput, CritiqueResult, ProviderFactory } from '.
  * for reliable structured output. Designed to be a drop-in alternative to
  * GeminiProvider and ClaudeProvider.
  */
+const DEFAULT_MODEL = 'gpt-4o-2024-11-20';
+
 class OpenAIProvider implements LLMProvider {
   readonly name = 'OpenAI';
-  readonly modelId = 'gpt-4o';
+  readonly modelId: string;
   private apiKey: string;
 
   constructor(apiKey: string) {
     this.apiKey = apiKey;
+    this.modelId = (typeof process !== 'undefined' ? process.env?.FAULTLINE_OPENAI_MODEL : undefined) || DEFAULT_MODEL;
   }
 
   async extractClaims(text: string, image?: ImageInput): Promise<Claim[]> {
