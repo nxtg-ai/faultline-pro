@@ -247,7 +247,7 @@ The Kaggle version remains at  (tagged  at commit ).
 > 2. **`--help` and `--version` flags fixed** — CLI now handles `--help`/`-h` (exit 0 + usage) and `--version`/`-v` (exit 0 + version). Previously showed "Unknown command" with exit 1.
 > 3. **npm pack end-to-end validated** — discovered `analysis/` and `history/` directories missing from `files` in `package.json`; added them. Validated full flow: `npm pack` → install tarball → `faultline --version` → `faultline scan --provider mock`. All pass.
 > 4. **README rewritten** — leads with EU AI Act angle ("Verify AI-generated claims. Required by August 2026"), competitive matrix vs Promptfoo/DeepEval, zero-config hello-world (`npx @nxtg-ai/faultline scan --provider mock`). Kaggle branding removed. Repo URLs updated.
-> Remaining gap: CC-BY-4.0 license — pending Asif's decision (recommend MIT or Apache-2.0 for enterprise adoption). Not changed without explicit approval.
+> Remaining gap: ~~CC-BY-4.0 license~~ RESOLVED — Apache-2.0 selected by Asif on 2026-03-05. License changed.
 > **Started**: 2026-03-05 18:30 | **Completed**: 2026-03-05 (both sessions) | **Actual**: M
 
 ---
