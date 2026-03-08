@@ -278,8 +278,8 @@ describe('PerplexityProvider', () => {
       const claim: Claim = { id: 'c1', text: 'A verifiable claim', type: 'fact', importance: 5 };
       const result = await provider.verifyClaim(claim);
 
-      expect(result.sources).toEqual(citations);
       expect(result.sources).toHaveLength(2);
+      expect(result.sources).toEqual(citations.map(url => ({ title: url, uri: url })));
     });
 
     it('should return empty sources when citations array is absent', async () => {
@@ -336,8 +336,8 @@ describe('PerplexityProvider', () => {
       const result = await provider.verifyClaim(claim);
 
       expect(result.sources).toHaveLength(3);
-      expect(result.sources[0]).toBe('https://source1.org/article');
-      expect(result.sources[2]).toBe('https://source3.edu/study');
+      expect(result.sources[0]).toEqual({ title: 'https://source1.org/article', uri: 'https://source1.org/article' });
+      expect(result.sources[2]).toEqual({ title: 'https://source3.edu/study', uri: 'https://source3.edu/study' });
     });
 
     it('extractClaims should NOT expose citations (uses callAPI not callAPIWithCitations)', async () => {

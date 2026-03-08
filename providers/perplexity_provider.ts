@@ -75,7 +75,7 @@ Return a JSON object:
         claimId: claim.id,
         status: (resultJson.status || 'unverified') as ClaimStatus,
         explanation: resultJson.explanation || 'No structural analysis provided.',
-        sources: result.citations,
+        sources: result.citations.map(url => ({ title: url, uri: url })),
       };
     } catch (error) {
       console.error(`Error verifying claim ${claim.id} (Perplexity):`, error);
