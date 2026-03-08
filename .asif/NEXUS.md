@@ -72,6 +72,30 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
+### DIRECTIVE-NXTG-20260308-05 — Archive DONE Directives + Post-Publish Roadmap
+**From**: NXTG-AI CoS | **Priority**: P2
+**Injected**: 2026-03-08 09:55 | **Estimate**: S | **Status**: PENDING
+
+**Action Items**:
+1. [ ] Archive all 6 DONE directives from this `## CoS Directives` section into a `## CoS Archive` section at the bottom of this NEXUS file (or into `NEXUS-archive.md` if one exists). Move the full directive text — do not summarize.
+2. [ ] Leave only this PENDING directive in the `## CoS Directives` section. Add an archive note with count and date.
+3. [ ] Add a new section `## What's Next After Publish` (above `## Portfolio Intelligence`) documenting the post-publish roadmap:
+   - **(a)** Monitor npm download counts weekly (link: `https://www.npmjs.com/package/@nxtg-ai/faultline`)
+   - **(b)** Create GitHub Discussions on `nxtg-ai/faultline-pro` for community feedback and feature requests
+   - **(c)** Write a "Getting Started" guide in README (expand beyond Quick Start — cover all 4 providers, batch mode, output formats, CI integration)
+   - **(d)** Plan N-13 Cloud Platform MVP: define minimum viable API surface (hosted scan endpoint, API key auth, usage metering)
+   - **(e)** N-16 React workspace split (already queued — CLI users should not pull React deps)
+4. [ ] Verify test count holds (868 baseline, CRUCIBLE Gate 4).
+
+**Constraints**:
+- Do NOT modify directive content when archiving — preserve exactly as written.
+- The `## What's Next After Publish` section is a PLAN, not execution. Do not implement any of these items.
+
+**Response** (filled by project team):
+>
+
+---
+
 ### DIRECTIVE-NXTG-20260306-03 — Faultline Pro DX Fix: Real-First Experience
 **From**: NXTG-AI CoS (Wolf, relaying Emma P0 — Human Oracle findings) | **Priority**: P0
 **Injected**: 2026-03-06 22:30 | **Estimate**: S | **Status**: DONE
