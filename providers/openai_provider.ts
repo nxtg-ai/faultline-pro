@@ -8,7 +8,7 @@ import type { LLMProvider, ImageInput, CritiqueResult, ProviderFactory } from '.
  * for reliable structured output. Designed to be a drop-in alternative to
  * GeminiProvider and ClaudeProvider.
  */
-const DEFAULT_MODEL = 'gpt-4o-2024-11-20';
+const DEFAULT_MODEL = 'gpt-5-mini';
 
 class OpenAIProvider implements LLMProvider {
   readonly name = 'OpenAI';
