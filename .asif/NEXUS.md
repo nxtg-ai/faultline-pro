@@ -25,8 +25,8 @@
 | N-13 | Cloud Platform (hosted API + dashboard) | REVENUE | IDEA | P1 | 2026-03 |
 | N-14 | Compliance Reports (PDF/audit-ready) | REVENUE | IDEA | P1 | 2026-03 |
 | N-15 | Revenue Infrastructure (Stripe/metering) | REVENUE | IDEA | P2 | 2026-03 |
-| N-16 | Perplexity Provider (search-native verification) | PROVIDER | BUILDING | P0 | 2026-03 |
-| N-17 | Provider Documentation + Search Gap Callout | DEVELOPER-X | BUILDING | P0 | 2026-03 |
+| N-16 | Perplexity Provider (search-native verification) | PROVIDER | SHIPPED | P0 | 2026-03-08 |
+| N-17 | Provider Documentation + Search Gap Callout | DEVELOPER-X | SHIPPED | P0 | 2026-03-08 |
 
 ---
 
@@ -149,7 +149,21 @@ The Kaggle version remains at  (tagged  at commit ).
 - Keep provider selection user-decided — do NOT auto-select or default to Perplexity
 
 **Response** (filled by project team):
+> All action items complete. Executed via parallel agent teams (Team A: provider + tests + CLI; Team B: docs + README).
 >
+> **Part A — Perplexity Provider (N-16)**:
+> 1. `providers/perplexity_provider.ts` created — `sonar-pro` default model, `FAULTLINE_PERPLEXITY_MODEL` override, base URL `https://api.perplexity.ai/chat/completions`. `callAPIWithCitations()` extracts `data.citations[]` top-level array → `result.sources` in `verifyClaim()`. Image input silently ignored (text-only model).
+> 2. Registered as 5th provider in `providers/registry.ts`.
+> 3. 36 tests in `tests/perplexity-provider.test.ts` — interface compliance, extractClaims, verifyClaim, citation extraction suite, generateCritiqueAndPrompt, model env var, API call structure.
+> 4. CLI updated: `perplexity: 'PERPLEXITY_API_KEY'` added to `API_KEY_MAP` in `cli/index.ts` and `keyMap` in `cli/scan.ts`. Help text lists perplexity in provider list.
+>
+> **Part B — Provider Documentation (N-17)**:
+> 5. `docs/PROVIDERS.md` created — comparison table for all 5 providers (key URL, env var, default model, search capability, best for). Search gap callout explains why Gemini/Perplexity produce grounded verifications while Claude/OpenAI use training data only.
+> 6. `README.md` updated — Perplexity added to Quick Start "Other providers", search gap callout links to PROVIDERS.md, PERPLEXITY_API_KEY added to Provider Configuration, Features bullet and comparison table updated.
+>
+> **Test count**: 873 → 909 (36 new Perplexity provider tests). CRUCIBLE Gate 4 threshold: no decrease.
+> **Status**: DONE
+> **Started**: 2026-03-08 | **Completed**: 2026-03-08 | **Actual**: S
 
 ---
 
@@ -542,6 +556,7 @@ _(Add questions for ASIF CoS here.)_
 
 | Date | Change |
 |------|--------|
+| 2026-03-08 | DIRECTIVE-08 complete: Perplexity provider (N-16) + docs/PROVIDERS.md (N-17). 909 tests (873+36). |
 | 2026-03-06 | DIRECTIVE-03 complete: DX fix — README Quick Start → real Gemini provider, API key detection, mock → Testing & CI. |
 | 2026-03-06 | DIRECTIVE-01 complete: CRUCIBLE Protocol adopted — Gate 2 (2 fixes), Gate 4 delta hook, CLAUDE.md section. |
 | 2026-03-06 | Team feedback reflection: CI continue-on-error fix noted, N-16 queued post-publish, holding for npm GO. |

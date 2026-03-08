@@ -47,6 +47,7 @@ export async function scan(text: string, providerName?: string, minConfidence?: 
       claude: 'ANTHROPIC_API_KEY',
       openai: 'OPENAI_API_KEY',
       gemini: 'GEMINI_API_KEY',
+      perplexity: 'PERPLEXITY_API_KEY',
     };
     const envVar = keyMap[resolvedProvider] || 'GEMINI_API_KEY';
     apiKey = process.env[envVar] || '';

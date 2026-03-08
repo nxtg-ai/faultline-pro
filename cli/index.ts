@@ -32,6 +32,7 @@ const API_KEY_MAP: Record<string, string> = {
   claude: 'ANTHROPIC_API_KEY',
   openai: 'OPENAI_API_KEY',
   gemini: 'GEMINI_API_KEY',
+  perplexity: 'PERPLEXITY_API_KEY',
 };
 
 function checkApiKey(providerName: string | undefined): { exitCode: number; output: string } | null {
@@ -64,7 +65,7 @@ Example output:
     Annex III §4: Employment and recruitment AI (affects: c2)
 
 Usage:
-  faultline scan --input <file> [--provider gemini|claude|openai|mock] [--min-confidence 0.0-1.0] [--output-format json|markdown|html|sarif] [--sarif] [--rules pii,bias,toxicity] [--fail-on critical|high|medium|low]
+  faultline scan --input <file> [--provider gemini|claude|openai|perplexity|mock] [--min-confidence 0.0-1.0] [--output-format json|markdown|html|sarif] [--sarif] [--rules pii,bias,toxicity] [--fail-on critical|high|medium|low]
   faultline scan --dir <path> [--glob "*.txt"] [--provider gemini] [--output-format sarif] [--fail-on high]
   faultline aggregate --dir <path> [--output-format json|markdown|html|sarif]  Aggregate scan results
   faultline report --input <results.json> [--output-format json|markdown|html|sarif]
@@ -87,7 +88,8 @@ Environment:
   GEMINI_API_KEY       API key for Gemini provider (free: https://aistudio.google.com/apikey)
   ANTHROPIC_API_KEY    API key for Claude provider
   OPENAI_API_KEY       API key for OpenAI provider
-  FAULTLINE_PROVIDER   Default provider (gemini|claude|openai)
+  PERPLEXITY_API_KEY   API key for Perplexity provider
+  FAULTLINE_PROVIDER   Default provider (gemini|claude|openai|perplexity)
 
 For CI/testing without an API key, use --provider mock (returns synthetic results).`;
 }
@@ -365,6 +367,7 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
           claude: 'ANTHROPIC_API_KEY',
           openai: 'OPENAI_API_KEY',
           gemini: 'GEMINI_API_KEY',
+          perplexity: 'PERPLEXITY_API_KEY',
         };
         critApiKey = process.env[keyMap[resolvedCritProvider] || 'GEMINI_API_KEY'] || '';
         if (!critApiKey) {

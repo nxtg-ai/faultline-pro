@@ -60,7 +60,12 @@ npx @nxtg/faultline scan --input doc.txt --provider claude --output-format markd
 
 export OPENAI_API_KEY="..."
 npx @nxtg/faultline scan --input doc.txt --provider openai
+
+export PERPLEXITY_API_KEY="..."
+npx @nxtg/faultline scan --input doc.txt --provider perplexity
 ```
+
+> **Verification accuracy**: Gemini and Perplexity verify against live web data. Claude and OpenAI use training data only. See [docs/PROVIDERS.md](docs/PROVIDERS.md) for the full comparison.
 
 ---
 
@@ -76,7 +81,7 @@ Promptfoo tests your prompts. DeepEval scores your RAG pipeline. **Faultline aud
 | Weakest-link detection | **Yes** | No | No |
 | EU AI Act risk classification | **Yes** | No | No |
 | Claim dependency graph | **Yes** | No | No |
-| FM-agnostic (Gemini / Claude / OpenAI) | **Yes** | Yes | No (Python) |
+| FM-agnostic (Gemini / Claude / OpenAI / Perplexity) | **Yes** | Yes | No (Python) |
 
 ---
 
@@ -109,7 +114,7 @@ Input: AI-generated text
 ## Features
 
 - **AI Claim Forensics** — atomic decomposition into fact/opinion/interpretation with importance scoring (1–5) and confidence calibration
-- **FM-agnostic** — Gemini, Claude, OpenAI, and Mock providers via a clean `LLMProvider` interface; switch with one flag
+- **FM-agnostic** — Gemini, Claude, OpenAI, Perplexity, and Mock providers via a clean `LLMProvider` interface; switch with one flag
 - **EU AI Act compliance** — risk category mapping per Articles 5–7 and Annex III; prohibited practice detection; transparency obligations
 - **Weakest-link detection** — per-claim fragility scoring; identifies the claim that most undermines argument integrity
 - **Claim graph export** — Mermaid and Graphviz DOT visualizations grouping claims by EU risk tier
@@ -206,6 +211,7 @@ Upload the SARIF output to GitHub Security tab for PR-level claim annotations.
 export GEMINI_API_KEY="..."        # Gemini provider
 export ANTHROPIC_API_KEY="..."     # Claude provider
 export OPENAI_API_KEY="..."        # OpenAI provider
+export PERPLEXITY_API_KEY="..."    # Perplexity provider
 export FAULTLINE_PROVIDER=claude   # Set default provider
 
 # Config file (.faultlinerc.json, walks up from cwd)
