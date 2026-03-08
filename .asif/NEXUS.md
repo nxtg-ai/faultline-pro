@@ -74,6 +74,33 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
+### DIRECTIVE-NXTG-20260308-09 — P0: CI RED — Fix TypeScript Type Error in Perplexity Provider
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P0
+**Injected**: 2026-03-08 23:30 | **Estimate**: S | **Status**: PENDING
+
+**Context**: CI is RED. GitHub Issue #1 auto-created. TypeScript typecheck failure:
+```
+providers/perplexity_provider.ts(78,9): error TS2322: Type 'string[]' is not assignable to type '{ title: string; uri: string; }[]'.
+```
+
+**Root cause**: `verifyClaim()` line 78 assigns `result.citations` (a `string[]` of URLs) directly to `sources`, but `VerificationResult.sources` expects `Array<{ title: string; uri: string }>`.
+
+**Action Items**:
+1. [ ] Fix line 78 in `providers/perplexity_provider.ts`: map citation strings to source objects:
+   ```typescript
+   sources: result.citations.map(url => ({ title: url, uri: url })),
+   ```
+2. [ ] Run `npx tsc --noEmit` — must pass with zero errors
+3. [ ] Run `npm test` — all 909 tests must pass
+4. [ ] Push. CI must go GREEN. Close GitHub Issue #1 when green.
+
+**Constraints**: S-sized. Do NOT change the `VerificationResult` type — fix the provider to conform to it.
+
+**Response** (filled by project team):
+>
+
+---
+
 ### DIRECTIVE-NXTG-20260308-08 — P0: Perplexity Provider + Provider Documentation + Search Gap Callout
 **From**: NXTG-AI CoS (Wolf) — DIRECT ORDER FROM ASIF | **Priority**: P0
 **Injected**: 2026-03-08 22:00 | **Estimate**: S | **Status**: PENDING
