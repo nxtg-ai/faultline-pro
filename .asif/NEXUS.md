@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-08 (DIRECTIVE-05 archive housekeeping DONE — 9 directives archived)
+> **Last Updated**: 2026-03-09 (Team Feedback reflection — post-publish, Perplexity shipped, N-16/N-13 next)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -188,10 +188,54 @@ _(Add questions for ASIF CoS here.)_
 
 ---
 
+> **Reflection cycle**: 2026-03-09
+
+### 1. What did we ship?
+
+- **@nxtg/faultline published to npm** — v0.1.0 → v0.1.1 → v0.1.2 → v0.1.3. The publish blocker that dominated the last two reflection cycles is resolved. Package is live on the public registry.
+- **v0.1.3 model audit** (`b34c5ec`): Emma's model audit caught stale default model IDs across all providers. Updated all four real providers to current models. This kind of drift is silent and would have broken users silently — good catch.
+- **N-16: Perplexity provider** (`25065a0`): `providers/perplexity_provider.ts` — OpenAI-compatible API adapter with citation extraction. Registers as 5th provider. 36 new tests covering interface compliance, citation mapping, error fallbacks, env var override.
+- **N-17: Provider documentation** (`25065a0`): `docs/PROVIDERS.md` with 5-provider capability matrix, search/no-search callout, API key links, model pricing, and "best for" guidance. README updated with search capability warning box.
+- **DIRECTIVE-09: Perplexity citation type fix** (`2ba0d0d`): TypeScript caught `string[]` assigned to `Array<{title:string; uri:string}>`. Fixed, 2 tests updated to assert object shape. GH Issue #1 closed. CI green.
+- **DIRECTIVE-05 housekeeping** (`c3b77da`): 9 directives archived, What's Next After Publish section added, vision pillars finalized.
+- **Test count**: 909 (up from 873 baseline — +36 Perplexity tests). No regressions.
+
+### 2. What surprised us?
+
+- **The npm rename from `@nxtg-ai` to `@nxtg` happened mid-publish-sprint**: `@nxtg-ai/faultline` was the original scoped package name; it became `@nxtg/faultline` before first publish. A sweep of all package references was required. Naming decisions under time pressure compound — worth front-loading org/scope naming in future projects.
+- **Perplexity's API is a near-exact OpenAI clone**: The `chat/completions` format with a base URL swap was all it took. The only unique surface is top-level `citations[]` on the response. This means any future NXTG project needing real-time search grounding can integrate Perplexity in ~100 lines by forking the OpenAI adapter.
+- **TypeScript caught a silent runtime bug**: `result.citations` (Perplexity's `string[]`) was directly assigned to `sources` (`Array<{title,uri}>`). Without `tsc --noEmit` in CI, this would have compiled fine and produced garbage sources at runtime. The type system did its job — this is an argument for keeping strict TypeScript on all providers, not just the core pipeline.
+- **The publish blocker resolved cleanly**: After two reflection cycles flagging "npm publish is the single open gate," Asif pulled the trigger and it went smoothly. All the prep (tarball validation, `npm pack`, Apache-2.0 license, files array completeness) paid off — zero issues on publish day.
+
+### 3. Cross-project signals
+
+- **Perplexity OpenAI-compat pattern is portfolio-portable**: Any NXTG project that needs live web search in an AI pipeline can use the same 100-line adapter pattern. The key insight: Perplexity is OpenAI-format + citations[] top-level field. Document this in ASIF portfolio patterns.
+- **Provider capability matrix (PROVIDERS.md)**: The search/no-search callout pattern applies to any multi-provider AI tool. When you offer multiple LLM backends with different capabilities, a capability matrix is essential UX — users otherwise assume all providers are equivalent and make wrong choices. Recommend this as a portfolio documentation standard.
+- **Model ID drift is a real maintenance burden**: Emma's audit caught stale models across 4 providers. This is a recurring cost for any project tracking LLM models. Consider a quarterly "model audit" entry in ASIF portfolio governance calendar — models deprecate on 3–6 month cycles.
+- **CRUCIBLE Gate 4 (delta hook) working**: Pre-push hook prevented any accidental test count decrease across all the Perplexity work. No false positives, no escapes. Confirmed stable — recommend promoting this hook to ASIF CI Gate Protocol template.
+
+### 4. What would we prioritize next?
+
+1. **N-16: React workspace split** — `npm install @nxtg/faultline` still pulls `react`, `react-dom`, `lucide-react`, and `vite`. CLI users (the primary audience) don't need any of these. CoS said post-publish; we're post-publish. This is the top DX friction item — a clean install footprint matters for enterprise adoption.
+2. **N-13: Cloud Platform MVP** — `POST /scan` hosted endpoint with API key auth and usage metering. The EU AI Act August 2026 deadline is 5 months out. Enterprise compliance teams can't ship API keys in their CI pipelines; they need a hosted API. This is the revenue unlock.
+3. **Inline scan DX** — `faultline scan "GPT-4 is 92% accurate"` without needing a file. Reduces hello-world from 2 steps to 1. Highest single-friction reduction available.
+4. **Terminal demo GIF** — `vhs` or `asciinema` recording of `faultline scan --provider mock`. Needed for HN/Reddit launch posts and README. 30-minute win, high signal value.
+5. **N-14: Compliance PDF reports** — Audit-ready printable output with executive summary + per-claim evidence tables. Highest enterprise revenue signal per REVENUE-RESEARCH.md. Unlocks sales conversations with compliance teams who can't present JSON to auditors.
+
+### 5. Blockers / questions for the CoS
+
+- **N-16 go signal**: We're post-publish. CoS said "after first publish" — confirming green light to start React workspace split in next session?
+- **N-13 priority relative to N-16**: Should we do React dep cleanup first (small, clean install), or go straight to Cloud Platform MVP (big, revenue)? Sequencing matters — N-13 might need a monorepo structure that overlaps with N-16 workspace split.
+- **EU AI Act August 2026**: Five months to deadline. N-13 + N-14 are the compliance revenue path. Is there an enterprise prospect or design partner we should be building toward, or is this greenfield?
+- **Demo GIF tooling**: Preference between `vhs`, `asciinema`, or screen capture? `vhs` produces the cleanest terminal recordings but requires a config file; `asciinema` is simpler to script.
+
+---
+
 ## Changelog
 
 | Date | Change |
 |------|--------|
+| 2026-03-09 | Team Feedback reflection: npm published (v0.1.3), Perplexity shipped (N-16/N-17), 909 tests. N-16/N-13 queued. |
 | 2026-03-08 | DIRECTIVE-05 complete: 9 directives archived, What's Next After Publish section added, vision pillars updated. |
 | 2026-03-08 | DIRECTIVE-09 complete: Perplexity citation type fix (string[] → {title,uri}[]), GH Issue #1 closed. |
 | 2026-03-08 | DIRECTIVE-08 complete: Perplexity provider (N-16) + docs/PROVIDERS.md (N-17). 909 tests (873+36). |
