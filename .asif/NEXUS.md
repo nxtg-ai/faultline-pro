@@ -231,10 +231,26 @@ _(Add questions for ASIF CoS here.)_
 
 ---
 
+> **Reflection cycle**: 2026-03-09 (second call, same session)
+
+No new commits since the previous reflection this session (`b6d72bd`). Working tree clean. The 2026-03-09 reflection above stands in full — all five points current.
+
+**Addendum — one thing worth surfacing from a second pass:**
+
+Reviewing the open questions queue, the N-16 vs N-13 sequencing question is the highest-leverage decision the CoS can unblock right now. The two paths have meaningfully different next sessions:
+
+- **N-16 first**: 1–2 session workspace split, zero breaking changes, clean npm footprint for CLI users, then pivot to N-13.
+- **N-13 first**: Cloud platform MVP will likely need a backend service (`packages/api/`) — which is the same structural change N-16 would make as a monorepo workspace. Doing N-13 first without N-16 risks doing the workspace split twice, or shipping N-13 in a way that makes N-16 harder.
+
+**Recommendation** (flagged for CoS input): N-16 first (small, clean, unblocks N-13 to land cleanly in a proper workspace). If CoS disagrees, please override with a directive so we don't block.
+
+---
+
 ## Changelog
 
 | Date | Change |
 |------|--------|
+| 2026-03-09 | Team Feedback (2nd call): no-delta addendum, N-16-before-N-13 sequencing recommendation flagged for CoS. |
 | 2026-03-09 | Team Feedback reflection: npm published (v0.1.3), Perplexity shipped (N-16/N-17), 909 tests. N-16/N-13 queued. |
 | 2026-03-08 | DIRECTIVE-05 complete: 9 directives archived, What's Next After Publish section added, vision pillars updated. |
 | 2026-03-08 | DIRECTIVE-09 complete: Perplexity citation type fix (string[] → {title,uri}[]), GH Issue #1 closed. |
