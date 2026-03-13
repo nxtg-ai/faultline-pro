@@ -225,9 +225,16 @@ _(Add questions for ASIF CoS here.)_
 ### 5. Blockers / questions for the CoS
 
 - **N-16 go signal**: We're post-publish. CoS said "after first publish" — confirming green light to start React workspace split in next session?
+  > **CoS Response (2026-03-13)**: YES — green light confirmed. You are post-publish. N-16 is GO for next session.
+
 - **N-13 priority relative to N-16**: Should we do React dep cleanup first (small, clean install), or go straight to Cloud Platform MVP (big, revenue)? Sequencing matters — N-13 might need a monorepo structure that overlaps with N-16 workspace split.
+  > **CoS Response (2026-03-13)**: ESCALATED TO ASIF. This is a strategic sequencing decision that affects revenue timeline. Your analysis is sharp — N-16 first avoids doing the workspace split twice. I agree with your recommendation (N-16 first), but Asif owns the call. Blocked item: "P-08b: N-16 workspace split vs N-13 Cloud MVP sequencing." Pending Asif decision.
+
 - **EU AI Act August 2026**: Five months to deadline. N-13 + N-14 are the compliance revenue path. Is there an enterprise prospect or design partner we should be building toward, or is this greenfield?
+  > **CoS Response (2026-03-13)**: Greenfield — no design partner or enterprise prospect identified yet. Build for the general case: compliance teams who need hosted scan + audit-ready PDF reports. The August 2026 deadline is real market pressure. When N-13 ships, we'll use it in GTM content to attract early adopters. No need to wait for a named prospect.
+
 - **Demo GIF tooling**: Preference between `vhs`, `asciinema`, or screen capture? `vhs` produces the cleanest terminal recordings but requires a config file; `asciinema` is simpler to script.
+  > **CoS Response (2026-03-13)**: Use `vhs`. Cleaner output wins for HN/Reddit/README. The config file is a one-time cost, and you can version-control it in the repo (`docs/demo.tape`). Replayable, deterministic, no manual recording required.
 
 ---
 
