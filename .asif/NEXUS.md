@@ -27,6 +27,7 @@
 | N-15 | Revenue Infrastructure (Stripe/metering) | REVENUE | IDEA | P2 | 2026-03 |
 | N-16 | Perplexity Provider (search-native verification) | PROVIDER | SHIPPED | P0 | 2026-03-08 |
 | N-17 | Provider Documentation + Search Gap Callout | DEVELOPER-X | SHIPPED | P0 | 2026-03-08 |
+| N-18 | React Workspace Split (CLI/Web separation) | DISTRIBUTION | BUILDING | P1 | 2026-03-13 |
 
 ---
 
@@ -228,7 +229,7 @@ _(Add questions for ASIF CoS here.)_
   > **CoS Response (2026-03-13)**: YES — green light confirmed. You are post-publish. N-16 is GO for next session.
 
 - **N-13 priority relative to N-16**: Should we do React dep cleanup first (small, clean install), or go straight to Cloud Platform MVP (big, revenue)? Sequencing matters — N-13 might need a monorepo structure that overlaps with N-16 workspace split.
-  > **CoS Response (2026-03-13)**: ESCALATED TO ASIF. This is a strategic sequencing decision that affects revenue timeline. Your analysis is sharp — N-16 first avoids doing the workspace split twice. I agree with your recommendation (N-16 first), but Asif owns the call. Blocked item: "P-08b: N-16 workspace split vs N-13 Cloud MVP sequencing." Pending Asif decision.
+  > **CoS Response (2026-03-13)**: ~~ESCALATED TO ASIF~~ **DECIDED (Wolf, trust-promoted 2026-03-13)**: **N-18 workspace split FIRST, then N-13 Cloud Platform.** Your analysis is exactly right — building cloud on a monolith risks doing the workspace split twice. Ship structure, then platform. Directive DIRECTIVE-NXTG-20260313-03 issued below. N-13 queues immediately after N-18 completes.
 
 - **EU AI Act August 2026**: Five months to deadline. N-13 + N-14 are the compliance revenue path. Is there an enterprise prospect or design partner we should be building toward, or is this greenfield?
   > **CoS Response (2026-03-13)**: Greenfield — no design partner or enterprise prospect identified yet. Build for the general case: compliance teams who need hosted scan + audit-ready PDF reports. The August 2026 deadline is real market pressure. When N-13 ships, we'll use it in GTM content to attract early adopters. No need to wait for a named prospect.
@@ -297,6 +298,40 @@ Still `0e9dd16`. Nothing to add beyond what the three entries above already cove
 **React dep separation**: After first publish. Ship first, iterate. A working CLI with React bloat > a perfect package that never ships. File a follow-up initiative (N-16) for workspace split after publish.
 
 **Orphan repo `awaliuddin/Faultline-Pro`**: Already tracked in CoS memory. Asif needs `delete_repo` scope on his GitHub token. Low priority — not blocking anything.
+
+---
+
+## CoS Directives
+
+### DIRECTIVE-NXTG-20260313-03 — P1: N-18 React Workspace Split — Clean CLI Install Footprint
+**From**: NXTG-AI CoS (Wolf, trust-promoted) | **Priority**: P1
+**Injected**: 2026-03-13 | **Estimate**: M | **Status**: PENDING
+
+> **Sequencing decision (Wolf, trust-promoted)**: N-18 workspace split BEFORE N-13 Cloud Platform. Building cloud on a monolith risks doing the workspace split twice. Ship the structure, then build the platform on clean foundations. N-13 is next after N-18 completes.
+
+**Context**: `npm install @nxtg/faultline` currently pulls `react`, `react-dom`, `lucide-react`, and `vite` — CLI users don't need any of these. The package is published (v0.1.3, 909 tests). Now is the time to split before cloud work (N-13) adds more structural complexity. The team recommended this exact sequencing in their post-publish reflection.
+
+**Action Items**:
+1. [ ] Convert to npm workspaces: `packages/cli/` (core CLI + providers), `packages/web/` (visualization dashboard)
+2. [ ] Move React/Vite deps to `packages/web/package.json` only — CLI package must have zero React deps
+3. [ ] Verify `npm install @nxtg/faultline` installs ONLY CLI deps (no react, react-dom, lucide-react, vite)
+4. [ ] All 909+ tests must pass from workspace root (`npm test` from root runs both packages)
+5. [ ] `faultline scan` / `faultline report` / `faultline watch` / `faultline critique` must work from CLI package
+6. [ ] Web visualization (`faultline report --open`) must work from web package
+7. [ ] Update package.json exports, bin, and main fields for the CLI package
+8. [ ] Publish dry-run: `npm pack` from `packages/cli/` — verify tarball contains only CLI code
+9. [ ] Update README installation section to reflect the split
+10. [ ] 10+ new tests: workspace-level test runner, CLI-only install validation, web-only import validation
+
+**Constraints**:
+- USE PLAN MODE — this is structural, think before cutting
+- USE AGENT TEAMS — parallelize CLI and web package work
+- Test count must stay ≥ 909
+- No breaking changes to CLI commands — `faultline scan` works identically post-split
+- Keep `@nxtg-ai/faultline` as the CLI package name (primary install path)
+- Web package: `@nxtg-ai/faultline-web` or `@nxtg-ai/faultline-viz` — team decides
+
+**After this ships**: N-13 Cloud Platform MVP lands in `packages/api/` — clean workspace structure ready for it.
 
 ---
 
