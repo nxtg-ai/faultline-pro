@@ -272,6 +272,40 @@ Still `0e9dd16`. Nothing to add beyond what the three entries above already cove
 
 ---
 
+> **Reflection cycle**: 2026-03-14 (workspace cleanup session — substantive)
+
+### 1. What did we ship?
+
+- **Root orphan cleanup** (`e44f1d4`): Deleted ~93 orphan files from repo root (bin/, cli/, providers/, analysis/, compliance/, history/, rules/, services/, templates/, tests/, vscode-extension/, App.tsx, index.html, index.tsx, types.ts, vite.config.ts, vitest.config.ts, assets/, components/, dist/). Canonical copies confirmed in packages/cli/ and packages/web/ before deletion.
+- **Workspace wired**: `npm install` from root links workspace packages. `vitest.workspace.ts` now active — runs both packages/cli and packages/web test suites.
+- **geminiService.ts location fixed**: `packages/cli/providers/gemini_provider.ts` imports `'../services/geminiService'` — this is core CLI logic, not web-only. Copied to `packages/cli/services/`, added `services/` to packages/cli/package.json `files[]`.
+- **workspace-validation.test.ts corrected**: Test that asserted "services/ is web-only" flipped to assert "services/ IS in CLI" (correct architectural invariant).
+- **Test count**: 929 (was 909 at CI baseline). CRUCIBLE Gate 4 passed. Tarball verification: `npm pack --dry-run` confirms services/geminiService.ts included, zero React/Vite in CLI tarball.
+
+### 2. What surprised us?
+
+- **geminiService.ts was misplaced in N-18**: The workspace split placed `services/geminiService.ts` in packages/web/ because `services/` looked like web UI code. But `gemini_provider.ts` in packages/cli/ (and `tests/integration.test.ts`) both import from `'../services/geminiService'`. The LLM extraction/verification logic is CLI core, not web-specific. The web package also uses it directly, so it's now in both (both packages have their own copy). This is a minor duplication but correct isolation — CLI doesn't depend on web, web doesn't depend on CLI.
+- **Root vitest.config.ts was an orphan hazard**: After deleting `tests/`, the root `vitest.config.ts` referenced `setupFiles: ['./tests/setup.ts']` which no longer existed. Vitest workspace mode silently took precedence (workspace config > root config), so tests still passed — but the stale file was a latent confusion risk. Deleted it.
+- **Test count briefly appeared lower (890) then corrected to 929**: First npm test run after edits showed 890. On re-run it showed 929. Likely a Vitest caching artifact during workspace linking. No actual regression — all 929 pass cleanly.
+
+### 3. Cross-project signals
+
+- **Any npm workspace monorepo project moving from flat → workspaces**: The pattern of "copy source files, then discover missed deps at test runtime" is predictable. Safer approach: always run `npm test` from workspace root *before* deleting root files, not after. This session caught the geminiService miss only because we ran tests post-cleanup. Lesson for future splits: move → test → delete, not move → delete → test.
+- **vitest.workspace.ts + root vitest.config.ts coexistence**: Vitest honors workspace mode when `vitest.workspace.ts` is present, ignoring the root config. But the stale root config is still a confusion risk for editors and other tools. Always delete the root config when workspace mode takes over.
+
+### 4. What would we prioritize next?
+
+1. **N-13 Cloud Platform MVP** — `packages/api/` as Fastify service importing `@nxtg/faultline`. POST /scan endpoint with API key auth. CoS scoping confirmed: "CLI as library, Fastify HTTP wrapper." Foundation is clean.
+2. **Dependabot triage** — 7 vulnerabilities (5 high, 2 moderate) on GitHub. Should resolve before N-13 to avoid inheriting vuln surface into new API package. `npm audit` → `npm audit fix` likely handles them.
+3. **npm publish v0.1.4** — workspace split is a publishable improvement. CLI tarball is verified clean. Worth a patch bump to reflect the fixed install footprint.
+
+### 5. Blockers / questions for the CoS
+
+- **Dependabot triage decision**: Should we run `npm audit fix` before N-13 begins? Or is it acceptable to carry the known vulns into N-13 and address them as a batch? Note: the vulns surfaced on push `73171ad` — could be pre-existing (introduced before N-18) or N-18 introduced them. Running `npm audit` will clarify.
+- **Cadence guard still open**: No response yet on Team Question re: reflection prompt gating. Not blocking any code work, but the signal keeps appearing.
+
+---
+
 > **Reflection cycle**: 2026-03-14 (no delta — eighteenth prompt)
 
 Still `42512ff`. No new code. See 2026-03-13 entries.
@@ -450,6 +484,7 @@ None. All three questions from the previous reflection are answered. Next sessio
 
 | Date | Change |
 |------|--------|
+| 2026-03-14 | Workspace cleanup complete: root orphans deleted, npm install wired, geminiService.ts fixed, 929 tests passing. |
 | 2026-03-14 | Team Feedback: no delta (18th prompt). |
 | 2026-03-14 | Team Feedback: no delta (17th prompt). |
 | 2026-03-14 | Team Feedback: no delta (16th prompt). |
