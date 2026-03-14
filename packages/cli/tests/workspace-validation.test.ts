@@ -62,10 +62,9 @@ describe('N-18 Workspace Validation: packages/cli (@nxtg/faultline)', () => {
     expect(cliPkg.bin.faultline).toBe('./bin/faultline.js');
   });
 
-  it('CLI package files array does not reference services/ (web-only code)', () => {
+  it('CLI package files array includes services/ (geminiService.ts is core CLI logic)', () => {
     const files: string[] = cliPkg.files ?? [];
-    expect(files).not.toContain('services/');
-    expect(files.some((f: string) => f.startsWith('services'))).toBe(false);
+    expect(files.some((f: string) => f.startsWith('services'))).toBe(true);
   });
 
   it('CLI bin entry file exists at packages/cli/bin/faultline.js', () => {

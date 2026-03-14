@@ -11,20 +11,20 @@ export const GEMINI_MODEL: string =
 // Helper to sanitize JSON strings by finding the first { or [ and last } or ]
 const cleanJson = (text: string): string => {
   if (!text) return '';
-  
+
   // First try to extract from markdown code blocks
   const match = text.match(/```json\s*([\s\S]*?)\s*```/);
   if (match && match[1]) {
     return match[1].trim();
   }
-  
+
   // If no code blocks, look for the first '{' or '[' and the last '}' or ']'
   const firstBrace = text.indexOf('{');
   const firstBracket = text.indexOf('[');
-  
+
   let start = -1;
   let end = -1;
-  
+
   // Determine if it's likely an object or array
   if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
       start = firstBrace;
@@ -33,7 +33,7 @@ const cleanJson = (text: string): string => {
       start = firstBracket;
       end = text.lastIndexOf(']');
   }
-  
+
   if (start !== -1 && end !== -1 && end > start) {
       return text.substring(start, end + 1);
   }
@@ -53,14 +53,14 @@ export const extractClaims = async (text: string, apiKey: string, image?: { data
   if ((!text && !image) || !apiKey) return [];
 
   const model = GEMINI_MODEL;
-  
+
   const prompt = `
-    Analyze the following ${image ? 'image and text' : 'text'} and decompose it into "structural elements" (atomic claims). 
+    Analyze the following ${image ? 'image and text' : 'text'} and decompose it into "structural elements" (atomic claims).
     Focus on extracting assertions that bear the weight of the argument.
     ${image ? 'If the image contains text or data, treat that as the primary source of structural elements.' : ''}
-    
+
     ${text ? `Text: "${text}"` : ''}
-    
+
     Return a JSON array where each object has:
     - id: a unique string ID (e.g., "c1")
     - text: the specific claim as a standalone sentence
@@ -70,7 +70,7 @@ export const extractClaims = async (text: string, apiKey: string, image?: { data
 
   try {
     const ai = getClient(apiKey);
-    
+
     const parts: any[] = [{ text: prompt }];
     if (image) {
       parts.unshift({ inlineData: { mimeType: image.mimeType, data: image.data } });
@@ -88,7 +88,7 @@ export const extractClaims = async (text: string, apiKey: string, image?: { data
             properties: {
               id: { type: 'STRING' },
               text: { type: 'STRING' },
-              type: { type: 'STRING' }, 
+              type: { type: 'STRING' },
               importance: { type: 'INTEGER' },
             },
             required: ["id", "text", "type", "importance"]
@@ -112,14 +112,14 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
   const model = GEMINI_MODEL;
 
   const prompt = `
-    You are a structural engineer for information integrity. 
+    You are a structural engineer for information integrity.
     Stress-test this claim using the provided Google Search tool.
-    
+
     Claim: "${claim.text}"
-    
+
     1. Search for evidence.
     2. Determine if the claim holds up ("supported"), fails ("contradicted"), or is inconclusive ("mixed").
-    
+
     OUTPUT INSTRUCTION:
     Return strictly a JSON object. Do not include markdown formatting or preamble.
     JSON Format:
@@ -157,7 +157,7 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
     }
 
     const sources: Array<{ title: string; uri: string }> = [];
-    
+
     // Extract sources from grounding chunks
     const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
     if (chunks) {
@@ -193,9 +193,9 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
 
 export const generateCritiqueAndPrompt = async (originalText: string, failedClaims: Claim[], apiKey: string): Promise<{ critique: string; improvedPrompt: string }> => {
   if (!apiKey) return { critique: "Auth Error", improvedPrompt: "Missing API Key" };
-  
+
   const model = GEMINI_MODEL;
-  
+
   const prompt = `
     I have performed a structural integrity test on a text and found these fractures (contradicted or mixed claims):
     ${failedClaims.map(c => `- ${c.text}`).join('\n')}
