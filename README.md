@@ -222,16 +222,28 @@ faultline init
 
 ## Project Structure
 
+This repo is an **npm workspace monorepo** (N-18). The published CLI package lives in `packages/cli/`; the React web dashboard lives in `packages/web/`.
+
 ```
-├── cli/                   # CLI entry point (15+ commands)
-├── analysis/              # Weakest-link scoring, claim graph
-├── providers/             # Gemini, Claude, OpenAI, Mock adapters
-├── compliance/            # EU AI Act risk categories (Articles 5-7, Annex III)
-├── rules/                 # YAML rule engine (PII, bias, security)
-├── history/               # Scan history + trend analysis
-├── templates/             # Red-team prompt template library
-└── tests/                 # 868 tests across 27 files
+packages/
+├── cli/                   # @nxtg/faultline — published CLI package (zero React deps)
+│   ├── bin/               # CLI entry point (faultline.js)
+│   ├── cli/               # Command handlers (scan, report, watch, critique…)
+│   ├── providers/         # Gemini, Claude, OpenAI, Perplexity, Mock adapters
+│   ├── analysis/          # Weakest-link scoring, claim graph
+│   ├── compliance/        # EU AI Act risk categories (Articles 5-7, Annex III)
+│   ├── rules/             # YAML rule engine (PII, bias, security)
+│   ├── history/           # Scan history + trend analysis
+│   ├── templates/         # Red-team prompt template library
+│   ├── types.ts           # Shared TypeScript types
+│   └── tests/             # 909+ tests
+└── web/                   # @nxtg/faultline-web — React visualization dashboard
+    ├── components/        # React UI components
+    ├── services/          # Gemini web service
+    └── tests/             # Web-specific tests
 ```
+
+**Installing the CLI** (`npm install @nxtg/faultline`) pulls only CLI deps — no React, no Vite. The web dashboard is a separate workspace package.
 
 ---
 

@@ -1,0 +1,24 @@
+name: Bias Language Detection (YAML)
+description: Detects potentially biased or stereotyping language related to gender, race, and age.
+severity: high
+category: fairness
+remediation: Review flagged language for implicit bias. Replace stereotyping phrases with neutral, inclusive alternatives.
+
+patterns:
+  - name: gender-stereotype
+    regex: "\\b(?:women|girls?) (?:can't|cannot|shouldn't|are unable to|aren't capable)\\b"
+    severity: high
+    message: "Detected gender-biased language"
+    flags: "i"
+
+  - name: racial-generalization
+    regex: "\\b(?:all|every|most) (?:black|white|asian|hispanic|latino|arab) (?:people|persons?|men|women)\\b"
+    severity: high
+    message: "Detected racial generalization"
+    flags: "i"
+
+  - name: age-stereotype
+    regex: "\\b(?:old people|elderly) (?:can't|cannot|shouldn't|are unable to|don't understand)\\b"
+    severity: medium
+    message: "Detected age-biased language"
+    flags: "i"

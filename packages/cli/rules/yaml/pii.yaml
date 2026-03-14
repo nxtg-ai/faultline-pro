@@ -1,0 +1,21 @@
+name: PII Detection (YAML)
+description: Detects personally identifiable information such as emails, phone numbers, and SSN patterns.
+severity: high
+category: privacy
+remediation: Remove or redact all personally identifiable information before publishing AI-generated content.
+
+patterns:
+  - name: email
+    regex: "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
+    severity: high
+    message: "Detected email address"
+
+  - name: phone
+    regex: "\\b(?:\\+?1[-. ]?)?\\(?\\d{3}\\)?[-. ]?\\d{3}[-. ]?\\d{4}\\b"
+    severity: high
+    message: "Detected phone number"
+
+  - name: ssn
+    regex: "\\b\\d{3}-\\d{2}-\\d{4}\\b"
+    severity: critical
+    message: "Detected Social Security Number"

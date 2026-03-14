@@ -1,0 +1,33 @@
+name: Security Credential Detection
+description: Detects exposed API keys, passwords, tokens, and other credentials in text.
+severity: critical
+category: security
+remediation: Never include credentials in AI-generated content. Use environment variables or secrets managers instead.
+
+patterns:
+  - name: api-key-generic
+    regex: "(?:api[_-]?key|apikey)\\s*[=:]\\s*['\"]?[A-Za-z0-9_\\-]{16,}['\"]?"
+    severity: critical
+    message: "Detected potential API key"
+    flags: "i"
+
+  - name: aws-access-key
+    regex: "\\bAKIA[0-9A-Z]{16}\\b"
+    severity: critical
+    message: "Detected AWS access key ID"
+
+  - name: password-inline
+    regex: "(?:password|passwd|pwd)\\s*[=:]\\s*['\"]?[^\\s'\"]{8,}['\"]?"
+    severity: critical
+    message: "Detected inline password"
+    flags: "i"
+
+  - name: bearer-token
+    regex: "Bearer\\s+[A-Za-z0-9_.\\-]{20,}"
+    severity: high
+    message: "Detected bearer token"
+
+  - name: private-key-header
+    regex: "-----BEGIN (?:RSA |EC |DSA )?PRIVATE KEY-----"
+    severity: critical
+    message: "Detected private key header"
