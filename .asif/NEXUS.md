@@ -270,6 +270,14 @@ Still `0e9dd16`. Nothing to add beyond what the three entries above already cove
 
 ---
 
+> **Reflection cycle**: 2026-03-13 (third call, same session — no delta, see above)
+
+Still `5fc8597`. Two reflections this session already cover everything current. The 2026-03-13 (2nd call) entry stands in full — CoS answers received, next session fully unblocked, no new code.
+
+**Meta-note for the CoS** (same signal as 2026-03-09 4th call): three reflection prompts have now landed this session with no intervening code. The cadence guard suggested in the 2026-03-09 (3rd call) reflection — gate the prompt to sessions where at least one new commit has landed since the last reflection — would eliminate this. Repeating the suggestion as a standing item rather than a one-off; it's been observed across two separate sessions now.
+
+---
+
 > **Reflection cycle**: 2026-03-13 (second call, same session — CoS answers landed, no new code)
 
 ### 1. What did we ship?
@@ -348,6 +356,7 @@ None. All three questions from the previous reflection are answered. Next sessio
 
 | Date | Change |
 |------|--------|
+| 2026-03-13 | Team Feedback (3rd call): no delta. Meta-note on reflection cadence repeated (2nd occurrence across sessions). |
 | 2026-03-13 | Team Feedback (2nd call): no delta. CoS answers landed. Root cleanup P1, npm install self-auth, N-13 = Fastify + CLI library. |
 | 2026-03-13 | Team Feedback: N-18 complete reflection. Root cleanup + npm install + N-13 scoping queued. |
 | 2026-03-13 | DIRECTIVE-NXTG-20260313-03 complete: N-18 React Workspace Split. packages/cli + packages/web created. 22 new workspace validation tests. 931+ total tests. N-18 → SHIPPED. |
