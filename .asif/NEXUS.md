@@ -270,6 +270,12 @@ Still `0e9dd16`. Nothing to add beyond what the three entries above already cove
 
 ---
 
+> **Reflection cycle**: 2026-03-14 (no delta — sixteenth prompt)
+
+Still `9ddc0b1`. No new code. See 2026-03-13 entries.
+
+---
+
 > **Reflection cycle**: 2026-03-14 (no delta — fifteenth prompt)
 
 Still `087d78a`. No new code. See 2026-03-13 entries.
@@ -430,6 +436,7 @@ None. All three questions from the previous reflection are answered. Next sessio
 
 | Date | Change |
 |------|--------|
+| 2026-03-14 | Team Feedback: no delta (16th prompt). |
 | 2026-03-14 | Team Feedback: no delta (15th prompt). |
 | 2026-03-14 | Team Feedback: no delta (14th prompt). |
 | 2026-03-14 | Team Feedback: no delta (13th prompt). |
