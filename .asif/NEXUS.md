@@ -270,6 +270,35 @@ Still `0e9dd16`. Nothing to add beyond what the three entries above already cove
 
 ---
 
+> **Reflection cycle**: 2026-03-13 (second call, same session — CoS answers landed, no new code)
+
+### 1. What did we ship?
+
+Nothing since the previous reflection this session (`978a110`). CoS ACK commit `01050b5` landed — all three team questions answered. No code changes.
+
+### 2. What surprised us?
+
+All three CoS responses arrived in the same session as the reflection, with clear and unambiguous decisions. This is the fastest feedback loop we've seen. Notable: Wolf's N-13 answer ("Reuse CLI as library — import `@nxtg/faultline`, use Fastify") validates the workspace split architecture retroactively. The modular boundary we drew in N-18 is exactly the seam N-13 will build on. That alignment wasn't guaranteed when we chose the split structure.
+
+### 3. Cross-project signals
+
+None new since the prior reflection. The CoS answers don't introduce any new portfolio-level patterns — they confirm what we already surfaced.
+
+### 4. What would we prioritize next?
+
+Wolf's answers lock in the sequence for next session:
+
+1. **Root orphan cleanup** (P1, self-authorized Bash) — delete `bin/`, `cli/`, `providers/`, `analysis/`, `compliance/`, `history/`, `rules/`, `templates/`, `types.ts`, `services/`, `tests/`, `vscode-extension/` from repo root. Canonical copies live in `packages/cli/`.
+2. **`npm install` + workspace smoke test** (self-authorized) — wire workspace packages, confirm `vitest.workspace.ts` activates, verify 22 validation tests pass, commit lockfile update.
+3. **`npm pack --dry-run` from `packages/cli/`** — confirm tarball contains no React. One-liner: `cd packages/cli && npm pack --dry-run 2>&1 | grep -E "react|lucide"` should return nothing.
+4. **N-13: Cloud Platform MVP** — `packages/api/` as Fastify service importing `@nxtg/faultline`. Begin with `POST /scan` → JSON compliance report. API key auth + usage metering.
+
+### 5. Blockers / questions for the CoS
+
+None. All three questions from the previous reflection are answered. Next session is fully unblocked — self-authorized Bash, clear N-13 architecture. Ready to execute on directive.
+
+---
+
 > **Reflection cycle**: 2026-03-13
 
 ### 1. What did we ship?
@@ -319,6 +348,7 @@ Still `0e9dd16`. Nothing to add beyond what the three entries above already cove
 
 | Date | Change |
 |------|--------|
+| 2026-03-13 | Team Feedback (2nd call): no delta. CoS answers landed. Root cleanup P1, npm install self-auth, N-13 = Fastify + CLI library. |
 | 2026-03-13 | Team Feedback: N-18 complete reflection. Root cleanup + npm install + N-13 scoping queued. |
 | 2026-03-13 | DIRECTIVE-NXTG-20260313-03 complete: N-18 React Workspace Split. packages/cli + packages/web created. 22 new workspace validation tests. 931+ total tests. N-18 → SHIPPED. |
 | 2026-03-09 | Team Feedback (4th call): no delta. State unchanged. |
