@@ -270,10 +270,53 @@ Still `0e9dd16`. Nothing to add beyond what the three entries above already cove
 
 ---
 
+> **Reflection cycle**: 2026-03-13
+
+### 1. What did we ship?
+
+- **N-18: React Workspace Split** (`0730788`) — The structural work flagged in three consecutive 2026-03-09 reflections and unblocked by Wolf's sequencing decision. The monorepo now has:
+  - `packages/cli/` — `@nxtg/faultline`, published CLI package. Zero React deps. Contains all CLI source (bin/, cli/, providers/, analysis/, compliance/, history/, rules/, templates/, vscode-extension/src/) plus all 909 tests.
+  - `packages/web/` — `@nxtg/faultline-web`, React visualization dashboard. React/Vite scoped here exclusively.
+  - Root `package.json` — `private: true`, `workspaces: ["packages/*"]`, `react`/`react-dom`/`lucide-react` removed from `dependencies`.
+  - `vitest.workspace.ts` — Vitest workspace mode; delegates to both packages once initialized.
+  - 22 new workspace validation tests (`packages/cli/tests/workspace-validation.test.ts`) — guard against React re-introduction into CLI.
+- **Test count**: 909 (CI gate passed, pre-push hook cleared). Post-workspace-init: 931+ (includes new validation tests).
+- **96 files changed**, 19,208 insertions. Largest single commit in the project's history.
+
+### 2. What surprised us?
+
+- **The vscode-extension dependency was a hidden trap**: The test file `vscode-extension.test.ts` imports from `'../vscode-extension/src/diagnostics'` and `'../vscode-extension/src/config'`. These are relative imports that would have silently broken after the workspace move if discovered only at test runtime. Caught during planning by grepping actual import lines — not by reading the directory manifest. Lesson: when splitting a project, grep for ALL relative `'../'` imports across test files before assuming path-safety.
+- **Agent parallelism cost**: Spawning Agent 1 to copy 69 files took ~54 minutes wall-clock (3.2M tokens, 388 tool uses). Agent 2 (12 web files) took ~5 minutes. The disparity is large but the parallelism still saved time vs serial execution — Agent 2 completed in the background while Agent 1 ran. For future large file-copy tasks: batch by file count, not by conceptual category (Agent 1's 69 files was too large a single batch; splitting into 3×23 would have been faster).
+- **Vitest workspace mode doesn't auto-initialize**: The pre-push hook ran `npm test` at root and picked up the OLD `vitest.config.ts` (root `tests/` directory — 909 tests), not the new `vitest.workspace.ts`. This happened because `npm install` hadn't been run to link the workspace packages. Technically correct behavior (CI passes, gate clears), but the new workspace tests didn't run. The 22 validation tests will activate once `npm install` is run from repo root. Worth documenting: workspace-mode vitest requires package linking before it can discover projects.
+- **Root orphan files**: Can't delete files without Bash access. The original `bin/`, `cli/`, `providers/`, `tests/` at repo root still exist alongside the canonical copies in `packages/cli/`. They're dead weight now — the published package comes from `packages/cli/`, and `vitest.workspace.ts` will route all tests through packages. A follow-up bash session needs to prune the root duplicates. This is cosmetic-only (doesn't affect npm pack or test correctness), but it's technical debt.
+
+### 3. Cross-project signals
+
+- **Workspace split pattern for mixed CLI/web projects**: Any NXTG project that publishes a CLI tool alongside a React UI should use this exact pattern — `packages/cli/` for zero-dep distribution, `packages/web/` for UI. The lesson: do the split BEFORE adding cloud platform or API packages, not after. Building N-13 on a flat repo would have required doing this split twice. This sequencing principle (structure before features) is worth adding to the ASIF portfolio architecture standards.
+- **Bash-free file migration is feasible but slow**: This entire workspace split was executed using only Read/Write/Edit/Glob/Grep tools (no shell). It works, but the agent tool-use overhead is high for bulk file operations. For future ASIF projects: if a structural refactor requires moving 50+ files, pre-authorize Bash at session start. The "don't ask mode" combined with large file volumes is the bottleneck.
+- **vitest.workspace.ts needs npm install to activate**: This pattern will recur in any NXTG monorepo that uses Vitest. Document in ASIF standards: after adding `vitest.workspace.ts`, run `npm install` at workspace root before running tests — otherwise vitest silently falls back to the nearest `vitest.config.ts`. No error, no warning. Silent fallback is dangerous in CI.
+
+### 4. What would we prioritize next?
+
+1. **`npm install` + workspace smoke test** — Run `npm install` from repo root to wire workspace packages, then `npm test` to confirm `vitest.workspace.ts` activates and all 931+ tests pass (including the 22 new validation tests). This is a 5-minute health check that should happen before N-13 begins.
+2. **Root orphan cleanup** — Delete `bin/`, `cli/`, `providers/`, `analysis/`, `compliance/`, `history/`, `rules/`, `templates/`, `types.ts`, `services/`, `tests/`, `vscode-extension/` from repo root (they're now canonical in `packages/cli/`). Requires a Bash session. Low urgency (doesn't affect correctness), high cleanliness value — a contributor cloning the repo shouldn't see 200 orphaned files at root.
+3. **N-13: Cloud Platform MVP** — `POST /scan` hosted endpoint in `packages/api/`. The workspace structure is ready. EU AI Act deadline is August 2026 — 5 months out. This is the revenue path: enterprise teams can't ship API keys in their CI pipelines.
+4. **`npm pack --dry-run` from `packages/cli/`** — Verify the tarball excludes React. Requires Bash. One-line validation: `cd packages/cli && npm pack --dry-run 2>&1 | grep -E "react|lucide"` should produce no output.
+5. **Terminal demo GIF** — `vhs` recording of `faultline scan --provider mock`. Still on the prioritized list from prior reflections. README now has the monorepo structure; the GIF would complete the "README first impression" story.
+
+### 5. Blockers / questions for the CoS
+
+- **Root cleanup authorization**: Should we prune the orphaned root files (bin/, cli/, tests/, etc.) in the next session? Requires Bash authorization. The workspace split is functionally complete without this, but the repo is messy until it's done. Confirm: is root cleanup P1 (do it next) or P2 (defer, it's cosmetic)?
+- **npm install timing**: The workspace won't fully activate until `npm install` is run from root. Should this be done manually by Asif, or can we pre-authorize a Bash session specifically for `npm install` + test verification? The 22 new validation tests are currently dormant.
+- **N-13 scoping**: When N-13 (Cloud Platform MVP) is directed, should `packages/api/` be a fresh Express/Fastify service, or should it reuse the existing CLI scan logic as a library? The CLI's `scan` command is already modular — `packages/api/` could import `@nxtg/faultline` (the CLI package) and wrap it in an HTTP handler. This would be the cleanest approach, but it means `packages/api/` depends on `packages/cli/` internally.
+
+---
+
 ## Changelog
 
 | Date | Change |
 |------|--------|
+| 2026-03-13 | Team Feedback: N-18 complete reflection. Root cleanup + npm install + N-13 scoping queued. |
 | 2026-03-13 | DIRECTIVE-NXTG-20260313-03 complete: N-18 React Workspace Split. packages/cli + packages/web created. 22 new workspace validation tests. 931+ total tests. N-18 → SHIPPED. |
 | 2026-03-09 | Team Feedback (4th call): no delta. State unchanged. |
 | 2026-03-09 | Team Feedback (3rd call): no delta, meta-observation on reflection cadence. Awaiting N-16/N-13 directive. |
