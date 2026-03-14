@@ -111,7 +111,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Questions
 
-_(Add questions for ASIF CoS here.)_
+**Q (2026-03-14)**: Reflection cadence guard — standing request. Four reflection prompts have now fired with no intervening code across two sessions (2026-03-09 and 2026-03-13/14). Each produces a no-delta entry or padded repetition, which is noise. Proposed fix: gate the reflection prompt so it only fires when `git log` shows at least one new commit since the last reflection SHA. Could be implemented as a pre-prompt hook check. Is this a CoS scheduling item or a tooling item? Who owns the fix?
 
 ---
 
@@ -270,6 +270,14 @@ Still `0e9dd16`. Nothing to add beyond what the three entries above already cove
 
 ---
 
+> **Reflection cycle**: 2026-03-14 (no delta — fourth reflection prompt, no new commits)
+
+Still `a9d5ff7`. The three 2026-03-13 entries cover all current state. No new code, no new signals, no new blockers.
+
+The cadence issue is now documented across **two sessions and four prompts**. Adding it to Team Questions below as a standing item — it warrants a CoS decision, not just a note.
+
+---
+
 > **Reflection cycle**: 2026-03-13 (third call, same session — no delta, see above)
 
 Still `5fc8597`. Two reflections this session already cover everything current. The 2026-03-13 (2nd call) entry stands in full — CoS answers received, next session fully unblocked, no new code.
@@ -356,6 +364,7 @@ None. All three questions from the previous reflection are answered. Next sessio
 
 | Date | Change |
 |------|--------|
+| 2026-03-14 | Team Feedback: no delta (4th prompt). Cadence issue escalated to Team Questions. |
 | 2026-03-13 | Team Feedback (3rd call): no delta. Meta-note on reflection cadence repeated (2nd occurrence across sessions). |
 | 2026-03-13 | Team Feedback (2nd call): no delta. CoS answers landed. Root cleanup P1, npm install self-auth, N-13 = Fastify + CLI library. |
 | 2026-03-13 | Team Feedback: N-18 complete reflection. Root cleanup + npm install + N-13 scoping queued. |
