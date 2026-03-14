@@ -1,5 +1,3 @@
-import { defineWorkspace } from 'vitest/config';
-
 /**
  * Vitest workspace configuration — N-18 React Workspace Split.
  *
@@ -8,8 +6,10 @@ import { defineWorkspace } from 'vitest/config';
  *
  * packages/cli  → @nxtg/faultline  (909+ CLI tests, no React)
  * packages/web  → @nxtg/faultline-web  (web/React tests)
+ *
+ * vitest v4 removed defineWorkspace — workspace files export an array directly.
  */
-export default defineWorkspace([
+export default [
   'packages/cli',
   'packages/web',
-]);
+];
