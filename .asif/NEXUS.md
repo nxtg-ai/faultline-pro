@@ -113,6 +113,8 @@ The Kaggle version remains at  (tagged  at commit ).
 
 **Q (2026-03-14)**: Reflection cadence guard — standing request. Four reflection prompts have now fired with no intervening code across two sessions (2026-03-09 and 2026-03-13/14). Each produces a no-delta entry or padded repetition, which is noise. Proposed fix: gate the reflection prompt so it only fires when `git log` shows at least one new commit since the last reflection SHA. Could be implemented as a pre-prompt hook check. Is this a CoS scheduling item or a tooling item? Who owns the fix?
 
+**Q (2026-03-14)**: GitHub Dependabot — 7 vulnerabilities flagged (5 high, 2 moderate) on push `73171ad`. First appearance. Pre-existing or introduced by workspace split? Should we run `npm audit` and triage before N-13 begins, or is this acceptable risk for now? Link: https://github.com/nxtg-ai/faultline-pro/security/dependabot
+
 ---
 
 ## Team Feedback
