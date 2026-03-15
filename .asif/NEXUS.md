@@ -77,6 +77,25 @@ The Kaggle version remains at  (tagged  at commit ).
 
 > **46 directives archived** (36 on 2026-02-28, 10 on 2026-03-12). Full text in `NEXUS-archive.md`. Summary in [## CoS Archive](#cos-archive) below.
 
+### DIRECTIVE-NXTG-20260314-07 — Pre-N-13 Hygiene: Dependabot Triage + npm Verify
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-14 | **Estimate**: S | **Status**: PENDING
+
+**Context**: N-18 workspace split is DONE (929 tests). Before starting N-13 Cloud Platform, clean the foundation. 4 remaining Dependabot vulns (3 auto-merged, 4 open) should not be inherited into the new `packages/api/` surface. Team correctly identified this as priority #2 in their latest feedback.
+
+**Action Items**:
+1. [ ] **Run `npm audit`** from workspace root. Document all remaining vulnerabilities (package, severity, CVE, exploitability in this runtime context).
+2. [ ] **Apply `npm audit fix`** for any non-breaking fixes. If major version bumps are required, document and skip (those become a separate directive).
+3. [ ] **Verify clean install**: `rm -rf node_modules && npm install` from root. Confirm workspace linking works, no warnings, no peer dep conflicts.
+4. [ ] **Verify tarball**: `npm pack --workspace=packages/cli --dry-run` — confirm zero React/Vite deps in CLI tarball, `services/geminiService.ts` included.
+5. [ ] Tests: run full suite from workspace root. Count must stay >=929.
+6. [ ] Commit with message: `chore: pre-N-13 hygiene — Dependabot triage + npm verify (DIRECTIVE-NXTG-20260314-07)`
+
+**Constraints**:
+- S-sized. Triage and fix only — do NOT start N-13 in this directive.
+- If `npm audit fix` introduces test failures, revert the fix and document the vuln as "accepted risk" with rationale.
+- Do NOT bump to v0.1.4 in this directive — that's a separate publish decision.
+
 ---
 
 ## What's Next After Publish
