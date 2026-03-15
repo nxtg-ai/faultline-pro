@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-14 (Team Feedback post-DIRECTIVE-07 — 0 vulns, 929 tests, lockfile clean, N-13 ready)
+> **Last Updated**: 2026-03-14 (DIRECTIVE-09 complete — N-13 SHIPPED: packages/api, POST /scan, auth, 940 tests)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -22,7 +22,7 @@
 | N-10 | npm Package + GitHub Action | DISTRIBUTION | SHIPPED | P1 | 2026-02 |
 | N-11 | Multimodal Upload (PDF/OCR) | MULTIMODAL | IDEA | P2 | 2026-02 |
 | N-12 | Enterprise Features (SSO/audit) | ENTERPRISE | IDEA | P2 | — |
-| N-13 | Cloud Platform (hosted API + dashboard) | REVENUE | IDEA | P1 | 2026-03 |
+| N-13 | Cloud Platform (hosted API + dashboard) | REVENUE | SHIPPED | P1 | 2026-03-14 |
 | N-14 | Compliance Reports (PDF/audit-ready) | REVENUE | IDEA | P1 | 2026-03 |
 | N-15 | Revenue Infrastructure (Stripe/metering) | REVENUE | IDEA | P2 | 2026-03 |
 | N-16 | Perplexity Provider (search-native verification) | PROVIDER | SHIPPED | P0 | 2026-03-08 |
@@ -79,7 +79,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260314-09 — P1: N-13 Cloud Platform MVP — POST /scan Endpoint
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-14 | **Estimate**: M | **Status**: PENDING
+**Injected**: 2026-03-14 | **Estimate**: M | **Status**: DONE | **CoS ACK**: pending
 
 **Context**: Pre-N-13 hygiene DONE (Dependabot + npm verify). N-18 workspace split DONE. Architecture confirmed by CoS: `packages/api/` as Fastify service importing `@nxtg/faultline` CLI package. EU AI Act deadline August 2026 — 5 months. This is the revenue path.
 
@@ -98,6 +98,29 @@ The Kaggle version remains at  (tagged  at commit ).
 - Fastify (lighter than Express — CoS decision).
 - Import CLI as library, do NOT duplicate scan logic.
 - Do NOT build billing/Stripe yet — that's N-15.
+
+**Response** (2026-03-14):
+N-13 Cloud Platform MVP complete. `packages/api/` is a new Fastify v5 workspace package.
+
+1. ✅ `packages/api/package.json` — `@nxtg/faultline-api`, private, ESM, Fastify v5.8.2 (vuln-free)
+2. ✅ Fastify v5.8.2 installed — `npm audit` 0 vulnerabilities across full workspace
+3. ✅ `POST /scan` — body schema: `{ text: string (1–50k chars), provider?: enum }`, calls `scan()` from `@nxtg/faultline`, returns full `ScanResult` JSON
+4. ✅ CLI imported as library via tsconfig `paths`: `@nxtg/faultline/cli/scan.js` → `../cli/cli/scan.ts`. Zero scan logic duplication.
+5. ✅ API key auth (`requireApiKey` preHandler) — `x-api-key` header vs `FAULTLINE_API_KEY` env var. Missing key → 401. Unconfigured server → 503. Only applied to `/scan` (not `/health`).
+6. ✅ `GET /health` → `{ status: 'ok', service: 'faultline-api', version: '0.1.0' }`, no auth required
+7. ✅ 11 route tests: auth pass/fail, valid scan, missing/empty text, provider field, 500 on scan error, 503 on unconfigured server, health public access
+8. ✅ Root `vitest.workspace.ts` updated to include `packages/api`
+
+**Architecture**:
+- `buildServer()` factory pattern — Fastify instance created per call, enabling isolated `inject()` testing
+- Fastify's AJV defaults strip (not reject) additional body properties — test updated to reflect this
+- `packages/api/` wired into npm workspace; `@nxtg/faultline: "*"` resolves to the workspace-local CLI package
+
+**One discovery — Fastify v4 had a vuln**: Installing `fastify@^4.29.0` as originally planned introduced a high-severity DoS (GHSA-mrq3-vjjr-p77c). Fix required v5.8.2 — a major version bump. Since this is a new package (no existing code to break), upgrading to v5 was the right call. All API code was written for v5's interface.
+
+**Test count**: 940 (929 CLI + 11 API, up from 929). CRUCIBLE Gate 4 passed. `npm audit`: 0.
+
+**N-13 → SHIPPED (MVP). `packages/api/` is the foundation for N-14 (compliance reports) and N-15 (billing).**
 
 ---
 
@@ -635,6 +658,7 @@ None. All three questions from the previous reflection are answered. Next sessio
 
 | Date | Change |
 |------|--------|
+| 2026-03-14 | DIRECTIVE-09 complete: N-13 SHIPPED. packages/api (Fastify v5), POST /scan, auth, GET /health, 11 tests. Total: 940. N-13 → SHIPPED. |
 | 2026-03-14 | Team Feedback post-DIRECTIVE-07: lockfile drift caught, Dependabot transitive resolution noted, N-13 directive requested. |
 | 2026-03-14 | DIRECTIVE-07 complete: pre-N-13 hygiene. 0 vulns, clean install, tarball verified (42 files, 0 React). 929 tests. N-13 unblocked. |
 | 2026-03-14 | Team Feedback: substantive — vitest v4 fix (`89ec87c`) + 3 Dependabot bumps (minimatch/rollup/undici). 929 tests. N-13 unblocked. |

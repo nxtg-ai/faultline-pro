@@ -1,0 +1,27 @@
+{
+  "name": "@nxtg/faultline-api",
+  "version": "0.1.0",
+  "description": "Faultline Cloud Platform API — hosted POST /scan endpoint.",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@nxtg/faultline": "*",
+    "fastify": "^5.8.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2",
+    "vitest": "^4.0.18"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

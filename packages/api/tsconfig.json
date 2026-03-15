@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "lib": ["ES2022"],
+    "skipLibCheck": true,
+    "types": ["node"],
+    "moduleResolution": "bundler",
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "allowJs": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "paths": {
+      "@nxtg/faultline/cli/*": ["../cli/cli/*"],
+      "@nxtg/faultline/types": ["../cli/types.ts"],
+      "@nxtg/faultline": ["../cli/cli/scan.ts"]
+    }
+  },
+  "exclude": ["node_modules", "dist"]
+}
