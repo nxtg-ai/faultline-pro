@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-09 (Team Feedback reflection — post-publish, Perplexity shipped, N-16/N-13 next)
+> **Last Updated**: 2026-03-14 (Team Feedback — vitest v4 fix + 3 Dependabot bumps, 929 tests, N-13 ready)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -306,6 +306,41 @@ Still `0e9dd16`. Nothing to add beyond what the three entries above already cove
 
 ---
 
+> **Reflection cycle**: 2026-03-14 (substantive — vitest v4 fix + Dependabot triage, HEAD `681d481`)
+
+### 1. What did we ship?
+
+- **vitest v4 compat fix** (`89ec87c`, Asif): `defineWorkspace` was removed from `vitest/config` in vitest v4. `vitest.workspace.ts` was exporting `defineWorkspace([...])` — broke CI typecheck. Fixed by removing the import and exporting a plain array directly. One file, 4 lines. CI restored.
+- **Dependabot security bumps** (`60fc094`, `3e3dfa4`, `55a970a`): Three of the 7 Dependabot vulnerabilities flagged in Team Questions (`73171ad`) merged automatically:
+  - `minimatch` 9.0.5 → 9.0.9 (ReDoS fix)
+  - `rollup` 4.53.3 → 4.59.0 (security patches)
+  - `undici` 7.22.0 → 7.24.3 (CVE remediation)
+- **Test count**: 929 (unchanged — CRUCIBLE Gate 4 maintained across all commits).
+
+### 2. What surprised us?
+
+- **vitest v4 silently removed a named export**: The workspace still *ran* (vitest honored the array shape), but `tsc --noEmit` in CI caught the removed API. No runtime error, only a typecheck failure. Good argument for keeping strict TypeScript in CI — silent API removal that doesn't throw at runtime is exactly the class of breakage that type-checking exists to catch.
+- **Dependabot is self-resolving 3/7 vulns without manual intervention**: Auto-merge on the repo means patch/minor security bumps merged automatically. The 7-vuln concern from Team Questions is already 3/7 resolved. The remaining 4 likely require `npm audit fix` — but the urgency is lower than when first flagged.
+
+### 3. Cross-project signals
+
+- **Portfolio-wide — vitest v4 `defineWorkspace` removal**: Any NXTG monorepo using `vitest.workspace.ts` with `defineWorkspace([...])` will hit this same typecheck failure on vitest v4 upgrade. Fix: export a plain array. ASIF standard note: _vitest v4+ workspace files export a plain array, not `defineWorkspace([...])`_.
+- **Dependabot + auto-merge as steady-state hygiene**: Three security bumps merged without manual intervention. This is the right model for NXTG repos — enable auto-merge for patch/minor, review majors and `--force` audit fixes manually.
+
+### 4. What would we prioritize next?
+
+1. **N-13 Cloud Platform MVP** — `packages/api/` as Fastify service importing `@nxtg/faultline`. `POST /scan` → JSON compliance report, API key auth, usage metering. Foundation clean, vulns resolving, EU AI Act August 2026 is 5 months out. Nothing blocks this.
+2. **Remaining Dependabot vulns (4 of 7)** — `npm audit` to identify; fix before N-13 begins to avoid inheriting vuln surface into the new API package.
+3. **npm publish v0.1.4** — Workspace split + geminiService fix are publishable. Patch bump before N-13 adds new surface area.
+4. **Terminal demo GIF** (`vhs`, `docs/demo.tape`) — Still on the list. 30-minute win, high signal value for README and launch posts.
+
+### 5. Blockers / questions for the CoS
+
+- **N-13 go signal**: N-18 DONE, workspace clean, no architectural blockers. Ready to execute on directive.
+- **Remaining 4 Dependabot vulns**: Fix before N-13 or batch at v0.1.4? No response yet on the 2026-03-14 Team Questions entry.
+
+---
+
 > **Reflection cycle**: 2026-03-14 (no delta — twenty-second prompt)
 
 Still `ebda5f5`. No new code.
@@ -508,6 +543,7 @@ None. All three questions from the previous reflection are answered. Next sessio
 
 | Date | Change |
 |------|--------|
+| 2026-03-14 | Team Feedback: substantive — vitest v4 fix (`89ec87c`) + 3 Dependabot bumps (minimatch/rollup/undici). 929 tests. N-13 unblocked. |
 | 2026-03-14 | Team Feedback: no delta (22nd prompt). |
 | 2026-03-14 | Team Feedback: no delta (21st prompt). |
 | 2026-03-14 | Team Feedback: no delta (20th prompt). |
