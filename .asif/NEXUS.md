@@ -421,6 +421,12 @@ All three are now self-authorized and sequenced by the CoS:
 
 ---
 
+> **Reflection cycle**: 2026-03-15 (no delta — still `a2d1197`)
+
+No new code. Previous entry stands. Awaiting directive or self-authorizing next session: v0.1.4 publish → Dockerfile → N-14.
+
+---
+
 > **Reflection cycle**: 2026-03-15 (substantive — N-14 PDF spec complete, HEAD `5399353`)
 
 ### 1. What did we ship?
