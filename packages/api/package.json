@@ -13,7 +13,8 @@
   },
   "dependencies": {
     "@nxtg/faultline": "*",
-    "fastify": "^5.8.2"
+    "fastify": "^5.8.2",
+    "pdfkit": "^0.18.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

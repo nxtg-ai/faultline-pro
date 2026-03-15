@@ -157,3 +157,79 @@ describe('POST /scan', () => {
     expect(body.error).toContain('Provider API key missing');
   });
 });
+
+describe('POST /scan/report', () => {
+  let server: FastifyInstance;
+
+  beforeEach(() => {
+    process.env.FAULTLINE_API_KEY = 'test-secret-key';
+    server = buildServer();
+  });
+
+  afterEach(async () => {
+    await server.close();
+    delete process.env.FAULTLINE_API_KEY;
+  });
+
+  it('returns 200 with application/pdf content-type', async () => {
+    const res = await server.inject({
+      method: 'POST',
+      url: '/scan/report',
+      headers: { 'x-api-key': 'test-secret-key', 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'GPT-4 is 92% accurate on medical diagnoses.' }),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toContain('application/pdf');
+  });
+
+  it('returns a non-empty PDF body', async () => {
+    const res = await server.inject({
+      method: 'POST',
+      url: '/scan/report',
+      headers: { 'x-api-key': 'test-secret-key', 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'GPT-4 is 92% accurate on medical diagnoses.' }),
+    });
+    expect(res.rawPayload.length).toBeGreaterThan(1000);
+  });
+
+  it('includes a content-disposition attachment header', async () => {
+    const res = await server.inject({
+      method: 'POST',
+      url: '/scan/report',
+      headers: { 'x-api-key': 'test-secret-key', 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'Some claim text.' }),
+    });
+    expect(res.headers['content-disposition']).toContain('attachment');
+    expect(res.headers['content-disposition']).toContain('.pdf');
+  });
+
+  it('accepts optional projectName field', async () => {
+    const res = await server.inject({
+      method: 'POST',
+      url: '/scan/report',
+      headers: { 'x-api-key': 'test-secret-key', 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'Some claim text.', projectName: 'ACME Audit Q1' }),
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('returns 401 when x-api-key is missing', async () => {
+    const res = await server.inject({
+      method: 'POST',
+      url: '/scan/report',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'Some claim text.' }),
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('returns 400 when text is missing', async () => {
+    const res = await server.inject({
+      method: 'POST',
+      url: '/scan/report',
+      headers: { 'x-api-key': 'test-secret-key', 'content-type': 'application/json' },
+      body: JSON.stringify({ projectName: 'test' }),
+    });
+    expect(res.statusCode).toBe(400);
+  });
+});

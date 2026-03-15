@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import { healthRoutes } from './routes/health.js';
 import { scanRoutes } from './routes/scan.js';
+import { reportRoutes } from './routes/report.js';
 
 /**
  * Build and configure a Fastify server instance.
@@ -13,6 +14,7 @@ export function buildServer() {
 
   fastify.register(healthRoutes);
   fastify.register(scanRoutes);
+  fastify.register(reportRoutes);
 
   return fastify;
 }
