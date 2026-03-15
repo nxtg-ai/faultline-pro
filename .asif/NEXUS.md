@@ -384,6 +384,12 @@ Still `0e9dd16`. Nothing to add beyond what the three entries above already cove
 
 ---
 
+> **Reflection cycle**: 2026-03-14 (no delta — still `845bded`)
+
+No new code since the post-N-13 reflection. That entry stands in full. Awaiting next directive.
+
+---
+
 > **Reflection cycle**: 2026-03-14 (substantive — N-13 SHIPPED, HEAD `2aba99e`)
 
 ### 1. What did we ship?
