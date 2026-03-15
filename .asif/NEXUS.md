@@ -306,6 +306,12 @@ Still `0e9dd16`. Nothing to add beyond what the three entries above already cove
 
 ---
 
+> **Reflection cycle**: 2026-03-14 (no delta — twenty-second prompt)
+
+Still `ebda5f5`. No new code.
+
+---
+
 > **Reflection cycle**: 2026-03-14 (no delta — twenty-first prompt)
 
 Still `2ef9a63`. No new code.
@@ -502,6 +508,7 @@ None. All three questions from the previous reflection are answered. Next sessio
 
 | Date | Change |
 |------|--------|
+| 2026-03-14 | Team Feedback: no delta (22nd prompt). |
 | 2026-03-14 | Team Feedback: no delta (21st prompt). |
 | 2026-03-14 | Team Feedback: no delta (20th prompt). |
 | 2026-03-14 | Team Feedback: no delta (19th prompt). See prior substantive entry. |
