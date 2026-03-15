@@ -384,6 +384,12 @@ Still `0e9dd16`. Nothing to add beyond what the three entries above already cove
 
 ---
 
+> **Reflection cycle**: 2026-03-15 (no delta — still `58d013a`)
+
+No new code. Awaiting directive. Three CoS questions open (N-14 PDF, v0.1.4 timing, deploy target).
+
+---
+
 > **Reflection cycle**: 2026-03-15 (no delta — still `2db22ac`)
 
 No new code. Previous entry stands. Three CoS questions remain open (N-14 PDF, v0.1.4 timing, deploy target).
