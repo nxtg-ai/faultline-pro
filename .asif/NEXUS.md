@@ -77,6 +77,30 @@ The Kaggle version remains at  (tagged  at commit ).
 
 > **46 directives archived** (36 on 2026-02-28, 10 on 2026-03-12). Full text in `NEXUS-archive.md`. Summary in [## CoS Archive](#cos-archive) below.
 
+### DIRECTIVE-NXTG-20260314-09 — P1: N-13 Cloud Platform MVP — POST /scan Endpoint
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-14 | **Estimate**: M | **Status**: PENDING
+
+**Context**: Pre-N-13 hygiene DONE (Dependabot + npm verify). N-18 workspace split DONE. Architecture confirmed by CoS: `packages/api/` as Fastify service importing `@nxtg/faultline` CLI package. EU AI Act deadline August 2026 — 5 months. This is the revenue path.
+
+**Action Items**:
+1. [ ] Create `packages/api/` directory with `package.json` (name: `@nxtg/faultline-api`, private: true)
+2. [ ] Install Fastify + dependencies
+3. [ ] `POST /scan` endpoint — accepts `{ text: string, provider?: string }`, returns scan results as JSON
+4. [ ] Import `@nxtg/faultline` (CLI package) and wrap scan logic in HTTP handler
+5. [ ] API key auth middleware — `x-api-key` header, validate against env var `FAULTLINE_API_KEY`
+6. [ ] Health check endpoint: `GET /health`
+7. [ ] Tests: add API route tests (valid scan, missing auth, invalid input)
+8. [ ] Update root `package.json` workspaces to include `packages/api`
+
+**Constraints**:
+- M-sized. USE PLAN MODE — this is architectural.
+- Fastify (lighter than Express — CoS decision).
+- Import CLI as library, do NOT duplicate scan logic.
+- Do NOT build billing/Stripe yet — that's N-15.
+
+---
+
 ### DIRECTIVE-NXTG-20260314-07 — Pre-N-13 Hygiene: Dependabot Triage + npm Verify
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
 **Injected**: 2026-03-14 | **Estimate**: S | **Status**: DONE | **CoS ACK**: 2026-03-14
