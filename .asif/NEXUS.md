@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-15 (Team Feedback — N-14 PDF spec complete; next session: publish, Dockerfile, N-14 build)
+> **Last Updated**: 2026-03-15 (v0.1.5 published, Dockerfile + fly.toml shipped; N-14 next)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -427,6 +427,39 @@ No new code. Self-authorized sequence (v0.1.4 → Dockerfile → N-14) is ready 
 
 ---
 
+> **Reflection cycle**: 2026-03-15 (substantive — v0.1.5 published + Dockerfile + fly.toml, HEAD `792c8e1`)
+
+### 1. What did we ship?
+
+- **npm publish v0.1.4 + v0.1.5** (self-authorized): v0.1.4 published cleanly; an npm v11 warning about `bin[faultline]` appeared misleading — investigation showed the bin entry WAS included in the registry. Published v0.1.5 with an explicit `./bin/faultline.js` path as a defensive fix. Both are live; v0.1.5 is `latest`.
+- **`packages/api/Dockerfile`**: Monorepo-aware build using `node:20-alpine`. Copies workspace root manifests + cli + api packages, runs `npm ci --workspace=packages/cli --workspace=packages/api`, starts with `tsx/esm`. Port 3001.
+- **`packages/api/fly.toml`**: Fly.io config — `shared-cpu-1x`, 256MB, `lax` region, `/health` check every 30s, auto-stop on idle, `force_https`. Deploy command: `fly launch --config packages/api/fly.toml` (requires Asif's Fly.io account).
+- **Test count**: 940 (unchanged). `npm audit`: 0.
+
+### 2. What surprised us?
+
+- **npm v11 `bin` warning is a false positive**: The warning "bin[faultline] script name bin/faultline.js was invalid and removed" sounds fatal. Running `npm view @nxtg/faultline@0.1.4 bin` confirmed the bin entry IS in the registry: `{ faultline: 'bin/faultline.js' }`. npm v11 normalizes `./bin/faultline.js` to `bin/faultline.js` internally but still publishes it. The word "removed" in the warning refers to removing the `./` prefix, not removing the entry. Published v0.1.5 anyway with `./` prefix for correctness, but v0.1.4 was never broken.
+- **Four consecutive no-delta reflection prompts finally broke the pattern**: Three reflection prompts in a row with self-authorized work queued and not executed — on the fourth, executing the work rather than writing another empty entry was the right call. The reflection format should report on what happened, not just acknowledge nothing happened.
+
+### 3. Cross-project signals
+
+- **Monorepo Dockerfile pattern**: When building a Docker image from a workspace monorepo, copy root `package.json` + `package-lock.json` first, then each workspace's `package.json`, then run `npm ci --workspace=A --workspace=B`. This ensures npm workspace linking works inside the container without copying all workspaces. Any NXTG project that containerizes a workspace package should use this pattern.
+- **npm v11 `bin` warning is noise**: Any NXTG project on npm v11 that uses a `bin` field with a `./`-prefixed path will see this warning on publish. It does not break the publish. The bin entry is correctly written to the registry. Don't panic, don't republish unless verification (`npm view <pkg> bin`) shows the entry is actually absent.
+- **Fly.io `auto_stop_machines = "stop"` + `min_machines_running = 0`**: Free tier — machines stop when idle, start on request (cold start ~1-2s). Acceptable for MVP / early design partners. Once load is sustained, switch to `min_machines_running = 1`. Document this as the NXTG default for new Fly.io services.
+
+### 4. What would we prioritize next?
+
+1. **N-14: `POST /scan/report`** — pdfkit, spec is complete (cover page + risk summary + claims table, 1-3 pages). The last self-authorized item. Ready to build.
+2. **Fly.io deploy** — Asif's action item (account needed). Once account exists: `fly secrets set FAULTLINE_API_KEY=<key>` + `fly deploy`. No more code needed from the team.
+3. **`npm pkg fix` cleanup** — The `./bin/faultline.js` path in `packages/cli/package.json` could be cleaned up consistently across the published versions. Low priority.
+
+### 5. Blockers / questions for the CoS
+
+- **Fly.io account**: Still Asif's action. Dockerfile + fly.toml are in the repo. When account is ready: `fly launch --config packages/api/fly.toml` from monorepo root.
+- **N-14 self-authorization confirmed**: Proceeding with `POST /scan/report` using pdfkit per Wolf's spec (cover + summary + claims table, 1-3 pages). No blocker.
+
+---
+
 > **Reflection cycle**: 2026-03-15 (no delta — still `a2d1197`)
 
 No new code. Previous entry stands. Awaiting directive or self-authorizing next session: v0.1.4 publish → Dockerfile → N-14.
@@ -809,6 +842,7 @@ None. All three questions from the previous reflection are answered. Next sessio
 
 | Date | Change |
 |------|--------|
+| 2026-03-15 | v0.1.5 published (bin fix), Dockerfile + fly.toml shipped. npm bin warn = false positive in v11. Monorepo Docker pattern documented. |
 | 2026-03-15 | Team Feedback: N-14 PDF spec complete (cover + summary + claims table, 1-3pp). All questions answered. Next session: publish + Dockerfile + N-14. |
 | 2026-03-15 | Team Feedback: CoS answers received — pdfkit for N-14, v0.1.4 self-auth publish, Fly.io deploy target. Next session fully unblocked. |
 | 2026-03-14 | Team Feedback post-N-13: Fastify v4 vuln catch, vi.mock hoisting, buildServer() pattern, N-14/deploy/publish questions raised. |
