@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-15 (Team Feedback — no delta, open questions: N-14 PDF, v0.1.4 publish, deploy target)
+> **Last Updated**: 2026-03-15 (Team Feedback — CoS answers received: pdfkit/N-14, v0.1.4 self-auth, Fly.io deploy)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -384,6 +384,42 @@ Still `0e9dd16`. Nothing to add beyond what the three entries above already cove
 
 ---
 
+> **Reflection cycle**: 2026-03-15 (substantive — CoS answers received, HEAD `755688a`)
+
+### 1. What did we ship?
+
+No new code this session. CoS enrichment commit `755688a` landed — three decisions that resolve the open questions from post-N-13 and unlock the next session fully.
+
+- **Test count**: 940 (unchanged).
+
+### 2. What surprised us?
+
+- **All three questions answered in one cycle**: N-14 library choice, v0.1.4 timing, and deployment target all resolved in a single CoS commit. The post-N-13 reflection did its job — three concrete questions, three concrete answers.
+- **Fly.io decision includes a "write the Dockerfile + fly.toml now" directive**: The CoS explicitly authorized writing deploy config even before Asif sets up the Fly.io account. This is the right call — infra config is code and should live in the repo regardless of whether the account exists yet. Unblocks future team members and makes the deploy path visible.
+- **pdfkit over puppeteer is a 60× size difference**: pdfkit is ~5MB; puppeteer/Chromium is 300MB+. For a compliance report that's tables + text + headers, dragging in a headless browser would have been architectural debt from day one. Wolf's call is correct and saves future headache with cold starts on Fly.io.
+- **"Publish cleanup releases without waiting for features" is a healthy principle**: The CoS explicitly named the anti-pattern — "don't let features gate cleanup releases." v0.1.4 contains real improvements (workspace split, geminiService fix, clean lockfile) that npm users should have now. Deferring it to bundle with N-14 would dilute the signal of both releases.
+
+### 3. Cross-project signals
+
+- **Portfolio publish cadence principle**: "Ship cleanup releases independently of feature releases." This applies to any NXTG project that has accumulated maintenance improvements. Don't batch a dependency cleanup or structural fix into the next feature release — publish it as a patch bump now. Users and CI pipelines benefit immediately, and the feature release stays semantically clean.
+- **Fly.io as NXTG standard for Node/Fastify services**: Wolf's decision gives us a deployment standard. Any NXTG project running a Node/Fastify HTTP service should default to Fly.io: `fly launch` auto-detects Node, Dockerfile auto-generated, free tier for early projects. Recommend adding to ASIF portfolio infrastructure standards.
+- **pdfkit for structured document generation**: For any NXTG project needing programmatic PDFs (reports, invoices, audit docs), pdfkit is the portfolio-standard choice. Avoid puppeteer/Chromium for server-side PDF unless HTML rendering fidelity is specifically required.
+
+### 4. What would we prioritize next?
+
+All three are now self-authorized and sequenced by the CoS:
+
+1. **npm publish v0.1.4** — Self-authorized. `npm version patch && npm publish --workspace=packages/cli`. Clean CLI tarball confirmed. Publish before N-14 begins.
+2. **Dockerfile + fly.toml for `packages/api/`** — Self-authorized. Write deploy config now; Fly.io account setup is Asif's action item. Makes the deploy path concrete and reviewable.
+3. **N-14: `POST /scan/report` endpoint** — pdfkit in `packages/api/`. Executive summary + per-claim evidence tables. This is the enterprise revenue unlock for EU AI Act compliance teams.
+
+### 5. Blockers / questions for the CoS
+
+- **Fly.io account**: Wolf flagged this as escalated to Asif. No action needed from the team — we'll write the Dockerfile + fly.toml and wait for the account. When Asif has a Fly.io account, `fly launch` + `fly deploy` from `packages/api/` is all that remains.
+- **N-14 pdfkit report structure**: Should the PDF report include a cover page (project name, scan date, risk tier) + table of contents + per-claim pages? Or minimal: risk summary table + claim list only? A spec would help define the test assertions. Flagging in case CoS has a preferred format or enterprise compliance requirement to match.
+
+---
+
 > **Reflection cycle**: 2026-03-15 (no delta — still `58d013a`)
 
 No new code. Awaiting directive. Three CoS questions open (N-14 PDF, v0.1.4 timing, deploy target).
@@ -728,6 +764,7 @@ None. All three questions from the previous reflection are answered. Next sessio
 
 | Date | Change |
 |------|--------|
+| 2026-03-15 | Team Feedback: CoS answers received — pdfkit for N-14, v0.1.4 self-auth publish, Fly.io deploy target. Next session fully unblocked. |
 | 2026-03-14 | Team Feedback post-N-13: Fastify v4 vuln catch, vi.mock hoisting, buildServer() pattern, N-14/deploy/publish questions raised. |
 | 2026-03-14 | DIRECTIVE-09 complete: N-13 SHIPPED. packages/api (Fastify v5), POST /scan, auth, GET /health, 11 tests. Total: 940. N-13 → SHIPPED. |
 | 2026-03-14 | Team Feedback post-DIRECTIVE-07: lockfile drift caught, Dependabot transitive resolution noted, N-13 directive requested. |
