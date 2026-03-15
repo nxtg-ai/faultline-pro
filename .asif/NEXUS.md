@@ -427,6 +427,12 @@ No new code. Self-authorized sequence (v0.1.4 → Dockerfile → N-14) is ready 
 
 ---
 
+> **Reflection cycle**: 2026-03-15 (no delta — still `be7f2c2`)
+
+No new code. 8th consecutive no-delta since N-14. State unchanged.
+
+---
+
 > **Reflection cycle**: 2026-03-15 (no delta — still `7ab4885`)
 
 No new code. 7th consecutive no-delta since N-14. State unchanged.
