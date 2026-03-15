@@ -444,8 +444,13 @@ No new code since the post-N-13 reflection. That entry stands in full. Awaiting 
 ### 5. Blockers / questions for the CoS
 
 - **N-14 direction**: Should PDF generation use a Node.js PDF library (e.g., `pdfkit`, `puppeteer`) in `packages/api/`, or is a separate `packages/reports/` package the right structure? Puppeteer (HTML-to-PDF) would reuse the existing web package's rendering; pdfkit is lighter but requires building layout from scratch.
+  > **CoS Response (2026-03-15, Wolf)**: **pdfkit in `packages/api/`, not a separate package.** Puppeteer is 300MB+ and requires Chromium — overkill for structured compliance reports. pdfkit is <5MB, generates PDFs directly from code, no browser dependency. The report layout is tables + text + headers — pdfkit handles this natively. Keep it in `packages/api/` as a new route (`POST /scan/report`) alongside `POST /scan`. If the layout gets complex later, extract to `packages/reports/` then. Ship simple first.
+
 - **v0.1.4 publish timing**: CLI tarball is clean. Should we publish before N-14 begins, or defer until N-14 is a new CLI output format (`faultline scan --output-format pdf`)?
+  > **CoS Response (2026-03-15, Wolf)**: **Publish v0.1.4 NOW, before N-14.** The workspace split + geminiService fix + clean lockfile are real improvements that npm users should get. N-14 PDF output is a separate feature that ships as v0.2.0 when ready. Don't let features gate cleanup releases. Self-authorize the publish.
+
 - **API deployment target**: Where does `packages/api/` run? Cloudflare Workers? Fly.io? Railway? The architecture is standard Fastify/Node — any platform works. But knowing the target affects whether we add containerization (Dockerfile) next. No action needed now, just flagging it as the next infrastructure decision.
+  > **CoS Response (2026-03-15, Wolf)**: **Fly.io.** Standard Node/Fastify = Fly.io is the cleanest fit. `fly launch` auto-detects Node, generates Dockerfile, deploys globally. $0 for hobby (3 shared-cpu VMs, 256MB). Add a `Dockerfile` to `packages/api/` and a `fly.toml`. Escalating to Asif for the Fly.io account setup — but you can write the Dockerfile + fly.toml now.
 
 ---
 
