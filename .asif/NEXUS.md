@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-15 (Team Feedback — CoS answers received: pdfkit/N-14, v0.1.4 self-auth, Fly.io deploy)
+> **Last Updated**: 2026-03-15 (Team Feedback — N-14 PDF spec complete; next session: publish, Dockerfile, N-14 build)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -421,6 +421,38 @@ All three are now self-authorized and sequenced by the CoS:
 
 ---
 
+> **Reflection cycle**: 2026-03-15 (substantive — N-14 PDF spec complete, HEAD `5399353`)
+
+### 1. What did we ship?
+
+No new code. CoS commit `5399353` landed the N-14 PDF structure spec. All open questions are now answered. Next session has zero ambiguity.
+
+- **Test count**: 940 (unchanged).
+
+### 2. What surprised us?
+
+- **The "1-3 pages max" constraint is the most valuable part of the spec**: Enterprise compliance teams want a document they can attach to an audit trail — not a deep-dive report. The constraint to skip per-claim pages and keep it to cover + summary + table directly shapes the pdfkit implementation. Without this, the natural instinct would be to build a rich multi-page report that's actually harder to use in practice.
+- **The spec is fully testable**: Cover page fields (title, date, risk tier), claims table columns (text, verdict, confidence, source, risk tier), footer text — every element is named. Tests can assert PDF text content directly via pdfkit's text extraction, or indirectly by asserting the route returns a `application/pdf` response with non-zero body. No ambiguity left.
+
+### 3. Cross-project signals
+
+- **Spec-before-build on document generation pays off**: Document layout decisions (page count, columns, fields) are hard to change post-build because they ripple into tests, user expectations, and downstream tooling (e.g., audit trail parsers). Getting the CoS to spec the structure before a line of pdfkit code is written saved at least one refactor cycle.
+
+### 4. What would we prioritize next?
+
+Fully unblocked. Execution sequence:
+
+1. **npm publish v0.1.4** — `npm version patch` in `packages/cli/`, `npm publish`. Self-authorized.
+2. **Dockerfile + `fly.toml`** in `packages/api/` — Fly.io Node detection, port 3001, health check on `/health`. Self-authorized.
+3. **N-14: `POST /scan/report`** — pdfkit, cover page + risk summary + claims table, `application/pdf` response. Spec is complete. Self-authorized.
+
+### 5. Blockers / questions for the CoS
+
+- **Fly.io account**: Still Asif's action item. Dockerfile + fly.toml will be ready; deploy waits on account.
+- **v0.1.4 publish authorization confirmation**: Wolf said "self-authorize the publish" — confirming this means running `npm publish` with the `@nxtg` org token that was used for v0.1.3. No additional approval needed?
+
+---
+
 > **Reflection cycle**: 2026-03-15 (no delta — still `58d013a`)
 
 No new code. Awaiting directive. Three CoS questions open (N-14 PDF, v0.1.4 timing, deploy target).
@@ -765,6 +797,7 @@ None. All three questions from the previous reflection are answered. Next sessio
 
 | Date | Change |
 |------|--------|
+| 2026-03-15 | Team Feedback: N-14 PDF spec complete (cover + summary + claims table, 1-3pp). All questions answered. Next session: publish + Dockerfile + N-14. |
 | 2026-03-15 | Team Feedback: CoS answers received — pdfkit for N-14, v0.1.4 self-auth publish, Fly.io deploy target. Next session fully unblocked. |
 | 2026-03-14 | Team Feedback post-N-13: Fastify v4 vuln catch, vi.mock hoisting, buildServer() pattern, N-14/deploy/publish questions raised. |
 | 2026-03-14 | DIRECTIVE-09 complete: N-13 SHIPPED. packages/api (Fastify v5), POST /scan, auth, GET /health, 11 tests. Total: 940. N-13 → SHIPPED. |
