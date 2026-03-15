@@ -79,7 +79,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260314-07 — Pre-N-13 Hygiene: Dependabot Triage + npm Verify
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-14 | **Estimate**: S | **Status**: DONE | **CoS ACK**: pending
+**Injected**: 2026-03-14 | **Estimate**: S | **Status**: DONE | **CoS ACK**: 2026-03-14
 
 **Context**: N-18 workspace split is DONE (929 tests). Before starting N-13 Cloud Platform, clean the foundation. 4 remaining Dependabot vulns (3 auto-merged, 4 open) should not be inherited into the new `packages/api/` surface. Team correctly identified this as priority #2 in their latest feedback.
 
