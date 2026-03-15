@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-14 (DIRECTIVE-07 complete — 0 vulns, clean install, tarball verified, 929 tests, N-13 unblocked)
+> **Last Updated**: 2026-03-14 (Team Feedback post-DIRECTIVE-07 — 0 vulns, 929 tests, lockfile clean, N-13 ready)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -337,6 +337,37 @@ Still `0e9dd16`. Nothing to add beyond what the three entries above already cove
 
 ---
 
+> **Reflection cycle**: 2026-03-14 (substantive — DIRECTIVE-07 complete, HEAD `12dd5da`)
+
+### 1. What did we ship?
+
+- **DIRECTIVE-07: Pre-N-13 Hygiene** (`75644b1`, `12dd5da`): All 7 Dependabot vulnerabilities resolved — `npm audit` returns 0. Clean install confirmed (263 packages, 0 peer dep conflicts). Tarball verified: 42 files, 55.5 kB, zero React/Vite/lucide, `services/geminiService.ts` present. Lockfile committed (`12dd5da`).
+- **Test count**: 929/929 — unchanged across both commits.
+
+### 2. What surprised us?
+
+- **0 vulns without `npm audit fix`**: The directive was written expecting manual triage of 4 remaining vulns. In fact, `npm audit` returned 0 immediately — the 3 auto-merged Dependabot PRs (minimatch/rollup/undici) resolved all 7 through transitive dependency updates. The hygiene work took minutes, not the anticipated 30–60.
+- **Lockfile drift was a silent gap**: The clean install in DIRECTIVE-07 regenerated `package-lock.json` with 12 line changes, but the directive commit didn't include it — the hook caught it as an uncommitted change on the next prompt. Lesson: `npm install` changes the lockfile; always stage it in the same commit as the work that triggered it.
+
+### 3. Cross-project signals
+
+- **Dependabot transitive resolution is more powerful than expected**: A patch bump on one direct dep can silently resolve vulnerabilities in several transitive deps. For any NXTG project with open Dependabot alerts: merge the auto-PRs first, then run `npm audit` — you'll often find the queue shorter than the alert count suggests.
+- **"Lockfile in the same commit" as a portfolio standard**: Any NXTG project that runs `npm install` as part of a task should commit the resulting lockfile in the same commit. Leaving it as an untracked modification is a hygiene risk that tooling (hooks, CI) will flag on the next trigger.
+
+### 4. What would we prioritize next?
+
+1. **N-13 Cloud Platform MVP** — `packages/api/` as Fastify service. `POST /scan` → JSON compliance report, API key auth, usage metering. Nothing blocks this. EU AI Act August 2026 is 5 months out. Workspace is clean, vulns are zero, tests are green. This is the next revenue-path work.
+2. **npm publish v0.1.4** — Workspace split + geminiService fix + clean lockfile are publishable. Worth a patch bump before N-13 introduces new surface area.
+3. **Terminal demo GIF** (`vhs`, `docs/demo.tape`) — Still on the list. 30-minute investment, high README/launch value.
+
+### 5. Blockers / questions for the CoS
+
+- **N-13 directive**: Ready to execute. No technical blockers. Awaiting CoS directive to begin `packages/api/`.
+- **v0.1.4 publish**: Should this happen before N-13 starts, or after N-13 ships? Doing it before gives a clean publish-then-build sequence; doing it after means v0.1.4 and N-13 land in the same release.
+- **Cadence guard (standing)**: Still observing repeated reflection prompts with no intervening code. This is the 24th+ prompt this session. Team Question in NEXUS remains unanswered.
+
+---
+
 > **Reflection cycle**: 2026-03-14 (substantive — vitest v4 fix + Dependabot triage, HEAD `681d481`)
 
 ### 1. What did we ship?
@@ -574,6 +605,7 @@ None. All three questions from the previous reflection are answered. Next sessio
 
 | Date | Change |
 |------|--------|
+| 2026-03-14 | Team Feedback post-DIRECTIVE-07: lockfile drift caught, Dependabot transitive resolution noted, N-13 directive requested. |
 | 2026-03-14 | DIRECTIVE-07 complete: pre-N-13 hygiene. 0 vulns, clean install, tarball verified (42 files, 0 React). 929 tests. N-13 unblocked. |
 | 2026-03-14 | Team Feedback: substantive — vitest v4 fix (`89ec87c`) + 3 Dependabot bumps (minimatch/rollup/undici). 929 tests. N-13 unblocked. |
 | 2026-03-14 | Team Feedback: no delta (22nd prompt). |
