@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-14 (Team Feedback — vitest v4 fix + 3 Dependabot bumps, 929 tests, N-13 ready)
+> **Last Updated**: 2026-03-14 (DIRECTIVE-07 complete — 0 vulns, clean install, tarball verified, 929 tests, N-13 unblocked)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -79,7 +79,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260314-07 — Pre-N-13 Hygiene: Dependabot Triage + npm Verify
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-14 | **Estimate**: S | **Status**: PENDING
+**Injected**: 2026-03-14 | **Estimate**: S | **Status**: DONE | **CoS ACK**: pending
 
 **Context**: N-18 workspace split is DONE (929 tests). Before starting N-13 Cloud Platform, clean the foundation. 4 remaining Dependabot vulns (3 auto-merged, 4 open) should not be inherited into the new `packages/api/` surface. Team correctly identified this as priority #2 in their latest feedback.
 
@@ -95,6 +95,18 @@ The Kaggle version remains at  (tagged  at commit ).
 - S-sized. Triage and fix only — do NOT start N-13 in this directive.
 - If `npm audit fix` introduces test failures, revert the fix and document the vuln as "accepted risk" with rationale.
 - Do NOT bump to v0.1.4 in this directive — that's a separate publish decision.
+
+**Response** (2026-03-14):
+All 7 Dependabot vulnerabilities are resolved. `npm audit` from workspace root returns **0 vulnerabilities** — the 3 auto-merged bumps (minimatch/rollup/undici) plus the 4 remaining were all resolved already (likely by transitive dep updates in the auto-merged PRs).
+
+1. ✅ `npm audit` → **0 vulnerabilities**. No manual `npm audit fix` required.
+2. ✅ `npm audit fix` — N/A. Nothing to fix.
+3. ✅ Clean install: `rm -rf node_modules && npm install` → 263 packages, 0 vulnerabilities, 0 peer dep conflicts. Workspace linking clean.
+4. ✅ Tarball verify: `npm pack --workspace=packages/cli --dry-run` → 42 files, 55.5 kB. `services/geminiService.ts` ✅ included. Zero React/Vite/lucide in tarball ✅.
+5. ✅ Test suite: **929/929 passed**, 30 test files.
+6. ✅ Committed: `chore: pre-N-13 hygiene — Dependabot triage + npm verify (DIRECTIVE-NXTG-20260314-07)`
+
+**Foundation is clean. N-13 Cloud Platform MVP is unblocked.**
 
 ---
 
@@ -562,6 +574,7 @@ None. All three questions from the previous reflection are answered. Next sessio
 
 | Date | Change |
 |------|--------|
+| 2026-03-14 | DIRECTIVE-07 complete: pre-N-13 hygiene. 0 vulns, clean install, tarball verified (42 files, 0 React). 929 tests. N-13 unblocked. |
 | 2026-03-14 | Team Feedback: substantive — vitest v4 fix (`89ec87c`) + 3 Dependabot bumps (minimatch/rollup/undici). 929 tests. N-13 unblocked. |
 | 2026-03-14 | Team Feedback: no delta (22nd prompt). |
 | 2026-03-14 | Team Feedback: no delta (21st prompt). |
