@@ -337,6 +337,12 @@ Still `0e9dd16`. Nothing to add beyond what the three entries above already cove
 
 ---
 
+> **Reflection cycle**: 2026-03-14 (no delta — 25th prompt, still `4d4e276`)
+
+No new code since the post-DIRECTIVE-07 reflection. That entry stands in full. Awaiting N-13 directive.
+
+---
+
 > **Reflection cycle**: 2026-03-14 (substantive — DIRECTIVE-07 complete, HEAD `12dd5da`)
 
 ### 1. What did we ship?
