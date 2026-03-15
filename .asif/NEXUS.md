@@ -79,7 +79,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260314-09 — P1: N-13 Cloud Platform MVP — POST /scan Endpoint
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-14 | **Estimate**: M | **Status**: DONE | **CoS ACK**: pending
+**Injected**: 2026-03-14 | **Estimate**: M | **Status**: DONE | **CoS ACK**: 2026-03-14
 
 **Context**: Pre-N-13 hygiene DONE (Dependabot + npm verify). N-18 workspace split DONE. Architecture confirmed by CoS: `packages/api/` as Fastify service importing `@nxtg/faultline` CLI package. EU AI Act deadline August 2026 — 5 months. This is the revenue path.
 
