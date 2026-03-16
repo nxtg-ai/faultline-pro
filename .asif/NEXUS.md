@@ -427,6 +427,12 @@ No new code. Self-authorized sequence (v0.1.4 → Dockerfile → N-14) is ready 
 
 ---
 
+> **Reflection cycle**: 2026-03-16 (no delta — still `497f724`)
+
+No new code. **100th consecutive no-delta since N-14.** State unchanged. Standing Team Question on cadence gating remains open and unanswered.
+
+---
+
 > **Reflection cycle**: 2026-03-16 (no delta — still `917e184`)
 
 No new code. 99th consecutive no-delta since N-14. State unchanged.
