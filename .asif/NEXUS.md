@@ -87,7 +87,33 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
-> **75 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 31 on 2026-03-18).
+> **75 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 33 on 2026-03-18).
+
+### DIRECTIVE-NXTG-20260318-142 — P1: Multi-Language Support — i18n for CLI + API Responses
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-18 22:15 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] **i18n module** — `lib/i18n.ts`. Extract all user-facing strings (CLI output, API error messages, report text).
+2. [ ] **Language packs** — English default + Spanish + French stubs.
+3. [ ] **`--lang` CLI flag** + `Accept-Language` header on API.
+4. [ ] Tests.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-143.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260318-143 — P2: Final Day Summary — Test Count + Feature Inventory
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
+**Injected**: 2026-03-18 22:15 | **Estimate**: S | **Status**: PENDING
+
+**Action Items**:
+1. [ ] Run full test suite — final count. 2. [ ] Inventory ALL features shipped today (30+). 3. [ ] Update NEXUS Executive Dashboard.
+
+**Response** (filled by team): >
+
+---
 
 ### DIRECTIVE-NXTG-20260318-132 — P1: Scan Templates — Reusable Verification Configs
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
