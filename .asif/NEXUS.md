@@ -77,6 +77,39 @@ The Kaggle version remains at  (tagged  at commit ).
 
 > **46 directives archived** (36 on 2026-02-28, 10 on 2026-03-12). Full text in `NEXUS-archive.md`. Summary in [## CoS Archive](#cos-archive) below.
 
+### DIRECTIVE-NXTG-20260318-38 — P1: Webhook System + Event Notifications
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-18 13:30 | **Estimate**: M | **Status**: PENDING
+
+**Context**: N-11→N-15 all SHIPPED. API is enterprise-grade (key mgmt, audit, metering, rate limits). Next: let customers receive scan results via webhooks.
+
+**Action Items**:
+1. [ ] **Webhook registration** — `POST /webhooks` (url, events, secret). `GET /webhooks`. `DELETE /webhooks/:id`.
+2. [ ] **Event dispatch** — on scan complete, POST signed payload to registered URLs. HMAC-SHA256 signature in `X-Faultline-Signature` header.
+3. [ ] **Retry logic** — 3 attempts with exponential backoff on 5xx/timeout.
+4. [ ] Tests: cover registration CRUD, dispatch, signature verification, retry.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-39.
+
+**Response** (filled by team):
+>
+
+---
+
+### DIRECTIVE-NXTG-20260318-39 — P2: OpenAPI Spec + SDK Codegen Prep
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
+**Injected**: 2026-03-18 13:30 | **Estimate**: S | **Status**: PENDING
+
+**Action Items**:
+1. [ ] Auto-generate OpenAPI 3.1 spec from Fastify routes.
+2. [ ] Validate spec with `swagger-cli validate`.
+3. [ ] Document at `packages/api/docs/openapi.yaml`.
+
+**Response** (filled by team):
+>
+
+---
+
 ### DIRECTIVE-NXTG-20260318-32 — P1: N-15 Rate Limiting + Usage Dashboards
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
 **Injected**: 2026-03-18 13:00 | **Estimate**: M | **Status**: DONE
