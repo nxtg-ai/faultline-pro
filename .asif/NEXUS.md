@@ -82,7 +82,32 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
-> **73 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 25 on 2026-03-18).
+> **73 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 27 on 2026-03-18).
+
+### DIRECTIVE-NXTG-20260318-114 — P1: Comparison API — Diff Two Scans
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-18 19:45 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] **`POST /scan/compare`** — accept two scan results, return: new claims, removed claims, changed verdicts, trust score delta.
+2. [ ] **CLI `faultline compare`** — compare two scan IDs or two texts side-by-side.
+3. [ ] Tests.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-115.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260318-115 — P2: Full Portfolio README + npm Publish Readiness
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
+**Injected**: 2026-03-18 19:45 | **Estimate**: S | **Status**: PENDING
+
+**Action Items**:
+1. [ ] README rewrite — complete feature list (20+ features shipped today). 2. [ ] `npm pack --dry-run` verify. 3. [ ] Final test count.
+
+**Response** (filled by team): >
+
+---
 
 
 
