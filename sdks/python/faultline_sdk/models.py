@@ -1,0 +1,273 @@
+"""Faultline SDK data models.
+
+All models are plain dataclasses with no external dependencies.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any
+
+# Semantic type aliases — kept as str for simplicity; narrowed by the API contract.
+Permission = str  # 'scan' | 'report' | 'upload' | 'admin' | 'pro'
+Provider = str    # 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock'
+RiskLevel = str   # 'low' | 'medium' | 'high' | 'critical'
+
+
+@dataclass
+class ApiKey:
+    """An API key returned by the /keys endpoint.
+
+    Attributes:
+        id: Unique key identifier.
+        name: Human-readable name for the key.
+        permissions: List of permission strings granted to this key.
+        created_at: ISO-8601 creation timestamp.
+        key: Raw key secret — only present in creation responses.
+    """
+
+    id: str
+    name: str
+    permissions: list[str]
+    created_at: str
+    key: str | None = None
+
+
+@dataclass
+class Source:
+    """A web source cited during claim verification.
+
+    Attributes:
+        title: Page title or descriptor.
+        url: Source URL.
+    """
+
+    title: str
+    url: str
+
+
+@dataclass
+class VerificationResult:
+    """Result of verifying a single claim against live web data.
+
+    Attributes:
+        claim_id: ID of the claim this result belongs to.
+        status: Verdict — one of 'supported', 'contradicted', 'unverified', 'mixed', 'skipped'.
+        explanation: Human-readable explanation of the verdict.
+        sources: Web sources consulted during verification.
+    """
+
+    claim_id: str
+    status: str
+    explanation: str
+    sources: list[Source] = field(default_factory=list)
+
+
+@dataclass
+class Claim:
+    """An atomic claim extracted from input text.
+
+    Attributes:
+        id: Unique claim identifier.
+        text: The extracted claim text.
+        type: Claim category (e.g. 'factual', 'statistical', 'causal').
+        importance: Priority score (1–10) indicating verification priority.
+    """
+
+    id: str
+    text: str
+    type: str
+    importance: int
+
+
+@dataclass
+class ComplianceReport:
+    """Compliance tier and findings for a scan.
+
+    Attributes:
+        risk_tier: Overall risk tier — one of 'low', 'medium', 'high', 'critical'.
+        findings: List of structured finding dicts (rule violations, flags, etc.).
+    """
+
+    risk_tier: str
+    findings: list[dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass
+class ScanResult:
+    """Full result of a single /scan request.
+
+    Attributes:
+        input: Original text that was scanned.
+        provider: AI provider used for extraction and verification.
+        overall_risk: Aggregate risk level — 'low', 'medium', 'high', or 'critical'.
+        claims: Atomic claims extracted from the input.
+        verifications: Map of claim ID -> VerificationResult.
+        compliance_report: Compliance tier and detailed findings.
+        rule_findings: Additional rule-engine findings (defaults to empty list).
+    """
+
+    input: str
+    provider: str
+    overall_risk: str
+    claims: list[Claim]
+    verifications: dict[str, VerificationResult]
+    compliance_report: ComplianceReport
+    rule_findings: list[dict[str, Any]] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ScanResult:
+        """Construct a ScanResult from a raw API response dictionary.
+
+        Args:
+            data: Parsed JSON response from the /scan endpoint.
+
+        Returns:
+            A fully-populated ScanResult instance.
+        """
+        claims = [
+            Claim(
+                id=c["id"],
+                text=c["text"],
+                type=c["type"],
+                importance=c["importance"],
+            )
+            for c in data.get("claims", [])
+        ]
+
+        raw_verifications: dict[str, Any] = data.get("verifications", {})
+        verifications: dict[str, VerificationResult] = {}
+        for claim_id, v in raw_verifications.items():
+            sources = [
+                Source(title=s.get("title", ""), url=s.get("url", ""))
+                for s in v.get("sources", [])
+            ]
+            verifications[claim_id] = VerificationResult(
+                claim_id=v.get("claimId", claim_id),
+                status=v.get("status", "unverified"),
+                explanation=v.get("explanation", ""),
+                sources=sources,
+            )
+
+        raw_compliance: dict[str, Any] = data.get("complianceReport", {})
+        compliance_report = ComplianceReport(
+            risk_tier=raw_compliance.get("riskTier", "low"),
+            findings=raw_compliance.get("findings", []),
+        )
+
+        return cls(
+            input=data.get("input", ""),
+            provider=data.get("provider", ""),
+            overall_risk=data.get("overallRisk", "low"),
+            claims=claims,
+            verifications=verifications,
+            compliance_report=compliance_report,
+            rule_findings=data.get("ruleFindings", []),
+        )
+
+
+@dataclass
+class BatchScanError:
+    """Represents a failure for one item in a batch scan request.
+
+    Attributes:
+        index: Zero-based index of the item that failed.
+        error: Human-readable error message.
+    """
+
+    index: int
+    error: str
+
+
+@dataclass
+class BatchScanResponse:
+    """Result of a /scan/batch request.
+
+    Attributes:
+        total: Total number of texts submitted.
+        succeeded: Number of texts successfully scanned.
+        failed: Number of texts that failed.
+        results: Per-item ScanResult (None where the item failed).
+        errors: Per-failure BatchScanError records.
+    """
+
+    total: int
+    succeeded: int
+    failed: int
+    results: list[ScanResult | None]
+    errors: list[BatchScanError]
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> BatchScanResponse:
+        """Construct a BatchScanResponse from a raw API response dictionary.
+
+        Args:
+            data: Parsed JSON response from the /scan/batch endpoint.
+
+        Returns:
+            A fully-populated BatchScanResponse instance.
+        """
+        raw_results: list[Any] = data.get("results", [])
+        results: list[ScanResult | None] = [
+            ScanResult.from_dict(r) if r is not None else None
+            for r in raw_results
+        ]
+
+        errors = [
+            BatchScanError(index=e["index"], error=e["error"])
+            for e in data.get("errors", [])
+        ]
+
+        return cls(
+            total=data.get("total", len(raw_results)),
+            succeeded=data.get("succeeded", 0),
+            failed=data.get("failed", 0),
+            results=results,
+            errors=errors,
+        )
+
+
+@dataclass
+class Webhook:
+    """A registered webhook endpoint.
+
+    Attributes:
+        id: Unique webhook identifier.
+        url: Destination URL for event delivery.
+        events: List of event names this webhook subscribes to.
+        created_at: ISO-8601 creation timestamp.
+        secret: HMAC signing secret — only present in creation responses.
+    """
+
+    id: str
+    url: str
+    events: list[str]
+    created_at: str
+    secret: str | None = None
+
+
+@dataclass
+class UsageResponse:
+    """API key usage statistics.
+
+    Attributes:
+        key_id: ID of the key whose usage is reported.
+        usage: Map of metric name to count (e.g. {'scans': 42, 'tokens': 18000}).
+    """
+
+    key_id: str
+    usage: dict[str, int]
+
+
+@dataclass
+class DashboardResponse:
+    """Aggregate dashboard statistics.
+
+    Attributes:
+        scans: Scan counts keyed by window — 'today', 'week', 'month'.
+        risk_distribution: Count of scans per risk level.
+        key_usage: Per-key usage breakdown list.
+    """
+
+    scans: dict[str, int]
+    risk_distribution: dict[str, int]
+    key_usage: list[dict[str, Any]]
