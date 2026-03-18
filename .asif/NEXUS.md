@@ -77,6 +77,39 @@ The Kaggle version remains at  (tagged  at commit ).
 
 > **46 directives archived** (36 on 2026-02-28, 10 on 2026-03-12). Full text in `NEXUS-archive.md`. Summary in [## CoS Archive](#cos-archive) below.
 
+### DIRECTIVE-NXTG-20260318-32 — P1: N-15 Rate Limiting + Usage Dashboards
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-18 13:00 | **Estimate**: M | **Status**: PENDING
+
+**Context**: N-12 Enterprise SHIPPED (key mgmt + audit + metering). Next: rate limiting per API key tier + usage dashboard endpoint.
+
+**Action Items**:
+1. [ ] **Rate limiter** — per-key rate limits based on scope (free: 10/day, pro: 1000/day). Use in-memory counter with sliding window.
+2. [ ] **`GET /dashboard`** — returns: scan count today/week/month, avg trust score, top risk categories, API key usage breakdown.
+3. [ ] **Rate limit headers** — `X-RateLimit-Remaining`, `X-RateLimit-Reset` on every response.
+4. [ ] Tests: 1,050+ → 1,090+ target.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-33.
+
+**Response** (filled by team):
+>
+
+---
+
+### DIRECTIVE-NXTG-20260318-33 — P2: Documentation Refresh + README Rewrite
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
+**Injected**: 2026-03-18 13:00 | **Estimate**: S | **Status**: PENDING
+
+**Action Items**:
+1. [ ] README rewrite — showcase N-11 through N-14 features, API docs, quick start.
+2. [ ] CHANGELOG from git history.
+3. [ ] Architecture diagram (CLI + API + scan engine + providers).
+
+**Response** (filled by team):
+>
+
+---
+
 ### DIRECTIVE-NXTG-20260318-15 — P1: N-12 Enterprise Features — API Keys + Audit Trail + Usage Metering
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
 **Injected**: 2026-03-18 10:30 | **Estimate**: M | **Status**: DONE
