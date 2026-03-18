@@ -77,6 +77,28 @@ The Kaggle version remains at  (tagged  at commit ).
 
 > **46 directives archived** (36 on 2026-02-28, 10 on 2026-03-12). Full text in `NEXUS-archive.md`. Summary in [## CoS Archive](#cos-archive) below.
 
+### DIRECTIVE-NXTG-20260318-04 — P1: Post-N-14 Hardening — npm verify + API docs + Dependabot cleanup
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-18 08:00 | **Estimate**: S | **Status**: PENDING
+
+**Context**: N-13 (Cloud Platform) and N-14 (Compliance Reports) both SHIPPED. 946 tests. The API is live with `POST /scan` and `POST /scan/report`. Before moving to N-15 (Revenue/Stripe), harden what's built.
+
+**Action Items**:
+1. [ ] **Verify npm package** — run `npm pack --dry-run`, confirm `@nxtg-ai/faultline` exports are correct, test install in a clean directory.
+2. [ ] **API documentation** — create/update `packages/api/README.md` with endpoint docs: `POST /scan` (request/response schema), `POST /scan/report` (PDF output), auth (API key), error codes.
+3. [ ] **Dependabot cleanup** — run `npm audit fix` for the remaining 4 vulnerabilities (per Q answer). Document any that require `--force`.
+4. [ ] **CRUCIBLE self-audit** — Gates 1-7 on the current 946-test suite.
+5. [ ] Tests: 946 → 960+ target.
+
+**Constraints**:
+- S-sized hardening — no new features
+- Do NOT start N-15 (Stripe/billing) without explicit directive (revenue decisions need Asif)
+
+**Response** (filled by team):
+>
+
+---
+
 ### DIRECTIVE-NXTG-20260314-09 — P1: N-13 Cloud Platform MVP — POST /scan Endpoint
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
 **Injected**: 2026-03-14 | **Estimate**: M | **Status**: DONE | **CoS ACK**: 2026-03-14
