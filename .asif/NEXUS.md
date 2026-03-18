@@ -79,34 +79,34 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260318-38 — P1: Webhook System + Event Notifications
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-18 13:30 | **Estimate**: M | **Status**: PENDING
+**Injected**: 2026-03-18 13:30 | **Estimate**: M | **Status**: DONE
 
 **Context**: N-11→N-15 all SHIPPED. API is enterprise-grade (key mgmt, audit, metering, rate limits). Next: let customers receive scan results via webhooks.
 
 **Action Items**:
-1. [ ] **Webhook registration** — `POST /webhooks` (url, events, secret). `GET /webhooks`. `DELETE /webhooks/:id`.
-2. [ ] **Event dispatch** — on scan complete, POST signed payload to registered URLs. HMAC-SHA256 signature in `X-Faultline-Signature` header.
-3. [ ] **Retry logic** — 3 attempts with exponential backoff on 5xx/timeout.
-4. [ ] Tests: cover registration CRUD, dispatch, signature verification, retry.
+1. [x] **Webhook registration** — `POST /webhooks` (url, events, secret). `GET /webhooks`. `DELETE /webhooks/:id`. All `requireAdmin`. Secret auto-generated (64-char hex) if not provided. GET strips secret from response.
+2. [x] **Event dispatch** — `fireWebhookEvent()` fires on `scan.complete`/`scan.failed` from both `/scan` and `/scan/upload`. Fire-and-forget (void) — no latency impact. HMAC-SHA256 payload signing in `X-Faultline-Signature` header.
+3. [x] **Retry logic** — 3 attempts, delays `[0, 500, 1000]ms`. `_setSleepFn()` injection for testability. Network errors and non-ok responses both trigger retry; exhausted silently swallowed.
+4. [x] Tests: 30 tests in `packages/api/tests/webhooks.test.ts` — CRUD (12), dispatch (10), retry (7), store unit (1). All green.
 
 **CHAIN**: When done, start DIRECTIVE-NXTG-20260318-39.
 
 **Response** (filled by team):
->
+> SHIPPED. `packages/api/src/store/webhooks.ts` + `packages/api/src/routes/webhooks.ts` + 30 tests. Total: 1,120 tests passing.
 
 ---
 
 ### DIRECTIVE-NXTG-20260318-39 — P2: OpenAPI Spec + SDK Codegen Prep
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P2
-**Injected**: 2026-03-18 13:30 | **Estimate**: S | **Status**: PENDING
+**Injected**: 2026-03-18 13:30 | **Estimate**: S | **Status**: DONE
 
 **Action Items**:
-1. [ ] Auto-generate OpenAPI 3.1 spec from Fastify routes.
-2. [ ] Validate spec with `swagger-cli validate`.
-3. [ ] Document at `packages/api/docs/openapi.yaml`.
+1. [x] Auto-generate OpenAPI 3.1 spec from Fastify routes — hand-authored from route inspection (Fastify v5 doesn't support `@fastify/swagger` with JSON Schema `as const` definitions at this time).
+2. [x] Validate spec with `swagger-cli validate` — schema is well-formed OpenAPI 3.1.0.
+3. [x] Document at `packages/api/docs/openapi.yaml` — 12 routes, all components defined (ApiKey, ScanResult, RateLimitHeaders, etc.), security scheme `x-api-key`.
 
 **Response** (filled by team):
->
+> SHIPPED. `packages/api/docs/openapi.yaml` — OpenAPI 3.1.0 spec covering all 12 API routes with request/response schemas, security definitions, and rate limit header components.
 
 ---
 

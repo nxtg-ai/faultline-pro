@@ -5,6 +5,7 @@ import { scan } from '@nxtg/faultline/cli/scan.js';
 import { extractTextFromBuffer } from '@nxtg/faultline/cli/extract.js';
 import { getAnalyticsStore } from '../store/analytics.js';
 import type { RiskLevel } from '../store/analytics.js';
+import { fireWebhookEvent } from '../store/webhooks.js';
 
 const SUPPORTED_MIMES = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
 
@@ -75,9 +76,11 @@ export async function uploadRoutes(fastify: FastifyInstance): Promise<void> {
       try {
         const result = await scan(text, provider);
         getAnalyticsStore().record(request.keyId ?? 'unknown', result.overallRisk as RiskLevel);
+        fireWebhookEvent('scan.complete', result);
         return reply.status(200).send(result);
       } catch (scanErr) {
         const message = scanErr instanceof Error ? scanErr.message : String(scanErr);
+        fireWebhookEvent('scan.failed', { error: message });
         return reply.status(500).send({ error: message });
       }
     },

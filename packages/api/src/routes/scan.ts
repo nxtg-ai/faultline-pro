@@ -4,6 +4,7 @@ import { rateLimitScan } from '../plugins/ratelimit.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { getAnalyticsStore } from '../store/analytics.js';
 import type { RiskLevel } from '../store/analytics.js';
+import { fireWebhookEvent } from '../store/webhooks.js';
 
 const BODY_SCHEMA = {
   type: 'object',
@@ -36,9 +37,11 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
       try {
         const result = await scan(text, provider);
         getAnalyticsStore().record(request.keyId ?? 'unknown', result.overallRisk as RiskLevel);
+        fireWebhookEvent('scan.complete', result);
         return reply.status(200).send(result);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        fireWebhookEvent('scan.failed', { error: message });
         return reply.status(500).send({ error: message });
       }
     },

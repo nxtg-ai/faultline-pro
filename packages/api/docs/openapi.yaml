@@ -1,0 +1,1370 @@
+openapi: 3.1.0
+
+info:
+  title: Faultline API
+  version: 0.2.0
+  description: >
+    AI claim forensics API — verify AI-generated claims against live evidence.
+
+    Faultline extracts atomic claims from text, verifies each against live web
+    sources, and returns a structured risk scorecard with EU AI Act compliance
+    mappings.
+
+    **Authentication**: Every endpoint (except GET /health) requires an
+    `x-api-key` header. Keys are created via the admin-only POST /keys endpoint
+    or by setting the `FAULTLINE_API_KEY` environment variable on the server.
+
+    **Rate limiting**: POST /scan and POST /scan/upload are rate-limited per key.
+    Limits vary by tier (free / pro / admin). Current remaining quota is returned
+    in `X-RateLimit-*` response headers.
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+
+security:
+  - ApiKeyAuth: []
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: >
+        API key issued by the server. Pass the raw key value in the `x-api-key`
+        request header. Admin operations require a key that carries the `admin`
+        permission, or the master `FAULTLINE_API_KEY` environment variable.
+
+  headers:
+    X-RateLimit-Limit:
+      description: Maximum number of scan requests allowed in the current window.
+      schema:
+        type: integer
+        example: 10
+    X-RateLimit-Remaining:
+      description: Number of scan requests remaining in the current window.
+      schema:
+        type: integer
+        example: 7
+    X-RateLimit-Reset:
+      description: Unix epoch (seconds) at which the rate-limit window resets.
+      schema:
+        type: integer
+        example: 1742400000
+
+  schemas:
+    # ── Core domain types ────────────────────────────────────────────────────
+
+    Provider:
+      type: string
+      enum:
+        - gemini
+        - openai
+        - claude
+        - perplexity
+        - mock
+      description: >
+        LLM provider used for claim extraction and verification.
+        Use `mock` for local testing without an API key.
+
+    RiskLevel:
+      type: string
+      enum:
+        - low
+        - medium
+        - high
+        - critical
+      description: Overall risk assessment for the scanned text.
+
+    ClaimType:
+      type: string
+      enum:
+        - fact
+        - opinion
+        - interpretation
+
+    ClaimStatus:
+      type: string
+      enum:
+        - supported
+        - contradicted
+        - mixed
+        - unverified
+        - loading
+        - skipped
+
+    EURiskLevel:
+      type: string
+      enum:
+        - unacceptable
+        - high
+        - limited
+        - minimal
+      description: EU AI Act risk tier (Regulation (EU) 2024/1689).
+
+    FindingSeverity:
+      type: string
+      enum:
+        - critical
+        - high
+        - medium
+        - low
+        - info
+
+    # ── Reusable object schemas ──────────────────────────────────────────────
+
+    Claim:
+      type: object
+      required:
+        - id
+        - text
+        - type
+        - importance
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the claim.
+          example: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        text:
+          type: string
+          description: The extracted claim text.
+          example: "GPT-4 was released in March 2023."
+        type:
+          $ref: '#/components/schemas/ClaimType'
+        importance:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: Importance score assigned by the provider (1 = low, 5 = critical).
+          example: 4
+
+    Source:
+      type: object
+      required:
+        - title
+        - uri
+      properties:
+        title:
+          type: string
+          description: Title of the source document or web page.
+          example: "OpenAI Blog — GPT-4 Technical Report"
+        uri:
+          type: string
+          format: uri
+          example: "https://openai.com/research/gpt-4"
+
+    VerificationResult:
+      type: object
+      required:
+        - claimId
+        - status
+        - explanation
+        - sources
+      properties:
+        claimId:
+          type: string
+          format: uuid
+          example: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        status:
+          $ref: '#/components/schemas/ClaimStatus'
+        explanation:
+          type: string
+          description: >
+            Human-readable explanation of the verification verdict, including
+            reasoning and evidence references.
+          example: "Multiple sources confirm GPT-4 was released on 14 March 2023."
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/Source'
+
+    Finding:
+      type: object
+      required:
+        - ruleId
+        - severity
+        - message
+        - match
+        - offset
+      properties:
+        ruleId:
+          type: string
+          description: Rule identifier that triggered this finding (e.g. `pii-email`).
+          example: "pii-email"
+        severity:
+          $ref: '#/components/schemas/FindingSeverity'
+        message:
+          type: string
+          description: Human-readable description of the detected issue.
+          example: "Email address detected in content."
+        match:
+          type: string
+          description: The matched text or pattern that triggered the finding.
+          example: "user@example.com"
+        offset:
+          type: integer
+          description: Character offset in the original text where the match starts.
+          example: 142
+
+    EURiskCategory:
+      type: object
+      required:
+        - level
+        - title
+        - description
+        - articles
+        - requiredActions
+      properties:
+        level:
+          $ref: '#/components/schemas/EURiskLevel'
+        title:
+          type: string
+          example: "High Risk"
+        description:
+          type: string
+          example: >
+            AI systems in critical domains (health, safety, fundamental rights)
+            that require conformity assessment and ongoing monitoring.
+        articles:
+          type: array
+          items:
+            type: string
+          example: ["Article 6", "Article 9-15", "Annex III"]
+        requiredActions:
+          type: array
+          items:
+            type: string
+          example:
+            - "Implement risk management system (Article 9)"
+            - "Enable human oversight (Article 14)"
+
+    ClaimRiskMapping:
+      type: object
+      required:
+        - claimId
+        - claimText
+        - verificationStatus
+        - riskLevel
+        - category
+        - matchedPatterns
+        - confidence
+        - confidenceScore
+      properties:
+        claimId:
+          type: string
+          format: uuid
+        claimText:
+          type: string
+        verificationStatus:
+          $ref: '#/components/schemas/ClaimStatus'
+        riskLevel:
+          $ref: '#/components/schemas/EURiskLevel'
+        category:
+          $ref: '#/components/schemas/EURiskCategory'
+        matchedPatterns:
+          type: array
+          items:
+            type: string
+          description: EU AI Act article or annex references that matched this claim.
+          example: ["Annex III §1"]
+        confidence:
+          type: string
+          enum:
+            - high
+            - medium
+            - low
+          description: Qualitative confidence in the risk classification.
+        confidenceScore:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          description: Numeric confidence score (0.0–1.0) for the risk classification.
+          example: 0.9
+
+    EURiskSummary:
+      type: object
+      required:
+        - unacceptable
+        - high
+        - limited
+        - minimal
+        - totalClaims
+        - highestTier
+      properties:
+        unacceptable:
+          type: integer
+          description: Number of claims at unacceptable (prohibited) risk.
+          example: 0
+        high:
+          type: integer
+          description: Number of claims at high risk.
+          example: 2
+        limited:
+          type: integer
+          description: Number of claims at limited risk.
+          example: 1
+        minimal:
+          type: integer
+          description: Number of claims at minimal risk.
+          example: 4
+        totalClaims:
+          type: integer
+          example: 7
+        highestTier:
+          $ref: '#/components/schemas/EURiskLevel'
+
+    ConfidenceDistribution:
+      type: object
+      required:
+        - high
+        - medium
+        - low
+      properties:
+        high:
+          type: integer
+          description: Claims with confidence score >= 0.8.
+          example: 3
+        medium:
+          type: integer
+          description: Claims with confidence score between 0.5 and 0.8.
+          example: 2
+        low:
+          type: integer
+          description: Claims with confidence score < 0.5.
+          example: 1
+
+    TriggeredArticle:
+      type: object
+      required:
+        - article
+        - reason
+        - claimIds
+      properties:
+        article:
+          type: string
+          description: EU AI Act article or annex reference.
+          example: "Article 5(1)(c)"
+        reason:
+          type: string
+          description: >
+            Short explanation of why this article was triggered, including
+            the first 80 characters of the triggering claim text.
+          example: "Unacceptable Risk (Prohibited): The system assigns social credit scores..."
+        claimIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: IDs of claims that triggered this article.
+
+    ComplianceReport:
+      type: object
+      required:
+        - generatedAt
+        - overallRiskLevel
+        - euRiskSummary
+        - claimMappings
+        - triggeredArticles
+        - mitigations
+        - confidenceDistribution
+      properties:
+        generatedAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when the report was generated.
+          example: "2026-03-18T10:30:00.000Z"
+        overallRiskLevel:
+          $ref: '#/components/schemas/RiskLevel'
+        euRiskSummary:
+          $ref: '#/components/schemas/EURiskSummary'
+        claimMappings:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClaimRiskMapping'
+        triggeredArticles:
+          type: array
+          items:
+            $ref: '#/components/schemas/TriggeredArticle'
+        mitigations:
+          type: array
+          items:
+            type: string
+          description: Recommended mitigation actions based on the highest EU risk tier.
+          example:
+            - "Ensure AI-generated content is clearly labelled per Article 50."
+        confidenceDistribution:
+          $ref: '#/components/schemas/ConfidenceDistribution'
+
+    ScanResult:
+      type: object
+      required:
+        - input
+        - provider
+        - claims
+        - verifications
+        - overallRisk
+        - complianceReport
+        - ruleFindings
+      properties:
+        input:
+          type: string
+          maxLength: 200
+          description: First 200 characters of the scanned text (truncated for storage).
+          example: "GPT-4 was released in March 2023 and scored in the 90th percentile..."
+        provider:
+          type: string
+          description: Display name of the LLM provider used.
+          example: "gemini"
+        claims:
+          type: array
+          items:
+            $ref: '#/components/schemas/Claim'
+          description: All claims extracted from the input text.
+        verifications:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/VerificationResult'
+          description: >
+            Map of claim ID to verification result. Only claims of type `fact`
+            with importance >= 3 are verified (up to 8 per scan).
+        overallRisk:
+          $ref: '#/components/schemas/RiskLevel'
+        complianceReport:
+          $ref: '#/components/schemas/ComplianceReport'
+        ruleFindings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Finding'
+          description: >
+            Rule engine findings (PII, bias, toxicity, security patterns)
+            detected in the input text.
+
+    ApiKey:
+      type: object
+      required:
+        - id
+        - name
+        - permissions
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique key identifier.
+          example: "8e3f2a1b-4c7d-4e9f-a0b1-c2d3e4f5a6b7"
+        name:
+          type: string
+          description: Human-readable label for the key.
+          example: "CI pipeline key"
+        permissions:
+          type: array
+          items:
+            type: string
+            enum:
+              - scan
+              - report
+              - upload
+              - admin
+              - pro
+          description: >
+            Permissions granted to this key. `admin` allows access to keys,
+            usage, dashboard, and webhook management. `pro` enables the higher
+            rate-limit tier.
+          example: ["scan", "report"]
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-03-18T09:00:00.000Z"
+
+    ApiKeyWithSecret:
+      allOf:
+        - $ref: '#/components/schemas/ApiKey'
+        - type: object
+          required:
+            - key
+          properties:
+            key:
+              type: string
+              description: >
+                The raw API key value. Returned only on creation (POST /keys).
+                Store it securely — it cannot be retrieved again.
+              example: "a3f1b2c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2"
+
+    UsageByDay:
+      type: object
+      additionalProperties:
+        type: integer
+      description: >
+        Map of ISO date string (YYYY-MM-DD) to scan count for that day.
+      example:
+        "2026-03-17": 5
+        "2026-03-18": 12
+
+    RiskDistribution:
+      type: object
+      required:
+        - low
+        - medium
+        - high
+        - critical
+      properties:
+        low:
+          type: integer
+          example: 42
+        medium:
+          type: integer
+          example: 15
+        high:
+          type: integer
+          example: 7
+        critical:
+          type: integer
+          example: 2
+
+    KeyUsageSummary:
+      type: object
+      required:
+        - keyId
+        - today
+      properties:
+        keyId:
+          type: string
+          example: "8e3f2a1b-4c7d-4e9f-a0b1-c2d3e4f5a6b7"
+        today:
+          type: integer
+          description: Number of scans performed today by this key.
+          example: 8
+
+    DashboardPayload:
+      type: object
+      required:
+        - scans
+        - riskDistribution
+        - keyUsage
+      properties:
+        scans:
+          type: object
+          required:
+            - today
+            - week
+            - month
+          properties:
+            today:
+              type: integer
+              description: Total scans completed today (calendar day, server timezone).
+              example: 66
+            week:
+              type: integer
+              description: Total scans in the last 7 days.
+              example: 340
+            month:
+              type: integer
+              description: Total scans in the last 30 days.
+              example: 1200
+        riskDistribution:
+          $ref: '#/components/schemas/RiskDistribution'
+        keyUsage:
+          type: array
+          items:
+            $ref: '#/components/schemas/KeyUsageSummary'
+          description: Per-key scan counts for today. Keys with zero scans today are omitted.
+
+    Webhook:
+      type: object
+      required:
+        - id
+        - url
+        - events
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "c1d2e3f4-a5b6-7890-cdef-1234567890ab"
+        url:
+          type: string
+          format: uri
+          description: HTTPS endpoint that receives webhook deliveries.
+          example: "https://example.com/hooks/faultline"
+        events:
+          type: array
+          items:
+            type: string
+            enum:
+              - scan.complete
+              - scan.failed
+          description: Event types this webhook is subscribed to.
+          example: ["scan.complete"]
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-03-18T09:00:00.000Z"
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Human-readable error message.
+          example: "Unauthorized. Provide a valid x-api-key header."
+
+    RateLimitErrorResponse:
+      type: object
+      required:
+        - error
+        - limit
+        - remaining
+        - resetEpoch
+      properties:
+        error:
+          type: string
+          example: "Rate limit exceeded."
+        limit:
+          type: integer
+          description: Maximum requests allowed in the window.
+          example: 10
+        remaining:
+          type: integer
+          example: 0
+        resetEpoch:
+          type: integer
+          description: Unix epoch (seconds) when the window resets.
+          example: 1742400000
+
+# ── Paths ────────────────────────────────────────────────────────────────────
+
+paths:
+
+  /health:
+    get:
+      operationId: getHealth
+      summary: Health check
+      description: >
+        Returns the current health status of the API server. No authentication
+        required. Suitable for use with load balancers and uptime monitors.
+      security: []
+      tags:
+        - System
+      responses:
+        "200":
+          description: Server is healthy.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                  - service
+                  - version
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+                  service:
+                    type: string
+                    example: "faultline-api"
+                  version:
+                    type: string
+                    example: "0.1.0"
+
+  /scan:
+    post:
+      operationId: scanText
+      summary: Scan text for AI claim forensics
+      description: >
+        Extracts atomic claims from the provided text, verifies each against
+        live web sources using the specified provider, and returns a structured
+        risk scorecard with EU AI Act compliance mappings and rule engine
+        findings.
+
+        Results are recorded in the analytics store and increment the usage
+        meter for the authenticated key.
+
+        Rate limited per key/tier. Remaining quota is returned in
+        `X-RateLimit-*` response headers.
+      tags:
+        - Scan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - text
+              additionalProperties: false
+              properties:
+                text:
+                  type: string
+                  minLength: 1
+                  maxLength: 50000
+                  description: The AI-generated text to analyse.
+                  example: >
+                    GPT-4 was released in March 2023 and scored in the 90th
+                    percentile on the bar exam. It was trained on data up to
+                    September 2021.
+                provider:
+                  $ref: '#/components/schemas/Provider'
+      responses:
+        "200":
+          description: Scan completed successfully.
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanResult'
+        "400":
+          description: Request body failed schema validation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "body/text must NOT have fewer than 1 characters"
+        "401":
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Unauthorized. Provide a valid x-api-key header."
+        "429":
+          description: Rate limit exceeded for this key.
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitErrorResponse'
+        "500":
+          description: >
+            Internal server error — typically a provider API failure or missing
+            provider API key on the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: 'No API key found for "gemini". Get a free key at https://aistudio.google.com/apikey'
+        "503":
+          description: >
+            API key not configured on the server (neither `FAULTLINE_API_KEY`
+            environment variable nor any keystore entry is present).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "API key not configured on server."
+
+  /scan/report:
+    post:
+      operationId: generateReport
+      summary: Generate a PDF compliance report
+      description: >
+        Runs the full claim forensics pipeline (identical to POST /scan) and
+        returns the results as a formatted PDF document instead of JSON.
+
+        The PDF contains a cover page, executive summary, and a per-claim
+        analysis table with EU AI Act risk tier, verification verdict, and
+        primary source reference.
+
+        Not rate-limited by default (does not call `rateLimitScan`).
+      tags:
+        - Scan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - text
+              additionalProperties: false
+              properties:
+                text:
+                  type: string
+                  minLength: 1
+                  maxLength: 50000
+                  description: The AI-generated text to analyse.
+                provider:
+                  $ref: '#/components/schemas/Provider'
+                projectName:
+                  type: string
+                  maxLength: 200
+                  description: >
+                    Optional project name shown on the report cover page.
+                    Defaults to "Faultline Scan" if omitted.
+                  example: "Q1 2026 AI Audit — Project Atlas"
+      responses:
+        "200":
+          description: PDF report generated successfully.
+          headers:
+            Content-Disposition:
+              description: >
+                Attachment filename in the format
+                `faultline-report-YYYY-MM-DD.pdf`.
+              schema:
+                type: string
+                example: 'attachment; filename="faultline-report-2026-03-18.pdf"'
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Request body failed schema validation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "401":
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          description: Provider error or PDF generation failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "503":
+          description: API key not configured on the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /scan/upload:
+    post:
+      operationId: scanUpload
+      summary: Scan an uploaded file
+      description: >
+        Accepts a file upload (PDF or image), extracts text content via OCR /
+        PDF parsing, then runs the full claim forensics pipeline and returns a
+        `ScanResult`.
+
+        **Supported MIME types**: `application/pdf`, `image/png`, `image/jpeg`,
+        `image/webp`.
+
+        **File size limit**: 10 MB. Requests exceeding this limit receive a 400
+        response.
+
+        Rate limited per key/tier — the same limits apply as POST /scan.
+        Successful scans increment the usage meter.
+      tags:
+        - Scan
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: >
+                    The file to scan. Accepted types: PDF, PNG, JPEG, WebP.
+                    Maximum size: 10 MB.
+                provider:
+                  $ref: '#/components/schemas/Provider'
+      responses:
+        "200":
+          description: File scanned successfully.
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanResult'
+        "400":
+          description: >
+            Bad request — one of: no `file` field provided, file exceeds 10 MB,
+            unsupported MIME type, or extracted text is empty.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                noFile:
+                  summary: Missing file field
+                  value:
+                    error: "No file field in multipart request."
+                tooLarge:
+                  summary: File exceeds size limit
+                  value:
+                    error: "File exceeds the 10MB limit."
+                unsupportedType:
+                  summary: Unsupported MIME type
+                  value:
+                    error: "Unsupported file type: image/gif. Supported: application/pdf, image/png, image/jpeg, image/webp"
+                emptyText:
+                  summary: Extracted text is empty
+                  value:
+                    error: "Extracted text is empty."
+        "401":
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "429":
+          description: Rate limit exceeded.
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitErrorResponse'
+        "500":
+          description: Text extraction or provider scan failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "503":
+          description: API key not configured on the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /keys:
+    get:
+      operationId: listKeys
+      summary: List API keys
+      description: >
+        Returns all API keys registered in the keystore. The raw key value is
+        omitted from list responses for security — it is only returned at
+        creation time (POST /keys).
+
+        **Requires admin-level API key.**
+      tags:
+        - Keys
+      responses:
+        "200":
+          description: Array of API key records (without raw key values).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ApiKey'
+        "403":
+          description: Key is valid but does not have admin permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Forbidden. Admin access required."
+        "503":
+          description: API key not configured on the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      operationId: createKey
+      summary: Create an API key
+      description: >
+        Creates a new API key and returns the full record including the raw key
+        value. Store the key securely — it cannot be retrieved again after this
+        response.
+
+        Default permissions when `permissions` is omitted: `["scan"]`.
+
+        **Requires admin-level API key.**
+      tags:
+        - Keys
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              additionalProperties: false
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+                  description: Human-readable label for the key.
+                  example: "CI pipeline key"
+                permissions:
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                      - scan
+                      - report
+                      - upload
+                      - admin
+                      - pro
+                  description: >
+                    Permissions to grant. Defaults to `["scan"]` if omitted.
+                  example: ["scan", "report", "upload"]
+      responses:
+        "201":
+          description: Key created. Response includes the raw key value.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyWithSecret'
+        "400":
+          description: Request body failed schema validation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "403":
+          description: Key is valid but does not have admin permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Forbidden. Admin access required."
+        "503":
+          description: API key not configured on the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /keys/{id}:
+    delete:
+      operationId: deleteKey
+      summary: Delete an API key
+      description: >
+        Permanently removes an API key from the keystore. Any in-flight
+        requests using the deleted key will immediately begin returning 401.
+
+        **Requires admin-level API key.**
+      tags:
+        - Keys
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The UUID of the key to delete.
+          example: "8e3f2a1b-4c7d-4e9f-a0b1-c2d3e4f5a6b7"
+      responses:
+        "204":
+          description: Key deleted. No response body.
+        "403":
+          description: Key is valid but does not have admin permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: No key found with the given ID.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Key not found."
+        "503":
+          description: API key not configured on the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /usage:
+    get:
+      operationId: getUsage
+      summary: Get usage for the authenticated key
+      description: >
+        Returns per-day scan counts for the API key used to make this request.
+        Counts are incremented on each successful POST /scan or
+        POST /scan/upload response (HTTP 200).
+
+        Any authenticated key can call this endpoint — each key sees only its
+        own usage.
+      tags:
+        - Usage
+      responses:
+        "200":
+          description: Usage data for the authenticated key.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - keyId
+                  - usage
+                properties:
+                  keyId:
+                    type: string
+                    description: Identifier of the authenticated key.
+                    example: "8e3f2a1b-4c7d-4e9f-a0b1-c2d3e4f5a6b7"
+                  usage:
+                    $ref: '#/components/schemas/UsageByDay'
+        "401":
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "503":
+          description: API key not configured on the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /dashboard:
+    get:
+      operationId: getDashboard
+      summary: Get platform-wide analytics dashboard
+      description: >
+        Returns aggregated scan counts (today / 7-day / 30-day), overall risk
+        distribution across all scans, and per-key scan counts for today.
+
+        Data is held in-memory and resets on server restart.
+
+        **Requires admin-level API key.**
+      tags:
+        - Dashboard
+      responses:
+        "200":
+          description: Dashboard analytics payload.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardPayload'
+        "403":
+          description: Key is valid but does not have admin permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "503":
+          description: API key not configured on the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /webhooks:
+    get:
+      operationId: listWebhooks
+      summary: List registered webhooks
+      description: >
+        Returns all registered webhook endpoints. The HMAC signing secret is
+        omitted from list responses — it is only returned at creation time.
+
+        Webhooks fire on `scan.complete` and `scan.failed` events. Each
+        delivery is signed with `X-Faultline-Signature: sha256=<hmac>` using
+        the webhook secret and retried up to 3 times with exponential backoff.
+
+        **Requires admin-level API key.**
+      tags:
+        - Webhooks
+      responses:
+        "200":
+          description: Array of webhook records (without signing secrets).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Webhook'
+        "403":
+          description: Key is valid but does not have admin permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "503":
+          description: API key not configured on the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      operationId: createWebhook
+      summary: Register a webhook endpoint
+      description: >
+        Registers a new webhook URL for one or more event types. An HMAC-SHA256
+        signing secret is generated automatically if not supplied. Store it
+        securely — it cannot be retrieved again after this response.
+
+        **Requires admin-level API key.**
+      tags:
+        - Webhooks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - url
+                - events
+              properties:
+                url:
+                  type: string
+                  format: uri
+                  description: HTTPS endpoint to receive webhook deliveries.
+                  example: "https://example.com/hooks/faultline"
+                events:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+                    enum:
+                      - scan.complete
+                      - scan.failed
+                  description: Event types to subscribe to.
+                  example: ["scan.complete", "scan.failed"]
+                secret:
+                  type: string
+                  description: >
+                    Optional HMAC signing secret. If omitted, a 32-byte random
+                    secret is generated. Must be kept confidential — used to
+                    verify `X-Faultline-Signature` on deliveries.
+                  example: "my-custom-secret"
+      responses:
+        "201":
+          description: Webhook registered. Response includes the signing secret.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Webhook'
+                  - type: object
+                    required:
+                      - secret
+                    properties:
+                      secret:
+                        type: string
+                        description: >
+                          HMAC-SHA256 signing secret. Returned only on creation.
+                          Use this to verify `X-Faultline-Signature` headers on
+                          incoming deliveries.
+                        example: "a3f1b2c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2"
+        "400":
+          description: Request body failed schema validation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "403":
+          description: Key is valid but does not have admin permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "503":
+          description: API key not configured on the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /webhooks/{id}:
+    delete:
+      operationId: deleteWebhook
+      summary: Delete a webhook
+      description: >
+        Permanently removes a webhook registration. No further deliveries will
+        be sent to the associated URL.
+
+        **Requires admin-level API key.**
+      tags:
+        - Webhooks
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The UUID of the webhook to delete.
+          example: "c1d2e3f4-a5b6-7890-cdef-1234567890ab"
+      responses:
+        "204":
+          description: Webhook deleted. No response body.
+        "403":
+          description: Key is valid but does not have admin permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: No webhook found with the given ID.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Webhook not found."
+        "503":
+          description: API key not configured on the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+tags:
+  - name: System
+    description: Health and operational endpoints.
+  - name: Scan
+    description: >
+      Core claim forensics pipeline — submit text or files for AI claim
+      extraction, verification, and risk scoring.
+  - name: Keys
+    description: >
+      API key lifecycle management. Admin access required.
+  - name: Usage
+    description: Per-key scan usage counters.
+  - name: Dashboard
+    description: >
+      Platform-wide analytics aggregates. Admin access required.
+  - name: Webhooks
+    description: >
+      Webhook registration and management. Deliveries are HMAC-signed.
+      Admin access required.
