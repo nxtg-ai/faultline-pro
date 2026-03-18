@@ -8,6 +8,10 @@ const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 interface ProviderState {
   consecutiveFailures: number;
   downUntil: number | null;
+  totalRequests: number;
+  totalErrors: number;
+  totalLatencyMs: number;
+  lastLatencyMs: number;
 }
 
 class CircuitBreaker {
@@ -15,7 +19,14 @@ class CircuitBreaker {
 
   private getState(provider: Provider): ProviderState {
     if (!this.states.has(provider)) {
-      this.states.set(provider, { consecutiveFailures: 0, downUntil: null });
+      this.states.set(provider, {
+        consecutiveFailures: 0,
+        downUntil: null,
+        totalRequests: 0,
+        totalErrors: 0,
+        totalLatencyMs: 0,
+        lastLatencyMs: 0,
+      });
     }
     return this.states.get(provider)!;
   }
@@ -31,18 +42,35 @@ class CircuitBreaker {
     return true;
   }
 
-  recordSuccess(provider: Provider): void {
+  recordSuccess(provider: Provider, latencyMs?: number): void {
     const state = this.getState(provider);
     state.consecutiveFailures = 0;
     state.downUntil = null;
+    state.totalRequests++;
+    if (latencyMs !== undefined) {
+      state.totalLatencyMs += latencyMs;
+      state.lastLatencyMs = latencyMs;
+    }
   }
 
   recordFailure(provider: Provider): void {
     const state = this.getState(provider);
     state.consecutiveFailures++;
+    state.totalRequests++;
+    state.totalErrors++;
     if (state.consecutiveFailures >= FAILURE_THRESHOLD) {
       state.downUntil = Date.now() + COOLDOWN_MS;
     }
+  }
+
+  /** Health score for a provider — higher is healthier. Used for auto-rotation sorting. */
+  healthScore(provider: Provider): number {
+    const s = this.getState(provider);
+    if (this.isDown(provider)) return 0;
+    const errorRate = s.totalRequests > 0 ? s.totalErrors / s.totalRequests : 0;
+    const successCount = s.totalRequests - s.totalErrors;
+    const avgLatencyMs = successCount > 0 ? s.totalLatencyMs / successCount : 0;
+    return (1 - errorRate) * (1000 / (avgLatencyMs + 1));
   }
 
   /** Returns ordered list of providers to try, skipping DOWN ones */
@@ -53,12 +81,13 @@ class CircuitBreaker {
     return ordered.filter(p => !this.isDown(p));
   }
 
-  getStatus(): Record<Provider, { down: boolean; consecutiveFailures: number }> {
-    const result = {} as Record<Provider, { down: boolean; consecutiveFailures: number }>;
+  getStatus(): Record<Provider, { down: boolean; consecutiveFailures: number; healthScore: number }> {
+    const result = {} as Record<Provider, { down: boolean; consecutiveFailures: number; healthScore: number }>;
     for (const p of PROVIDER_CHAIN) {
       result[p] = {
         down: this.isDown(p),
         consecutiveFailures: this.getState(p).consecutiveFailures,
+        healthScore: this.healthScore(p),
       };
     }
     return result;

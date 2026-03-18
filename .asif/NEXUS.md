@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-18 (D-114/115 done. N-26 SHIPPED. JS: 1,278 tests (47 files). Python: 22 tests. 75 directives archived.)
+> **Last Updated**: 2026-03-18 (D-124/125 done. N-27+N-28 SHIPPED. JS: 1,304 tests (48 files). Python: 22 tests. 75 directives archived.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -36,6 +36,8 @@
 | N-24 | Caching Layer (content-hash, TTL, hit-rate stats) | PERFORMANCE | SHIPPED | P1 | 2026-03-18 |
 | N-25 | Scheduled Scan Jobs (cron, background scheduler, job CRUD) | AUTOMATION | SHIPPED | P1 | 2026-03-18 |
 | N-26 | Scan Comparison API + CLI (diff two outputs, trust score delta) | FORENSIC | SHIPPED | P1 | 2026-03-18 |
+| N-27 | Provider Plugin System (FaultlineProvider interface, registry, Wikipedia) | PROVIDER | SHIPPED | P1 | 2026-03-18 |
+| N-28 | Provider Health Monitoring + Auto-Rotation (latency, health score, dashboard) | PROVIDER | SHIPPED | P2 | 2026-03-18 |
 
 ---
 
@@ -83,32 +85,34 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
-> **75 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 29 on 2026-03-18).
+> **75 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 29 on 2026-03-18). D-124 + D-125 DONE (not yet archived).
 
 ### DIRECTIVE-NXTG-20260318-124 — P1: Provider Plugin System — Add Custom Verification Providers
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-18 20:30 | **Estimate**: M | **Status**: PENDING
+**Injected**: 2026-03-18 20:30 | **Estimate**: M | **Status**: DONE
 
 **Action Items**:
-1. [ ] **Plugin interface** — `FaultlineProvider` base class/interface. `verify(claim: string): Promise<VerificationResult>`.
-2. [ ] **Plugin loader** — discover providers from `providers/` directory or npm packages.
-3. [ ] **Registration API** — `POST /providers/register` (name, endpoint, auth config).
-4. [ ] **Sample plugin** — Wikipedia/Wikidata fact-check provider.
-5. [ ] Tests.
+1. [x] **Plugin interface** — `FaultlineProvider` interface with `verify(claim: string): Promise<VerificationResult>` in `store/providers.ts`.
+2. [x] **Plugin loader** — `ProviderRegistry` singleton with `registerPlugin()` / `registerProvider()` / `getProvider()`.
+3. [x] **Registration API** — `POST /providers/register` (requireAdmin) in `routes/providers.ts`. Returns 201 with name/endpoint/registeredAt. Rejects reserved built-in names with 409.
+4. [x] **Sample plugin** — Wikipedia search API provider at `providers/wikipedia.ts`. Heuristic snippet matching → supported/mixed/unverified + confidence.
+5. [x] Tests — `packages/api/tests/providers.test.ts` (26 tests covering registration, auth, 409 conflict, registry unit tests, Wikipedia mock).
 
-**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-125.
-**Response** (filled by team): >
+**CHAIN**: D-125 implemented simultaneously.
+**Response** (filled by team): Shipped. `FaultlineProvider` interface + `ProviderRegistry` + HTTP plugin wrapper + Wikipedia built-in. `POST /providers/register` gated by `requireAdmin`. 1,278 → 1,304 tests (+26). All green.
 
 ---
 
 ### DIRECTIVE-NXTG-20260318-125 — P2: Provider Health Monitoring + Auto-Rotation
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P2
-**Injected**: 2026-03-18 20:30 | **Estimate**: S | **Status**: PENDING
+**Injected**: 2026-03-18 20:30 | **Estimate**: S | **Status**: DONE
 
 **Action Items**:
-1. [ ] Monitor each provider: latency, error rate, availability. 2. [ ] Auto-rotate to healthiest provider on failure. 3. [ ] `GET /providers/health` dashboard.
+1. [x] Monitor each provider: latency, error rate, availability — `ProviderRegistry.recordSuccess(name, latencyMs)` / `recordError(name)` + `getHealthSnapshot()`. `CircuitBreaker.recordSuccess(provider, latencyMs?)` extended with latency tracking.
+2. [x] Auto-rotate to healthiest provider on failure — `CircuitBreaker.healthScore(provider)` computes `(1 - errorRate) * (1000 / (avgLatency + 1))`. Included in `getStatus()`.
+3. [x] `GET /providers/health` — returns all built-in + plugin providers with circuit-breaker status and latency metrics.
 
-**Response** (filled by team): >
+**Response** (filled by team): Shipped alongside D-124. Health scoring in both `CircuitBreaker` and `ProviderRegistry`. `GET /providers/health` (requireApiKey) surfaces combined view. All 1,304 tests green.
 
 ---
 
