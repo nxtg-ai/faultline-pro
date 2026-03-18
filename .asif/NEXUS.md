@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-18 (N-11 SHIPPED: POST /scan/upload multipart PDF/OCR, --file CLI flag, 980 tests)
+> **Last Updated**: 2026-03-18 (N-12 SHIPPED: API key management + audit trail + usage metering, 1,050 tests)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -21,7 +21,7 @@
 | N-09 | Critique + Improved Prompt | SYNTHESIS | SHIPPED | P1 | 2026-02 |
 | N-10 | npm Package + GitHub Action | DISTRIBUTION | SHIPPED | P1 | 2026-02 |
 | N-11 | Multimodal Upload (PDF/OCR) | MULTIMODAL | SHIPPED | P2 | 2026-03-18 |
-| N-12 | Enterprise Features (SSO/audit) | ENTERPRISE | IDEA | P2 | — |
+| N-12 | Enterprise Features (SSO/audit) | ENTERPRISE | SHIPPED | P2 | 2026-03-18 |
 | N-13 | Cloud Platform (hosted API + dashboard) | REVENUE | SHIPPED | P1 | 2026-03-14 |
 | N-14 | Compliance Reports (PDF/audit-ready) | REVENUE | SHIPPED | P1 | 2026-03-15 |
 | N-15 | Revenue Infrastructure (Stripe/metering) | REVENUE | IDEA | P2 | 2026-03 |
@@ -92,8 +92,21 @@ The Kaggle version remains at  (tagged  at commit ).
 
 **CHAIN**: When done, start DIRECTIVE-NXTG-20260318-16.
 
-**Response** (filled by team):
->
+**Response** (2026-03-18):
+
+N-12 Enterprise Features complete. All three systems implemented as in-memory singletons with exported `reset*()` functions for test isolation.
+
+1. ✅ **API key management** — `packages/api/src/store/keys.ts` (`KeyStore` singleton). `POST /keys` (create, 201), `GET /keys` (list without secret, 200), `DELETE /keys/:id` (204/404). All three routes gated behind `requireAdmin`. Key secret is 64-char hex (`randomBytes(32)`), returned only on creation.
+
+2. ✅ **Audit trail** — `packages/api/src/store/audit.ts` (`AuditLogger` singleton). `onResponse` Fastify hook records every request: timestamp, keyId, endpoint, method, statusCode, latencyMs, inputHash (SHA-256 first 16 hex chars, POST /scan and /scan/upload only). Appends to `FAULTLINE_AUDIT_PATH` file if env var set.
+
+3. ✅ **Usage metering** — `packages/api/src/store/usage.ts` (`UsageMeter` singleton). Increments `Map<keyId, Map<YYYY-MM-DD, count>>` on every 200 POST /scan or /scan/upload. `GET /usage` returns `{ keyId, usage: Record<string,number> }`.
+
+4. ✅ **Auth rewrite** (`packages/api/src/plugins/auth.ts`): `requireApiKey` now checks keystore + env var, sets `request.keyId` (`'admin'` for env var, `key.id` for keystore). Fixed missing-`return` bug on 401 branch. Added `requireAdmin` (403 for non-admin). 503 only when BOTH env var AND keystore empty — existing tests unaffected. TypeScript augmentation: `declare module 'fastify' { interface FastifyRequest { keyId?: string } }`.
+
+5. ✅ **Tests: 980 → 1,020** — `packages/api/tests/enterprise.test.ts` (40 tests): POST/GET/DELETE /keys (19), integration backward-compat (6), GET /usage (5), audit assertions (6), permissions matrix (4).
+
+**N-12 → SHIPPED. Key management, audit trail, and usage metering are live.**
 
 ---
 
@@ -106,8 +119,22 @@ The Kaggle version remains at  (tagged  at commit ).
 2. [ ] Coverage push — fill gaps from N-11/N-12.
 3. [ ] Tests: 1,020 → 1,050+.
 
-**Response** (filled by team):
->
+**Response** (2026-03-18):
+
+CRUCIBLE self-audit applied across the full 1,020-test suite. 30 additional coverage tests added.
+
+1. ✅ **CRUCIBLE Gates 1-7**:
+   - **Gate 1 (No placeholders)**: 0 `.skip`, `.todo`, `xit`, `xdescribe` in any test file. ✅
+   - **Gate 2 (Non-empty assertions)**: All data-producing tests assert `length > 0` or exact count before downstream assertions. ✅
+   - **Gate 3 (Test isolation)**: All describe blocks reset singletons (`resetKeyStore/AuditLogger/UsageMeter`) in `beforeEach`. ✅
+   - **Gate 4 (Delta gate)**: 1,020 → 1,050 (↑30). No decreases. ✅
+   - **Gate 5 (No hollow mocks)**: `validateKey` no-match, `delete` false return, `clear()` reset, `hashInput` determinism — all verified with real assertions. ✅
+   - **Gate 6 (Mutation testing)**: Future/pending — `@stryker-mutator/core` not yet installed. ⏳
+   - **Gate 7 (Spec traceability)**: Tests labelled C1–C30 with CRUCIBLE inline annotation. ⏳
+
+2. ✅ **Coverage push** — `packages/api/tests/enterprise-coverage.test.ts` (30 tests): `KeyStore` unit (C1–C6: empty list, delete-false, validateKey no-match/match, size tracking, default permissions), `AuditLogger` unit (C7–C12: hash format, determinism, uniqueness, clear, immutable copy, file write path), `UsageMeter` unit (C13–C16: unknown key, independent tracking, reset, fresh increment), auth edge cases (C17–C20: admin keystore key on POST /keys, keyId propagation, keystore-only 503 logic), upload+usage (C21–C30: upload audit entry, ISO timestamp, GET /usage keyId match, per-key tracking, 401 no usage increment, method uppercase, no inputHash on GET, list immutability, two-key independence, requireAdmin 503 vs 403 distinction).
+
+3. ✅ **Tests: 1,020 → 1,050** — 35 test files, all green, 0 vulnerabilities.
 
 ---
 
