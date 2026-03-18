@@ -79,7 +79,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260318-04 — P1: Post-N-14 Hardening — npm verify + API docs + Dependabot cleanup
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-18 08:00 | **Estimate**: S | **Status**: PENDING
+**Injected**: 2026-03-18 08:00 | **Estimate**: S | **Status**: DONE
 
 **Context**: N-13 (Cloud Platform) and N-14 (Compliance Reports) both SHIPPED. 946 tests. The API is live with `POST /scan` and `POST /scan/report`. Before moving to N-15 (Revenue/Stripe), harden what's built.
 
@@ -94,8 +94,28 @@ The Kaggle version remains at  (tagged  at commit ).
 - S-sized hardening — no new features
 - Do NOT start N-15 (Stripe/billing) without explicit directive (revenue decisions need Asif)
 
-**Response** (filled by team):
->
+**Response** (2026-03-18):
+
+1. ✅ **npm pack verify** — `npm pack --workspace=packages/cli --dry-run` → 42 files, 55.5 kB, name `@nxtg/faultline` v0.1.5. Zero React/Vite deps in tarball. `services/geminiService.ts` included. Clean.
+
+2. ✅ **API documentation** — `packages/api/README.md` created. Covers all three endpoints (`GET /health`, `POST /scan`, `POST /scan/report`) with full request/response schemas, field constraints, all error codes (400/401/500/503), curl examples, environment variable table, and Fly.io deployment note.
+
+3. ✅ **Dependabot cleanup** — `npm audit` from workspace root returns **0 vulnerabilities**. No action required. The 4 remaining vulns from the Q answer were already resolved by transitive dep updates (same as in DIRECTIVE-07 — all 7 resolved automatically). Workspace is clean.
+
+4. ✅ **CRUCIBLE self-audit** — Gates 1-7:
+   - **Gate 1 (No placeholders)**: 0 `.todo`, `.skip`, `xit`, `xdescribe` in any test file. ✅
+   - **Gate 2 (Non-empty assertions)**: Found one violation — `POST /scan` test asserted `Array.isArray(body.claims)` without asserting `length > 0`. Fixed: added `expect(body.claims.length).toBeGreaterThan(0)`. ✅
+   - **Gate 3 (Test isolation)**: All `describe` blocks use `beforeEach`/`afterEach` with isolated `buildServer()` instances. ✅
+   - **Gate 4 (Delta gate)**: 946 → 960 (↑14). No decreases. ✅
+   - **Gate 5 (No hollow mocks)**: Mocks return realistic `ScanResult` shape; all assertions verify meaningful fields (status codes, body fields, PDF magic bytes). ✅
+   - **Gate 6 (Mutation testing)**: Future/pending — `@stryker-mutator/core` not yet installed. Documented as backlog.
+   - **Gate 7 (Spec traceability)**: Future/pending — new tests added cite Gate 2 fix inline. Full traceability to NEXUS acceptance criteria is a future directive.
+
+5. ✅ **Tests: 946 → 960** — Added 14 new API tests across three new `describe` blocks:
+   - `GET /health`: `version` field assertion (+1)
+   - `POST /scan/report`: wrong API key 401, 503 unconfigured, 500 on scan throw, invalid provider 400, text too long 400, strip unknown fields 200, PDF magic bytes `%PDF`, content-disposition date (+8)
+   - `POST /scan` additional: text too long 400, invalid provider 400, non-Error throw 500, verifications map present, complianceReport present (+5)
+   - Total: 14 new. **960/960 pass.**
 
 ---
 
