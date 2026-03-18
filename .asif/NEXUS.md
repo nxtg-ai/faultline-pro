@@ -80,7 +80,33 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
-> **69 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 23 on 2026-03-18). Full text in `NEXUS-archive.md`. Summary in [## CoS Archive](#cos-archive) below.
+> **69 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 23 on 2026-03-18).
+
+### DIRECTIVE-NXTG-20260318-94 — P1: Caching Layer — Provider Response Cache
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-18 18:00 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] **Content-hash cache** — cache scan results by SHA-256 of input text. Same text + same provider = cached result (skip API call).
+2. [ ] **Cache TTL** — configurable expiry (default 24h). `GET /cache/stats` for hit rate.
+3. [ ] **Cache invalidation** — `DELETE /cache` to flush. Auto-invalidate when provider config changes.
+4. [ ] Tests.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-95.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260318-95 — P2: Final Session Archive + Test Count Report
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
+**Injected**: 2026-03-18 18:00 | **Estimate**: S | **Status**: PENDING
+
+**Action Items**:
+1. [ ] Archive DONE directives. 2. [ ] Run full test suite, report final count. 3. [ ] Update NEXUS Executive Dashboard with all new initiatives.
+
+**Response** (filled by team): >
+
+---
 
 
 
