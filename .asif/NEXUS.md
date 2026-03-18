@@ -81,7 +81,33 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
-> **71 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 23 on 2026-03-18).
+> **71 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 25 on 2026-03-18).
+
+### DIRECTIVE-NXTG-20260318-106 — P1: Scheduled Scan Jobs — Recurring Verification
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-18 19:00 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] **`POST /jobs`** — create recurring scan job (text/file, provider, cron schedule, webhook for results).
+2. [ ] **Job scheduler** — background worker checks cron schedules, runs scans, dispatches results via webhook.
+3. [ ] **`GET /jobs`** / **`DELETE /jobs/:id`** — manage scheduled jobs.
+4. [ ] Tests.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-107.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260318-107 — P2: Final Day Session Summary
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
+**Injected**: 2026-03-18 19:00 | **Estimate**: S | **Status**: PENDING
+
+**Action Items**:
+1. [ ] Run full test suite — report final count. 2. [ ] List ALL initiatives shipped today. 3. [ ] Update NEXUS Executive Dashboard.
+
+**Response** (filled by team): >
+
+---
 
 
 
