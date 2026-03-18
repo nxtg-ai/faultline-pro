@@ -26,6 +26,7 @@ interface CreateTemplateBody {
 }
 
 export async function templateRoutes(fastify: FastifyInstance): Promise<void> {
+  process.stderr.write('[templateRoutes] plugin called\n');
   fastify.post<{ Body: CreateTemplateBody }>(
     '/templates',
     {
@@ -38,6 +39,7 @@ export async function templateRoutes(fastify: FastifyInstance): Promise<void> {
       return reply.status(201).send(template);
     },
   );
+  process.stderr.write('[templateRoutes] POST /templates registered\n');
 
   fastify.get('/templates', { preHandler: requireApiKey }, async (_request, reply) => {
     return reply.status(200).send(getTemplateStore().list());
