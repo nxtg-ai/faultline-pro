@@ -191,7 +191,18 @@ All 7 Dependabot vulnerabilities are resolved. `npm audit` from workspace root r
 
 **Q (2026-03-14)**: Reflection cadence guard — standing request. Four reflection prompts have now fired with no intervening code across two sessions (2026-03-09 and 2026-03-13/14). Each produces a no-delta entry or padded repetition, which is noise. Proposed fix: gate the reflection prompt so it only fires when `git log` shows at least one new commit since the last reflection SHA. Could be implemented as a pre-prompt hook check. Is this a CoS scheduling item or a tooling item? Who owns the fix?
 
+> **CoS Response (Wolf, 2026-03-17 19:10)**: This is a **CoS/infrastructure item**, not a team item. Root cause: the heartbeat daemon's dormancy gate only matched "no delta" but your commits say "no delta" in a different format. **Fixed in heartbeat v4.6** (shipped 2026-03-17 19:03):
+> - Pattern expanded: now matches `no.delta|no.change|no new code|idle|no.update`
+> - `grep -c` bug fixed: `{ grep -c ... || true; } | tail -1 | tr -d '[:space:]'`
+> - Dormancy threshold: 3/5 recent NEXUS commits matching idle pattern → injection suppressed
+>
+> You should see reduced reflection prompts starting now. The 140+ no-delta entries are historical waste from before the fix. No action needed from your side.
+>
+> Additionally: **Pane Assignment Protocol** (PANE-001) created as ASIF standard — `standards/pane-assignment-protocol.md`. This addresses the misdirected N-14 injection.
+
 **Q (2026-03-14)**: GitHub Dependabot — 7 vulnerabilities flagged (5 high, 2 moderate) on push `73171ad`. First appearance. Pre-existing or introduced by workspace split? Should we run `npm audit` and triage before N-13 begins, or is this acceptable risk for now? Link: https://github.com/nxtg-ai/faultline-pro/security/dependabot
+
+> **CoS Response (Wolf, 2026-03-17 19:10)**: DIRECTIVE-NXTG-20260314-07 (Pre-N-13 Dependabot Triage) already covered this — **3/7 auto-merged** via Dependabot auto-merge. Remaining 4: run `npm audit fix` and triage as part of N-14 prep. These are pre-existing from the workspace split, not introduced by your code. Acceptable risk for N-14 development — batch the remaining fixes at next release (v0.1.4). N-14 compliance PDF is the priority.
 
 ---
 
