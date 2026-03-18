@@ -79,6 +79,46 @@ The Kaggle version remains at  (tagged  at commit ).
 
 > **52 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 6 on 2026-03-18). Full text in `NEXUS-archive.md`. Summary in [## CoS Archive](#cos-archive) below.
 
+### DIRECTIVE-NXTG-20260318-72 — P1: Python SDK + PyPI Package
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-18 16:00 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] **Python SDK** — `faultline-sdk` package wrapping the REST API. Classes: `FaultlineClient`, `ScanResult`, `ComplianceReport`.
+2. [ ] **PyPI-ready** — `pyproject.toml`, README with examples, type hints throughout.
+3. [ ] Tests for SDK client methods.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-73.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260318-73 — P1: Terraform Provider Prototype
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-18 16:00 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] **Terraform resource** — `faultline_api_key` resource for managing API keys via IaC.
+2. [ ] **Data source** — `faultline_scan` for running scans in Terraform plans.
+3. [ ] Documentation + examples.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-74.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260318-74 — P2: Multi-Provider Benchmark Report
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
+**Injected**: 2026-03-18 16:00 | **Estimate**: S | **Status**: PENDING
+
+**Action Items**:
+1. [ ] Benchmark all 4 providers (Gemini/OpenAI/Claude/Perplexity) on same 10 texts. Compare: accuracy, latency, cost.
+2. [ ] Publish at `docs/provider-benchmark.md`. Include recommendation matrix.
+
+**Response** (filled by team): >
+
+---
+
 ### DIRECTIVE-NXTG-20260318-58 — P1: TypeScript SDK Generation from OpenAPI
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
 **Injected**: 2026-03-18 15:30 | **Estimate**: M | **Status**: DONE
