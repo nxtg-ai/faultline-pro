@@ -85,7 +85,34 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
-> **75 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 29 on 2026-03-18). D-124 + D-125 DONE (not yet archived).
+> **75 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 31 on 2026-03-18).
+
+### DIRECTIVE-NXTG-20260318-132 — P1: Scan Templates — Reusable Verification Configs
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-18 21:15 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] **`POST /templates`** — save scan config (provider, rules, fail-on threshold, text pattern) as named template.
+2. [ ] **`GET /templates`** — list templates. **`POST /scan/template/:id`** — run scan using saved template.
+3. [ ] **CLI `faultline scan --template compliance-check`** — use named template.
+4. [ ] Tests.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-133.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260318-133 — P2: Integration Test — Full Platform E2E
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
+**Injected**: 2026-03-18 21:15 | **Estimate**: S | **Status**: PENDING
+
+**Action Items**:
+1. [ ] E2E: create key → create template → scan via template → upload PDF → compare scans → check cache → verify webhook → check metrics. One flow.
+2. [ ] Final test count.
+
+**Response** (filled by team): >
+
+---
 
 ### DIRECTIVE-NXTG-20260318-124 — P1: Provider Plugin System — Add Custom Verification Providers
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
