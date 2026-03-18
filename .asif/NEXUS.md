@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-15 (N-14 SHIPPED: POST /scan/report pdfkit PDF, 946 tests, N-15/deploy next)
+> **Last Updated**: 2026-03-18 (N-11 SHIPPED: POST /scan/upload multipart PDF/OCR, --file CLI flag, 980 tests)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -20,7 +20,7 @@
 | N-08 | Weakest-Link Detection | FORENSIC | SHIPPED | P1 | 2026-02 |
 | N-09 | Critique + Improved Prompt | SYNTHESIS | SHIPPED | P1 | 2026-02 |
 | N-10 | npm Package + GitHub Action | DISTRIBUTION | SHIPPED | P1 | 2026-02 |
-| N-11 | Multimodal Upload (PDF/OCR) | MULTIMODAL | IDEA | P2 | 2026-02 |
+| N-11 | Multimodal Upload (PDF/OCR) | MULTIMODAL | SHIPPED | P2 | 2026-03-18 |
 | N-12 | Enterprise Features (SSO/audit) | ENTERPRISE | IDEA | P2 | — |
 | N-13 | Cloud Platform (hosted API + dashboard) | REVENUE | SHIPPED | P1 | 2026-03-14 |
 | N-14 | Compliance Reports (PDF/audit-ready) | REVENUE | SHIPPED | P1 | 2026-03-15 |
@@ -79,7 +79,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260318-06 — P1: N-11 Multimodal Upload (PDF/OCR Claims Extraction)
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-18 09:00 | **Estimate**: M | **Status**: PENDING
+**Injected**: 2026-03-18 09:00 | **Estimate**: M | **Status**: DONE
 
 **Context**: N-13 (Cloud Platform) and N-14 (Compliance Reports) SHIPPED. Hardening DONE. N-15 (Stripe/billing) requires Asif decision. N-11 (Multimodal) is the next technical initiative that doesn't require business decisions.
 
@@ -98,8 +98,26 @@ The Kaggle version remains at  (tagged  at commit ).
 - Reuse existing scan pipeline — upload extracts text, then feeds to same verification engine
 - No new providers or verification logic — this is input expansion only
 
-**Response** (filled by team):
->
+**Response** (2026-03-18):
+
+N-11 Multimodal Upload complete. Pure input-expansion — zero changes to the verification engine.
+
+1. ✅ **PDF text extraction** — `packages/cli/cli/extract.ts` new module. `extractTextFromBuffer(buffer, mimetype)` uses `pdf-parse` v1.1.1 (MIT). Throws `"PDF contains no extractable text."` on empty. Text truncated at 50000 chars (matches `/scan` body limit).
+
+2. ✅ **Image OCR** — Same `extract.ts` module. `tesseract.js` v5.1.1 (Apache-2.0) `createWorker('eng')` pattern. Throws `"No text detected in image."` on empty. Supported: `image/png`, `image/jpeg`, `image/webp`.
+
+3. ✅ **Upload endpoint** — `POST /scan/upload` in `packages/api/src/routes/upload.ts`. `@fastify/multipart` v9 (registered with `throwFileSizeLimit: false`, 10MB limit). Reads `file` field (required) + `provider` field (optional). Flow: multipart parse → `extractTextFromBuffer` → `scan()` → ScanResult. Registered in `server.ts`. Error codes: 400 (no file, unsupported MIME, file too large, empty extract), 401/503 (auth), 500 (extract/scan throws).
+
+4. ✅ **CLI `--file` flag** — `faultline scan --file document.pdf` / `faultline scan --file screenshot.png`. Mutually exclusive with `--input`. Error messages: "File not found", error from extract propagated, "No text could be extracted". Full pipeline (spinner, history, format, fail-on) reused.
+
+5. ✅ **Tests: 960 → 980** — 20 new tests:
+   - `packages/api/tests/upload.test.ts` (12 tests): 200 PDF, 200 image, 401 missing key, 401 wrong key, 503 unconfigured, 400 no file, 400 unsupported MIME, 500 corrupt extract, 500 scan throws, 200 with provider field, 400 file >10MB, `overallRisk` field present. All Gate 2 non-empty assertions included.
+   - `packages/cli/tests/file-scan.test.ts` (8 tests): file not found, unsupported extension, successful PDF scan, successful PNG scan, empty extraction result, JSON output structure, --file + --input mutual exclusion error, extract error → exit code 1.
+   - **980/980 pass. 0 vulnerabilities.**
+
+**Architecture note**: `extract.ts` lives in `packages/cli/cli/` and is imported by the API as `@nxtg/faultline/cli/extract.js` — same pattern as `scan.js`. One source of truth, zero duplication.
+
+**N-11 → SHIPPED. `POST /scan/upload` is live. `faultline scan --file` is live.**
 
 ---
 

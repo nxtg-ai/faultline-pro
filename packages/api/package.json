@@ -12,6 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@fastify/multipart": "^9.0.0",
     "@nxtg/faultline": "*",
     "fastify": "^5.8.2",
     "pdfkit": "^0.18.0"

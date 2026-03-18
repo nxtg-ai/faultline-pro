@@ -394,9 +394,14 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
       const inputPath = flags['input'];
       const dirPath = flags['dir'];
       const templateFlag = flags['templates'];
+      const fileFlag = flags['file'];
 
-      if (!inputPath && !dirPath && !templateFlag) {
-        return { exitCode: 1, output: 'Error: --input <file>, --dir <path>, or --templates <categories> is required.\n\n' + usage() };
+      if (!inputPath && !dirPath && !templateFlag && !fileFlag) {
+        return { exitCode: 1, output: 'Error: --input <file>, --dir <path>, --templates <categories>, or --file <path> is required.\n\n' + usage() };
+      }
+
+      if (fileFlag && inputPath) {
+        return { exitCode: 1, output: 'Error: --file and --input are mutually exclusive. Use one or the other.' };
       }
 
       // Load config file (walks up from cwd), then merge with CLI flags
@@ -526,6 +531,51 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
         }
 
         return { exitCode: 0, output: batchOutput };
+      }
+
+      // --- File upload mode (PDF/image extraction) ---
+      if (fileFlag) {
+        const resolvedFile = resolve(fileFlag);
+        if (!existsSync(resolvedFile)) {
+          return { exitCode: 1, output: `Error: File not found: ${resolvedFile}` };
+        }
+
+        const apiKeyErrFile = checkApiKey(providerName);
+        if (apiKeyErrFile) return apiKeyErrFile;
+
+        let extractedText: string;
+        try {
+          const { extractTextFromFile } = await import('./extract.js');
+          extractedText = await extractTextFromFile(resolvedFile);
+        } catch (extractErr) {
+          const message = extractErr instanceof Error ? extractErr.message : String(extractErr);
+          return { exitCode: 1, output: `Error: ${message}` };
+        }
+
+        if (!extractedText.trim()) {
+          return { exitCode: 1, output: 'Error: No text could be extracted from the file.' };
+        }
+
+        const fileSpinner = await createScanSpinner(outputFormat);
+        let fileResult;
+        try {
+          fileResult = await scan(extractedText, providerName, minConfidence, ruleNames, fileSpinner.onProgress);
+          fileSpinner.succeed('Scan complete');
+        } catch (err) {
+          fileSpinner.fail('Scan failed');
+          throw err;
+        }
+
+        const fileSarifOptions: SarifOptions = { inputUri: fileFlag };
+        const fileOutput = renderReportAs(fileResult, outputFormat, fileSarifOptions);
+
+        if (failOnFlag) {
+          const counts = countFromScanResult(fileResult as unknown as Record<string, unknown>);
+          const passed = checkThreshold(failOnFlag, counts);
+          return { exitCode: passed ? 0 : 1, output: fileOutput };
+        }
+
+        return { exitCode: 0, output: fileOutput };
       }
 
       // --- Single file mode ---
