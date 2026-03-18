@@ -77,6 +77,23 @@ The Kaggle version remains at  (tagged  at commit ).
 
 > **52 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 6 on 2026-03-18). Full text in `NEXUS-archive.md`. Summary in [## CoS Archive](#cos-archive) below.
 
+### DIRECTIVE-NXTG-20260318-54 — P0: E2E Smoke Test — Full API Surface
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P0
+**Injected**: 2026-03-18 15:00 | **Estimate**: S | **Status**: PENDING
+
+**Context**: 6+ features shipped today. Verify everything works together end-to-end.
+
+**Action Items**:
+1. [ ] E2E: create key → scan → upload PDF → report → batch scan → usage → audit → webhook → rate limit. One flow.
+2. [ ] Fix anything broken. 3. [ ] Final test count.
+
+**CHAIN**: When done, archive DONE directives + update Executive Dashboard.
+
+**Response** (filled by team):
+>
+
+---
+
 ### DIRECTIVE-NXTG-20260318-44 — P1: Batch Scan API + CI/CD Integration Guide
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
 **Injected**: 2026-03-18 14:00 | **Estimate**: M | **Status**: DONE
