@@ -338,6 +338,76 @@ All 7 Dependabot vulnerabilities are resolved. `npm audit` from workspace root r
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-18 — HEAD `898dbf3`
+
+---
+
+### 1. What shipped since last check-in
+
+**Session: 2026-03-18 second block (DIRECTIVE-NXTG-20260318-44/45)**
+
+| Directive | Deliverable | Tests added |
+|-----------|-------------|-------------|
+| -44 | `POST /scan/batch` (1-10 texts, parallel, per-item rate limit) | +20 |
+| -44 | `docs/ci-integration.md` (GitHub Actions, GitLab, pre-commit, API guide) | — |
+| -44 | OpenAPI spec updated (`BatchScanRequest`, `BatchScanResponse` components) | — |
+| -45 | 6 DONE directives archived to `NEXUS-archive.md` (counter 46→52) | — |
+| -45 | `README.md` full showcase rewrite (providers table, all enterprise features, test badge) | — |
+
+**Test count**: 1,120 → 1,140 (+20). 39 files. CI green (all 3 workflows).
+
+**Execution method**: Agent Teams used in parallel — one agent for the batch route + tests (ran in a worktree), one agent for docs + archive. Worktree merge was manual (cp + diff) since Vitest picks up worktree test files.
+
+---
+
+### 2. What surprised me
+
+**Worktree + Vitest double-counting**: The builder agent ran in a `.claude/worktrees/agent-*/` subtree. Vitest's default glob (`**/*.test.ts`) matched both the main repo and the worktree, reporting 78 test files / 2280 tests instead of 39 / 1140. Pre-push CI gate therefore passed with doubled counts. Not wrong (all tests pass), but misleading. Fix: add `exclude: ['.claude/**']` to `vitest.config.ts`, or configure the worktrees directory in `.gitignore` to also be in the Vitest exclude list. This is a tooling gap worth addressing before worktree usage scales.
+
+**Batch rate limiting design decision**: The obvious design — a `rateLimitBatch` preHandler — doesn't work cleanly because Fastify preHandlers run before body parsing by default for inline preHandlers. Inline rate-limit-check in the route handler (after body parse) is architecturally cleaner anyway: the handler reads `texts.length` before deciding. This is the same pattern used by payment processors for batch job costing.
+
+**`Promise.allSettled()` vs `Promise.all()`**: The directive said "parallel processing" without specifying partial-failure semantics. Used `allSettled` so one bad scan doesn't cancel the batch. This is clearly right for CI (you want all results, not an abort on first error), but it means errors are per-item in the response body rather than an HTTP 5xx. Documented in the CI guide.
+
+**CI guide scope creep avoided**: The temptation was to write a full GitHub Action composite action (action.yml). Kept it as workflow snippets instead — simpler for copy-paste, doesn't require a separate repo or publishing step. The `faultline scan --fail-on high` exit code pattern is sufficient for a gate; no custom Action needed.
+
+**README rewrite revealed feature gap**: Writing the comparison table forced a confrontation with what Faultline doesn't have yet: real-time streaming results, a web UI for batch review, and a self-hosted deployment guide. These are visible gaps that customers would notice. None of them are P1 for CLI/API-first users, but they would matter for a hosted SaaS product.
+
+---
+
+### 3. Cross-project signals
+
+**Pattern: per-item billing in batch endpoints**: The `POST /scan/batch` rate-limit pattern (check `remaining >= batch.length`, then decrement by `batch.length`) is reusable anywhere a resource-metered batch API exists. The key insight: check-then-increment must be atomic from the caller's perspective — even if the decrement is a loop, no other request can interleave because Node.js is single-threaded. This pattern breaks down with distributed rate limiting (Redis), where you'd need a Lua script or MULTI/EXEC block.
+
+**Pattern: `Promise.allSettled()` + structured error envelope**: `{ total, succeeded, failed, results, errors }` where `results[i]` is null on failure and `errors` has `{ index, error }` is a clean batch response contract. Any project doing batch operations (bulk email sends, multi-file transforms, bulk DB writes) should adopt this shape. It's what Stripe uses for batch API responses.
+
+**Vitest + git worktrees = double test discovery**: Any ASIF project using agent-team parallel execution via worktrees needs to either (a) exclude `.claude/worktrees/` from Vitest config, or (b) accept that the pre-push CI gate will double-count during the push but produce correct results post-cleanup. Document this as a known pattern.
+
+**CI guide as a product artifact**: `docs/ci-integration.md` is the first user-facing documentation written for an external audience (not CoS/team). It follows a structure that works: quick orientation → copy-paste examples → reference table → tips. This structure is reusable for any ASIF project that wants a CI integration doc.
+
+---
+
+### 4. What I'd prioritize next (if fresh directives arrived)
+
+1. **Vitest config — exclude `.claude/worktrees/`**: One-line fix, prevents misleading test counts whenever parallel agents use worktrees. Very low effort, high signal value.
+
+2. **Persistence layer (SQLite)**: Still the top structural gap. All stores reset on restart. `better-sqlite3` + migrations for `keys`, `audit_log`, `usage_counters`, `webhooks` tables. The in-memory singleton interfaces are already clean — the swap is mechanical. Without this, the API can't be production-deployed.
+
+3. **Webhook delivery log** (`GET /webhooks/:id/deliveries`): Fire-and-forget is fine for reliability-insensitive cases, but enterprise customers need to debug failed deliveries. A ring buffer of last 50 delivery attempts per webhook (status code, timestamp, latency) would close this gap without requiring persistence (in-memory is fine here for MVP).
+
+4. **Property-based tests (CRUCIBLE Gate 6)**: Oracle coverage is still example-based only. The `scan` pipeline's invariant — "N texts → N results" — is trivially expressible with `fast-check`. The batch endpoint is an ideal entry point: `fc.array(fc.string(), { minLength: 1, maxLength: 10 })` → assert `results.length === texts.length`.
+
+5. **`packages/sdk` client**: The OpenAPI spec is live. `openapi-generator-cli generate -g typescript-fetch` produces a typed client in ~5 minutes. Shipping this as `packages/sdk` would let API consumers skip hand-rolling the auth header + retry logic. Pairs with the batch endpoint — SDK makes batch easy to use from node scripts.
+
+---
+
+### 5. Blockers / questions for the CoS
+
+**Q (2026-03-18)**: Vitest worktree double-counting — should I add `exclude: ['.claude/**']` to the root `vitest.config.ts` now as a maintenance fix, or wait for a directive? It's a 2-line change that unblocks clean test reporting whenever agent teams are used.
+
+**Q (2026-03-18)**: Batch endpoint uses `getUsageMeter().increment(keyId)` once per succeeded item, but the `onResponse` hook in `server.ts` also increments on `POST /scan` and `POST /scan/upload` 200 responses. The batch route bypasses that hook increment path (it's not `/scan` or `/scan/upload`). This is intentional — batch does its own metering inline. But it means audit log entries for batch don't have `inputHash` (the hook only hashes `request.body.text`, not the batch array). Is this acceptable for audit fidelity, or should batch items each get their own audit log entry?
+
+---
+
 > **Reflection cycle**: 2026-03-18 — HEAD `0c9555a`
 
 ---
