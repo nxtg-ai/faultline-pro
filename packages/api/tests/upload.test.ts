@@ -93,6 +93,7 @@ describe('POST /scan/upload', () => {
     const { extractTextFromBuffer } = await import('@nxtg/faultline/cli/extract.js');
     vi.mocked(extractTextFromBuffer).mockResolvedValue('Extracted content from file');
     const { scan } = await import('@nxtg/faultline/cli/scan.js');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(scan).mockResolvedValue({
       input: 'Extracted content from file',
       provider: 'mock',
@@ -104,10 +105,10 @@ describe('POST /scan/upload', () => {
       complianceReport: {
         riskTier: 'minimal',
         findings: [],
-        euRiskSummary: { unacceptable: 0, high: 0, limited: 0, minimal: 0 },
+        euRiskSummary: { totalClaims: 0, highestTier: 'minimal', unacceptable: 0, high: 0, limited: 0, minimal: 0 },
       },
       ruleFindings: [],
-    });
+    } as any);
   });
 
   afterEach(async () => {
