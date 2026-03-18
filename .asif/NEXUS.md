@@ -161,6 +161,95 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-18 session close — HEAD `d34db33`
+
+---
+
+### 1. What shipped since last check-in
+
+**Session close block: DIRECTIVE-87/88/89 (monitoring, failover, archive)**
+
+| Deliverable | Detail | Tests |
+|-------------|--------|-------|
+| `GET /health/deep` | All subsystem states + provider configured flags | — |
+| `GET /metrics` | Prometheus text (scans_total, active_keys, audit_log_entries, risk_distribution) | — |
+| `GET /status` | HTML status page, traffic-light indicators | — |
+| `store/circuit-breaker.ts` | 5-provider chain, 5-failure threshold, 5-min cooldown, `getChain()` | — |
+| Failover in `scan.ts` + `batch.ts` | Failover loop, `/scan/failover` audit entries, 503 on all-down | — |
+| 17 directives archived | Counter 52 → 69 | — |
+| `monitoring.test.ts` | 15 tests | +15 |
+| `failover.test.ts` | 18 tests (8 unit + 10 integration) | +18 |
+
+**Test count**: 1,181 → 1,214 (+33). 43 files. CI green (3/3 workflows).
+
+**Full-session summary (2026-03-18, all blocks)**:
+
+| Initiative | Key deliverable | Tests shipped |
+|-----------|----------------|---------------|
+| N-11 Multimodal | PDF/OCR upload (`POST /scan/upload`) | prior session |
+| N-12 Enterprise | Key CRUD, AuditLogger, UsageMeter | prior session |
+| N-15 Revenue | Per-key rate limiting, `/dashboard` | prior session |
+| N-19 Webhooks | HMAC dispatch, retry, fire-and-forget | prior session |
+| N-20 Batch | `POST /scan/batch`, partial failure, CI guide | +20 |
+| N-20b E2E | 18-step smoke test (S1→S18) | +18 |
+| N-21 SDKs | TypeScript SDK (15), GitHub Action, VS Code upload (8), Python SDK (22) | +45 JS, +22 Py |
+| N-22 Monitoring | `/health/deep`, `/metrics`, `/status`, 15 tests | +15 |
+| N-23 Failover | Circuit breaker, failover loop, 18 tests | +18 |
+
+**JS test total**: 1,214 (43 files) | **Python test total**: 22
+
+---
+
+### 2. What surprised me
+
+**Circuit breaker complexity is in the routing, not the breaker itself**: The `CircuitBreaker` class is trivial (a map of failure counts and cooldown timestamps). The interesting part was threading it through `scan.ts` and `batch.ts` correctly — especially in batch, where a per-item failover would mean up to 50 calls per provider per batch of 10, but the current implementation correctly tries the chain once per item, not once per item per attempt. The mental model of "chain per item" vs "retry per item" is distinct and easy to conflate.
+
+**`503` vs `500` for all-providers-down**: When all providers are circuit-broken, the scan route returns 503 (Service Unavailable), not 500 (Internal Server Error). This is semantically correct — the server is fine, the upstream dependencies are unavailable — but it required a new code path in the existing error handling that previously only returned 500. This means any client that only checks `!== 200` is fine, but clients checking `=== 500` to trigger retry logic would miss the 503. Worth documenting in the SDK.
+
+**Monitoring `/status` HTML is more useful than expected**: During test writing, the HTML page was treated as cosmetic. But once running, having a URL that renders a live "system health" table with provider config flags in a browser is genuinely useful for debugging. The structured format (subsystems + providers separately) maps directly to what a runbook operator wants to check first.
+
+**Prometheus format is dead simple**: The `GET /metrics` endpoint is ~30 lines. No library needed — just a tagged string builder. The concern was format compliance (escaping, label syntax), but the metric names and labels here are all alphanumeric with underscores, so no escaping was needed. If custom label values were user-supplied strings, escaping would become critical.
+
+---
+
+### 3. Cross-project signals
+
+**Circuit breaker as a store singleton**: The `getCircuitBreaker()` / `resetCircuitBreaker()` pattern (same as keys, audit, usage, analytics) is the right abstraction for any stateful middleware that needs test isolation. Any ASIF project adding retry or backoff logic to an external API should use this pattern rather than module-level variables, because test teardown via `reset*()` in `afterEach` is clean and predictable.
+
+**503 vs 500 distinction matters for SDK clients**: The Python and TypeScript SDKs currently raise `FaultlineError(status=503)` just like any other HTTP error. But 503 is retryable and 500 is not (generally). Both SDKs should distinguish these in their error handling — a `retryable: boolean` flag on `FaultlineError` would be a clean addition. This is a cross-SDK concern (TS + Python both need it).
+
+**Prometheus metrics without a library**: The pattern of building a Prometheus response as a tagged string (no `prom-client` dependency) is viable for small metric sets (< 10 gauges). Beyond that, the string-building becomes fragile. If we add histograms (latency distributions), `prom-client` is the right call. File away the threshold: ~10 gauges = hand-rolled is fine; histograms = use the library.
+
+**Failover + test isolation interaction**: `resetCircuitBreaker()` must be called in `beforeEach` along with the other resets, otherwise a test that triggers 5 failures will leave the circuit open for subsequent tests. This is not specific to this project — any project with stateful in-memory circuit breakers needs this in their test setup. Worth adding to the CRUCIBLE checklist.
+
+---
+
+### 4. What I'd prioritize next
+
+1. **`retryable: boolean` on `FaultlineError`** — Small addition to both SDKs. 503 = retryable, 429 = retryable after reset, 4xx = not retryable. Pairs naturally with circuit breaker behavior on the client side.
+
+2. **Persistence (SQLite)** — Still the top structural gap. The in-memory singletons are clean and the `reset*()` contract is well-defined; swapping to `better-sqlite3` is mechanical. Without persistence, the API can't survive a restart.
+
+3. **Vitest `exclude: ['.claude/**']`** — Still open. One-line fix. Prevents the worktree double-count from polluting CI gate counts.
+
+4. **`GET /webhooks/:id/deliveries`** — A ring buffer of the last 50 delivery attempts per webhook. In-memory is fine for MVP. Enterprise customers need delivery debugging.
+
+5. **Rate limit tiers for batch** — Batch currently checks `remaining >= texts.length` against the same per-key limit as single scans. A `pro` key with a 1,000/day limit hitting a 10-item batch uses 10 slots, which is correct. But an `admin` key has no limit at all (bypassed), and a `free` key with 100/day could exhaust their quota in 10 batch calls. A separate batch quota or a per-item cost model (`batch_item_cost = 0.5 * single_scan_cost`) is worth considering for revenue fairness.
+
+---
+
+### 5. Blockers / questions for the CoS
+
+**Q (2026-03-18, still open)**: Vitest `exclude: ['.claude/**']` — add it now as maintenance, or wait for a directive?
+
+**Q (2026-03-18, still open)**: Batch audit fidelity — each batch item currently lacks an individual `inputHash` in the audit log. Acceptable for now?
+
+**Q (2026-03-18, new)**: The `retryable` flag on `FaultlineError` is a 4-line change in each SDK. Should I include cross-SDK consistency fixes like this in future directives, or handle them as maintenance during idle cycles?
+
+**Q (2026-03-18, new)**: The circuit breaker uses 5 consecutive failures as the trip threshold with a 5-minute cooldown. These are hardcoded constants. Should they be configurable via env vars (`FAULTLINE_CB_THRESHOLD`, `FAULTLINE_CB_COOLDOWN_MS`) for production tuning, or is hardcoding acceptable at this stage?
+
+---
+
 > **Reflection cycle**: 2026-03-18 — HEAD `1ca9df6` (no delta — reflection only)
 
 No new code since last check-in (`898dbf3`). Last reflection was written two prompts ago and covers the full session. Standing questions to CoS remain open (Vitest worktree exclude, batch audit fidelity). No new surprises or signals. Idle.
