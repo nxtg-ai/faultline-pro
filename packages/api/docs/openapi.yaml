@@ -603,6 +603,80 @@ components:
           format: date-time
           example: "2026-03-18T09:00:00.000Z"
 
+    BatchScanRequest:
+      type: object
+      required:
+        - texts
+      additionalProperties: false
+      properties:
+        texts:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items:
+            type: string
+            minLength: 1
+            maxLength: 50000
+          description: Array of texts to scan. Each item is processed independently.
+          example:
+            - "GPT-4 was released in March 2023."
+            - "Claude 3 Opus achieves human-level performance on most benchmarks."
+        provider:
+          $ref: '#/components/schemas/Provider'
+
+    BatchScanError:
+      type: object
+      required:
+        - index
+        - error
+      properties:
+        index:
+          type: integer
+          description: Zero-based index of the texts array item that failed.
+          example: 2
+        error:
+          type: string
+          description: Error message from the failed scan.
+          example: "No API key found for \"gemini\"."
+
+    BatchScanResponse:
+      type: object
+      required:
+        - total
+        - succeeded
+        - failed
+        - results
+        - errors
+      properties:
+        total:
+          type: integer
+          description: Total number of texts submitted.
+          example: 3
+        succeeded:
+          type: integer
+          description: Number of texts that were scanned successfully.
+          example: 2
+        failed:
+          type: integer
+          description: Number of texts that failed to scan.
+          example: 1
+        results:
+          type: array
+          items:
+            oneOf:
+              - $ref: '#/components/schemas/ScanResult'
+              - type: 'null'
+          description: >
+            Scan results in input order. `null` at positions where the scan
+            failed — check `errors` for the corresponding error message.
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/BatchScanError'
+          description: >
+            Per-item error details for any texts that failed to scan.
+            Only failed indices are included. Empty array when all scans succeed.
+
     ErrorResponse:
       type: object
       required:
@@ -954,6 +1028,78 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        "503":
+          description: API key not configured on the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /scan/batch:
+    post:
+      operationId: scanBatch
+      summary: Scan multiple texts in a single request
+      description: >
+        Accepts an array of 1–10 texts and runs the full claim forensics
+        pipeline on each concurrently. Results are returned for all items
+        regardless of individual failures.
+
+        Each text in the `texts` array counts as one scan against the
+        rate-limit quota. If the remaining quota is less than the number
+        of texts provided, the entire request is rejected with 429.
+
+        Successful scans fire a `scan.complete` webhook event and are
+        recorded in the analytics store. Failed scans fire a `scan.failed`
+        webhook event per failing item. The HTTP response is always 200
+        even if some items fail — use `succeeded` and `errors` to detect
+        partial failures.
+      tags:
+        - Scan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchScanRequest'
+      responses:
+        "200":
+          description: Batch scan completed (some items may have failed — check `failed` count).
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchScanResponse'
+        "400":
+          description: Request body failed schema validation (e.g. texts array is empty or exceeds 10 items).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "401":
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "429":
+          description: Insufficient rate-limit quota for the requested batch size.
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitErrorResponse'
         "503":
           description: API key not configured on the server.
           content:

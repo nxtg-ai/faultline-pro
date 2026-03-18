@@ -75,182 +75,51 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
-> **46 directives archived** (36 on 2026-02-28, 10 on 2026-03-12). Full text in `NEXUS-archive.md`. Summary in [## CoS Archive](#cos-archive) below.
+> **52 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 6 on 2026-03-18). Full text in `NEXUS-archive.md`. Summary in [## CoS Archive](#cos-archive) below.
 
 ### DIRECTIVE-NXTG-20260318-44 — P1: Batch Scan API + CI/CD Integration Guide
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-18 14:00 | **Estimate**: M | **Status**: PENDING
+**Injected**: 2026-03-18 14:00 | **Estimate**: M | **Status**: DONE
 
 **Context**: Full enterprise API shipped (scan, upload, report, keys, audit, metering, rate limits, webhooks, OpenAPI). Next high-value: batch scanning for CI pipelines.
 
 **Action Items**:
-1. [ ] **`POST /scan/batch`** — accept array of texts/files. Return array of ScanResults. Parallel processing.
-2. [ ] **CI integration guide** — `docs/ci-integration.md`: GitHub Actions example, GitLab CI example, pre-commit hook. Show how to scan PR descriptions/docs on every push.
-3. [ ] **Exit codes for CI** — `faultline scan --fail-on high` returns exit code 1 if any HIGH risk claims found. Already exists in CLI — document + add to batch endpoint.
-4. [ ] Tests: batch endpoint + CI exit code behavior.
+1. [x] **`POST /scan/batch`** — `packages/api/src/routes/batch.ts`. Accepts `{ texts: string[1..10], provider? }`. `Promise.allSettled()` for parallel processing. Per-item analytics, usage meter, and webhook fire. Response: `{ total, succeeded, failed, results, errors }`. Rate limit: each text counts as 1 scan slot — checked and decremented atomically before dispatch. Always returns 200 with per-item error details.
+2. [x] **CI integration guide** — `docs/ci-integration.md`: GitHub Actions (real Gemini key + mock), GitLab CI, pre-commit hook, API batch curl example, risk level reference table.
+3. [x] **Exit codes for CI** — `--fail-on high` documented in CI guide. Existing CLI flag (`checkThreshold()` in `cli/action.ts`) exits 1 if findings at or above threshold. Batch endpoint surfaces risk per-item in response for client-side gate logic.
+4. [x] Tests: 20 tests in `packages/api/tests/batch.test.ts` — basic (6), partial failure (4), rate limiting (4), analytics+webhooks (3), validation (3). All green.
 
 **CHAIN**: When done, start DIRECTIVE-NXTG-20260318-45.
 
 **Response** (filled by team):
->
+> SHIPPED. `POST /scan/batch` + `docs/ci-integration.md` + 20 tests. Total: 1,140 tests passing (39 files).
 
 ---
 
 ### DIRECTIVE-NXTG-20260318-45 — P2: NEXUS Archive + Portfolio Showcase README
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P2
-**Injected**: 2026-03-18 14:00 | **Estimate**: S | **Status**: PENDING
+**Injected**: 2026-03-18 14:00 | **Estimate**: S | **Status**: DONE
 
 **Action Items**:
-1. [ ] Archive all DONE directives from today to NEXUS-archive.md.
-2. [ ] README rewrite — showcase full feature set: 4 providers, PDF/OCR upload, compliance reports, enterprise API, webhooks, rate limiting.
+1. [x] Archive all DONE directives from today to NEXUS-archive.md — 6 directives (-15/16/32/33/38/39) archived. Counter updated: 46 → 52.
+2. [x] README rewrite — full feature showcase: 4 providers, PDF/OCR upload, compliance reports, enterprise API key management, audit trail, usage metering, rate limiting (free/pro/admin tiers), webhooks with HMAC signing, batch scanning, OpenAPI 3.1. Test badge updated to 1140. Providers table, architecture section, CI integration link.
 
 **Response** (filled by team):
->
+> SHIPPED. NEXUS-archive.md updated (52 directives). README.md fully rewritten.
 
 ---
 
-### DIRECTIVE-NXTG-20260318-38 — P1: Webhook System + Event Notifications
-**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-18 13:30 | **Estimate**: M | **Status**: DONE
+> Archived: DIRECTIVE-NXTG-20260318-39 — OpenAPI Spec + SDK Codegen Prep → NEXUS-archive.md
 
-**Context**: N-11→N-15 all SHIPPED. API is enterprise-grade (key mgmt, audit, metering, rate limits). Next: let customers receive scan results via webhooks.
+> Archived: DIRECTIVE-NXTG-20260318-38 — Webhook System + Event Notifications → NEXUS-archive.md
 
-**Action Items**:
-1. [x] **Webhook registration** — `POST /webhooks` (url, events, secret). `GET /webhooks`. `DELETE /webhooks/:id`. All `requireAdmin`. Secret auto-generated (64-char hex) if not provided. GET strips secret from response.
-2. [x] **Event dispatch** — `fireWebhookEvent()` fires on `scan.complete`/`scan.failed` from both `/scan` and `/scan/upload`. Fire-and-forget (void) — no latency impact. HMAC-SHA256 payload signing in `X-Faultline-Signature` header.
-3. [x] **Retry logic** — 3 attempts, delays `[0, 500, 1000]ms`. `_setSleepFn()` injection for testability. Network errors and non-ok responses both trigger retry; exhausted silently swallowed.
-4. [x] Tests: 30 tests in `packages/api/tests/webhooks.test.ts` — CRUD (12), dispatch (10), retry (7), store unit (1). All green.
+> Archived: DIRECTIVE-NXTG-20260318-33 — Documentation Refresh + README Rewrite → NEXUS-archive.md
 
-**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-39.
+> Archived: DIRECTIVE-NXTG-20260318-32 — N-15 Rate Limiting + Usage Dashboards → NEXUS-archive.md
 
-**Response** (filled by team):
-> SHIPPED. `packages/api/src/store/webhooks.ts` + `packages/api/src/routes/webhooks.ts` + 30 tests. Total: 1,120 tests passing.
+> Archived: DIRECTIVE-NXTG-20260318-16 — CRUCIBLE Self-Audit + Coverage Push → NEXUS-archive.md
 
----
-
-### DIRECTIVE-NXTG-20260318-39 — P2: OpenAPI Spec + SDK Codegen Prep
-**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
-**Injected**: 2026-03-18 13:30 | **Estimate**: S | **Status**: DONE
-
-**Action Items**:
-1. [x] Auto-generate OpenAPI 3.1 spec from Fastify routes — hand-authored from route inspection (Fastify v5 doesn't support `@fastify/swagger` with JSON Schema `as const` definitions at this time).
-2. [x] Validate spec with `swagger-cli validate` — schema is well-formed OpenAPI 3.1.0.
-3. [x] Document at `packages/api/docs/openapi.yaml` — 12 routes, all components defined (ApiKey, ScanResult, RateLimitHeaders, etc.), security scheme `x-api-key`.
-
-**Response** (filled by team):
-> SHIPPED. `packages/api/docs/openapi.yaml` — OpenAPI 3.1.0 spec covering all 12 API routes with request/response schemas, security definitions, and rate limit header components.
-
----
-
-### DIRECTIVE-NXTG-20260318-32 — P1: N-15 Rate Limiting + Usage Dashboards
-**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-18 13:00 | **Estimate**: M | **Status**: DONE
-
-**Context**: N-12 Enterprise SHIPPED (key mgmt + audit + metering). Next: rate limiting per API key tier + usage dashboard endpoint.
-
-**Action Items**:
-1. [x] **Rate limiter** — per-key daily counter. Tiers: free=10/day, pro=1000/day, admin=10000/day. Day rollover on midnight UTC. `setCustomLimit(keyId, n)` for test isolation.
-2. [x] **`GET /dashboard`** — returns `{ scans: {today,week,month}, riskDistribution: {low,medium,high,critical}, keyUsage: [{keyId,today}] }`.
-3. [x] **Rate limit headers** — `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` set directly in `rateLimitScan` preHandler on all scan responses.
-4. [x] Tests: 1,050 → 1,090 ✅
-
-**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-33.
-
-**Response** (2026-03-18):
-
-N-15 Rate Limiting + Usage Dashboards complete.
-
-1. ✅ **RateLimiter** (`packages/api/src/store/ratelimit.ts`) — in-memory `Map<keyId, {count, dateKey}>` per-day counter. Tiers resolved via `plugins/ratelimit.ts#resolveTier`: `keyId==='admin'` → admin (10000/day); keystore key with `'admin'` perm → admin; `'pro'` perm → pro (1000/day); else free (10/day). Added `'pro'` to `Permission` type. `setCustomLimit(keyId, n)` exported for test override (avoids 10 real HTTP requests in tests). Day rollover: any request on a new date resets the counter.
-
-2. ✅ **`GET /dashboard`** (`packages/api/src/routes/dashboard.ts`) — requires `requireAdmin`. Reads from `ScanAnalyticsStore` (`packages/api/src/store/analytics.ts`). Analytics recorded in `scan.ts` and `upload.ts` route handlers after each successful `scan()` call (captures `overallRisk` before the response is sent). Returns `{ scans: {today,week,month}, riskDistribution, keyUsage }`.
-
-3. ✅ **Rate limit headers** — set in `rateLimitScan` preHandler (chained after `requireApiKey` as `[requireApiKey, rateLimitScan]` on POST /scan and POST /scan/upload). 429 on exceeded limit. Headers always present on scan responses.
-
-4. ✅ **Tests: 1,050 → 1,090** — `ratelimit.test.ts` (22 tests): free/pro/admin tier headers, 429 behaviour, counter independence, day rollover (unit-level with `vi.useFakeTimers`), upload rate-limit, health no-headers. `dashboard.test.ts` (18 tests): auth gates, response shape, scan counts, risk distribution, key usage. All Gate 2 assertions included.
-
-**N-15 → SHIPPED. Rate limiting and usage dashboard are live.**
-
----
-
-### DIRECTIVE-NXTG-20260318-33 — P2: Documentation Refresh + README Rewrite
-**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
-**Injected**: 2026-03-18 13:00 | **Estimate**: S | **Status**: DONE
-
-**Action Items**:
-1. [x] README rewrite — showcase N-11 through N-15 features, API docs, quick start.
-2. [x] CHANGELOG from git history.
-3. [x] Architecture diagram (CLI + API + scan engine + providers).
-
-**Response** (2026-03-18):
-
-1. ✅ **README updated** — test badge updated (873 → 1090). Added: Features section (providers, document ingestion, compliance, analysis, hosted REST API table, enterprise). API Quick Start section (server startup + curl for POST /scan, POST /scan/upload, POST /keys, GET /dashboard). Architecture section with ASCII block diagram (CLI layer → core engine → providers; API layer → stores).
-
-2. ✅ **CHANGELOG.md created** — Keep a Changelog format. Three versions: v0.2.0 (2026-03-18, N-15/N-12/N-11), v0.1.5 (2026-03-15, N-14/N-13/N-18), v0.1.0 (2026-03-05, N-16/N-10/N-04/N-05/N-06).
-
-3. ✅ **Architecture diagram** — ASCII block diagram in README showing CLI → scan engine → providers, Fastify API → auth/ratelimit → routes → scan engine, and all stores (KeyStore, AuditLogger, UsageMeter, ScanAnalytics, RateLimiter).
-
----
-
-### DIRECTIVE-NXTG-20260318-15 — P1: N-12 Enterprise Features — API Keys + Audit Trail + Usage Metering
-**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-18 10:30 | **Estimate**: M | **Status**: DONE
-
-**Context**: N-11 Multimodal SHIPPED (980 tests). API is production-grade. Enterprise customers need key management, audit trails, and usage metering.
-
-**Action Items**:
-1. [x] **API key management** — `POST /keys` (create), `GET /keys` (list), `DELETE /keys/:id`. Scoped permissions (scan-only, report-only, admin).
-2. [x] **Audit trail** — log every API call: timestamp, key ID, endpoint, input hash (not full text), result summary, latency. Append to `audit.jsonl`.
-3. [x] **Usage metering** — count scans per key per day. `GET /usage` returns current period stats.
-4. [x] **Tests**: 980 → 1,020 ✅
-5. [x] N-12 status → SHIPPED.
-
-**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-16.
-
-**Response** (2026-03-18):
-
-N-12 Enterprise Features complete. All three systems implemented as in-memory singletons with exported `reset*()` functions for test isolation.
-
-1. ✅ **API key management** — `packages/api/src/store/keys.ts` (`KeyStore` singleton). `POST /keys` (create, 201), `GET /keys` (list without secret, 200), `DELETE /keys/:id` (204/404). All three routes gated behind `requireAdmin`. Key secret is 64-char hex (`randomBytes(32)`), returned only on creation.
-
-2. ✅ **Audit trail** — `packages/api/src/store/audit.ts` (`AuditLogger` singleton). `onResponse` Fastify hook records every request: timestamp, keyId, endpoint, method, statusCode, latencyMs, inputHash (SHA-256 first 16 hex chars, POST /scan and /scan/upload only). Appends to `FAULTLINE_AUDIT_PATH` file if env var set.
-
-3. ✅ **Usage metering** — `packages/api/src/store/usage.ts` (`UsageMeter` singleton). Increments `Map<keyId, Map<YYYY-MM-DD, count>>` on every 200 POST /scan or /scan/upload. `GET /usage` returns `{ keyId, usage: Record<string,number> }`.
-
-4. ✅ **Auth rewrite** (`packages/api/src/plugins/auth.ts`): `requireApiKey` now checks keystore + env var, sets `request.keyId` (`'admin'` for env var, `key.id` for keystore). Fixed missing-`return` bug on 401 branch. Added `requireAdmin` (403 for non-admin). 503 only when BOTH env var AND keystore empty — existing tests unaffected. TypeScript augmentation: `declare module 'fastify' { interface FastifyRequest { keyId?: string } }`.
-
-5. ✅ **Tests: 980 → 1,020** — `packages/api/tests/enterprise.test.ts` (40 tests): POST/GET/DELETE /keys (19), integration backward-compat (6), GET /usage (5), audit assertions (6), permissions matrix (4).
-
-**N-12 → SHIPPED. Key management, audit trail, and usage metering are live.**
-
----
-
-### DIRECTIVE-NXTG-20260318-16 — P2: CRUCIBLE Self-Audit + Coverage Push
-**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
-**Injected**: 2026-03-18 10:30 | **Estimate**: S | **Status**: DONE
-
-**Action Items**:
-1. [x] CRUCIBLE Gates 1-7 on full 1,020+ test suite.
-2. [x] Coverage push — fill gaps from N-11/N-12.
-3. [x] Tests: 1,020 → 1,050 ✅
-
-**Response** (2026-03-18):
-
-CRUCIBLE self-audit applied across the full 1,020-test suite. 30 additional coverage tests added.
-
-1. ✅ **CRUCIBLE Gates 1-7**:
-   - **Gate 1 (No placeholders)**: 0 `.skip`, `.todo`, `xit`, `xdescribe` in any test file. ✅
-   - **Gate 2 (Non-empty assertions)**: All data-producing tests assert `length > 0` or exact count before downstream assertions. ✅
-   - **Gate 3 (Test isolation)**: All describe blocks reset singletons (`resetKeyStore/AuditLogger/UsageMeter`) in `beforeEach`. ✅
-   - **Gate 4 (Delta gate)**: 1,020 → 1,050 (↑30). No decreases. ✅
-   - **Gate 5 (No hollow mocks)**: `validateKey` no-match, `delete` false return, `clear()` reset, `hashInput` determinism — all verified with real assertions. ✅
-   - **Gate 6 (Mutation testing)**: Future/pending — `@stryker-mutator/core` not yet installed. ⏳
-   - **Gate 7 (Spec traceability)**: Tests labelled C1–C30 with CRUCIBLE inline annotation. ⏳
-
-2. ✅ **Coverage push** — `packages/api/tests/enterprise-coverage.test.ts` (30 tests): `KeyStore` unit (C1–C6: empty list, delete-false, validateKey no-match/match, size tracking, default permissions), `AuditLogger` unit (C7–C12: hash format, determinism, uniqueness, clear, immutable copy, file write path), `UsageMeter` unit (C13–C16: unknown key, independent tracking, reset, fresh increment), auth edge cases (C17–C20: admin keystore key on POST /keys, keyId propagation, keystore-only 503 logic), upload+usage (C21–C30: upload audit entry, ISO timestamp, GET /usage keyId match, per-key tracking, 401 no usage increment, method uppercase, no inputHash on GET, list immutability, two-key independence, requireAdmin 503 vs 403 distinction).
-
-3. ✅ **Tests: 1,020 → 1,050** — 35 test files, all green, 0 vulnerabilities.
-
----
+> Archived: DIRECTIVE-NXTG-20260318-15 — N-12 Enterprise Features (API Keys + Audit Trail + Usage Metering) → NEXUS-archive.md
 
 ### DIRECTIVE-NXTG-20260318-06 — P1: N-11 Multimodal Upload (PDF/OCR Claims Extraction)
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
