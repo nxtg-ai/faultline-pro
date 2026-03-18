@@ -79,6 +79,45 @@ The Kaggle version remains at  (tagged  at commit ).
 
 > **52 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 6 on 2026-03-18). Full text in `NEXUS-archive.md`. Summary in [## CoS Archive](#cos-archive) below.
 
+### DIRECTIVE-NXTG-20260318-58 — P1: TypeScript SDK Generation from OpenAPI
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-18 15:30 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] Generate TypeScript SDK client from OpenAPI spec using `openapi-typescript-codegen` or `@hey-api/openapi-ts`.
+2. [ ] Publish as `@nxtg/faultline-sdk` (internal package). Types for all endpoints.
+3. [ ] Usage examples in SDK README. 4. [ ] Tests for generated client.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-59.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260318-59 — P1: GitHub Action — Faultline Scan in CI
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-18 15:30 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] Create `action.yml` for GitHub Marketplace — inputs: api-key, fail-on (risk level), text or file path.
+2. [ ] Composite action using the CLI. 3. [ ] Test with a sample repo. 4. [ ] README with usage examples.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-60.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260318-60 — P2: VS Code Extension Update — Upload Support
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
+**Injected**: 2026-03-18 15:30 | **Estimate**: S | **Status**: PENDING
+
+**Action Items**:
+1. [ ] Update SARIF extension to support file scanning (PDF/image via N-11 upload endpoint).
+2. [ ] Add "Scan File" command to VS Code command palette.
+
+**Response** (filled by team): >
+
+---
+
 ### DIRECTIVE-NXTG-20260318-54 — P0: E2E Smoke Test — Full API Surface
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P0
 **Injected**: 2026-03-18 15:00 | **Estimate**: S | **Status**: DONE
