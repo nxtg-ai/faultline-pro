@@ -83,7 +83,34 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
-> **75 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 27 on 2026-03-18).
+> **75 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 29 on 2026-03-18).
+
+### DIRECTIVE-NXTG-20260318-124 — P1: Provider Plugin System — Add Custom Verification Providers
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-18 20:30 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] **Plugin interface** — `FaultlineProvider` base class/interface. `verify(claim: string): Promise<VerificationResult>`.
+2. [ ] **Plugin loader** — discover providers from `providers/` directory or npm packages.
+3. [ ] **Registration API** — `POST /providers/register` (name, endpoint, auth config).
+4. [ ] **Sample plugin** — Wikipedia/Wikidata fact-check provider.
+5. [ ] Tests.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-125.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260318-125 — P2: Provider Health Monitoring + Auto-Rotation
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
+**Injected**: 2026-03-18 20:30 | **Estimate**: S | **Status**: PENDING
+
+**Action Items**:
+1. [ ] Monitor each provider: latency, error rate, availability. 2. [ ] Auto-rotate to healthiest provider on failure. 3. [ ] `GET /providers/health` dashboard.
+
+**Response** (filled by team): >
+
+---
 
 
 
