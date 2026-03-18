@@ -79,16 +79,16 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260318-15 — P1: N-12 Enterprise Features — API Keys + Audit Trail + Usage Metering
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-18 10:30 | **Estimate**: M | **Status**: PENDING
+**Injected**: 2026-03-18 10:30 | **Estimate**: M | **Status**: DONE
 
 **Context**: N-11 Multimodal SHIPPED (980 tests). API is production-grade. Enterprise customers need key management, audit trails, and usage metering.
 
 **Action Items**:
-1. [ ] **API key management** — `POST /keys` (create), `GET /keys` (list), `DELETE /keys/:id`. Scoped permissions (scan-only, report-only, admin).
-2. [ ] **Audit trail** — log every API call: timestamp, key ID, endpoint, input hash (not full text), result summary, latency. Append to `audit.jsonl`.
-3. [ ] **Usage metering** — count scans per key per day. `GET /usage` returns current period stats.
-4. [ ] **Tests**: 980 → 1,020+ target.
-5. [ ] Update N-12 status to BUILDING.
+1. [x] **API key management** — `POST /keys` (create), `GET /keys` (list), `DELETE /keys/:id`. Scoped permissions (scan-only, report-only, admin).
+2. [x] **Audit trail** — log every API call: timestamp, key ID, endpoint, input hash (not full text), result summary, latency. Append to `audit.jsonl`.
+3. [x] **Usage metering** — count scans per key per day. `GET /usage` returns current period stats.
+4. [x] **Tests**: 980 → 1,020 ✅
+5. [x] N-12 status → SHIPPED.
 
 **CHAIN**: When done, start DIRECTIVE-NXTG-20260318-16.
 
@@ -112,12 +112,12 @@ N-12 Enterprise Features complete. All three systems implemented as in-memory si
 
 ### DIRECTIVE-NXTG-20260318-16 — P2: CRUCIBLE Self-Audit + Coverage Push
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P2
-**Injected**: 2026-03-18 10:30 | **Estimate**: S | **Status**: PENDING
+**Injected**: 2026-03-18 10:30 | **Estimate**: S | **Status**: DONE
 
 **Action Items**:
-1. [ ] CRUCIBLE Gates 1-7 on full 1,020+ test suite.
-2. [ ] Coverage push — fill gaps from N-11/N-12.
-3. [ ] Tests: 1,020 → 1,050+.
+1. [x] CRUCIBLE Gates 1-7 on full 1,020+ test suite.
+2. [x] Coverage push — fill gaps from N-11/N-12.
+3. [x] Tests: 1,020 → 1,050 ✅
 
 **Response** (2026-03-18):
 
