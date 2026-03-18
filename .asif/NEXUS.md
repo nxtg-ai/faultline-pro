@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-18 (D-124/125 done. N-27+N-28 SHIPPED. JS: 1,304 tests (48 files). Python: 22 tests. 75 directives archived.)
+> **Last Updated**: 2026-03-18 (D-132/133 done. N-29+N-30 SHIPPED. JS: 1,337 tests (49 files). Python: 22 tests. 75 directives archived.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -38,6 +38,8 @@
 | N-26 | Scan Comparison API + CLI (diff two outputs, trust score delta) | FORENSIC | SHIPPED | P1 | 2026-03-18 |
 | N-27 | Provider Plugin System (FaultlineProvider interface, registry, Wikipedia) | PROVIDER | SHIPPED | P1 | 2026-03-18 |
 | N-28 | Provider Health Monitoring + Auto-Rotation (latency, health score, dashboard) | PROVIDER | SHIPPED | P2 | 2026-03-18 |
+| N-29 | Scan Templates (reusable configs, POST/GET/DELETE/scan-via, CLI --template) | ENTERPRISE | SHIPPED | P1 | 2026-03-18 |
+| N-30 | Full Platform E2E (S1–S26 sequential flow covering all surfaces) | DEVELOPER-X | SHIPPED | P2 | 2026-03-18 |
 
 ---
 
@@ -89,28 +91,27 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260318-132 — P1: Scan Templates — Reusable Verification Configs
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-18 21:15 | **Estimate**: M | **Status**: PENDING
+**Injected**: 2026-03-18 21:15 | **Estimate**: M | **Status**: DONE
 
 **Action Items**:
-1. [ ] **`POST /templates`** — save scan config (provider, rules, fail-on threshold, text pattern) as named template.
-2. [ ] **`GET /templates`** — list templates. **`POST /scan/template/:id`** — run scan using saved template.
-3. [ ] **CLI `faultline scan --template compliance-check`** — use named template.
-4. [ ] Tests.
+1. [x] **`POST /templates`** — save scan config (name, provider, rules, failOn, description) → 201 with UUID id. `TemplateStore` singleton in `store/templates.ts`.
+2. [x] **`GET /templates`** / **`DELETE /templates/:id`** / **`POST /scan/template/:id`** — full CRUD + scan-via-template with body provider overriding template provider.
+3. [x] **CLI `faultline scan --template compliance-check`** — reads local template from `.faultlinerc.json` `templates` section. `LocalScanTemplate` + `getLocalTemplate()` added to `config.ts`. `effectiveFailOn` precedence chain. Usage string updated.
+4. [x] Tests — `packages/api/tests/templates.test.ts` (25 tests with Gate 2 assertions).
 
-**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-133.
-**Response** (filled by team): >
+**Response** (filled by team): Shipped. `TemplateStore` + 4 routes (`templates.ts`) + CLI `--template` flag (singular, distinct from `--templates` red-team flag). 1,304 → 1,337 tests (+33). All green.
 
 ---
 
 ### DIRECTIVE-NXTG-20260318-133 — P2: Integration Test — Full Platform E2E
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P2
-**Injected**: 2026-03-18 21:15 | **Estimate**: S | **Status**: PENDING
+**Injected**: 2026-03-18 21:15 | **Estimate**: S | **Status**: DONE
 
 **Action Items**:
-1. [ ] E2E: create key → create template → scan via template → upload PDF → compare scans → check cache → verify webhook → check metrics. One flow.
-2. [ ] Final test count.
+1. [x] E2E flow extended in `packages/api/tests/e2e.test.ts` — S19–S26: create template → list templates → scan via template → cache stats (HIT verified) → Prometheus metrics → providers health → delete template → 404 on deleted template.
+2. [x] Final test count: **1,337** (49 files). CI green.
 
-**Response** (filled by team): >
+**Response** (filled by team): Shipped. e2e.test.ts S1–S26 now covers the full platform surface. All 8 new E2E steps pass. 1,304 → 1,337 total.
 
 ---
 

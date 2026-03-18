@@ -15,7 +15,10 @@ import { resetAuditLogger, getAuditLogger } from '../src/store/audit.js';
 import { resetUsageMeter } from '../src/store/usage.js';
 import { resetAnalytics } from '../src/store/analytics.js';
 import { resetWebhookStore } from '../src/store/webhooks.js';
-import { resetCache } from '../src/store/cache.js';
+import { resetCache, getScanCache } from '../src/store/cache.js';
+import { resetTemplateStore } from '../src/store/templates.js';
+import { resetProviderRegistry } from '../src/store/providers.js';
+import { resetCircuitBreaker } from '../src/store/circuit-breaker.js';
 import type { FastifyInstance } from 'fastify';
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
@@ -92,6 +95,9 @@ beforeAll(async () => {
   resetAnalytics();
   resetWebhookStore();
   resetCache();
+  resetTemplateStore();
+  resetProviderRegistry();
+  resetCircuitBreaker();
   server = buildServer();
   await server.ready();
 });
@@ -303,5 +309,108 @@ describe('E2E smoke — full API surface', () => {
       headers: adminHeaders(),
     });
     expect(res.statusCode).toBe(200);
+  });
+
+  // ── D-133: Extended E2E — Templates + Cache + Metrics + Providers ──────────
+
+  let templateId: string;
+
+  it('S19. POST /templates → 201, captures templateId', async () => {
+    const res = await server.inject({
+      method: 'POST', url: '/templates',
+      headers: adminHeaders(),
+      body: JSON.stringify({ name: 'e2e-compliance', provider: 'mock', failOn: 'high', description: 'E2E compliance template' }),
+    });
+    expect(res.statusCode).toBe(201);
+    const body = JSON.parse(res.body);
+    expect(body.id).toBeDefined();
+    expect(body.name).toBe('e2e-compliance');
+    templateId = body.id;
+  });
+
+  it('S20. GET /templates → 200, list includes created template (Gate 2)', async () => {
+    const res = await server.inject({ method: 'GET', url: '/templates', headers: adminHeaders() });
+    expect(res.statusCode).toBe(200);
+    const list = JSON.parse(res.body);
+    expect(list.length).toBeGreaterThan(0); // Gate 2
+    expect(list.some((t: { id: string }) => t.id === templateId)).toBe(true);
+  });
+
+  it('S21. POST /scan/template/:id → 200, returns scan result (Gate 2)', async () => {
+    // Re-create a fresh scan key for this step
+    const keyRes = await server.inject({
+      method: 'POST', url: '/keys',
+      headers: adminHeaders(),
+      body: JSON.stringify({ name: 'template-scan-key', permissions: ['scan'] }),
+    });
+    const { key } = JSON.parse(keyRes.body);
+
+    const res = await server.inject({
+      method: 'POST', url: `/scan/template/${templateId}`,
+      headers: { 'x-api-key': key, ...JSON_HDR },
+      body: JSON.stringify({ text: 'AI generated the universe in 2023.' }),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.overallRisk).toBeDefined();
+    expect(body.claims.length).toBeGreaterThan(0); // Gate 2
+  });
+
+  it('S22. GET /cache/stats → 200, has cache entries (Gate 2)', async () => {
+    // Warm the cache with a direct scan
+    await server.inject({
+      method: 'POST', url: '/scan',
+      headers: adminHeaders(),
+      body: JSON.stringify({ text: 'Cache warming claim.', provider: 'mock' }),
+    });
+    // Hit again to generate a HIT
+    const hit = await server.inject({
+      method: 'POST', url: '/scan',
+      headers: adminHeaders(),
+      body: JSON.stringify({ text: 'Cache warming claim.', provider: 'mock' }),
+    });
+    expect(hit.headers['x-cache']).toBe('HIT');
+
+    const res = await server.inject({ method: 'GET', url: '/cache/stats', headers: adminHeaders() });
+    expect(res.statusCode).toBe(200);
+    const stats = JSON.parse(res.body);
+    expect(stats.hits).toBeGreaterThan(0); // Gate 2
+    expect(stats.size).toBeGreaterThan(0); // Gate 2
+  });
+
+  it('S23. GET /metrics → 200, Prometheus text with scan metrics', async () => {
+    const res = await server.inject({ method: 'GET', url: '/metrics', headers: adminHeaders() });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toContain('text/plain');
+    expect(res.body).toContain('faultline_scans_total');
+    expect(res.body).toContain('faultline_active_keys');
+  });
+
+  it('S24. GET /providers/health → 200, lists built-in providers (Gate 2)', async () => {
+    const res = await server.inject({ method: 'GET', url: '/providers/health', headers: adminHeaders() });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.providers.length).toBeGreaterThan(0); // Gate 2
+    const names = body.providers.map((p: { name: string }) => p.name);
+    expect(names).toContain('gemini');
+    expect(names).toContain('mock');
+  });
+
+  it('S25. DELETE /templates/:id → 204', async () => {
+    const res = await server.inject({
+      method: 'DELETE',
+      url: `/templates/${templateId}`,
+      headers: { 'x-api-key': ADMIN },
+    });
+    expect(res.statusCode).toBe(204);
+  });
+
+  it('S26. POST /scan/template/:id after delete → 404', async () => {
+    const res = await server.inject({
+      method: 'POST', url: `/scan/template/${templateId}`,
+      headers: adminHeaders(),
+      body: JSON.stringify({ text: 'Should fail.' }),
+    });
+    expect(res.statusCode).toBe(404);
   });
 });

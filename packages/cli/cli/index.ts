@@ -13,7 +13,7 @@ import { resolve } from 'node:path';
 import { scan, batchScan } from './scan.js';
 import { renderReport, renderReportAs, type OutputFormat, type SarifOptions } from './report.js';
 import { listRules, getRule } from '../rules/index.js';
-import { loadConfig, mergeFlags, generateSampleConfig } from './config.js';
+import { loadConfig, mergeFlags, generateSampleConfig, getLocalTemplate } from './config.js';
 import { startWatch } from './watch.js';
 import { getAllTemplates, getTemplatesByCategories, listCategories, validateCategories, type TemplateCategory } from '../templates/index.js';
 import { checkThreshold, countFromScanResult, type SeverityLevel } from './action.js';
@@ -72,6 +72,7 @@ Usage:
   faultline report --input <results.json> [--output-format json|markdown|html|sarif]
   faultline watch --dir <path> [--provider gemini] [--output-format json]   Watch for changes
   faultline scan --templates injection,bias                         Red-team scan with template categories
+  faultline scan --template compliance-check                        Use named template from .faultlinerc.json
   faultline templates list [--category injection]                   List red-team prompt templates
   faultline history [--all] [--history-dir <path>]                  List past scans
   faultline trend --file <path> [--history-dir <path>]             Show finding trend for a file
@@ -397,6 +398,7 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
       const dirPath = flags['dir'];
       const templateFlag = flags['templates'];
       const fileFlag = flags['file'];
+      const namedTemplateFlag = flags['template']; // singular — named local template from .faultlinerc.json
 
       if (!inputPath && !dirPath && !templateFlag && !fileFlag) {
         return { exitCode: 1, output: 'Error: --input <file>, --dir <path>, --templates <categories>, or --file <path> is required.\n\n' + usage() };
@@ -432,10 +434,29 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
         }
       }
 
+      // --template (singular): apply named local template from .faultlinerc.json
+      // CLI flags always take precedence over template values.
+      if (namedTemplateFlag) {
+        const localTemplate = getLocalTemplate(config, namedTemplateFlag);
+        if (!localTemplate) {
+          return {
+            exitCode: 1,
+            output: `Error: Template "${namedTemplateFlag}" not found in .faultlinerc.json. Available templates: ${Object.keys(config.templates ?? {}).join(', ') || '(none)'}`,
+          };
+        }
+        if (!flags['provider'] && localTemplate.provider) providerName = localTemplate.provider;
+        if (!flags['rules'] && localTemplate.rules) ruleNames = localTemplate.rules;
+        if (!flags['min-confidence'] && localTemplate['min-confidence'] !== undefined) minConfidence = localTemplate['min-confidence'];
+      }
+
       // --fail-on threshold (optional — omitted = always exit 0)
       const failOnFlag = flags['fail-on'] as SeverityLevel | undefined;
+      // If a named template supplies fail-on and no explicit CLI flag was given, use the template value.
+      const effectiveFailOn: SeverityLevel | undefined =
+        failOnFlag ??
+        (namedTemplateFlag ? (getLocalTemplate(config, namedTemplateFlag)?.['fail-on'] as SeverityLevel | undefined) : undefined);
       const validSeverities: SeverityLevel[] = ['critical', 'high', 'medium', 'low'];
-      if (failOnFlag && !validSeverities.includes(failOnFlag)) {
+      if (effectiveFailOn && !validSeverities.includes(effectiveFailOn)) {
         return { exitCode: 1, output: `Error: --fail-on must be one of: ${validSeverities.join(', ')}.` };
       }
 
@@ -474,7 +495,7 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
           results: templateResults,
         }, null, 2);
 
-        if (failOnFlag) {
+        if (effectiveFailOn) {
           // Aggregate counts across all template results
           const totalCounts = { findings: 0, critical: 0, high: 0, medium: 0, low: 0 };
           for (const tr of templateResults) {
@@ -485,7 +506,7 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
             totalCounts.medium += c.medium;
             totalCounts.low += c.low;
           }
-          const passed = checkThreshold(failOnFlag, totalCounts);
+          const passed = checkThreshold(effectiveFailOn, totalCounts);
           return { exitCode: passed ? 0 : 1, output: templateOutput };
         }
 
@@ -518,7 +539,7 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
 
         const batchOutput = JSON.stringify(batchResult, null, 2);
 
-        if (failOnFlag) {
+        if (effectiveFailOn) {
           const totalCounts = { findings: 0, critical: 0, high: 0, medium: 0, low: 0 };
           for (const fr of batchResult.results) {
             const c = countFromScanResult(fr.result as unknown as Record<string, unknown>);
@@ -528,7 +549,7 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
             totalCounts.medium += c.medium;
             totalCounts.low += c.low;
           }
-          const passed = checkThreshold(failOnFlag, totalCounts);
+          const passed = checkThreshold(effectiveFailOn, totalCounts);
           return { exitCode: passed ? 0 : 1, output: batchOutput };
         }
 
@@ -571,9 +592,9 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
         const fileSarifOptions: SarifOptions = { inputUri: fileFlag };
         const fileOutput = renderReportAs(fileResult, outputFormat, fileSarifOptions);
 
-        if (failOnFlag) {
+        if (effectiveFailOn) {
           const counts = countFromScanResult(fileResult as unknown as Record<string, unknown>);
-          const passed = checkThreshold(failOnFlag, counts);
+          const passed = checkThreshold(effectiveFailOn, counts);
           return { exitCode: passed ? 0 : 1, output: fileOutput };
         }
 
@@ -616,9 +637,9 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
         writeFileSync(resolve('results.sarif'), scanOutput, 'utf-8');
       }
 
-      if (failOnFlag) {
+      if (effectiveFailOn) {
         const counts = countFromScanResult(result as unknown as Record<string, unknown>);
-        const passed = checkThreshold(failOnFlag, counts);
+        const passed = checkThreshold(effectiveFailOn, counts);
         return { exitCode: passed ? 0 : 1, output: scanOutput };
       }
 

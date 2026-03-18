@@ -2,11 +2,20 @@ import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import type { OutputFormat } from './report.js';
 
+export interface LocalScanTemplate {
+  provider?: string;
+  rules?: string[];
+  'fail-on'?: string;
+  'min-confidence'?: number;
+  description?: string;
+}
+
 export interface FaultlineConfig {
   provider?: string;
   'min-confidence'?: number;
   'output-format'?: OutputFormat;
   rules?: string[];
+  templates?: Record<string, LocalScanTemplate>;
 }
 
 const CONFIG_FILENAME = '.faultlinerc.json';
@@ -17,6 +26,14 @@ const SAMPLE_CONFIG: FaultlineConfig & { $schema?: string; $comment?: string } =
   'min-confidence': 0.5,
   'output-format': 'json',
   rules: ['pii', 'bias', 'toxicity'],
+  templates: {
+    'compliance-check': {
+      provider: 'gemini',
+      rules: ['pii', 'bias'],
+      'fail-on': 'high',
+      description: 'Standard compliance verification template',
+    },
+  },
 };
 
 /**
@@ -86,7 +103,32 @@ function validateConfig(raw: Record<string, unknown>): FaultlineConfig {
     }
   }
 
+  if (raw['templates'] && typeof raw['templates'] === 'object' && !Array.isArray(raw['templates'])) {
+    const tpls: Record<string, LocalScanTemplate> = {};
+    for (const [k, v] of Object.entries(raw['templates'] as Record<string, unknown>)) {
+      if (typeof v === 'object' && v !== null) {
+        const t: LocalScanTemplate = {};
+        const tv = v as Record<string, unknown>;
+        if (typeof tv['provider'] === 'string') t.provider = tv['provider'];
+        if (Array.isArray(tv['rules'])) t.rules = tv['rules'].filter((r): r is string => typeof r === 'string');
+        if (typeof tv['fail-on'] === 'string') t['fail-on'] = tv['fail-on'];
+        if (typeof tv['min-confidence'] === 'number') t['min-confidence'] = tv['min-confidence'];
+        if (typeof tv['description'] === 'string') t.description = tv['description'];
+        tpls[k] = t;
+      }
+    }
+    if (Object.keys(tpls).length > 0) config.templates = tpls;
+  }
+
   return config;
+}
+
+/**
+ * Look up a named local template from the config.
+ * Returns undefined if the template does not exist.
+ */
+export function getLocalTemplate(config: FaultlineConfig, name: string): LocalScanTemplate | undefined {
+  return config.templates?.[name];
 }
 
 /**
