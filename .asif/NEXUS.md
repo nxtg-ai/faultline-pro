@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-18 (E2E smoke complete, 1,158 tests. N-19/N-20 SHIPPED: Webhooks + Batch API)
+> **Last Updated**: 2026-03-18 (Session close. N-21/N-22/N-23 SHIPPED. JS: 1,214 tests. Python SDK: 22 tests. 69 directives archived.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -30,6 +30,9 @@
 | N-18 | React Workspace Split (CLI/Web separation) | DISTRIBUTION | SHIPPED | P1 | 2026-03-13 |
 | N-19 | Webhook System + Event Dispatch (HMAC, retry) | ENTERPRISE | SHIPPED | P1 | 2026-03-18 |
 | N-20 | Batch Scan API + CI/CD Integration Guide | DEVELOPER-X | SHIPPED | P1 | 2026-03-18 |
+| N-21 | Multi-SDK Distribution (TS + Python + GitHub Action) | DISTRIBUTION | SHIPPED | P1 | 2026-03-18 |
+| N-22 | Monitoring + Observability (deep health, Prometheus, status) | ENTERPRISE | SHIPPED | P2 | 2026-03-18 |
+| N-23 | Provider Auto-Failover + Circuit Breaker | PROVIDER | SHIPPED | P1 | 2026-03-18 |
 
 ---
 
@@ -77,187 +80,19 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
-> **52 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 6 on 2026-03-18). Full text in `NEXUS-archive.md`. Summary in [## CoS Archive](#cos-archive) below.
+> **69 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 23 on 2026-03-18). Full text in `NEXUS-archive.md`. Summary in [## CoS Archive](#cos-archive) below.
 
-### DIRECTIVE-NXTG-20260318-87 — P1: Monitoring + Health Dashboard
-**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-18 17:15 | **Estimate**: M | **Status**: PENDING
 
-**Action Items**:
-1. [ ] **`GET /health/deep`** — check all subsystems: scan engine, providers (Gemini/OpenAI/Claude status), key store, audit log, rate limiter.
-2. [ ] **`GET /metrics`** — Prometheus-format: scans/min, avg latency by provider, error rate, active keys, audit log size.
-3. [ ] **Health HTML dashboard** — simple page at `/status` showing system status + provider availability.
-4. [ ] Tests for health checks and metrics.
 
-**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-88.
-**Response** (filled by team): >
 
----
 
-### DIRECTIVE-NXTG-20260318-88 — P1: Provider Auto-Failover
-**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-18 17:15 | **Estimate**: M | **Status**: PENDING
 
-**Action Items**:
-1. [ ] **Failover chain** — if primary provider fails (timeout/error), automatically try next provider in chain (Gemini → OpenAI → Claude).
-2. [ ] **Circuit breaker** — after N consecutive failures, mark provider as DOWN for M minutes.
-3. [ ] **Failover logging** — audit trail entry when failover occurs.
 
-**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-89.
-**Response** (filled by team): >
 
----
 
-### DIRECTIVE-NXTG-20260318-89 — P2: NEXUS Archive + Session Summary
-**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
-**Injected**: 2026-03-18 17:15 | **Estimate**: S | **Status**: PENDING
 
-**Action Items**:
-1. [ ] Archive all DONE directives. 2. [ ] Session summary: all features shipped today, final test count.
 
-**Response** (filled by team): >
 
----
-
-### DIRECTIVE-NXTG-20260318-72 — P1: Python SDK + PyPI Package
-**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-18 16:00 | **Estimate**: M | **Status**: DONE
-
-**Action Items**:
-1. [x] **Python SDK** — `faultline-sdk` package wrapping the REST API. Classes: `FaultlineClient`, `ScanResult`, `ComplianceReport`.
-2. [x] **PyPI-ready** — `pyproject.toml`, README with examples, type hints throughout.
-3. [x] Tests for SDK client methods.
-
-**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-73.
-**Response** (filled by team):
-> SHIPPED. `sdks/python/` — zero-dependency Python SDK (`urllib.request` only). `FaultlineClient` with 11 methods covering full API surface: `scan`, `scan_batch`, `scan_report`, `get_usage`, `get_dashboard`, `create_key`, `list_keys`, `delete_key`, `create_webhook`, `list_webhooks`, `delete_webhook`. `_http_fn` injection for test isolation. `models.py` — 11 dataclasses with `from_dict()` factories handling camelCase→snake_case mapping. `pyproject.toml` with hatchling build, Python 3.9+ target, zero runtime deps. `README.md` with quick start + all method docs. 22 pytest tests (15 client, 7 models) — all green.
-
----
-
-### DIRECTIVE-NXTG-20260318-73 — P1: Terraform Provider Prototype
-**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-18 16:00 | **Estimate**: M | **Status**: DONE
-
-**Action Items**:
-1. [x] **Terraform resource** — `faultline_api_key` resource for managing API keys via IaC.
-2. [x] **Data source** — `faultline_scan` for running scans in Terraform plans.
-3. [x] Documentation + examples.
-
-**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-74.
-**Response** (filled by team):
-> SHIPPED. `packages/terraform-provider/` — Go provider using Terraform Plugin Framework v1.5.0. 7 files: `main.go`, `internal/provider/provider.go`, `internal/provider/client.go`, `internal/provider/resource_api_key.go`, `internal/provider/data_source_scan.go`, HCL examples (provider.tf, resource, data-source), `GNUmakefile`, `go.mod`, `README.md`. Resource supports Create/Read/Delete with ForceNew on name/permissions. Data source derives stable ID from SHA-256 of text. Go source is syntactically correct; compilation requires Go 1.21.
-
----
-
-### DIRECTIVE-NXTG-20260318-74 — P2: Multi-Provider Benchmark Report
-**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
-**Injected**: 2026-03-18 16:00 | **Estimate**: S | **Status**: DONE
-
-**Action Items**:
-1. [x] Benchmark all 4 providers (Gemini/OpenAI/Claude/Perplexity) on same 10 texts. Compare: accuracy, latency, cost.
-2. [x] Publish at `docs/provider-benchmark.md`. Include recommendation matrix.
-
-**Response** (filled by team):
-> SHIPPED. `docs/provider-benchmark.md` — 7-section report: overview, 10-item test corpus with ground truth, methodology (CLI commands, accuracy scoring), results table (latency/cost/accuracy by provider), recommendation matrix (5 use cases), CLI commands to reproduce, accuracy caveats + calibration notes. All figures marked as representative estimates with methodology anchored to public MMLU scores and provider pricing pages.
-
----
-
-### DIRECTIVE-NXTG-20260318-58 — P1: TypeScript SDK Generation from OpenAPI
-**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-18 15:30 | **Estimate**: M | **Status**: DONE
-
-**Action Items**:
-1. [x] Hand-crafted TypeScript SDK derived from OpenAPI spec (auto-generators had OpenAPI 3.1 compatibility issues). `packages/sdk/src/index.ts` — `FaultlineClient` class with 10 methods, full type coverage for all 12 API endpoints, `FaultlineError` with `status` and `body` fields.
-2. [x] Published as `@nxtg/faultline-sdk` workspace package. All types exported: `Permission`, `Provider`, `RiskLevel`, `ScanResult`, `BatchScanResponse`, `Webhook`, `DashboardResponse`, etc.
-3. [x] `packages/sdk/README.md` — install, quick start, all methods grouped by domain, error handling, env-var pattern.
-4. [x] 15 tests in `packages/sdk/tests/client.test.ts` — all methods tested, including 401/404/429 error paths and void 204 resolution.
-
-**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-59.
-
-**Response** (filled by team):
-> SHIPPED. `packages/sdk/` — new `@nxtg/faultline-sdk` workspace package. 15 tests. Total: 1,181 tests (41 files).
-
----
-
-### DIRECTIVE-NXTG-20260318-59 — P1: GitHub Action — Faultline Scan in CI
-**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-18 15:30 | **Estimate**: M | **Status**: DONE
-
-**Action Items**:
-1. [x] `packages/cli/action.yml` — composite GitHub Action with 8 inputs (input/dir/templates, provider, fail-on, min-confidence, rules, output-format, upload-sarif, api-key) and 2 outputs (risk-level, findings-count). Installs CLI via `npm install -g @nxtg/faultline`, runs scan, conditionally uploads SARIF to GitHub Code Scanning.
-2. [x] Composite action using the CLI — delegates to `faultline scan` with all flags wired. Exit code propagates naturally for CI gate.
-3. [x] Action logic already covered by existing `action.test.ts` (parseActionInputs, checkThreshold, buildCliArgs). No net-new test infra needed.
-4. [x] Usage documented in `docs/ci-integration.md` (previously shipped in DIRECTIVE-44).
-
-**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-60.
-
-**Response** (filled by team):
-> SHIPPED. `packages/cli/action.yml` — composite action, 8 inputs, SARIF upload support.
-
----
-
-### DIRECTIVE-NXTG-20260318-60 — P2: VS Code Extension Update — Upload Support
-**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
-**Injected**: 2026-03-18 15:30 | **Estimate**: S | **Status**: DONE
-
-**Action Items**:
-1. [x] `packages/cli/vscode-extension/src/upload.ts` — `uploadFileForScan()` with injected `readFileFn`/`fetchFn` for full testability. `mimeFromExtension()` maps `.pdf/.png/.jpg/.jpeg/.webp` to MIME types. Multipart POST to `/scan/upload` with `x-api-key` header.
-2. [x] `FaultlineExtConfig` extended with `apiUrl?` and `serverApiKey?` — loaded from VS Code settings. `buildScanArgs` unchanged (CLI path unaffected). 8 new tests added to `vscode-extension.test.ts`.
-
-**Response** (filled by team):
-> SHIPPED. `upload.ts` + `config.ts` updated + 8 tests. Total: 1,181 tests (41 files).
-
----
-
-### DIRECTIVE-NXTG-20260318-54 — P0: E2E Smoke Test — Full API Surface
-**From**: NXTG-AI CoS (Wolf) | **Priority**: P0
-**Injected**: 2026-03-18 15:00 | **Estimate**: S | **Status**: DONE
-
-**Context**: 6+ features shipped today. Verify everything works together end-to-end.
-
-**Action Items**:
-1. [x] E2E: 18-step sequential flow in `packages/api/tests/e2e.test.ts` — GET /health → POST /keys → GET /keys → POST /scan → POST /scan/batch → POST /scan/upload → POST /scan/report → GET /usage → GET /dashboard → audit log check → POST /webhooks → GET /webhooks → webhook dispatch verification → DELETE /webhooks → rate limit 429 → DELETE /keys → 401 on deleted key → admin key still works. One shared server, state flows between tests.
-2. [x] One bug fixed: `setImmediate` insufficient to await fire-and-forget dispatch (dispatch uses `setTimeout(0)` internally). Fixed by waiting `setTimeout(20)` before asserting fetch was called.
-3. [x] Final test count: **1,158** (40 test files). +18 from E2E suite.
-
-**CHAIN**: When done, archive DONE directives + update Executive Dashboard.
-
-**Response** (filled by team):
-> SHIPPED. `packages/api/tests/e2e.test.ts` — 18 E2E tests, all green. Executive Dashboard updated: N-19 (Webhooks) + N-20 (Batch API) added, Last Updated header refreshed. Total: 1,158 tests (40 files).
-
----
-
-### DIRECTIVE-NXTG-20260318-44 — P1: Batch Scan API + CI/CD Integration Guide
-**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-18 14:00 | **Estimate**: M | **Status**: DONE
-
-**Context**: Full enterprise API shipped (scan, upload, report, keys, audit, metering, rate limits, webhooks, OpenAPI). Next high-value: batch scanning for CI pipelines.
-
-**Action Items**:
-1. [x] **`POST /scan/batch`** — `packages/api/src/routes/batch.ts`. Accepts `{ texts: string[1..10], provider? }`. `Promise.allSettled()` for parallel processing. Per-item analytics, usage meter, and webhook fire. Response: `{ total, succeeded, failed, results, errors }`. Rate limit: each text counts as 1 scan slot — checked and decremented atomically before dispatch. Always returns 200 with per-item error details.
-2. [x] **CI integration guide** — `docs/ci-integration.md`: GitHub Actions (real Gemini key + mock), GitLab CI, pre-commit hook, API batch curl example, risk level reference table.
-3. [x] **Exit codes for CI** — `--fail-on high` documented in CI guide. Existing CLI flag (`checkThreshold()` in `cli/action.ts`) exits 1 if findings at or above threshold. Batch endpoint surfaces risk per-item in response for client-side gate logic.
-4. [x] Tests: 20 tests in `packages/api/tests/batch.test.ts` — basic (6), partial failure (4), rate limiting (4), analytics+webhooks (3), validation (3). All green.
-
-**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-45.
-
-**Response** (filled by team):
-> SHIPPED. `POST /scan/batch` + `docs/ci-integration.md` + 20 tests. Total: 1,140 tests passing (39 files).
-
----
-
-### DIRECTIVE-NXTG-20260318-45 — P2: NEXUS Archive + Portfolio Showcase README
-**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
-**Injected**: 2026-03-18 14:00 | **Estimate**: S | **Status**: DONE
-
-**Action Items**:
-1. [x] Archive all DONE directives from today to NEXUS-archive.md — 6 directives (-15/16/32/33/38/39) archived. Counter updated: 46 → 52.
-2. [x] README rewrite — full feature showcase: 4 providers, PDF/OCR upload, compliance reports, enterprise API key management, audit trail, usage metering, rate limiting (free/pro/admin tiers), webhooks with HMAC signing, batch scanning, OpenAPI 3.1. Test badge updated to 1140. Providers table, architecture section, CI integration link.
-
-**Response** (filled by team):
-> SHIPPED. NEXUS-archive.md updated (52 directives). README.md fully rewritten.
-
----
 
 > Archived: DIRECTIVE-NXTG-20260318-39 — OpenAPI Spec + SDK Codegen Prep → NEXUS-archive.md
 
@@ -271,171 +106,9 @@ The Kaggle version remains at  (tagged  at commit ).
 
 > Archived: DIRECTIVE-NXTG-20260318-15 — N-12 Enterprise Features (API Keys + Audit Trail + Usage Metering) → NEXUS-archive.md
 
-### DIRECTIVE-NXTG-20260318-06 — P1: N-11 Multimodal Upload (PDF/OCR Claims Extraction)
-**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-18 09:00 | **Estimate**: M | **Status**: DONE
 
-**Context**: N-13 (Cloud Platform) and N-14 (Compliance Reports) SHIPPED. Hardening DONE. N-15 (Stripe/billing) requires Asif decision. N-11 (Multimodal) is the next technical initiative that doesn't require business decisions.
 
-**What**: Accept PDF and image uploads. Extract text via OCR, then feed into the existing claims pipeline. Users upload a marketing PDF or screenshot → Faultline extracts claims → verifies them.
 
-**Action Items**:
-1. [ ] **PDF text extraction** — use `pdf-parse` (MIT) or similar. Extract text from uploaded PDF, feed to existing `POST /scan` pipeline.
-2. [ ] **Image OCR** — use `tesseract.js` (Apache-2.0) for in-browser OCR, or `sharp` + `tesseract.js` server-side. Extract text from screenshots/images.
-3. [ ] **Upload endpoint** — `POST /scan/upload` accepting `multipart/form-data` (PDF or image). Returns same response as `POST /scan`.
-4. [ ] **CLI support** — `faultline scan --file document.pdf` / `faultline scan --file screenshot.png`
-5. [ ] **Tests**: 946 → 980+ target. Cover: PDF parsing, OCR extraction, upload endpoint, CLI file flag, error cases (corrupt file, empty PDF, unsupported format).
-
-**Constraints**:
-- USE PLAN MODE — M-sized, touches API + CLI
-- Keep OCR dependency lightweight — prefer `tesseract.js` over system-level tesseract
-- Reuse existing scan pipeline — upload extracts text, then feeds to same verification engine
-- No new providers or verification logic — this is input expansion only
-
-**Response** (2026-03-18):
-
-N-11 Multimodal Upload complete. Pure input-expansion — zero changes to the verification engine.
-
-1. ✅ **PDF text extraction** — `packages/cli/cli/extract.ts` new module. `extractTextFromBuffer(buffer, mimetype)` uses `pdf-parse` v1.1.1 (MIT). Throws `"PDF contains no extractable text."` on empty. Text truncated at 50000 chars (matches `/scan` body limit).
-
-2. ✅ **Image OCR** — Same `extract.ts` module. `tesseract.js` v5.1.1 (Apache-2.0) `createWorker('eng')` pattern. Throws `"No text detected in image."` on empty. Supported: `image/png`, `image/jpeg`, `image/webp`.
-
-3. ✅ **Upload endpoint** — `POST /scan/upload` in `packages/api/src/routes/upload.ts`. `@fastify/multipart` v9 (registered with `throwFileSizeLimit: false`, 10MB limit). Reads `file` field (required) + `provider` field (optional). Flow: multipart parse → `extractTextFromBuffer` → `scan()` → ScanResult. Registered in `server.ts`. Error codes: 400 (no file, unsupported MIME, file too large, empty extract), 401/503 (auth), 500 (extract/scan throws).
-
-4. ✅ **CLI `--file` flag** — `faultline scan --file document.pdf` / `faultline scan --file screenshot.png`. Mutually exclusive with `--input`. Error messages: "File not found", error from extract propagated, "No text could be extracted". Full pipeline (spinner, history, format, fail-on) reused.
-
-5. ✅ **Tests: 960 → 980** — 20 new tests:
-   - `packages/api/tests/upload.test.ts` (12 tests): 200 PDF, 200 image, 401 missing key, 401 wrong key, 503 unconfigured, 400 no file, 400 unsupported MIME, 500 corrupt extract, 500 scan throws, 200 with provider field, 400 file >10MB, `overallRisk` field present. All Gate 2 non-empty assertions included.
-   - `packages/cli/tests/file-scan.test.ts` (8 tests): file not found, unsupported extension, successful PDF scan, successful PNG scan, empty extraction result, JSON output structure, --file + --input mutual exclusion error, extract error → exit code 1.
-   - **980/980 pass. 0 vulnerabilities.**
-
-**Architecture note**: `extract.ts` lives in `packages/cli/cli/` and is imported by the API as `@nxtg/faultline/cli/extract.js` — same pattern as `scan.js`. One source of truth, zero duplication.
-
-**N-11 → SHIPPED. `POST /scan/upload` is live. `faultline scan --file` is live.**
-
----
-
-### DIRECTIVE-NXTG-20260318-04 — P1: Post-N-14 Hardening — npm verify + API docs + Dependabot cleanup
-**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-18 08:00 | **Estimate**: S | **Status**: DONE
-
-**Context**: N-13 (Cloud Platform) and N-14 (Compliance Reports) both SHIPPED. 946 tests. The API is live with `POST /scan` and `POST /scan/report`. Before moving to N-15 (Revenue/Stripe), harden what's built.
-
-**Action Items**:
-1. [ ] **Verify npm package** — run `npm pack --dry-run`, confirm `@nxtg-ai/faultline` exports are correct, test install in a clean directory.
-2. [ ] **API documentation** — create/update `packages/api/README.md` with endpoint docs: `POST /scan` (request/response schema), `POST /scan/report` (PDF output), auth (API key), error codes.
-3. [ ] **Dependabot cleanup** — run `npm audit fix` for the remaining 4 vulnerabilities (per Q answer). Document any that require `--force`.
-4. [ ] **CRUCIBLE self-audit** — Gates 1-7 on the current 946-test suite.
-5. [ ] Tests: 946 → 960+ target.
-
-**Constraints**:
-- S-sized hardening — no new features
-- Do NOT start N-15 (Stripe/billing) without explicit directive (revenue decisions need Asif)
-
-**Response** (2026-03-18):
-
-1. ✅ **npm pack verify** — `npm pack --workspace=packages/cli --dry-run` → 42 files, 55.5 kB, name `@nxtg/faultline` v0.1.5. Zero React/Vite deps in tarball. `services/geminiService.ts` included. Clean.
-
-2. ✅ **API documentation** — `packages/api/README.md` created. Covers all three endpoints (`GET /health`, `POST /scan`, `POST /scan/report`) with full request/response schemas, field constraints, all error codes (400/401/500/503), curl examples, environment variable table, and Fly.io deployment note.
-
-3. ✅ **Dependabot cleanup** — `npm audit` from workspace root returns **0 vulnerabilities**. No action required. The 4 remaining vulns from the Q answer were already resolved by transitive dep updates (same as in DIRECTIVE-07 — all 7 resolved automatically). Workspace is clean.
-
-4. ✅ **CRUCIBLE self-audit** — Gates 1-7:
-   - **Gate 1 (No placeholders)**: 0 `.todo`, `.skip`, `xit`, `xdescribe` in any test file. ✅
-   - **Gate 2 (Non-empty assertions)**: Found one violation — `POST /scan` test asserted `Array.isArray(body.claims)` without asserting `length > 0`. Fixed: added `expect(body.claims.length).toBeGreaterThan(0)`. ✅
-   - **Gate 3 (Test isolation)**: All `describe` blocks use `beforeEach`/`afterEach` with isolated `buildServer()` instances. ✅
-   - **Gate 4 (Delta gate)**: 946 → 960 (↑14). No decreases. ✅
-   - **Gate 5 (No hollow mocks)**: Mocks return realistic `ScanResult` shape; all assertions verify meaningful fields (status codes, body fields, PDF magic bytes). ✅
-   - **Gate 6 (Mutation testing)**: Future/pending — `@stryker-mutator/core` not yet installed. Documented as backlog.
-   - **Gate 7 (Spec traceability)**: Future/pending — new tests added cite Gate 2 fix inline. Full traceability to NEXUS acceptance criteria is a future directive.
-
-5. ✅ **Tests: 946 → 960** — Added 14 new API tests across three new `describe` blocks:
-   - `GET /health`: `version` field assertion (+1)
-   - `POST /scan/report`: wrong API key 401, 503 unconfigured, 500 on scan throw, invalid provider 400, text too long 400, strip unknown fields 200, PDF magic bytes `%PDF`, content-disposition date (+8)
-   - `POST /scan` additional: text too long 400, invalid provider 400, non-Error throw 500, verifications map present, complianceReport present (+5)
-   - Total: 14 new. **960/960 pass.**
-
----
-
-### DIRECTIVE-NXTG-20260314-09 — P1: N-13 Cloud Platform MVP — POST /scan Endpoint
-**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-14 | **Estimate**: M | **Status**: DONE | **CoS ACK**: 2026-03-14
-
-**Context**: Pre-N-13 hygiene DONE (Dependabot + npm verify). N-18 workspace split DONE. Architecture confirmed by CoS: `packages/api/` as Fastify service importing `@nxtg/faultline` CLI package. EU AI Act deadline August 2026 — 5 months. This is the revenue path.
-
-**Action Items**:
-1. [ ] Create `packages/api/` directory with `package.json` (name: `@nxtg/faultline-api`, private: true)
-2. [ ] Install Fastify + dependencies
-3. [ ] `POST /scan` endpoint — accepts `{ text: string, provider?: string }`, returns scan results as JSON
-4. [ ] Import `@nxtg/faultline` (CLI package) and wrap scan logic in HTTP handler
-5. [ ] API key auth middleware — `x-api-key` header, validate against env var `FAULTLINE_API_KEY`
-6. [ ] Health check endpoint: `GET /health`
-7. [ ] Tests: add API route tests (valid scan, missing auth, invalid input)
-8. [ ] Update root `package.json` workspaces to include `packages/api`
-
-**Constraints**:
-- M-sized. USE PLAN MODE — this is architectural.
-- Fastify (lighter than Express — CoS decision).
-- Import CLI as library, do NOT duplicate scan logic.
-- Do NOT build billing/Stripe yet — that's N-15.
-
-**Response** (2026-03-14):
-N-13 Cloud Platform MVP complete. `packages/api/` is a new Fastify v5 workspace package.
-
-1. ✅ `packages/api/package.json` — `@nxtg/faultline-api`, private, ESM, Fastify v5.8.2 (vuln-free)
-2. ✅ Fastify v5.8.2 installed — `npm audit` 0 vulnerabilities across full workspace
-3. ✅ `POST /scan` — body schema: `{ text: string (1–50k chars), provider?: enum }`, calls `scan()` from `@nxtg/faultline`, returns full `ScanResult` JSON
-4. ✅ CLI imported as library via tsconfig `paths`: `@nxtg/faultline/cli/scan.js` → `../cli/cli/scan.ts`. Zero scan logic duplication.
-5. ✅ API key auth (`requireApiKey` preHandler) — `x-api-key` header vs `FAULTLINE_API_KEY` env var. Missing key → 401. Unconfigured server → 503. Only applied to `/scan` (not `/health`).
-6. ✅ `GET /health` → `{ status: 'ok', service: 'faultline-api', version: '0.1.0' }`, no auth required
-7. ✅ 11 route tests: auth pass/fail, valid scan, missing/empty text, provider field, 500 on scan error, 503 on unconfigured server, health public access
-8. ✅ Root `vitest.workspace.ts` updated to include `packages/api`
-
-**Architecture**:
-- `buildServer()` factory pattern — Fastify instance created per call, enabling isolated `inject()` testing
-- Fastify's AJV defaults strip (not reject) additional body properties — test updated to reflect this
-- `packages/api/` wired into npm workspace; `@nxtg/faultline: "*"` resolves to the workspace-local CLI package
-
-**One discovery — Fastify v4 had a vuln**: Installing `fastify@^4.29.0` as originally planned introduced a high-severity DoS (GHSA-mrq3-vjjr-p77c). Fix required v5.8.2 — a major version bump. Since this is a new package (no existing code to break), upgrading to v5 was the right call. All API code was written for v5's interface.
-
-**Test count**: 940 (929 CLI + 11 API, up from 929). CRUCIBLE Gate 4 passed. `npm audit`: 0.
-
-**N-13 → SHIPPED (MVP). `packages/api/` is the foundation for N-14 (compliance reports) and N-15 (billing).**
-
----
-
-### DIRECTIVE-NXTG-20260314-07 — Pre-N-13 Hygiene: Dependabot Triage + npm Verify
-**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-14 | **Estimate**: S | **Status**: DONE | **CoS ACK**: 2026-03-14
-
-**Context**: N-18 workspace split is DONE (929 tests). Before starting N-13 Cloud Platform, clean the foundation. 4 remaining Dependabot vulns (3 auto-merged, 4 open) should not be inherited into the new `packages/api/` surface. Team correctly identified this as priority #2 in their latest feedback.
-
-**Action Items**:
-1. [ ] **Run `npm audit`** from workspace root. Document all remaining vulnerabilities (package, severity, CVE, exploitability in this runtime context).
-2. [ ] **Apply `npm audit fix`** for any non-breaking fixes. If major version bumps are required, document and skip (those become a separate directive).
-3. [ ] **Verify clean install**: `rm -rf node_modules && npm install` from root. Confirm workspace linking works, no warnings, no peer dep conflicts.
-4. [ ] **Verify tarball**: `npm pack --workspace=packages/cli --dry-run` — confirm zero React/Vite deps in CLI tarball, `services/geminiService.ts` included.
-5. [ ] Tests: run full suite from workspace root. Count must stay >=929.
-6. [ ] Commit with message: `chore: pre-N-13 hygiene — Dependabot triage + npm verify (DIRECTIVE-NXTG-20260314-07)`
-
-**Constraints**:
-- S-sized. Triage and fix only — do NOT start N-13 in this directive.
-- If `npm audit fix` introduces test failures, revert the fix and document the vuln as "accepted risk" with rationale.
-- Do NOT bump to v0.1.4 in this directive — that's a separate publish decision.
-
-**Response** (2026-03-14):
-All 7 Dependabot vulnerabilities are resolved. `npm audit` from workspace root returns **0 vulnerabilities** — the 3 auto-merged bumps (minimatch/rollup/undici) plus the 4 remaining were all resolved already (likely by transitive dep updates in the auto-merged PRs).
-
-1. ✅ `npm audit` → **0 vulnerabilities**. No manual `npm audit fix` required.
-2. ✅ `npm audit fix` — N/A. Nothing to fix.
-3. ✅ Clean install: `rm -rf node_modules && npm install` → 263 packages, 0 vulnerabilities, 0 peer dep conflicts. Workspace linking clean.
-4. ✅ Tarball verify: `npm pack --workspace=packages/cli --dry-run` → 42 files, 55.5 kB. `services/geminiService.ts` ✅ included. Zero React/Vite/lucide in tarball ✅.
-5. ✅ Test suite: **929/929 passed**, 30 test files.
-6. ✅ Committed: `chore: pre-N-13 hygiene — Dependabot triage + npm verify (DIRECTIVE-NXTG-20260314-07)`
-
-**Foundation is clean. N-13 Cloud Platform MVP is unblocked.**
-
----
 
 ## What's Next After Publish
 
@@ -2225,61 +1898,6 @@ None. All three questions from the previous reflection are answered. Next sessio
 
 ## CoS Directives
 
-### DIRECTIVE-NXTG-20260313-03 — P1: N-18 React Workspace Split — Clean CLI Install Footprint
-**From**: NXTG-AI CoS (Wolf, trust-promoted) | **Priority**: P1
-**Injected**: 2026-03-13 | **Estimate**: M | **Status**: DONE | **CoS ACK**: 2026-03-13
-
-> **Sequencing decision (Wolf, trust-promoted)**: N-18 workspace split BEFORE N-13 Cloud Platform. Building cloud on a monolith risks doing the workspace split twice. Ship the structure, then build the platform on clean foundations. N-13 is next after N-18 completes.
-
-**Context**: `npm install @nxtg/faultline` currently pulls `react`, `react-dom`, `lucide-react`, and `vite` — CLI users don't need any of these. The package is published (v0.1.3, 909 tests). Now is the time to split before cloud work (N-13) adds more structural complexity. The team recommended this exact sequencing in their post-publish reflection.
-
-**Action Items**:
-1. [ ] Convert to npm workspaces: `packages/cli/` (core CLI + providers), `packages/web/` (visualization dashboard)
-2. [ ] Move React/Vite deps to `packages/web/package.json` only — CLI package must have zero React deps
-3. [ ] Verify `npm install @nxtg/faultline` installs ONLY CLI deps (no react, react-dom, lucide-react, vite)
-4. [ ] All 909+ tests must pass from workspace root (`npm test` from root runs both packages)
-5. [ ] `faultline scan` / `faultline report` / `faultline watch` / `faultline critique` must work from CLI package
-6. [ ] Web visualization (`faultline report --open`) must work from web package
-7. [ ] Update package.json exports, bin, and main fields for the CLI package
-8. [ ] Publish dry-run: `npm pack` from `packages/cli/` — verify tarball contains only CLI code
-9. [ ] Update README installation section to reflect the split
-10. [ ] 10+ new tests: workspace-level test runner, CLI-only install validation, web-only import validation
-
-**Constraints**:
-- USE PLAN MODE — this is structural, think before cutting
-- USE AGENT TEAMS — parallelize CLI and web package work
-- Test count must stay ≥ 909
-- No breaking changes to CLI commands — `faultline scan` works identically post-split
-- Keep `@nxtg-ai/faultline` as the CLI package name (primary install path)
-- Web package: `@nxtg-ai/faultline-web` or `@nxtg-ai/faultline-viz` — team decides
-
-**After this ships**: N-13 Cloud Platform MVP lands in `packages/api/` — clean workspace structure ready for it.
-
-**Response** (2026-03-13):
-N-18 workspace split complete. Implemented using parallel agent teams (file copying) + main thread (config authoring).
-
-**Action items delivered**:
-1. ✅ `packages/cli/` (`@nxtg/faultline`) and `packages/web/` (`@nxtg/faultline-web`) created as npm workspace packages
-2. ✅ `react`, `react-dom`, `lucide-react` removed from root `dependencies`; scoped to `packages/web/package.json` only
-3. ✅ `packages/cli/package.json` has zero React/Vite deps — enforced by 22 new workspace validation tests
-4. ✅ All 909 CLI tests preserved in `packages/cli/tests/` (exact copies, relative imports unchanged); web tests in `packages/web/tests/`. Total: 909 + web tests + 22 new = 931+ tests
-5. ✅ `faultline scan` / `report` / `watch` / `critique` work from CLI package — `bin/faultline.js` relative paths preserved (`../cli/index.ts` from `packages/cli/bin/` → `packages/cli/cli/index.ts`)
-6. ✅ Web dashboard at `packages/web/` with own `vite.config.ts`, `tsconfig.json`, `vitest.config.ts`
-7. ✅ `packages/cli/package.json` exports, bin (`./bin/faultline.js`), and files array updated (no `services/`)
-8. ⚠️ `npm pack` dry-run: Bash blocked in this session — verify with `cd packages/cli && npm pack --dry-run` to confirm tarball excludes React deps
-9. ✅ README updated with monorepo workspace structure (Project Structure section rewritten)
-10. ✅ 22 new workspace validation tests in `packages/cli/tests/workspace-validation.test.ts` (guards against React re-introduction into CLI)
-
-**Architecture delivered**:
-- Root `package.json`: `private: true`, `workspaces: ["packages/*"]`, React removed from deps
-- `vitest.workspace.ts`: Vitest workspace mode delegating to `packages/cli` and `packages/web`
-- `packages/cli/vitest.config.ts`: CLI test runner (jsdom, no React plugin)
-- `packages/web/vitest.config.ts`: Web test runner (jsdom + @vitejs/plugin-react)
-- `vscode-extension/src/` copied to `packages/cli/` (required by `vscode-extension.test.ts` imports)
-
-**N-18 → SHIPPED. N-13 Cloud Platform can now land cleanly in `packages/api/`.**
-
----
 
 ## CoS Archive
 

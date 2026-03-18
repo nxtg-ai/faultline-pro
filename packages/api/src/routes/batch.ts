@@ -8,8 +8,8 @@ import { getRateLimiter } from '../store/ratelimit.js';
 import { getKeyStore } from '../store/keys.js';
 import { getUsageMeter } from '../store/usage.js';
 import type { Tier } from '../store/ratelimit.js';
-
-type Provider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
+import { getCircuitBreaker } from '../store/circuit-breaker.js';
+import type { Provider } from '../store/circuit-breaker.js';
 
 const BODY_SCHEMA = {
   type: 'object',
@@ -40,6 +40,28 @@ function resolveTier(keyId: string): Tier {
   if (key && key.permissions.includes('admin')) return 'admin';
   if (key && key.permissions.includes('pro')) return 'pro';
   return 'free';
+}
+
+async function scanWithFailover(
+  text: string,
+  preferred: Provider | undefined,
+): Promise<Awaited<ReturnType<typeof scan>>> {
+  const cb = getCircuitBreaker();
+  const chain = cb.getChain(preferred);
+  if (chain.length === 0) throw new Error('All providers circuit-broken.');
+
+  let lastError = '';
+  for (const p of chain) {
+    try {
+      const result = await scan(text, p);
+      cb.recordSuccess(p);
+      return result;
+    } catch (err) {
+      cb.recordFailure(p);
+      lastError = err instanceof Error ? err.message : String(err);
+    }
+  }
+  throw new Error(lastError || 'All providers failed.');
 }
 
 export async function batchRoutes(fastify: FastifyInstance): Promise<void> {
@@ -87,9 +109,9 @@ export async function batchRoutes(fastify: FastifyInstance): Promise<void> {
         .header('X-RateLimit-Remaining', String(afterInfo.remaining))
         .header('X-RateLimit-Reset', String(afterInfo.resetEpoch));
 
-      // Process all texts concurrently
+      // Process all texts concurrently with failover
       const settled = await Promise.allSettled(
-        texts.map((text) => scan(text, provider)),
+        texts.map((text) => scanWithFailover(text, provider as Provider | undefined)),
       );
 
       type ScanResult = Awaited<ReturnType<typeof scan>>;

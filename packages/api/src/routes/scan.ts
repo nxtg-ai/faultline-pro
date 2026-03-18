@@ -5,6 +5,9 @@ import { scan } from '@nxtg/faultline/cli/scan.js';
 import { getAnalyticsStore } from '../store/analytics.js';
 import type { RiskLevel } from '../store/analytics.js';
 import { fireWebhookEvent } from '../store/webhooks.js';
+import { getCircuitBreaker } from '../store/circuit-breaker.js';
+import type { Provider } from '../store/circuit-breaker.js';
+import { getAuditLogger } from '../store/audit.js';
 
 const BODY_SCHEMA = {
   type: 'object',
@@ -34,16 +37,48 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const { text, provider } = request.body;
 
-      try {
-        const result = await scan(text, provider);
-        getAnalyticsStore().record(request.keyId ?? 'unknown', result.overallRisk as RiskLevel);
-        fireWebhookEvent('scan.complete', result);
-        return reply.status(200).send(result);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        fireWebhookEvent('scan.failed', { error: message });
-        return reply.status(500).send({ error: message });
+      const keyId = request.keyId ?? 'unknown';
+      const cb = getCircuitBreaker();
+      const chain = cb.getChain(provider as Provider | undefined);
+
+      if (chain.length === 0) {
+        fireWebhookEvent('scan.failed', { error: 'All providers circuit-broken.' });
+        return reply.status(503).send({ error: 'All providers are currently unavailable. Please retry later.' });
       }
+
+      let lastError: string = '';
+      const attempted: Provider[] = [];
+
+      for (const p of chain) {
+        try {
+          const result = await scan(text, p);
+          cb.recordSuccess(p);
+
+          if (attempted.length > 0) {
+            // Failover occurred — emit audit entry
+            getAuditLogger().log({
+              timestamp: new Date().toISOString(),
+              keyId,
+              endpoint: '/scan/failover',
+              method: 'POST',
+              statusCode: 200,
+              latencyMs: 0,
+              note: `Failover: ${attempted.join('->')} -> ${p}`,
+            });
+          }
+
+          getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
+          fireWebhookEvent('scan.complete', result);
+          return reply.status(200).send(result);
+        } catch (err) {
+          cb.recordFailure(p);
+          attempted.push(p);
+          lastError = err instanceof Error ? err.message : String(err);
+        }
+      }
+
+      fireWebhookEvent('scan.failed', { error: lastError });
+      return reply.status(500).send({ error: lastError });
     },
   );
 }

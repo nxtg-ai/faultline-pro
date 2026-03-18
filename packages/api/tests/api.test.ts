@@ -153,7 +153,13 @@ describe('POST /scan', () => {
 
   it('returns 500 when scan throws an error', async () => {
     const { scan } = await import('@nxtg/faultline/cli/scan.js');
-    vi.mocked(scan).mockRejectedValueOnce(new Error('Provider API key missing'));
+    // With failover, all 5 providers must fail to produce a 500.
+    vi.mocked(scan)
+      .mockRejectedValueOnce(new Error('Provider API key missing'))
+      .mockRejectedValueOnce(new Error('Provider API key missing'))
+      .mockRejectedValueOnce(new Error('Provider API key missing'))
+      .mockRejectedValueOnce(new Error('Provider API key missing'))
+      .mockRejectedValueOnce(new Error('Provider API key missing'));
 
     const res = await server.inject({
       method: 'POST',
@@ -371,7 +377,13 @@ describe('POST /scan — additional coverage', () => {
 
   it('returns 500 with error message when scan throws a non-Error object', async () => {
     const { scan } = await import('@nxtg/faultline/cli/scan.js');
-    vi.mocked(scan).mockRejectedValueOnce('plain string error');
+    // With failover, all 5 providers must fail to produce a 500.
+    vi.mocked(scan)
+      .mockRejectedValueOnce('plain string error')
+      .mockRejectedValueOnce('plain string error')
+      .mockRejectedValueOnce('plain string error')
+      .mockRejectedValueOnce('plain string error')
+      .mockRejectedValueOnce('plain string error');
 
     const res = await server.inject({
       method: 'POST',

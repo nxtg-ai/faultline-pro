@@ -9,6 +9,7 @@ export interface AuditEntry {
   statusCode: number;
   latencyMs: number;
   inputHash?: string;
+  note?: string;
 }
 
 export function hashInput(text: string): string {

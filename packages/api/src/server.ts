@@ -10,6 +10,7 @@ import { usageRoutes } from './routes/usage.js';
 import { dashboardRoutes } from './routes/dashboard.js';
 import { webhookRoutes } from './routes/webhooks.js';
 import { batchRoutes } from './routes/batch.js';
+import { metricsRoutes } from './routes/metrics.js';
 import { getAuditLogger, hashInput } from './store/audit.js';
 import { getUsageMeter } from './store/usage.js';
 
@@ -34,6 +35,7 @@ export function buildServer() {
   fastify.register(dashboardRoutes);
   fastify.register(webhookRoutes);
   fastify.register(batchRoutes);
+  fastify.register(metricsRoutes);
 
   fastify.addHook('onRequest', async (request: FastifyRequest) => {
     (request as FastifyRequest & { _startMs: number })._startMs = Date.now();

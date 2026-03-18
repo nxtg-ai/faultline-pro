@@ -265,7 +265,13 @@ describe('Webhook dispatch', () => {
 
   it('D7. POST /scan 500 (scan throws) triggers scan.failed event', async () => {
     const { scan } = await import('@nxtg/faultline/cli/scan.js');
-    vi.mocked(scan).mockRejectedValueOnce(new Error('Provider failure'));
+    // With failover, all 5 providers must fail to trigger scan.failed.
+    vi.mocked(scan)
+      .mockRejectedValueOnce(new Error('Provider failure'))
+      .mockRejectedValueOnce(new Error('Provider failure'))
+      .mockRejectedValueOnce(new Error('Provider failure'))
+      .mockRejectedValueOnce(new Error('Provider failure'))
+      .mockRejectedValueOnce(new Error('Provider failure'));
     getWebhookStore().create('https://example.com/hook', ['scan.failed'], 'secret');
     await server.inject({
       method: 'POST', url: '/scan',

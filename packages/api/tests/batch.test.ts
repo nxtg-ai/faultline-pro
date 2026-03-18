@@ -122,19 +122,22 @@ describe('POST /scan/batch — Partial failure', () => {
   });
 
   it('P1. one item throws → succeeded=1, failed=1, results has null at failed index, errors has { index, error }', async () => {
-    vi.mocked(scan)
-      .mockResolvedValueOnce({
-        input: 'text one',
+    // With failover, a text must fail for ALL providers to count as failed.
+    // Use text-based discrimination so 'fail-text' always throws.
+    vi.mocked(scan).mockImplementation((text: string) => {
+      if (text === 'fail-text') return Promise.reject(new Error('scan failed'));
+      return Promise.resolve({
+        input: text,
         provider: 'mock',
         claims: [],
         verifications: {},
         overallRisk: 'low',
         complianceReport: { riskTier: 'minimal', findings: [] } as any,
         ruleFindings: [],
-      })
-      .mockRejectedValueOnce(new Error('scan failed'));
+      });
+    });
 
-    const res = await batchPost(server, { texts: ['text one', 'text two'] });
+    const res = await batchPost(server, { texts: ['text one', 'fail-text'] });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.succeeded).toBe(1);
@@ -146,9 +149,8 @@ describe('POST /scan/batch — Partial failure', () => {
   });
 
   it('P2. all items throw → succeeded=0, failed=2', async () => {
-    vi.mocked(scan)
-      .mockRejectedValueOnce(new Error('fail 0'))
-      .mockRejectedValueOnce(new Error('fail 1'));
+    // With failover, all providers are tried for each text — 5 providers × 2 texts = 10 calls.
+    vi.mocked(scan).mockImplementation(() => Promise.reject(new Error('all fail')));
 
     const res = await batchPost(server, { texts: ['text one', 'text two'] });
     expect(res.statusCode).toBe(200);
@@ -158,19 +160,12 @@ describe('POST /scan/batch — Partial failure', () => {
   });
 
   it('P3. errors array has correct indices (3 items where index 1 fails)', async () => {
-    vi.mocked(scan)
-      .mockResolvedValueOnce({
-        input: 'text 0',
-        provider: 'mock',
-        claims: [],
-        verifications: {},
-        overallRisk: 'low',
-        complianceReport: { riskTier: 'minimal', findings: [] } as any,
-        ruleFindings: [],
-      })
-      .mockRejectedValueOnce(new Error('middle fail'))
-      .mockResolvedValueOnce({
-        input: 'text 2',
+    // With failover, index 1 text must fail for ALL providers to appear in errors.
+    // Use text-based discrimination.
+    vi.mocked(scan).mockImplementation((text: string) => {
+      if (text === 'text 1') return Promise.reject(new Error('middle fail'));
+      return Promise.resolve({
+        input: text,
         provider: 'mock',
         claims: [],
         verifications: {},
@@ -178,6 +173,7 @@ describe('POST /scan/batch — Partial failure', () => {
         complianceReport: { riskTier: 'minimal', findings: [] } as any,
         ruleFindings: [],
       });
+    });
 
     const res = await batchPost(server, { texts: ['text 0', 'text 1', 'text 2'] });
     const body = JSON.parse(res.body);
