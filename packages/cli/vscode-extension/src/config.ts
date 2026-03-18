@@ -6,6 +6,10 @@ export interface FaultlineExtConfig {
   provider: string;
   minConfidence: number;
   rules: string[];
+  /** Base URL of the Faultline API server (for file upload support). */
+  apiUrl?: string;
+  /** API key for the Faultline API server. */
+  serverApiKey?: string;
 }
 
 /**
@@ -44,6 +48,8 @@ export function loadExtensionConfig(
     provider: vsConfig.get<string>('provider') ?? (typeof fileConfig.provider === 'string' ? fileConfig.provider : defaults.provider),
     minConfidence: vsConfig.get<number>('minConfidence') ?? (typeof fileConfig['min-confidence'] === 'number' ? fileConfig['min-confidence'] : defaults.minConfidence),
     rules: vsConfig.get<string[]>('rules') ?? (Array.isArray(fileConfig.rules) ? fileConfig.rules as string[] : defaults.rules),
+    apiUrl: vsConfig.get<string>('apiUrl'),
+    serverApiKey: vsConfig.get<string>('serverApiKey'),
   };
 }
 

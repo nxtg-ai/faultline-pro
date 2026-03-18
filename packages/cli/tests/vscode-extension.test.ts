@@ -376,3 +376,111 @@ describe('VS Code Extension: buildScanArgs', () => {
     expect(args).toContain('claude');
   });
 });
+
+// ---------- upload support ----------
+
+import {
+  mimeFromExtension,
+  uploadFileForScan,
+} from '../vscode-extension/src/upload';
+
+describe('VS Code Extension: upload support', () => {
+  it('should map .pdf to application/pdf', () => {
+    expect(mimeFromExtension('.pdf')).toBe('application/pdf');
+  });
+
+  it('should map .png to image/png', () => {
+    expect(mimeFromExtension('.png')).toBe('image/png');
+  });
+
+  it('should map .jpg to image/jpeg', () => {
+    expect(mimeFromExtension('.jpg')).toBe('image/jpeg');
+  });
+
+  it('should map .JPG to image/jpeg (case insensitive)', () => {
+    expect(mimeFromExtension('.JPG')).toBe('image/jpeg');
+  });
+
+  it('should return null for unsupported extension .txt', () => {
+    expect(mimeFromExtension('.txt')).toBeNull();
+  });
+
+  it('should call fetch with correct URL and x-api-key header', async () => {
+    const fakeBuffer = Buffer.from('fake-file-content');
+    const readFileFn = (_p: string) => fakeBuffer;
+
+    let capturedUrl: string | undefined;
+    let capturedHeaders: Record<string, string> | undefined;
+
+    const fetchFn = vi.fn(async (url: string, init?: RequestInit) => {
+      capturedUrl = url;
+      capturedHeaders = init?.headers as Record<string, string> | undefined;
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    });
+
+    await uploadFileForScan(
+      {
+        filePath: '/fake/report.pdf',
+        mimeType: 'application/pdf',
+        apiUrl: 'https://api.faultline.example',
+        apiKey: 'test-key-123',
+      },
+      readFileFn,
+      fetchFn as unknown as typeof fetch,
+    );
+
+    expect(capturedUrl).toBe('https://api.faultline.example/scan/upload');
+    expect(capturedHeaders?.['x-api-key']).toBe('test-key-123');
+    expect(fetchFn).toHaveBeenCalledOnce();
+  });
+
+  it('should return success:true with body on 200 response', async () => {
+    const fakeBuffer = Buffer.from('pdf-bytes');
+    const readFileFn = (_p: string) => fakeBuffer;
+    const responseBody = { riskLevel: 'low', findings: [] };
+
+    const fetchFn = vi.fn(async () =>
+      new Response(JSON.stringify(responseBody), { status: 200 }),
+    );
+
+    const result = await uploadFileForScan(
+      {
+        filePath: '/fake/doc.pdf',
+        mimeType: 'application/pdf',
+        apiUrl: 'https://api.faultline.example',
+        apiKey: 'secret',
+      },
+      readFileFn,
+      fetchFn as unknown as typeof fetch,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.statusCode).toBe(200);
+    expect(result.body).toEqual(responseBody);
+    expect(result.error).toBeUndefined();
+  });
+
+  it('should return success:false with error on 401 response', async () => {
+    const fakeBuffer = Buffer.from('pdf-bytes');
+    const readFileFn = (_p: string) => fakeBuffer;
+
+    const fetchFn = vi.fn(async () =>
+      new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }),
+    );
+
+    const result = await uploadFileForScan(
+      {
+        filePath: '/fake/doc.pdf',
+        mimeType: 'application/pdf',
+        apiUrl: 'https://api.faultline.example',
+        apiKey: 'bad-key',
+      },
+      readFileFn,
+      fetchFn as unknown as typeof fetch,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.statusCode).toBe(401);
+    expect(result.error).toBe('Unauthorized');
+  });
+});

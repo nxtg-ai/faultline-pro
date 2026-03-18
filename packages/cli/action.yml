@@ -1,0 +1,85 @@
+name: 'Faultline AI Claim Scanner'
+description: 'Scan AI-generated text and docs for factual risk using Faultline forensic verification'
+author: 'NXTG AI'
+
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  input:
+    description: 'Path to file to scan (mutually exclusive with dir and templates)'
+    required: false
+  dir:
+    description: 'Directory of files to scan'
+    required: false
+  templates:
+    description: 'Comma-separated template names (e.g. injection,bias)'
+    required: false
+  provider:
+    description: 'AI provider: gemini, openai, claude, perplexity, mock'
+    required: false
+    default: 'mock'
+  fail-on:
+    description: 'Fail if risk at or above this level: critical, high, medium, low'
+    required: false
+    default: 'high'
+  min-confidence:
+    description: 'Minimum confidence threshold (0.0–1.0)'
+    required: false
+    default: '0.0'
+  rules:
+    description: 'Comma-separated rules to enforce (e.g. pii,toxicity)'
+    required: false
+  output-format:
+    description: 'Output format: sarif, json, markdown'
+    required: false
+    default: 'sarif'
+  upload-sarif:
+    description: 'Upload SARIF results to GitHub Code Scanning (true/false)'
+    required: false
+    default: 'true'
+  api-key:
+    description: 'AI provider API key (for Gemini: GEMINI_API_KEY, OpenAI: OPENAI_API_KEY, etc.)'
+    required: false
+
+outputs:
+  risk-level:
+    description: 'Overall risk level: low, medium, high, or critical'
+    value: ${{ steps.scan.outputs.risk-level }}
+  findings-count:
+    description: 'Number of claims flagged at or above the fail-on threshold'
+    value: ${{ steps.scan.outputs.findings-count }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Faultline CLI
+      shell: bash
+      run: npm install -g @nxtg/faultline
+
+    - name: Run Faultline scan
+      id: scan
+      shell: bash
+      run: |
+        ARGS="scan"
+        if [ -n "${{ inputs.input }}" ]; then ARGS="$ARGS --input ${{ inputs.input }}"; fi
+        if [ -n "${{ inputs.dir }}" ]; then ARGS="$ARGS --dir ${{ inputs.dir }}"; fi
+        if [ -n "${{ inputs.templates }}" ]; then ARGS="$ARGS --templates ${{ inputs.templates }}"; fi
+        ARGS="$ARGS --provider ${{ inputs.provider }}"
+        ARGS="$ARGS --output-format ${{ inputs.output-format }}"
+        ARGS="$ARGS --fail-on ${{ inputs.fail-on }}"
+        if [ "${{ inputs.min-confidence }}" != "0.0" ]; then ARGS="$ARGS --min-confidence ${{ inputs.min-confidence }}"; fi
+        if [ -n "${{ inputs.rules }}" ]; then ARGS="$ARGS --rules ${{ inputs.rules }}"; fi
+        faultline $ARGS
+      env:
+        GEMINI_API_KEY: ${{ inputs.api-key }}
+        OPENAI_API_KEY: ${{ inputs.api-key }}
+        ANTHROPIC_API_KEY: ${{ inputs.api-key }}
+
+    - name: Upload SARIF to GitHub Code Scanning
+      if: inputs.upload-sarif == 'true' && inputs.output-format == 'sarif'
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: results.sarif
+      continue-on-error: true
