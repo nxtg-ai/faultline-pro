@@ -79,6 +79,46 @@ The Kaggle version remains at  (tagged  at commit ).
 
 > **52 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 6 on 2026-03-18). Full text in `NEXUS-archive.md`. Summary in [## CoS Archive](#cos-archive) below.
 
+### DIRECTIVE-NXTG-20260318-87 — P1: Monitoring + Health Dashboard
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-18 17:15 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] **`GET /health/deep`** — check all subsystems: scan engine, providers (Gemini/OpenAI/Claude status), key store, audit log, rate limiter.
+2. [ ] **`GET /metrics`** — Prometheus-format: scans/min, avg latency by provider, error rate, active keys, audit log size.
+3. [ ] **Health HTML dashboard** — simple page at `/status` showing system status + provider availability.
+4. [ ] Tests for health checks and metrics.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-88.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260318-88 — P1: Provider Auto-Failover
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-18 17:15 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] **Failover chain** — if primary provider fails (timeout/error), automatically try next provider in chain (Gemini → OpenAI → Claude).
+2. [ ] **Circuit breaker** — after N consecutive failures, mark provider as DOWN for M minutes.
+3. [ ] **Failover logging** — audit trail entry when failover occurs.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-89.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260318-89 — P2: NEXUS Archive + Session Summary
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
+**Injected**: 2026-03-18 17:15 | **Estimate**: S | **Status**: PENDING
+
+**Action Items**:
+1. [ ] Archive all DONE directives. 2. [ ] Session summary: all features shipped today, final test count.
+
+**Response** (filled by team): >
+
+---
+
 ### DIRECTIVE-NXTG-20260318-72 — P1: Python SDK + PyPI Package
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
 **Injected**: 2026-03-18 16:00 | **Estimate**: M | **Status**: DONE
