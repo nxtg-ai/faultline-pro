@@ -77,6 +77,38 @@ The Kaggle version remains at  (tagged  at commit ).
 
 > **46 directives archived** (36 on 2026-02-28, 10 on 2026-03-12). Full text in `NEXUS-archive.md`. Summary in [## CoS Archive](#cos-archive) below.
 
+### DIRECTIVE-NXTG-20260318-44 — P1: Batch Scan API + CI/CD Integration Guide
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-18 14:00 | **Estimate**: M | **Status**: PENDING
+
+**Context**: Full enterprise API shipped (scan, upload, report, keys, audit, metering, rate limits, webhooks, OpenAPI). Next high-value: batch scanning for CI pipelines.
+
+**Action Items**:
+1. [ ] **`POST /scan/batch`** — accept array of texts/files. Return array of ScanResults. Parallel processing.
+2. [ ] **CI integration guide** — `docs/ci-integration.md`: GitHub Actions example, GitLab CI example, pre-commit hook. Show how to scan PR descriptions/docs on every push.
+3. [ ] **Exit codes for CI** — `faultline scan --fail-on high` returns exit code 1 if any HIGH risk claims found. Already exists in CLI — document + add to batch endpoint.
+4. [ ] Tests: batch endpoint + CI exit code behavior.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-45.
+
+**Response** (filled by team):
+>
+
+---
+
+### DIRECTIVE-NXTG-20260318-45 — P2: NEXUS Archive + Portfolio Showcase README
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
+**Injected**: 2026-03-18 14:00 | **Estimate**: S | **Status**: PENDING
+
+**Action Items**:
+1. [ ] Archive all DONE directives from today to NEXUS-archive.md.
+2. [ ] README rewrite — showcase full feature set: 4 providers, PDF/OCR upload, compliance reports, enterprise API, webhooks, rate limiting.
+
+**Response** (filled by team):
+>
+
+---
+
 ### DIRECTIVE-NXTG-20260318-38 — P1: Webhook System + Event Notifications
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
 **Injected**: 2026-03-18 13:30 | **Estimate**: M | **Status**: DONE
