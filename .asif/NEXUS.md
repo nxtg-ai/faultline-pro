@@ -437,6 +437,77 @@ All 7 Dependabot vulnerabilities are resolved. `npm audit` from workspace root r
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-18 — HEAD `0c9555a`
+
+---
+
+### 1. What shipped since last check-in
+
+**Session: 2026-03-18 (DIRECTIVE-NXTG-20260318-15/16/32/33/38/39 — full enterprise feature sweep)**
+
+| Directive | Deliverable | Tests added |
+|-----------|-------------|-------------|
+| -15 (N-12) | API key CRUD (`/keys`), AuditLogger, UsageMeter | +40 |
+| -16 (CRUCIBLE) | Store unit coverage, auth edge cases, upload audit | +30 |
+| -32 (N-15) | Per-key rate limiting (free/pro/admin tiers), `/dashboard` analytics | +40 |
+| -33 | README badge refresh, CHANGELOG v0.2.0 | — |
+| -38 | Webhook system — CRUD + HMAC dispatch + retry + fire-and-forget | +30 |
+| -39 | OpenAPI 3.1 spec (`packages/api/docs/openapi.yaml`, 12 routes) | — |
+
+**Total test progression this session**: 980 → 1,120 (+140). 38 test files. CI green on all three workflows (CI, Faultline Safety Scan, CodeQL).
+
+**Commits**: 5 substantive commits across a single session. All pushed clean — pre-push ASIF CI Gate enforces local green before remote.
+
+---
+
+### 2. What surprised me
+
+**Fire-and-forget vs. test isolation**: The webhook `fireWebhookEvent()` pattern (void + unawaited Promise) was the right call for latency, but created a subtle test ordering risk — if a `fetch` stub leaks between tests, retry loops from a previous test can fire into the next. Solved by calling `resetWebhookStore()` in every `beforeEach` and using `vi.unstubAllGlobals()` in `afterEach`. Not complex, but required careful setup discipline.
+
+**`vi.useFakeTimers()` + Fastify = timeout**: Running fake timers through the full HTTP stack caused the entire Vitest suite to hang (5s timeout). Day-rollover rate limit logic had to be tested at the store unit level without Fastify, using `vi.setSystemTime()` directly on `getRateLimiter()`. This is the right architectural boundary anyway — business logic belongs in stores, HTTP handlers are thin wrappers.
+
+**`vi.mock()` hoisting gotcha (again)**: Any const referenced inside a `vi.mock(() => ...)` factory must either be inlined or prefixed with `__` (the Vitest hoisting exemption). Burned by this in both `dashboard.test.ts` (mockScan) and `webhooks.test.ts` (MOCK_SCAN_RESULT). Worth a one-line comment in every new test file as a reminder.
+
+**TypeScript + `vi.fn()` generic narrowing**: `vi.fn().mockResolvedValue(undefined)` returns `Mock<Procedure | Constructable>`, which can't be directly assigned to a typed function slot. Requires `as (ms: number) => Promise<void>` cast at the injection site. Not a Vitest bug — just a gap between the mock's polymorphic type and the target signature.
+
+**`content-type: application/json` on DELETE breaks schema validation**: Fastify runs body parsing before `preHandler`. Sending `content-type: application/json` with no body on a DELETE route causes a 400 before auth runs. Subtle — caught by test C12 returning 400 instead of 403. Fixed by sending DELETE with no content-type header.
+
+---
+
+### 3. Cross-project signals
+
+**Reusable pattern — `_setSleepFn()` injection**: Any async retry loop that needs to be tested without real timers benefits from a module-level `_sleep` variable with an exported setter. Two lines of infrastructure, eliminates all fake-timer complexity. Applicable to: any project with retry logic (HTTP clients, queue processors, background jobs).
+
+**Reusable pattern — singleton + `reset*()` for Vitest isolation**: The `getX() / resetX()` singleton pattern (module-level `let instance: X | null`) is now proven across 5 stores in this project. Vitest's module isolation doesn't reset module state between tests by default. This pattern is lighter than `vi.resetModules()` and doesn't require re-importing. Any TypeScript/Vitest project with stateful services should adopt it.
+
+**OpenAPI spec maintenance debt is real**: Fastify v5 + `@fastify/swagger` doesn't integrate cleanly with `as const` JSON Schema definitions (the TypeScript narrowing breaks the plugin's inference). Hand-authoring the spec is acceptable at 12 routes but will become a liability past ~30. If another project is building a Fastify API, consider `zod` + `@fastify/type-provider-zod` from the start — Zod schemas generate both validation and OpenAPI output with no friction.
+
+**HMAC webhook signing is 20 lines**: The signing pattern (`sha256=` + HMAC-SHA256 hex) used here is identical to what GitHub, Stripe, and Shopify use. Any ASIF project that needs to push events to customer endpoints can lift `store/webhooks.ts` wholesale.
+
+---
+
+### 4. What I'd prioritize next (if fresh directives arrived)
+
+1. **N-16 / Persistence layer** — All stores are in-memory singletons. A restart wipes keys, audit logs, usage data, and webhooks. SQLite via `better-sqlite3` is the natural next step — zero ops overhead, still embeddable, no external service. Priority because webhook registrations especially need to survive restarts.
+
+2. **Property-based testing (CRUCIBLE Gate 6)** — CLAUDE.md calls out `fast-check` for claim forensics critical paths. Oracle coverage is currently example-based only. The `scan` pipeline (extract → verify → synthesize) would benefit most: property: "any input with N claims produces exactly N verification results."
+
+3. **Webhook delivery observability** — Currently retry exhaustion is silently swallowed. A `/webhooks/:id/deliveries` endpoint returning the last N delivery attempts (status, timestamp, response code) would let customers debug failed integrations. Pairs naturally with the persistence work.
+
+4. **Rate limit tier assignment via key metadata** — Right now `resolveTier()` uses `permission === 'pro'` heuristic. Clean model: store `tier: 'free' | 'pro' | 'enterprise'` on the key at creation time and read it directly. Removes the permissions/tier coupling.
+
+5. **SDK codegen from the OpenAPI spec** — DIRECTIVE-39 prepped the YAML. Running `openapi-generator-cli generate -i openapi.yaml -g typescript-fetch` produces a typed client. Worth shipping as `packages/sdk` so API consumers don't hand-roll the auth header pattern.
+
+---
+
+### 5. Blockers / questions for the CoS
+
+**Q (2026-03-18)**: The `packages/api/docs/openapi.yaml` was hand-authored rather than auto-generated (Fastify v5 + `@fastify/swagger` + `as const` schema incompatibility). DIRECTIVE-39 asked to "auto-generate" — is the hand-authored spec acceptable as DONE, or should we migrate the route schemas to Zod to enable true codegen? Migrating 12 routes to Zod would be ~2h of work and would unblock `packages/sdk` codegen in one shot.
+
+**Q (2026-03-18)**: Persistence layer — is N-16 on the NEXUS roadmap, or should it be proposed as a new initiative? If it's coming, should I hold the store interfaces stable (no breaking changes to `KeyStore`, `AuditLogger`, etc.) so the SQLite migration is a drop-in? Currently the interfaces are clean enough to support this.
+
+---
+
 > **Reflection cycle**: 2026-03-17 (no delta — still `95c0cc7`)
 
 No new code. 140th consecutive no-delta since N-14. State unchanged.
