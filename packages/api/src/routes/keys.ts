@@ -3,7 +3,7 @@ import { requireAdmin } from '../plugins/auth.js';
 import { getKeyStore } from '../store/keys.js';
 import type { Permission } from '../store/keys.js';
 
-const VALID_PERMISSIONS: Permission[] = ['scan', 'report', 'upload', 'admin'];
+const VALID_PERMISSIONS: Permission[] = ['scan', 'report', 'upload', 'admin', 'pro'];
 
 const CREATE_BODY_SCHEMA = {
   type: 'object',

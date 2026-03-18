@@ -6,7 +6,7 @@ The EU AI Act mandates conformity assessments for high-risk AI systems. Faultlin
 
 [![CI](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@nxtg/faultline.svg)](https://www.npmjs.com/package/@nxtg/faultline)
-[![Tests](https://img.shields.io/badge/tests-873%20passing-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-1090%20passing-brightgreen)](tests/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 
@@ -69,6 +69,129 @@ npx @nxtg/faultline scan --input doc.txt --provider perplexity
 
 ---
 
+## Features
+
+### Providers
+- **Multi-provider** — Gemini, OpenAI, Claude, Perplexity, and Mock via a clean `LLMProvider` interface; switch with `--provider`
+- **Perplexity** — real-time web search verification with search gap callout in CLI output
+- **Mock** — deterministic test double for CI pipelines, no API key required
+
+### Document Ingestion
+- **PDF + image upload with OCR** — `faultline scan --file document.pdf` or `POST /scan/upload`; powered by `pdf-parse` + `tesseract.js`
+
+### Compliance
+- **EU AI Act compliance module** — risk tier classification: unacceptable / high / limited / minimal; triggered articles; recommended mitigations
+- **Rules engine** — YAML-defined rules with built-in PII detection, bias indicators, and toxicity flags
+- **Confidence calibration** — per-claim confidence scores (0.0–1.0) with tier-based thresholds
+
+### Analysis
+- **Claim graph visualization** — Mermaid and Graphviz DOT diagrams grouping claims by EU risk tier
+- **SARIF output** — VS Code Problems panel and GitHub Code Scanning integration
+
+### Hosted REST API
+| Endpoint | Description |
+|---|---|
+| `POST /scan` | Submit text for claim verification |
+| `POST /scan/report` | Generate EU AI Act compliance PDF |
+| `POST /scan/upload` | Multipart upload for PDF/image OCR scan |
+| `GET /health` | Liveness check |
+| `GET /dashboard` | Scan counts (today/week/month), risk distribution, key usage |
+| `GET /usage` | Per-key daily scan counts |
+
+### Enterprise
+- **API key management** — `POST /keys`, `GET /keys`, `DELETE /keys/:id`; scoped permissions (scan / report / upload / admin / pro)
+- **Audit trail** — SHA-256 input hash logged on every response via `onResponse` hook
+- **Usage metering** — daily per-key scan counts via `GET /usage`
+- **Rate limiting per tier** — free: 10/day, pro: 1,000/day, admin: 10,000/day; `X-RateLimit-Limit/Remaining/Reset` headers on scan responses
+- **Usage dashboard** — `GET /dashboard` with scan counts today/week/month, risk distribution, key usage breakdown
+
+---
+
+## API Quick Start
+
+Start the API server:
+
+```bash
+cd packages/api
+FAULTLINE_API_KEY=your-key npm run dev
+# Server listening on http://localhost:3000
+```
+
+Scan a text payload:
+
+```bash
+curl -X POST http://localhost:3000/scan \
+  -H "x-api-key: your-key" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "GPT-4 has 1 trillion parameters.", "provider": "mock"}'
+```
+
+Upload a PDF or image for OCR scanning:
+
+```bash
+curl -X POST http://localhost:3000/scan/upload \
+  -H "x-api-key: your-key" \
+  -F "file=@report.pdf"
+```
+
+Create an API key:
+
+```bash
+curl -X POST http://localhost:3000/keys \
+  -H "x-api-key: your-admin-key" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "ci-pipeline", "tier": "pro", "permissions": ["scan", "report"]}'
+```
+
+View the usage dashboard:
+
+```bash
+curl http://localhost:3000/dashboard \
+  -H "x-api-key: your-key"
+```
+
+---
+
+## Architecture
+
+```
+  CLI layer
+  ┌─────────────────────────────────────────────────────┐
+  │  faultline CLI (packages/cli/)                      │
+  │  scan / graph / weakest / critique / watch / trend  │
+  └────────────────────┬────────────────────────────────┘
+                       │
+                       ▼
+  ┌─────────────────────────────────────────────────────┐
+  │  Core scan engine                                   │
+  │  Extract → Verify → Synthesize → Compliance map     │
+  └──────┬─────────────────────────────────────────┬────┘
+         │                                         │
+         ▼                                         ▼
+  ┌──────────────────────┐          ┌──────────────────────────────┐
+  │  Providers           │          │  Stores                      │
+  │  Gemini              │          │  KeyStore      (API keys)     │
+  │  OpenAI              │          │  AuditLogger   (SHA-256 hash) │
+  │  Claude              │          │  UsageMeter    (daily counts) │
+  │  Perplexity          │          │  ScanAnalytics (history)      │
+  │  Mock                │          │  RateLimiter   (per-tier)     │
+  └──────────────────────┘          └──────────────────────────────┘
+                                               ▲
+  API layer                                    │
+  ┌─────────────────────────────────────────────────────┐
+  │  Fastify v5 (packages/api/)                         │
+  │  Auth / RateLimit → Routes → Core scan engine       │
+  │                                                     │
+  │  POST /scan          POST /scan/upload              │
+  │  POST /scan/report   GET  /health                   │
+  │  POST /keys          GET  /keys                     │
+  │  DELETE /keys/:id    GET  /usage                    │
+  │  GET  /dashboard                                    │
+  └─────────────────────────────────────────────────────┘
+```
+
+---
+
 ## What Is AI Claim Forensics?
 
 Promptfoo tests your prompts. DeepEval scores your RAG pipeline. **Faultline audits what the AI actually said.**
@@ -123,7 +246,7 @@ Input: AI-generated text
 - **Scan history + trend analysis** — local `.faultline/history/` store; `faultline trend` shows improving/degrading direction over time
 - **Watch mode** — `faultline watch --dir` re-scans on file save with 500ms debounce and new/resolved diff highlights
 - **Red-team templates** — curated prompt template library for injection, bias, and adversarial testing
-- **868 tests** — unit, integration, and full pipeline tests across 27 files; all API calls mocked; CI via GitHub Actions
+- **1090 tests** — unit, integration, and full pipeline tests across 27 files; all API calls mocked; CI via GitHub Actions
 
 ---
 
@@ -135,6 +258,7 @@ faultline scan --input doc.txt --provider gemini
 faultline scan --input doc.txt --provider claude --output-format markdown
 faultline scan --input doc.txt --sarif               # writes results.sarif
 faultline scan --input doc.txt --fail-on high        # exit 1 if high/critical findings
+faultline scan --file document.pdf                   # PDF/image via OCR
 
 # Batch scan a directory
 faultline scan --dir ./outputs --provider gemini --glob "*.txt"
@@ -222,7 +346,7 @@ faultline init
 
 ## Project Structure
 
-This repo is an **npm workspace monorepo** (N-18). The published CLI package lives in `packages/cli/`; the React web dashboard lives in `packages/web/`.
+This repo is an **npm workspace monorepo** (N-18). The published CLI package lives in `packages/cli/`; the React web dashboard lives in `packages/web/`; the hosted REST API lives in `packages/api/`.
 
 ```
 packages/
@@ -236,7 +360,11 @@ packages/
 │   ├── history/           # Scan history + trend analysis
 │   ├── templates/         # Red-team prompt template library
 │   ├── types.ts           # Shared TypeScript types
-│   └── tests/             # 909+ tests
+│   └── tests/             # 1090+ tests
+├── api/                   # Fastify v5 REST API — see packages/api/README.md
+│   ├── routes/            # /scan, /scan/upload, /scan/report, /keys, /usage, /dashboard
+│   ├── plugins/           # Auth, rate limiting, audit logger
+│   └── tests/             # API integration tests
 └── web/                   # @nxtg/faultline-web — React visualization dashboard
     ├── components/        # React UI components
     ├── services/          # Gemini web service

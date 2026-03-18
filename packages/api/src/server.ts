@@ -7,6 +7,7 @@ import { reportRoutes } from './routes/report.js';
 import { uploadRoutes } from './routes/upload.js';
 import { keysRoutes } from './routes/keys.js';
 import { usageRoutes } from './routes/usage.js';
+import { dashboardRoutes } from './routes/dashboard.js';
 import { getAuditLogger, hashInput } from './store/audit.js';
 import { getUsageMeter } from './store/usage.js';
 
@@ -28,6 +29,7 @@ export function buildServer() {
   fastify.register(uploadRoutes);
   fastify.register(keysRoutes);
   fastify.register(usageRoutes);
+  fastify.register(dashboardRoutes);
 
   fastify.addHook('onRequest', async (request: FastifyRequest) => {
     (request as FastifyRequest & { _startMs: number })._startMs = Date.now();

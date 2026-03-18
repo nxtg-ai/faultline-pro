@@ -1,7 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
+import { rateLimitScan } from '../plugins/ratelimit.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { extractTextFromBuffer } from '@nxtg/faultline/cli/extract.js';
+import { getAnalyticsStore } from '../store/analytics.js';
+import type { RiskLevel } from '../store/analytics.js';
 
 const SUPPORTED_MIMES = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
 
@@ -10,7 +13,7 @@ type Provider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
 export async function uploadRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/scan/upload',
-    { preHandler: requireApiKey },
+    { preHandler: [requireApiKey, rateLimitScan] },
     async (request, reply) => {
       let buffer: Buffer | null = null;
       let mimetype = '';
@@ -71,6 +74,7 @@ export async function uploadRoutes(fastify: FastifyInstance): Promise<void> {
 
       try {
         const result = await scan(text, provider);
+        getAnalyticsStore().record(request.keyId ?? 'unknown', result.overallRisk as RiskLevel);
         return reply.status(200).send(result);
       } catch (scanErr) {
         const message = scanErr instanceof Error ? scanErr.message : String(scanErr);

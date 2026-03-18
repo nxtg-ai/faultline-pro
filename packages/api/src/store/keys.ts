@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { randomBytes } from 'node:crypto';
 
-export type Permission = 'scan' | 'report' | 'upload' | 'admin';
+export type Permission = 'scan' | 'report' | 'upload' | 'admin' | 'pro';
 
 export interface ApiKey {
   id: string;
@@ -39,6 +39,10 @@ class KeyStore {
 
   validateKey(key: string): ApiKey | null {
     return this.keys.find((k) => k.key === key) ?? null;
+  }
+
+  validateById(id: string): ApiKey | null {
+    return this.keys.find((k) => k.id === id) ?? null;
   }
 
   get size(): number {

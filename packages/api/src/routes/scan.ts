@@ -1,6 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
+import { rateLimitScan } from '../plugins/ratelimit.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { getAnalyticsStore } from '../store/analytics.js';
+import type { RiskLevel } from '../store/analytics.js';
 
 const BODY_SCHEMA = {
   type: 'object',
@@ -24,7 +27,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: ScanBody }>(
     '/scan',
     {
-      preHandler: requireApiKey,
+      preHandler: [requireApiKey, rateLimitScan],
       schema: { body: BODY_SCHEMA },
     },
     async (request, reply) => {
@@ -32,6 +35,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
 
       try {
         const result = await scan(text, provider);
+        getAnalyticsStore().record(request.keyId ?? 'unknown', result.overallRisk as RiskLevel);
         return reply.status(200).send(result);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

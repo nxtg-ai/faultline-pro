@@ -1,1 +1,17 @@
-{"model": "claude-sonnet-4-6"}
+{
+  "model": "claude-sonnet-4-6",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /home/axw/ASIF/scripts/post-push-ci-check.sh",
+            "timeout": 20
+          }
+        ]
+      }
+    ]
+  }
+}
