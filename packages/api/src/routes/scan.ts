@@ -8,6 +8,7 @@ import { fireWebhookEvent } from '../store/webhooks.js';
 import { getCircuitBreaker } from '../store/circuit-breaker.js';
 import type { Provider } from '../store/circuit-breaker.js';
 import { getAuditLogger } from '../store/audit.js';
+import { getScanCache } from '../store/cache.js';
 
 const BODY_SCHEMA = {
   type: 'object',
@@ -38,6 +39,18 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
       const { text, provider } = request.body;
 
       const keyId = request.keyId ?? 'unknown';
+
+      // Cache lookup — before failover / API calls
+      const effectiveProvider = provider ?? 'gemini';
+      const cached = getScanCache().get(text, effectiveProvider);
+      if (cached) {
+        reply.header('X-Cache', 'HIT');
+        getAnalyticsStore().record(keyId, (cached as { overallRisk: string }).overallRisk as RiskLevel);
+        fireWebhookEvent('scan.complete', cached);
+        return reply.status(200).send(cached);
+      }
+      reply.header('X-Cache', 'MISS');
+
       const cb = getCircuitBreaker();
       const chain = cb.getChain(provider as Provider | undefined);
 
@@ -67,6 +80,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
             });
           }
 
+          getScanCache().set(text, effectiveProvider, result as Record<string, unknown>);
           getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
           fireWebhookEvent('scan.complete', result);
           return reply.status(200).send(result);

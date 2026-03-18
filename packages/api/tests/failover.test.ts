@@ -8,6 +8,7 @@ import { resetAnalytics } from '../src/store/analytics.js';
 import { resetWebhookStore } from '../src/store/webhooks.js';
 import { resetCircuitBreaker, getCircuitBreaker, PROVIDER_CHAIN } from '../src/store/circuit-breaker.js';
 import type { Provider } from '../src/store/circuit-breaker.js';
+import { resetCache } from '../src/store/cache.js';
 import type { FastifyInstance } from 'fastify';
 
 const { mockScan } = vi.hoisted(() => ({ mockScan: vi.fn() }));
@@ -37,6 +38,7 @@ beforeEach(async () => {
   resetAnalytics();
   resetWebhookStore();
   resetCircuitBreaker();
+  resetCache();
   mockScan.mockReset();
   server = buildServer();
   await server.ready();

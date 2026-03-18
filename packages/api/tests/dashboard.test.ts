@@ -5,6 +5,7 @@ import { resetRateLimiter, setCustomLimit } from '../src/store/ratelimit.js';
 import { resetAuditLogger } from '../src/store/audit.js';
 import { resetUsageMeter } from '../src/store/usage.js';
 import { resetAnalytics, getAnalyticsStore } from '../src/store/analytics.js';
+import { resetCache } from '../src/store/cache.js';
 import type { FastifyInstance } from 'fastify';
 
 vi.mock('@nxtg/faultline/cli/scan.js', () => ({
@@ -31,6 +32,7 @@ function setup() {
   resetAuditLogger();
   resetUsageMeter();
   resetAnalytics();
+  resetCache();
 }
 
 async function doScan(server: FastifyInstance, key = 'admin-secret') {
@@ -227,9 +229,10 @@ describe('GET /dashboard — riskDistribution', () => {
       .mockResolvedValueOnce({ input: 'x', provider: 'mock', claims: [], verifications: {}, overallRisk: 'low', complianceReport: { riskTier: 'minimal', findings: [] } as any, ruleFindings: [] })
       .mockResolvedValueOnce({ input: 'x', provider: 'mock', claims: [], verifications: {}, overallRisk: 'high', complianceReport: { riskTier: 'limited', findings: [] } as any, ruleFindings: [] })
       .mockResolvedValueOnce({ input: 'x', provider: 'mock', claims: [], verifications: {}, overallRisk: 'low', complianceReport: { riskTier: 'minimal', findings: [] } as any, ruleFindings: [] });
-    await doScan(server);
-    await doScan(server);
-    await doScan(server);
+    // Use distinct texts to avoid cache hits masking different risk levels
+    await server.inject({ method: 'POST', url: '/scan', headers: { 'x-api-key': 'admin-secret', 'content-type': 'application/json' }, body: JSON.stringify({ text: 'Claim text alpha.' }) });
+    await server.inject({ method: 'POST', url: '/scan', headers: { 'x-api-key': 'admin-secret', 'content-type': 'application/json' }, body: JSON.stringify({ text: 'Claim text beta.' }) });
+    await server.inject({ method: 'POST', url: '/scan', headers: { 'x-api-key': 'admin-secret', 'content-type': 'application/json' }, body: JSON.stringify({ text: 'Claim text gamma.' }) });
     const body = JSON.parse((await getDashboard(server)).body);
     expect(body.riskDistribution.low).toBe(2);
     expect(body.riskDistribution.high).toBe(1);

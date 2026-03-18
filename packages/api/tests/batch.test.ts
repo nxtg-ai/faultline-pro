@@ -6,6 +6,7 @@ import { resetAuditLogger } from '../src/store/audit.js';
 import { resetUsageMeter } from '../src/store/usage.js';
 import { resetAnalytics } from '../src/store/analytics.js';
 import { resetWebhookStore, getWebhookStore } from '../src/store/webhooks.js';
+import { resetCache } from '../src/store/cache.js';
 import type { FastifyInstance } from 'fastify';
 
 vi.mock('@nxtg/faultline/cli/scan.js', () => ({
@@ -29,6 +30,7 @@ function resetAll() {
   resetUsageMeter();
   resetAnalytics();
   resetWebhookStore();
+  resetCache();
   process.env.FAULTLINE_API_KEY = 'admin-secret';
 }
 

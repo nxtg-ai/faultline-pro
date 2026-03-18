@@ -2348,3 +2348,32 @@ N-11 Multimodal Upload complete. Pure input-expansion — zero changes to the ve
 > - Provider auto-failover + circuit breaker (18 tests) — D-88
 
 ---
+
+## Archived 2026-03-18 (final) — 2 directives
+
+### DIRECTIVE-NXTG-20260318-94 — P1: Caching Layer — Provider Response Cache
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-18 18:00 | **Estimate**: M | **Status**: DONE
+
+**Action Items**:
+1. [x] **Content-hash cache** — cache scan results by SHA-256 of input text. Same text + same provider = cached result (skip API call).
+2. [x] **Cache TTL** — configurable expiry (default 24h, env `FAULTLINE_CACHE_TTL_MS`). `GET /cache/stats` for hit rate.
+3. [x] **Cache invalidation** — `DELETE /cache` to flush. Provider-change auto-invalidation is implicit: cache key = `sha256(text + '\0' + provider)`, so different provider = different key.
+4. [x] Tests.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-95.
+**Response** (filled by team):
+> SHIPPED. `store/cache.ts` — `ScanCache` singleton keyed by `sha256(text + '\0' + provider)`, configurable TTL via `FAULTLINE_CACHE_TTL_MS` (default 24h), `get/set/flush/stats/reset`. `routes/cache.ts` — `GET /cache/stats` and `DELETE /cache`, both `requireAdmin`. `scan.ts` — cache lookup before circuit-breaker loop; `X-Cache: HIT/MISS` response header; stores result after successful scan. 15 tests in `cache.test.ts`. All 9 existing test files updated with `resetCache()` in `beforeEach` for isolation. Total: **1,229 JS tests** (44 files).
+
+---
+### DIRECTIVE-NXTG-20260318-95 — P2: Final Session Archive + Test Count Report
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
+**Injected**: 2026-03-18 18:00 | **Estimate**: S | **Status**: DONE
+
+**Action Items**:
+1. [x] Archive DONE directives. 2. [x] Run full test suite, report final count. 3. [x] Update NEXUS Executive Dashboard with all new initiatives.
+
+**Response** (filled by team):
+> DONE. 2 directives archived (69→71). **Final JS test count: 1,229 (44 files)**. Python SDK: 22 tests. All green. Executive Dashboard updated: N-24 (Caching Layer) added.
+
+---

@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { buildServer } from '../src/server.js';
+import { resetCache } from '../src/store/cache.js';
 import type { FastifyInstance } from 'fastify';
+
+// Reset cache before every test so cached results from prior tests don't interfere
+beforeEach(() => { resetCache(); });
 
 vi.mock('@nxtg/faultline/cli/scan.js', () => ({
   scan: vi.fn().mockResolvedValue({

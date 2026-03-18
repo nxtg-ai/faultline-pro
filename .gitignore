@@ -28,3 +28,4 @@ dist-ssr
 
 # Generated SARIF output
 *.sarif
+.claude/worktrees/

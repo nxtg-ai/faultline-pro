@@ -5,6 +5,7 @@ import { resetRateLimiter, setCustomLimit, getRateLimiter } from '../src/store/r
 import { resetAuditLogger } from '../src/store/audit.js';
 import { resetUsageMeter } from '../src/store/usage.js';
 import { resetAnalytics } from '../src/store/analytics.js';
+import { resetCache } from '../src/store/cache.js';
 import type { FastifyInstance } from 'fastify';
 
 vi.mock('@nxtg/faultline/cli/scan.js', () => ({
@@ -26,6 +27,7 @@ function setup() {
   resetAuditLogger();
   resetUsageMeter();
   resetAnalytics();
+  resetCache();
 }
 
 async function scan(server: FastifyInstance, key: string) {

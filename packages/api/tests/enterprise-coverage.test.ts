@@ -7,6 +7,7 @@ import { buildServer } from '../src/server.js';
 import { getKeyStore, resetKeyStore } from '../src/store/keys.js';
 import { getAuditLogger, resetAuditLogger, hashInput } from '../src/store/audit.js';
 import { getUsageMeter, resetUsageMeter } from '../src/store/usage.js';
+import { resetCache } from '../src/store/cache.js';
 import type { FastifyInstance } from 'fastify';
 
 vi.mock('@nxtg/faultline/cli/scan.js', () => ({
@@ -152,6 +153,7 @@ describe('Auth edge cases', () => {
     resetKeyStore();
     resetAuditLogger();
     resetUsageMeter();
+    resetCache();
     server = buildServer();
     await server.ready();
   });
@@ -220,6 +222,7 @@ describe('Upload audit + usage', () => {
     resetKeyStore();
     resetAuditLogger();
     resetUsageMeter();
+    resetCache();
     server = buildServer();
     await server.ready();
   });

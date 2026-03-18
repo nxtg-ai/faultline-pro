@@ -15,6 +15,7 @@ import { resetAuditLogger, getAuditLogger } from '../src/store/audit.js';
 import { resetUsageMeter } from '../src/store/usage.js';
 import { resetAnalytics } from '../src/store/analytics.js';
 import { resetWebhookStore } from '../src/store/webhooks.js';
+import { resetCache } from '../src/store/cache.js';
 import type { FastifyInstance } from 'fastify';
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
@@ -90,6 +91,7 @@ beforeAll(async () => {
   resetUsageMeter();
   resetAnalytics();
   resetWebhookStore();
+  resetCache();
   server = buildServer();
   await server.ready();
 });

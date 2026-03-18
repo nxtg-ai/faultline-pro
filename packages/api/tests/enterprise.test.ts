@@ -3,6 +3,7 @@ import { buildServer } from '../src/server.js';
 import { resetKeyStore, getKeyStore } from '../src/store/keys.js';
 import { resetAuditLogger, getAuditLogger } from '../src/store/audit.js';
 import { resetUsageMeter, getUsageMeter } from '../src/store/usage.js';
+import { resetCache } from '../src/store/cache.js';
 import type { FastifyInstance } from 'fastify';
 
 vi.mock('@nxtg/faultline/cli/scan.js', () => ({
@@ -18,6 +19,9 @@ vi.mock('@nxtg/faultline/cli/scan.js', () => ({
     ruleFindings: [],
   }),
 }));
+
+// Reset cache before every test so cached results from prior tests don't interfere
+beforeEach(() => { resetCache(); });
 
 function makeServer(): FastifyInstance {
   return buildServer();

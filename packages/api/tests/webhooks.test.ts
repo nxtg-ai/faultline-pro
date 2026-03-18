@@ -13,6 +13,7 @@ import { resetRateLimiter } from '../src/store/ratelimit.js';
 import { resetAuditLogger } from '../src/store/audit.js';
 import { resetUsageMeter } from '../src/store/usage.js';
 import { resetAnalytics } from '../src/store/analytics.js';
+import { resetCache } from '../src/store/cache.js';
 import type { FastifyInstance } from 'fastify';
 
 const MOCK_SCAN_RESULT = {
@@ -45,6 +46,7 @@ function resetAll() {
   resetAuditLogger();
   resetUsageMeter();
   resetAnalytics();
+  resetCache();
 }
 
 // ─── CRUD Tests ────────────────────────────────────────────────────────────

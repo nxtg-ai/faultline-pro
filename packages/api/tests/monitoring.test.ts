@@ -5,6 +5,7 @@ import { resetAnalytics } from '../src/store/analytics.js';
 import { resetKeyStore } from '../src/store/keys.js';
 import { resetAuditLogger } from '../src/store/audit.js';
 import { resetUsageMeter } from '../src/store/usage.js';
+import { resetCache } from '../src/store/cache.js';
 
 vi.mock('@nxtg/faultline/cli/scan.js', () => ({
   scan: vi.fn().mockResolvedValue({
@@ -31,6 +32,7 @@ describe('Monitoring & Health Dashboard', () => {
     resetKeyStore();
     resetAuditLogger();
     resetUsageMeter();
+    resetCache();
     server = buildServer();
     await server.ready();
   });
