@@ -9,6 +9,7 @@ import { getCircuitBreaker } from '../store/circuit-breaker.js';
 import type { Provider } from '../store/circuit-breaker.js';
 import { getAuditLogger } from '../store/audit.js';
 import { getScanCache } from '../store/cache.js';
+import { getTemplateStore } from '../store/templates.js';
 
 const BODY_SCHEMA = {
   type: 'object',
@@ -23,9 +24,26 @@ const BODY_SCHEMA = {
   additionalProperties: false,
 } as const;
 
+type ScanProvider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
+
 interface ScanBody {
   text: string;
-  provider?: 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
+  provider?: ScanProvider;
+}
+
+const SCAN_TEMPLATE_SCHEMA = {
+  type: 'object',
+  required: ['text'],
+  properties: {
+    text: { type: 'string', minLength: 1, maxLength: 50000 },
+    provider: { type: 'string', enum: ['gemini', 'openai', 'claude', 'perplexity', 'mock'] },
+  },
+  additionalProperties: false,
+} as const;
+
+interface ScanTemplateBody {
+  text: string;
+  provider?: ScanProvider;
 }
 
 export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
@@ -93,6 +111,38 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
 
       fireWebhookEvent('scan.failed', { error: lastError });
       return reply.status(500).send({ error: lastError });
+    },
+  );
+
+  fastify.post<{ Params: { id: string }; Body: ScanTemplateBody }>(
+    '/scan/template/:id',
+    {
+      preHandler: [requireApiKey, rateLimitScan],
+      schema: {
+        params: {
+          type: 'object',
+          properties: { id: { type: 'string' } },
+          required: ['id'],
+        },
+        body: SCAN_TEMPLATE_SCHEMA,
+      },
+    },
+    async (request, reply) => {
+      const template = getTemplateStore().get(request.params.id);
+      if (!template) {
+        return reply.status(404).send({ error: 'Template not found.' });
+      }
+
+      const { text, provider } = request.body;
+      const effectiveProvider = (provider ?? template.provider ?? 'mock') as ScanProvider;
+
+      const result = await scan(text, effectiveProvider);
+
+      const keyId = request.keyId ?? 'unknown';
+      getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
+      fireWebhookEvent('scan.complete', result);
+
+      return reply.status(200).send(result);
     },
   );
 }

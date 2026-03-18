@@ -1,11 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
-import { rateLimitScan } from '../plugins/ratelimit.js';
-import { scan } from '@nxtg/faultline/cli/scan.js';
 import { getTemplateStore } from '../store/templates.js';
-import { getAnalyticsStore } from '../store/analytics.js';
-import type { RiskLevel } from '../store/analytics.js';
-import { fireWebhookEvent } from '../store/webhooks.js';
 
 type Provider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
 
@@ -22,27 +17,12 @@ const CREATE_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-const SCAN_TEMPLATE_SCHEMA = {
-  type: 'object',
-  required: ['text'],
-  properties: {
-    text: { type: 'string', minLength: 1, maxLength: 50000 },
-    provider: { type: 'string', enum: ['gemini', 'openai', 'claude', 'perplexity', 'mock'] },
-  },
-  additionalProperties: false,
-} as const;
-
 interface CreateTemplateBody {
   name: string;
   provider?: Provider;
   rules?: string[];
   failOn?: 'critical' | 'high' | 'medium' | 'low';
   description?: string;
-}
-
-interface ScanTemplateBody {
-  text: string;
-  provider?: Provider;
 }
 
 export async function templateRoutes(fastify: FastifyInstance): Promise<void> {
@@ -81,38 +61,6 @@ export async function templateRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.status(404).send({ error: 'Template not found.' });
       }
       return reply.status(204).send();
-    },
-  );
-
-  fastify.post<{ Params: { id: string }; Body: ScanTemplateBody }>(
-    '/scan/template/:id',
-    {
-      preHandler: [requireApiKey, rateLimitScan],
-      schema: {
-        params: {
-          type: 'object',
-          properties: { id: { type: 'string' } },
-          required: ['id'],
-        },
-        body: SCAN_TEMPLATE_SCHEMA,
-      },
-    },
-    async (request, reply) => {
-      const template = getTemplateStore().get(request.params.id);
-      if (!template) {
-        return reply.status(404).send({ error: 'Template not found.' });
-      }
-
-      const { text, provider } = request.body;
-      const effectiveProvider = (provider ?? template.provider ?? 'mock') as Provider;
-
-      const result = await scan(text, effectiveProvider);
-
-      const keyId = request.keyId ?? 'unknown';
-      getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
-      fireWebhookEvent('scan.complete', result);
-
-      return reply.status(200).send(result);
     },
   );
 }
