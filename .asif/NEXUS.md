@@ -77,6 +77,32 @@ The Kaggle version remains at  (tagged  at commit ).
 
 > **46 directives archived** (36 on 2026-02-28, 10 on 2026-03-12). Full text in `NEXUS-archive.md`. Summary in [## CoS Archive](#cos-archive) below.
 
+### DIRECTIVE-NXTG-20260318-06 — P1: N-11 Multimodal Upload (PDF/OCR Claims Extraction)
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-18 09:00 | **Estimate**: M | **Status**: PENDING
+
+**Context**: N-13 (Cloud Platform) and N-14 (Compliance Reports) SHIPPED. Hardening DONE. N-15 (Stripe/billing) requires Asif decision. N-11 (Multimodal) is the next technical initiative that doesn't require business decisions.
+
+**What**: Accept PDF and image uploads. Extract text via OCR, then feed into the existing claims pipeline. Users upload a marketing PDF or screenshot → Faultline extracts claims → verifies them.
+
+**Action Items**:
+1. [ ] **PDF text extraction** — use `pdf-parse` (MIT) or similar. Extract text from uploaded PDF, feed to existing `POST /scan` pipeline.
+2. [ ] **Image OCR** — use `tesseract.js` (Apache-2.0) for in-browser OCR, or `sharp` + `tesseract.js` server-side. Extract text from screenshots/images.
+3. [ ] **Upload endpoint** — `POST /scan/upload` accepting `multipart/form-data` (PDF or image). Returns same response as `POST /scan`.
+4. [ ] **CLI support** — `faultline scan --file document.pdf` / `faultline scan --file screenshot.png`
+5. [ ] **Tests**: 946 → 980+ target. Cover: PDF parsing, OCR extraction, upload endpoint, CLI file flag, error cases (corrupt file, empty PDF, unsupported format).
+
+**Constraints**:
+- USE PLAN MODE — M-sized, touches API + CLI
+- Keep OCR dependency lightweight — prefer `tesseract.js` over system-level tesseract
+- Reuse existing scan pipeline — upload extracts text, then feeds to same verification engine
+- No new providers or verification logic — this is input expansion only
+
+**Response** (filled by team):
+>
+
+---
+
 ### DIRECTIVE-NXTG-20260318-04 — P1: Post-N-14 Hardening — npm verify + API docs + Dependabot cleanup
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
 **Injected**: 2026-03-18 08:00 | **Estimate**: S | **Status**: DONE
