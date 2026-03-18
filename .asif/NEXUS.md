@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-18 (D-106/107 done. N-25 SHIPPED. JS: 1,247 tests (45 files). Python: 22 tests. 73 directives archived.)
+> **Last Updated**: 2026-03-18 (D-114/115 done. N-26 SHIPPED. JS: 1,278 tests (47 files). Python: 22 tests. 75 directives archived.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -35,6 +35,7 @@
 | N-23 | Provider Auto-Failover + Circuit Breaker | PROVIDER | SHIPPED | P1 | 2026-03-18 |
 | N-24 | Caching Layer (content-hash, TTL, hit-rate stats) | PERFORMANCE | SHIPPED | P1 | 2026-03-18 |
 | N-25 | Scheduled Scan Jobs (cron, background scheduler, job CRUD) | AUTOMATION | SHIPPED | P1 | 2026-03-18 |
+| N-26 | Scan Comparison API + CLI (diff two outputs, trust score delta) | FORENSIC | SHIPPED | P1 | 2026-03-18 |
 
 ---
 
@@ -82,32 +83,9 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
-> **73 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 27 on 2026-03-18).
+> **75 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 27 on 2026-03-18).
 
-### DIRECTIVE-NXTG-20260318-114 — P1: Comparison API — Diff Two Scans
-**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-18 19:45 | **Estimate**: M | **Status**: PENDING
 
-**Action Items**:
-1. [ ] **`POST /scan/compare`** — accept two scan results, return: new claims, removed claims, changed verdicts, trust score delta.
-2. [ ] **CLI `faultline compare`** — compare two scan IDs or two texts side-by-side.
-3. [ ] Tests.
-
-**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-115.
-**Response** (filled by team): >
-
----
-
-### DIRECTIVE-NXTG-20260318-115 — P2: Full Portfolio README + npm Publish Readiness
-**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
-**Injected**: 2026-03-18 19:45 | **Estimate**: S | **Status**: PENDING
-
-**Action Items**:
-1. [ ] README rewrite — complete feature list (20+ features shipped today). 2. [ ] `npm pack --dry-run` verify. 3. [ ] Final test count.
-
-**Response** (filled by team): >
-
----
 
 
 

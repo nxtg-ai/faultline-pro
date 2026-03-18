@@ -4,7 +4,7 @@ Forensic verification for AI-generated text. Faultline decomposes output into at
 
 [![CI](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@nxtg/faultline.svg)](https://www.npmjs.com/package/@nxtg/faultline)
-[![Tests](https://img.shields.io/badge/tests-1140%20passing-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-1278%20passing-brightgreen)](tests/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 
@@ -16,12 +16,17 @@ Forensic verification for AI-generated text. Faultline decomposes output into at
 |---|---|
 | Atomic claim extraction | Decomposes AI output into fact / opinion / interpretation with importance scoring |
 | Per-claim verification | Verdict: supported / contradicted / mixed / unverified + confidence score |
+| Scan comparison | `POST /scan/compare` + `faultline compare` — new/removed claims, verdict changes, trust score delta |
 | EU AI Act compliance | Risk tier mapping (Unacceptable / High / Limited / Minimal), triggered articles, mitigations |
 | Weakest-link detection | Per-claim fragility scoring — finds the claim that most undermines the argument |
 | Claim dependency graph | Mermaid and Graphviz DOT visualizations grouping claims by risk tier |
 | Rules engine | YAML-defined rules; built-in PII, bias, toxicity rulesets |
 | CI gate | `--fail-on high` returns exit code 1; SARIF output for GitHub Code Scanning |
-| Enterprise API | REST API with key management, audit trail, rate limiting, webhooks, usage metering |
+| Enterprise API | REST API with key management, audit trail, rate limiting, webhooks, batch scanning, caching |
+| Provider failover | Automatic chain Gemini → OpenAI → Claude → Perplexity; circuit breaker with 5-min cooldown |
+| Monitoring | `GET /health/deep`, `GET /metrics` (Prometheus), `GET /status` (HTML dashboard) |
+| Scheduled jobs | `POST /jobs` — recurring scans on a cron schedule with webhook delivery |
+| Multi-SDK | TypeScript SDK (`@nxtg/faultline-sdk`), Python SDK (`faultline-sdk`), GitHub Action |
 
 ---
 
@@ -57,13 +62,18 @@ Switch providers with `--provider <name>`. No code changes required.
 
 ### Enterprise API
 - **API key management** — `POST /keys`, `GET /keys`, `DELETE /keys/:id`; scoped permissions (scan / report / upload / admin / pro)
-- **Audit trail** — SHA-256 input hash logged on every request via `onResponse` hook
+- **Audit trail** — SHA-256 input hash logged on every request; `GET /audit` query (coming soon)
 - **Usage metering** — per-key daily scan counts via `GET /usage`
-- **Rate limiting** — per-tier daily limits: free 10/day, pro 1,000/day, admin 10,000/day; `X-RateLimit-*` headers on all scan responses
+- **Rate limiting** — per-tier daily limits: free 10/day, pro 1,000/day, admin 10,000/day; `X-RateLimit-*` headers
 - **Usage dashboard** — `GET /dashboard`: scan counts (today/week/month), risk distribution, key usage breakdown
-- **Webhooks** — `POST /webhooks` to register endpoints; `scan.complete` / `scan.failed` events; HMAC-SHA256 signing in `X-Faultline-Signature`; 3-attempt retry with backoff
-- **Batch scanning** — `faultline scan --dir <path>` scans all files in a directory; API parallel patterns documented in [docs/ci-integration.md](docs/ci-integration.md)
-- **OpenAPI 3.1 spec** — [`packages/api/docs/openapi.yaml`](packages/api/docs/openapi.yaml), 12 routes, all schemas defined
+- **Webhooks** — `POST /webhooks`; `scan.complete` / `scan.failed` / `job.complete` events; HMAC-SHA256 signing; 3-attempt retry
+- **Batch scanning** — `POST /scan/batch` (1–10 texts, concurrent, partial failure semantics); see [docs/ci-integration.md](docs/ci-integration.md)
+- **Scan comparison** — `POST /scan/compare`: diff two scan results (new/removed claims, verdict changes, trust score delta)
+- **Caching** — SHA-256 content-hash cache; 24h TTL (env `FAULTLINE_CACHE_TTL_MS`); `X-Cache: HIT/MISS` header; `GET /cache/stats`, `DELETE /cache`
+- **Scheduled jobs** — `POST /jobs`: recurring scans on a `*/N * * * *` cron schedule; results dispatched to `webhookUrl`
+- **Provider failover** — automatic chain Gemini → OpenAI → Claude → Perplexity → Mock; circuit breaker trips after 5 failures, resets after 5 minutes; `503` when all providers down
+- **Monitoring** — `GET /health/deep` (subsystem status + provider config flags), `GET /metrics` (Prometheus text), `GET /status` (HTML)
+- **OpenAPI 3.1 spec** — [`packages/api/docs/openapi.yaml`](packages/api/docs/openapi.yaml)
 
 ---
 
@@ -227,10 +237,14 @@ packages/
 │   ├── history/          # Scan history + trend analysis
 │   └── templates/        # Red-team prompt template library
 ├── api/                  # @nxtg/faultline-api — Fastify v5 REST API
-│   ├── routes/           # /scan, /scan/upload, /scan/report, /keys, /usage, /dashboard, /webhooks
-│   ├── plugins/          # Auth, rate limiting, audit logger
+│   ├── routes/           # /scan, /batch, /compare, /upload, /report, /keys, /jobs, /cache, /metrics…
+│   ├── store/            # KeyStore, AuditLogger, CircuitBreaker, ScanCache, JobScheduler…
+│   ├── plugins/          # Auth, rate limiting
 │   └── docs/             # OpenAPI 3.1 spec (openapi.yaml)
+├── sdk/                  # @nxtg/faultline-sdk — TypeScript client SDK
 └── web/                  # @nxtg/faultline-web — React visualization dashboard
+sdks/
+└── python/               # faultline-sdk — Python client (PyPI-ready, zero runtime deps)
 ```
 
 **Stores (API layer):**
@@ -243,6 +257,9 @@ packages/
 | `ScanAnalytics` | Aggregated risk distribution, trend data |
 | `RateLimiter` | Per-tier daily limits with midnight UTC rollover |
 | `WebhookStore` | Endpoint registration, HMAC secret management |
+| `ScanCache` | SHA-256 content-hash cache, configurable TTL, hit-rate stats |
+| `CircuitBreaker` | Per-provider failure counting, cooldown management |
+| `JobStore` + `JobScheduler` | Recurring scan job CRUD, cron-based background execution |
 
 ---
 
@@ -256,6 +273,10 @@ faultline scan --input doc.txt --sarif                 # writes results.sarif
 faultline scan --input doc.txt --fail-on high          # exit 1 if high/critical
 faultline scan --file document.pdf                     # PDF/image via OCR
 faultline scan --dir ./docs --glob "*.md"              # batch scan directory
+
+# Compare two texts side-by-side
+faultline compare --before "old-doc.txt" --after "new-doc.txt" --provider mock
+faultline compare --before "old text" --after "new text" --output-format json
 
 # Forensics
 faultline weakest  --input doc.txt --provider gemini   # weakest-link claim
@@ -275,6 +296,56 @@ faultline rules                                        # list detection rules
 faultline init                                         # generate .faultlinerc.json
 faultline --version
 faultline --help
+```
+
+---
+
+## SDKs
+
+### TypeScript / Node.js
+
+```bash
+npm install @nxtg/faultline-sdk
+```
+
+```typescript
+import { FaultlineClient } from '@nxtg/faultline-sdk';
+
+const client = new FaultlineClient({ apiKey: 'your-key', baseUrl: 'http://localhost:3000' });
+
+const result = await client.scan('GPT-4 has 1 trillion parameters.');
+console.log(result.overallRisk); // 'low' | 'medium' | 'high' | 'critical'
+
+const batch = await client.scanBatch(['claim one', 'claim two'], 'gemini');
+console.log(batch.succeeded, '/', batch.total);
+```
+
+### Python
+
+```bash
+pip install faultline-sdk
+```
+
+```python
+from faultline_sdk import FaultlineClient
+
+client = FaultlineClient(api_key="your-key", base_url="http://localhost:3000")
+result = client.scan("GPT-4 has 1 trillion parameters.")
+print(result.overall_risk)  # 'low' | 'medium' | 'high' | 'critical'
+```
+
+### GitHub Action
+
+```yaml
+- uses: nxtg-ai/faultline-pro/packages/cli@main
+  with:
+    input-file: docs/release-notes.md
+    provider: gemini
+    fail-on: high
+    upload-sarif: 'true'
+  env:
+    GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    FAULTLINE_API_KEY: ${{ secrets.FAULTLINE_API_KEY }}
 ```
 
 ---
@@ -316,8 +387,11 @@ Promptfoo tests your prompts. DeepEval scores your RAG pipeline. **Faultline aud
 | Weakest-link detection | Yes | No | No |
 | EU AI Act risk classification | Yes | No | No |
 | Claim dependency graph | Yes | No | No |
+| Scan comparison (diff two outputs) | Yes | No | No |
 | FM-agnostic (Gemini / Claude / OpenAI / Perplexity) | Yes | Yes | No (Python) |
-| Enterprise API with audit trail | Yes | No | No |
+| Provider auto-failover + circuit breaker | Yes | No | No |
+| Enterprise API with audit trail + caching | Yes | No | No |
+| TypeScript + Python SDK | Yes | No | No |
 
 ---
 

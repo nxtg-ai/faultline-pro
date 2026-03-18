@@ -25,6 +25,7 @@ import { buildClaimGraph, renderMermaid, renderDot } from '../analysis/claim-gra
 import { extractFailedClaims, buildCritiqueAnalysis } from '../analysis/critique.js';
 import { formatCritique } from './critique.js';
 import { createScanSpinner } from './spinner.js';
+import { compareScanResults, renderCompare } from './compare.js';
 
 const VERSION = '0.1.0';
 
@@ -77,6 +78,7 @@ Usage:
   faultline weakest --input <file> [--provider gemini] [--top N]       Identify the weakest-link claim
   faultline graph --input <file> [--format mermaid|dot]             Export claim graph
   faultline critique --input <file> [--provider gemini]             Critique failed claims + improved prompt
+  faultline compare --before <text|file> --after <text|file> [--provider mock]   Compare two scans side-by-side
   faultline rules                                                   List available rules
   faultline init                                                    Generate .faultlinerc.json
   faultline version                                                 Print version
@@ -621,6 +623,47 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
       }
 
       return { exitCode: 0, output: scanOutput };
+    }
+
+    case 'compare': {
+      const beforeInput = flags['before'];
+      const afterInput  = flags['after'];
+      const compareProvider = flags['provider'];
+      const outputFormat = (flags['output-format'] ?? 'text') as 'text' | 'json';
+
+      if (!beforeInput || !afterInput) {
+        return {
+          exitCode: 1,
+          output: 'Usage: faultline compare --before <text|file> --after <text|file> [--provider mock] [--output-format text|json]',
+        };
+      }
+
+      // Check API key if not mock
+      const keyCheck = checkApiKey(compareProvider);
+      if (keyCheck) return keyCheck;
+
+      // Resolve inputs: if file exists, read it; otherwise treat as literal text
+      function resolveInput(input: string): string {
+        try {
+          if (existsSync(resolve(input))) return readFileSync(resolve(input), 'utf8').trim();
+        } catch { /* not a file */ }
+        return input;
+      }
+
+      const textBefore = resolveInput(beforeInput);
+      const textAfter  = resolveInput(afterInput);
+
+      if (!textBefore) return { exitCode: 1, output: 'Error: --before input is empty.' };
+      if (!textAfter)  return { exitCode: 1, output: 'Error: --after input is empty.' };
+
+      // Run both scans
+      const [scanBefore, scanAfter] = await Promise.all([
+        scan(textBefore, compareProvider),
+        scan(textAfter, compareProvider),
+      ]);
+
+      const compareResult = compareScanResults(scanBefore, scanAfter);
+      return { exitCode: 0, output: renderCompare(compareResult, outputFormat) };
     }
 
     case 'report': {

@@ -2406,3 +2406,33 @@ N-11 Multimodal Upload complete. Pure input-expansion — zero changes to the ve
 > DONE. 2 directives archived (71→73). **Final JS test count: 1,247 (45 files)**. Python SDK: 22 tests. All green. Executive Dashboard: N-25 (Scheduled Jobs) added.
 
 ---
+
+## Archived 2026-03-18 (D-114/115) — 2 directives
+
+### DIRECTIVE-NXTG-20260318-114 — P1: Comparison API — Diff Two Scans
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-18 19:45 | **Estimate**: M | **Status**: DONE
+
+**Action Items**:
+1. [x] **`POST /scan/compare`** — accepts two scan results; returns `newClaims`, `removedClaims`, `changedVerdicts`, `trustScoreDelta`, `summary`. Claim matching is case-insensitive (normalized text). Both `requireApiKey`.
+2. [x] **CLI `faultline compare`** — `--before <text|file> --after <text|file> [--provider mock] [--output-format text|json]`; runs scan on each input then applies diff logic locally via `compareScanResults()`.
+3. [x] Tests — 15 API tests (`compare.test.ts`) + 16 CLI tests (`compare.test.ts`); CRUCIBLE Gate 2 length assertions throughout.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-115.
+**Response** (filled by team):
+> SHIPPED. `routes/compare.ts` — `POST /scan/compare` with `computeCompare()` diff logic. `cli/compare.ts` — `compareScanResults()` + `renderCompare()` (text/json). `cli/index.ts` — `compare` case added to switch. Total: **1,278 JS tests** (47 files).
+
+---
+### DIRECTIVE-NXTG-20260318-115 — P2: Full Portfolio README + npm Publish Readiness
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
+**Injected**: 2026-03-18 19:45 | **Estimate**: S | **Status**: DONE
+
+**Action Items**:
+1. [x] README rewrite — complete feature list (all N-01 through N-26 features, SDKs section, updated tables).
+2. [x] `npm pack --dry-run` verify — `@nxtg/faultline@0.1.5`, 44 files, 58 kB packed / 213.5 kB unpacked.
+3. [x] Final test count: **1,278 JS tests** (47 files) | **22 Python tests** | all green.
+
+**Response** (filled by team):
+> DONE. README updated: test badge (1,278), "What It Does" table (+5 rows), Enterprise API section (expanded to 13 bullets), Stores table (+3 rows), CLI Commands (compare added), new SDKs section (TS/Python/GitHub Action), "What Makes This Different" table (+3 rows), monorepo layout updated. npm pack clean. 2 directives archived (73→75).
+
+---

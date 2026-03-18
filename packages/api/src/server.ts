@@ -13,6 +13,7 @@ import { batchRoutes } from './routes/batch.js';
 import { metricsRoutes } from './routes/metrics.js';
 import { cacheRoutes } from './routes/cache.js';
 import { jobRoutes } from './routes/jobs.js';
+import { compareRoutes } from './routes/compare.js';
 import { getJobScheduler, resetJobScheduler } from './store/jobs.js';
 import { getAuditLogger, hashInput } from './store/audit.js';
 import { getUsageMeter } from './store/usage.js';
@@ -41,6 +42,7 @@ export function buildServer() {
   fastify.register(metricsRoutes);
   fastify.register(cacheRoutes);
   fastify.register(jobRoutes);
+  fastify.register(compareRoutes);
 
   fastify.addHook('onReady', async () => {
     getJobScheduler().start();
