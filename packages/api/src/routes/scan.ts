@@ -80,7 +80,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
             });
           }
 
-          getScanCache().set(text, effectiveProvider, result as Record<string, unknown>);
+          getScanCache().set(text, effectiveProvider, result as unknown as Record<string, unknown>);
           getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
           fireWebhookEvent('scan.complete', result);
           return reply.status(200).send(result);
