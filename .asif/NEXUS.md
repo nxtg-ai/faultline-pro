@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-18 (N-15 SHIPPED: rate limiting + dashboard, 1,090 tests. Docs refresh: README + CHANGELOG)
+> **Last Updated**: 2026-03-18 (E2E smoke complete, 1,158 tests. N-19/N-20 SHIPPED: Webhooks + Batch API)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -28,6 +28,8 @@
 | N-16 | Perplexity Provider (search-native verification) | PROVIDER | SHIPPED | P0 | 2026-03-08 |
 | N-17 | Provider Documentation + Search Gap Callout | DEVELOPER-X | SHIPPED | P0 | 2026-03-08 |
 | N-18 | React Workspace Split (CLI/Web separation) | DISTRIBUTION | SHIPPED | P1 | 2026-03-13 |
+| N-19 | Webhook System + Event Dispatch (HMAC, retry) | ENTERPRISE | SHIPPED | P1 | 2026-03-18 |
+| N-20 | Batch Scan API + CI/CD Integration Guide | DEVELOPER-X | SHIPPED | P1 | 2026-03-18 |
 
 ---
 
@@ -79,18 +81,19 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260318-54 — P0: E2E Smoke Test — Full API Surface
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P0
-**Injected**: 2026-03-18 15:00 | **Estimate**: S | **Status**: PENDING
+**Injected**: 2026-03-18 15:00 | **Estimate**: S | **Status**: DONE
 
 **Context**: 6+ features shipped today. Verify everything works together end-to-end.
 
 **Action Items**:
-1. [ ] E2E: create key → scan → upload PDF → report → batch scan → usage → audit → webhook → rate limit. One flow.
-2. [ ] Fix anything broken. 3. [ ] Final test count.
+1. [x] E2E: 18-step sequential flow in `packages/api/tests/e2e.test.ts` — GET /health → POST /keys → GET /keys → POST /scan → POST /scan/batch → POST /scan/upload → POST /scan/report → GET /usage → GET /dashboard → audit log check → POST /webhooks → GET /webhooks → webhook dispatch verification → DELETE /webhooks → rate limit 429 → DELETE /keys → 401 on deleted key → admin key still works. One shared server, state flows between tests.
+2. [x] One bug fixed: `setImmediate` insufficient to await fire-and-forget dispatch (dispatch uses `setTimeout(0)` internally). Fixed by waiting `setTimeout(20)` before asserting fetch was called.
+3. [x] Final test count: **1,158** (40 test files). +18 from E2E suite.
 
 **CHAIN**: When done, archive DONE directives + update Executive Dashboard.
 
 **Response** (filled by team):
->
+> SHIPPED. `packages/api/tests/e2e.test.ts` — 18 E2E tests, all green. Executive Dashboard updated: N-19 (Webhooks) + N-20 (Batch API) added, Last Updated header refreshed. Total: 1,158 tests (40 files).
 
 ---
 
