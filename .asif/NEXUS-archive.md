@@ -2377,3 +2377,32 @@ N-11 Multimodal Upload complete. Pure input-expansion — zero changes to the ve
 > DONE. 2 directives archived (69→71). **Final JS test count: 1,229 (44 files)**. Python SDK: 22 tests. All green. Executive Dashboard updated: N-24 (Caching Layer) added.
 
 ---
+
+## Archived 2026-03-18 (D-106/107) — 2 directives
+
+### DIRECTIVE-NXTG-20260318-106 — P1: Scheduled Scan Jobs — Recurring Verification
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-18 19:00 | **Estimate**: M | **Status**: DONE
+
+**Action Items**:
+1. [x] **`POST /jobs`** — create recurring scan job (text, provider, cron schedule, optional webhookUrl for results).
+2. [x] **Job scheduler** — `JobScheduler` background worker with `tick()` + `triggerJob(id)`, `setInterval`-based with injection for test isolation. Parses `*/N * * * *` cron syntax → intervalMs.
+3. [x] **`GET /jobs`** / **`DELETE /jobs/:id`** — list and remove scheduled jobs.
+4. [x] Tests.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-107.
+**Response** (filled by team):
+> SHIPPED. `store/jobs.ts` — `JobStore` (CRUD singleton) + `JobScheduler` (tick-based, `onReady` start / `onClose` stop via Fastify lifecycle hooks) + `parseIntervalMs` (supports `*/N * * * *` and `* * * * *`). `routes/jobs.ts` — `POST /jobs` (201), `GET /jobs` (200), `DELETE /jobs/:id` (204/404), all behind `requireApiKey`. Job fields: `id`, `text`, `provider`, `schedule`, `intervalMs`, `webhookUrl?`, `createdAt`, `lastRunAt`, `nextRunAt`, `status`, `runCount`. On trigger: calls scan via `scan()`, posts to `webhookUrl` if set or fires `job.complete` webhook event, writes audit log entry. 18 tests in `jobs.test.ts`. Total: **1,247 JS tests** (45 files).
+
+---
+### DIRECTIVE-NXTG-20260318-107 — P2: Final Day Session Summary
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
+**Injected**: 2026-03-18 19:00 | **Estimate**: S | **Status**: DONE
+
+**Action Items**:
+1. [x] Run full test suite — report final count. 2. [x] List ALL initiatives shipped today. 3. [x] Update NEXUS Executive Dashboard.
+
+**Response** (filled by team):
+> DONE. 2 directives archived (71→73). **Final JS test count: 1,247 (45 files)**. Python SDK: 22 tests. All green. Executive Dashboard: N-25 (Scheduled Jobs) added.
+
+---

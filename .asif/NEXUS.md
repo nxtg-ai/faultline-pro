@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-18 (Final close. N-24 SHIPPED. JS: 1,229 tests (44 files). Python: 22 tests. 71 directives archived.)
+> **Last Updated**: 2026-03-18 (D-106/107 done. N-25 SHIPPED. JS: 1,247 tests (45 files). Python: 22 tests. 73 directives archived.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -34,6 +34,7 @@
 | N-22 | Monitoring + Observability (deep health, Prometheus, status) | ENTERPRISE | SHIPPED | P2 | 2026-03-18 |
 | N-23 | Provider Auto-Failover + Circuit Breaker | PROVIDER | SHIPPED | P1 | 2026-03-18 |
 | N-24 | Caching Layer (content-hash, TTL, hit-rate stats) | PERFORMANCE | SHIPPED | P1 | 2026-03-18 |
+| N-25 | Scheduled Scan Jobs (cron, background scheduler, job CRUD) | AUTOMATION | SHIPPED | P1 | 2026-03-18 |
 
 ---
 
@@ -81,33 +82,9 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
-> **71 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 25 on 2026-03-18).
+> **73 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 25 on 2026-03-18).
 
-### DIRECTIVE-NXTG-20260318-106 — P1: Scheduled Scan Jobs — Recurring Verification
-**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-18 19:00 | **Estimate**: M | **Status**: PENDING
 
-**Action Items**:
-1. [ ] **`POST /jobs`** — create recurring scan job (text/file, provider, cron schedule, webhook for results).
-2. [ ] **Job scheduler** — background worker checks cron schedules, runs scans, dispatches results via webhook.
-3. [ ] **`GET /jobs`** / **`DELETE /jobs/:id`** — manage scheduled jobs.
-4. [ ] Tests.
-
-**CHAIN**: When done, start DIRECTIVE-NXTG-20260318-107.
-**Response** (filled by team): >
-
----
-
-### DIRECTIVE-NXTG-20260318-107 — P2: Final Day Session Summary
-**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
-**Injected**: 2026-03-18 19:00 | **Estimate**: S | **Status**: PENDING
-
-**Action Items**:
-1. [ ] Run full test suite — report final count. 2. [ ] List ALL initiatives shipped today. 3. [ ] Update NEXUS Executive Dashboard.
-
-**Response** (filled by team): >
-
----
 
 
 
