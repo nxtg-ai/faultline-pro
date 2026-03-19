@@ -90,6 +90,32 @@ The Kaggle version remains at  (tagged  at commit ).
 
 > **75 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 35 on 2026-03-18).
 
+### DIRECTIVE-NXTG-20260319-22 — P1: Claim Trending — Track Claims Across Scans Over Time
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-19 02:15 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] **Claim index** — store every claim across all scans, normalized. Track first-seen, frequency, verdict changes.
+2. [ ] **`GET /claims/trending`** — most frequently seen claims, newly emerging claims, claims with changing verdicts.
+3. [ ] **Claim alerts** — webhook when a previously-verified claim gets unverified (source went down, etc).
+4. [ ] Tests.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260319-23.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260319-23 — P2: Final NEXUS Archive + Portfolio Showcase
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
+**Injected**: 2026-03-19 02:15 | **Estimate**: S | **Status**: PENDING
+
+**Action Items**:
+1. [ ] Archive DONE directives. 2. [ ] Final test count. 3. [ ] Update NEXUS Executive Dashboard.
+
+**Response** (filled by team): >
+
+---
+
 ### DIRECTIVE-NXTG-20260319-16 — P1: Claim Evidence Linking — Source URL Verification
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
 **Injected**: 2026-03-19 01:50 | **Estimate**: M | **Status**: DONE
