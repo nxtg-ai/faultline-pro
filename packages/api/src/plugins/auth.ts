@@ -4,6 +4,7 @@ import { getKeyStore } from '../store/keys.js';
 declare module 'fastify' {
   interface FastifyRequest {
     keyId?: string;
+    lang?: import('@nxtg/faultline/lib/i18n.js').Lang;
   }
 }
 

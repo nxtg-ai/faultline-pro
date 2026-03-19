@@ -9,6 +9,7 @@
   "files": [
     "bin/",
     "cli/",
+    "lib/",
     "analysis/",
     "compliance/",
     "history/",

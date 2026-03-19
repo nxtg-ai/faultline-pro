@@ -1,5 +1,7 @@
 import Fastify from 'fastify';
 import type { FastifyRequest, FastifyReply } from 'fastify';
+import { parseLang } from '@nxtg/faultline/lib/i18n.js';
+import type { Lang } from '@nxtg/faultline/lib/i18n.js';
 import multipart from '@fastify/multipart';
 import { healthRoutes } from './routes/health.js';
 import { scanRoutes } from './routes/scan.js';
@@ -61,6 +63,7 @@ export function buildServer() {
 
   fastify.addHook('onRequest', async (request: FastifyRequest) => {
     (request as FastifyRequest & { _startMs: number })._startMs = Date.now();
+    (request as FastifyRequest & { lang: Lang }).lang = parseLang(request.headers['accept-language'] as string | undefined);
   });
 
   fastify.addHook('onResponse', async (request: FastifyRequest, reply: FastifyReply) => {

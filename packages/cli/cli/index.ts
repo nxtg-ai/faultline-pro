@@ -26,6 +26,7 @@ import { extractFailedClaims, buildCritiqueAnalysis } from '../analysis/critique
 import { formatCritique } from './critique.js';
 import { createScanSpinner } from './spinner.js';
 import { compareScanResults, renderCompare } from './compare.js';
+import { setLang } from '../lib/i18n.js';
 
 const VERSION = '0.1.0';
 
@@ -121,6 +122,7 @@ function parseArgs(args: string[]): { command: string; flags: Record<string, str
 
 export async function main(args: string[]): Promise<{ exitCode: number; output: string }> {
   const { command, flags } = parseArgs(args);
+  setLang(flags['lang'] || 'en');
 
   switch (command) {
     case 'version':

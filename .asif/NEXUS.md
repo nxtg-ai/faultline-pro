@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-18 (D-132/133 done. N-29+N-30 SHIPPED. JS: 1,337 tests (49 files). Python: 22 tests. 75 directives archived.)
+> **Last Updated**: 2026-03-18 (D-142/143 done. N-31 SHIPPED. JS: 2,508 tests (90 files). 75 directives archived.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -40,6 +40,7 @@
 | N-28 | Provider Health Monitoring + Auto-Rotation (latency, health score, dashboard) | PROVIDER | SHIPPED | P2 | 2026-03-18 |
 | N-29 | Scan Templates (reusable configs, POST/GET/DELETE/scan-via, CLI --template) | ENTERPRISE | SHIPPED | P1 | 2026-03-18 |
 | N-30 | Full Platform E2E (S1–S26 sequential flow covering all surfaces) | DEVELOPER-X | SHIPPED | P2 | 2026-03-18 |
+| N-31 | Multi-Language Support (i18n — CLI --lang, API Accept-Language, en/es/fr) | DEVELOPER-X | SHIPPED | P1 | 2026-03-18 |
 
 ---
 
@@ -100,7 +101,7 @@ The Kaggle version remains at  (tagged  at commit ).
 4. [ ] Tests.
 
 **CHAIN**: When done, start DIRECTIVE-NXTG-20260318-143.
-**Response** (filled by team): >
+**Response** (filled by team): SHIPPED. `packages/cli/lib/i18n.ts` — 47-key catalogue (en/es/fr), `setLang()` singleton (CLI), `parseLang()` RFC-7231 quality-factor parser (API), `t()` + `tLang()` with `{{varName}}` interpolation. `--lang` flag wired into `main()` in `cli/index.ts`. `Accept-Language` parsed in `server.ts` `onRequest` hook → `request.lang`. `FastifyRequest.lang` type augmented in `auth.ts`. `"lib/"` added to `package.json` `files`. CLI tests: 21. API i18n integration tests: 10. Total: +31 tests, 1,337 → 2,508. All green.
 
 ---
 
@@ -109,9 +110,33 @@ The Kaggle version remains at  (tagged  at commit ).
 **Injected**: 2026-03-18 22:15 | **Estimate**: S | **Status**: PENDING
 
 **Action Items**:
-1. [ ] Run full test suite — final count. 2. [ ] Inventory ALL features shipped today (30+). 3. [ ] Update NEXUS Executive Dashboard.
+1. [x] Run full test suite — final count. 2. [x] Inventory ALL features shipped today (30+). 3. [x] Update NEXUS Executive Dashboard.
 
-**Response** (filled by team): >
+**Response** (filled by team): DONE.
+
+**Final test count**: **2,508 tests** (90 test files) — all green. Up from 868 at session start.
+
+**Features shipped today (2026-03-18)**:
+- N-11: Multimodal Upload (PDF/OCR) — `/scan/upload`, `extractTextFromBuffer`, Tesseract OCR
+- N-12: Enterprise Features — API key management (`/keys`), audit trail, usage metering (`/usage`)
+- N-13: Cloud Platform — hosted Fastify API, all core routes wired
+- N-14: Compliance Reports — PDF/audit-ready output format
+- N-15: Revenue Infrastructure — Stripe metering hooks, admin key gating
+- N-19: Webhook System — HMAC-signed events, retry queue, `scan.complete` / `scan.failed`
+- N-20: Batch Scan API — `POST /batch`, per-item results, CI/CD integration guide
+- N-21: Multi-SDK — TypeScript + Python SDK + GitHub Action distribution
+- N-22: Monitoring + Observability — Prometheus `/metrics`, deep `/health`, `/dashboard`
+- N-23: Provider Auto-Failover + Circuit Breaker — chain failover, open/half-open/closed states
+- N-24: Caching Layer — content-hash cache, TTL, HIT/MISS headers, `X-Cache`, cache stats API
+- N-25: Scheduled Scan Jobs — cron scheduler, `POST/GET/DELETE /jobs`, background runner
+- N-26: Scan Comparison API + CLI — diff two scan results, trust score delta
+- N-27: Provider Plugin System — `FaultlineProvider` interface, registry, Wikipedia built-in
+- N-28: Provider Health Monitoring + Auto-Rotation — latency scoring, `GET /providers/health`
+- N-29: Scan Templates — `TemplateStore`, CRUD routes, `POST /scan/template/:id`, CLI `--template`
+- N-30: Full Platform E2E — S1–S26 sequential flow covering all API surfaces
+- N-31: Multi-Language Support (i18n) — 47-key catalogue, en/es/fr, `--lang`, `Accept-Language`
+
+**Executive Dashboard**: Updated above (N-31 added, N-11 through N-30 all SHIPPED).
 
 ---
 
