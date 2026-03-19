@@ -97,6 +97,17 @@ The Kaggle version remains at  (tagged  at commit ).
 
 > **84 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 35 on 2026-03-18, 9 on 2026-03-19: D-03 GraphQL, D-04 Benchmarks, D-16 Evidence Linking, D-17 Dependency Graph, D-22 Claim Trending, D-23 Archive, D-32 Attribution, D-33 EU PDF, D-142/143 i18n+Summary).
 
+### DIRECTIVE-NXTG-20260319-41 — P2: Final Session Archive + Test Count Report
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
+**Injected**: 2026-03-19 03:45 | **Estimate**: S | **Status**: PENDING
+
+**Action Items**:
+1. [ ] Archive all DONE directives. 2. [ ] Run full test suite — final count. 3. [ ] Update NEXUS Executive Dashboard with all new initiatives shipped.
+
+**Response** (filled by team): >
+
+---
+
 ### DIRECTIVE-NXTG-20260319-32 — P1: Claim Attribution — Trace Claims to Original Sources
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
 **Injected**: 2026-03-19 03:00 | **Estimate**: M | **Status**: DONE
