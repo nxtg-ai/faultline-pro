@@ -46,7 +46,8 @@ export function buildServer() {
   fastify.register(jobRoutes);
   fastify.register(compareRoutes);
   fastify.register(providerRoutes);
-  process.stderr.write(`[server] templateRoutes type: ${typeof templateRoutes}\n`);
+  // Node 20 ESM: access binding before register to avoid live-binding TDZ
+  if (typeof templateRoutes !== 'function') throw new Error('templateRoutes not loaded');
   fastify.register(templateRoutes);
 
   fastify.addHook('onReady', async () => {
