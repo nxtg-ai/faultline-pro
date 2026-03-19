@@ -96,7 +96,32 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
-> **88 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 35 on 2026-03-18, 13 on 2026-03-19: D-03 GraphQL, D-04 Benchmarks, D-16 Evidence Linking, D-17 Dependency Graph, D-22 Claim Trending, D-23 Archive, D-32 Attribution, D-33 EU PDF, D-142/143 i18n+Summary, D-41 Final Archive, D-103 Prod Hardening, D-104 v0.2.0 Prep, D-105 Deployment).
+> **88 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 35 on 2026-03-18, 13 on 2026-03-19).
+
+### DIRECTIVE-NXTG-20260319-117 — P0: npm README Rewrite + Examples
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P0
+**Injected**: 2026-03-19 06:30 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] **README** for npm: quick start (3 commands), 30+ features, provider comparison, EU AI Act section, pricing CTA.
+2. [ ] **Examples**: `examples/basic-scan.js`, `examples/batch-scan.js`, `examples/ci-integration.yml`, `examples/webhook-handler.js`.
+3. [ ] **CHANGELOG v0.2.0** — complete.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260319-118.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260319-118 — P1: GitHub Action for Marketplace
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-19 06:30 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] `action.yml` — inputs: api-key, fail-on, path. Composite wrapping CLI. 2. [ ] README with badge. 3. [ ] Tests.
+
+**Response** (filled by team): >
+
+---
 
 ### DIRECTIVE-NXTG-20260319-103 — P0: OPERATION FIRST DOLLAR — Production API Hardening
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P0
