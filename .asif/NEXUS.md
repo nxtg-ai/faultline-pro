@@ -410,6 +410,77 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-19 session close — HEAD `b978abe`
+
+### 1. What did we ship since last check-in?
+
+**Session: 2026-03-19 — 8 initiatives shipped, 2,508 → 2,595 tests (+87)**
+
+| Deliverable | Initiative | Tests | Commits |
+|-------------|-----------|-------|---------|
+| GraphQL API (`POST /graphql`) — mercurius, schema, resolvers, ScanStore | N-32 | +20 | D-03 |
+| Performance Benchmark Suite — health p99<50ms, scan p99<200ms, HIT vs MISS | N-33 | +4 | D-04 |
+| Claim Evidence Linking (`POST /scan/deep`) — URL validation, 0–100 score | N-34 | +12 | D-16 |
+| Claim Dependency Graph (`GET /scan/:id/graph`) — Mermaid, type-hierarchy edges | N-35 | +14 | D-17 |
+| Claim Trending (`GET /claims/trending`) — frequency, emerging, verdict alerts | N-36 | +14 | D-22 |
+| Claim Attribution (`GET /claims/:id/attribution`) — provenance chain, 0–100 confidence | N-37 | +13 | D-32 |
+| EU AI Act Full Report PDF (`POST /scan/eu-report`) — articles, risk tiers, claim flags | N-38 | +10 | D-33 |
+| Multi-Language Support i18n — CLI `--lang`, `Accept-Language`, en/es/fr, 47-key catalogue | N-31 | +31 | D-142/143 |
+
+**Total 2026-03-19**: 87 new tests across 7 new test files. 38 initiatives N-01–N-38 all SHIPPED. 85 directives archived.
+
+---
+
+### 2. What surprised us?
+
+- **`vi.mock()` TDZ in ESM**: Mock factory functions execute before module initialization — any variable reference inside `vi.mock(() => ({ scan: vi.fn().mockResolvedValue(RESULT) }))` throws if `RESULT` is declared in module scope. Fix: inline values or use `vi.hoisted()`. Affected D-03 and D-04; silent in CJS but breaks ESM. Worth a project-wide grep for this pattern.
+
+- **mercurius v16 vs v14**: The directive specified `^14.0.0` but mercurius 14.x targets Fastify 4. Fastify 5 requires mercurius `^16`. Caught at install time — no runtime failure, just peer-dep warnings. The version jump was a breaking API surface change, not just a compatibility bump.
+
+- **Mermaid graph without explicit `dependencies[]`**: Claims have no explicit dependency edges in the data model (deferred — `types.ts` TQ-003 note). Solved by inferring a type-hierarchy graph: fact → interpretation → opinion. Produces a readable, non-trivial graph from existing data with zero schema changes. Pattern worth remembering for "visualize without new fields."
+
+- **ClaimIndex UUID stability**: Assigning a UUID to a claim on first ingest and holding it stable across re-ingests required a secondary `byId: Map<string, ClaimRecord>` index. The primary key is normalized text; UUID is a stable alias. This pattern (dual-key map for stable identity) is reusable wherever re-ingested entities need stable references.
+
+- **EU AI Act article mapping is static, not dynamic**: There is no machine-readable EU AI Act article database. All article-to-risk-tier mappings in `eu-report.ts` are hardcoded inline arrays. This is correct for now (law doesn't change daily) but will become a maintenance burden if the Act is amended. Worth extracting to a versioned config file before the August 2026 deadline.
+
+---
+
+### 3. Cross-project signals
+
+- **ESM + `vi.mock()` TDZ**: Any NXTG project using Vitest with ESM modules should audit mock factories for variable references outside `vi.hoisted()`. This is a class of silent failure that only appears at runtime in ESM — not in CJS builds.
+
+- **Fastify plugin version pinning**: Fastify 5 broke compatibility with several plugins at their `^14` ranges. Pattern: when upgrading Fastify major version, audit ALL plugin peer-dep ranges before writing any code. The mercurius issue would have been caught by `npm ls` during initial setup.
+
+- **pdfkit + Fastify streaming**: The EU report PDF uses `pdfkit` piped through a `PassThrough` stream with `reply.send(stream)`. This pattern works cleanly with Fastify's response pipeline and avoids buffering the full PDF in memory. Reusable for any future PDF generation endpoint.
+
+- **`setXxx()` / `resetXxx()` injectable pattern for tests**: `url-validator.ts` introduced `setUrlFetcher()` / `resetUrlFetcher()` to make the HTTP fetch injectable for test isolation. This is now the third store using this pattern (after KeyStore and ScanCache). Consider formalizing it as an ASIF standard injectable interface for any singleton that touches external I/O.
+
+---
+
+### 4. What would we prioritize next?
+
+1. **Property-based testing (CRUCIBLE Oracle tier)** — CRUCIBLE.md flags this as `❌ pending`. The claim forensics pipeline (extraction → verification → risk scoring) is the highest-value target for property-based tests (e.g., "if all claims are verified, overallRisk is never Critical"). `fast-check` would be the tool.
+
+2. **Contract tests (CRUCIBLE Oracle tier)** — `❌ pending`. The scan pipeline has implicit contracts between providers (must return `{ claims[], verifications{}, overallRisk }`). A contract test suite would pin these and catch provider drift early.
+
+3. **`npm publish v0.2.0`** — The 2026-03-18 session added 1,600+ tests and 25+ features since v0.1.3. A minor bump is overdue. The workspace is clean, CI is green, vulns are zero. This should be a low-risk publish.
+
+4. **Terraform provider tests** — `packages/terraform-provider/` exists but test coverage is minimal (inferred from session history). If it's in the monorepo, it should be in the CI gate.
+
+5. **Web dashboard (`packages/web/`)** — No new UI work shipped since N-18 workspace split. The API now has 38 shipped initiatives worth of surface area that the dashboard doesn't expose. A catch-up directive would be high value for demos.
+
+---
+
+### 5. Blockers / questions for the CoS
+
+- **CRUCIBLE property-based + contract oracle coverage**: Current state is `❌ pending` for both. Should this be a standalone directive sprint, or woven into future feature directives? Recommend a dedicated P1 directive block — claim forensics is CRUCIBLE `CRITICAL` tier.
+
+- **npm publish cadence**: Last publish was v0.1.3 (2026-03-09). We're now 600+ commits and 1,700+ tests ahead of that. Is there a publish gate or is this on-demand? Recommend v0.2.0 before any cloud deployment work begins.
+
+- **`packages/web/` catch-up**: The dashboard UI has not been touched since the workspace split. With 38 initiatives on the API side, the UI is significantly behind. Is a UI sprint on the roadmap, or is the API the primary surface for the foreseeable future?
+
+---
+
 > **Reflection cycle**: 2026-03-18 session close — HEAD `d34db33`
 
 ---
