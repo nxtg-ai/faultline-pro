@@ -95,6 +95,33 @@ The Kaggle version remains at  (tagged  at commit ).
 
 > **82 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 35 on 2026-03-18, 7 on 2026-03-19: D-03 GraphQL, D-04 Benchmarks, D-16 Evidence Linking, D-17 Dependency Graph, D-22 Claim Trending, D-23 Archive, D-142/143 i18n+Summary).
 
+### DIRECTIVE-NXTG-20260319-32 — P1: Claim Attribution — Trace Claims to Original Sources
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-19 03:00 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] **Attribution chain** — for each claim, trace: who said it → where was it published → when → what context.
+2. [ ] **`GET /claims/:id/attribution`** — return full provenance chain.
+3. [ ] **Attribution confidence** — score how reliably the claim can be traced to its origin (0-100).
+4. [ ] Tests.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260319-33.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260319-33 — P2: Compliance Export — EU AI Act Full Report PDF
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
+**Injected**: 2026-03-19 03:00 | **Estimate**: S | **Status**: PENDING
+
+**Action Items**:
+1. [ ] Generate full EU AI Act compliance PDF using pdfkit (N-14 foundation). Include: cover page, executive summary, claims table, risk tiers, article references per `standards/eu-ai-act-report-spec.md`.
+2. [ ] Tests.
+
+**Response** (filled by team): >
+
+---
+
 ### DIRECTIVE-NXTG-20260319-22 — P1: Claim Trending — Track Claims Across Scans Over Time
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
 **Injected**: 2026-03-19 02:15 | **Estimate**: M | **Status**: DONE
