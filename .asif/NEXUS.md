@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-19 (D-41 done. All 2026-03-19 directives archived. JS: 2,595 tests (97 files). 85 directives archived. 38 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-19 (D-103/104/105 done. OPERATION FIRST DOLLAR shipped. JS: 2,600 tests (99 files). 88 directives archived. 39 initiatives SHIPPED. v0.2.0 prepped.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -48,6 +48,7 @@
 | N-36 | Claim Trending (GET /claims/trending — frequency, emerging, verdict alerts) | FORENSIC | SHIPPED | P1 | 2026-03-19 |
 | N-37 | Claim Attribution (GET /claims/:id/attribution — provenance chain, 0–100 confidence) | FORENSIC | SHIPPED | P1 | 2026-03-19 |
 | N-38 | EU AI Act Full Report PDF (POST /scan/eu-report — articles, risk tiers, claim flags) | COMPLIANCE | SHIPPED | P2 | 2026-03-19 |
+| N-39 | Production API Hardening (CORS, per-min rate limit, health upgrade, error handler) | REVENUE | SHIPPED | P0 | 2026-03-19 |
 
 ---
 
@@ -95,50 +96,51 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
-> **85 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 35 on 2026-03-18, 10 on 2026-03-19: D-03 GraphQL, D-04 Benchmarks, D-16 Evidence Linking, D-17 Dependency Graph, D-22 Claim Trending, D-23 Archive, D-32 Attribution, D-33 EU PDF, D-142/143 i18n+Summary, D-41 Final Archive).
+> **88 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 35 on 2026-03-18, 13 on 2026-03-19: D-03 GraphQL, D-04 Benchmarks, D-16 Evidence Linking, D-17 Dependency Graph, D-22 Claim Trending, D-23 Archive, D-32 Attribution, D-33 EU PDF, D-142/143 i18n+Summary, D-41 Final Archive, D-103 Prod Hardening, D-104 v0.2.0 Prep, D-105 Deployment).
 
 ### DIRECTIVE-NXTG-20260319-103 — P0: OPERATION FIRST DOLLAR — Production API Hardening
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P0
-**Injected**: 2026-03-19 06:00 | **Estimate**: M | **Status**: PENDING
+**Injected**: 2026-03-19 06:00 | **Estimate**: M | **Status**: DONE
 
 **Context**: REVENUE SPRINT. FP is the engine behind faultline.nxtg.ai. Harden for production traffic.
 
 **Action Items**:
-1. [ ] **CORS** — allow `faultline.nxtg.ai`, `*.nxtg.ai`. Block all other origins.
-2. [ ] **Rate limiter production config** — 10 req/min for free keys, 100 req/min for pro keys.
-3. [ ] **Health endpoint** — `GET /health` returns status of all subsystems (scan engine, providers, key store).
-4. [ ] **Error responses** — consistent JSON error format with error codes, not stack traces.
-5. [ ] **npm v0.2.0 prep** — update version in package.json, generate CHANGELOG for all features since 0.1.3.
+1. [x] **CORS** — `@fastify/cors` registered first in `server.ts`. Allows `https://faultline.nxtg.ai`, `https://*.nxtg.ai`, `http://localhost:*`. All other origins blocked with CORS error. 3 tests (C1 allowed origin, C2 subdomain, C3 blocked).
+2. [x] **Rate limiter production config** — `store/ratelimit.ts` converted from daily to per-minute window (`windowKey = toISOString().slice(0,16)`). Tier limits: free=10/min, pro=100/min, admin=10k/min. Updated R11/R12/R20 tests; R20 now tests minute rollover.
+3. [x] **Health endpoint** — `GET /health` now returns `{ status, service, version: '0.2.0', subsystems: { keyStore, scanEngine }, providers: { gemini, openai, claude, perplexity } }`. 2 tests (H1 shape, H2 activeKeys type). `/status` HTML version string also updated.
+4. [x] **Error responses** — `fastify.setErrorHandler` in `server.ts`: all errors → `{ error: string, code: string }`. No stack traces. Codes: NOT_FOUND / VALIDATION_ERROR / INTERNAL_ERROR.
+5. [x] **npm v0.2.0 prep** — see D-104.
 
-**CHAIN**: When done, start DIRECTIVE-NXTG-20260319-104.
-**Response** (filled by team): >
+**Response** (filled by team): SHIPPED. 5 new tests (cors.test.ts ×3, health.test.ts ×2). 2,595 → 2,600 total. TypeScript clean.
 
 ---
 
 ### DIRECTIVE-NXTG-20260319-104 — P0: npm publish v0.2.0 — All Marathon Features
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P0
-**Injected**: 2026-03-19 06:00 | **Estimate**: S | **Status**: PENDING
+**Injected**: 2026-03-19 06:00 | **Estimate**: S | **Status**: DONE
 
 **Action Items**:
-1. [ ] Update version to 0.2.0. 2. [ ] CHANGELOG with all features since 0.1.3: multimodal, enterprise keys, rate limiting, webhooks, batch, SDK, caching, templates, comparison, i18n, claim trending, evidence linking, attribution.
-3. [ ] `npm pack --dry-run` verify. 4. [ ] `npm publish` (if `NPM_TOKEN` available, otherwise document for Asif).
+1. [x] `packages/cli/package.json` → `0.2.0`. `packages/api/package.json` → `0.2.0`.
+2. [x] `CHANGELOG.md` — full release notes: v0.2.0 (CORS, rate limiting, GraphQL, benchmarks, i18n, claim forensics ×4, EU PDF, prod hardening), v0.1.3 (Perplexity), v0.1.2 (CRUCIBLE), v0.1.0 (initial release). All 39 initiatives documented.
+3. [x] `npm pack --dry-run` → `nxtg-faultline-0.2.0.tgz`, 61.2 kB / 224.8 kB unpacked, 45 files. ✅ Clean.
+4. [x] `NPM_TOKEN` not set in environment. **Action for Asif**: run `npm publish --workspace=packages/cli --access=public` with credentials.
 
-**CHAIN**: When done, start DIRECTIVE-NXTG-20260319-105.
-**Response** (filled by team): >
+**Response** (filled by team): READY TO PUBLISH. Dry-run clean. Awaiting Asif's `NPM_TOKEN` for `npm publish`.
 
 ---
 
 ### DIRECTIVE-NXTG-20260319-105 — P1: Deployment — Fly.io or Railway One-Command Deploy
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-19 06:00 | **Estimate**: M | **Status**: PENDING
+**Injected**: 2026-03-19 06:00 | **Estimate**: M | **Status**: DONE
 
 **Action Items**:
-1. [ ] **Dockerfile** for FP API (`packages/api/`). Multi-stage build.
-2. [ ] **fly.toml** or **railway.json** — one-command deploy config.
-3. [ ] **Deploy docs** at `packages/api/DEPLOY.md`.
-4. [ ] Health check verification after deploy.
+1. [x] **Dockerfile** — multi-stage (deps → build → runtime), Node 20 Alpine, `tsx` ESM runner, `HEALTHCHECK` against `/health`, `EXPOSE 3000`.
+2. [x] **`packages/api/fly.toml`** — app=`faultline-api`, region=`lax`, port 3000, force_https, health check `GET /health` every 30s, 512MB/1vCPU shared, min 1 machine running.
+3. [x] **`packages/api/DEPLOY.md`** — env var table, local Docker run, Fly.io first deploy + secrets flow, Railway one-command deploy, health check verification, rate limit and CORS reference.
+4. [x] **`.dockerignore`** — excludes `packages/web`, test files, `.claude`, `.asif`, `node_modules`, `.git`.
+5. [ ] Health check post-deploy — requires live deploy; Asif to verify `curl https://faultline-api.fly.dev/health` after `fly deploy`.
 
-**Response** (filled by team): >
+**Response** (filled by team): SHIPPED. `Dockerfile` + `.dockerignore` at repo root, `fly.toml` + `DEPLOY.md` in `packages/api/`. Note: `fly.toml` `[build].dockerfile` is `Dockerfile` (relative to repo root where `fly deploy` runs). No tests added (infra config, not code).
 
 ---
 

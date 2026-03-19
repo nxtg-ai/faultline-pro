@@ -1,0 +1,14 @@
+node_modules
+packages/*/node_modules
+packages/web
+packages/*/dist
+packages/*/tests
+packages/*/*.test.ts
+.claude
+.asif
+docs
+*.md
+.git
+.gitignore
+coverage
+dist

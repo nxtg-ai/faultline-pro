@@ -2,32 +2,32 @@ export type Tier = 'admin' | 'pro' | 'free';
 
 const TIER_LIMITS: Record<Tier, number> = {
   admin: 10000,
-  pro: 1000,
+  pro: 100,
   free: 10,
 };
 
 export interface RateLimitInfo {
   limit: number;
   remaining: number;
-  resetEpoch: number; // Unix seconds of next midnight UTC
+  resetEpoch: number; // Unix seconds of next window boundary
 }
 
 interface RateLimitEntry {
   count: number;
-  dateKey: string; // YYYY-MM-DD
+  windowKey: string; // YYYY-MM-DDTHH:mm
 }
 
 class RateLimiter {
   private counters: Map<string, RateLimitEntry> = new Map();
   private customLimits: Map<string, number> = new Map();
 
-  private todayKey(): string {
-    return new Date().toISOString().split('T')[0];
+  private windowKey(): string {
+    return new Date().toISOString().slice(0, 16);
   }
 
-  private nextMidnightEpoch(): number {
+  private nextWindowEpoch(): number {
     const d = new Date();
-    d.setUTCHours(24, 0, 0, 0);
+    d.setSeconds(60, 0); // advance to next minute
     return Math.floor(d.getTime() / 1000);
   }
 
@@ -36,10 +36,10 @@ class RateLimiter {
   }
 
   private getEntry(keyId: string): RateLimitEntry {
-    const today = this.todayKey();
+    const window = this.windowKey();
     const existing = this.counters.get(keyId);
-    if (!existing || existing.dateKey !== today) {
-      const fresh: RateLimitEntry = { count: 0, dateKey: today };
+    if (!existing || existing.windowKey !== window) {
+      const fresh: RateLimitEntry = { count: 0, windowKey: window };
       this.counters.set(keyId, fresh);
       return fresh;
     }
@@ -53,7 +53,7 @@ class RateLimiter {
     const allowed = entry.count < limit;
     return {
       allowed,
-      info: { limit, remaining: allowed ? remaining - 1 : 0, resetEpoch: this.nextMidnightEpoch() },
+      info: { limit, remaining: allowed ? remaining - 1 : 0, resetEpoch: this.nextWindowEpoch() },
     };
   }
 
@@ -68,7 +68,7 @@ class RateLimiter {
     return {
       limit,
       remaining: Math.max(0, limit - entry.count),
-      resetEpoch: this.nextMidnightEpoch(),
+      resetEpoch: this.nextWindowEpoch(),
     };
   }
 

@@ -7,7 +7,24 @@ import { getAnalyticsStore } from '../store/analytics.js';
 
 export async function healthRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get('/health', async (_request, _reply) => {
-    return { status: 'ok', service: 'faultline-api', version: '0.1.0' };
+    const keyCount = getKeyStore().size;
+    const providers = {
+      gemini: Boolean(process.env.GEMINI_API_KEY),
+      openai: Boolean(process.env.OPENAI_API_KEY),
+      claude: Boolean(process.env.ANTHROPIC_API_KEY),
+      perplexity: Boolean(process.env.PERPLEXITY_API_KEY),
+    };
+    const anyProvider = Object.values(providers).some(Boolean);
+    return {
+      status: 'ok',
+      service: 'faultline-api',
+      version: '0.2.0',
+      subsystems: {
+        keyStore: { status: 'ok', activeKeys: keyCount },
+        scanEngine: { status: anyProvider ? 'ok' : 'degraded', providersConfigured: Object.values(providers).filter(Boolean).length },
+      },
+      providers,
+    };
   });
 
   fastify.get('/health/deep', async (_request, _reply) => {
@@ -78,7 +95,7 @@ export async function healthRoutes(fastify: FastifyInstance): Promise<void> {
 </head>
 <body>
 <h1>Faultline API ${indicator} <span class="badge ${overallStatus}">${overallStatus.toUpperCase()}</span></h1>
-<p>Version: 0.1.0 &nbsp;|&nbsp; Uptime: <strong>live</strong></p>
+<p>Version: 0.2.0 &nbsp;|&nbsp; Uptime: <strong>live</strong></p>
 <table>
 <thead><tr><th>Subsystem</th><th>Status</th></tr></thead>
 <tbody>

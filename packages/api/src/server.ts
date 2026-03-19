@@ -12,6 +12,7 @@ import { schema as gqlSchema } from './graphql/schema.js';
 import { resolvers as gqlResolvers } from './graphql/resolvers.js';
 import { parseLang } from '@nxtg/faultline/lib/i18n.js';
 import type { Lang } from '@nxtg/faultline/lib/i18n.js';
+import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import { healthRoutes } from './routes/health.js';
 import { scanRoutes } from './routes/scan.js';
@@ -45,6 +46,17 @@ const MAX_FILE_SIZE = 10_485_760; // 10MB
 export function buildServer() {
   const fastify = Fastify({
     logger: false,
+  });
+
+  fastify.register(cors, {
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true); // server-to-server / curl
+      const allowed = /^https:\/\/([\w-]+\.)?nxtg\.ai$/.test(origin) || /^https?:\/\/localhost(:\d+)?$/.test(origin);
+      cb(allowed ? null : new Error('CORS: origin not allowed'), allowed);
+    },
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'x-api-key', 'Authorization', 'Accept-Language'],
+    credentials: true,
   });
 
   fastify.register(multipart, { limits: { fileSize: MAX_FILE_SIZE }, throwFileSizeLimit: false });
@@ -115,6 +127,15 @@ export function buildServer() {
     if (isScanPost && statusCode === 200) {
       getUsageMeter().increment(keyId);
     }
+  });
+
+  fastify.setErrorHandler((error: { statusCode?: number; code?: string; message?: string }, _request, reply) => {
+    const statusCode = error.statusCode ?? 500;
+    const code = error.code ?? (statusCode === 404 ? 'NOT_FOUND' : statusCode === 400 ? 'VALIDATION_ERROR' : 'INTERNAL_ERROR');
+    reply.status(statusCode).send({
+      error: error.message ?? 'An unexpected error occurred.',
+      code,
+    });
   });
 
   return fastify;

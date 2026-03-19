@@ -1,33 +1,31 @@
-# fly.toml — Faultline API (packages/api)
-# Deploy: fly launch --config packages/api/fly.toml
-# Requires: fly.io account + FAULTLINE_API_KEY secret set via `fly secrets set`
+# Faultline Pro API — Fly.io configuration
+# Deploy: fly deploy --config packages/api/fly.toml
 
 app = "faultline-api"
 primary_region = "lax"
 
 [build]
-  dockerfile = "packages/api/Dockerfile"
-  # Dockerfile context is the monorepo root so workspace packages resolve correctly.
+  dockerfile = "../../Dockerfile"
 
 [env]
   NODE_ENV = "production"
-  PORT = "3001"
-  HOST = "0.0.0.0"
+  PORT = "3000"
 
 [http_service]
-  internal_port = 3001
+  internal_port = 3000
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = true
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
 
   [[http_service.checks]]
-    grace_period = "5s"
+    grace_period = "10s"
     interval = "30s"
     method = "GET"
     path = "/health"
     timeout = "5s"
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512

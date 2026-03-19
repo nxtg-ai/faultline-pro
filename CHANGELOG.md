@@ -1,81 +1,92 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+All notable changes to Faultline Pro are documented here.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+## [0.2.0] — 2026-03-19
 
----
+### Major Features
 
-## [0.2.0] - 2026-03-18
+#### 🔍 Claim Forensics (N-34 – N-37)
+- **Claim Evidence Linking** (`POST /scan/deep`) — validates source URLs with HEAD requests, scores 0–100 (availability +50, relevance +30, recency +20)
+- **Claim Dependency Graph** (`GET /scan/:id/graph`) — Mermaid diagram of claim type-hierarchy edges (fact→interpretation→opinion)
+- **Claim Trending** (`GET /claims/trending`) — cross-scan frequency tracking, emerging claims (24h window), verdict-flip alerts
+- **Claim Attribution** (`GET /claims/:id/attribution`) — full provenance chain with 0–100 confidence score, stable UUID per claim across re-ingests
 
-### Added
+#### 📋 Compliance (N-38)
+- **EU AI Act Full Report PDF** (`POST /scan/eu-report`) — cover page, risk classification badge, applicable articles (Art. 6/9/13/14/15, Annex III for high-risk; Art. 52/69 for limited; Art. 69/Recital 47 for minimal), per-claim compliance table
 
-**N-15 Rate Limiting + Usage Dashboards**
-- Per-key rate limits: free 10/day, pro 1,000/day, admin 10,000/day
-- `GET /dashboard` endpoint returning scan counts (today/week/month), risk distribution, and per-key usage breakdown
-- `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers on all scan responses
-- 40 new tests (`ratelimit.test.ts`, `dashboard.test.ts`): 1050 → 1090
+#### 🌐 GraphQL API (N-32)
+- `POST /graphql` via mercurius — queries: `scan`, `scans`, `keys`, `usage`, `audit`; mutations: `createKey`, `deleteKey`, `scanBatch`
+- Context-aware: `keyId` threaded through all resolvers
 
-**N-12 Enterprise Features**
-- `KeyStore`: `POST /keys`, `GET /keys`, `DELETE /keys/:id` with scoped permissions (`scan`, `report`, `upload`, `admin`, `pro`)
-- `AuditLogger`: `onResponse` hook recording SHA-256 input hash on every scan response
-- `UsageMeter`: daily per-key scan count tracking; `GET /usage` endpoint
-- 70 new tests: 980 → 1050
+#### ⚡ Performance (N-33)
+- Benchmark suite: health p99 < 50ms, scan p99 < 200ms, cache HIT vs MISS (50+50 samples)
+- `docs/benchmarks.md` — methodology + baseline tables
 
-**N-11 Multimodal Upload (PDF/OCR)**
-- `POST /scan/upload` multipart endpoint for PDF and image files
-- `faultline scan --file document.pdf` / `faultline scan --file screenshot.png` CLI flag
-- Text extraction via `pdf-parse` (PDF) and `tesseract.js` (images/OCR)
-- 20 new tests: 960 → 980
+#### 🌍 Internationalization (N-31)
+- 47-key i18n catalogue (English, Spanish, French)
+- CLI `--lang` flag, API `Accept-Language` header (RFC-7231 quality-factor parsing)
 
----
+#### 🏗️ Production Hardening (N-39)
+- CORS: `faultline.nxtg.ai` + `*.nxtg.ai` allowlist
+- Rate limiter: per-minute window (free: 10/min, pro: 100/min, admin: 10k/min)
+- `GET /health` upgraded with subsystem + provider status
+- Global error handler: consistent `{ error, code }` JSON, no stack traces
 
-## [0.1.5] - 2026-03-15
+### Earlier Features (since v0.1.3)
 
-### Added
+#### Enterprise + Platform (N-11 – N-15)
+- Multimodal upload: PDF text extraction + Tesseract OCR (`POST /scan/upload`)
+- API key management with permissions (free/pro/admin), audit trail, usage metering
+- Stripe metering hooks, admin-gated endpoints
+- Compliance PDF reports (`POST /report/pdf`)
 
-**Post-N-14 Hardening**
-- Resolved all npm audit vulnerabilities (0 vulnerabilities)
-- `packages/api/README.md` created with endpoint reference and deployment guide
-- CRUCIBLE Gates 1–5 audit completed; hollow assertions strengthened
-- 14 new tests: 946 → 960
+#### Automation + Observability (N-19 – N-25)
+- Webhook system: HMAC-signed events (`scan.complete`, `scan.failed`, `job.complete`, `claim.verdict_changed`), retry queue
+- Batch scan API: `POST /scan/batch` — parallel multi-text scanning
+- Prometheus metrics: `GET /metrics`
+- Deep health: `GET /health/deep` — all subsystem + provider states
+- Provider auto-failover: circuit breaker (5-failure threshold, 5-min cooldown)
+- Caching layer: content-hash cache, TTL, `X-Cache: HIT/MISS` headers
+- Scheduled jobs: `POST/GET/DELETE /jobs` with cron expressions
 
-**N-14 Compliance Reports (PDF)**
-- `POST /scan/report` generates an EU AI Act compliance PDF via `pdfkit`
-- Response includes `Content-Disposition: attachment` with scan date in filename
-- End-to-end test asserts PDF magic bytes (`%PDF`)
+#### Developer Experience (N-26 – N-31)
+- Scan comparison: `GET /compare?a=id1&b=id2` — trust score delta
+- Provider plugin system: `FaultlineProvider` interface, registry, Wikipedia built-in
+- Provider health monitoring: latency scoring, `GET /providers/health`
+- Scan templates: `POST/GET/DELETE /templates`, `POST /scan/template/:id`, CLI `--template`
+- Full platform E2E tests (S1–S26)
 
-**N-13 Cloud Platform MVP**
-- `packages/api/` Fastify v5 REST API with `POST /scan` and `GET /health`
-- `x-api-key` authentication on all routes
-- Docker and Fly.io deployment support
+#### Multi-SDK Distribution (N-21)
+- TypeScript SDK (`packages/sdk/`)
+- Python SDK (`packages/sdk/python/`)
+- GitHub Action
 
-**N-18 React Workspace Split**
-- npm workspaces monorepo: `packages/cli/` (pure Node.js) and `packages/web/` (React + Vite)
-- `packages/cli/` published as `@nxtg/faultline` with zero React dependencies
+### Bug Fixes
+- mercurius `MercuriusContext` augmented with `keyId` — fixes TS2769 typecheck error
+- `vi.mock()` TDZ in ESM: mock factory values inlined to avoid pre-initialization reference
+- `templateRoutes` binding guard for Node 20 ESM live-binding TDZ
+- POST `/scan/template/:id` moved to `scanRoutes` (was incorrectly in `templateRoutes`)
 
----
+## [0.1.3] — 2026-03-09
 
-## [0.1.0] - 2026-03-05
+- Perplexity provider (N-16) — search-native verification with citation sources
+- Provider documentation (`docs/PROVIDERS.md`) with search-gap callout (N-17)
+- npm published: `@nxtg/faultline@0.1.3`
 
-### Added
+## [0.1.2] — 2026-03-06
 
-**N-16 Perplexity Provider**
-- Real-time web search claim verification via Perplexity API
-- Search gap callout surfaced in CLI output when evidence is insufficient
+- CRUCIBLE Protocol adopted (pre-push hook, Gate 2 non-empty assertions)
+- README Quick Start updated to real Gemini provider
+- DX fix: `mock` provider moved to Testing & CI section
 
-**N-10 npm Package + GitHub Action**
-- `@nxtg/faultline` published to npm
-- `nxtg-ai/faultline-action@v1` GitHub Action for CI integration
+## [0.1.0] — 2026-03-05
 
-**N-04 SARIF + VS Code Integration**
-- SARIF output format (`--output-format sarif` / `--sarif`) with `relatedLocations`, `uriBaseId`, and `codeFlows`
-- Compatible with VS Code Problems panel and GitHub Code Scanning
-
-**N-05 Rules Engine**
-- YAML-defined rule system with built-in rule sets: PII detection, bias indicators, toxicity flags
-- `faultline rules` command lists all active rules
-
-**N-06 Confidence Calibration**
-- Per-claim confidence scores (0.0–1.0)
-- Tier-based thresholds to distinguish signal from noise
+- Initial release: 4-phase claim forensics pipeline (Extract→Verify→Synthesize→Refine)
+- 5 providers: Gemini, OpenAI, Claude, Perplexity, Mock
+- CLI tool with `scan`, `report`, `watch`, `critique` commands
+- EU AI Act compliance module (N-03)
+- Rules engine: PII, bias, toxicity (N-05)
+- Confidence calibration (N-06)
+- Weakest-link detection (N-08)
+- SARIF output + GitHub Action (N-04, N-10)

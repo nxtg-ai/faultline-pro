@@ -1,6 +1,6 @@
 {
   "name": "@nxtg/faultline-api",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Faultline Cloud Platform API — hosted POST /scan endpoint.",
   "private": true,
   "type": "module",
@@ -12,6 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@fastify/cors": "^11.2.0",
     "@fastify/multipart": "^9.0.0",
     "@nxtg/faultline": "*",
     "fastify": "^5.8.2",

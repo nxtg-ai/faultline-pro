@@ -169,17 +169,17 @@ describe('Rate limiting — pro tier', () => {
     delete process.env.FAULTLINE_API_KEY;
   });
 
-  it('R11. key with pro permission → X-RateLimit-Limit = 1000', async () => {
+  it('R11. key with pro permission → X-RateLimit-Limit = 100', async () => {
     const k = getKeyStore().create('Pro Key', ['scan', 'pro']);
     const res = await scan(server, k.key);
     expect(res.statusCode).toBe(200);
-    expect(res.headers['x-ratelimit-limit']).toBe('1000');
+    expect(res.headers['x-ratelimit-limit']).toBe('100');
   });
 
-  it('R12. pro key: X-RateLimit-Remaining = 999 after first request', async () => {
+  it('R12. pro key: X-RateLimit-Remaining = 99 after first request', async () => {
     const k = getKeyStore().create('Pro Key', ['scan', 'pro']);
     const res = await scan(server, k.key);
-    expect(res.headers['x-ratelimit-remaining']).toBe('999');
+    expect(res.headers['x-ratelimit-remaining']).toBe('99');
   });
 
   it('R13. pro key with setCustomLimit → custom limit respected', async () => {
@@ -267,24 +267,17 @@ describe('Rate limiting — reset + isolation', () => {
     expect(res.statusCode).toBe(200);
   });
 
-  it('R20. day rollover: counter resets when date changes (unit-level)', () => {
-    // Use fake timers at unit level (no Fastify I/O) to test day rollover
+  it('R20. minute rollover: counter resets when minute changes (unit-level)', () => {
     vi.useFakeTimers();
-    const today = new Date('2026-03-18T10:00:00Z');
-    vi.setSystemTime(today);
-
+    const t0 = new Date('2026-03-19T10:00:00Z');
+    vi.setSystemTime(t0);
     const limiter = getRateLimiter();
     setCustomLimit('rollover-key', 1);
     limiter.increment('rollover-key');
-
-    // Verify counter is at limit
     const { allowed: blockedBefore } = limiter.check('rollover-key', 'free');
     expect(blockedBefore).toBe(false);
-
-    // Advance to tomorrow
-    vi.setSystemTime(new Date('2026-03-19T10:00:00Z'));
-
-    // Counter should reset — allowed again
+    // Advance by 1 minute
+    vi.setSystemTime(new Date('2026-03-19T10:01:00Z'));
     const { allowed: allowedAfter } = limiter.check('rollover-key', 'free');
     expect(allowedAfter).toBe(true);
   });
