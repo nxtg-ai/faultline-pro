@@ -88,7 +88,34 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
-> **75 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 33 on 2026-03-18).
+> **75 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 35 on 2026-03-18).
+
+### DIRECTIVE-NXTG-20260319-03 — P1: GraphQL API — Alternative to REST
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-19 00:55 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] **GraphQL schema** — types for ScanResult, Claim, ComplianceReport, Key, AuditEntry.
+2. [ ] **Queries**: `scan(text)`, `scans(filter)`, `keys`, `usage`, `audit`.
+3. [ ] **Mutations**: `createKey`, `deleteKey`, `scanBatch`.
+4. [ ] **Fastify integration** — `mercurius` or `graphql-yoga` plugin.
+5. [ ] Tests.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260319-04.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260319-04 — P2: Performance Benchmark Suite
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
+**Injected**: 2026-03-19 00:55 | **Estimate**: S | **Status**: PENDING
+
+**Action Items**:
+1. [ ] Benchmark: 100 scans, measure p50/p95/p99 latency per provider. 2. [ ] Cache hit vs miss comparison. 3. [ ] `docs/benchmarks.md`.
+
+**Response** (filled by team): >
+
+---
 
 ### DIRECTIVE-NXTG-20260318-142 — P1: Multi-Language Support — i18n for CLI + API Responses
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
