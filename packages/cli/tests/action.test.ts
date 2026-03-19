@@ -1,4 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { parse } from 'yaml';
 import {
   parseActionInputs,
   checkThreshold,
@@ -8,6 +12,9 @@ import {
   type SeverityLevel,
   type ScanCounts,
 } from '../cli/action';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const actionPath = join(__dirname, '..', 'action.yml');
 
 describe('GitHub Action: parseActionInputs()', () => {
   it('should return defaults when minimal inputs provided', () => {
@@ -280,5 +287,62 @@ describe('GitHub Action: countFromScanResult()', () => {
   it('should handle missing verifications gracefully', () => {
     const counts = countFromScanResult({ ruleFindings: [] });
     expect(counts.findings).toBe(0);
+  });
+});
+
+describe('action.yml — GitHub Action manifest', () => {
+  function loadAction(): Record<string, unknown> {
+    const raw = readFileSync(actionPath, 'utf8');
+    return parse(raw) as Record<string, unknown>;
+  }
+
+  it('A1. action.yml is valid YAML', () => {
+    const action = loadAction();
+    expect(action).toBeDefined();
+  });
+
+  it('A2. has required top-level fields: name, description, runs', () => {
+    const action = loadAction();
+    expect(typeof action.name).toBe('string');
+    expect(typeof action.description).toBe('string');
+    expect(action.runs).toBeDefined();
+  });
+
+  it('A3. runs.using is composite', () => {
+    const action = loadAction();
+    expect((action.runs as Record<string, unknown>).using).toBe('composite');
+  });
+
+  it('A4. inputs include api-key', () => {
+    const action = loadAction();
+    const inputs = action.inputs as Record<string, unknown>;
+    expect(inputs['api-key']).toBeDefined();
+  });
+
+  it('A5. inputs include fail-on with default high', () => {
+    const action = loadAction();
+    const inputs = action.inputs as Record<string, unknown>;
+    expect(inputs['fail-on']).toBeDefined();
+    expect((inputs['fail-on'] as Record<string, unknown>).default).toBe('high');
+  });
+
+  it('A6. inputs include path', () => {
+    const action = loadAction();
+    const inputs = action.inputs as Record<string, unknown>;
+    expect(inputs['path']).toBeDefined();
+  });
+
+  it('A7. outputs include risk-level and findings-count', () => {
+    const action = loadAction();
+    const outputs = action.outputs as Record<string, unknown>;
+    expect(outputs['risk-level']).toBeDefined();
+    expect(outputs['findings-count']).toBeDefined();
+  });
+
+  it('A8. runs.steps is a non-empty array', () => {
+    const action = loadAction();
+    const runs = action.runs as Record<string, unknown>;
+    expect(Array.isArray(runs.steps)).toBe(true);
+    expect((runs.steps as unknown[]).length).toBeGreaterThan(0);
   });
 });

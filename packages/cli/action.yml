@@ -1,5 +1,5 @@
-name: 'Faultline AI Claim Scanner'
-description: 'Scan AI-generated text and docs for factual risk using Faultline forensic verification'
+name: 'Faultline AI Claim Scanner v0.2'
+description: 'Forensic AI claim verification — scan directories and files for factual risk, hallucinations, and compliance violations'
 author: 'NXTG AI'
 
 branding:
@@ -10,8 +10,12 @@ inputs:
   input:
     description: 'Path to file to scan (mutually exclusive with dir and templates)'
     required: false
+  path:
+    description: 'Directory path to scan recursively'
+    required: false
+    default: '.'
   dir:
-    description: 'Directory of files to scan'
+    description: 'Directory of files to scan (legacy — prefer "path")'
     required: false
   templates:
     description: 'Comma-separated template names (e.g. injection,bias)'
@@ -65,6 +69,7 @@ runs:
         ARGS="scan"
         if [ -n "${{ inputs.input }}" ]; then ARGS="$ARGS --input ${{ inputs.input }}"; fi
         if [ -n "${{ inputs.dir }}" ]; then ARGS="$ARGS --dir ${{ inputs.dir }}"; fi
+        if [ -z "${{ inputs.input }}" ] && [ -z "${{ inputs.dir }}" ] && [ -n "${{ inputs.path }}" ]; then ARGS="$ARGS --dir ${{ inputs.path }}"; fi
         if [ -n "${{ inputs.templates }}" ]; then ARGS="$ARGS --templates ${{ inputs.templates }}"; fi
         ARGS="$ARGS --provider ${{ inputs.provider }}"
         ARGS="$ARGS --output-format ${{ inputs.output-format }}"

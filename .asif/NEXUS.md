@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-19 (D-103/104/105 done. OPERATION FIRST DOLLAR shipped. JS: 2,600 tests (99 files). 88 directives archived. 39 initiatives SHIPPED. v0.2.0 prepped.)
+> **Last Updated**: 2026-03-19 (D-117/118 done. npm README + examples + GitHub Action path input + 8 manifest tests. JS: 2,608 tests (99 files). 90 directives archived. 40 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -49,6 +49,7 @@
 | N-37 | Claim Attribution (GET /claims/:id/attribution — provenance chain, 0–100 confidence) | FORENSIC | SHIPPED | P1 | 2026-03-19 |
 | N-38 | EU AI Act Full Report PDF (POST /scan/eu-report — articles, risk tiers, claim flags) | COMPLIANCE | SHIPPED | P2 | 2026-03-19 |
 | N-39 | Production API Hardening (CORS, per-min rate limit, health upgrade, error handler) | REVENUE | SHIPPED | P0 | 2026-03-19 |
+| N-40 | npm Launch Assets (README, examples, GitHub Action path input, v0.2.0 CHANGELOG) | DISTRIBUTION | SHIPPED | P0 | 2026-03-19 |
 
 ---
 
@@ -96,30 +97,31 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
-> **88 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 35 on 2026-03-18, 13 on 2026-03-19).
+> **90 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 35 on 2026-03-18, 15 on 2026-03-19: D-03 GraphQL, D-04 Benchmarks, D-16 Evidence Linking, D-17 Dependency Graph, D-22 Claim Trending, D-23 Archive, D-32 Attribution, D-33 EU PDF, D-41 Final Archive, D-103 Prod Hardening, D-104 v0.2.0 Prep, D-105 Deployment, D-117 README+Examples, D-118 GitHub Action).
 
 ### DIRECTIVE-NXTG-20260319-117 — P0: npm README Rewrite + Examples
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P0
-**Injected**: 2026-03-19 06:30 | **Estimate**: M | **Status**: PENDING
+**Injected**: 2026-03-19 06:30 | **Estimate**: M | **Status**: DONE
 
 **Action Items**:
-1. [ ] **README** for npm: quick start (3 commands), 30+ features, provider comparison, EU AI Act section, pricing CTA.
-2. [ ] **Examples**: `examples/basic-scan.js`, `examples/batch-scan.js`, `examples/ci-integration.yml`, `examples/webhook-handler.js`.
-3. [ ] **CHANGELOG v0.2.0** — complete.
+1. [x] **`packages/cli/README.md`** — production npm README: badges, 3-command quick start, 30+ features (8 groups), providers table, EU AI Act section, GitHub Action usage, API quick start, pricing tiers, Apache-2.0 license.
+2. [x] **Examples** — `examples/basic-scan.js` (mock CLI scan), `examples/batch-scan.js` (API batch), `examples/webhook-handler.js` (HMAC-verified event handler), `examples/ci-integration.yml` (GHA workflow with SARIF upload).
+3. [x] **CHANGELOG** — already complete from D-104. Verified v0.2.0 section present.
 
-**CHAIN**: When done, start DIRECTIVE-NXTG-20260319-118.
-**Response** (filled by team): >
+**Response** (filled by team): SHIPPED. 5 files written. No new tests (docs/examples). 2,600 total (unchanged).
 
 ---
 
 ### DIRECTIVE-NXTG-20260319-118 — P1: GitHub Action for Marketplace
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-19 06:30 | **Estimate**: M | **Status**: PENDING
+**Injected**: 2026-03-19 06:30 | **Estimate**: M | **Status**: DONE
 
 **Action Items**:
-1. [ ] `action.yml` — inputs: api-key, fail-on, path. Composite wrapping CLI. 2. [ ] README with badge. 3. [ ] Tests.
+1. [x] `packages/cli/action.yml` — added `path` input (directory scan, default `.`), updated description, kept all existing inputs (`api-key`, `fail-on`, `input`, `dir`, `templates`, `provider`, `output-format`, etc.). Path falls back to `--dir` when `input`/`dir` not set.
+2. [x] GitHub Action badge added to `packages/cli/README.md`.
+3. [x] `packages/cli/tests/action.test.ts` — 8 new YAML manifest tests (A1–A8): valid YAML, required fields, composite runs, api-key input, fail-on default=high, path input, outputs, steps array. `yaml` devDep added.
 
-**Response** (filled by team): >
+**Response** (filled by team): SHIPPED. 8 new tests. 2,600 → 2,608 total. All 99 files green.
 
 ---
 

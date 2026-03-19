@@ -1,0 +1,43 @@
+# ci-integration.yml — GitHub Actions workflow using Faultline
+# Copy to .github/workflows/faultline.yml in your repo
+
+name: AI Content Risk Scan
+
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+      - 'content/**'
+      - '*.md'
+  push:
+    branches: [main]
+
+jobs:
+  faultline-scan:
+    name: Faultline AI Claim Forensics
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write  # for SARIF upload to Code Scanning
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan AI-generated content
+        uses: nxtg-ai/faultline-pro@v0.2.0
+        with:
+          api-key: ${{ secrets.GEMINI_API_KEY }}
+          path: ./docs/
+          fail-on: high
+          output-format: sarif
+          upload-sarif: 'true'
+
+      # Optional: also fail on medium-risk for stricter pipelines
+      # fail-on: medium
+
+      # Optional: enforce specific rules
+      # rules: pii,toxicity
+
+      # Optional: use Perplexity for real-time search grounding
+      # provider: perplexity
+      # api-key: ${{ secrets.PERPLEXITY_API_KEY }}
