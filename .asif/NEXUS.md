@@ -92,27 +92,29 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260319-16 — P1: Claim Evidence Linking — Source URL Verification
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-19 01:50 | **Estimate**: M | **Status**: PENDING
+**Injected**: 2026-03-19 01:50 | **Estimate**: M | **Status**: DONE
 
 **Action Items**:
-1. [ ] **URL validation** — when a claim cites a source URL, fetch and verify the source exists + content matches claim.
-2. [ ] **Evidence score** — 0-100 based on source availability, content relevance, recency.
-3. [ ] **`POST /scan/deep`** — enhanced scan mode that follows source URLs.
-4. [ ] Tests.
+1. [x] **URL validation** — HEAD request per source URI; checks availability, title keyword relevance, Last-Modified recency.
+2. [x] **Evidence score** — 0–100: +50 availability (2xx), +30 title relevance (keyword overlap), +20 recency (Last-Modified ≤ 2 years).
+3. [x] **`POST /scan/deep`** — enriches scan result with `evidenceLinks[]` per claim (sources + scores). Cache-keyed as `deep:{provider}`. Full middleware stack (auth, rate-limit, circuit-breaker).
+4. [x] Tests — 12 tests covering structure, scoring, caching, auth, validation.
 
 **CHAIN**: When done, start DIRECTIVE-NXTG-20260319-17.
-**Response** (filled by team): >
+**Response** (filled by team): SHIPPED. `src/lib/url-validator.ts` — injectable `FetchFn`, `validateSourceUrl()`, `buildEvidenceLinks()`, `setUrlFetcher()`/`resetUrlFetcher()` for test isolation. `src/routes/deep.ts` — `POST /scan/deep`. 12 tests. 2,532 → 2,544 total.
 
 ---
 
 ### DIRECTIVE-NXTG-20260319-17 — P2: Claim Dependency Graph — Visual Reasoning Chain
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P2
-**Injected**: 2026-03-19 01:50 | **Estimate**: S | **Status**: PENDING
+**Injected**: 2026-03-19 01:50 | **Estimate**: S | **Status**: DONE
 
 **Action Items**:
-1. [ ] Visualize claim dependency graph in API response (Mermaid). 2. [ ] `GET /scan/:id/graph` endpoint. 3. [ ] Tests.
+1. [x] Visualize claim dependency graph in API response (Mermaid). Edges derived from type hierarchy: fact → interpretation → opinion (explicit `dependencies[]` deferred per types.ts TQ-003 note).
+2. [x] `GET /scan/:id/graph` endpoint — looks up stored scan by ID, returns `{ id, scannedAt, claimCount, mermaid }`.
+3. [x] Tests — 14 tests covering 404, mermaid structure, edges, empty/facts-only graphs, no-auth-required, `getById` unit tests.
 
-**Response** (filled by team): >
+**Response** (filled by team): SHIPPED. `src/store/scans.ts` — added `getById(id)`. `src/routes/graph.ts` — `GET /scan/:id/graph` with `buildMermaid()` type-hierarchy graph. 14 tests. Total: 2,544 → 2,558.
 
 ---
 

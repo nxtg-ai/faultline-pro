@@ -30,6 +30,10 @@ class ScanStore {
     return filtered.slice(-limit);
   }
 
+  getById(id: string): StoredScan | undefined {
+    return this.scans.find((s) => s.id === id);
+  }
+
   reset(): void {
     this.scans = [];
   }
