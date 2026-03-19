@@ -102,8 +102,8 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
           getScanCache().set(text, effectiveProvider, result as unknown as Record<string, unknown>);
           const scanId = `scan-${Date.now()}`;
           getClaimIndex().ingest(
-            Array.isArray(result.claims) ? (result.claims as Array<{ id: string; text: string }>) : [],
-            (result.verifications ?? {}) as Record<string, { status?: string }>,
+            Array.isArray(result.claims) ? (result.claims as Array<{ id: string; text: string; type?: string }>) : [],
+            (result.verifications ?? {}) as Record<string, { status?: string; sources?: Array<{ title: string; uri: string }> }>,
             scanId,
           );
           getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);

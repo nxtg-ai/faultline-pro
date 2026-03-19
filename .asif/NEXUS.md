@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-19 (D-22/23 done. N-32–N-36 SHIPPED. JS: 2,572 tests (95 files). 82 directives archived.)
+> **Last Updated**: 2026-03-19 (D-32/33 done. N-37–N-38 SHIPPED. JS: 2,595 tests (97 files). 84 directives archived.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -46,6 +46,8 @@
 | N-34 | Claim Evidence Linking (POST /scan/deep — URL validation, 0–100 score) | FORENSIC | SHIPPED | P1 | 2026-03-19 |
 | N-35 | Claim Dependency Graph (GET /scan/:id/graph — Mermaid, type-hierarchy edges) | FORENSIC | SHIPPED | P2 | 2026-03-19 |
 | N-36 | Claim Trending (GET /claims/trending — frequency, emerging, verdict alerts) | FORENSIC | SHIPPED | P1 | 2026-03-19 |
+| N-37 | Claim Attribution (GET /claims/:id/attribution — provenance chain, 0–100 confidence) | FORENSIC | SHIPPED | P1 | 2026-03-19 |
+| N-38 | EU AI Act Full Report PDF (POST /scan/eu-report — articles, risk tiers, claim flags) | COMPLIANCE | SHIPPED | P2 | 2026-03-19 |
 
 ---
 
@@ -93,32 +95,32 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
-> **82 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 35 on 2026-03-18, 7 on 2026-03-19: D-03 GraphQL, D-04 Benchmarks, D-16 Evidence Linking, D-17 Dependency Graph, D-22 Claim Trending, D-23 Archive, D-142/143 i18n+Summary).
+> **84 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 35 on 2026-03-18, 9 on 2026-03-19: D-03 GraphQL, D-04 Benchmarks, D-16 Evidence Linking, D-17 Dependency Graph, D-22 Claim Trending, D-23 Archive, D-32 Attribution, D-33 EU PDF, D-142/143 i18n+Summary).
 
 ### DIRECTIVE-NXTG-20260319-32 — P1: Claim Attribution — Trace Claims to Original Sources
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-19 03:00 | **Estimate**: M | **Status**: PENDING
+**Injected**: 2026-03-19 03:00 | **Estimate**: M | **Status**: DONE
 
 **Action Items**:
-1. [ ] **Attribution chain** — for each claim, trace: who said it → where was it published → when → what context.
-2. [ ] **`GET /claims/:id/attribution`** — return full provenance chain.
-3. [ ] **Attribution confidence** — score how reliably the claim can be traced to its origin (0-100).
-4. [ ] Tests.
+1. [x] **Attribution chain** — `ClaimRecord` extended with `id` (UUID stable), `claimType`, `sources[]` (deduplicated by URI, with `scanId`+`seenAt`). `ingest()` captures sources from verifications.
+2. [x] **`GET /claims/:id/attribution`** — returns `{ id, claim, claimType, firstSeen, lastSeen, frequency, lastVerdict, attributionConfidence, attributionChain: { sources, scanHistory } }`.
+3. [x] **Attribution confidence** (0–100): +40 has sources, +20 has 3+ sources, +20 frequency≥3, +10 verdict=supported, +10 type=fact.
+4. [x] Tests — 13 tests covering 404, full chain shape, source fields, confidence (0/incremental/100), deduplication, id stability, no-auth.
 
 **CHAIN**: When done, start DIRECTIVE-NXTG-20260319-33.
-**Response** (filled by team): >
+**Response** (filled by team): SHIPPED. `src/store/claims.ts` — extended ClaimRecord + `computeAttributionConfidence()` + `getById()`. `src/routes/claims.ts` — `GET /claims/:id/attribution`. `src/routes/scan.ts` — sources passed to ingest(). 13 tests. 2,572 → 2,585 total.
 
 ---
 
 ### DIRECTIVE-NXTG-20260319-33 — P2: Compliance Export — EU AI Act Full Report PDF
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P2
-**Injected**: 2026-03-19 03:00 | **Estimate**: S | **Status**: PENDING
+**Injected**: 2026-03-19 03:00 | **Estimate**: S | **Status**: DONE
 
 **Action Items**:
-1. [ ] Generate full EU AI Act compliance PDF using pdfkit (N-14 foundation). Include: cover page, executive summary, claims table, risk tiers, article references per `standards/eu-ai-act-report-spec.md`.
-2. [ ] Tests.
+1. [x] Generated full EU AI Act compliance PDF (pdfkit). Cover page (EU colour bar, risk badge, classification), executive summary with Art. 13(1) violation flag, applicable articles section (High/Limited/Minimal risk mappings), claim-level compliance table with per-claim article flags.
+2. [x] Tests — 10 tests: PDF content-type, magic bytes, Content-Disposition, auth, 400 validation, projectName, size, zero-claims.
 
-**Response** (filled by team): >
+**Response** (filled by team): SHIPPED. `src/routes/eu-report.ts` — inline EU AI Act article mapping (Art. 6, 9, 13, 14, 15, Annex III for high-risk; Art. 52, 69 for limited; Art. 69, Recital 47 for minimal). `POST /scan/eu-report` endpoint. 10 tests. Total: 2,585 → 2,595.
 
 ---
 

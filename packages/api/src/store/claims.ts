@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { fireWebhookEvent } from './webhooks.js';
 
 export interface ClaimVerdict {
@@ -6,14 +7,24 @@ export interface ClaimVerdict {
   timestamp: string;
 }
 
+export interface ClaimSource {
+  title: string;
+  uri: string;
+  scanId: string;
+  seenAt: string;
+}
+
 export interface ClaimRecord {
+  id: string;
   normalizedText: string;
   originalText: string;
+  claimType: string;
   firstSeen: string;
   lastSeen: string;
   frequency: number;
   verdicts: ClaimVerdict[];
   lastVerdict: string;
+  sources: ClaimSource[];
 }
 
 export interface VerdictChange {
@@ -26,13 +37,29 @@ export interface VerdictChange {
 const VERIFIED_STATUSES = new Set(['supported', 'verified']);
 const UNVERIFIED_STATUSES = new Set(['unverified', 'contradicted', 'mixed']);
 
+/**
+ * Attribution confidence 0–100.
+ * +40 has any source, +20 has 3+ sources, +20 seen in 3+ scans,
+ * +10 currently verified, +10 claim type is 'fact'.
+ */
+export function computeAttributionConfidence(record: ClaimRecord): number {
+  let score = 0;
+  if (record.sources.length > 0) score += 40;
+  if (record.sources.length >= 3) score += 20;
+  if (record.frequency >= 3) score += 20;
+  if (VERIFIED_STATUSES.has(record.lastVerdict)) score += 10;
+  if (record.claimType === 'fact') score += 10;
+  return Math.min(100, score);
+}
+
 class ClaimIndex {
   private records: Map<string, ClaimRecord> = new Map();
+  private byId: Map<string, ClaimRecord> = new Map();
   private verdictChanges: VerdictChange[] = [];
 
   ingest(
-    claims: Array<{ id: string; text: string }>,
-    verifications: Record<string, { status?: string }>,
+    claims: Array<{ id: string; text: string; type?: string }>,
+    verifications: Record<string, { status?: string; sources?: Array<{ title: string; uri: string }> }>,
     scanId: string,
   ): void {
     const now = new Date().toISOString();
@@ -40,25 +67,47 @@ class ClaimIndex {
     for (const claim of claims) {
       const normalized = claim.text.trim().toLowerCase();
       const status = verifications[claim.id]?.status ?? 'unverified';
+      const rawSources = verifications[claim.id]?.sources ?? [];
+      const claimType = claim.type ?? 'fact';
+
+      const newSources: ClaimSource[] = rawSources.map((s) => ({
+        title: s.title,
+        uri: s.uri,
+        scanId,
+        seenAt: now,
+      }));
 
       const existing = this.records.get(normalized);
 
       if (!existing) {
-        this.records.set(normalized, {
+        const record: ClaimRecord = {
+          id: randomUUID(),
           normalizedText: normalized,
           originalText: claim.text,
+          claimType,
           firstSeen: now,
           lastSeen: now,
           frequency: 1,
           verdicts: [{ scanId, status, timestamp: now }],
           lastVerdict: status,
-        });
+          sources: newSources,
+        };
+        this.records.set(normalized, record);
+        this.byId.set(record.id, record);
       } else {
         const previousVerdict = existing.lastVerdict;
         existing.frequency += 1;
         existing.lastSeen = now;
         existing.verdicts.push({ scanId, status, timestamp: now });
         existing.lastVerdict = status;
+        // Merge new sources (deduplicate by uri)
+        const existingUris = new Set(existing.sources.map((s) => s.uri));
+        for (const s of newSources) {
+          if (!existingUris.has(s.uri)) {
+            existing.sources.push(s);
+            existingUris.add(s.uri);
+          }
+        }
 
         // Detect verified → unverified flip
         if (
@@ -72,8 +121,6 @@ class ClaimIndex {
             changedAt: now,
           };
           this.verdictChanges.push(change);
-
-          // Fire webhook alert
           fireWebhookEvent('claim.verdict_changed', {
             claim: existing.originalText,
             previousVerdict,
@@ -83,6 +130,10 @@ class ClaimIndex {
         }
       }
     }
+  }
+
+  getById(id: string): ClaimRecord | undefined {
+    return this.byId.get(id);
   }
 
   /**
@@ -118,6 +169,7 @@ class ClaimIndex {
 
   reset(): void {
     this.records = new Map();
+    this.byId = new Map();
     this.verdictChanges = [];
   }
 }
