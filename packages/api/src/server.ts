@@ -1,6 +1,13 @@
 import Fastify from 'fastify';
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import mercurius from 'mercurius';
+import type {} from 'mercurius';
+
+declare module 'mercurius' {
+  interface MercuriusContext {
+    keyId: string;
+  }
+}
 import { schema as gqlSchema } from './graphql/schema.js';
 import { resolvers as gqlResolvers } from './graphql/resolvers.js';
 import { parseLang } from '@nxtg/faultline/lib/i18n.js';
