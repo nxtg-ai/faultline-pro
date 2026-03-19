@@ -1,5 +1,8 @@
 import Fastify from 'fastify';
 import type { FastifyRequest, FastifyReply } from 'fastify';
+import mercurius from 'mercurius';
+import { schema as gqlSchema } from './graphql/schema.js';
+import { resolvers as gqlResolvers } from './graphql/resolvers.js';
 import { parseLang } from '@nxtg/faultline/lib/i18n.js';
 import type { Lang } from '@nxtg/faultline/lib/i18n.js';
 import multipart from '@fastify/multipart';
@@ -51,6 +54,16 @@ export function buildServer() {
   // Node 20 ESM: access binding before register to avoid live-binding TDZ
   if (typeof templateRoutes !== 'function') throw new Error('templateRoutes not loaded');
   fastify.register(templateRoutes);
+
+  fastify.register(mercurius, {
+    schema: gqlSchema,
+    resolvers: gqlResolvers,
+    graphiql: false,
+    context: (request: FastifyRequest) => {
+      const keyId = request.keyId ?? 'anonymous';
+      return { keyId };
+    },
+  });
 
   fastify.addHook('onReady', async () => {
     getJobScheduler().start();

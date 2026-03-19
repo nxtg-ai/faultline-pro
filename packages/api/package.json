@@ -15,6 +15,8 @@
     "@fastify/multipart": "^9.0.0",
     "@nxtg/faultline": "*",
     "fastify": "^5.8.2",
+    "graphql": "^16.9.0",
+    "mercurius": "^16.0.0",
     "pdfkit": "^0.18.0"
   },
   "devDependencies": {
