@@ -97,7 +97,51 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
-> **90 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 35 on 2026-03-18, 15 on 2026-03-19: D-03 GraphQL, D-04 Benchmarks, D-16 Evidence Linking, D-17 Dependency Graph, D-22 Claim Trending, D-23 Archive, D-32 Attribution, D-33 EU PDF, D-41 Final Archive, D-103 Prod Hardening, D-104 v0.2.0 Prep, D-105 Deployment, D-117 README+Examples, D-118 GitHub Action).
+> **90 directives archived**.
+
+### DIRECTIVE-NXTG-20260319-125 — P0: Zero-to-Value Test — New User Experience
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P0
+**Injected**: 2026-03-19 07:30 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] **Fresh install test** — `npm install -g @nxtg/faultline && faultline scan --input "AI will cure cancer by 2025"`. Verify clean output.
+2. [ ] **First-run experience** — if no API key configured, show helpful error with setup URL. Not a stack trace.
+3. [ ] **Quick start validation** — follow the README step-by-step as a new user. Fix any friction.
+4. [ ] **Provider auto-detection** — if `GEMINI_API_KEY` is set, auto-use Gemini. If `OPENAI_API_KEY`, auto-use OpenAI. No manual `--provider` needed for first scan.
+5. [ ] Tests.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260319-126.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260319-126 — P1: Interactive CLI — Guided First Scan
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-19 07:30 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] **`faultline init`** — interactive setup: select provider, enter API key, run first scan. Wizard-style.
+2. [ ] **`faultline demo`** — run a scan on sample text without API key (uses mock provider). Shows what the output looks like.
+3. [ ] Tests.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260319-127.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260319-127 — P1: VS Code Extension — Inline Claim Highlights
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-19 07:30 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] **VS Code extension scaffold** — `vscode-faultline`. Activate on `.md`, `.txt`, `.json` files.
+2. [ ] **Inline diagnostics** — highlight unverified claims with yellow underlines, verified with green.
+3. [ ] **Scan command** — right-click → "Scan with Faultline" or Ctrl+Shift+F.
+4. [ ] Package ready for VS Code Marketplace.
+
+**Response** (filled by team): >
+
+---
 
 ### DIRECTIVE-NXTG-20260319-117 — P0: npm README Rewrite + Examples
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P0
