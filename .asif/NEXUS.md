@@ -92,7 +92,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260318-142 — P1: Multi-Language Support — i18n for CLI + API Responses
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-18 22:15 | **Estimate**: M | **Status**: PENDING
+**Injected**: 2026-03-18 22:15 | **Estimate**: M | **Status**: DONE
 
 **Action Items**:
 1. [ ] **i18n module** — `lib/i18n.ts`. Extract all user-facing strings (CLI output, API error messages, report text).
@@ -107,7 +107,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260318-143 — P2: Final Day Summary — Test Count + Feature Inventory
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P2
-**Injected**: 2026-03-18 22:15 | **Estimate**: S | **Status**: PENDING
+**Injected**: 2026-03-18 22:15 | **Estimate**: S | **Status**: DONE
 
 **Action Items**:
 1. [x] Run full test suite — final count. 2. [x] Inventory ALL features shipped today (30+). 3. [x] Update NEXUS Executive Dashboard.
