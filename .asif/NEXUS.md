@@ -90,6 +90,32 @@ The Kaggle version remains at  (tagged  at commit ).
 
 > **75 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 35 on 2026-03-18).
 
+### DIRECTIVE-NXTG-20260319-16 — P1: Claim Evidence Linking — Source URL Verification
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-19 01:50 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] **URL validation** — when a claim cites a source URL, fetch and verify the source exists + content matches claim.
+2. [ ] **Evidence score** — 0-100 based on source availability, content relevance, recency.
+3. [ ] **`POST /scan/deep`** — enhanced scan mode that follows source URLs.
+4. [ ] Tests.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260319-17.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260319-17 — P2: Claim Dependency Graph — Visual Reasoning Chain
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
+**Injected**: 2026-03-19 01:50 | **Estimate**: S | **Status**: PENDING
+
+**Action Items**:
+1. [ ] Visualize claim dependency graph in API response (Mermaid). 2. [ ] `GET /scan/:id/graph` endpoint. 3. [ ] Tests.
+
+**Response** (filled by team): >
+
+---
+
 ### DIRECTIVE-NXTG-20260319-03 — P1: GraphQL API — Alternative to REST
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
 **Injected**: 2026-03-19 00:55 | **Estimate**: M | **Status**: DONE
