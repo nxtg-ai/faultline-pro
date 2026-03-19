@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-18 (D-142/143 done. N-31 SHIPPED. JS: 2,508 tests (90 files). 75 directives archived.)
+> **Last Updated**: 2026-03-19 (D-22/23 done. N-32–N-36 SHIPPED. JS: 2,572 tests (95 files). 82 directives archived.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -41,6 +41,11 @@
 | N-29 | Scan Templates (reusable configs, POST/GET/DELETE/scan-via, CLI --template) | ENTERPRISE | SHIPPED | P1 | 2026-03-18 |
 | N-30 | Full Platform E2E (S1–S26 sequential flow covering all surfaces) | DEVELOPER-X | SHIPPED | P2 | 2026-03-18 |
 | N-31 | Multi-Language Support (i18n — CLI --lang, API Accept-Language, en/es/fr) | DEVELOPER-X | SHIPPED | P1 | 2026-03-18 |
+| N-32 | GraphQL API (POST /graphql via mercurius — queries + mutations) | DEVELOPER-X | SHIPPED | P1 | 2026-03-19 |
+| N-33 | Performance Benchmark Suite (p50/p95/p99, cache HIT/MISS) | PERFORMANCE | SHIPPED | P2 | 2026-03-19 |
+| N-34 | Claim Evidence Linking (POST /scan/deep — URL validation, 0–100 score) | FORENSIC | SHIPPED | P1 | 2026-03-19 |
+| N-35 | Claim Dependency Graph (GET /scan/:id/graph — Mermaid, type-hierarchy edges) | FORENSIC | SHIPPED | P2 | 2026-03-19 |
+| N-36 | Claim Trending (GET /claims/trending — frequency, emerging, verdict alerts) | FORENSIC | SHIPPED | P1 | 2026-03-19 |
 
 ---
 
@@ -88,31 +93,33 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
-> **75 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 35 on 2026-03-18).
+> **82 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 35 on 2026-03-18, 7 on 2026-03-19: D-03 GraphQL, D-04 Benchmarks, D-16 Evidence Linking, D-17 Dependency Graph, D-22 Claim Trending, D-23 Archive, D-142/143 i18n+Summary).
 
 ### DIRECTIVE-NXTG-20260319-22 — P1: Claim Trending — Track Claims Across Scans Over Time
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-19 02:15 | **Estimate**: M | **Status**: PENDING
+**Injected**: 2026-03-19 02:15 | **Estimate**: M | **Status**: DONE
 
 **Action Items**:
-1. [ ] **Claim index** — store every claim across all scans, normalized. Track first-seen, frequency, verdict changes.
-2. [ ] **`GET /claims/trending`** — most frequently seen claims, newly emerging claims, claims with changing verdicts.
-3. [ ] **Claim alerts** — webhook when a previously-verified claim gets unverified (source went down, etc).
-4. [ ] Tests.
+1. [x] **Claim index** — `ClaimIndex` singleton: normalizes by text, tracks `firstSeen`, `lastSeen`, `frequency`, `verdicts[]`, `lastVerdict`. Populated by `POST /scan` after every successful scan.
+2. [x] **`GET /claims/trending`** — `trending` (top 20 by frequency), `emerging` (first seen in last 24h), `verdictChanged` (supported/verified → unverified/contradicted flips). No auth required.
+3. [x] **Claim alerts** — added `'claim.verdict_changed'` to `WebhookEvent` union + `VALID_EVENTS`. Fires on every verified→unverified flip via `fireWebhookEvent('claim.verdict_changed', ...)`.
+4. [x] Tests — 14 tests covering cold start, frequency accumulation, sort order, emerging window, verdict flip detection, webhook subscription, shape validation, and `ClaimIndex` unit tests.
 
 **CHAIN**: When done, start DIRECTIVE-NXTG-20260319-23.
-**Response** (filled by team): >
+**Response** (filled by team): SHIPPED. `src/store/claims.ts` — `ClaimIndex` (getScanStore/resetClaimIndex). `src/routes/claims.ts` — `GET /claims/trending`. `src/routes/scan.ts` — ingest hook. `src/store/webhooks.ts` + `src/routes/webhooks.ts` — `claim.verdict_changed` event. 14 tests. 2,558 → 2,572. All green.
 
 ---
 
 ### DIRECTIVE-NXTG-20260319-23 — P2: Final NEXUS Archive + Portfolio Showcase
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P2
-**Injected**: 2026-03-19 02:15 | **Estimate**: S | **Status**: PENDING
+**Injected**: 2026-03-19 02:15 | **Estimate**: S | **Status**: DONE
 
 **Action Items**:
-1. [ ] Archive DONE directives. 2. [ ] Final test count. 3. [ ] Update NEXUS Executive Dashboard.
+1. [x] Archive DONE directives — 7 directives from 2026-03-19 (D-03, D-04, D-16, D-17, D-22, D-23 + D-142/D-143 already archived 2026-03-18). Archive count: 75 → 82.
+2. [x] Final test count — **2,572 tests** (95 test files). All green.
+3. [x] Update NEXUS Executive Dashboard — N-32 through N-36 added. Header updated.
 
-**Response** (filled by team): >
+**Response** (filled by team): DONE. Executive Dashboard: 36 initiatives (N-01–N-36), all SHIPPED. Final test count: 2,572 (95 files). 82 directives archived. Session shipped: GraphQL API, Benchmarks, Evidence Linking, Dependency Graph, Claim Trending.
 
 ---
 

@@ -3,7 +3,7 @@ import { requireAdmin } from '../plugins/auth.js';
 import { getWebhookStore } from '../store/webhooks.js';
 import type { WebhookEvent } from '../store/webhooks.js';
 
-const VALID_EVENTS: WebhookEvent[] = ['scan.complete', 'scan.failed'];
+const VALID_EVENTS: WebhookEvent[] = ['scan.complete', 'scan.failed', 'claim.verdict_changed'];
 
 const CREATE_BODY_SCHEMA = {
   type: 'object',

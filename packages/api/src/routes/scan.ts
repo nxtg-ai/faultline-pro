@@ -10,6 +10,7 @@ import type { Provider } from '../store/circuit-breaker.js';
 import { getAuditLogger } from '../store/audit.js';
 import { getScanCache } from '../store/cache.js';
 import { getTemplateStore } from '../store/templates.js';
+import { getClaimIndex } from '../store/claims.js';
 
 const BODY_SCHEMA = {
   type: 'object',
@@ -99,6 +100,12 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
           }
 
           getScanCache().set(text, effectiveProvider, result as unknown as Record<string, unknown>);
+          const scanId = `scan-${Date.now()}`;
+          getClaimIndex().ingest(
+            Array.isArray(result.claims) ? (result.claims as Array<{ id: string; text: string }>) : [],
+            (result.verifications ?? {}) as Record<string, { status?: string }>,
+            scanId,
+          );
           getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
           fireWebhookEvent('scan.complete', result);
           return reply.status(200).send(result);
