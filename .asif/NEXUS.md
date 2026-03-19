@@ -97,6 +97,51 @@ The Kaggle version remains at  (tagged  at commit ).
 
 > **85 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 35 on 2026-03-18, 10 on 2026-03-19: D-03 GraphQL, D-04 Benchmarks, D-16 Evidence Linking, D-17 Dependency Graph, D-22 Claim Trending, D-23 Archive, D-32 Attribution, D-33 EU PDF, D-142/143 i18n+Summary, D-41 Final Archive).
 
+### DIRECTIVE-NXTG-20260319-103 — P0: OPERATION FIRST DOLLAR — Production API Hardening
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P0
+**Injected**: 2026-03-19 06:00 | **Estimate**: M | **Status**: PENDING
+
+**Context**: REVENUE SPRINT. FP is the engine behind faultline.nxtg.ai. Harden for production traffic.
+
+**Action Items**:
+1. [ ] **CORS** — allow `faultline.nxtg.ai`, `*.nxtg.ai`. Block all other origins.
+2. [ ] **Rate limiter production config** — 10 req/min for free keys, 100 req/min for pro keys.
+3. [ ] **Health endpoint** — `GET /health` returns status of all subsystems (scan engine, providers, key store).
+4. [ ] **Error responses** — consistent JSON error format with error codes, not stack traces.
+5. [ ] **npm v0.2.0 prep** — update version in package.json, generate CHANGELOG for all features since 0.1.3.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260319-104.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260319-104 — P0: npm publish v0.2.0 — All Marathon Features
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P0
+**Injected**: 2026-03-19 06:00 | **Estimate**: S | **Status**: PENDING
+
+**Action Items**:
+1. [ ] Update version to 0.2.0. 2. [ ] CHANGELOG with all features since 0.1.3: multimodal, enterprise keys, rate limiting, webhooks, batch, SDK, caching, templates, comparison, i18n, claim trending, evidence linking, attribution.
+3. [ ] `npm pack --dry-run` verify. 4. [ ] `npm publish` (if `NPM_TOKEN` available, otherwise document for Asif).
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260319-105.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260319-105 — P1: Deployment — Fly.io or Railway One-Command Deploy
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-19 06:00 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] **Dockerfile** for FP API (`packages/api/`). Multi-stage build.
+2. [ ] **fly.toml** or **railway.json** — one-command deploy config.
+3. [ ] **Deploy docs** at `packages/api/DEPLOY.md`.
+4. [ ] Health check verification after deploy.
+
+**Response** (filled by team): >
+
+---
+
 ### DIRECTIVE-NXTG-20260319-41 — P2: Final Session Archive + Test Count Report
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P2
 **Injected**: 2026-03-19 03:45 | **Estimate**: S | **Status**: DONE
