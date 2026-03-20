@@ -106,7 +106,48 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
-> **99 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 35 on 2026-03-18, 24 on 2026-03-19 incl. D-125/126/127/140/141/142/153/154/155).
+> **99 directives archived**.
+
+### DIRECTIVE-NXTG-20260319-174 — P1: Compliance Report Generator — Industry-Specific Templates
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-19 10:15 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] **Template engine** — pre-built report templates for: Healthcare (HIPAA), Finance (SOX/FINRA), Education (FERPA), Government.
+2. [ ] **`POST /scan/compliance/:template`** — scan + generate industry-specific report.
+3. [ ] **Template marketplace** — `GET /templates/compliance` list available. Custom template upload.
+4. [ ] Tests.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260319-175.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260319-175 — P1: Bulk Import — Scan Entire Document Libraries
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-19 10:15 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] **`POST /scan/bulk`** — accept ZIP of documents. Process each, return aggregated report.
+2. [ ] **Progress tracking** — `GET /jobs/:id/progress` returns percentage + per-file status.
+3. [ ] **Summary report** — overall trust score across entire library, worst offenders list.
+4. [ ] Tests.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260319-176.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260319-176 — P2: 100th Directive Celebration — Final Test Count + README
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
+**Injected**: 2026-03-19 10:15 | **Estimate**: S | **Status**: PENDING
+
+**Action Items**:
+1. [ ] Run full test suite. Report FINAL count. 2. [ ] README — complete feature showcase for the 100+ directive journey.
+
+**Response** (filled by team): >
+
+---
 
 ### DIRECTIVE-NXTG-20260319-153 — P1: Real-Time Scan Dashboard — Live Monitoring
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
