@@ -267,6 +267,60 @@ class ClaimIndex {
       .slice(0, params.limit ?? 50);
   }
 
+  /**
+   * Aggregate stats across all indexed claims.
+   * accuracyRate = supported / (supported + contradicted)  — "of claims with a definitive verdict, how many checked out?"
+   * verifiedRate = supported / total  — "what fraction of all AI claims were accurate?"
+   */
+  getStats(): {
+    totalClaims:    number;
+    totalScans:     number;
+    byVerdict:      Record<string, number>;
+    accuracyRate:   number;   // supported / (supported + contradicted)
+    verifiedRate:   number;   // supported / total
+    claimTypes:     Record<string, number>;
+    avgFrequency:   number;
+    topSources:     Array<{ uri: string; count: number }>;
+  } {
+    const all = [...this.records.values()];
+    const byVerdict: Record<string, number> = {};
+    const claimTypes: Record<string, number> = {};
+    const sourceMap: Map<string, number> = new Map();
+    const scanIds = new Set<string>();
+    let freqSum = 0;
+
+    for (const r of all) {
+      byVerdict[r.lastVerdict] = (byVerdict[r.lastVerdict] ?? 0) + 1;
+      claimTypes[r.claimType]  = (claimTypes[r.claimType]  ?? 0) + 1;
+      freqSum += r.frequency;
+      for (const v of r.verdicts) scanIds.add(v.scanId);
+      for (const s of r.sources) {
+        const host = (() => { try { return new URL(s.uri).hostname; } catch { return s.uri; } })();
+        sourceMap.set(host, (sourceMap.get(host) ?? 0) + 1);
+      }
+    }
+
+    const supported    = byVerdict['supported']    ?? 0;
+    const contradicted = byVerdict['contradicted'] ?? 0;
+    const definitive   = supported + contradicted;
+
+    const topSources = [...sourceMap.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([uri, count]) => ({ uri, count }));
+
+    return {
+      totalClaims:  all.length,
+      totalScans:   scanIds.size,
+      byVerdict,
+      accuracyRate: definitive > 0 ? supported / definitive : 0,
+      verifiedRate: all.length   > 0 ? supported / all.length : 0,
+      claimTypes,
+      avgFrequency: all.length   > 0 ? freqSum / all.length : 0,
+      topSources,
+    };
+  }
+
   get size(): number {
     return this.records.size;
   }
