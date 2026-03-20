@@ -52,6 +52,7 @@ import { queueRoutes } from './routes/queue.js';
 import { rulesRoutes } from './routes/rules.js';
 import { pdfReportRoutes } from './routes/pdf-report.js';
 import { scheduleRoutes } from './routes/schedules.js';
+import { orgRoutes } from './routes/orgs.js';
 import { getNotificationStore } from './store/notifications.js';
 import { getKeyStore } from './store/keys.js';
 import { getScanQueue, resetScanQueue } from './store/scan-queue.js';
@@ -152,6 +153,7 @@ export function buildServer() {
   fastify.register(rulesRoutes);
   fastify.register(pdfReportRoutes);
   fastify.register(scheduleRoutes);
+  fastify.register(orgRoutes);
 
   fastify.register(mercurius, {
     schema: gqlSchema,
