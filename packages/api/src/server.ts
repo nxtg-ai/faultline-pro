@@ -48,8 +48,10 @@ import { pluginMarketplaceRoutes } from './routes/plugins.js';
 import { telemetryRoutes } from './routes/telemetry.js';
 import { rateLimitRoutes } from './routes/rate-limits.js';
 import { notificationRoutes } from './routes/notifications.js';
+import { queueRoutes } from './routes/queue.js';
 import { getNotificationStore } from './store/notifications.js';
 import { getKeyStore } from './store/keys.js';
+import { getScanQueue, resetScanQueue } from './store/scan-queue.js';
 import { getJobScheduler, resetJobScheduler } from './store/jobs.js';
 import { getAuditLogger, hashInput } from './store/audit.js';
 import { getUsageMeter } from './store/usage.js';
@@ -142,6 +144,7 @@ export function buildServer() {
   fastify.register(telemetryRoutes);
   fastify.register(rateLimitRoutes);
   fastify.register(notificationRoutes);
+  fastify.register(queueRoutes);
 
   fastify.register(mercurius, {
     schema: gqlSchema,
@@ -155,6 +158,7 @@ export function buildServer() {
 
   fastify.addHook('onReady', async () => {
     getJobScheduler().start();
+    getScanQueue().start();
 
     // Weekly summary notification — fires every Sunday 09:00 UTC
     setInterval(() => {
@@ -180,6 +184,8 @@ export function buildServer() {
   fastify.addHook('onClose', async () => {
     getJobScheduler().stop();
     resetJobScheduler();
+    getScanQueue().stop();
+    resetScanQueue();
   });
 
   fastify.addHook('onRequest', async (request: FastifyRequest) => {
