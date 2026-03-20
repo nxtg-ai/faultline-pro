@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-19 (D-153/154/155 done. Scan history store, enhanced dashboard, scan search, Swagger UI. JS: 2,678 tests (105 files). 99 directives archived. 49 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-19 (D-174/175/176 done. Industry compliance templates, bulk ZIP import, 100+ directive milestone. JS: 2,709 tests (107 files). 102 directives archived. 52 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -59,6 +59,9 @@
 | N-47 | Real-Time Scan Dashboard (live feed, provider health, active keys, last 10 scans) | ENTERPRISE | SHIPPED | P1 | 2026-03-19 |
 | N-48 | Scan History Search (GET /scans/search — full-text, filters, cursor pagination) | FORENSIC | SHIPPED | P1 | 2026-03-19 |
 | N-49 | Swagger UI (GET /docs — OpenAPI 3.0 spec, interactive Try-it, auto-generated) | DEVELOPER-X | SHIPPED | P2 | 2026-03-19 |
+| N-50 | Industry Compliance Templates (HIPAA/SOX/FERPA/Gov, POST /scan/compliance/:t) | COMPLIANCE | SHIPPED | P1 | 2026-03-19 |
+| N-51 | Bulk Document Import (POST /scan/bulk ZIP, async job, GET /jobs/:id/progress) | ENTERPRISE | SHIPPED | P1 | 2026-03-19 |
+| N-52 | 100-Directive Milestone — Final count 2,709 tests, README showcase, 52 initiatives | DISTRIBUTION | SHIPPED | P2 | 2026-03-19 |
 
 ---
 
@@ -106,46 +109,46 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
-> **99 directives archived**.
+> **102 directives archived** (D-174 industry compliance, D-175 bulk import, D-176 celebration — 100th+ milestone).
 
 ### DIRECTIVE-NXTG-20260319-174 — P1: Compliance Report Generator — Industry-Specific Templates
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-19 10:15 | **Estimate**: M | **Status**: PENDING
+**Injected**: 2026-03-19 10:15 | **Estimate**: M | **Status**: DONE
 
 **Action Items**:
-1. [ ] **Template engine** — pre-built report templates for: Healthcare (HIPAA), Finance (SOX/FINRA), Education (FERPA), Government.
-2. [ ] **`POST /scan/compliance/:template`** — scan + generate industry-specific report.
-3. [ ] **Template marketplace** — `GET /templates/compliance` list available. Custom template upload.
-4. [ ] Tests.
+1. [x] **Template engine** — pre-built report templates for: Healthcare (HIPAA), Finance (SOX/FINRA), Education (FERPA), Government.
+2. [x] **`POST /scan/compliance/:template`** — scan + generate industry-specific report.
+3. [x] **Template marketplace** — `GET /templates/compliance` list available. Custom template upload.
+4. [x] Tests.
 
 **CHAIN**: When done, start DIRECTIVE-NXTG-20260319-175.
-**Response** (filled by team): >
+**Response** (filled by team): SHIPPED. `store/compliance-templates.ts` — 4 built-in templates (healthcare/HIPAA, finance/SOX+FINRA, education/FERPA, government/FOIA), each with 3 `ComplianceRule`s + pattern matching. `routes/compliance.ts` — GET /templates/compliance (open), POST /templates/compliance (admin, custom), DELETE /templates/compliance/:id (admin), POST /scan/compliance/:template (requireApiKey + rateLimitScan). 16 tests in compliance.test.ts (CL1–CL15+).
 
 ---
 
 ### DIRECTIVE-NXTG-20260319-175 — P1: Bulk Import — Scan Entire Document Libraries
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-19 10:15 | **Estimate**: M | **Status**: PENDING
+**Injected**: 2026-03-19 10:15 | **Estimate**: M | **Status**: DONE
 
 **Action Items**:
-1. [ ] **`POST /scan/bulk`** — accept ZIP of documents. Process each, return aggregated report.
-2. [ ] **Progress tracking** — `GET /jobs/:id/progress` returns percentage + per-file status.
-3. [ ] **Summary report** — overall trust score across entire library, worst offenders list.
-4. [ ] Tests.
+1. [x] **`POST /scan/bulk`** — accept ZIP of documents. Process each, return aggregated report.
+2. [x] **Progress tracking** — `GET /jobs/:id/progress` returns percentage + per-file status.
+3. [x] **Summary report** — overall trust score across entire library, worst offenders list.
+4. [x] Tests.
 
 **CHAIN**: When done, start DIRECTIVE-NXTG-20260319-176.
-**Response** (filled by team): >
+**Response** (filled by team): SHIPPED. `adm-zip` installed. `store/bulk-jobs.ts` — BulkJobStore with create/recordFileResult/complete/fail; `complete()` computes overallTrustScore, worstOffenders, riskDistribution. `routes/bulk.ts` — POST /scan/bulk (multipart ZIP → async background processing, returns 202 + jobId), GET /jobs/:id/progress (open endpoint). 15 tests in bulk.test.ts (BK1–BK15).
 
 ---
 
 ### DIRECTIVE-NXTG-20260319-176 — P2: 100th Directive Celebration — Final Test Count + README
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P2
-**Injected**: 2026-03-19 10:15 | **Estimate**: S | **Status**: PENDING
+**Injected**: 2026-03-19 10:15 | **Estimate**: S | **Status**: DONE
 
 **Action Items**:
-1. [ ] Run full test suite. Report FINAL count. 2. [ ] README — complete feature showcase for the 100+ directive journey.
+1. [x] Run full test suite. Report FINAL count. 2. [x] README — complete feature showcase for the 100+ directive journey.
 
-**Response** (filled by team): >
+**Response** (filled by team): MILESTONE. **2,709 tests across 107 files — all green.** README updated: test badge 1337→2709, capability table +9 new rows (multi-tenant, cost tracking, scan history, industry compliance, bulk import, Swagger UI, claim search, live dashboard, per-minute rate limits), stores table +5 new rows. 102 directives archived. 52 initiatives SHIPPED. Journey: ~3 months, 100+ CoS directives, FM-agnostic AI trust & safety platform from Kaggle entry.
 
 ---
 

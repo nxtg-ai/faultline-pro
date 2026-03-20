@@ -4,7 +4,7 @@ Forensic verification for AI-generated text. Faultline decomposes output into at
 
 [![CI](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@nxtg/faultline.svg)](https://www.npmjs.com/package/@nxtg/faultline)
-[![Tests](https://img.shields.io/badge/tests-1337%20passing-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-2709%20passing-brightgreen)](tests/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 
@@ -27,6 +27,12 @@ Forensic verification for AI-generated text. Faultline decomposes output into at
 | Monitoring | `GET /health/deep`, `GET /metrics` (Prometheus), `GET /status` (HTML dashboard) |
 | Scheduled jobs | `POST /jobs` — recurring scans on a cron schedule with webhook delivery |
 | Multi-SDK | TypeScript SDK (`@nxtg/faultline-sdk`), Python SDK (`faultline-sdk`), GitHub Action |
+| Multi-tenant | Tenant CRUD, API key association, per-tenant usage aggregation |
+| Cost tracking | Per-scan token/cost estimation; `GET /costs` with provider/tenant/date filters |
+| Scan history | `GET /scans/search` — full-text across all past scans, cursor pagination |
+| Industry compliance | HIPAA / SOX / FERPA / Gov templates; `POST /scan/compliance/:template` |
+| Bulk import | `POST /scan/bulk` — ZIP of documents, async job, `GET /jobs/:id/progress` |
+| Swagger UI | `GET /docs` — interactive OpenAPI 3.0 spec with Try-it for every endpoint |
 
 ---
 
@@ -64,16 +70,22 @@ Switch providers with `--provider <name>`. No code changes required.
 - **API key management** — `POST /keys`, `GET /keys`, `DELETE /keys/:id`; scoped permissions (scan / report / upload / admin / pro)
 - **Audit trail** — SHA-256 input hash logged on every request; `GET /audit` query (coming soon)
 - **Usage metering** — per-key daily scan counts via `GET /usage`
-- **Rate limiting** — per-tier daily limits: free 10/day, pro 1,000/day, admin 10,000/day; `X-RateLimit-*` headers
-- **Usage dashboard** — `GET /dashboard`: scan counts (today/week/month), risk distribution, key usage breakdown
+- **Rate limiting** — per-tier per-minute limits: free 10/min, pro 100/min, admin 10,000/min; `X-RateLimit-*` headers
+- **Multi-tenant** — tenant CRUD (`POST /tenants`), API key → tenant association, `GET /tenants/:id/usage`
+- **Cost tracking** — per-scan token/cost estimates by provider rate; `GET /costs` (keyId/provider/date filters + aggregate)
+- **Usage dashboard** — `GET /dashboard`: live scan feed, provider health, active keys, scan counts (today/week/month), risk distribution
 - **Webhooks** — `POST /webhooks`; `scan.complete` / `scan.failed` / `job.complete` events; HMAC-SHA256 signing; 3-attempt retry
 - **Batch scanning** — `POST /scan/batch` (1–10 texts, concurrent, partial failure semantics); see [docs/ci-integration.md](docs/ci-integration.md)
 - **Scan comparison** — `POST /scan/compare`: diff two scan results (new/removed claims, verdict changes, trust score delta)
 - **Caching** — SHA-256 content-hash cache; 24h TTL (env `FAULTLINE_CACHE_TTL_MS`); `X-Cache: HIT/MISS` header; `GET /cache/stats`, `DELETE /cache`
 - **Scheduled jobs** — `POST /jobs`: recurring scans on a `*/N * * * *` cron schedule; results dispatched to `webhookUrl`
 - **Provider failover** — automatic chain Gemini → OpenAI → Claude → Perplexity → Mock; circuit breaker trips after 5 failures, resets after 5 minutes; `503` when all providers down
+- **Scan history search** — `GET /scans/search?q=` full-text across all scans; filters: from/to/provider/risk; cursor pagination
+- **Industry compliance templates** — HIPAA / SOX+FINRA / FERPA / Government; `POST /scan/compliance/:template`; custom template upload
+- **Bulk import** — `POST /scan/bulk` (ZIP of documents → async job); `GET /jobs/:id/progress` (percentage + per-file status + summary)
 - **Monitoring** — `GET /health/deep` (subsystem status + provider config flags), `GET /metrics` (Prometheus text), `GET /status` (HTML)
-- **OpenAPI 3.1 spec** — [`packages/api/docs/openapi.yaml`](packages/api/docs/openapi.yaml)
+- **Swagger UI** — `GET /docs` (interactive OpenAPI 3.0), `GET /docs/json`, `GET /docs/yaml`
+- **Claim search** — `GET /claims?text=&verdict=&from=&to=&source=` full-text claim index search
 
 ---
 
@@ -260,6 +272,11 @@ sdks/
 | `ScanCache` | SHA-256 content-hash cache, configurable TTL, hit-rate stats |
 | `CircuitBreaker` | Per-provider failure counting, cooldown management |
 | `JobStore` + `JobScheduler` | Recurring scan job CRUD, cron-based background execution |
+| `TenantStore` | Tenant CRUD, API key → tenant association |
+| `CostStore` | Per-scan token/cost recording, provider rate table, aggregate queries |
+| `ScanHistoryStore` | Last 1000 scans (newest-first), full-text + filter search, cursor pagination |
+| `ComplianceTemplateStore` | HIPAA/SOX/FERPA/Gov templates + custom template registry |
+| `BulkJobStore` | Async ZIP scan jobs: progress tracking, per-file results, summary report |
 
 ---
 
