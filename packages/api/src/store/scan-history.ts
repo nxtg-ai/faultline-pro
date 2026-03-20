@@ -1,7 +1,13 @@
 import { randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
+
+export function hashText(text: string): string {
+  return createHash('sha256').update(text).digest('hex');
+}
 
 export interface ScanEntry {
   id: string;
+  textHash: string;      // sha256 of original input text (enables timeline grouping)
   textPreview: string;   // first 100 chars of input text, anonymized (no full content)
   provider: string;
   overallRisk: string;
@@ -9,6 +15,13 @@ export interface ScanEntry {
   latencyMs: number;
   timestamp: string;     // ISO string
   keyId: string;
+}
+
+export interface TimelineEntry extends ScanEntry {
+  scanNumber:    number;
+  claimDelta:    number;
+  riskChanged:   boolean;
+  previousRisk:  string | null;
 }
 
 const MAX_HISTORY = 1000;
@@ -57,6 +70,30 @@ class ScanHistoryStore {
     const page = results.slice(0, limit);
     const nextCursor = page.length === limit && results.length > limit ? page[page.length - 1].id : null;
     return { entries: page, nextCursor };
+  }
+
+  /**
+   * Return all scans for a given textHash, oldest first (for timeline rendering).
+   * Computes per-scan deltas: trustScore delta, new/resolved claims, risk changes.
+   */
+  getTimeline(textHash: string, limit = 50): TimelineEntry[] {
+    const scans = this.entries
+      .filter(e => e.textHash === textHash)
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+      .slice(0, limit);
+
+    return scans.map((entry, idx) => {
+      const prev = idx > 0 ? scans[idx - 1] : null;
+      const claimDelta = prev !== null ? entry.claimCount - prev.claimCount : 0;
+      const riskChanged = prev !== null && entry.overallRisk !== prev.overallRisk;
+      return {
+        ...entry,
+        scanNumber: idx + 1,
+        claimDelta,
+        riskChanged,
+        previousRisk: prev?.overallRisk ?? null,
+      };
+    });
   }
 
   get size(): number {

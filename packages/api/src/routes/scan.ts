@@ -12,7 +12,7 @@ import { getScanCache } from '../store/cache.js';
 import { getTemplateStore } from '../store/templates.js';
 import { getClaimIndex } from '../store/claims.js';
 import { getCostStore } from '../store/costs.js';
-import { getScanHistory } from '../store/scan-history.js';
+import { getScanHistory, hashText } from '../store/scan-history.js';
 import { recordScanTelemetry } from '../store/telemetry.js';
 import { notifyScanFailed } from '../store/notifications.js';
 
@@ -101,6 +101,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
           cb.recordSuccess(p);
           getCostStore().record(keyId, p, text);
           getScanHistory().record({
+            textHash: hashText(text),
             textPreview: text.slice(0, 100),
             provider: p,
             overallRisk: (result as { overallRisk: string }).overallRisk,
