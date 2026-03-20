@@ -57,7 +57,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
   // POST /scan/bulk — accepts ZIP archive, returns jobId immediately (202)
   fastify.post<{ Querystring: { provider?: string } }>(
     '/scan/bulk',
-    { preHandler: requireApiKey },
+    { preHandler: requireApiKey, schema: { tags: ['Jobs'], summary: 'Upload ZIP of documents for async bulk scan' } },
     async (request, reply) => {
       let zipBuffer: Buffer | null = null;
 
@@ -117,6 +117,8 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
     '/jobs/:id/progress',
     {
       schema: {
+        tags: ['Jobs'],
+        summary: 'Get progress and results of a bulk scan job',
         params: {
           type: 'object',
           properties: { id: { type: 'string' } },

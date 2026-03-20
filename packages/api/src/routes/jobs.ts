@@ -27,7 +27,7 @@ export async function jobRoutes(fastify: FastifyInstance): Promise<void> {
     '/jobs',
     {
       preHandler: requireApiKey,
-      schema: { body: POST_SCHEMA },
+      schema: { tags: ['Jobs'], summary: 'Create a scheduled scan job', body: POST_SCHEMA },
     },
     async (request, reply) => {
       const { text, provider, schedule, webhookUrl } = request.body;
@@ -36,7 +36,7 @@ export async function jobRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
-  fastify.get('/jobs', { preHandler: requireApiKey }, async (_request, reply) => {
+  fastify.get('/jobs', { preHandler: requireApiKey, schema: { tags: ['Jobs'], summary: 'List all scheduled scan jobs' } }, async (_request, reply) => {
     return reply.status(200).send(getJobStore().list());
   });
 
@@ -45,6 +45,8 @@ export async function jobRoutes(fastify: FastifyInstance): Promise<void> {
     {
       preHandler: requireApiKey,
       schema: {
+        tags: ['Jobs'],
+        summary: 'Delete a scheduled scan job',
         params: {
           type: 'object',
           properties: { id: { type: 'string' } },

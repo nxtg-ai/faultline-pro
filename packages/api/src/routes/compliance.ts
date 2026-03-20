@@ -93,7 +93,7 @@ interface CustomTemplateBody {
 
 export async function complianceRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /templates/compliance — list all compliance templates (no auth)
-  fastify.get('/templates/compliance', async (_request, reply) => {
+  fastify.get('/templates/compliance', { schema: { tags: ['Compliance'], summary: 'List industry compliance templates (HIPAA, SOX, FERPA, Gov)' } }, async (_request, reply) => {
     return reply.status(200).send(getComplianceTemplateStore().list());
   });
 
@@ -102,7 +102,7 @@ export async function complianceRoutes(fastify: FastifyInstance): Promise<void> 
     '/templates/compliance',
     {
       preHandler: requireAdmin,
-      schema: { body: CUSTOM_TEMPLATE_BODY_SCHEMA },
+      schema: { tags: ['Compliance'], summary: 'Upload a custom compliance template (admin)', body: CUSTOM_TEMPLATE_BODY_SCHEMA },
     },
     async (request, reply) => {
       const { name, industry, regulations, rules, riskThresholds } = request.body;
@@ -123,6 +123,8 @@ export async function complianceRoutes(fastify: FastifyInstance): Promise<void> 
     {
       preHandler: requireAdmin,
       schema: {
+        tags: ['Compliance'],
+        summary: 'Delete a custom compliance template (admin)',
         params: {
           type: 'object',
           required: ['id'],
@@ -153,6 +155,8 @@ export async function complianceRoutes(fastify: FastifyInstance): Promise<void> 
     {
       preHandler: [requireApiKey, rateLimitScan],
       schema: {
+        tags: ['Compliance'],
+        summary: 'Scan text and apply industry compliance template',
         params: TEMPLATE_PARAMS_SCHEMA,
         body: SCAN_BODY_SCHEMA,
       },

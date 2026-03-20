@@ -61,6 +61,8 @@ export async function graphRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan/:id/graph',
     {
       schema: {
+        tags: ['Claims'],
+        summary: 'Claim dependency graph in Mermaid or DOT format',
         params: {
           type: 'object',
           properties: { id: { type: 'string' } },

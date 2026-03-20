@@ -14,7 +14,7 @@ type Provider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
 export async function uploadRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/scan/upload',
-    { preHandler: [requireApiKey, rateLimitScan] },
+    { preHandler: [requireApiKey, rateLimitScan], schema: { tags: ['Scan'], summary: 'Upload PDF or image for OCR scan' } },
     async (request, reply) => {
       let buffer: Buffer | null = null;
       let mimetype = '';

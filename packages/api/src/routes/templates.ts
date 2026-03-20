@@ -30,7 +30,7 @@ export async function templateRoutes(fastify: FastifyInstance): Promise<void> {
     '/templates',
     {
       preHandler: requireApiKey,
-      schema: { body: CREATE_SCHEMA },
+      schema: { tags: ['Templates'], summary: 'Create a reusable scan configuration template', body: CREATE_SCHEMA },
     },
     async (request, reply) => {
       const { name, provider, rules, failOn, description } = request.body;
@@ -39,7 +39,7 @@ export async function templateRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
-  fastify.get('/templates', { preHandler: requireApiKey }, async (_request, reply) => {
+  fastify.get('/templates', { preHandler: requireApiKey, schema: { tags: ['Templates'], summary: 'List all saved scan templates' } }, async (_request, reply) => {
     return reply.status(200).send(getTemplateStore().list());
   });
 
@@ -48,6 +48,8 @@ export async function templateRoutes(fastify: FastifyInstance): Promise<void> {
     {
       preHandler: requireApiKey,
       schema: {
+        tags: ['Templates'],
+        summary: 'Delete a scan template by ID',
         params: {
           type: 'object',
           properties: { id: { type: 'string' } },

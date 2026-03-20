@@ -33,7 +33,7 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan/deep',
     {
       preHandler: [requireApiKey, rateLimitScan],
-      schema: { body: BODY_SCHEMA },
+      schema: { tags: ['Scan'], summary: 'Deep scan with URL evidence validation and scoring', body: BODY_SCHEMA },
     },
     async (request, reply) => {
       const { text, provider } = request.body;

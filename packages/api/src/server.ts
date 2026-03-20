@@ -83,6 +83,20 @@ export function buildServer() {
           apiKey: { type: 'apiKey', in: 'header', name: 'x-api-key' },
         },
       },
+      tags: [
+        { name: 'Scan', description: 'Submit text for claim extraction and verification' },
+        { name: 'Claims', description: 'Browse, search, and explain verified claims' },
+        { name: 'Compliance', description: 'EU AI Act, industry templates, regulatory calendar' },
+        { name: 'Jobs', description: 'Scheduled scans and bulk document processing' },
+        { name: 'Analytics', description: 'Usage metrics, costs, and dashboard' },
+        { name: 'Keys', description: 'API key and tenant management' },
+        { name: 'Webhooks', description: 'Event subscriptions and delivery' },
+        { name: 'Cache', description: 'Scan result cache management' },
+        { name: 'Monitoring', description: 'Health, metrics, and provider status' },
+        { name: 'Providers', description: 'Provider registry and health monitoring' },
+        { name: 'Templates', description: 'Reusable scan configuration templates' },
+        { name: 'Reports', description: 'Compliance report generation' },
+      ],
     },
   });
   fastify.register(swaggerUi, { routePrefix: '/docs', uiConfig: { docExpansion: 'list' } });

@@ -15,6 +15,8 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
     '/claims',
     {
       schema: {
+        tags: ['Claims'],
+        summary: 'Search claims by text, verdict, date, or source',
         querystring: {
           type: 'object',
           properties: {
@@ -50,7 +52,7 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
-  fastify.get('/claims/trending', async (_request, reply) => {
+  fastify.get('/claims/trending', { schema: { tags: ['Claims'], summary: 'Trending claims by frequency and emerging in last 24h' } }, async (_request, reply) => {
     const index = getClaimIndex();
 
     return reply.status(200).send({
@@ -77,6 +79,8 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
     '/claims/:id/attribution',
     {
       schema: {
+        tags: ['Claims'],
+        summary: 'Provenance chain and attribution confidence for a claim',
         params: {
           type: 'object',
           properties: { id: { type: 'string' } },
@@ -113,6 +117,8 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
     '/claims/:id/explain',
     {
       schema: {
+        tags: ['Claims'],
+        summary: 'Reasoning chain and improvement suggestions for a claim',
         params: {
           type: 'object',
           properties: { id: { type: 'string' } },

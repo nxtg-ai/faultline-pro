@@ -6,7 +6,7 @@ import { getKeyStore } from '../store/keys.js';
 import { getScanHistory } from '../store/scan-history.js';
 
 export async function dashboardRoutes(fastify: FastifyInstance): Promise<void> {
-  fastify.get('/dashboard', { preHandler: requireAdmin }, async (_request, reply) => {
+  fastify.get('/dashboard', { preHandler: requireAdmin, schema: { tags: ['Analytics'], summary: 'Live scan feed, provider health, usage counts (admin)' } }, async (_request, reply) => {
     const analytics = getAnalyticsStore().getDashboard();
     const providerStatus = getCircuitBreaker().getStatus();
     const activeKeys = getKeyStore().list().length;

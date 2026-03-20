@@ -54,7 +54,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan',
     {
       preHandler: [requireApiKey, rateLimitScan],
-      schema: { body: BODY_SCHEMA },
+      schema: { tags: ['Scan'], summary: 'Scan text for claim verification', body: BODY_SCHEMA },
     },
     async (request, reply) => {
       const { text, provider } = request.body;
@@ -139,6 +139,8 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
     {
       preHandler: [requireApiKey, rateLimitScan],
       schema: {
+        tags: ['Scan'],
+        summary: 'Scan text using a saved template',
         params: {
           type: 'object',
           properties: { id: { type: 'string' } },

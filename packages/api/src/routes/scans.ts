@@ -16,6 +16,8 @@ export async function scansRoutes(fastify: FastifyInstance): Promise<void> {
     '/scans/search',
     {
       schema: {
+        tags: ['Claims'],
+        summary: 'Full-text search across scan history with cursor pagination',
         querystring: {
           type: 'object',
           properties: {

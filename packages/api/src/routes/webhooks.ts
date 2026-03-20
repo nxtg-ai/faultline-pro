@@ -29,7 +29,7 @@ interface CreateWebhookBody {
 export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: CreateWebhookBody }>(
     '/webhooks',
-    { preHandler: requireAdmin, schema: { body: CREATE_BODY_SCHEMA } },
+    { preHandler: requireAdmin, schema: { tags: ['Webhooks'], summary: 'Register a new webhook endpoint and event subscription', body: CREATE_BODY_SCHEMA } },
     async (request, reply) => {
       const { url, events, secret } = request.body;
       const entry = getWebhookStore().create(url, events, secret);
@@ -37,13 +37,13 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
-  fastify.get('/webhooks', { preHandler: requireAdmin }, async (_request, reply) => {
+  fastify.get('/webhooks', { preHandler: requireAdmin, schema: { tags: ['Webhooks'], summary: 'List all registered webhook subscriptions' } }, async (_request, reply) => {
     return reply.status(200).send(getWebhookStore().list());
   });
 
   fastify.delete<{ Params: { id: string } }>(
     '/webhooks/:id',
-    { preHandler: requireAdmin },
+    { preHandler: requireAdmin, schema: { tags: ['Webhooks'], summary: 'Delete a webhook subscription by ID' } },
     async (request, reply) => {
       const deleted = getWebhookStore().delete(request.params.id);
       if (!deleted) {

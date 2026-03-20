@@ -84,7 +84,7 @@ const BODY_SCHEMA = {
 export async function compareRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: { before: ScanResultInput; after: ScanResultInput } }>(
     '/scan/compare',
-    { preHandler: [requireApiKey], schema: { body: BODY_SCHEMA } },
+    { preHandler: [requireApiKey], schema: { tags: ['Scan'], summary: 'Compare two pre-computed scan results', body: BODY_SCHEMA } },
     async (request, reply) => {
       const { before, after } = request.body;
       return reply.status(200).send(computeCompare(before, after));

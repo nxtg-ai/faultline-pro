@@ -15,6 +15,8 @@ export async function costsRoutes(fastify: FastifyInstance): Promise<void> {
     {
       preHandler: requireApiKey,
       schema: {
+        tags: ['Analytics'],
+        summary: 'Per-scan cost estimates aggregated by provider and date',
         querystring: {
           type: 'object',
           properties: {

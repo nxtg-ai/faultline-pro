@@ -4,7 +4,7 @@ Forensic verification for AI-generated text. Faultline decomposes output into at
 
 [![CI](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@nxtg/faultline.svg)](https://www.npmjs.com/package/@nxtg/faultline)
-[![Tests](https://img.shields.io/badge/tests-2747%20passing-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-2757%20passing-brightgreen)](tests/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 
@@ -37,6 +37,8 @@ Forensic verification for AI-generated text. Faultline decomposes output into at
 | Scan diff | `POST /scan/diff` — scan two texts, inline diff (added/removed/changed/unchanged) |
 | Regulatory calendar | `GET /compliance/deadlines` — EU AI Act, GDPR, NIST deadlines with days-until |
 | Compliance scan-check | `POST /compliance/scan-check` — match claim text against approaching deadlines |
+| i18n | `Accept-Language: es/fr/en` — localized error messages and report labels (EN/ES/FR) |
+| Property-based tests | `fast-check` oracle coverage: confidence bounds, dedup invariants, cost aggregation, sort stability |
 
 ---
 
@@ -90,6 +92,7 @@ Switch providers with `--provider <name>`. No code changes required.
 - **Monitoring** — `GET /health/deep` (subsystem status + provider config flags), `GET /metrics` (Prometheus text), `GET /status` (HTML)
 - **Swagger UI** — `GET /docs` (interactive OpenAPI 3.0), `GET /docs/json`, `GET /docs/yaml`
 - **Claim search** — `GET /claims?text=&verdict=&from=&to=&source=` full-text claim index search
+- **i18n** — send `Accept-Language: es` or `Accept-Language: fr` for localized error messages; defaults to English
 
 ---
 

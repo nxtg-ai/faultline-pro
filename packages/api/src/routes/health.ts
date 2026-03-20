@@ -6,7 +6,7 @@ import { getUsageMeter } from '../store/usage.js';
 import { getAnalyticsStore } from '../store/analytics.js';
 
 export async function healthRoutes(fastify: FastifyInstance): Promise<void> {
-  fastify.get('/health', async (_request, _reply) => {
+  fastify.get('/health', { schema: { tags: ['Monitoring'], summary: 'Basic health check — subsystem and provider status' } }, async (_request, _reply) => {
     const keyCount = getKeyStore().size;
     const providers = {
       gemini: Boolean(process.env.GEMINI_API_KEY),
@@ -27,7 +27,7 @@ export async function healthRoutes(fastify: FastifyInstance): Promise<void> {
     };
   });
 
-  fastify.get('/health/deep', async (_request, _reply) => {
+  fastify.get('/health/deep', { schema: { tags: ['Monitoring'], summary: 'Deep health check — all subsystems with entry counts and analytics' } }, async (_request, _reply) => {
     const dashboard = getAnalyticsStore().getDashboard();
     const subsystems = {
       keyStore: { status: 'ok' as const, activeKeys: getKeyStore().size },
@@ -54,7 +54,7 @@ export async function healthRoutes(fastify: FastifyInstance): Promise<void> {
     };
   });
 
-  fastify.get('/status', async (_request, reply) => {
+  fastify.get('/status', { schema: { tags: ['Monitoring'], summary: 'HTML status page — human-readable subsystem status' } }, async (_request, reply) => {
     const dashboard = getAnalyticsStore().getDashboard();
     const subsystems = {
       keyStore: { status: 'ok' as const, activeKeys: getKeyStore().size },

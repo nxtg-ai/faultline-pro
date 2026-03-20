@@ -42,7 +42,7 @@ export async function complianceCalendarRoutes(fastify: FastifyInstance): Promis
   // GET /compliance/deadlines — list upcoming regulatory deadlines
   fastify.get<{ Querystring: DeadlinesQuery }>(
     '/compliance/deadlines',
-    { schema: { querystring: DAYS_QUERY_SCHEMA } },
+    { schema: { tags: ['Compliance'], summary: 'List upcoming regulatory deadlines with days-until countdown', querystring: DAYS_QUERY_SCHEMA } },
     async (request, reply) => {
       const calendar = getComplianceCalendar();
       const daysParam = request.query.days;
@@ -69,7 +69,7 @@ export async function complianceCalendarRoutes(fastify: FastifyInstance): Promis
     '/compliance/scan-check',
     {
       preHandler: requireApiKey,
-      schema: { body: SCAN_CHECK_BODY_SCHEMA },
+      schema: { tags: ['Compliance'], summary: 'Check claim text against approaching regulatory deadlines', body: SCAN_CHECK_BODY_SCHEMA },
     },
     async (request, reply) => {
       const calendar = getComplianceCalendar();
@@ -94,7 +94,7 @@ export async function complianceCalendarRoutes(fastify: FastifyInstance): Promis
   // POST /compliance/deadlines/notify — fire webhooks for approaching deadlines
   fastify.post(
     '/compliance/deadlines/notify',
-    { preHandler: requireAdmin },
+    { preHandler: requireAdmin, schema: { tags: ['Compliance'], summary: 'Fire webhook alerts for deadlines within 30/14/7 days (admin)' } },
     async (_request, reply) => {
       const calendar = getComplianceCalendar();
       const approaching = calendar.getApproaching([30, 14, 7]);

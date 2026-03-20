@@ -4,7 +4,7 @@ import { getKeyStore } from '../store/keys.js';
 import { getAuditLogger } from '../store/audit.js';
 
 export async function metricsRoutes(fastify: FastifyInstance): Promise<void> {
-  fastify.get('/metrics', async (_request, reply) => {
+  fastify.get('/metrics', { schema: { tags: ['Monitoring'], summary: 'Prometheus-format metrics: scan counts, active keys, risk distribution' } }, async (_request, reply) => {
     const dashboard = getAnalyticsStore().getDashboard();
     const activeKeys = getKeyStore().size;
     const auditEntries = getAuditLogger().getEntries().length;

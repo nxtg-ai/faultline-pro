@@ -69,7 +69,7 @@ export async function batchRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan/batch',
     {
       preHandler: [requireApiKey],
-      schema: { body: BODY_SCHEMA },
+      schema: { tags: ['Scan'], summary: 'Batch scan multiple texts (1–10)', body: BODY_SCHEMA },
     },
     async (request, reply) => {
       const { texts, provider } = request.body;

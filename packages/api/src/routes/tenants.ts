@@ -38,7 +38,7 @@ export async function tenantsRoutes(fastify: FastifyInstance): Promise<void> {
   // POST /tenants — create a tenant
   fastify.post<{ Body: CreateTenantBody }>(
     '/tenants',
-    { preHandler: requireAdmin, schema: { body: CREATE_BODY_SCHEMA } },
+    { preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Create a new tenant', body: CREATE_BODY_SCHEMA } },
     async (request, reply) => {
       const { name, keyIds } = request.body;
       const store = getTenantStore();
@@ -48,7 +48,7 @@ export async function tenantsRoutes(fastify: FastifyInstance): Promise<void> {
   );
 
   // GET /tenants — list all tenants
-  fastify.get('/tenants', { preHandler: requireAdmin }, async (_request, reply) => {
+  fastify.get('/tenants', { preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'List all tenants' } }, async (_request, reply) => {
     const store = getTenantStore();
     return reply.status(200).send(store.list());
   });
@@ -56,7 +56,7 @@ export async function tenantsRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /tenants/:id — get tenant by id
   fastify.get<{ Params: { id: string } }>(
     '/tenants/:id',
-    { preHandler: requireAdmin },
+    { preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Get a tenant by ID' } },
     async (request, reply) => {
       const store = getTenantStore();
       const tenant = store.get(request.params.id);
@@ -70,7 +70,7 @@ export async function tenantsRoutes(fastify: FastifyInstance): Promise<void> {
   // DELETE /tenants/:id — delete tenant
   fastify.delete<{ Params: { id: string } }>(
     '/tenants/:id',
-    { preHandler: requireAdmin },
+    { preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Delete a tenant by ID' } },
     async (request, reply) => {
       const store = getTenantStore();
       const deleted = store.delete(request.params.id);
@@ -84,7 +84,7 @@ export async function tenantsRoutes(fastify: FastifyInstance): Promise<void> {
   // POST /tenants/:id/keys — add a key to tenant
   fastify.post<{ Params: { id: string }; Body: AddKeyBody }>(
     '/tenants/:id/keys',
-    { preHandler: requireAdmin, schema: { body: ADD_KEY_BODY_SCHEMA } },
+    { preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Add an API key to a tenant', body: ADD_KEY_BODY_SCHEMA } },
     async (request, reply) => {
       const store = getTenantStore();
       const added = store.addKey(request.params.id, request.body.keyId);
@@ -98,7 +98,7 @@ export async function tenantsRoutes(fastify: FastifyInstance): Promise<void> {
   // DELETE /tenants/:id/keys/:keyId — remove a key from tenant
   fastify.delete<{ Params: { id: string; keyId: string } }>(
     '/tenants/:id/keys/:keyId',
-    { preHandler: requireAdmin },
+    { preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Remove an API key from a tenant' } },
     async (request, reply) => {
       const store = getTenantStore();
       const tenant = store.get(request.params.id);
@@ -113,7 +113,7 @@ export async function tenantsRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /tenants/:id/usage — aggregate usage across all tenant keyIds
   fastify.get<{ Params: { id: string } }>(
     '/tenants/:id/usage',
-    { preHandler: requireAdmin },
+    { preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Aggregate usage across all keys in a tenant' } },
     async (request, reply) => {
       const store = getTenantStore();
       const tenant = store.get(request.params.id);

@@ -26,7 +26,7 @@ interface CreateKeyBody {
 export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: CreateKeyBody }>(
     '/keys',
-    { preHandler: requireAdmin, schema: { body: CREATE_BODY_SCHEMA } },
+    { preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Create a new API key', body: CREATE_BODY_SCHEMA } },
     async (request, reply) => {
       const { name, permissions } = request.body;
       const store = getKeyStore();
@@ -35,7 +35,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
-  fastify.get('/keys', { preHandler: requireAdmin }, async (_request, reply) => {
+  fastify.get('/keys', { preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'List all API keys (secrets redacted)' } }, async (_request, reply) => {
     const store = getKeyStore();
     const keys = store.list().map(({ key: _key, ...rest }) => rest);
     return reply.status(200).send(keys);
@@ -43,7 +43,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
 
   fastify.delete<{ Params: { id: string } }>(
     '/keys/:id',
-    { preHandler: requireAdmin },
+    { preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Delete an API key by ID' } },
     async (request, reply) => {
       const store = getKeyStore();
       const deleted = store.delete(request.params.id);
