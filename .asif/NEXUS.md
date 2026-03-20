@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-20 (Status page + changelog page shipped. 2,881 tests. 63 initiatives SHIPPED. Tags: v0.1.0/v0.2.0/v0.3.0 created.)
+> **Last Updated**: 2026-03-19 (Scan queue + timeline + custom rules + PDF report. 972 api tests / 3,107 CI total. 65 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -71,6 +71,10 @@
 | N-59 | CLI Plugin System — FaultlinePlugin interface, ESM loader, faultline plugin install/remove/list, example plugin | DEVELOPER-X | SHIPPED | P1 | 2026-03-20 |
 | N-60 | Docker Image — multi-stage Dockerfile, HEALTHCHECK, docker-compose zero-config mock, .dockerignore | DISTRIBUTION | SHIPPED | P2 | 2026-03-20 |
 | N-61 | Benchmark Suite — provider latency (sub-ms framework overhead), cache HIT/MISS, concurrent throughput (5,700–9,100 RPS) | PERFORMANCE | SHIPPED | P2 | 2026-03-20 |
+| N-62 | Async Scan Queue — priority queue (admin/pro/free), concurrency control, GET /queue/status, HTML dashboard | AUTOMATION | SHIPPED | P1 | 2026-03-19 |
+| N-63 | Scan Timeline — trust score trend, claim delta, risk changes, GET /scans/timeline, HTML view | FORENSIC | SHIPPED | P1 | 2026-03-19 |
+| N-64 | Custom Rule Builder — YAML/JSON rules, 5 condition types, CRUD + test + apply endpoints | FORENSIC | SHIPPED | P1 | 2026-03-19 |
+| N-65 | PDF Report Generator — PDFKit 5-section report (cover/summary/heatmap/analysis/recs), POST /scan/report/pdf | REVENUE | SHIPPED | P2 | 2026-03-19 |
 
 ---
 
@@ -738,6 +742,67 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-03-19 (scan queue + timeline + custom rules + PDF report) — HEAD `311d794`
+
+### 1. What did we ship since last check-in?
+
+**4 commits: scan queue (D-156) + scan timeline (D-157) + custom rule builder (D-158) + PDF report generator (D-159)**
+
+| Commit | Deliverable | Tests |
+|--------|-------------|-------|
+| D-156 `feat: scan queue` | `store/scan-queue.ts` — `ScanQueue` with priority ordering (admin=0, pro=1, free=2), FIFO within tier, `setInterval` processor, `processingCount` concurrency limiter (default 3), `dequeueNext()`, `processItem()`, `pruneCompleted()` (1K terminal cap), `getPosition()` (1-based); `routes/queue.ts` — `POST /queue/scans` (202), `GET /queue/scans/:id`, `GET /queue/scans`, `DELETE /queue/scans/:id` (cancel/409), `GET /queue/status` (public), `GET /queue` (HTML with stat cards, auto-refresh). | +37 (921→958) |
+| D-157 `feat: scan timeline` | `store/scan-history.ts` — `ScanEntry` gains `textHash` field (sha256), `hashText()` exported, `getTimeline()` returns `TimelineEntry[]` (scanNumber, claimDelta, riskChanged, previousRisk) oldest-first; `routes/scans.ts` — `GET /scans/timeline?text_hash=` + `?text=`, `GET /scans/timeline/view` (HTML dashboard with chronological timeline, risk change markers, claim delta indicators). | +22 (958→980) |
+| D-158 `feat: custom rule builder` | `store/rules.ts` — `CustomRule` + 5 `RuleCondition` types (contains_keyword, missing_source, missing_date_citation, claim_type, regex_match), `validateRuleInput()`, `evaluateRule()`, `RuleStore.applyAll()` returning violations + summary; `routes/rules.ts` — `POST /rules`, `GET /rules`, `GET /rules/:id`, `PATCH /rules/:id`, `DELETE /rules/:id`, `POST /rules/:id/test`, `POST /rules/apply`, `GET /rules/examples` (public, 5 reference definitions). | +35 (980→1015) |
+| D-159 `feat: PDF report generator` | `store/pdf-report.ts` — `generatePdfReport()` building 5-section PDF via PDFKit: (1) cover page with risk badge + metadata, (2) executive summary with stat cards + top concerns, (3) risk heatmap (claim grid, up to 25, colour-coded by status), (4) claim-by-claim analysis with status bar + explanation + sources, (5) recommendations tailored to risk level; `routes/pdf-report.ts` — `POST /scan/report/pdf` (inline body or `{scanId}` lookup), `GET /scan/report/pdf/:id` — both return `Content-Type: application/pdf` with filename attachment. | +16 (1015→1031) |
+
+**Running total**: 3,107 tests (CI gate) · 50 test files · 4 new features · 973 api package tests.
+
+---
+
+### 2. What surprised us?
+
+- **Timestamp collisions in timeline tests.** `getTimeline()` sorts by `timestamp ASC`, but two entries created in rapid succession (same millisecond) produce identical timestamps, making sort order nondeterministic. Tests initially failed with reversed claimDelta signs. The fix: an incrementing counter (`_ts += 1000`) in the test fixture factory ensures strict chronological ordering. This is a reminder that any store sorting by `new Date().toISOString()` is vulnerable to test flakiness when records are created faster than 1ms. Consider a monotonic counter or sequence number in the `ScanEntry` type for production.
+
+- **`POST /rules/apply` vs `POST /rules/:id/test` distinction.** The API needed both: test a specific rule against ad-hoc claims (debug), and apply all enabled rules against claims (pipeline). These look similar but have different callers: rule authors use `/test`, scan pipelines use `/apply`. The naming convention makes this clear but it wasn't obvious upfront.
+
+- **PDFKit `bufferedPageRange()` for footer injection.** Adding a footer to all pages after generation requires calling `doc.bufferedPageRange()` to get the page range, then `doc.switchToPage()` for each. If `bufferPages: true` is not set in the constructor, `bufferedPageRange()` returns only the current page. PDFKit defaults to `bufferPages: false` and auto-flushes pages — so the footer loop only works because we process all pages before calling `doc.end()`. The correct fix for multi-page footers is `new PDFDocument({ bufferPages: true })`, but the current approach works because we add all pages before the footer loop. Worth noting: the current implementation may not produce footers on all pages for very long reports that trigger internal PDFKit page flushing. Not a current issue with test data.
+
+- **`yaml` package availability.** `routes/rules.ts` uses `import('yaml')` for optional YAML body parsing. The package is in the workspace root but not listed in `packages/api/package.json` — it's an implicit transitive dependency. This works because Node.js resolves up the `node_modules` tree, but it's fragile: if the workspace root's `yaml` is removed, the routes/rules.ts YAML path silently returns 400. Should be listed explicitly.
+
+---
+
+### 3. Cross-project signals
+
+- **Priority queue pattern** (`pendingIds: string[]` sorted by `priority ASC, createdAt ASC` on dequeue) is directly portable to any project needing tiered job processing. The concurrency-limiter pattern (`processingCount++` before `await`, `--` in `finally`) is correct and avoids double-dequeuing. dx3 will need something like this for multi-tenant job queues. The store is ~100 lines.
+
+- **`textHash` for document identity** (sha256 of full input, stored with every scan entry) enables arbitrary timeline and trend queries with zero schema changes to existing entries. Any project storing versioned documents should store a content hash alongside the document — it's the cheapest form of deduplication and identity resolution.
+
+- **`RuleCondition` enum-based dispatch** is a clean alternative to a regex-only rule engine. The 5 condition types cover the most common verification patterns without requiring users to write regex for everything. The `missing_date_citation` condition (statistical pattern detection + date pattern detection) is particularly useful for editorial fact-checking workflows.
+
+- **PDFKit for server-side PDF generation** is a viable zero-dependency approach (PDFKit is already in package.json). The `generatePdfReport()` pattern (Promise-wrapped, collects chunks, resolves with Buffer) is the correct Node.js streaming idiom. The 5-section structure (cover + summary + heatmap + analysis + recommendations) is reusable for any report that needs a professional multi-page layout without a headless browser.
+
+---
+
+### 4. What would we prioritize next?
+
+1. **`textHash` monotonic sequence fix** — Add a sequence counter to `ScanEntry` to prevent sort instability when scans are created faster than 1ms. One field addition, one migration of existing data.
+2. **`vitest --coverage` baseline** — Sixth cycle noting this is outstanding. One config line.
+3. **List `yaml` explicitly in `packages/api/package.json`** — Currently implicit transitive. Should be explicit to avoid silent failure if workspace deps change.
+4. **`bufferPages: true` in PDF generator** — Required for correct footer rendering on reports with >20 pages. Currently relies on all pages fitting in memory before `end()`, which breaks for very large reports.
+5. **Tenant data isolation** — Still the largest production gap. Global singletons for all stores.
+
+---
+
+### 5. Blockers and questions for the CoS?
+
+- **`NPM_TOKEN`**: Still blocked. v0.2.0 and v0.3.0 tagged and ready.
+- **Fly.io credentials**: Still blocked.
+- **Coverage gate threshold**: Sixth cycle asking. 70%? 80%?
+- **`yaml` dependency**: Should it be added explicitly to `packages/api/package.json`? It's used in `routes/rules.ts` for optional YAML body parsing. Adding it is a one-liner.
+- **PDF `bufferPages`**: Should `generatePdfReport()` switch to `bufferPages: true` now (safer, slightly more memory) or leave as-is until we have a use case with >20-page reports?
+
+---
 
 > **Reflection cycle**: 2026-03-20 (rate limits + notifications + webhook tool + key rotation) — HEAD `c4c02fe`
 
