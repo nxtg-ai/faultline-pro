@@ -14,6 +14,8 @@ import { parseLang } from '@nxtg/faultline/lib/i18n.js';
 import type { Lang } from '@nxtg/faultline/lib/i18n.js';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
+import swagger from '@fastify/swagger';
+import swaggerUi from '@fastify/swagger-ui';
 import { healthRoutes } from './routes/health.js';
 import { scanRoutes } from './routes/scan.js';
 import { reportRoutes } from './routes/report.js';
@@ -35,6 +37,7 @@ import { claimsRoutes } from './routes/claims.js';
 import { euReportRoutes } from './routes/eu-report.js';
 import { tenantsRoutes } from './routes/tenants.js';
 import { costsRoutes } from './routes/costs.js';
+import { scansRoutes } from './routes/scans.js';
 import { getJobScheduler, resetJobScheduler } from './store/jobs.js';
 import { getAuditLogger, hashInput } from './store/audit.js';
 import { getUsageMeter } from './store/usage.js';
@@ -62,6 +65,23 @@ export function buildServer() {
   });
 
   fastify.register(multipart, { limits: { fileSize: MAX_FILE_SIZE }, throwFileSizeLimit: false });
+
+  fastify.register(swagger, {
+    openapi: {
+      info: {
+        title: 'Faultline API',
+        description: 'FM-agnostic AI claim verification platform',
+        version: '0.2.0',
+      },
+      servers: [{ url: 'https://faultline-api.fly.dev' }, { url: 'http://localhost:3000' }],
+      components: {
+        securitySchemes: {
+          apiKey: { type: 'apiKey', in: 'header', name: 'x-api-key' },
+        },
+      },
+    },
+  });
+  fastify.register(swaggerUi, { routePrefix: '/docs', uiConfig: { docExpansion: 'list' } });
   fastify.register(healthRoutes);
   fastify.register(scanRoutes);
   fastify.register(reportRoutes);
@@ -85,6 +105,7 @@ export function buildServer() {
   fastify.register(euReportRoutes);
   fastify.register(tenantsRoutes);
   fastify.register(costsRoutes);
+  fastify.register(scansRoutes);
 
   fastify.register(mercurius, {
     schema: gqlSchema,

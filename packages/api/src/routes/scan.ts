@@ -12,6 +12,7 @@ import { getScanCache } from '../store/cache.js';
 import { getTemplateStore } from '../store/templates.js';
 import { getClaimIndex } from '../store/claims.js';
 import { getCostStore } from '../store/costs.js';
+import { getScanHistory } from '../store/scan-history.js';
 
 const BODY_SCHEMA = {
   type: 'object',
@@ -81,12 +82,22 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
 
       let lastError: string = '';
       const attempted: Provider[] = [];
+      const startTime = Date.now();
 
       for (const p of chain) {
         try {
           const result = await scan(text, p);
           cb.recordSuccess(p);
           getCostStore().record(keyId, p, text);
+          getScanHistory().record({
+            textPreview: text.slice(0, 100),
+            provider: p,
+            overallRisk: (result as { overallRisk: string }).overallRisk,
+            claimCount: Array.isArray((result as { claims?: unknown[] }).claims) ? (result as { claims: unknown[] }).claims.length : 0,
+            latencyMs: Date.now() - startTime,
+            timestamp: new Date().toISOString(),
+            keyId,
+          });
 
           if (attempted.length > 0) {
             // Failover occurred — emit audit entry
