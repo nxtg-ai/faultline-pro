@@ -1,0 +1,1611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Faultline API Reference</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2e3148;
+    --text: #e2e4f0;
+    --muted: #7b7fa8;
+    --accent: #6c8efb;
+    --accent2: #a78bfa;
+    --green: #4ade80;
+    --red: #f87171;
+    --orange: #fb923c;
+    --yellow: #fbbf24;
+    --cyan: #22d3ee;
+    --get: #4ade80;
+    --post: #6c8efb;
+    --del: #f87171;
+    --radius: 8px;
+    --mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    display: flex;
+    min-height: 100vh;
+  }
+
+  /* ── Sidebar ─────────────────────────────────────── */
+  nav {
+    width: 260px;
+    min-width: 260px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 20px 0;
+    flex-shrink: 0;
+  }
+  .nav-logo {
+    padding: 0 20px 20px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+  }
+  .nav-logo h1 { font-size: 18px; color: var(--text); font-weight: 700; }
+  .nav-logo span { color: var(--accent); }
+  .nav-version { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .nav-section { padding: 0 20px; margin-bottom: 8px; }
+  .nav-section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin-bottom: 6px;
+    margin-top: 16px;
+  }
+  .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 6px;
+    text-decoration: none;
+    color: var(--muted);
+    font-size: 13px;
+    transition: all 0.15s;
+    margin-bottom: 1px;
+  }
+  .nav-link:hover { background: var(--surface2); color: var(--text); }
+  .nav-link .badge {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 3px;
+    min-width: 32px;
+    text-align: center;
+  }
+  .badge-get { background: rgba(74,222,128,0.15); color: var(--get); }
+  .badge-post { background: rgba(108,142,251,0.15); color: var(--post); }
+  .badge-delete { background: rgba(248,113,113,0.15); color: var(--del); }
+
+  /* ── Main content ─────────────────────────────────── */
+  main { flex: 1; max-width: 900px; padding: 40px 48px; overflow-x: hidden; }
+
+  h2 {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    margin-top: 48px;
+    padding-top: 16px;
+    color: var(--text);
+  }
+  h2:first-child { margin-top: 0; }
+  h3 { font-size: 15px; font-weight: 600; margin: 24px 0 10px; color: var(--text); }
+  p { color: var(--muted); margin-bottom: 12px; line-height: 1.7; }
+
+  /* ── Endpoint cards ───────────────────────────────── */
+  .endpoint {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  .endpoint-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s;
+  }
+  .endpoint-header:hover { background: var(--surface2); }
+  .method {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 800;
+    padding: 3px 8px;
+    border-radius: 4px;
+    min-width: 48px;
+    text-align: center;
+  }
+  .method-get { background: rgba(74,222,128,0.12); color: var(--get); }
+  .method-post { background: rgba(108,142,251,0.12); color: var(--post); }
+  .method-delete { background: rgba(248,113,113,0.12); color: var(--del); }
+  .endpoint-path {
+    font-family: var(--mono);
+    font-size: 14px;
+    color: var(--text);
+    flex: 1;
+  }
+  .endpoint-summary { font-size: 13px; color: var(--muted); }
+  .auth-badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-weight: 600;
+  }
+  .auth-required { background: rgba(251,146,60,0.12); color: var(--orange); }
+  .auth-admin { background: rgba(248,113,113,0.12); color: var(--red); }
+  .auth-open { background: rgba(74,222,128,0.1); color: var(--green); }
+  .chevron { color: var(--muted); font-size: 12px; transition: transform 0.2s; }
+  .chevron.open { transform: rotate(90deg); }
+
+  .endpoint-body {
+    display: none;
+    border-top: 1px solid var(--border);
+    padding: 18px 20px;
+  }
+  .endpoint-body.open { display: block; }
+
+  /* ── Code blocks ──────────────────────────────────── */
+  .code-block {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.6;
+    overflow-x: auto;
+    margin: 8px 0 12px;
+    white-space: pre;
+    color: #c9d1d9;
+  }
+  .code-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    margin-bottom: 4px;
+    margin-top: 16px;
+  }
+  .code-label:first-child { margin-top: 0; }
+
+  /* Syntax coloring */
+  .kw { color: #ff7b72; }
+  .str { color: #a5d6ff; }
+  .num { color: #79c0ff; }
+  .prop { color: #d2a8ff; }
+  .cm { color: #8b949e; }
+  .url { color: #22d3ee; }
+  .method-kw { color: #ffa657; }
+
+  /* ── Tables ───────────────────────────────────────── */
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+  th {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    background: var(--surface2);
+  }
+  td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+  .param-name { font-family: var(--mono); font-size: 12px; color: var(--accent); }
+  .param-type { font-family: var(--mono); font-size: 11px; color: var(--cyan); }
+  .param-req { color: var(--red); font-size: 11px; font-weight: 700; }
+  .param-opt { color: var(--muted); font-size: 11px; }
+
+  /* ── Info boxes ───────────────────────────────────── */
+  .info-box {
+    border-left: 3px solid var(--accent);
+    background: rgba(108,142,251,0.06);
+    padding: 12px 16px;
+    border-radius: 0 6px 6px 0;
+    margin: 12px 0;
+    font-size: 13px;
+    color: var(--text);
+  }
+  .warn-box {
+    border-left: 3px solid var(--orange);
+    background: rgba(251,146,60,0.06);
+    padding: 12px 16px;
+    border-radius: 0 6px 6px 0;
+    margin: 12px 0;
+    font-size: 13px;
+    color: var(--text);
+  }
+
+  /* ── Tag sections ─────────────────────────────────── */
+  .tag-section { scroll-margin-top: 24px; }
+  .tag-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    margin-top: 48px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tag-title h2 { margin: 0; font-size: 20px; }
+  .tag-count {
+    background: var(--surface2);
+    color: var(--muted);
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 12px;
+  }
+
+  /* ── Header section ───────────────────────────────── */
+  .page-header {
+    margin-bottom: 40px;
+    padding-bottom: 32px;
+    border-bottom: 1px solid var(--border);
+  }
+  .page-title { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .page-title span { color: var(--accent); }
+  .page-subtitle { color: var(--muted); font-size: 15px; max-width: 600px; }
+  .base-url-box {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 14px;
+    margin-top: 16px;
+    font-family: var(--mono);
+    font-size: 13px;
+  }
+  .base-url-label { color: var(--muted); font-size: 11px; }
+  .base-url-value { color: var(--cyan); }
+
+  /* ── Pills ────────────────────────────────────────── */
+  .pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    margin: 2px;
+  }
+  .pill-blue { background: rgba(108,142,251,0.15); color: var(--accent); }
+  .pill-green { background: rgba(74,222,128,0.12); color: var(--green); }
+  .pill-red { background: rgba(248,113,113,0.12); color: var(--red); }
+  .pill-orange { background: rgba(251,146,60,0.12); color: var(--orange); }
+  .pill-purple { background: rgba(167,139,250,0.12); color: var(--accent2); }
+
+  /* ── Scrollbar ────────────────────────────────────── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════ SIDEBAR ═══════════════════════════════════ -->
+<nav>
+  <div class="nav-logo">
+    <h1>Faultline <span>API</span></h1>
+    <div class="nav-version">v0.2.0 · 48 endpoints</div>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-section-title">Getting Started</div>
+    <a href="#auth" class="nav-link">Authentication</a>
+    <a href="#ratelimit" class="nav-link">Rate Limiting</a>
+    <a href="#errors" class="nav-link">Error Codes</a>
+    <a href="#providers" class="nav-link">Providers</a>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-section-title">Scan</div>
+    <a href="#scan" class="nav-link"><span class="badge badge-post">POST</span> /scan</a>
+    <a href="#scan-batch" class="nav-link"><span class="badge badge-post">POST</span> /scan/batch</a>
+    <a href="#scan-upload" class="nav-link"><span class="badge badge-post">POST</span> /scan/upload</a>
+    <a href="#scan-deep" class="nav-link"><span class="badge badge-post">POST</span> /scan/deep</a>
+    <a href="#scan-diff" class="nav-link"><span class="badge badge-post">POST</span> /scan/diff</a>
+    <a href="#scan-compare" class="nav-link"><span class="badge badge-post">POST</span> /scan/compare</a>
+    <a href="#scan-template" class="nav-link"><span class="badge badge-post">POST</span> /scan/template/:id</a>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-section-title">Claims</div>
+    <a href="#claims-search" class="nav-link"><span class="badge badge-get">GET</span> /claims</a>
+    <a href="#claims-trending" class="nav-link"><span class="badge badge-get">GET</span> /claims/trending</a>
+    <a href="#claims-explain" class="nav-link"><span class="badge badge-get">GET</span> /claims/:id/explain</a>
+    <a href="#claims-attribution" class="nav-link"><span class="badge badge-get">GET</span> /claims/:id/attribution</a>
+    <a href="#claims-graph" class="nav-link"><span class="badge badge-get">GET</span> /scan/:id/graph</a>
+    <a href="#scans-search" class="nav-link"><span class="badge badge-get">GET</span> /scans/search</a>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-section-title">Compliance</div>
+    <a href="#compliance-deadlines" class="nav-link"><span class="badge badge-get">GET</span> /compliance/deadlines</a>
+    <a href="#compliance-scan-check" class="nav-link"><span class="badge badge-post">POST</span> /compliance/scan-check</a>
+    <a href="#scan-compliance" class="nav-link"><span class="badge badge-post">POST</span> /scan/compliance/:t</a>
+    <a href="#scan-eu-report" class="nav-link"><span class="badge badge-post">POST</span> /scan/eu-report</a>
+    <a href="#templates-compliance" class="nav-link"><span class="badge badge-get">GET</span> /templates/compliance</a>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-section-title">Jobs &amp; Bulk</div>
+    <a href="#jobs" class="nav-link"><span class="badge badge-post">POST</span> /jobs</a>
+    <a href="#jobs-list" class="nav-link"><span class="badge badge-get">GET</span> /jobs</a>
+    <a href="#scan-bulk" class="nav-link"><span class="badge badge-post">POST</span> /scan/bulk</a>
+    <a href="#job-progress" class="nav-link"><span class="badge badge-get">GET</span> /jobs/:id/progress</a>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-section-title">Templates</div>
+    <a href="#templates" class="nav-link"><span class="badge badge-get">GET</span> /templates</a>
+    <a href="#templates-create" class="nav-link"><span class="badge badge-post">POST</span> /templates</a>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-section-title">Analytics</div>
+    <a href="#dashboard" class="nav-link"><span class="badge badge-get">GET</span> /dashboard</a>
+    <a href="#usage" class="nav-link"><span class="badge badge-get">GET</span> /usage</a>
+    <a href="#costs" class="nav-link"><span class="badge badge-get">GET</span> /costs</a>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-section-title">Keys &amp; Tenants</div>
+    <a href="#keys" class="nav-link"><span class="badge badge-post">POST</span> /keys</a>
+    <a href="#keys-list" class="nav-link"><span class="badge badge-get">GET</span> /keys</a>
+    <a href="#tenants" class="nav-link"><span class="badge badge-post">POST</span> /tenants</a>
+    <a href="#tenants-list" class="nav-link"><span class="badge badge-get">GET</span> /tenants</a>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-section-title">Webhooks</div>
+    <a href="#webhooks-create" class="nav-link"><span class="badge badge-post">POST</span> /webhooks</a>
+    <a href="#webhooks-list" class="nav-link"><span class="badge badge-get">GET</span> /webhooks</a>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-section-title">Monitoring</div>
+    <a href="#health" class="nav-link"><span class="badge badge-get">GET</span> /health</a>
+    <a href="#health-deep" class="nav-link"><span class="badge badge-get">GET</span> /health/deep</a>
+    <a href="#metrics" class="nav-link"><span class="badge badge-get">GET</span> /metrics</a>
+    <a href="#cache-stats" class="nav-link"><span class="badge badge-get">GET</span> /cache/stats</a>
+    <a href="#providers-health" class="nav-link"><span class="badge badge-get">GET</span> /providers/health</a>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-section-title">GraphQL</div>
+    <a href="#graphql" class="nav-link"><span class="badge badge-post">POST</span> /graphql</a>
+  </div>
+</nav>
+
+<!-- ═══════════════════════════════════ MAIN ════════════════════════════════════ -->
+<main>
+
+  <!-- HEADER -->
+  <div class="page-header">
+    <div class="page-title">Faultline <span>API Reference</span></div>
+    <div class="page-subtitle">Forensic AI claim verification — 48 endpoints · REST + GraphQL · OpenAPI 3.0</div>
+    <div class="base-url-box">
+      <span class="base-url-label">BASE URL</span>
+      <span class="base-url-value">http://localhost:3000</span>
+    </div>
+    &nbsp;&nbsp;
+    <div class="base-url-box">
+      <span class="base-url-label">PRODUCTION</span>
+      <span class="base-url-value">https://faultline-api.fly.dev</span>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════ GETTING STARTED ═══════════════ -->
+
+  <h2 id="auth">Authentication</h2>
+  <p>Every endpoint except <code>GET /health</code> and <code>GET /status</code> requires an API key in the <code>x-api-key</code> request header.</p>
+
+  <div class="code-label">Request header</div>
+  <div class="code-block"><span class="prop">x-api-key</span><span class="cm">: </span><span class="str">flt_prod_your_key_here</span></div>
+
+  <h3>Key tiers and permissions</h3>
+  <table>
+    <tr><th>Tier</th><th>Permissions</th><th>Scan rate limit</th><th>Notes</th></tr>
+    <tr><td><span class="pill pill-green">free</span></td><td>scan, report, upload</td><td>10 / minute</td><td>Default for new keys</td></tr>
+    <tr><td><span class="pill pill-blue">pro</span></td><td>scan, report, upload, batch</td><td>100 / minute</td><td>Pass <code>"tier":"pro"</code> on key create</td></tr>
+    <tr><td><span class="pill pill-red">admin</span></td><td>all — plus admin-only routes</td><td>10,000 / minute</td><td>The master <code>FAULTLINE_API_KEY</code> env var is always admin</td></tr>
+  </table>
+
+  <div class="info-box">
+    <strong>Getting started locally:</strong> Set <code>FAULTLINE_API_KEY=your-secret</code> when starting the server. That value is automatically an admin key. Create additional scoped keys via <code>POST /keys</code>.
+  </div>
+
+  <div class="code-label">Create your first key</div>
+  <div class="code-block"><span class="method-kw">curl</span> -X POST http://localhost:3000/keys \
+  -H <span class="str">"x-api-key: your-admin-key"</span> \
+  -H <span class="str">"Content-Type: application/json"</span> \
+  -d <span class="str">'{"name":"ci-pipeline","tier":"pro","permissions":["scan","report"]}'</span></div>
+
+  <div class="code-label">Response</div>
+  <div class="code-block">{
+  <span class="prop">"id"</span>: <span class="str">"key_01HX..."</span>,
+  <span class="prop">"name"</span>: <span class="str">"ci-pipeline"</span>,
+  <span class="prop">"key"</span>: <span class="str">"flt_pro_01HX..."</span>,   <span class="cm">// ← save this, shown once</span>
+  <span class="prop">"tier"</span>: <span class="str">"pro"</span>,
+  <span class="prop">"permissions"</span>: [<span class="str">"scan"</span>, <span class="str">"report"</span>],
+  <span class="prop">"createdAt"</span>: <span class="str">"2026-03-19T21:00:00.000Z"</span>
+}</div>
+
+
+  <h2 id="ratelimit">Rate Limiting</h2>
+  <p>Scan endpoints (<code>POST /scan</code>, <code>POST /scan/upload</code>, <code>POST /scan/deep</code>, <code>POST /scan/diff</code>, <code>POST /scan/batch</code>) are rate-limited per API key per minute.</p>
+
+  <table>
+    <tr><th>Header</th><th>Description</th></tr>
+    <tr><td class="param-name">X-RateLimit-Limit</td><td>Maximum requests allowed in the current window</td></tr>
+    <tr><td class="param-name">X-RateLimit-Remaining</td><td>Requests remaining in the current window</td></tr>
+    <tr><td class="param-name">X-RateLimit-Reset</td><td>Unix epoch (seconds) when the window resets</td></tr>
+  </table>
+
+  <p>When the limit is exceeded the server returns <code>429 Too Many Requests</code> with <code>{"error":"Rate limit exceeded","code":"RATE_LIMIT_EXCEEDED"}</code>.</p>
+
+
+  <h2 id="errors">Error Codes</h2>
+  <p>All errors return a JSON body with <code>error</code> (human-readable message) and <code>code</code> (machine-readable string).</p>
+
+  <table>
+    <tr><th>HTTP Status</th><th>Code</th><th>Cause</th></tr>
+    <tr><td><span class="pill pill-green">200</span></td><td>—</td><td>Success</td></tr>
+    <tr><td><span class="pill pill-blue">202</span></td><td>—</td><td>Accepted (async job started)</td></tr>
+    <tr><td><span class="pill pill-orange">400</span></td><td><code>VALIDATION_ERROR</code></td><td>Missing or invalid request body / params</td></tr>
+    <tr><td><span class="pill pill-red">401</span></td><td><code>UNAUTHORIZED</code></td><td>Missing or invalid <code>x-api-key</code> header</td></tr>
+    <tr><td><span class="pill pill-red">403</span></td><td><code>FORBIDDEN</code></td><td>Key lacks required permission for this endpoint</td></tr>
+    <tr><td><span class="pill pill-red">404</span></td><td><code>NOT_FOUND</code></td><td>Resource does not exist</td></tr>
+    <tr><td><span class="pill pill-orange">429</span></td><td><code>RATE_LIMIT_EXCEEDED</code></td><td>Per-minute scan quota exhausted</td></tr>
+    <tr><td><span class="pill pill-red">500</span></td><td><code>INTERNAL_ERROR</code></td><td>Unexpected server error</td></tr>
+    <tr><td><span class="pill pill-red">503</span></td><td><code>SERVICE_UNAVAILABLE</code></td><td>All LLM providers circuit-broken</td></tr>
+  </table>
+
+  <div class="code-label">Error response shape</div>
+  <div class="code-block">{
+  <span class="prop">"error"</span>: <span class="str">"Missing or invalid x-api-key header."</span>,
+  <span class="prop">"code"</span>: <span class="str">"UNAUTHORIZED"</span>
+}</div>
+
+
+  <h2 id="providers">Providers</h2>
+  <p>Faultline is FM-agnostic. Pass <code>"provider"</code> in scan request bodies to select a provider. Omitting it triggers auto-detection from environment variables, then falls back through the failover chain.</p>
+
+  <table>
+    <tr><th>Provider</th><th>Env Var</th><th>Best For</th><th>Notes</th></tr>
+    <tr><td><span class="pill pill-blue">gemini</span></td><td><code>GEMINI_API_KEY</code></td><td>Live web grounding (default)</td><td>Free API key at aistudio.google.com</td></tr>
+    <tr><td><span class="pill pill-purple">perplexity</span></td><td><code>PERPLEXITY_API_KEY</code></td><td>Real-time search-native</td><td>Best for time-sensitive claims</td></tr>
+    <tr><td><span class="pill pill-orange">openai</span></td><td><code>OPENAI_API_KEY</code></td><td>Training-data verification</td><td>GPT-4 class models</td></tr>
+    <tr><td><span class="pill pill-red">claude</span></td><td><code>ANTHROPIC_API_KEY</code></td><td>Reasoning-heavy documents</td><td>Haiku / Sonnet / Opus selectable</td></tr>
+    <tr><td><span class="pill pill-green">mock</span></td><td>none</td><td>CI pipelines, offline dev</td><td>Returns deterministic results, no API call</td></tr>
+  </table>
+
+  <div class="info-box"><strong>Failover chain:</strong> If a provider fails 5 consecutive times its circuit breaker trips for 5 minutes. The server automatically retries the next available provider in the chain: gemini → openai → claude → perplexity → mock. Returns <code>503</code> only when all are tripped.</div>
+
+
+  <!-- ═══════════════ SCAN ═══════════════ -->
+  <div class="tag-section" id="scan-section">
+    <div class="tag-title"><h2>Scan</h2><span class="tag-count">7 endpoints</span></div>
+  </div>
+
+  <!-- POST /scan -->
+  <div class="endpoint" id="scan">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-post">POST</span>
+      <span class="endpoint-path">/scan</span>
+      <span class="endpoint-summary">Scan text for claim verification</span>
+      <span class="auth-badge auth-required">api-key</span>
+      <span class="auth-badge auth-required">rate-limited</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <p>Core endpoint. Submits text to an LLM provider for atomic claim extraction and per-claim verification. Returns a full risk scorecard with EU AI Act compliance mappings. Results are cached by content hash (24h TTL).</p>
+      <div class="code-label">Request body</div>
+      <table>
+        <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">text</td><td class="param-type">string</td><td class="param-req">required</td><td>Text to analyze. Min 1, max 50,000 characters.</td></tr>
+        <tr><td class="param-name">provider</td><td class="param-type">enum</td><td class="param-opt">optional</td><td><code>gemini | openai | claude | perplexity | mock</code>. Defaults to auto-detect.</td></tr>
+      </table>
+      <div class="code-label">Example request</div>
+      <div class="code-block"><span class="method-kw">curl</span> -X POST http://localhost:3000/scan \
+  -H <span class="str">"x-api-key: your-key"</span> \
+  -H <span class="str">"Content-Type: application/json"</span> \
+  -d <span class="str">'{"text":"GPT-4 has 1 trillion parameters and 96 attention layers.","provider":"mock"}'</span></div>
+      <div class="code-label">Response (200)</div>
+      <div class="code-block">{
+  <span class="prop">"input"</span>: <span class="str">"GPT-4 has 1 trillion parameters..."</span>,
+  <span class="prop">"provider"</span>: <span class="str">"mock"</span>,
+  <span class="prop">"claims"</span>: [
+    { <span class="prop">"id"</span>: <span class="str">"c1"</span>, <span class="prop">"text"</span>: <span class="str">"GPT-4 has 1 trillion parameters"</span>, <span class="prop">"type"</span>: <span class="str">"fact"</span>, <span class="prop">"importance"</span>: <span class="num">4</span> },
+    { <span class="prop">"id"</span>: <span class="str">"c2"</span>, <span class="prop">"text"</span>: <span class="str">"GPT-4 has 96 attention layers"</span>, <span class="prop">"type"</span>: <span class="str">"fact"</span>, <span class="prop">"importance"</span>: <span class="num">3</span> }
+  ],
+  <span class="prop">"verifications"</span>: {
+    <span class="prop">"c1"</span>: { <span class="prop">"claimId"</span>: <span class="str">"c1"</span>, <span class="prop">"status"</span>: <span class="str">"contradicted"</span>, <span class="prop">"confidence"</span>: <span class="num">0.87</span>, <span class="prop">"explanation"</span>: <span class="str">"Parameter count is unconfirmed by OpenAI."</span>, <span class="prop">"sources"</span>: [] }
+  },
+  <span class="prop">"overallRisk"</span>: <span class="str">"high"</span>,
+  <span class="prop">"complianceReport"</span>: {
+    <span class="prop">"overallRiskLevel"</span>: <span class="str">"high"</span>,
+    <span class="prop">"riskTier"</span>: <span class="str">"limited"</span>,
+    <span class="prop">"triggeredArticles"</span>: [],
+    <span class="prop">"mitigations"</span>: []
+  },
+  <span class="prop">"ruleFindings"</span>: []
+}</div>
+      <p>Response headers include <code>X-Cache: HIT</code> or <code>X-Cache: MISS</code> and the <code>X-RateLimit-*</code> family.</p>
+    </div>
+  </div>
+
+  <!-- POST /scan/batch -->
+  <div class="endpoint" id="scan-batch">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-post">POST</span>
+      <span class="endpoint-path">/scan/batch</span>
+      <span class="endpoint-summary">Batch scan 1–10 texts concurrently</span>
+      <span class="auth-badge auth-required">api-key</span>
+      <span class="auth-badge auth-required">rate-limited</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <p>Scans 1–10 texts concurrently. Uses partial failure semantics — if some texts fail, others still return results. Failed items appear in the <code>errors</code> array with their zero-based index.</p>
+      <div class="code-label">Request body</div>
+      <table>
+        <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">texts</td><td class="param-type">string[]</td><td class="param-req">required</td><td>Array of 1–10 strings to scan.</td></tr>
+        <tr><td class="param-name">provider</td><td class="param-type">enum</td><td class="param-opt">optional</td><td>Provider for all texts in the batch.</td></tr>
+      </table>
+      <div class="code-label">Example request</div>
+      <div class="code-block"><span class="method-kw">curl</span> -X POST http://localhost:3000/scan/batch \
+  -H <span class="str">"x-api-key: your-key"</span> \
+  -H <span class="str">"Content-Type: application/json"</span> \
+  -d <span class="str">'{"texts":["Claim A","Claim B"],"provider":"mock"}'</span></div>
+      <div class="code-label">Response (200)</div>
+      <div class="code-block">{
+  <span class="prop">"total"</span>: <span class="num">2</span>,
+  <span class="prop">"succeeded"</span>: <span class="num">2</span>,
+  <span class="prop">"failed"</span>: <span class="num">0</span>,
+  <span class="prop">"results"</span>: [ <span class="cm">/* array of ScanResult objects */</span> ],
+  <span class="prop">"errors"</span>: []
+}</div>
+    </div>
+  </div>
+
+  <!-- POST /scan/upload -->
+  <div class="endpoint" id="scan-upload">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-post">POST</span>
+      <span class="endpoint-path">/scan/upload</span>
+      <span class="endpoint-summary">Upload PDF or image for OCR scan</span>
+      <span class="auth-badge auth-required">api-key</span>
+      <span class="auth-badge auth-required">rate-limited</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <p>Accepts a PDF or image file (PNG, JPG, TIFF). Text is extracted via <code>pdf-parse</code> for PDFs and <code>tesseract.js</code> OCR for images, then scanned. Max file size: 10 MB.</p>
+      <div class="code-label">Example request (multipart/form-data)</div>
+      <div class="code-block"><span class="method-kw">curl</span> -X POST http://localhost:3000/scan/upload \
+  -H <span class="str">"x-api-key: your-key"</span> \
+  -F <span class="str">"file=@report.pdf"</span> \
+  -F <span class="str">"provider=mock"</span></div>
+      <p>Returns the same <code>ScanResult</code> shape as <code>POST /scan</code>.</p>
+    </div>
+  </div>
+
+  <!-- POST /scan/deep -->
+  <div class="endpoint" id="scan-deep">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-post">POST</span>
+      <span class="endpoint-path">/scan/deep</span>
+      <span class="endpoint-summary">Deep scan with URL evidence validation</span>
+      <span class="auth-badge auth-required">api-key</span>
+      <span class="auth-badge auth-required">rate-limited</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <p>Performs a standard scan, then fetches and validates each cited source URL, scoring reachability and content relevance on a 0–100 scale.</p>
+      <div class="code-label">Request body</div>
+      <table>
+        <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">text</td><td class="param-type">string</td><td class="param-req">required</td><td>Text to analyze.</td></tr>
+        <tr><td class="param-name">provider</td><td class="param-type">enum</td><td class="param-opt">optional</td><td>Provider.</td></tr>
+      </table>
+      <div class="code-label">Additional response fields</div>
+      <div class="code-block">{
+  <span class="cm">/* ... standard ScanResult fields ... */</span>
+  <span class="prop">"deepAnalysis"</span>: {
+    <span class="prop">"evidenceLinks"</span>: [
+      { <span class="prop">"url"</span>: <span class="str">"https://example.com/source"</span>, <span class="prop">"reachable"</span>: <span class="kw">true</span>, <span class="prop">"relevanceScore"</span>: <span class="num">82</span> }
+    ],
+    <span class="prop">"overallEvidenceScore"</span>: <span class="num">75</span>
+  }
+}</div>
+    </div>
+  </div>
+
+  <!-- POST /scan/diff -->
+  <div class="endpoint" id="scan-diff">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-post">POST</span>
+      <span class="endpoint-path">/scan/diff</span>
+      <span class="endpoint-summary">Diff two texts — inline claim view</span>
+      <span class="auth-badge auth-required">api-key</span>
+      <span class="auth-badge auth-required">rate-limited</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <p>Scans two texts in parallel and produces a structured diff: new claims, removed claims, changed verdicts, trust score delta, and an <code>inlineDiff[]</code> tagging each claim as <code>added | removed | changed | unchanged</code>.</p>
+      <div class="code-label">Request body</div>
+      <table>
+        <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">before</td><td class="param-type">string</td><td class="param-req">required</td><td>Original text.</td></tr>
+        <tr><td class="param-name">after</td><td class="param-type">string</td><td class="param-req">required</td><td>Updated text.</td></tr>
+        <tr><td class="param-name">provider</td><td class="param-type">enum</td><td class="param-opt">optional</td><td>Provider for both scans.</td></tr>
+      </table>
+      <div class="code-label">Response (200)</div>
+      <div class="code-block">{
+  <span class="prop">"newClaims"</span>: [<span class="cm">/* claims only in "after" */</span>],
+  <span class="prop">"removedClaims"</span>: [<span class="cm">/* claims only in "before" */</span>],
+  <span class="prop">"changedVerdicts"</span>: [
+    { <span class="prop">"claimId"</span>: <span class="str">"c1"</span>, <span class="prop">"before"</span>: <span class="str">"unverified"</span>, <span class="prop">"after"</span>: <span class="str">"supported"</span> }
+  ],
+  <span class="prop">"trustScoreDelta"</span>: <span class="num">+12</span>,
+  <span class="prop">"summary"</span>: <span class="str">"2 claims added, 1 removed, 3 verdicts changed"</span>,
+  <span class="prop">"inlineDiff"</span>: [
+    { <span class="prop">"claimText"</span>: <span class="str">"GPT-4 has 1T parameters"</span>, <span class="prop">"status"</span>: <span class="str">"unchanged"</span>, <span class="prop">"verdict"</span>: <span class="str">"contradicted"</span> },
+    { <span class="prop">"claimText"</span>: <span class="str">"New claim about latency"</span>, <span class="prop">"status"</span>: <span class="str">"added"</span>, <span class="prop">"verdict"</span>: <span class="str">"unverified"</span> }
+  ]
+}</div>
+    </div>
+  </div>
+
+  <!-- POST /scan/compare -->
+  <div class="endpoint" id="scan-compare">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-post">POST</span>
+      <span class="endpoint-path">/scan/compare</span>
+      <span class="endpoint-summary">Compare two pre-computed scan results</span>
+      <span class="auth-badge auth-required">api-key</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <p>Compares two scan results you already have (no re-scanning). Useful when you've cached scans and want the diff without additional API calls. See <code>POST /scan/diff</code> for the one-shot version.</p>
+      <div class="code-label">Request body</div>
+      <table>
+        <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">scanA</td><td class="param-type">ScanResult</td><td class="param-req">required</td><td>First (older) scan result object.</td></tr>
+        <tr><td class="param-name">scanB</td><td class="param-type">ScanResult</td><td class="param-req">required</td><td>Second (newer) scan result object.</td></tr>
+      </table>
+      <p>Returns the same shape as <code>POST /scan/diff</code>.</p>
+    </div>
+  </div>
+
+  <!-- POST /scan/template/:id -->
+  <div class="endpoint" id="scan-template">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-post">POST</span>
+      <span class="endpoint-path">/scan/template/:id</span>
+      <span class="endpoint-summary">Scan using a saved template</span>
+      <span class="auth-badge auth-required">api-key</span>
+      <span class="auth-badge auth-required">rate-limited</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <p>Runs a scan with settings from a stored template (provider, rules, output format). Create templates with <code>POST /templates</code>.</p>
+      <div class="code-label">Path params</div>
+      <table>
+        <tr><th>Param</th><th>Type</th><th>Description</th></tr>
+        <tr><td class="param-name">id</td><td class="param-type">string</td><td>Template ID from <code>GET /templates</code>.</td></tr>
+      </table>
+      <div class="code-label">Request body</div>
+      <table>
+        <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+        <tr><td class="param-name">text</td><td class="param-type">string</td><td>Text to scan.</td></tr>
+        <tr><td class="param-name">provider</td><td class="param-type">enum</td><td>Overrides template provider.</td></tr>
+      </table>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════ CLAIMS ═══════════════ -->
+  <div class="tag-section" id="claims-section">
+    <div class="tag-title"><h2>Claims</h2><span class="tag-count">6 endpoints</span></div>
+  </div>
+  <p>Faultline maintains an in-memory claim index. Every successful scan ingests its extracted claims, deduplicating by normalized text. Frequency and verdict history accumulate across scans.</p>
+
+  <!-- GET /claims -->
+  <div class="endpoint" id="claims-search">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/claims</span>
+      <span class="endpoint-summary">Search claims by text, verdict, date, or source</span>
+      <span class="auth-badge auth-open">open</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <p>Full-text search over all indexed claims. Results are sorted by frequency descending.</p>
+      <div class="code-label">Query parameters</div>
+      <table>
+        <tr><th>Param</th><th>Type</th><th>Description</th></tr>
+        <tr><td class="param-name">text</td><td class="param-type">string</td><td>Substring match on claim text.</td></tr>
+        <tr><td class="param-name">verdict</td><td class="param-type">enum</td><td><code>supported | contradicted | mixed | unverified</code></td></tr>
+        <tr><td class="param-name">from</td><td class="param-type">ISO date</td><td>Earliest <code>lastSeen</code> date.</td></tr>
+        <tr><td class="param-name">to</td><td class="param-type">ISO date</td><td>Latest <code>lastSeen</code> date.</td></tr>
+        <tr><td class="param-name">source</td><td class="param-type">string</td><td>Filter by source URL substring.</td></tr>
+        <tr><td class="param-name">limit</td><td class="param-type">integer</td><td>Max results (default 50).</td></tr>
+      </table>
+      <div class="code-label">Example</div>
+      <div class="code-block"><span class="method-kw">curl</span> <span class="str">"http://localhost:3000/claims?text=GPT-4&amp;verdict=contradicted&amp;limit=10"</span></div>
+      <div class="code-label">Response (200)</div>
+      <div class="code-block">{
+  <span class="prop">"claims"</span>: [
+    {
+      <span class="prop">"id"</span>: <span class="str">"claim_abc123"</span>,
+      <span class="prop">"originalText"</span>: <span class="str">"GPT-4 has 1 trillion parameters"</span>,
+      <span class="prop">"frequency"</span>: <span class="num">7</span>,
+      <span class="prop">"lastVerdict"</span>: <span class="str">"contradicted"</span>,
+      <span class="prop">"firstSeen"</span>: <span class="str">"2026-03-10T08:00:00.000Z"</span>,
+      <span class="prop">"lastSeen"</span>: <span class="str">"2026-03-19T21:00:00.000Z"</span>,
+      <span class="prop">"attributionConfidence"</span>: <span class="num">72</span>
+    }
+  ],
+  <span class="prop">"total"</span>: <span class="num">1</span>
+}</div>
+    </div>
+  </div>
+
+  <!-- GET /claims/trending -->
+  <div class="endpoint" id="claims-trending">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/claims/trending</span>
+      <span class="endpoint-summary">Trending claims by frequency + emerging in last 24h</span>
+      <span class="auth-badge auth-open">open</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="code-label">Query parameters</div>
+      <table>
+        <tr><th>Param</th><th>Type</th><th>Description</th></tr>
+        <tr><td class="param-name">limit</td><td class="param-type">integer</td><td>Top N trending claims (default 20).</td></tr>
+      </table>
+      <div class="code-label">Response (200)</div>
+      <div class="code-block">{
+  <span class="prop">"trending"</span>: [ <span class="cm">/* top claims by frequency */</span> ],
+  <span class="prop">"emerging"</span>: [ <span class="cm">/* claims first seen in last 24h */</span> ],
+  <span class="prop">"verdictChanged"</span>: [ <span class="cm">/* claims whose verdict flipped recently */</span> ]
+}</div>
+    </div>
+  </div>
+
+  <!-- GET /claims/:id/explain -->
+  <div class="endpoint" id="claims-explain">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/claims/:id/explain</span>
+      <span class="endpoint-summary">Reasoning chain and improvement suggestions</span>
+      <span class="auth-badge auth-open">open</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <p>Returns the evidence chain and reasoning behind a claim's verification verdict, plus context-aware improvement suggestions.</p>
+      <div class="code-label">Response (200)</div>
+      <div class="code-block">{
+  <span class="prop">"claimId"</span>: <span class="str">"claim_abc123"</span>,
+  <span class="prop">"verdict"</span>: <span class="str">"contradicted"</span>,
+  <span class="prop">"confidence"</span>: <span class="num">0.87</span>,
+  <span class="prop">"reasoningChain"</span>: [
+    <span class="str">"Claim states 1T parameters"</span>,
+    <span class="str">"OpenAI has not confirmed parameter count"</span>,
+    <span class="str">"Common estimates range from 200B to 1.8T"</span>
+  ],
+  <span class="prop">"evidenceFound"</span>: <span class="kw">true</span>,
+  <span class="prop">"suggestions"</span>: [
+    <span class="str">"Cite the specific source for the parameter count claim"</span>,
+    <span class="str">"Qualify as \"estimated\" since OpenAI has not confirmed"</span>
+  ]
+}</div>
+      <p>Returns <code>404</code> if the claim ID is not in the index.</p>
+    </div>
+  </div>
+
+  <!-- GET /claims/:id/attribution -->
+  <div class="endpoint" id="claims-attribution">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/claims/:id/attribution</span>
+      <span class="endpoint-summary">Provenance chain and attribution confidence (0–100)</span>
+      <span class="auth-badge auth-open">open</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="code-label">Response (200)</div>
+      <div class="code-block">{
+  <span class="prop">"claimId"</span>: <span class="str">"claim_abc123"</span>,
+  <span class="prop">"confidence"</span>: <span class="num">72</span>,
+  <span class="prop">"sources"</span>: [
+    { <span class="prop">"title"</span>: <span class="str">"OpenAI Blog"</span>, <span class="prop">"uri"</span>: <span class="str">"https://openai.com/..."</span>, <span class="prop">"scanId"</span>: <span class="str">"scan-001"</span>, <span class="prop">"seenAt"</span>: <span class="str">"2026-03-19T..."</span> }
+  ],
+  <span class="prop">"frequency"</span>: <span class="num">7</span>,
+  <span class="prop">"firstSeen"</span>: <span class="str">"2026-03-10T08:00:00.000Z"</span>
+}</div>
+    </div>
+  </div>
+
+  <!-- GET /scan/:id/graph -->
+  <div class="endpoint" id="claims-graph">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/scan/:id/graph</span>
+      <span class="endpoint-summary">Claim dependency graph (Mermaid or DOT)</span>
+      <span class="auth-badge auth-open">open</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="code-label">Query parameters</div>
+      <table>
+        <tr><th>Param</th><th>Type</th><th>Description</th></tr>
+        <tr><td class="param-name">format</td><td class="param-type">enum</td><td><code>mermaid</code> (default) or <code>dot</code> (Graphviz)</td></tr>
+      </table>
+      <div class="code-label">Example — Mermaid output</div>
+      <div class="code-block">graph TD
+  c1["GPT-4 has 1T params\n<span class="cm">contradicted</span>"]:::high
+  c2["Trained on 13T tokens\n<span class="cm">unverified</span>"]:::medium
+  c1 --> c2</div>
+    </div>
+  </div>
+
+  <!-- GET /scans/search -->
+  <div class="endpoint" id="scans-search">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/scans/search</span>
+      <span class="endpoint-summary">Full-text search across scan history with cursor pagination</span>
+      <span class="auth-badge auth-open">open</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <p>Searches the last 1,000 scans (newest-first). Cursor-based pagination for consistent results.</p>
+      <div class="code-label">Query parameters</div>
+      <table>
+        <tr><th>Param</th><th>Type</th><th>Description</th></tr>
+        <tr><td class="param-name">q</td><td class="param-type">string</td><td>Full-text match against <code>textPreview</code>.</td></tr>
+        <tr><td class="param-name">provider</td><td class="param-type">enum</td><td>Filter by provider.</td></tr>
+        <tr><td class="param-name">risk</td><td class="param-type">enum</td><td><code>low | medium | high | critical</code></td></tr>
+        <tr><td class="param-name">from</td><td class="param-type">ISO date</td><td>Earliest scan timestamp.</td></tr>
+        <tr><td class="param-name">to</td><td class="param-type">ISO date</td><td>Latest scan timestamp.</td></tr>
+        <tr><td class="param-name">cursor</td><td class="param-type">string</td><td>Last entry ID from previous page.</td></tr>
+        <tr><td class="param-name">limit</td><td class="param-type">integer</td><td>Page size (default 20).</td></tr>
+      </table>
+      <div class="code-label">Response (200)</div>
+      <div class="code-block">{
+  <span class="prop">"scans"</span>: [
+    {
+      <span class="prop">"id"</span>: <span class="str">"scan_xyz"</span>,
+      <span class="prop">"textPreview"</span>: <span class="str">"GPT-4 has 1 trillion parameters..."</span>,
+      <span class="prop">"provider"</span>: <span class="str">"mock"</span>,
+      <span class="prop">"overallRisk"</span>: <span class="str">"high"</span>,
+      <span class="prop">"claimCount"</span>: <span class="num">4</span>,
+      <span class="prop">"latencyMs"</span>: <span class="num">342</span>,
+      <span class="prop">"timestamp"</span>: <span class="str">"2026-03-19T21:00:00.000Z"</span>
+    }
+  ],
+  <span class="prop">"nextCursor"</span>: <span class="str">"scan_abc"</span>,
+  <span class="prop">"total"</span>: <span class="num">47</span>
+}</div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════ COMPLIANCE ═══════════════ -->
+  <div class="tag-section" id="compliance-section">
+    <div class="tag-title"><h2>Compliance</h2><span class="tag-count">8 endpoints</span></div>
+  </div>
+  <p>EU AI Act risk classification, industry templates (HIPAA/SOX/FERPA/Gov), and regulatory deadline tracking.</p>
+
+  <!-- GET /compliance/deadlines -->
+  <div class="endpoint" id="compliance-deadlines">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/compliance/deadlines</span>
+      <span class="endpoint-summary">Upcoming regulatory deadlines with days-until countdown</span>
+      <span class="auth-badge auth-open">open</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="code-label">Response (200)</div>
+      <div class="code-block">{
+  <span class="prop">"deadlines"</span>: [
+    {
+      <span class="prop">"id"</span>: <span class="str">"eu-ai-act-high-risk"</span>,
+      <span class="prop">"title"</span>: <span class="str">"EU AI Act — High-risk AI systems"</span>,
+      <span class="prop">"date"</span>: <span class="str">"2026-08-02"</span>,
+      <span class="prop">"daysUntil"</span>: <span class="num">136</span>,
+      <span class="prop">"regulation"</span>: <span class="str">"EU AI Act"</span>,
+      <span class="prop">"description"</span>: <span class="str">"Annex III high-risk AI systems must comply..."</span>,
+      <span class="prop">"urgency"</span>: <span class="str">"normal"</span>
+    }
+  ],
+  <span class="prop">"approaching"</span>: { <span class="prop">"within30"</span>: <span class="num">0</span>, <span class="prop">"within14"</span>: <span class="num">0</span>, <span class="prop">"within7"</span>: <span class="num">0</span> }
+}</div>
+    </div>
+  </div>
+
+  <!-- POST /compliance/scan-check -->
+  <div class="endpoint" id="compliance-scan-check">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-post">POST</span>
+      <span class="endpoint-path">/compliance/scan-check</span>
+      <span class="endpoint-summary">Match claim text against approaching deadlines</span>
+      <span class="auth-badge auth-open">open</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="code-label">Request body</div>
+      <table>
+        <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+        <tr><td class="param-name">claims</td><td class="param-type">string[]</td><td>Claim texts to check against deadlines.</td></tr>
+      </table>
+      <div class="code-label">Response (200)</div>
+      <div class="code-block">{
+  <span class="prop">"matches"</span>: [
+    {
+      <span class="prop">"deadlineId"</span>: <span class="str">"eu-ai-act-high-risk"</span>,
+      <span class="prop">"deadline"</span>: { <span class="cm">/* deadline object */</span> },
+      <span class="prop">"matchedClaims"</span>: [<span class="str">"This AI system classifies job applicants"</span>]
+    }
+  ]
+}</div>
+    </div>
+  </div>
+
+  <!-- POST /scan/compliance/:template -->
+  <div class="endpoint" id="scan-compliance">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-post">POST</span>
+      <span class="endpoint-path">/scan/compliance/:template</span>
+      <span class="endpoint-summary">Scan with industry compliance template</span>
+      <span class="auth-badge auth-required">api-key</span>
+      <span class="auth-badge auth-required">rate-limited</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <p>Applies a built-in compliance template then scans. Templates add keyword-based rule matching on top of standard LLM verification.</p>
+      <div class="code-label">Built-in templates</div>
+      <table>
+        <tr><th>Template ID</th><th>Regulation</th><th>Key rules</th></tr>
+        <tr><td class="param-name">healthcare</td><td>HIPAA</td><td>PHI, covered entity, minimum necessary</td></tr>
+        <tr><td class="param-name">finance</td><td>SOX + FINRA</td><td>Material information, audit controls, disclosure</td></tr>
+        <tr><td class="param-name">education</td><td>FERPA</td><td>Student records, directory information, consent</td></tr>
+        <tr><td class="param-name">government</td><td>FOIA</td><td>Public records, FOIA exemptions, classified</td></tr>
+      </table>
+      <div class="code-label">Example</div>
+      <div class="code-block"><span class="method-kw">curl</span> -X POST http://localhost:3000/scan/compliance/healthcare \
+  -H <span class="str">"x-api-key: your-key"</span> \
+  -H <span class="str">"Content-Type: application/json"</span> \
+  -d <span class="str">'{"text":"Patient data is shared with third-party vendors.","provider":"mock"}'</span></div>
+    </div>
+  </div>
+
+  <!-- GET /templates/compliance -->
+  <div class="endpoint" id="templates-compliance">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/templates/compliance</span>
+      <span class="endpoint-summary">List compliance templates</span>
+      <span class="auth-badge auth-open">open</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <p>Lists all built-in templates plus any custom templates uploaded by admins.</p>
+    </div>
+  </div>
+
+  <!-- POST /scan/eu-report -->
+  <div class="endpoint" id="scan-eu-report">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-post">POST</span>
+      <span class="endpoint-path">/scan/eu-report</span>
+      <span class="endpoint-summary">Generate EU AI Act compliance PDF report</span>
+      <span class="auth-badge auth-required">api-key</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <p>Full EU AI Act report: risk tier classification (Articles 5–7, Annex III), triggered articles per claim, prohibited practice detection, recommended mitigations. Returns <code>application/pdf</code>.</p>
+      <div class="code-label">Request body</div>
+      <table>
+        <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+        <tr><td class="param-name">text</td><td class="param-type">string</td><td>Text to analyze.</td></tr>
+        <tr><td class="param-name">provider</td><td class="param-type">enum</td><td>Provider.</td></tr>
+      </table>
+      <div class="code-label">Example (save PDF)</div>
+      <div class="code-block"><span class="method-kw">curl</span> -X POST http://localhost:3000/scan/eu-report \
+  -H <span class="str">"x-api-key: your-key"</span> \
+  -H <span class="str">"Content-Type: application/json"</span> \
+  -d <span class="str">'{"text":"Our AI system scores loan applications.","provider":"mock"}'</span> \
+  --output eu-act-report.pdf</div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════ JOBS ═══════════════ -->
+  <div class="tag-section" id="jobs-section">
+    <div class="tag-title"><h2>Jobs &amp; Bulk</h2><span class="tag-count">5 endpoints</span></div>
+  </div>
+
+  <!-- POST /jobs -->
+  <div class="endpoint" id="jobs">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-post">POST</span>
+      <span class="endpoint-path">/jobs</span>
+      <span class="endpoint-summary">Create a scheduled scan job</span>
+      <span class="auth-badge auth-required">api-key</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <p>Creates a recurring scan that fires on a cron schedule. Results are dispatched to a webhook URL. Uses a standard cron expression (<code>*/N * * * *</code>).</p>
+      <div class="code-label">Request body</div>
+      <table>
+        <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">name</td><td class="param-type">string</td><td class="param-req">required</td><td>Human-readable job name.</td></tr>
+        <tr><td class="param-name">text</td><td class="param-type">string</td><td class="param-req">required</td><td>Text to scan on each run.</td></tr>
+        <tr><td class="param-name">schedule</td><td class="param-type">cron</td><td class="param-req">required</td><td>Cron expression, e.g. <code>*/30 * * * *</code>.</td></tr>
+        <tr><td class="param-name">provider</td><td class="param-type">enum</td><td class="param-opt">optional</td><td>Provider.</td></tr>
+        <tr><td class="param-name">webhookUrl</td><td class="param-type">string</td><td class="param-opt">optional</td><td>URL to POST results to on completion.</td></tr>
+      </table>
+      <div class="code-label">Example</div>
+      <div class="code-block"><span class="method-kw">curl</span> -X POST http://localhost:3000/jobs \
+  -H <span class="str">"x-api-key: your-key"</span> \
+  -H <span class="str">"Content-Type: application/json"</span> \
+  -d <span class="str">'{"name":"nightly-doc-audit","text":"Our AI system...","schedule":"0 2 * * *","provider":"mock","webhookUrl":"https://hooks.example.com/faultline"}'</span></div>
+      <div class="code-label">Response (201)</div>
+      <div class="code-block">{
+  <span class="prop">"id"</span>: <span class="str">"job_01HX..."</span>,
+  <span class="prop">"name"</span>: <span class="str">"nightly-doc-audit"</span>,
+  <span class="prop">"schedule"</span>: <span class="str">"0 2 * * *"</span>,
+  <span class="prop">"status"</span>: <span class="str">"active"</span>,
+  <span class="prop">"lastRun"</span>: <span class="kw">null</span>,
+  <span class="prop">"nextRun"</span>: <span class="str">"2026-03-20T02:00:00.000Z"</span>
+}</div>
+    </div>
+  </div>
+
+  <!-- GET /jobs -->
+  <div class="endpoint" id="jobs-list">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/jobs</span>
+      <span class="endpoint-summary">List all scheduled jobs</span>
+      <span class="auth-badge auth-required">api-key</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <p>Returns all jobs for the authenticated key, ordered by creation time.</p>
+    </div>
+  </div>
+
+  <!-- POST /scan/bulk -->
+  <div class="endpoint" id="scan-bulk">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-post">POST</span>
+      <span class="endpoint-path">/scan/bulk</span>
+      <span class="endpoint-summary">Upload ZIP of documents for async bulk scan</span>
+      <span class="auth-badge auth-required">api-key</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <p>Accepts a ZIP file containing text files. Extracts files, starts a background scan job, and returns <code>202 Accepted</code> immediately. Poll <code>GET /jobs/:id/progress</code> for results.</p>
+      <div class="code-label">Example</div>
+      <div class="code-block"><span class="method-kw">curl</span> -X POST http://localhost:3000/scan/bulk \
+  -H <span class="str">"x-api-key: your-key"</span> \
+  -F <span class="str">"file=@documents.zip"</span> \
+  -F <span class="str">"provider=mock"</span></div>
+      <div class="code-label">Response (202)</div>
+      <div class="code-block">{
+  <span class="prop">"jobId"</span>: <span class="str">"bulk_01HX..."</span>,
+  <span class="prop">"totalFiles"</span>: <span class="num">12</span>,
+  <span class="prop">"status"</span>: <span class="str">"pending"</span>,
+  <span class="prop">"message"</span>: <span class="str">"Bulk scan started. Poll /jobs/bulk_01HX.../progress for results."</span>
+}</div>
+    </div>
+  </div>
+
+  <!-- GET /jobs/:id/progress -->
+  <div class="endpoint" id="job-progress">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/jobs/:id/progress</span>
+      <span class="endpoint-summary">Bulk job progress and per-file results</span>
+      <span class="auth-badge auth-open">open</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="code-label">Response (200)</div>
+      <div class="code-block">{
+  <span class="prop">"id"</span>: <span class="str">"bulk_01HX..."</span>,
+  <span class="prop">"status"</span>: <span class="str">"processing"</span>,
+  <span class="prop">"totalFiles"</span>: <span class="num">12</span>,
+  <span class="prop">"processedFiles"</span>: <span class="num">7</span>,
+  <span class="prop">"progressPercent"</span>: <span class="num">58</span>,
+  <span class="prop">"fileResults"</span>: [
+    { <span class="prop">"filename"</span>: <span class="str">"doc1.txt"</span>, <span class="prop">"status"</span>: <span class="str">"done"</span>, <span class="prop">"overallRisk"</span>: <span class="str">"high"</span> }
+  ],
+  <span class="prop">"summary"</span>: <span class="kw">null</span>  <span class="cm">// populated when status = "complete"</span>
+}</div>
+      <p>When <code>status === "complete"</code>, the <code>summary</code> object includes <code>overallTrustScore</code>, <code>worstOffenders</code>, and <code>riskDistribution</code>.</p>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════ TEMPLATES ═══════════════ -->
+  <div class="tag-section" id="templates-section">
+    <div class="tag-title"><h2>Templates</h2><span class="tag-count">3 endpoints</span></div>
+  </div>
+
+  <!-- POST /templates -->
+  <div class="endpoint" id="templates-create">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-post">POST</span>
+      <span class="endpoint-path">/templates</span>
+      <span class="endpoint-summary">Create a reusable scan configuration template</span>
+      <span class="auth-badge auth-required">api-key</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="code-label">Request body</div>
+      <table>
+        <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+        <tr><td class="param-name">name</td><td class="param-type">string</td><td>Template name.</td></tr>
+        <tr><td class="param-name">provider</td><td class="param-type">enum</td><td>Default provider for this template.</td></tr>
+        <tr><td class="param-name">rules</td><td class="param-type">string[]</td><td>Rule IDs to apply (e.g. <code>["pii","bias"]</code>).</td></tr>
+        <tr><td class="param-name">outputFormat</td><td class="param-type">enum</td><td><code>json | markdown | html | sarif</code></td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- GET /templates -->
+  <div class="endpoint" id="templates">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/templates</span>
+      <span class="endpoint-summary">List all scan templates</span>
+      <span class="auth-badge auth-required">api-key</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <p>Returns all templates for the authenticated key.</p>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════ ANALYTICS ═══════════════ -->
+  <div class="tag-section" id="analytics-section">
+    <div class="tag-title"><h2>Analytics</h2><span class="tag-count">3 endpoints</span></div>
+  </div>
+
+  <!-- GET /dashboard -->
+  <div class="endpoint" id="dashboard">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/dashboard</span>
+      <span class="endpoint-summary">Live scan feed, provider health, usage counts</span>
+      <span class="auth-badge auth-admin">admin</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="code-label">Response (200)</div>
+      <div class="code-block">{
+  <span class="prop">"today"</span>: <span class="num">47</span>,
+  <span class="prop">"thisWeek"</span>: <span class="num">312</span>,
+  <span class="prop">"thisMonth"</span>: <span class="num">1840</span>,
+  <span class="prop">"riskDistribution"</span>: { <span class="prop">"low"</span>: <span class="num">18</span>, <span class="prop">"medium"</span>: <span class="num">12</span>, <span class="prop">"high"</span>: <span class="num">11</span>, <span class="prop">"critical"</span>: <span class="num">6</span> },
+  <span class="prop">"activeKeys"</span>: <span class="num">5</span>,
+  <span class="prop">"scanFeed"</span>: [ <span class="cm">/* last 10 scans */</span> ],
+  <span class="prop">"providerStatus"</span>: {
+    <span class="prop">"gemini"</span>: { <span class="prop">"state"</span>: <span class="str">"closed"</span>, <span class="prop">"failures"</span>: <span class="num">0</span> },
+    <span class="prop">"openai"</span>: { <span class="prop">"state"</span>: <span class="str">"open"</span>, <span class="prop">"failures"</span>: <span class="num">5</span> }
+  }
+}</div>
+    </div>
+  </div>
+
+  <!-- GET /usage -->
+  <div class="endpoint" id="usage">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/usage</span>
+      <span class="endpoint-summary">Per-key daily scan usage counts</span>
+      <span class="auth-badge auth-required">api-key</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="code-label">Response (200)</div>
+      <div class="code-block">{
+  <span class="prop">"keyId"</span>: <span class="str">"key_01HX..."</span>,
+  <span class="prop">"daily"</span>: { <span class="prop">"2026-03-19"</span>: <span class="num">47</span>, <span class="prop">"2026-03-18"</span>: <span class="num">32</span> },
+  <span class="prop">"total"</span>: <span class="num">79</span>
+}</div>
+    </div>
+  </div>
+
+  <!-- GET /costs -->
+  <div class="endpoint" id="costs">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/costs</span>
+      <span class="endpoint-summary">Per-scan cost estimates by provider and date</span>
+      <span class="auth-badge auth-required">api-key</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="code-label">Query parameters</div>
+      <table>
+        <tr><th>Param</th><th>Type</th><th>Description</th></tr>
+        <tr><td class="param-name">provider</td><td class="param-type">enum</td><td>Filter by provider.</td></tr>
+        <tr><td class="param-name">from</td><td class="param-type">ISO date</td><td>Earliest timestamp.</td></tr>
+        <tr><td class="param-name">to</td><td class="param-type">ISO date</td><td>Latest timestamp.</td></tr>
+      </table>
+      <div class="code-label">Response (200)</div>
+      <div class="code-block">{
+  <span class="prop">"costs"</span>: [
+    { <span class="prop">"provider"</span>: <span class="str">"gemini"</span>, <span class="prop">"estimatedTokens"</span>: <span class="num">2400</span>, <span class="prop">"estimatedCostUsd"</span>: <span class="num">0.00036</span>, <span class="prop">"timestamp"</span>: <span class="str">"2026-03-19T..."</span> }
+  ],
+  <span class="prop">"aggregate"</span>: {
+    <span class="prop">"totalTokens"</span>: <span class="num">48200</span>,
+    <span class="prop">"totalCostUsd"</span>: <span class="num">0.00723</span>,
+    <span class="prop">"byProvider"</span>: { <span class="prop">"gemini"</span>: <span class="num">0.00512</span>, <span class="prop">"mock"</span>: <span class="num">0</span> }
+  }
+}</div>
+      <div class="info-box">Token estimates use chars/4 approximation. Rates: Gemini $0.00015/1K tokens, OpenAI $0.0005/1K, Claude $0.0025/1K, Perplexity $0.001/1K, Mock $0.</div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════ KEYS & TENANTS ═══════════════ -->
+  <div class="tag-section" id="keys-section">
+    <div class="tag-title"><h2>Keys &amp; Tenants</h2><span class="tag-count">10 endpoints</span></div>
+  </div>
+
+  <!-- POST /keys -->
+  <div class="endpoint" id="keys">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-post">POST</span>
+      <span class="endpoint-path">/keys</span>
+      <span class="endpoint-summary">Create a new API key</span>
+      <span class="auth-badge auth-admin">admin</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="code-label">Request body</div>
+      <table>
+        <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">name</td><td class="param-type">string</td><td class="param-req">required</td><td>Human-readable name.</td></tr>
+        <tr><td class="param-name">tier</td><td class="param-type">enum</td><td class="param-opt">optional</td><td><code>free | pro | admin</code> (default: free)</td></tr>
+        <tr><td class="param-name">permissions</td><td class="param-type">string[]</td><td class="param-opt">optional</td><td><code>scan | report | upload | admin | pro</code></td></tr>
+      </table>
+      <div class="warn-box">The raw key value is returned only once at creation time. Store it securely — subsequent <code>GET /keys</code> calls return only the last 4 characters.</div>
+    </div>
+  </div>
+
+  <!-- GET /keys -->
+  <div class="endpoint" id="keys-list">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/keys</span>
+      <span class="endpoint-summary">List all API keys (secrets redacted)</span>
+      <span class="auth-badge auth-admin">admin</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="code-label">Response (200)</div>
+      <div class="code-block">{
+  <span class="prop">"keys"</span>: [
+    {
+      <span class="prop">"id"</span>: <span class="str">"key_01HX..."</span>,
+      <span class="prop">"name"</span>: <span class="str">"ci-pipeline"</span>,
+      <span class="prop">"tier"</span>: <span class="str">"pro"</span>,
+      <span class="prop">"permissions"</span>: [<span class="str">"scan"</span>, <span class="str">"report"</span>],
+      <span class="prop">"keyHint"</span>: <span class="str">"...4a2f"</span>,
+      <span class="prop">"createdAt"</span>: <span class="str">"2026-03-19T..."</span>
+    }
+  ]
+}</div>
+    </div>
+  </div>
+
+  <!-- POST /tenants -->
+  <div class="endpoint" id="tenants">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-post">POST</span>
+      <span class="endpoint-path">/tenants</span>
+      <span class="endpoint-summary">Create a new tenant</span>
+      <span class="auth-badge auth-admin">admin</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="code-label">Request body</div>
+      <table>
+        <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+        <tr><td class="param-name">name</td><td class="param-type">string</td><td>Tenant name (e.g. organization name).</td></tr>
+        <tr><td class="param-name">plan</td><td class="param-type">enum</td><td><code>free | starter | pro | enterprise</code></td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- GET /tenants -->
+  <div class="endpoint" id="tenants-list">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/tenants</span>
+      <span class="endpoint-summary">List all tenants</span>
+      <span class="auth-badge auth-admin">admin</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <p>Also available: <code>GET /tenants/:id</code>, <code>DELETE /tenants/:id</code>, <code>POST /tenants/:id/keys</code>, <code>DELETE /tenants/:id/keys/:keyId</code>, <code>GET /tenants/:id/usage</code>.</p>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════ WEBHOOKS ═══════════════ -->
+  <div class="tag-section" id="webhooks-section">
+    <div class="tag-title"><h2>Webhooks</h2><span class="tag-count">3 endpoints</span></div>
+  </div>
+
+  <!-- POST /webhooks -->
+  <div class="endpoint" id="webhooks-create">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-post">POST</span>
+      <span class="endpoint-path">/webhooks</span>
+      <span class="endpoint-summary">Register a webhook endpoint</span>
+      <span class="auth-badge auth-admin">admin</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="code-label">Request body</div>
+      <table>
+        <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">url</td><td class="param-type">string</td><td class="param-req">required</td><td>HTTPS URL to receive events.</td></tr>
+        <tr><td class="param-name">events</td><td class="param-type">string[]</td><td class="param-req">required</td><td>Event types to subscribe to (see below).</td></tr>
+      </table>
+      <h3>Event types</h3>
+      <table>
+        <tr><th>Event</th><th>Fired When</th></tr>
+        <tr><td class="param-name">scan.complete</td><td>A scan finishes successfully</td></tr>
+        <tr><td class="param-name">scan.failed</td><td>All providers failed for a scan</td></tr>
+        <tr><td class="param-name">job.complete</td><td>A scheduled job finishes a run</td></tr>
+        <tr><td class="param-name">compliance.deadline_approaching</td><td>Admin triggers <code>POST /compliance/deadlines/notify</code></td></tr>
+      </table>
+      <div class="code-label">Webhook delivery</div>
+      <p>Payloads are signed with HMAC-SHA256. Verify with the <code>x-faultline-signature</code> header. Delivery is retried up to 3 times on non-2xx responses.</p>
+      <div class="code-label">Response (201)</div>
+      <div class="code-block">{
+  <span class="prop">"id"</span>: <span class="str">"wh_01HX..."</span>,
+  <span class="prop">"url"</span>: <span class="str">"https://hooks.example.com/faultline"</span>,
+  <span class="prop">"events"</span>: [<span class="str">"scan.complete"</span>],
+  <span class="prop">"secret"</span>: <span class="str">"whs_abc123..."</span>,   <span class="cm">// ← use to verify signatures</span>
+  <span class="prop">"createdAt"</span>: <span class="str">"2026-03-19T..."</span>
+}</div>
+    </div>
+  </div>
+
+  <!-- GET /webhooks -->
+  <div class="endpoint" id="webhooks-list">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/webhooks</span>
+      <span class="endpoint-summary">List all webhook subscriptions</span>
+      <span class="auth-badge auth-admin">admin</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <p>Also available: <code>DELETE /webhooks/:id</code> to remove a subscription.</p>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════ MONITORING ═══════════════ -->
+  <div class="tag-section" id="monitoring-section">
+    <div class="tag-title"><h2>Monitoring</h2><span class="tag-count">5 endpoints</span></div>
+  </div>
+
+  <!-- GET /health -->
+  <div class="endpoint" id="health">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/health</span>
+      <span class="endpoint-summary">Basic health check</span>
+      <span class="auth-badge auth-open">open</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="code-label">Response (200)</div>
+      <div class="code-block">{
+  <span class="prop">"status"</span>: <span class="str">"ok"</span>,
+  <span class="prop">"version"</span>: <span class="str">"0.2.0"</span>,
+  <span class="prop">"uptime"</span>: <span class="num">3600</span>,
+  <span class="prop">"providers"</span>: { <span class="prop">"gemini"</span>: <span class="kw">true</span>, <span class="prop">"openai"</span>: <span class="kw">false</span> }
+}</div>
+    </div>
+  </div>
+
+  <!-- GET /health/deep -->
+  <div class="endpoint" id="health-deep">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/health/deep</span>
+      <span class="endpoint-summary">Deep health — subsystems, entry counts, analytics</span>
+      <span class="auth-badge auth-open">open</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="code-label">Response (200)</div>
+      <div class="code-block">{
+  <span class="prop">"status"</span>: <span class="str">"ok"</span>,
+  <span class="prop">"subsystems"</span>: {
+    <span class="prop">"cache"</span>: { <span class="prop">"status"</span>: <span class="str">"ok"</span>, <span class="prop">"size"</span>: <span class="num">12</span> },
+    <span class="prop">"jobs"</span>: { <span class="prop">"status"</span>: <span class="str">"ok"</span>, <span class="prop">"count"</span>: <span class="num">3</span> },
+    <span class="prop">"webhooks"</span>: { <span class="prop">"status"</span>: <span class="str">"ok"</span>, <span class="prop">"count"</span>: <span class="num">2</span> }
+  },
+  <span class="prop">"analytics"</span>: { <span class="prop">"totalScans"</span>: <span class="num">312</span>, <span class="prop">"riskDistribution"</span>: { <span class="cm">/*...*/</span> } }
+}</div>
+    </div>
+  </div>
+
+  <!-- GET /metrics -->
+  <div class="endpoint" id="metrics">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/metrics</span>
+      <span class="endpoint-summary">Prometheus-format metrics</span>
+      <span class="auth-badge auth-open">open</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="code-label">Response (200) — text/plain</div>
+      <div class="code-block"><span class="cm"># HELP faultline_scans_total Total number of scans</span>
+<span class="cm"># TYPE faultline_scans_total counter</span>
+faultline_scans_total{risk="high"} 11
+faultline_scans_total{risk="low"} 18
+faultline_active_keys 5
+faultline_cache_size 12</div>
+    </div>
+  </div>
+
+  <!-- GET /cache/stats -->
+  <div class="endpoint" id="cache-stats">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/cache/stats</span>
+      <span class="endpoint-summary">Scan result cache statistics</span>
+      <span class="auth-badge auth-required">api-key</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="code-label">Response (200)</div>
+      <div class="code-block">{
+  <span class="prop">"size"</span>: <span class="num">12</span>,
+  <span class="prop">"hits"</span>: <span class="num">47</span>,
+  <span class="prop">"misses"</span>: <span class="num">38</span>,
+  <span class="prop">"hitRate"</span>: <span class="num">0.553</span>,
+  <span class="prop">"ttlMs"</span>: <span class="num">86400000</span>
+}</div>
+      <p>Also available: <code>DELETE /cache</code> (admin) — flushes all cached scan results.</p>
+    </div>
+  </div>
+
+  <!-- GET /providers/health -->
+  <div class="endpoint" id="providers-health">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/providers/health</span>
+      <span class="endpoint-summary">Health metrics for all providers</span>
+      <span class="auth-badge auth-open">open</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="code-label">Response (200)</div>
+      <div class="code-block">{
+  <span class="prop">"providers"</span>: [
+    {
+      <span class="prop">"name"</span>: <span class="str">"gemini"</span>,
+      <span class="prop">"state"</span>: <span class="str">"closed"</span>,
+      <span class="prop">"failures"</span>: <span class="num">0</span>,
+      <span class="prop">"successRate"</span>: <span class="num">1.0</span>,
+      <span class="prop">"avgLatencyMs"</span>: <span class="num">842</span>,
+      <span class="prop">"healthScore"</span>: <span class="num">100</span>
+    }
+  ]
+}</div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════ GRAPHQL ═══════════════ -->
+  <div class="tag-section" id="graphql-section">
+    <div class="tag-title"><h2>GraphQL</h2><span class="tag-count">1 endpoint</span></div>
+  </div>
+
+  <div class="endpoint" id="graphql">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-post">POST</span>
+      <span class="endpoint-path">/graphql</span>
+      <span class="endpoint-summary">GraphQL API via Mercurius</span>
+      <span class="auth-badge auth-required">api-key</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="endpoint-body">
+      <p>Full GraphQL API powered by <a href="https://mercurius.dev" style="color:var(--accent)">Mercurius</a>. Supports queries and mutations for scans, claims, keys, and analytics.</p>
+      <div class="code-label">Example — scan query</div>
+      <div class="code-block"><span class="method-kw">curl</span> -X POST http://localhost:3000/graphql \
+  -H <span class="str">"x-api-key: your-key"</span> \
+  -H <span class="str">"Content-Type: application/json"</span> \
+  -d <span class="str">'{"query":"{ scan(text:\"GPT-4 has 1T params\",provider:\"mock\"){overallRisk claims{text type}}}"}'</span></div>
+      <div class="code-label">Schema introspection</div>
+      <div class="code-block"><span class="method-kw">curl</span> -X POST http://localhost:3000/graphql \
+  -H <span class="str">"x-api-key: your-key"</span> \
+  -H <span class="str">"Content-Type: application/json"</span> \
+  -d <span class="str">'{"query":"{ __schema { queryType { name } types { name } } }"}'</span></div>
+    </div>
+  </div>
+
+
+  <!-- Footer -->
+  <div style="margin-top:60px; padding-top:24px; border-top:1px solid var(--border); color:var(--muted); font-size:13px;">
+    <p>Faultline API v0.2.0 · <a href="openapi.yaml" style="color:var(--accent)">OpenAPI spec (YAML)</a> · Built by <a href="https://nxtg.ai" style="color:var(--accent)">NextGen AI</a></p>
+    <p style="margin-top:4px;">Interactive docs available at <code style="color:var(--cyan)">GET /docs</code> when the server is running.</p>
+  </div>
+
+</main>
+
+<script>
+function toggle(header) {
+  const body = header.nextElementSibling;
+  const chevron = header.querySelector('.chevron');
+  const isOpen = body.classList.contains('open');
+  body.classList.toggle('open', !isOpen);
+  chevron.classList.toggle('open', !isOpen);
+}
+
+// Open the first endpoint in each section by default for demo
+document.querySelectorAll('.endpoint-header').forEach((h, i) => {
+  if (i === 0) toggle(h);
+});
+
+// Keyboard nav: Enter/Space on header toggles
+document.querySelectorAll('.endpoint-header').forEach(h => {
+  h.setAttribute('tabindex', '0');
+  h.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(h); }
+  });
+});
+</script>
+</body>
+</html>

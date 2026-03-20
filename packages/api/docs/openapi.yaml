@@ -1495,22 +1495,763 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /health/deep:
+    get:
+      tags: [Monitoring]
+      summary: Deep health check — all subsystems with entry counts
+      security: []
+      responses:
+        "200":
+          description: Subsystem health and analytics snapshot
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  subsystems: { type: object }
+                  analytics: { type: object }
+
+  /status:
+    get:
+      tags: [Monitoring]
+      summary: HTML status page — human-readable subsystem status
+      security: []
+      responses:
+        "200":
+          description: HTML status dashboard
+          content:
+            text/html:
+              schema: { type: string }
+
+  /metrics:
+    get:
+      tags: [Monitoring]
+      summary: Prometheus-format metrics
+      security: []
+      responses:
+        "200":
+          description: Prometheus text format
+          content:
+            text/plain:
+              schema: { type: string }
+
+  /cache/stats:
+    get:
+      tags: [Cache]
+      summary: Get scan result cache statistics (size, hit rate, TTL)
+      responses:
+        "200":
+          description: Cache statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  size: { type: integer }
+                  hits: { type: integer }
+                  misses: { type: integer }
+                  hitRate: { type: number, format: float }
+                  ttlMs: { type: integer }
+
+  /cache:
+    delete:
+      tags: [Cache]
+      summary: Flush all cached scan results (admin)
+      responses:
+        "200":
+          description: Cache flushed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  flushed: { type: integer }
+
+  /claims:
+    get:
+      tags: [Claims]
+      summary: Search claims by text, verdict, date, or source
+      security: []
+      parameters:
+        - { name: text, in: query, schema: { type: string } }
+        - { name: verdict, in: query, schema: { type: string, enum: [supported, contradicted, mixed, unverified] } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: source, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, default: 50 } }
+      responses:
+        "200":
+          description: Matching claims
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  claims: { type: array, items: { type: object } }
+                  total: { type: integer }
+
+  /claims/trending:
+    get:
+      tags: [Claims]
+      summary: Trending claims by frequency and emerging in last 24h
+      security: []
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 20 } }
+      responses:
+        "200":
+          description: Trending, emerging, and verdict-changed claims
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  trending: { type: array, items: { type: object } }
+                  emerging: { type: array, items: { type: object } }
+                  verdictChanged: { type: array, items: { type: object } }
+
+  /claims/{id}/explain:
+    get:
+      tags: [Claims]
+      summary: Reasoning chain and improvement suggestions for a claim
+      security: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Claim explanation and suggestions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  claimId: { type: string }
+                  verdict: { type: string }
+                  confidence: { type: number }
+                  reasoningChain: { type: array, items: { type: string } }
+                  evidenceFound: { type: boolean }
+                  suggestions: { type: array, items: { type: string } }
+        "404":
+          description: Claim not found
+
+  /claims/{id}/attribution:
+    get:
+      tags: [Claims]
+      summary: Provenance chain and attribution confidence for a claim
+      security: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Attribution chain
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  claimId: { type: string }
+                  confidence: { type: integer, minimum: 0, maximum: 100 }
+                  sources: { type: array, items: { type: object } }
+                  frequency: { type: integer }
+                  firstSeen: { type: string, format: date-time }
+
+  /scan/{id}/graph:
+    get:
+      tags: [Claims]
+      summary: Claim dependency graph in Mermaid or DOT format
+      security: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: format, in: query, schema: { type: string, enum: [mermaid, dot], default: mermaid } }
+      responses:
+        "200":
+          description: Graph markup
+          content:
+            text/plain:
+              schema: { type: string }
+
+  /scans/search:
+    get:
+      tags: [Claims]
+      summary: Full-text search across scan history with cursor pagination
+      security: []
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: provider, in: query, schema: { type: string } }
+        - { name: risk, in: query, schema: { type: string, enum: [low, medium, high, critical] } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, default: 20 } }
+      responses:
+        "200":
+          description: Scan history page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  scans: { type: array, items: { type: object } }
+                  nextCursor: { type: string, nullable: true }
+                  total: { type: integer }
+
+  /scan/deep:
+    post:
+      tags: [Scan]
+      summary: Deep scan with URL evidence validation and scoring
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string }
+                provider: { $ref: '#/components/schemas/Provider' }
+      responses:
+        "200":
+          description: Scan result with evidence link scoring
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "429": { $ref: '#/components/responses/RateLimited' }
+
+  /scan/diff:
+    post:
+      tags: [Scan]
+      summary: Diff two texts — new/removed/changed claims with inline view
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [before, after]
+              properties:
+                before: { type: string }
+                after: { type: string }
+                provider: { $ref: '#/components/schemas/Provider' }
+      responses:
+        "200":
+          description: Structured diff of claims
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  newClaims: { type: array, items: { type: object } }
+                  removedClaims: { type: array, items: { type: object } }
+                  changedVerdicts: { type: array, items: { type: object } }
+                  trustScoreDelta: { type: number }
+                  summary: { type: string }
+                  inlineDiff: { type: array, items: { type: object } }
+
+  /scan/compare:
+    post:
+      tags: [Scan]
+      summary: Compare two pre-computed scan results
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scanA, scanB]
+              properties:
+                scanA: { type: object }
+                scanB: { type: object }
+      responses:
+        "200":
+          description: Diff of the two scan results
+
+  /scan/template/{id}:
+    post:
+      tags: [Scan]
+      summary: Scan text using a saved template
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string }
+                provider: { $ref: '#/components/schemas/Provider' }
+      responses:
+        "200":
+          description: Scan result
+        "404":
+          description: Template not found
+
+  /scan/eu-report:
+    post:
+      tags: [Compliance]
+      summary: Generate EU AI Act compliance PDF report
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string }
+                provider: { $ref: '#/components/schemas/Provider' }
+      responses:
+        "200":
+          description: EU AI Act PDF report
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+
+  /scan/bulk:
+    post:
+      tags: [Jobs]
+      summary: Upload ZIP of documents for async bulk scan
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+                provider: { $ref: '#/components/schemas/Provider' }
+      responses:
+        "202":
+          description: Bulk job accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId: { type: string }
+                  totalFiles: { type: integer }
+                  status: { type: string }
+
+  /scan/compliance/{template}:
+    post:
+      tags: [Compliance]
+      summary: Scan text and apply industry compliance template
+      parameters:
+        - name: template
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [healthcare, finance, education, government]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string }
+                provider: { $ref: '#/components/schemas/Provider' }
+      responses:
+        "200":
+          description: Scan result with compliance template applied
+
+  /compliance/deadlines:
+    get:
+      tags: [Compliance]
+      summary: List upcoming regulatory deadlines with days-until countdown
+      security: []
+      responses:
+        "200":
+          description: Regulatory deadlines
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deadlines: { type: array, items: { type: object } }
+                  approaching:
+                    type: object
+                    properties:
+                      within30: { type: integer }
+                      within14: { type: integer }
+                      within7: { type: integer }
+
+  /compliance/scan-check:
+    post:
+      tags: [Compliance]
+      summary: Check claim text against approaching regulatory deadlines
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [claims]
+              properties:
+                claims: { type: array, items: { type: string } }
+      responses:
+        "200":
+          description: Deadline matches
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  matches: { type: array, items: { type: object } }
+
+  /compliance/deadlines/notify:
+    post:
+      tags: [Compliance]
+      summary: Fire webhook alerts for deadlines within 30/14/7 days (admin)
+      responses:
+        "200":
+          description: Notification result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notified: { type: integer }
+
+  /templates/compliance:
+    get:
+      tags: [Compliance]
+      summary: List industry compliance templates (HIPAA, SOX, FERPA, Gov)
+      security: []
+      responses:
+        "200":
+          description: Template list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  templates: { type: array, items: { type: object } }
+    post:
+      tags: [Compliance]
+      summary: Upload a custom compliance template (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, rules]
+              properties:
+                name: { type: string }
+                industry: { type: string }
+                rules: { type: array, items: { type: object } }
+      responses:
+        "201":
+          description: Template created
+
+  /templates/compliance/{id}:
+    delete:
+      tags: [Compliance]
+      summary: Delete a custom compliance template (admin)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Deleted
+
+  /templates:
+    get:
+      tags: [Templates]
+      summary: List all saved scan configuration templates
+      responses:
+        "200":
+          description: Template list
+    post:
+      tags: [Templates]
+      summary: Create a reusable scan configuration template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                provider: { $ref: '#/components/schemas/Provider' }
+                rules: { type: array, items: { type: string } }
+                outputFormat: { type: string, enum: [json, markdown, html, sarif] }
+      responses:
+        "201":
+          description: Template created
+
+  /templates/{id}:
+    delete:
+      tags: [Templates]
+      summary: Delete a scan template by ID
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Deleted
+
+  /jobs:
+    get:
+      tags: [Jobs]
+      summary: List all scheduled scan jobs
+      responses:
+        "200":
+          description: Job list
+    post:
+      tags: [Jobs]
+      summary: Create a scheduled scan job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, text, schedule]
+              properties:
+                name: { type: string }
+                text: { type: string }
+                schedule: { type: string, example: "*/30 * * * *" }
+                provider: { $ref: '#/components/schemas/Provider' }
+                webhookUrl: { type: string, format: uri }
+      responses:
+        "201":
+          description: Job created
+
+  /jobs/{id}:
+    delete:
+      tags: [Jobs]
+      summary: Delete a scheduled scan job
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Deleted
+
+  /jobs/{id}/progress:
+    get:
+      tags: [Jobs]
+      summary: Get progress and results of a bulk scan job
+      security: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Job progress and per-file results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  status: { type: string, enum: [pending, processing, complete, failed] }
+                  totalFiles: { type: integer }
+                  processedFiles: { type: integer }
+                  progressPercent: { type: integer }
+                  fileResults: { type: array, items: { type: object } }
+                  summary: { type: object, nullable: true }
+
+  /costs:
+    get:
+      tags: [Analytics]
+      summary: Per-scan cost estimates aggregated by provider and date
+      parameters:
+        - { name: provider, in: query, schema: { $ref: '#/components/schemas/Provider' } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: Cost data with aggregate
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  costs: { type: array, items: { type: object } }
+                  aggregate:
+                    type: object
+                    properties:
+                      totalTokens: { type: integer }
+                      totalCostUsd: { type: number }
+                      byProvider: { type: object }
+
+  /providers/health:
+    get:
+      tags: [Providers]
+      summary: Health metrics for all built-in and plugin providers
+      security: []
+      responses:
+        "200":
+          description: Provider health metrics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  providers: { type: array, items: { type: object } }
+
+  /providers/register:
+    post:
+      tags: [Providers]
+      summary: Register a custom external provider plugin (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, endpoint]
+              properties:
+                name: { type: string }
+                endpoint: { type: string, format: uri }
+                apiKeyEnvVar: { type: string }
+      responses:
+        "201":
+          description: Provider registered
+
+  /tenants:
+    get:
+      tags: [Keys]
+      summary: List all tenants
+      responses:
+        "200":
+          description: Tenant list
+    post:
+      tags: [Keys]
+      summary: Create a new tenant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                plan: { type: string, enum: [free, starter, pro, enterprise] }
+      responses:
+        "201":
+          description: Tenant created
+
+  /tenants/{id}:
+    get:
+      tags: [Keys]
+      summary: Get a tenant by ID
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Tenant object
+        "404":
+          description: Tenant not found
+    delete:
+      tags: [Keys]
+      summary: Delete a tenant by ID
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Deleted
+
+  /tenants/{id}/keys:
+    post:
+      tags: [Keys]
+      summary: Add an API key to a tenant
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [keyId]
+              properties:
+                keyId: { type: string }
+      responses:
+        "200":
+          description: Key added
+
+  /tenants/{id}/keys/{keyId}:
+    delete:
+      tags: [Keys]
+      summary: Remove an API key from a tenant
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: keyId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Key removed
+
+  /tenants/{id}/usage:
+    get:
+      tags: [Keys]
+      summary: Aggregate usage across all keys in a tenant
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Tenant usage aggregate
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenantId: { type: string }
+                  totalScans: { type: integer }
+                  byKey: { type: object }
+
+  /graphql:
+    post:
+      tags: [GraphQL]
+      summary: GraphQL API (queries + mutations)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query: { type: string, example: "{ scan(text: \"hello\", provider: \"mock\") { overallRisk } }" }
+                variables: { type: object }
+      responses:
+        "200":
+          description: GraphQL response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: object }
+                  errors: { type: array, items: { type: object } }
+
 tags:
-  - name: System
-    description: Health and operational endpoints.
   - name: Scan
-    description: >
-      Core claim forensics pipeline — submit text or files for AI claim
-      extraction, verification, and risk scoring.
+    description: Core claim forensics pipeline — text, batch, upload, deep, diff, compare, template.
+  - name: Claims
+    description: Claim index — search, trending, attribution, explainability, graphs, scan history.
+  - name: Compliance
+    description: EU AI Act classification, industry templates (HIPAA/SOX/FERPA/Gov), regulatory calendar.
+  - name: Jobs
+    description: Scheduled scan jobs and async bulk document import.
+  - name: Templates
+    description: Reusable scan configuration templates.
+  - name: Analytics
+    description: Usage dashboard, per-key counts, provider cost tracking.
+  - name: Cache
+    description: Content-hash result cache management.
   - name: Keys
-    description: >
-      API key lifecycle management. Admin access required.
-  - name: Usage
-    description: Per-key scan usage counters.
-  - name: Dashboard
-    description: >
-      Platform-wide analytics aggregates. Admin access required.
+    description: API key lifecycle, tenant management, and per-tenant usage.
   - name: Webhooks
-    description: >
-      Webhook registration and management. Deliveries are HMAC-signed.
-      Admin access required.
+    description: Event subscriptions with HMAC-SHA256 signing and 3-attempt retry.
+  - name: Monitoring
+    description: Health checks, Prometheus metrics, status page, provider health.
+  - name: Providers
+    description: Provider registry, health monitoring, custom plugin registration.
+  - name: Reports
+    description: Compliance PDF report generation.
+  - name: GraphQL
+    description: GraphQL API powered by Mercurius — queries and mutations.
