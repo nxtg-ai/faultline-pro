@@ -869,6 +869,58 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ---
 
+> **Reflection cycle**: 2026-03-20 (housekeeping session — no code shipped) — HEAD `c2146b8`
+
+### 1. What did we ship since last check-in?
+
+**No code directives. 2 housekeeping commits only.**
+
+| Commit | Action |
+|--------|--------|
+| `e1999a1` | Marked DIRECTIVE-NXTG-20260320-03 `DONE` — status field missed at ship time |
+| `c2146b8` | Removed false-positive `Status**: PENDING` grep trigger from reflection body — was causing the pre-task hook to fire every session on a quoted example string |
+
+**Running total**: 3,511 tests / 136 files — unchanged, all GREEN.
+
+---
+
+### 2. What surprised us?
+
+- **The hook false-fired three sessions in a row.** The pre-task hook greps for `Status**: PENDING` in NEXUS.md and matched a quoted example inside the D-169 reflection paragraph. The reflection was written to document the process gap of missing status updates — and in doing so, it reproduced the exact grep trigger that causes the false positive. The fix was to rewrite the sentence without the trigger pattern. The lesson: any documentation that describes a hook's trigger condition should be phrased in a way that doesn't reproduce that condition literally.
+
+- **Three consecutive sessions of zero code.** Reflection → status fix → false-positive fix → reflection → false-positive fix → reflection. The last three sessions have produced no product changes. This is the practical cost of unresolved process gaps: they consume session bandwidth on bookkeeping that compounds. The underlying signal is that the project is in a holding pattern waiting for external unblocks (NPM_TOKEN, Fly.io).
+
+---
+
+### 3. Cross-project signals
+
+- **Hook trigger strings must be designed to resist self-documentation.** Any ASIF project that uses grep-based pre-task hooks should establish a convention: hook trigger patterns should be distinctive enough that they cannot accidentally appear in normal prose. One option is to require a structured machine-readable marker (e.g., a YAML frontmatter block or a dedicated `status:` field on its own line) rather than grepping free text. This would make false positives structurally impossible rather than relying on discipline.
+
+- **Reflection frequency vs reflection value.** Four reflection cycles have fired this session with no intervening code (D-169 reflection, then two sessions of housekeeping). The reflection content necessarily becomes thin — there is nothing to report. The CoS previously fixed the heartbeat dormancy gate (v4.6, 2026-03-17) but the fix clearly didn't fully suppress reflections during code-free sessions. Either the gate threshold needs to be raised, or reflections should be gated on "at least one non-housekeeping commit since last reflection."
+
+---
+
+### 4. What would we prioritise next?
+
+Same list as last cycle — no change since no code was shipped:
+
+1. **`filterClaimsForVerification` importance threshold** — `importance >= 3` is load-bearing for D-169 synthetic claims. Should be reviewed.
+2. **Stripe billing wired to org plans** — tenth+ cycle. One directive of work.
+3. **`tsc --noEmit` in CI gate** — four incident classes documented.
+4. **`/audit/log` endpoint** — 4 integration scenarios identified this gap.
+5. **`vitest --coverage` baseline** — tenth+ cycle asking.
+
+---
+
+### 5. Blockers and questions for the CoS?
+
+- **`NPM_TOKEN`**: Still blocked. v0.3.0 tagged, 3,511 tests green.
+- **Fly.io credentials**: Still blocked.
+- **Reflection gate**: Three reflection cycles in this session with zero code shipped between them. Is the heartbeat v4.6 dormancy gate working as intended? Suggest raising the idle threshold or adding a minimum-commits gate before reflection fires.
+- **Hook trigger design standard**: Should ASIF adopt a machine-readable status marker (structured YAML or a dedicated line format) instead of free-text grep to prevent future false positives?
+
+---
+
 > **Reflection cycle**: 2026-03-20 (P0 claim extraction fix. D-169) — HEAD `e1999a1`
 
 ### 1. What did we ship since last check-in?
