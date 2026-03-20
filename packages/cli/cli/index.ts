@@ -28,6 +28,7 @@ import { extractFailedClaims, buildCritiqueAnalysis } from '../analysis/critique
 import { formatCritique } from './critique.js';
 import { createScanSpinner } from './spinner.js';
 import { compareScanResults, renderCompare } from './compare.js';
+import { render as renderExport, applyFilter, type ExportFormat } from './export.js';
 import { setLang } from '../lib/i18n.js';
 
 const VERSION = '0.2.0';
@@ -95,6 +96,7 @@ Usage:
   faultline graph --input <file> [--format mermaid|dot]             Export claim graph
   faultline critique --input <file> [--provider gemini]             Critique failed claims + improved prompt
   faultline compare --before <text|file> --after <text|file> [--provider mock]   Compare two scans side-by-side
+  faultline export [--format csv|json|ndjson] [--from ISO_DATE] [--to ISO_DATE] [--provider gemini] [--risk high] [--output file.csv]
   faultline plugin install <pkg>                                    Install a plugin (npm install + register)
   faultline plugin remove  <pkg>                                    Remove a plugin
   faultline plugin list                                             List loaded plugins
@@ -867,6 +869,38 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
       } catch {
         return { exitCode: 1, output: 'Error: Invalid JSON in input file.' };
       }
+    }
+
+    case 'export': {
+      const exportFormat = (flags['format'] || 'csv') as ExportFormat;
+      if (!['csv', 'json', 'ndjson'].includes(exportFormat)) {
+        return { exitCode: 1, output: 'Error: --format must be csv, json, or ndjson.' };
+      }
+
+      const historyDir = flags['history-dir'];
+      const allEntries = listHistory(historyDir, { all: true });
+
+      const filtered = applyFilter(allEntries, {
+        from:     flags['from'],
+        to:       flags['to'],
+        provider: flags['provider'],
+        risk:     flags['risk'],
+      });
+
+      if (filtered.length === 0) {
+        return { exitCode: 0, output: 'No scan history entries matched the given filters.' };
+      }
+
+      const content = renderExport(filtered, exportFormat);
+
+      const outputPath = flags['output'];
+      if (outputPath) {
+        writeFileSync(resolve(outputPath), content, 'utf-8');
+        return { exitCode: 0, output: `Exported ${filtered.length} scan(s) to ${resolve(outputPath)}` };
+      }
+
+      // No --output flag → write to stdout (allows piping)
+      return { exitCode: 0, output: content.trimEnd() };
     }
 
     default:
