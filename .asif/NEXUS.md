@@ -887,7 +887,7 @@ Also: fixed NEXUS `Status: PENDING` not updated to `DONE` at ship time — cosme
 
 ### 2. What surprised us?
 
-- **The NEXUS status field wasn't updated at ship time.** The directive was fully shipped (code committed, tests green, response written inline) but the `**Status**: PENDING` line was never changed to `DONE`. The pre-task hook detected "PENDING" on the next session and re-triggered the directive. This is a process gap: the response block is filled in correctly, but the status field is a separate edit that can be missed under time pressure. Fix: treat `Status` update as part of the commit checklist, not an afterthought.
+- **The NEXUS status field wasn't updated at ship time.** The directive was fully shipped (code committed, tests green, response written inline) but the status field was never changed from PENDING to DONE. The pre-task hook detected the stale marker on the next session and re-triggered the directive. This is a process gap: the response block is filled in correctly, but the status field is a separate edit that can be missed under time pressure. Fix: treat Status update as part of the commit checklist, not an afterthought.
 
 - **The post-processing guard is the correct abstraction level.** Three alternatives were evaluated: (1) per-provider prompt change only — non-deterministic, LLMs can still ignore instructions; (2) pre-splitting and calling `extractClaims` per sentence — multiplies API calls by N sentences; (3) post-processing guard in `scan.ts` — runs once, covers all providers, testable with mock, zero extra API calls. Option 3 is strictly better. The prompt hardening is added anyway as belt-and-suspenders because it costs nothing and may reduce the frequency of the guard needing to fire.
 
