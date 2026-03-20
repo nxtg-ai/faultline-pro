@@ -14,6 +14,7 @@ import { getClaimIndex } from '../store/claims.js';
 import { getCostStore } from '../store/costs.js';
 import { getScanHistory } from '../store/scan-history.js';
 import { recordScanTelemetry } from '../store/telemetry.js';
+import { notifyScanFailed } from '../store/notifications.js';
 
 const BODY_SCHEMA = {
   type: 'object',
@@ -163,6 +164,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
         errorCode:   500,
       });
       fireWebhookEvent('scan.failed', { error: lastError });
+      void notifyScanFailed(keyId, lastError, attempted[attempted.length - 1] ?? effectiveProvider);
       return reply.status(500).send({ error: lastError });
     },
   );

@@ -47,6 +47,8 @@ import { changelogRoutes } from './routes/changelog.js';
 import { pluginMarketplaceRoutes } from './routes/plugins.js';
 import { telemetryRoutes } from './routes/telemetry.js';
 import { rateLimitRoutes } from './routes/rate-limits.js';
+import { notificationRoutes } from './routes/notifications.js';
+import { getNotificationStore } from './store/notifications.js';
 import { getJobScheduler, resetJobScheduler } from './store/jobs.js';
 import { getAuditLogger, hashInput } from './store/audit.js';
 import { getUsageMeter } from './store/usage.js';
@@ -138,6 +140,7 @@ export function buildServer() {
   fastify.register(pluginMarketplaceRoutes);
   fastify.register(telemetryRoutes);
   fastify.register(rateLimitRoutes);
+  fastify.register(notificationRoutes);
 
   fastify.register(mercurius, {
     schema: gqlSchema,
@@ -151,6 +154,23 @@ export function buildServer() {
 
   fastify.addHook('onReady', async () => {
     getJobScheduler().start();
+
+    // Weekly summary notification — fires every Sunday 09:00 UTC
+    setInterval(() => {
+      const now = new Date();
+      if (now.getUTCDay() === 0 && now.getUTCHours() === 9 && now.getUTCMinutes() === 0) {
+        const prefs = getNotificationStore().listPrefs().filter(p => p.events.includes('weekly.summary'));
+        const summaries = prefs.map(p => ({
+          keyId:       p.keyId,
+          scanCount:   0, // usage meter does not expose per-key totals yet
+          errorCount:  0,
+          topProvider: 'gemini',
+        }));
+        if (summaries.length > 0) {
+          void getNotificationStore().dispatch('weekly.summary', { summaries }).catch(() => undefined);
+        }
+      }
+    }, 60_000);
   });
 
   fastify.addHook('onClose', async () => {
