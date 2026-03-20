@@ -111,6 +111,46 @@ The Kaggle version remains at  (tagged  at commit ).
 
 > **102 directives archived** (D-174 industry compliance, D-175 bulk import, D-176 celebration — 100th+ milestone).
 
+### DIRECTIVE-NXTG-20260319-192 — P1: Claim Explainability — "Why is this unverified?"
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-19 11:00 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] **Explanation engine** — for each unverified claim, generate human-readable explanation: what evidence was searched, what was found, why confidence is low.
+2. [ ] **`GET /claims/:id/explain`** — detailed reasoning chain.
+3. [ ] **Suggestion engine** — "To improve this claim's score, consider: adding a source URL, citing a specific study, providing a date range."
+4. [ ] Tests.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260319-193.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260319-193 — P1: Scan Diff — Track Changes Between Document Versions
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-19 11:00 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] **`POST /scan/diff`** — accept two texts, show: new claims, removed claims, changed verdicts, trust score delta.
+2. [ ] **Inline diff view** — highlight added/removed/changed claims in the text.
+3. [ ] Tests.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260319-194.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260319-194 — P2: Final MAXOUT Archive
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
+**Injected**: 2026-03-19 11:00 | **Estimate**: S | **Status**: PENDING
+
+**Action Items**:
+1. [ ] Final test count. 2. [ ] Archive + README. 3. [ ] All 50+ initiatives.
+
+**Response** (filled by team): >
+
+---
+
 ### DIRECTIVE-NXTG-20260319-174 — P1: Compliance Report Generator — Industry-Specific Templates
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
 **Injected**: 2026-03-19 10:15 | **Estimate**: M | **Status**: DONE
