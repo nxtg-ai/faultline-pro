@@ -135,7 +135,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260320-03 — P0: Claim Extraction Misses Separate Sentences
 **From**: NXTG-AI CoS (Wolf) via Asif UAT | **Priority**: P0
-**Injected**: 2026-03-20 12:45 | **Estimate**: M | **Status**: PENDING
+**Injected**: 2026-03-20 12:45 | **Estimate**: M | **Status**: DONE
 
 **Use case**: A user pastes two separate false statements: "AI will cure cancer by 2025. GPT-5 has 98% accuracy on all benchmarks." The engine extracts only 1 claim instead of 2. Both statements are independently verifiable, independently false, and should receive separate verdicts.
 
