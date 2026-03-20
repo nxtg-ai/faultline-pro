@@ -869,6 +869,61 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ---
 
+> **Reflection cycle**: 2026-03-20 (P0 claim extraction fix. D-169) — HEAD `e1999a1`
+
+### 1. What did we ship since last check-in?
+
+**1 directive / 1 commit: D-169 P0 claim extraction sentence merging**
+
+| Commit | Deliverable | Tests |
+|--------|-------------|-------|
+| `eea6dd1` `fix: P0 D-169` | `cli/scan.ts` — `guaranteeClaimPerSentence(text, rawClaims)`: splits input into sentence candidates (≥3 words), checks coverage via 40-char normalised fingerprint, adds synthetic `fact` claims (id prefix `s`, importance 3) for any sentence not covered by LLM output. Called after every `provider.extractClaims()`. `geminiService.ts`, `openai_provider.ts`, `claude_provider.ts`, `perplexity_provider.ts` — "CRITICAL RULE: Each sentence … must be extracted as its own separate claim. Do not merge claims from different sentences." added to all extraction prompts. `tests/sentence-split.test.ts` — 13 tests: acceptance test (cancer + GPT-5 scenario), unit tests for the helper (synthetic IDs, no-op on single sentence, no duplicates, empty input, fragment filtering). | +13 (3,498→3,511) |
+
+Also: fixed NEXUS `Status: PENDING` not updated to `DONE` at ship time — cosmetic bookkeeping fix.
+
+**Running total**: 3,511 tests / 136 files — all GREEN · 74 initiatives SHIPPED.
+
+---
+
+### 2. What surprised us?
+
+- **The NEXUS status field wasn't updated at ship time.** The directive was fully shipped (code committed, tests green, response written inline) but the `**Status**: PENDING` line was never changed to `DONE`. The pre-task hook detected "PENDING" on the next session and re-triggered the directive. This is a process gap: the response block is filled in correctly, but the status field is a separate edit that can be missed under time pressure. Fix: treat `Status` update as part of the commit checklist, not an afterthought.
+
+- **The post-processing guard is the correct abstraction level.** Three alternatives were evaluated: (1) per-provider prompt change only — non-deterministic, LLMs can still ignore instructions; (2) pre-splitting and calling `extractClaims` per sentence — multiplies API calls by N sentences; (3) post-processing guard in `scan.ts` — runs once, covers all providers, testable with mock, zero extra API calls. Option 3 is strictly better. The prompt hardening is added anyway as belt-and-suspenders because it costs nothing and may reduce the frequency of the guard needing to fire.
+
+- **The `filterClaimsForVerification` filter compounds the merging bug.** Even after the post-processing fix, `filterClaimsForVerification` only forwards `fact` claims with `importance >= 3` to actual verification. Synthetic claims added by `guaranteeClaimPerSentence` use `importance: 3` and `type: 'fact'` specifically to ensure they pass this filter. If importance were set to 1 or 2, the synthetic claims would be extracted but silently excluded from verification — the same user-visible bug with a different root cause. The default importance of 3 is load-bearing.
+
+---
+
+### 3. Cross-project signals
+
+- **Post-processing as the reliability layer for LLM structured output.** The pattern — "call LLM, then validate/repair the output against a deterministic rule, add missing entries rather than failing" — applies anywhere an LLM is expected to enumerate a complete set. dx3 agent action plans could use the same pattern: if the LLM returns fewer steps than the problem decomposition suggests, synthesise the missing steps from a rule-based splitter. The guarantee is not "the LLM will do it right" but "the output always has minimum coverage regardless."
+
+- **40-char normalised fingerprint for semantic deduplication.** The coverage check uses `normalizeSentence(s).slice(0, 40)` as a substring match rather than exact string equality or embedding similarity. This is fast, works offline, has zero false negatives for the target case (two clearly distinct sentences), and avoids introducing a similarity threshold to tune. It will produce false positives for sentences that are near-identical in their first 40 chars — but that's an edge case not worth solving now. Any project needing lightweight deduplication of short text fragments can copy this pattern.
+
+- **Synthetic claim ID prefix convention.** Using `s1`, `s2` for synthetic claims (vs `c1`, `c2` for LLM-extracted claims) allows downstream consumers to distinguish origin. If a future API surface wants to expose "this claim was auto-added by the sentence splitter" vs "this claim was extracted by the LLM", the prefix enables that without a schema change. Worth adopting in any system that mixes human-generated and machine-generated items in the same list.
+
+---
+
+### 4. What would we prioritise next?
+
+1. **`filterClaimsForVerification` importance threshold review.** The current threshold is `importance >= 3`. Synthetic claims are set to exactly 3, which passes. But if a real LLM assigns `importance: 2` to a sentence (plausible for short or peripheral claims), it still gets excluded from verification even though `guaranteeClaimPerSentence` ensured it was extracted. The fix: either lower the threshold to 2, or remove the importance filter entirely and rely only on the `type === 'fact'` check + the 8-claim cap. This is a follow-on correctness issue from D-169.
+2. **Stripe billing wired to org plans** — tenth cycle. Org plan field live, usage metering live, 1 directive of work to close the revenue loop.
+3. **`tsc --noEmit` in CI gate** — fourth incident class now documented. D-169 didn't trigger a new one, but the underlying risk remains.
+4. **`/audit/log` endpoint** — flagged in 4 integration scenarios last session. Still missing.
+5. **`vitest --coverage` baseline** — tenth cycle asking.
+
+---
+
+### 5. Blockers and questions for the CoS?
+
+- **`NPM_TOKEN`**: Still blocked. 3,511 tests green, v0.3.0 tagged.
+- **Fly.io credentials**: Still blocked.
+- **`filterClaimsForVerification` importance threshold**: Should the threshold be lowered from 3 to 2, or removed in favour of the 8-claim cap alone? The current value is load-bearing for synthetic claims from D-169 — if it's ever raised above 3, the fix silently breaks.
+- **NEXUS status field process**: Propose adding "update `**Status**: DONE` in NEXUS" as an explicit step in the commit checklist (alongside "write response inline"). The pre-task hook re-fires on any `PENDING` marker regardless of whether the response block is filled. Should the hook be updated to check for a filled response block rather than just the status keyword?
+
+---
+
 > **Reflection cycle**: 2026-03-20 (integration testing + API playground + mission control. D-166/D-167/D-168) — HEAD `e88f586`
 
 ### 1. What did we ship since last check-in?
