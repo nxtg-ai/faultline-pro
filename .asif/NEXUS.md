@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-19 (SG-01/SG-02 done. OpenAPI decoration + property-based oracles. CRUCIBLE 7/8 gates PASS. 2,757 tests (111 files). 107 directives archived. 57 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-19 (API docs shipped. index.html 1.6k lines + openapi.yaml 11→48 paths. 2,757 tests. 58 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -735,6 +735,67 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-03-19 (API docs — index.html + openapi.yaml) — HEAD `714fcc3`
+
+### 1. What did we ship since last check-in?
+
+**1 commit: `docs: comprehensive API reference — index.html + full openapi.yaml (48 paths)`**
+
+| Deliverable | Description |
+|-------------|-------------|
+| `packages/api/docs/index.html` (1,611 lines) | Self-contained HTML API reference — dark theme, sidebar nav, 48 endpoints, auth guide, error codes, provider table, curl examples with syntax-highlighted JSON responses |
+| `packages/api/docs/openapi.yaml` (1,516 → 2,257 lines) | Extended from 11 to 48 paths; all 37 missing endpoints added (Claims, Compliance, Jobs, Tenants, Costs, GraphQL, Cache, Templates, Providers, Monitoring) |
+
+No test count change (docs-only). Running total: 2,757 tests · 111 files.
+
+---
+
+### 2. What surprised us?
+
+- **The openapi.yaml had 37 unspecced paths out of 48.** We knew it was sparse (SG-01 noted this as a gap), but seeing exactly 11/48 coverage quantified as a ratio sharpened the priority. The YAML now has all 48 paths and will stay in sync with the route files if we make it policy to update it with every new route.
+
+- **The live `/docs/json` spec was less useful than expected for docs generation.** Because SG-01 only added `tags` and `summary` (no request/response schemas), the Fastify-generated spec at `/docs/json` had all 48 paths but minimal schema detail — just method, summary, and tag. The hand-authored `openapi.yaml` is still the canonical reference for schema detail and examples. The two should eventually merge: Fastify-decorated schemas → live spec → openapi.yaml stays current automatically.
+
+- **Generating the HTML reference from scratch is faster than expected.** Writing 1,600 lines of structured HTML with all 48 endpoints took one pass. The key was having the live spec JSON to extract the path/tag/summary structure, then filling examples from route file knowledge. No agent delegation needed.
+
+- **`PORT` defaulting to 3001** (not 3000 as in the README quick-start) caused the first two server startup attempts to fail silently — the process exited because 3001 was in use by a Chrome websocket. The fix was `PORT=3099`. This is a local env issue but worth noting in the quick-start docs.
+
+---
+
+### 3. Cross-project signals
+
+- **The `index.html` docs pattern** (pure CSS, no framework, fully self-contained, dark theme, collapsible endpoint cards with keyboard navigation) is directly reusable for any NXTG API project. It opens from the filesystem with no server and requires no build step — a meaningful advantage over Redoc/Swagger UI for developer-facing docs in a monorepo.
+
+- **The gap between hand-authored and auto-generated OpenAPI** is a portfolio-wide risk. Any project using `@fastify/swagger` without decorating every route schema will have the same problem: `/docs` exists but is thin. The fix (SG-01 pattern: `schema: { tags, summary, body, params, response }` on every route handler) is a one-sprint effort for any project with 20–50 routes.
+
+- **The 11/48 spec coverage baseline** is a useful metric pattern. Other projects should run `grep -c "^  /" docs/openapi.yaml` vs `live spec paths` to discover their own spec debt.
+
+---
+
+### 4. What would we prioritize next?
+
+1. **Add `schema.response` blocks to routes** — each route currently has `tags` + `summary` + sometimes `body`. Adding response schemas makes `/docs` Try-It actually useful and enables client code generation. Estimated: 1 agent sweep across 26 routes.
+
+2. **`vitest --coverage` baseline** — Gate 8.5 is still open. One config line + one CI step. Should be done before any coverage claims are made publicly.
+
+3. **Tenant data isolation** — still the biggest functional gap between "demo-ready" and "production-ready." See standing Team Question.
+
+4. **npm publish + Fly.io deploy** — credential-blocked. Platform is production-ready.
+
+5. **README quick-start PORT fix** — the example shows `localhost:3000` but the server defaults to `PORT=3001`. Small but would confuse first-time users.
+
+---
+
+### 5. Blockers and questions for the CoS?
+
+- **`NPM_TOKEN`**: Unchanged. `npm publish` dry-run clean.
+- **Fly.io deploy**: Unchanged.
+- **Coverage gate**: Confirm whether to add `vitest --coverage` now or wait for a threshold decision.
+- **Tenant isolation scope**: Still open.
+- **openapi.yaml ownership**: Should the YAML be auto-generated from live `/docs/json` via a script, or remain hand-authored? Auto-gen keeps it current; hand-authored has richer examples. Recommend: hybrid — script to detect path drift, human to fill schemas.
+
+---
 
 > **Reflection cycle**: 2026-03-19 (CRUCIBLE audit + SG-01/SG-02 close) — HEAD `5ca383b`
 
