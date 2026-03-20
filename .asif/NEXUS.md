@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-19 (D-206/207 done. Regulatory calendar, deadline alerts, webhook notifications. JS: 2,747 tests (110 files). 107 directives archived. 57 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-19 (SG-01/SG-02 done. OpenAPI decoration + property-based oracles. CRUCIBLE 7/8 gates PASS. 2,757 tests (111 files). 107 directives archived. 57 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -67,6 +67,7 @@
 | N-55 | MAXOUT Archive — 2,733 tests (109 files), 55 initiatives, 105 directives | DISTRIBUTION | SHIPPED | P2 | 2026-03-19 |
 | N-56 | Regulatory Calendar (GET /compliance/deadlines, scan-check, deadline webhooks) | COMPLIANCE | SHIPPED | P1 | 2026-03-19 |
 | N-57 | Final Session Archive — 2,747 tests (110 files), 57 initiatives, 107 directives | DISTRIBUTION | SHIPPED | P2 | 2026-03-19 |
+| N-58 | CRUCIBLE Self-Audit + Oracle Closure — SG-01 OpenAPI decoration, SG-02 fast-check (10 properties), 7/8 gates PASS | DISTRIBUTION | SHIPPED | P2 | 2026-03-19 |
 
 ---
 
@@ -734,6 +735,68 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-03-19 (CRUCIBLE audit + SG-01/SG-02 close) — HEAD `5ca383b`
+
+### 1. What did we ship since last check-in?
+
+**Session close: 2026-03-19 (evening) — CRUCIBLE self-audit + 2 self-improvement tasks, 2,747 → 2,757 tests (+10), 1 commit**
+
+| Task | Deliverable | Tests |
+|------|-------------|-------|
+| SG-01 | OpenAPI schema decoration — `tags` + `summary` on all 26 route files; 12 tag groups in server.ts | 0 (infra) |
+| SG-02 | Property-based oracle coverage — `packages/api/tests/property.test.ts`, 10 fast-check properties | +10 |
+| CRUCIBLE self-audit | 7/8 gates PASS report; badge corrected 2747→2757; i18n row added to README | — |
+
+**Running total**: 2,757 tests · 111 files · 57 initiatives SHIPPED · 107 directives archived.
+
+---
+
+### 2. What surprised us?
+
+- **CRUCIBLE Gate 6 is now CLOSED.** SG-02 installs property-based oracles on the exact paths flagged since D-22 — `computeAttributionConfidence`, `ClaimIndex.search/ingest`, `CostStore.getAggregate`, `BulkJobStore.progressPercent`. The 10 properties were green on first run with no failures in the fast-check shrink cycle, which suggests the implementations had no latent invariant violations. This is the desired state, but it also means the properties didn't catch anything new — they're now regression anchors.
+
+- **Oracle triangulation is complete at CRITICAL tier.** All four oracle types are now live: example-based (2,757 tests), property-based (10 fast-check properties), contract (swagger.test.ts + GraphQL introspection), integration (e2e.test.ts + enterprise.test.ts against real Fastify inject). CRUCIBLE Oracle requirement for Critical-tier is fully satisfied.
+
+- **Integration test mocking is the one standing flag.** `e2e.test.ts` and `enterprise.test.ts` mock the LLM scan/extract calls. This is justified (no live API keys in CI), but it means these tests cannot catch a breaking change in the LLM response shape. The mitigation is contract tests (swagger.test.ts) covering the API surface. The gap is internal LLM adapter contracts — a future Gate 7 spec-traceability ticket.
+
+- **Coverage is unmeasured.** No `vitest --coverage` config exists for the API package. Gate 8.5 is "NOT ASSESSED". We know we have 111 test files and 2,757 tests, but we don't know what percentage of source lines are exercised. Given the breadth of route coverage visible in the test suite, actual coverage is likely high — but the honest answer is we don't know.
+
+---
+
+### 3. Cross-project signals
+
+- **fast-check property patterns are copy-paste ready.** The 10 properties in `property.test.ts` cover four archetypes: (a) bounded output invariant, (b) filter-subset invariant, (c) dedup/idempotency, (d) aggregate-vs-sum correctness. Any NXTG project with a store layer can clone these patterns against their own stores with minimal adaptation. FamilyMind's subscription aggregation math would be a natural fit for pattern (d).
+
+- **OpenAPI tag decoration pattern (SG-01) is worth extracting as a convention.** The `schema: { tags: ['TagName'], summary: 'Verb noun' }` block on every route handler is a 2-line addition per route that transforms `/docs` from unusable to demo-ready. Any NXTG API project without this should add it in a single sweep commit.
+
+- **CRUCIBLE self-audit is viable as an idle-time protocol.** Running the 8-gate audit took under 10 minutes, produced actionable findings (badge stale, coverage unmeasured), and directly informed two concrete commits (SG-01 decoration makes Gate 8.4 traceable; SG-02 closes Gate 6). Recommend encoding this as a standing enrichment cycle item across the portfolio.
+
+---
+
+### 4. What would we prioritize next?
+
+1. **`vitest --coverage` baseline** — add `coverage: { provider: 'v8', reporter: ['text', 'lcov'] }` to `packages/api/vitest.config.ts` and establish a real coverage number. Gate 8.5 is the only open CRUCIBLE gap. One config change + one CI step.
+
+2. **Tenant data isolation** — `TenantStore` exists; scans/claims/costs are still global. Thread `keyId`-scoped filtering through every store query. This is the delta between "tenant model exists" and "multi-tenant SaaS". Estimated 6–8 files.
+
+3. **npm publish + Fly.io deploy** — both are credential-blocked. The API and CLI are production-ready. Awaiting NPM_TOKEN and Fly.io secrets from CoS.
+
+4. **Web dashboard parity** — `packages/web` lags the API surface significantly. The dashboard doesn't know about tenants, costs, scan history search, or compliance calendars. A web-catch-up sprint would visually close the gap.
+
+5. **CRUCIBLE Gate 7 — spec-traceability** — new integration tests should cite NEXUS acceptance criteria. Adding `// Validates: N-xx AC-y` comments to key tests is low-effort and makes the coverage story auditable.
+
+---
+
+### 5. Blockers and questions for the CoS?
+
+- **`NPM_TOKEN`**: Unchanged. `npm publish` dry-run clean. Awaiting credentials.
+- **Fly.io deploy**: Unchanged. `fly deploy` ready. Awaiting `flyctl auth login` + secrets.
+- **Coverage gate**: Should we add a `coverage.thresholds` block to vitest config now, or wait until we have a baseline number to set a realistic floor? Recommend: baseline first, then set threshold at (baseline − 5%) as a floor.
+- **Tenant isolation scope**: Confirm whether full per-tenant data scoping is a follow-up directive or deferred to post-v1. Current state is MVP-sufficient for demos but not for a real multi-tenant deployment.
+- **SG-02 property failures policy**: The 10 fast-check properties all passed on first run. If a future property-based test finds a real invariant violation during CI, what is the expected response — fix immediately (CRUCIBLE Critical tier) or log and schedule? Recommend: Critical tier → fix immediately, same as a failing unit test.
+
+---
 
 > **Reflection cycle**: 2026-03-19 (no delta) — HEAD `73149ad`
 
