@@ -1,9 +1,10 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { getRateLimiter } from '../store/ratelimit.js';
 import { getKeyStore } from '../store/keys.js';
+import { checkAndAlert } from '../store/rate-alerts.js';
 import type { Tier } from '../store/ratelimit.js';
 
-function resolveTier(keyId: string): Tier {
+export function resolveTier(keyId: string): Tier {
   if (keyId === 'admin') return 'admin';
   const key = getKeyStore().validateById(keyId);
   if (key && key.permissions.includes('admin')) return 'admin';
@@ -20,9 +21,11 @@ export async function rateLimitScan(request: FastifyRequest, reply: FastifyReply
   const keyId = request.keyId ?? 'unknown';
   const tier = resolveTier(keyId);
   const limiter = getRateLimiter();
+  limiter.setTierCache(keyId, tier);
   const { allowed, info } = limiter.check(keyId, tier);
 
   if (!allowed) {
+    limiter.recordThrottle(keyId);
     reply
       .header('X-RateLimit-Limit', String(info.limit))
       .header('X-RateLimit-Remaining', '0')
@@ -38,4 +41,8 @@ export async function rateLimitScan(request: FastifyRequest, reply: FastifyReply
     .header('X-RateLimit-Limit', String(afterInfo.limit))
     .header('X-RateLimit-Remaining', String(afterInfo.remaining))
     .header('X-RateLimit-Reset', String(afterInfo.resetEpoch));
+
+  // Fire alert if key is approaching limit (>= 80%)
+  const used = afterInfo.limit - afterInfo.remaining;
+  checkAndAlert(keyId, used, afterInfo.limit).catch(() => undefined);
 }

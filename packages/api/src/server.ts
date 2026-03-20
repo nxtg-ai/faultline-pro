@@ -46,6 +46,7 @@ import { exportRoutes } from './routes/export.js';
 import { changelogRoutes } from './routes/changelog.js';
 import { pluginMarketplaceRoutes } from './routes/plugins.js';
 import { telemetryRoutes } from './routes/telemetry.js';
+import { rateLimitRoutes } from './routes/rate-limits.js';
 import { getJobScheduler, resetJobScheduler } from './store/jobs.js';
 import { getAuditLogger, hashInput } from './store/audit.js';
 import { getUsageMeter } from './store/usage.js';
@@ -136,6 +137,7 @@ export function buildServer() {
   fastify.register(changelogRoutes);
   fastify.register(pluginMarketplaceRoutes);
   fastify.register(telemetryRoutes);
+  fastify.register(rateLimitRoutes);
 
   fastify.register(mercurius, {
     schema: gqlSchema,
