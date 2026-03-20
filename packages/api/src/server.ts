@@ -44,6 +44,7 @@ import { scansRoutes } from './routes/scans.js';
 import { bulkRoutes } from './routes/bulk.js';
 import { exportRoutes } from './routes/export.js';
 import { changelogRoutes } from './routes/changelog.js';
+import { pluginMarketplaceRoutes } from './routes/plugins.js';
 import { getJobScheduler, resetJobScheduler } from './store/jobs.js';
 import { getAuditLogger, hashInput } from './store/audit.js';
 import { getUsageMeter } from './store/usage.js';
@@ -132,6 +133,7 @@ export function buildServer() {
   fastify.register(bulkRoutes);
   fastify.register(exportRoutes);
   fastify.register(changelogRoutes);
+  fastify.register(pluginMarketplaceRoutes);
 
   fastify.register(mercurius, {
     schema: gqlSchema,
