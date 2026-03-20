@@ -13,6 +13,7 @@ import { getTemplateStore } from '../store/templates.js';
 import { getClaimIndex } from '../store/claims.js';
 import { getCostStore } from '../store/costs.js';
 import { getScanHistory } from '../store/scan-history.js';
+import { recordScanTelemetry } from '../store/telemetry.js';
 
 const BODY_SCHEMA = {
   type: 'object',
@@ -67,6 +68,15 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
       if (cached) {
         reply.header('X-Cache', 'HIT');
         getAnalyticsStore().record(keyId, (cached as { overallRisk: string }).overallRisk as RiskLevel);
+        recordScanTelemetry({
+          provider:    effectiveProvider,
+          riskLevel:   (cached as { overallRisk: string }).overallRisk,
+          claimCount:  Array.isArray((cached as { claims?: unknown[] }).claims) ? (cached as { claims: unknown[] }).claims.length : 0,
+          claimTypes:  {},
+          latencyMs:   0,
+          inputLength: text.length,
+          cacheHit:    true,
+        });
         fireWebhookEvent('scan.complete', cached);
         return reply.status(200).send(cached);
       }
@@ -120,6 +130,19 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
             scanId,
           );
           getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
+          recordScanTelemetry({
+            provider:    p,
+            riskLevel:   result.overallRisk,
+            claimCount:  Array.isArray(result.claims) ? result.claims.length : 0,
+            claimTypes:  Array.isArray(result.claims)
+              ? (result.claims as Array<{ type?: string }>).reduce<Record<string, number>>((acc, c) => {
+                  const t = c.type ?? 'unknown'; acc[t] = (acc[t] ?? 0) + 1; return acc;
+                }, {})
+              : {},
+            latencyMs:   Date.now() - startTime,
+            inputLength: text.length,
+            cacheHit:    false,
+          });
           fireWebhookEvent('scan.complete', result);
           return reply.status(200).send(result);
         } catch (err) {
@@ -129,6 +152,16 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
         }
       }
 
+      recordScanTelemetry({
+        provider:    attempted[attempted.length - 1] ?? effectiveProvider,
+        riskLevel:   'unknown',
+        claimCount:  0,
+        claimTypes:  {},
+        latencyMs:   Date.now() - startTime,
+        inputLength: text.length,
+        cacheHit:    false,
+        errorCode:   500,
+      });
       fireWebhookEvent('scan.failed', { error: lastError });
       return reply.status(500).send({ error: lastError });
     },
