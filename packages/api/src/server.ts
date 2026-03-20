@@ -54,6 +54,7 @@ import { pdfReportRoutes } from './routes/pdf-report.js';
 import { scheduleRoutes } from './routes/schedules.js';
 import { orgRoutes } from './routes/orgs.js';
 import { cacheWarmupRoutes } from './routes/cache-warmup.js';
+import { analyticsRoutes } from './routes/analytics.js';
 import { getNotificationStore } from './store/notifications.js';
 import { getKeyStore } from './store/keys.js';
 import { getScanQueue, resetScanQueue } from './store/scan-queue.js';
@@ -156,6 +157,7 @@ export function buildServer() {
   fastify.register(scheduleRoutes);
   fastify.register(orgRoutes);
   fastify.register(cacheWarmupRoutes);
+  fastify.register(analyticsRoutes);
 
   fastify.register(mercurius, {
     schema: gqlSchema,
