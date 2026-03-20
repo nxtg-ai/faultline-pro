@@ -163,6 +163,39 @@ class ClaimIndex {
     return this.verdictChanges.slice(-limit);
   }
 
+  search(params: {
+    text?: string;
+    verdict?: string;
+    from?: string;
+    to?: string;
+    source?: string;
+    limit?: number;
+  }): ClaimRecord[] {
+    let results = [...this.records.values()];
+    if (params.text) {
+      const q = params.text.toLowerCase();
+      results = results.filter((r) => r.normalizedText.includes(q));
+    }
+    if (params.verdict) {
+      results = results.filter((r) => r.lastVerdict === params.verdict);
+    }
+    if (params.from) {
+      results = results.filter((r) => r.firstSeen >= params.from!);
+    }
+    if (params.to) {
+      results = results.filter((r) => r.firstSeen <= params.to!);
+    }
+    if (params.source) {
+      const s = params.source.toLowerCase();
+      results = results.filter((r) =>
+        r.sources.some((src) => src.uri.toLowerCase().includes(s) || src.title.toLowerCase().includes(s))
+      );
+    }
+    return results
+      .sort((a, b) => b.frequency - a.frequency)
+      .slice(0, params.limit ?? 50);
+  }
+
   get size(): number {
     return this.records.size;
   }

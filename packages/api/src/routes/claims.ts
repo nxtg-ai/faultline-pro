@@ -2,6 +2,54 @@ import type { FastifyInstance } from 'fastify';
 import { getClaimIndex, computeAttributionConfidence } from '../store/claims.js';
 
 export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
+  fastify.get<{
+    Querystring: {
+      text?: string;
+      verdict?: string;
+      from?: string;
+      to?: string;
+      source?: string;
+      limit?: string;
+    };
+  }>(
+    '/claims',
+    {
+      schema: {
+        querystring: {
+          type: 'object',
+          properties: {
+            text: { type: 'string' },
+            verdict: { type: 'string' },
+            from: { type: 'string' },
+            to: { type: 'string' },
+            source: { type: 'string' },
+            limit: { type: 'string' },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { text, verdict, from, to, source, limit } = request.query;
+      const limitNum = limit ? Math.min(parseInt(limit, 10) || 50, 200) : 50;
+      const results = getClaimIndex().search({ text, verdict, from, to, source, limit: limitNum });
+      return reply.status(200).send({
+        claims: results.map((r) => ({
+          id: r.id,
+          text: r.originalText,
+          normalizedText: r.normalizedText,
+          claimType: r.claimType,
+          firstSeen: r.firstSeen,
+          lastSeen: r.lastSeen,
+          frequency: r.frequency,
+          lastVerdict: r.lastVerdict,
+          sourceCount: r.sources.length,
+        })),
+        total: results.length,
+      });
+    },
+  );
+
   fastify.get('/claims/trending', async (_request, reply) => {
     const index = getClaimIndex();
 

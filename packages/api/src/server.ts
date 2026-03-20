@@ -33,6 +33,8 @@ import { deepRoutes } from './routes/deep.js';
 import { graphRoutes } from './routes/graph.js';
 import { claimsRoutes } from './routes/claims.js';
 import { euReportRoutes } from './routes/eu-report.js';
+import { tenantsRoutes } from './routes/tenants.js';
+import { costsRoutes } from './routes/costs.js';
 import { getJobScheduler, resetJobScheduler } from './store/jobs.js';
 import { getAuditLogger, hashInput } from './store/audit.js';
 import { getUsageMeter } from './store/usage.js';
@@ -81,6 +83,8 @@ export function buildServer() {
   fastify.register(graphRoutes);
   fastify.register(claimsRoutes);
   fastify.register(euReportRoutes);
+  fastify.register(tenantsRoutes);
+  fastify.register(costsRoutes);
 
   fastify.register(mercurius, {
     schema: gqlSchema,

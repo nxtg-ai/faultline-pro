@@ -11,6 +11,7 @@ import { getAuditLogger } from '../store/audit.js';
 import { getScanCache } from '../store/cache.js';
 import { getTemplateStore } from '../store/templates.js';
 import { getClaimIndex } from '../store/claims.js';
+import { getCostStore } from '../store/costs.js';
 
 const BODY_SCHEMA = {
   type: 'object',
@@ -85,6 +86,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
         try {
           const result = await scan(text, p);
           cb.recordSuccess(p);
+          getCostStore().record(keyId, p, text);
 
           if (attempted.length > 0) {
             // Failover occurred — emit audit entry

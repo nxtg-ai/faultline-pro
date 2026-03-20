@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-19 (D-125/126/127 done. Provider auto-detect, demo cmd, init wizard, VS Code extension.ts. JS: 2,621 tests (100 files). 93 directives archived. 43 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-19 (D-140/141/142 done. Claim search, multi-tenant API, provider cost tracking. JS: 2,658 tests (103 files). 93 directives archived. 46 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -53,6 +53,9 @@
 | N-41 | Zero-to-Value DX (provider auto-detect, helpful first-run errors) | DEVELOPER-X | SHIPPED | P0 | 2026-03-19 |
 | N-42 | Interactive CLI (faultline demo + enhanced init wizard) | DEVELOPER-X | SHIPPED | P1 | 2026-03-19 |
 | N-43 | VS Code Extension (extension.ts entry point, package.json, Marketplace-ready) | DEVELOPER-X | SHIPPED | P1 | 2026-03-19 |
+| N-44 | Claim Database Search (GET /claims — text/verdict/date/source filters) | FORENSIC | SHIPPED | P1 | 2026-03-19 |
+| N-45 | Multi-Tenant API (tenant CRUD, key association, per-tenant usage, admin-gated) | ENTERPRISE | SHIPPED | P1 | 2026-03-19 |
+| N-46 | Provider Cost Tracking (per-scan token/cost estimation, GET /costs aggregation) | REVENUE | SHIPPED | P2 | 2026-03-19 |
 
 ---
 
@@ -114,7 +117,7 @@ The Kaggle version remains at  (tagged  at commit ).
 5. [ ] Tests.
 
 **CHAIN**: When done, start DIRECTIVE-NXTG-20260319-141.
-**Response** (filled by team): >
+**Response** (filled by team): SHIPPED. `store/claims.ts` — `search()` method (text/verdict/from/to/source/limit filters, frequency-sorted). `routes/claims.ts` — `GET /claims` open endpoint. `tests/claims-search.test.ts` — 15 tests (CS1–CS10 + edge cases). 2,621 → 2,637 total.
 
 ---
 
@@ -129,7 +132,7 @@ The Kaggle version remains at  (tagged  at commit ).
 4. [ ] Tests.
 
 **CHAIN**: When done, start DIRECTIVE-NXTG-20260319-142.
-**Response** (filled by team): >
+**Response** (filled by team): SHIPPED. `store/tenants.ts` — TenantStore (create/list/get/delete/addKey/removeKey/findByKeyId). `routes/tenants.ts` — 7 admin-gated routes: POST/GET/GET/:id/DELETE/:id/POST/:id/keys/DELETE/:id/keys/:keyId + GET /:id/usage (aggregates UsageMeter by keyId). Registered in server.ts. `tests/tenants.test.ts` — 12 tests (T1–T12). 2,637 → 2,649 total.
 
 ---
 
@@ -140,7 +143,7 @@ The Kaggle version remains at  (tagged  at commit ).
 **Action Items**:
 1. [ ] Track estimated LLM cost per scan (based on token count × provider rate). 2. [ ] `GET /costs` — aggregate by tenant, provider, date. 3. [ ] Tests.
 
-**Response** (filled by team): >
+**Response** (filled by team): SHIPPED. `store/costs.ts` — CostStore with PROVIDER_RATES table (gemini/openai/claude/perplexity/mock), `record(keyId, provider, text)` (chars/4 token estimate, 2× output), `getCosts()` filter, `getAggregate()` (totalTokens, totalCostUsd, byProvider, byDate). `routes/costs.ts` — `GET /costs` (requireApiKey, filters: keyId/provider/from/to). `routes/scan.ts` — wired `getCostStore().record()` after successful scan. `tests/costs.test.ts` — 10 tests (CO1–CO10). Registered in server.ts. 2,649 → 2,658 total.
 
 ---
 
