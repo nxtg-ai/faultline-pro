@@ -28,7 +28,7 @@ import { createScanSpinner } from './spinner.js';
 import { compareScanResults, renderCompare } from './compare.js';
 import { setLang } from '../lib/i18n.js';
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 
 const API_KEY_MAP: Record<string, string> = {
   claude: 'ANTHROPIC_API_KEY',
@@ -36,6 +36,18 @@ const API_KEY_MAP: Record<string, string> = {
   gemini: 'GEMINI_API_KEY',
   perplexity: 'PERPLEXITY_API_KEY',
 };
+
+/**
+ * Auto-detect which provider to use based on env vars.
+ * Priority: gemini -> openai -> claude -> perplexity -> mock
+ */
+function autoDetectProvider(): string {
+  if (process.env.GEMINI_API_KEY) return 'gemini';
+  if (process.env.OPENAI_API_KEY) return 'openai';
+  if (process.env.ANTHROPIC_API_KEY) return 'claude';
+  if (process.env.PERPLEXITY_API_KEY) return 'perplexity';
+  return 'mock';
+}
 
 function checkApiKey(providerName: string | undefined): { exitCode: number; output: string } | null {
   const resolved = providerName || 'gemini';
@@ -180,7 +192,27 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
     case 'init': {
       const targetDir = flags['dir'] || process.cwd();
       const filePath = generateSampleConfig(targetDir);
-      return { exitCode: 0, output: `Created ${filePath}` };
+
+      // Detect which providers are configured
+      const configured: string[] = [];
+      const unconfigured: string[] = [];
+      for (const [provider, envVar] of Object.entries(API_KEY_MAP)) {
+        if (process.env[envVar]) configured.push(provider);
+        else unconfigured.push(provider);
+      }
+
+      const configuredStr = configured.length > 0
+        ? configured.map(p => `  ✓ ${p}`).join('\n')
+        : '  (none — set an API key to use a real provider)';
+
+      const nextSteps = configured.length > 0
+        ? `faultline scan --input your-file.txt  (auto-detects ${configured[0]})`
+        : `export GEMINI_API_KEY=your-key  # Get free key: https://aistudio.google.com/apikey\nfaultline scan --input your-file.txt`;
+
+      return {
+        exitCode: 0,
+        output: `Faultline initialized!\n\nConfig file: ${filePath}\n\nProviders configured:\n${configuredStr}\n\nNext steps:\n  ${nextSteps}\n\nTip: Run \`faultline demo\` to see example output without an API key.`,
+      };
     }
 
     case 'watch': {
@@ -395,6 +427,28 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
       return { exitCode: 0, output: formatCritique(critiqueAnalysis, critProvider.name) };
     }
 
+    case 'demo': {
+      // Run a demonstration scan using the mock provider — no API key needed
+      const demoText = `The Eiffel Tower was built in 1889 and stands 330 meters tall.
+It is the most visited paid monument in the world, attracting 7 million visitors annually.
+The tower was designed by Napoleon Bonaparte as a symbol of French engineering.
+Scientists have proven that eating chocolate improves cognitive function by 40%.`;
+
+      const lang = flags['lang'];
+      if (lang) setLang(lang as import('../lib/i18n.js').Lang);
+
+      process.stderr.write(`\nFaultline Demo — running on sample text with mock provider...\n`);
+      process.stderr.write(`(No API key required — uses mock verification)\n\n`);
+
+      // Import scan and report dynamically to avoid circular deps
+      const { scan: runScan } = await import('./scan.js');
+      const { renderReportAs } = await import('./report.js');
+
+      const result = await runScan(demoText, 'mock');
+      const report = renderReportAs(result, 'markdown', {});
+      return { exitCode: 0, output: report };
+    }
+
     case 'scan': {
       const inputPath = flags['input'];
       const dirPath = flags['dir'];
@@ -413,6 +467,11 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
       // Load config file (walks up from cwd), then merge with CLI flags
       const config = loadConfig();
       let { provider: providerName, minConfidence, outputFormat, ruleNames } = mergeFlags(config, flags);
+
+      // Auto-detect provider from env if not explicitly specified
+      if (!flags['provider'] && !config.provider) {
+        providerName = autoDetectProvider();
+      }
 
       // --sarif shorthand: sets format to sarif and writes results.sarif
       const sarifShorthand = flags['sarif'] === 'true';

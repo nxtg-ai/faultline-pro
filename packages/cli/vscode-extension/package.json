@@ -1,0 +1,88 @@
+{
+  "name": "vscode-faultline",
+  "displayName": "Faultline AI Claim Scanner",
+  "description": "Inline claim verification for AI-generated content. Highlights unverified claims, flags EU AI Act risks.",
+  "version": "0.2.0",
+  "publisher": "nxtg-ai",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Linters", "Other"],
+  "keywords": ["AI", "claim verification", "EU AI Act", "fact-check", "hallucination"],
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nxtg-ai/faultline-pro"
+  },
+  "activationEvents": ["onLanguage:markdown", "onLanguage:plaintext", "onLanguage:json"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "faultline.scan",
+        "title": "Scan with Faultline",
+        "category": "Faultline"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "faultline.scan",
+          "group": "faultline",
+          "when": "editorLangId =~ /markdown|plaintext|json/"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "faultline.scan",
+        "key": "ctrl+shift+f",
+        "mac": "cmd+shift+f",
+        "when": "editorTextFocus"
+      }
+    ],
+    "configuration": {
+      "title": "Faultline",
+      "properties": {
+        "faultline.scanOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically scan files when saved."
+        },
+        "faultline.provider": {
+          "type": "string",
+          "enum": ["gemini", "openai", "claude", "perplexity", "mock"],
+          "default": "mock",
+          "description": "AI provider for claim verification."
+        },
+        "faultline.minConfidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0,
+          "description": "Minimum confidence threshold (0.0-1.0). Claims below this are ignored."
+        },
+        "faultline.rules": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Rules to enforce (e.g. pii, toxicity, bias)."
+        },
+        "faultline.apiUrl": {
+          "type": "string",
+          "description": "Optional Faultline API server URL for cloud-based scanning."
+        },
+        "faultline.serverApiKey": {
+          "type": "string",
+          "description": "API key for the Faultline API server."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p tsconfig.json",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0"
+  }
+}

@@ -484,3 +484,89 @@ describe('VS Code Extension: upload support', () => {
     expect(result.error).toBe('Unauthorized');
   });
 });
+
+// ─── extension.ts tests ───────────────────────────────────────────────────
+
+import { activate } from '../vscode-extension/src/extension';
+import type { VscodeApi, ActivationContext } from '../vscode-extension/src/extension';
+
+function makeMockVscode(overrides: Partial<VscodeApi> = {}): VscodeApi {
+  return {
+    window: {
+      showInformationMessage: vi.fn(),
+      showErrorMessage: vi.fn(),
+      showWarningMessage: vi.fn(),
+      activeTextEditor: undefined,
+      withProgress: vi.fn((_opts, task) => task()),
+    },
+    workspace: {
+      getConfiguration: vi.fn(() => ({ get: vi.fn(() => undefined) })),
+      workspaceFolders: undefined,
+      onDidSaveTextDocument: vi.fn(() => ({ dispose: vi.fn() })),
+    },
+    languages: {
+      createDiagnosticCollection: vi.fn(() => ({
+        set: vi.fn(),
+        clear: vi.fn(),
+        dispose: vi.fn(),
+      })),
+    },
+    Uri: { file: vi.fn((p: string) => ({ path: p })) },
+    Diagnostic: vi.fn((range, message, severity) => ({ range, message, severity })) as unknown as VscodeApi['Diagnostic'],
+    DiagnosticSeverity: { Error: 0, Warning: 1, Information: 2, Hint: 3 },
+    Range: vi.fn((sl, sc, el, ec) => ({ sl, sc, el, ec })) as unknown as VscodeApi['Range'],
+    ProgressLocation: { Notification: 15 },
+    commands: { registerCommand: vi.fn(() => ({ dispose: vi.fn() })) },
+    ExtensionContext: undefined,
+    ...overrides,
+  };
+}
+
+function makeContext(): ActivationContext {
+  return {
+    extensionPath: '/fake/ext',
+    subscriptions: [],
+  };
+}
+
+describe('extension.ts — activate()', () => {
+  it('EXT1. activate registers faultline.scan command', () => {
+    const vscode = makeMockVscode();
+    const ctx = makeContext();
+    activate(ctx, vscode);
+    expect(vscode.commands.registerCommand).toHaveBeenCalledWith('faultline.scan', expect.any(Function));
+  });
+
+  it('EXT2. activate subscribes to onDidSaveTextDocument', () => {
+    const vscode = makeMockVscode();
+    const ctx = makeContext();
+    activate(ctx, vscode);
+    expect(vscode.workspace.onDidSaveTextDocument).toHaveBeenCalled();
+  });
+
+  it('EXT3. activate pushes subscriptions to context', () => {
+    const vscode = makeMockVscode();
+    const ctx = makeContext();
+    activate(ctx, vscode);
+    expect(ctx.subscriptions.length).toBeGreaterThan(0);
+  });
+
+  it('EXT4. activate creates a diagnostic collection named faultline', () => {
+    const vscode = makeMockVscode();
+    const ctx = makeContext();
+    activate(ctx, vscode);
+    expect(vscode.languages.createDiagnosticCollection).toHaveBeenCalledWith('faultline');
+  });
+
+  it('EXT5. scan command with no active editor shows warning', async () => {
+    const vscode = makeMockVscode({
+      window: { ...makeMockVscode().window, activeTextEditor: undefined },
+    });
+    const ctx = makeContext();
+    activate(ctx, vscode);
+    // Get the registered scan command handler
+    const scanHandler = (vscode.commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    await scanHandler();
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(expect.stringContaining('No active file'));
+  });
+});
