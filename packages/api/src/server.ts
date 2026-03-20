@@ -50,6 +50,7 @@ import { rateLimitRoutes } from './routes/rate-limits.js';
 import { notificationRoutes } from './routes/notifications.js';
 import { queueRoutes } from './routes/queue.js';
 import { rulesRoutes } from './routes/rules.js';
+import { pdfReportRoutes } from './routes/pdf-report.js';
 import { getNotificationStore } from './store/notifications.js';
 import { getKeyStore } from './store/keys.js';
 import { getScanQueue, resetScanQueue } from './store/scan-queue.js';
@@ -147,6 +148,7 @@ export function buildServer() {
   fastify.register(notificationRoutes);
   fastify.register(queueRoutes);
   fastify.register(rulesRoutes);
+  fastify.register(pdfReportRoutes);
 
   fastify.register(mercurius, {
     schema: gqlSchema,
