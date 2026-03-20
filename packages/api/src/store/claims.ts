@@ -136,6 +136,77 @@ class ClaimIndex {
     return this.byId.get(id);
   }
 
+  explain(id: string): {
+    claim: string;
+    claimType: string;
+    verdict: string;
+    confidence: number;
+    reasoningChain: string[];
+    evidenceFound: Array<{ title: string; uri: string; seenAt: string }>;
+    suggestions: string[];
+  } | null {
+    const record = this.byId.get(id);
+    if (!record) return null;
+
+    const confidence = computeAttributionConfidence(record);
+
+    const reasoningChain: string[] = [
+      `Claim text: "${record.originalText.slice(0, 120)}"`,
+      `Current verdict: ${record.lastVerdict}`,
+      `Seen in ${record.frequency} scan(s) — first seen ${record.firstSeen}`,
+      record.sources.length > 0
+        ? `Found ${record.sources.length} supporting source(s)`
+        : 'No supporting sources found in any scan',
+      `Attribution confidence: ${confidence}/100`,
+    ];
+
+    const evidenceFound = record.sources.map((s) => ({
+      title: s.title,
+      uri: s.uri,
+      seenAt: s.seenAt,
+    }));
+
+    let suggestions: string[];
+
+    if (confidence >= 60) {
+      suggestions = ['Claim is well-supported — no action required'];
+    } else {
+      suggestions = [];
+      if (confidence < 40) {
+        suggestions.push('Add a specific source URL that supports this claim');
+      }
+      if (record.sources.length < 3) {
+        suggestions.push('Citing 3 or more sources increases confidence by 20 points');
+      }
+      if (record.frequency < 3) {
+        suggestions.push(
+          `This claim has only been seen ${record.frequency} time(s); re-scan after revisions to build a verdict history`,
+        );
+      }
+      if (UNVERIFIED_STATUSES.has(record.lastVerdict)) {
+        suggestions.push(
+          'Rephrase the claim to be more specific and falsifiable — vague claims are harder to verify',
+        );
+      }
+      if (record.claimType !== 'fact') {
+        suggestions.push(
+          'Converting opinion/interpretation claims to factual assertions improves verifiability',
+        );
+      }
+      suggestions.push('Provide a date range or publication year for time-sensitive claims');
+    }
+
+    return {
+      claim: record.originalText,
+      claimType: record.claimType,
+      verdict: record.lastVerdict,
+      confidence,
+      reasoningChain,
+      evidenceFound,
+      suggestions,
+    };
+  }
+
   /**
    * Top N claims by frequency.
    */

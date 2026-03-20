@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-19 (D-174/175/176 done. Industry compliance templates, bulk ZIP import, 100+ directive milestone. JS: 2,709 tests (107 files). 102 directives archived. 52 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-19 (D-192/193/194 done. Claim explainability, scan diff, MAXOUT archive. JS: 2,733 tests (109 files). 105 directives archived. 55 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -62,6 +62,9 @@
 | N-50 | Industry Compliance Templates (HIPAA/SOX/FERPA/Gov, POST /scan/compliance/:t) | COMPLIANCE | SHIPPED | P1 | 2026-03-19 |
 | N-51 | Bulk Document Import (POST /scan/bulk ZIP, async job, GET /jobs/:id/progress) | ENTERPRISE | SHIPPED | P1 | 2026-03-19 |
 | N-52 | 100-Directive Milestone — Final count 2,709 tests, README showcase, 52 initiatives | DISTRIBUTION | SHIPPED | P2 | 2026-03-19 |
+| N-53 | Claim Explainability (GET /claims/:id/explain — reasoning chain, suggestions) | FORENSIC | SHIPPED | P1 | 2026-03-19 |
+| N-54 | Scan Diff (POST /scan/diff — two texts, inline diff, added/removed/changed) | FORENSIC | SHIPPED | P1 | 2026-03-19 |
+| N-55 | MAXOUT Archive — 2,733 tests (109 files), 55 initiatives, 105 directives | DISTRIBUTION | SHIPPED | P2 | 2026-03-19 |
 
 ---
 
@@ -109,45 +112,45 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
-> **102 directives archived** (D-174 industry compliance, D-175 bulk import, D-176 celebration — 100th+ milestone).
+> **105 directives archived** (+ D-192 explainability, D-193 scan diff, D-194 MAXOUT).
 
 ### DIRECTIVE-NXTG-20260319-192 — P1: Claim Explainability — "Why is this unverified?"
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-19 11:00 | **Estimate**: M | **Status**: PENDING
+**Injected**: 2026-03-19 11:00 | **Estimate**: M | **Status**: DONE
 
 **Action Items**:
-1. [ ] **Explanation engine** — for each unverified claim, generate human-readable explanation: what evidence was searched, what was found, why confidence is low.
-2. [ ] **`GET /claims/:id/explain`** — detailed reasoning chain.
-3. [ ] **Suggestion engine** — "To improve this claim's score, consider: adding a source URL, citing a specific study, providing a date range."
-4. [ ] Tests.
+1. [x] **Explanation engine** — for each unverified claim, generate human-readable explanation: what evidence was searched, what was found, why confidence is low.
+2. [x] **`GET /claims/:id/explain`** — detailed reasoning chain.
+3. [x] **Suggestion engine** — "To improve this claim's score, consider: adding a source URL, citing a specific study, providing a date range."
+4. [x] Tests.
 
 **CHAIN**: When done, start DIRECTIVE-NXTG-20260319-193.
-**Response** (filled by team): >
+**Response** (filled by team): SHIPPED. `store/claims.ts` — `ClaimIndex.explain(id)` returning `{ claim, claimType, verdict, confidence, reasoningChain[], evidenceFound[], suggestions[] }`. Context-aware suggestions: confidence≥60 → "no action required"; below 60 → targeted advice on sources, frequency, specificity, claimType. `routes/claims.ts` — `GET /claims/:id/explain` (no auth, 404 safe). `tests/explain.test.ts` — 12 tests (EX1–EX12).
 
 ---
 
 ### DIRECTIVE-NXTG-20260319-193 — P1: Scan Diff — Track Changes Between Document Versions
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-19 11:00 | **Estimate**: M | **Status**: PENDING
+**Injected**: 2026-03-19 11:00 | **Estimate**: M | **Status**: DONE
 
 **Action Items**:
-1. [ ] **`POST /scan/diff`** — accept two texts, show: new claims, removed claims, changed verdicts, trust score delta.
-2. [ ] **Inline diff view** — highlight added/removed/changed claims in the text.
-3. [ ] Tests.
+1. [x] **`POST /scan/diff`** — accept two texts, show: new claims, removed claims, changed verdicts, trust score delta.
+2. [x] **Inline diff view** — highlight added/removed/changed claims in the text.
+3. [x] Tests.
 
 **CHAIN**: When done, start DIRECTIVE-NXTG-20260319-194.
-**Response** (filled by team): >
+**Response** (filled by team): SHIPPED. `routes/diff.ts` — `POST /scan/diff` (requireApiKey + rateLimitScan). Scans both texts in parallel via `Promise.all(scan(before), scan(after))`. Returns `{ before, after, newClaims, removedClaims, changedVerdicts, trustScoreDelta, summary, inlineDiff[] }`. `inlineDiff` labels each claim added/removed/changed/unchanged with before+after verdicts for changed entries. Registered in server.ts. `tests/diff.test.ts` — 12 tests (DF1–DF12).
 
 ---
 
 ### DIRECTIVE-NXTG-20260319-194 — P2: Final MAXOUT Archive
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P2
-**Injected**: 2026-03-19 11:00 | **Estimate**: S | **Status**: PENDING
+**Injected**: 2026-03-19 11:00 | **Estimate**: S | **Status**: DONE
 
 **Action Items**:
-1. [ ] Final test count. 2. [ ] Archive + README. 3. [ ] All 50+ initiatives.
+1. [x] Final test count. 2. [x] Archive + README. 3. [x] All 50+ initiatives.
 
-**Response** (filled by team): >
+**Response** (filled by team): MAXOUT. **2,733 tests · 109 files · all green.** 55 initiatives N-01–N-55 all SHIPPED. 105 directives archived. README badge updated 2709→2733. Platform summary: FM-agnostic AI claim forensics — 5 providers, GraphQL + REST, Swagger UI, multi-tenant, cost tracking, compliance templates (HIPAA/SOX/FERPA/Gov), bulk ZIP import, scan diff + explainability, EU AI Act, SARIF, VS Code extension, TypeScript + Python SDK.
 
 ---
 

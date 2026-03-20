@@ -108,4 +108,24 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
       });
     },
   );
+
+  fastify.get<{ Params: { id: string } }>(
+    '/claims/:id/explain',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          properties: { id: { type: 'string' } },
+          required: ['id'],
+        },
+      },
+    },
+    async (request, reply) => {
+      const explanation = getClaimIndex().explain(request.params.id);
+      if (!explanation) {
+        return reply.status(404).send({ error: 'Claim not found.' });
+      }
+      return reply.status(200).send(explanation);
+    },
+  );
 }

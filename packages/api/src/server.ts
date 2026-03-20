@@ -29,6 +29,7 @@ import { metricsRoutes } from './routes/metrics.js';
 import { cacheRoutes } from './routes/cache.js';
 import { jobRoutes } from './routes/jobs.js';
 import { compareRoutes } from './routes/compare.js';
+import { diffRoutes } from './routes/diff.js';
 import { providerRoutes } from './routes/providers.js';
 import { templateRoutes } from './routes/templates.js';
 import { deepRoutes } from './routes/deep.js';
@@ -97,6 +98,7 @@ export function buildServer() {
   fastify.register(cacheRoutes);
   fastify.register(jobRoutes);
   fastify.register(compareRoutes);
+  fastify.register(diffRoutes);
   fastify.register(providerRoutes);
   // Node 20 ESM: access binding before register to avoid live-binding TDZ
   if (typeof templateRoutes !== 'function') throw new Error('templateRoutes not loaded');
