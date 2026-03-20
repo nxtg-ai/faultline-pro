@@ -1,0 +1,66 @@
+version: '3.9'
+
+# ── Faultline Pro — Docker Compose ────────────────────────────────────────────
+#
+# Services:
+#   api     — Faultline REST API (Fastify, port 3001)
+#
+# Quick start:
+#   docker compose up
+#
+# With a real provider (Gemini):
+#   GEMINI_API_KEY=<key> docker compose up
+#
+# Build a fresh image:
+#   docker compose build --no-cache
+#
+# Run tests inside the container:
+#   docker compose run --rm api npm test --workspace packages/api
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: faultline-pro-api:latest
+    container_name: faultline-api
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3001}:3001"
+    environment:
+      # Server
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3001
+      HOST: 0.0.0.0
+
+      # Provider selection — defaults to mock for zero-config local dev.
+      # Set FAULTLINE_PROVIDER=gemini and supply GEMINI_API_KEY for real scans.
+      FAULTLINE_PROVIDER: ${FAULTLINE_PROVIDER:-mock}
+
+      # API keys — leave blank to use mock provider
+      GEMINI_API_KEY:   ${GEMINI_API_KEY:-}
+      OPENAI_API_KEY:   ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+
+      # Auth — a dev key is pre-populated so the API is usable out of the box.
+      # Override with a strong random value in production.
+      FAULTLINE_API_KEY: ${FAULTLINE_API_KEY:-dev-local-key-change-me}
+
+      # Debug logging (set to 1 to enable verbose output)
+      FAULTLINE_DEBUG: ${FAULTLINE_DEBUG:-0}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    # volumes:
+    #   Uncomment to mount a local .faultlinerc.json into the container:
+    #   - type: bind
+    #     source: ./.faultlinerc.json
+    #     target: /app/.faultlinerc.json
+    #     read_only: true
+    labels:
+      com.faultline.service: api
+      com.faultline.version: "0.2.0"

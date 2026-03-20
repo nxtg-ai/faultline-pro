@@ -1,14 +1,54 @@
+# ── Node modules ───────────────────────────────────────────────────────────────
 node_modules
 packages/*/node_modules
-packages/web
+**/node_modules
+
+# ── Build / cache artefacts ────────────────────────────────────────────────────
 packages/*/dist
+dist
+build
+.cache
+*.tsbuildinfo
+coverage
+.nyc_output
+
+# ── Test files ─────────────────────────────────────────────────────────────────
 packages/*/tests
-packages/*/*.test.ts
-.claude
-.asif
-docs
-*.md
+packages/*/test
+**/*.test.ts
+**/*.spec.ts
+
+# ── Development / local config ─────────────────────────────────────────────────
+.env
+.env.*
+.faultlinerc.json
+*.local
+
+# ── Git ────────────────────────────────────────────────────────────────────────
 .git
 .gitignore
-coverage
-dist
+.gitattributes
+
+# ── CI / governance ───────────────────────────────────────────────────────────
+.github
+.asif
+.claude
+
+# ── Docs / examples ────────────────────────────────────────────────────────────
+docs
+examples
+packages/api/docs
+packages/web
+
+# ── IDE / OS ────────────────────────────────────────────────────────────────────
+.vscode
+.idea
+*.DS_Store
+Thumbs.db
+
+# ── Logs ───────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+
+# ── Markdown (not needed at runtime) ─────────────────────────────────────────
+*.md
