@@ -739,6 +739,65 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-20 (plugin marketplace + telemetry system) — HEAD `e997dd3`
+
+### 1. What did we ship since last check-in?
+
+**2 commits: plugin marketplace (D-150) + telemetry system (D-151)**
+
+| Commit | Deliverable | Tests |
+|--------|-------------|-------|
+| D-150 `feat: plugin marketplace` | `store/plugin-registry.ts` — `PluginListing`, `validatePublishInput` (8 validation rules: npm name, semver, description, type enum, max 5 keywords, http URL, readme ≤10K), publish with same-author upsert / cross-author 409 conflict guard, search with text + type filter + 3 sort modes + pagination; `routes/plugins.ts` — `POST /plugins/publish` (auth), `GET /plugins/search` (public), `GET /plugins/:id` (public), `POST /plugins/install` (auth, returns npm/yarn/pnpm instructions + .faultlinerc.json config); `docs/plugins/tutorial.md` — 230-line 'Create Your First Plugin' guide (rule contract, provider contract, unit test, publish, install, API reference table, naming conventions, 2 example plugins). | +30 (2916→2946 total) |
+| D-151 `feat: telemetry system` | `store/telemetry.ts` — `TelemetryEvent` (privacy-safe: hour-truncated ISO, latency bucket, input-length bucket, no text/keyId/IP), `latencyBucket()`, `inputLengthBucket()`, `truncateToHour()`, `TelemetryStore` (max 50K FIFO, `getDashboard()` computing totals / provider breakdown / risk + latency + input-length distributions / 24 hourly buckets / avgClaimsPerScan), `recordScanTelemetry()` convenience wrapper; `routes/telemetry.ts` — `GET /telemetry` (HTML shell, JS fetches auth'd data), `GET /telemetry/dashboard` (auth required), `GET /telemetry/status` (public), `GET /telemetry/privacy` (machine-readable JSON policy); `routes/scan.ts` — telemetry recorded at 3 call sites: cache hit, success, failure. | +35 (2911→2946 total) |
+
+**Running total**: 2,946 tests · 118 files · 65 initiatives SHIPPED.
+
+---
+
+### 2. What surprised us?
+
+- **Plugin name conflict semantics required a clear policy decision.** The naive approach (last writer wins) would allow name squatting by publishing the same package under a different author. The chosen rule — same name + different author → 409 Conflict; same name + same author → 200 upsert — is the right model for a marketplace, but it's not obvious upfront. The `{ conflict: true, existingAuthor }` return type from `publish()` makes the conflict explicit in the HTTP layer. This is worth noting as a general pattern for any registry-like store.
+
+- **Telemetry privacy design is a point-of-record problem, not a query-time problem.** The natural instinct when building privacy-preserving analytics is to filter sensitive fields at query time (before returning the dashboard). The correct approach is to never record them in the first place — the `TelemetryEvent` shape has no `text`, no `keyId`, no `ip`, no exact timestamp, no exact length. This means even a memory dump of the event store is safe. The `recordScanTelemetry()` wrapper enforces this by only accepting a `ScanTelemetryInput` that doesn't include those fields.
+
+- **The `getDashboard()` method computes everything on demand from the raw event array.** There's no pre-aggregation — every call re-scans up to 50,000 events. At 50K events with 24 hourly buckets, this is a linear scan through 50K × 24 = 1.2M comparisons on each `/telemetry/dashboard` call. For current usage (test traffic + a few real environments) this is fine. At production scale with sustained scan traffic, a rolling pre-aggregate would be needed. Not a current concern but worth flagging before the first real deployment.
+
+- **The HTML dashboard shell + JS-fetch pattern means the dashboard works without a separate SPA build.** The `GET /telemetry` route serves a complete HTML page with embedded JavaScript that calls `GET /telemetry/dashboard` using an API key from the URL query param. No Vite, no React, no build step — the whole dashboard is server-rendered HTML + ~60 lines of fetch/render JS. This is the right architecture for internal tools: zero frontend complexity, always current, works in any browser.
+
+---
+
+### 3. Cross-project signals
+
+- **The `store/telemetry.ts` pattern** (opt-in env var, bucketed metrics, in-memory ring buffer, on-demand aggregation) is directly portable to any API project that wants usage analytics without a third-party service. The entire store is 130 lines including all bucketing helpers. The `FAULTLINE_TELEMETRY=1` pattern (env var opt-in, off by default) should be the NXTG standard for any analytics feature that touches usage data.
+
+- **Privacy-safe event shape design:** encode privacy guarantees in the type system, not in filters. If a `TelemetryEvent` type has no `text` field, it's impossible to accidentally record text content. Any NXTG project adding analytics should start by designing the event type first and asking "what is the minimum information needed?" rather than recording everything and filtering later.
+
+- **The plugin marketplace conflict semantics** (upsert on same author, 409 on different author) is a reusable pattern for any registry feature in the portfolio. dx3 likely needs something similar when users publish shared configurations or agent definitions.
+
+- **`GET /telemetry/privacy` as a machine-readable endpoint** is a clean pattern for any service that handles user data. It returns `collectedFields`, `neverCollectedFields`, `optIn` mechanism, and `retention` policy as structured JSON — not a prose privacy policy. This is queryable by compliance tooling and linkable from the `/telemetry/status` response.
+
+---
+
+### 4. What would we prioritize next?
+
+1. **`vitest --coverage` baseline (Gate 8.5)** — Still open after multiple reflection cycles. One config line in `vitest.config.ts`. Should have been done before D-148. Should be the next single-item directive.
+2. **Tenant data isolation** — Global singletons. Every store (analytics, audit, usage, telemetry, plugins, scan history, cache) has a single in-memory instance. Before any real multi-tenant deployment, stores need to be keyed by tenantId. This is the largest production gap.
+3. **Fly.io deploy** — Docker image is built, all routes are wired, changelog and status pages are live. The deployment announcement would now include 65 SHIPPED initiatives. Only credential/infra access blocks this.
+4. **Pre-aggregate telemetry dashboard** — At production scale the on-demand full-scan through 50K events will be slow. A 5-minute rolling aggregate (updated on `record()`, not on `getDashboard()`) would fix this with ~20 lines added to the store.
+5. **`npm publish`** — v0.2.0 tag exists (v0.3.0 also created). Only `NPM_TOKEN` blocks this.
+
+---
+
+### 5. Blockers and questions for the CoS?
+
+- **`NPM_TOKEN`**: Still blocked. v0.2.0 and v0.3.0 are tagged and ready.
+- **Fly.io deploy**: Still blocked on credentials. Docker image builds clean.
+- **Coverage gate threshold**: What is the CoS-accepted minimum threshold for `vitest --coverage`? 70%? 80%? This determines whether adding the coverage config now will immediately fail CI or pass.
+- **Telemetry opt-in wording**: Should `FAULTLINE_TELEMETRY=1` be documented in the README with explicit "what we collect / what we don't collect" language before the first public release, or is `GET /telemetry/privacy` sufficient?
+- **Plugin marketplace persistence**: Current store is in-memory (cleared on restart). For a real marketplace, plugins need to persist across deploys. Should this be a flat JSON file on disk (simple, git-committable) or a proper DB (required before Fly.io)? The in-memory approach is fine for the current test environment.
+
+---
+
 > **Reflection cycle**: 2026-03-20 (status page + changelog page) — HEAD `96dcc8f`
 
 ### 1. What did we ship since last check-in?
