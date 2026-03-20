@@ -102,6 +102,48 @@ The Kaggle version remains at  (tagged  at commit ).
 
 > **93 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 35 on 2026-03-18, 18 on 2026-03-19 incl. D-125 Zero-to-Value DX, D-126 Init+Demo, D-127 VS Code Extension).
 
+### DIRECTIVE-NXTG-20260319-140 — P1: Claim Database — Persistent Knowledge Store
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-19 08:15 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] **Persistent claim store** — every verified claim from every scan, deduplicated, with verdict history.
+2. [ ] **`GET /claims`** — search claims by text, source, verdict, date range.
+3. [ ] **Claim lifecycle** — track when a previously-verified claim becomes unverified (source removed, evidence changed).
+4. [ ] **Integration with claim trending (D-22)** — trending pulls from this store.
+5. [ ] Tests.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260319-141.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260319-141 — P1: Multi-Tenant API — Isolated Scan Environments
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-19 08:15 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] **Tenant isolation** — each API key belongs to a tenant. Scans/claims/reports scoped per tenant.
+2. [ ] **`POST /tenants`** CRUD (admin only). **`GET /tenants/:id/usage`** — per-tenant metrics.
+3. [ ] **Data isolation** — tenant A cannot see tenant B's claims/scans.
+4. [ ] Tests.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260319-142.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260319-142 — P2: Provider Cost Tracking — Per-Scan Cost Attribution
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
+**Injected**: 2026-03-19 08:15 | **Estimate**: S | **Status**: PENDING
+
+**Action Items**:
+1. [ ] Track estimated LLM cost per scan (based on token count × provider rate). 2. [ ] `GET /costs` — aggregate by tenant, provider, date. 3. [ ] Tests.
+
+**Response** (filled by team): >
+
+---
+
 ### DIRECTIVE-NXTG-20260319-125 — P0: Zero-to-Value Test — New User Experience
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P0
 **Injected**: 2026-03-19 07:30 | **Estimate**: M | **Status**: DONE
