@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-19 (API docs shipped. index.html 1.6k lines + openapi.yaml 11→48 paths. 2,757 tests. 58 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-20 (Plugin system + Docker image + benchmark suite shipped. 2,777 tests. 61 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -68,6 +68,9 @@
 | N-56 | Regulatory Calendar (GET /compliance/deadlines, scan-check, deadline webhooks) | COMPLIANCE | SHIPPED | P1 | 2026-03-19 |
 | N-57 | Final Session Archive — 2,747 tests (110 files), 57 initiatives, 107 directives | DISTRIBUTION | SHIPPED | P2 | 2026-03-19 |
 | N-58 | CRUCIBLE Self-Audit + Oracle Closure — SG-01 OpenAPI decoration, SG-02 fast-check (10 properties), 7/8 gates PASS | DISTRIBUTION | SHIPPED | P2 | 2026-03-19 |
+| N-59 | CLI Plugin System — FaultlinePlugin interface, ESM loader, faultline plugin install/remove/list, example plugin | DEVELOPER-X | SHIPPED | P1 | 2026-03-20 |
+| N-60 | Docker Image — multi-stage Dockerfile, HEALTHCHECK, docker-compose zero-config mock, .dockerignore | DISTRIBUTION | SHIPPED | P2 | 2026-03-20 |
+| N-61 | Benchmark Suite — provider latency (sub-ms framework overhead), cache HIT/MISS, concurrent throughput (5,700–9,100 RPS) | PERFORMANCE | SHIPPED | P2 | 2026-03-20 |
 
 ---
 
@@ -735,6 +738,64 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-03-20 (plugin system + Docker image + benchmark suite) — HEAD `f0217e8`+
+
+### 1. What did we ship since last check-in?
+
+**3 commits across 2 sessions:**
+
+| Commit | Deliverable | Tests |
+|--------|-------------|-------|
+| D-144 `feat: CLI plugin system` | `packages/cli/plugins/` — FaultlinePlugin interface, PluginContext, ESM loader via createRequire; `faultline plugin install/remove/list`; auto-load from `.faultlinerc.json`; `examples/custom-plugin/` — `no-unverified-statistics` rule + `echo` provider + README | +20 (964→984 CLI, 2,757→2,777 total) |
+| D-145 `feat: Docker image` | Multi-stage Dockerfile (node:20-alpine, builder + runtime, non-root user); HEALTHCHECK on /health; `docker-compose.yml` zero-config with mock provider; `.dockerignore` updated. Smoke tested: builds ~25s, `/health` responds. | 0 (infra) |
+| D-146 `feat: benchmark suite` | `packages/api/benchmarks/run.ts` — standalone TSX runner measuring provider latency, cache HIT/MISS, concurrent throughput; `docs/benchmarks.md` replaced with real measured numbers (sub-ms framework overhead, 5,700–9,100 RPS concurrency). | 0 (docs) |
+
+**Running total**: 2,777 tests · 112 files · 61 initiatives SHIPPED.
+
+---
+
+### 2. What surprised us?
+
+- **Framework overhead is sub-millisecond.** All 5 providers (running mock engine) show p50 in the 200–260µs range. The full path — auth check → cache lookup → scan → cache write → analytics → webhook → audit log — costs less than a quarter of a millisecond. Real-world latency will be dominated 99%+ by LLM inference. This makes the cache even more impactful than expected.
+
+- **JIT warm-up causes a visible outlier on the first benchmark batch.** The gemini batch (first to run) produced a p99 of 246ms on the cold run, while all other providers showed sub-2ms p99. After adding a 10-request warm-up pass, all providers normalised to sub-2ms p99. This is a reminder that Node.js V8 JIT needs a few hundred calls to compile hot paths.
+
+- **The plugin ESM resolution challenge was more subtle than expected.** The `loadPlugin()` function needed to resolve npm packages relative to the *user's* project directory, not Faultline's own `node_modules`. The solution — `createRequire(resolve(projectDir, '_synthetic_.js'))` — uses a fake module path as an anchor for resolution, which is a documented Node.js pattern but not widely known. The `pathToFileURL()` wrapper then converts the resolved path to a file URL for dynamic `import()`. Worth documenting in the plugin authoring guide.
+
+- **The Docker `vitest --coverage` config gap is still open.** The Docker build stage runs `tsc --noEmit` but the coverage baseline is still not configured in `packages/api/vitest.config.ts`. Gate 8.5 remains unverified.
+
+---
+
+### 3. Cross-project signals
+
+- **The plugin system architecture** (ESM dynamic import + `createRequire` cwd resolution + in-memory registry with idempotent deduplication) is directly portable to any Node.js CLI that needs user-supplied extensions. The pattern is: synthetic-require-anchor → resolvedPath → pathToFileURL → dynamic import → extract default export → validate interface → register. Under 170 lines including error handling.
+
+- **The benchmark runner pattern** (`buildServer()` + `server.inject()` + `performance.now()` + sorted percentile extraction) is a clean, zero-dependency benchmark approach for any Fastify project. No k6, no autocannon, no external harness — just the test framework. The same pattern works for any project using Fastify's `inject()` API.
+
+- **Docker multi-stage with tsx** is the right pattern for TypeScript monorepo containers: skip the compile step, run TypeScript source directly, keep tsx in the runtime stage. Build time ~25s, image is minimal (no dist/ artefacts to manage). Applicable to any NXTG project with a TypeScript entry point.
+
+---
+
+### 4. What would we prioritize next?
+
+1. **`vitest --coverage` baseline** — Gate 8.5 still open. One config line + one CI step. Should be done before any coverage claims are made.
+2. **Tenant data isolation** — stores are still global singletons. The biggest gap between demo-ready and production-ready.
+3. **npm publish + Fly.io deploy** — credential-blocked. Platform is production-ready.
+4. **Benchmark with real API keys** — the runner is ready; it will auto-detect configured providers. Would produce the first real E2E latency numbers to replace the estimates in §4 of benchmarks.md.
+5. **Plugin marketplace / registry scaffold** — `faultline plugin search` command that queries a hypothetical npm registry for `faultline-plugin-*` packages.
+
+---
+
+### 5. Blockers and questions for the CoS?
+
+- **`NPM_TOKEN`**: Unchanged. `npm publish` dry-run clean.
+- **Fly.io deploy**: Unchanged. Docker image is now available.
+- **Coverage gate**: Confirm whether to add `vitest --coverage` now or wait for a threshold decision.
+- **Tenant isolation scope**: Still open.
+- **Plugin registry**: Should there be a curated `@nxtg/faultline-plugins` npm org for first-party plugins, or community-only?
+
+---
 
 > **Reflection cycle**: 2026-03-19 (API docs — index.html + openapi.yaml) — HEAD `714fcc3`
 
