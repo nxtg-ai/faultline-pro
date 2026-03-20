@@ -114,6 +114,32 @@ The Kaggle version remains at  (tagged  at commit ).
 
 > **105 directives archived** (+ D-192 explainability, D-193 scan diff, D-194 MAXOUT).
 
+### DIRECTIVE-NXTG-20260319-206 — P1: Regulatory Calendar — Upcoming Compliance Deadlines
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-19 11:30 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] **`GET /compliance/deadlines`** — list upcoming regulatory deadlines relevant to user's scans (EU AI Act Aug 2, 2026 etc).
+2. [ ] **Scan alert** — if scan contains claims about a deadline, highlight the regulatory context.
+3. [ ] **Notification** — webhook/email when a tracked deadline is approaching (30/14/7 days).
+4. [ ] Tests.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260319-207.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260319-207 — P2: Final Session Archive + README
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
+**Injected**: 2026-03-19 11:30 | **Estimate**: S | **Status**: PENDING
+
+**Action Items**:
+1. [ ] Final test count. 2. [ ] Archive. 3. [ ] README.
+
+**Response** (filled by team): >
+
+---
+
 ### DIRECTIVE-NXTG-20260319-192 — P1: Claim Explainability — "Why is this unverified?"
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
 **Injected**: 2026-03-19 11:00 | **Estimate**: M | **Status**: DONE
