@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-20 (Integration tests + API playground + Mission Control dashboard. 1,290 api tests / ~3,460 CI total. 73 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-20 (Integration tests + API playground + Mission Control + session archive. 1,290 api tests / 3,498 CI total. 73 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -83,6 +83,7 @@
 | N-71 | Integration Testing Framework — 10 end-to-end flow scenarios (auth→scan→claims→verdict→compliance→webhook→audit), shared server state, 42 tests | DEVELOPER-X | SHIPPED | P2 | 2026-03-20 |
 | N-72 | API Playground — GET /playground (interactive HTML): 5 sample texts, provider/endpoint selectors, tabbed results (Overview/Claims/Raw/Request), Ctrl+Enter, dark theme | DEVELOPER-X | SHIPPED | P1 | 2026-03-20 |
 | N-73 | Mission Control Dashboard — GET /mission-control (HTML) + GET /mission-control/status (JSON): API latency, provider health grid, cache stats, queue depth, active keys, scan rate, auto-refresh 10s | ENTERPRISE | SHIPPED | P1 | 2026-03-20 |
+| N-74 | Session Archive — 3,498 tests (135 files), 73 initiatives SHIPPED, D-164 through D-168 complete | DISTRIBUTION | SHIPPED | P2 | 2026-03-20 |
 
 ---
 
@@ -130,7 +131,37 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
-> **107 directives archived** (+ D-206 regulatory calendar, D-207 final archive).
+> **107 directives archived** (+ D-163 through D-168 + session archive D-174).
+
+### SESSION ARCHIVE — 2026-03-20 (D-163 through D-168)
+**Status**: COMPLETE
+
+**Session Summary**:
+
+6 directives shipped in this session: D-163 Claim DB Search UI, D-164 Cache Warmup, D-165 Analytics Dashboard, D-166 Integration Testing Framework, D-167 API Playground, D-168 Mission Control Dashboard.
+
+| Directive | Initiative | Tests Added | Total After |
+|-----------|-----------|-------------|-------------|
+| D-163 | Claim Database Search UI (GET /claims/view + /claims/stats) | +25 | 1,118 |
+| D-164 | Scan Cache Warmup (9 admin endpoints, WarmupStore, CacheWarmer) | +41 | 1,159 |
+| D-165 | Usage Analytics Dashboard (GET /analytics + /analytics/overview) | +27 | 1,186 |
+| D-166 | Integration Testing Framework (10 E2E scenarios, F1–F10) | +42 | 1,228 |
+| D-167 | API Playground (GET /playground, 5 samples, tabbed results) | +29 | 1,257 |
+| D-168 | Mission Control (GET /mission-control + /mission-control/status) | +33 | 1,290 |
+
+**Final VERIFIED counts** (npx vitest run at root):
+- **API package**: 1,290 tests / 59 files — all GREEN
+- **CI total**: 3,498 tests / 135 files — all GREEN
+- **Initiatives SHIPPED**: 74 (N-68 through N-74)
+
+**Key technical discoveries this session**:
+1. `getScanHistory()` has no `.list()` — correct method is `.getRecent(limit)`. Surfaced as 500 at runtime because esbuild skips type-checking. Third incident type for missing `tsc --noEmit` in CI gate.
+2. `requireApiKey` returns 401 (not 403) for missing/invalid keys — only `requireAdmin` returns 403. Test auth assertions must match the specific plugin used by each route.
+3. Bodyless POST + `content-type: application/json` → Fastify JSON parser returns 400 on empty body. Pattern: omit content-type header for bodyless POST requests in inject tests.
+4. `/scan/eu-report` returns `application/pdf` — never try `JSON.parse()` on it. Check `rawPayload.length > 100` and content-type header.
+5. `OrgKey` interface uses `.keyName` (not `.name`); org key route returns `body.key` (raw secret, not `body.apiKey`).
+
+---
 
 ### DIRECTIVE-NXTG-20260319-206 — P1: Regulatory Calendar — Upcoming Compliance Deadlines
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
