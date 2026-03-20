@@ -739,6 +739,67 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-20 (rate limits + notifications + webhook tool + key rotation) — HEAD `c4c02fe`
+
+### 1. What did we ship since last check-in?
+
+**4 commits: rate limiter dashboard (D-152) + notification system (D-153) + webhook test tool (D-154) + API key rotation (D-155)**
+
+| Commit | Deliverable | Tests |
+|--------|-------------|-------|
+| D-152 `feat: rate limiter dashboard` | `store/rate-alerts.ts` — 80% threshold alert store, per-window deduplication, webhook delivery; `store/ratelimit.ts` — `getAllStats()`, `recordThrottle()`, `setTierCache()`, `KeyRateLimitStats` type; `routes/rate-limits.ts` — `GET /rate-limits` (HTML, public), `GET /rate-limits.json` (auth); `plugins/ratelimit.ts` — tier cache + throttle recording + alert hook. | +29 (2975→3004) |
+| D-153 `feat: notification system` | `store/notifications.ts` — `NotificationPrefs`, `NotificationRecord`, `NotificationStore` (dispatch with fan-out, deduplication, webhook delivery, 5K history), 4 convenience dispatchers; `routes/notifications.ts` — 7 routes (prefs CRUD, history, test, events catalogue, HTML overview); scan.ts wired for scan.failed; server.ts wired for weekly.summary cron. | +35 (3004→3039) |
+| D-154 `feat: webhook test tool` | `store/webhooks.ts` — `SAMPLE_PAYLOADS` (6 events), `WebhookTestResult`, `sendTestWebhook()` (AbortSignal.timeout 10s, HMAC signing, 4KB body cap), `WebhookTestHistory`, `WebhookStore.getById()`; `routes/webhooks.ts` — `GET /webhooks/test` (HTML two-panel tester, public), `POST /webhooks/test`, `POST /webhooks/test/:id`, `GET /webhooks/test/history`. | +29 (3039→3068) |
+| D-155 `feat: API key rotation` | `store/keys.ts` — `ApiKey` extended with `previousKey`/`previousKeyExpiresAt`/`lastRotatedAt`; `rotate()`, `validateKey()` grace-period check, `cleanExpiredRotations()`, `isInGracePeriod()`; `routes/keys.ts` — `POST /keys/:id/rotate`, `GET /keys/:id/rotation-status`; key list redacts both `key` and `previousKey`; `server.ts` — `cleanExpiredRotations()` every minute; notification dispatch on rotation. | +31 (3068→3106) |
+
+**Running total**: 3,106 tests · 123 test files · 69 initiatives SHIPPED.
+
+---
+
+### 2. What surprised us?
+
+- **In-place mutation trap in tests.** The `rotate()` method mutates the `ApiKey` object in-place (`entry.key = newKey`). In the test, `entry.key` was read *after* the rotate call — by which point it was already the new key, so `result.previousKey === entry.key` was comparing two different values. The fix is obvious once you see it (capture `entry.key` before rotation), but it's a reminder that in-place mutation + direct object references from a store is a gotcha. The store pattern (returning the same object reference from `.create()` and `.validateById()`) is convenient but creates this kind of confusion. An immutable store (always return copies) would be safer for testing.
+
+- **`validateKey()` scanning all entries for grace-period keys is O(n×k).** For the current test environment (tens of keys), this is fine. In production with thousands of keys, every auth check scans the full key list twice: once for `k.key === key` and once for `k.previousKey === key`. A secondary index (Map from key-string → entry) would make this O(1). This is tech debt to flag before any scale deployment.
+
+- **Notification dispatch with fan-out vs. targeted delivery needed two code paths.** The `dispatch()` method supports both broadcast (`targetKeyId` omitted) and targeted delivery. Broadcast iterates all prefs, targeted skips the iteration. The global fallback webhook (`FAULTLINE_NOTIFY_WEBHOOK`) is only used for broadcasts with no subscribers — a decision that was obvious once implemented but not obvious upfront. The asymmetry between broadcast and targeted should be documented for future contributors.
+
+- **Webhook tester HTML is a dual-panel design.** The left panel accepts any URL (no webhook registration needed); the right panel shows registered webhooks. This is the right UX — most users will want to test before registering, and the registered-hook panel is only useful after registration. The "no webhooks registered" disabled state on the right panel caught a usability issue: when there are zero registered webhooks, the button is disabled and an inline note explains why. This is defensive UI that avoids a confusing error state.
+
+---
+
+### 3. Cross-project signals
+
+- **The grace-period key rotation pattern** (`previousKey` + `previousKeyExpiresAt` + `validateKey()` grace check + `cleanExpiredRotations()`) is directly portable to any project with API key authentication. The entire implementation is 50 lines in the store. dx3 almost certainly needs this — any project where users hold API keys in environment variables cannot tolerate zero-grace-period rotation. Worth extracting as a mini-library.
+
+- **The `sendTestWebhook()` pattern** (AbortSignal.timeout, HMAC signing, 4KB body cap, result struct with `statusCode`/`responseBody`/`responseHeaders`/`latencyMs`) is the right design for any webhook debugging tool. It's self-contained, testable without a real server (use port 1 to get ECONNREFUSED), and records all diagnostic state needed to debug delivery issues. Copy-paste candidate.
+
+- **Notification fan-out with per-subscriber webhook URLs** is a more flexible pattern than a single global webhook. The per-key URL means different API key holders can route their own events without sharing a webhook endpoint. This is cleaner than the Stripe model (one webhook endpoint, all events) for multi-tenant scenarios. Worth considering for dx3's event system.
+
+- **The `FAULTLINE_NOTIFY_WEBHOOK` env var as a global fallback** is a good pattern for self-hosted deployments where a single Slack channel should receive all events. It costs nothing when per-key webhooks are configured but provides a useful "catch-all" for admins. Any project using a notification store should support this pattern.
+
+---
+
+### 4. What would we prioritize next?
+
+1. **`validateKey()` secondary index** — Add a `Map<string, ApiKey>` keyed by both `key` and `previousKey`. Makes auth O(1) instead of O(n). Single-sprint item. Needed before any scale deployment.
+2. **`vitest --coverage` baseline (Gate 8.5)** — Fifth cycle flagging this. Should be the very next single-item directive. One line in `vitest.config.ts`.
+3. **Tenant data isolation** — All stores remain global singletons. Still the largest production gap.
+4. **Fly.io deploy** — All features are live, Docker image ready, changelog/status pages would make the announcement meaningful. Only credentials block this.
+5. **Webhook delivery retry on `subscription.changed`** — Currently a fire-and-forget `void dispatch(...).catch(() => undefined)`. If the webhook endpoint is temporarily down during a key rotation, the notification is silently lost. A simple retry queue (3 attempts, exponential backoff) would fix this — same pattern as `dispatchWebhook()` in `store/webhooks.ts`.
+
+---
+
+### 5. Blockers and questions for the CoS?
+
+- **`NPM_TOKEN`**: Still blocked. v0.2.0 and v0.3.0 tagged and ready.
+- **Fly.io credentials**: Still blocked.
+- **Coverage gate threshold**: 5th cycle asking. What is the approved minimum? 70%? 80%?
+- **Secondary key index**: Should `validateKey()` be optimized now (before deploy) or left as O(n) (acceptable for current scale)? A hard call without a target load number.
+- **Grace period duration**: 24h is the chosen default for `ROTATION_GRACE_HOURS`. Is this configurable enough for operator preference, or should there be a `FAULTLINE_ROTATION_GRACE_HOURS` env var override? Some operators may want 48h or 1h.
+
+---
+
 > **Reflection cycle**: 2026-03-20 (plugin marketplace + telemetry system) — HEAD `e997dd3`
 
 ### 1. What did we ship since last check-in?
