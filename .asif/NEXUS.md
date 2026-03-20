@@ -739,6 +739,72 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-20 (scan history export) — HEAD `72b3d99`
+
+### 1. What did we ship since last check-in?
+
+**1 commit: `feat: D-147 scan history export — faultline export + POST /export`**
+
+| Deliverable | Description |
+|-------------|-------------|
+| `packages/cli/cli/export.ts` | Export logic: `applyFilter()`, `renderCsv()` (claim-exploded rows), `renderJson()`, `renderNdjson()`, trust_score derivation, RFC 4180 CSV escaping |
+| `packages/cli/cli/index.ts` | `faultline export` command wired — flags: `--format`, `--from`, `--to`, `--provider`, `--risk`, `--output` |
+| `packages/api/src/routes/export.ts` | `POST /export` — requireApiKey, ScanHistoryStore filter, Content-Disposition attachment, X-Export-Count header |
+| `packages/api/src/server.ts` | exportRoutes registered |
+| Tests | 30 CLI tests (filter, renderers, edge cases) + 14 API tests (auth, formats, filters, headers) |
+
+**Running total**: 2,821 tests · 114 files · 62 initiatives SHIPPED.
+
+---
+
+### 2. What surprised us?
+
+- **The two history stores have fundamentally different richness.** The CLI's `HistoryEntry` contains the full `ScanResult` (every claim, every verification, every rule finding), while the API's `ScanHistoryStore` keeps only a summary row (textPreview, provider, overallRisk, claimCount, latencyMs). The CSV export can produce per-claim rows with verdict + explanation from the CLI history, but the API export is limited to scan-level summaries. This asymmetry isn't visible day-to-day but becomes stark when building data-export features. The two stores were designed for different purposes (on-disk audit trail vs in-memory live dashboard) — the correct solution is not to merge them but to document the distinction clearly.
+
+- **Trust score is not a stored field anywhere.** Both history stores record `overallRisk` (low/medium/high/critical) but not a numeric trust score. The export derives one via a simple inverse mapping (low→90, medium→65, high→35, critical→10). This is a heuristic, not a measurement. A proper trust score should be computed during the scan (weighted average of claim confidence values) and persisted. This is currently a gap in the data model.
+
+- **RFC 4180 CSV escaping is a non-trivial edge case.** The naive approach (split on comma) breaks when claim text contains commas, quotes, or newlines — common in real AI outputs. The correct behavior (wrap in quotes, double internal quotes) is only 5 lines of code but easy to skip. Found one existing test case in the CLI that had a comma in a filename — it triggered the double-quote path on first run, confirming the escaping works.
+
+- **NDJSON is underused but very useful for streaming exports.** The ndjson format allows a consumer to start processing the first line before the last line is transmitted — important for large history exports (up to 1,000 entries). No existing test in the suite was using it before this feature. Worth noting as the right format for any export endpoint that might grow.
+
+---
+
+### 3. Cross-project signals
+
+- **The two-store pattern (summary + full)** appears in other NXTG projects: a live dashboard store (in-memory, fast, summarised) alongside a richer audit store (on-disk or DB, full detail). The export feature pattern — filter summary store for quick lookups, join to full store for detail — is reusable wherever this pattern exists. FamilyMind and dx3 likely have similar dual-store architectures.
+
+- **`Content-Disposition: attachment` + `X-Export-Count` header pattern** is clean and copy-pasteable. Any API project adding a download endpoint should use this exact pattern: one header for the browser to trigger a save dialog, one header for the caller to know the row count before parsing the body. No existing NXTG project outside Faultline uses this pattern yet.
+
+- **`applyFilter()` as a pure function** (takes array + filter object, returns filtered array) makes the CLI export logic trivially testable with no mocks — 9 filter tests pass in under 1ms each. This is worth following as a pattern wherever filtering logic is added to a CLI: extract it as a pure function before wiring it to the command dispatcher.
+
+- **The trust score derivation gap** (risk level → number, not computed from claim confidences) is worth flagging for any project that exposes a "trust score" or "confidence score" in its output. If the score is derived post-hoc from a categorical field, that should be documented explicitly so consumers don't treat it as a first-class measurement.
+
+---
+
+### 4. What would we prioritize next?
+
+1. **Compute and persist trust_score during scan.** Add a `trustScore: number` field to `ScanResult` and `ScanEntry`. Derive it as `mean(claim_confidence)` weighted by importance. This unlocks honest numeric filtering and trending. One change to `scan.ts` + migrations to both stores.
+
+2. **`vitest --coverage` baseline (Gate 8.5).** Still open. The export tests demonstrate we have good line coverage on new code — but we have no baseline measurement. One config line in `packages/api/vitest.config.ts`.
+
+3. **Tenant data isolation.** Still global singletons. Biggest production gap.
+
+4. **Export from API with full claim detail.** The current `POST /export` returns scan summaries only (what's in ScanHistoryStore). To get per-claim rows from the API, the scan route would need to either: (a) write claims to a persistent store at scan time, or (b) re-retrieve from the claim index. Option (a) is cleaner.
+
+5. **`faultline export` streaming for large histories.** Currently reads all matching entries into memory before rendering. For 1,000 entries × many claims, that's fine. For a future disk-backed store with 100K entries, streaming rendering would matter.
+
+---
+
+### 5. Blockers and questions for the CoS?
+
+- **`NPM_TOKEN`**: Unchanged.
+- **Fly.io deploy**: Unchanged. Docker image ready.
+- **Coverage gate**: Confirm whether to add `vitest --coverage` now or wait for threshold decision.
+- **Trust score model**: Should trust_score be a first-class field on ScanResult (computed from claim confidences), or is the risk-level inverse mapping good enough for the near term?
+- **Export store depth**: Should `POST /export` access full claim data, or is the scan-summary-only export sufficient for API users?
+
+---
+
 > **Reflection cycle**: 2026-03-20 (plugin system + Docker image + benchmark suite) — HEAD `f0217e8`+
 
 ### 1. What did we ship since last check-in?
