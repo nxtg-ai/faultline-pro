@@ -63,6 +63,10 @@ class WebhookStore {
   getByEvent(event: WebhookEvent): Webhook[] {
     return this.webhooks.filter((w) => w.events.includes(event));
   }
+
+  getById(id: string): Webhook | undefined {
+    return this.webhooks.find(w => w.id === id);
+  }
 }
 
 let instance: WebhookStore | null = null;
@@ -109,6 +113,125 @@ export async function dispatchWebhook(
     }
   }
   // All 3 attempts exhausted — swallow silently
+}
+
+// ─── Test tool ────────────────────────────────────────────────────────────
+
+export interface WebhookTestResult {
+  id:          string;
+  url:         string;
+  event:       string;
+  sentAt:      string;
+  latencyMs:   number;
+  statusCode:  number | null;
+  statusText:  string | null;
+  responseBody: string | null;
+  responseHeaders: Record<string, string>;
+  delivered:   boolean;
+  error:       string | null;
+  signatureHeader: string | null;
+}
+
+/** Sample payloads for each event type. */
+export const SAMPLE_PAYLOADS: Record<string, unknown> = {
+  'scan.complete': {
+    input: 'The Eiffel Tower is 330 metres tall and was built in 1889.',
+    provider: 'gemini',
+    overallRisk: 'low',
+    claims: [
+      { id: 'c1', text: 'The Eiffel Tower is 330 metres tall', type: 'fact', importance: 4 },
+      { id: 'c2', text: 'The Eiffel Tower was built in 1889', type: 'fact', importance: 4 },
+    ],
+    verifications: {
+      c1: { claimId: 'c1', status: 'supported', explanation: 'Multiple sources confirm height of 330m (antenna included).', sources: [{ title: 'Eiffel Tower official', uri: 'https://toureiffel.paris' }] },
+      c2: { claimId: 'c2', status: 'supported', explanation: 'Construction completed 1889 for World\'s Fair.', sources: [] },
+    },
+  },
+  'scan.failed': { error: 'All providers rate-limited. Retry after 60 seconds.', provider: 'gemini' },
+  'job.complete': { jobId: 'job-test-123', text: 'sample text', provider: 'gemini', result: { overallRisk: 'low' } },
+  'job.failed': { jobId: 'job-test-123', error: 'Provider timeout after 30s' },
+  'claim.verdict_changed': { claimId: 'c1', oldStatus: 'unverified', newStatus: 'supported', provider: 'openai' },
+  'compliance.deadline_approaching': { regulation: 'EU AI Act', daysUntilDeadline: 30, requirement: 'High-risk AI system registration' },
+};
+
+const MAX_TEST_HISTORY = 500;
+
+class WebhookTestHistory {
+  private records: WebhookTestResult[] = [];
+
+  push(record: WebhookTestResult): void {
+    this.records.unshift(record);
+    if (this.records.length > MAX_TEST_HISTORY) this.records.pop();
+  }
+
+  list(webhookId?: string): WebhookTestResult[] {
+    if (webhookId) return this.records.filter(r => r.id.startsWith(webhookId + ':'));
+    return this.records.slice();
+  }
+
+  reset(): void { this.records = []; }
+}
+
+let testHistoryInstance: WebhookTestHistory | null = null;
+export function getWebhookTestHistory(): WebhookTestHistory {
+  if (!testHistoryInstance) testHistoryInstance = new WebhookTestHistory();
+  return testHistoryInstance;
+}
+export function resetWebhookTestHistory(): void {
+  testHistoryInstance = new WebhookTestHistory();
+}
+
+export async function sendTestWebhook(
+  url: string,
+  event: string,
+  secret: string | null,
+  webhookId?: string,
+): Promise<WebhookTestResult> {
+  const payload = {
+    event,
+    timestamp: new Date().toISOString(),
+    test: true,
+    data: SAMPLE_PAYLOADS[event] ?? { message: 'Test payload from Faultline Pro.' },
+  };
+  const body = JSON.stringify(payload);
+  const sig = secret ? ('sha256=' + createHmac('sha256', secret).update(body).digest('hex')) : null;
+
+  const result: WebhookTestResult = {
+    id:              (webhookId ? webhookId + ':' : '') + randomUUID(),
+    url,
+    event,
+    sentAt:          new Date().toISOString(),
+    latencyMs:       0,
+    statusCode:      null,
+    statusText:      null,
+    responseBody:    null,
+    responseHeaders: {},
+    delivered:       false,
+    error:           null,
+    signatureHeader: sig,
+  };
+
+  const start = Date.now();
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json', 'User-Agent': 'Faultline-Pro/0.2.0' };
+    if (sig) headers['X-Faultline-Signature'] = sig;
+
+    const res = await fetch(url, { method: 'POST', headers, body, signal: AbortSignal.timeout(10_000) });
+    result.latencyMs = Date.now() - start;
+    result.statusCode = res.status;
+    result.statusText = res.statusText;
+    result.delivered  = res.ok;
+    result.responseBody = (await res.text()).slice(0, 4096); // cap at 4KB
+    for (const [k, v] of res.headers.entries()) {
+      result.responseHeaders[k] = v;
+    }
+  } catch (err) {
+    result.latencyMs = Date.now() - start;
+    result.error = err instanceof Error ? err.message : String(err);
+  }
+
+  getWebhookTestHistory().push(result);
+  return result;
 }
 
 export function fireWebhookEvent(event: WebhookEvent, data: unknown): void {
