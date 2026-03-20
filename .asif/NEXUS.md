@@ -105,6 +105,47 @@ The Kaggle version remains at  (tagged  at commit ).
 
 > **96 directives archived** (36 on 2026-02-28, 10 on 2026-03-12, 35 on 2026-03-18, 21 on 2026-03-19 incl. D-125/126/127/140/141/142).
 
+### DIRECTIVE-NXTG-20260319-153 — P1: Real-Time Scan Dashboard — Live Monitoring
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-19 09:00 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] **Dashboard** at `/dashboard` — live scan count, active API keys, provider health, last 10 scans with results.
+2. [ ] **Scan feed** — real-time list of incoming scans (anonymized text preview, trust score, provider, latency).
+3. [ ] **Provider status** — green/red per provider based on last response time + error rate.
+4. [ ] Tests.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260319-154.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260319-154 — P1: Scan History Search — Full-Text Across All Scans
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-19 09:00 | **Estimate**: M | **Status**: PENDING
+
+**Action Items**:
+1. [ ] **`GET /scans/search?q=...`** — search across all historical scan results by text content, claim text, or verdict.
+2. [ ] **Filters**: date range, trust score range, provider, risk tier.
+3. [ ] **Pagination** with cursor-based API.
+4. [ ] Tests.
+
+**CHAIN**: When done, start DIRECTIVE-NXTG-20260319-155.
+**Response** (filled by team): >
+
+---
+
+### DIRECTIVE-NXTG-20260319-155 — P2: API Documentation — Swagger UI
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
+**Injected**: 2026-03-19 09:00 | **Estimate**: S | **Status**: PENDING
+
+**Action Items**:
+1. [ ] Swagger UI at `/docs` served by Fastify. 2. [ ] Auto-generated from OpenAPI spec. 3. [ ] Interactive "Try it" for each endpoint.
+
+**Response** (filled by team): >
+
+---
+
 ### DIRECTIVE-NXTG-20260319-140 — P1: Claim Database — Persistent Knowledge Store
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
 **Injected**: 2026-03-19 08:15 | **Estimate**: M | **Status**: DONE
