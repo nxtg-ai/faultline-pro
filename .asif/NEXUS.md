@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-20 (Plugin system + Docker image + benchmark suite shipped. 2,777 tests. 61 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-20 (Status page + changelog page shipped. 2,881 tests. 63 initiatives SHIPPED. Tags: v0.1.0/v0.2.0/v0.3.0 created.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -738,6 +738,64 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-03-20 (status page + changelog page) — HEAD `96dcc8f`
+
+### 1. What did we ship since last check-in?
+
+**2 commits: status page (D-148) + changelog page (D-149)**
+
+| Commit | Deliverable | Tests |
+|--------|-------------|-------|
+| D-148 `feat: status page` | `store/status.ts` — uptime, `formatUptime`, `deriveIncidents` (5xx + high-latency auto-detection), `bucketResponseTimes` (60×1-min p50 from audit log); `routes/health.ts` rewritten — `GET /status` dark-themed HTML page with provider grid, SVG sparkline chart, incident feed, 30s JS polling; `GET /status.json` machine-readable (no auth). | +32 (2853→2885) |
+| D-149 `feat: changelog page` | `lib/changelog.ts` — git-log parser: `parseConventionalCommit`, `buildChangelog` (tags → VersionBlock[]), `toMarkdown`; `routes/changelog.ts` — `GET /changelog` timeline HTML, `GET /changelog.json`, `GET /changelog.md`; CHANGELOG.md generated; tags v0.1.0/v0.2.0/v0.3.0 created. Fixed shell pipe bug: `%h|%s` format parsed `|` as pipe — switched to tab delimiter `%h%x09%s`. Fixed bucket off-by-one: `age≈0` → idx=60 out of bounds — fixed with `bucketCount-1-floor(age/bucketMs)`. | +28 (2853→2881) |
+
+**Running total**: 2,881 tests · 116 files · 63 initiatives SHIPPED.
+
+---
+
+### 2. What surprised us?
+
+- **Shell pipe ambiguity in git format strings.** `git log --pretty=format:%h|%s` uses `|` as field separator — but `execSync` wraps commands in `/bin/sh -c "..."`, so `|` was parsed as a shell pipe operator, piping output to `%s` (unknown command). The fix (use `%x09` for tab) is obvious in retrospect, but the failure mode was silent: `run()` catches all errors and returns `''`, so the changelog showed "No recorded changes" with no error. This is a strong argument for not swallowing errors silently in internal helpers.
+
+- **The off-by-one in bucket index.** The formula `Math.floor((windowMs - age) / bucketMs)` produces index 60 (out of bounds) when `age ≈ 0`. The test caught it immediately — a brand-new entry was silently dropped, `nonZero.length` was 0 not 1. The correct formula is `bucketCount - 1 - Math.floor(age / bucketMs)`: newest entries go to the last bucket (highest index). This is a cleaner mental model anyway.
+
+- **`existsSync` walk-up for repo root is much more robust than counting parent steps.** The initial implementation used `resolve(__dir, '../../../../..')` which was wrong by one level. The `findRepoRoot()` walk-up (look for `.git` at each level) is immune to file restructuring and works regardless of where the module is loaded from.
+
+- **The changelog shows 100+ "Changed" entries in the Unreleased block** due to reflection and archive commits using non-conventional prefixes (`reflect:`, `cos:`). These get classified as `other`. The changelog is accurate — it reflects the commit discipline of this project — but a convention filter (suppress reflection/archive commits) would make it cleaner for external readers.
+
+---
+
+### 3. Cross-project signals
+
+- **`store/status.ts` pattern** (uptime singleton + derived-incidents + response-time bucketing from existing audit log) is directly reusable for any API project with an audit log. No new storage needed — incidents and perf data are computed on demand. The whole module is 90 lines. Worth porting to dx3 and Podcast-Pipeline.
+
+- **`GET /status.json` as a public no-auth endpoint** is the right architecture for status pages: the HTML shell is served once, the JS polls a JSON endpoint every 30s. The pattern decouples the display layer from the data layer — any monitoring tool (UptimeRobot, etc.) can also poll `/status.json` directly.
+
+- **The `parseConventionalCommit` function** (35 lines, pure, no deps) is a clean building block for any project that wants to auto-generate release notes from commits. The only input is a `(hash, subject)` pair. Extractable as a standalone utility.
+
+- **Shell-safe git format strings:** never use `|` as a delimiter in `execSync` git commands — use `%x09` (tab) or `%x00` (NUL). This applies to all projects using git log in Node.js.
+
+---
+
+### 4. What would we prioritize next?
+
+1. **`vitest --coverage` baseline** — Gate 8.5 still open. Two blocks left: (a) add `coverage` config to `vitest.config.ts`, (b) establish threshold. One sprint item.
+2. **Suppress reflection/archive commits from changelog** — Add a filter in `buildChangelog` to skip commits matching `reflect:` or `cos:` prefixes when building the Unreleased block (or all blocks). Makes the changelog useful for external release notes.
+3. **v0.3.0 tag created** — `npm publish` is now unblocked at the version level. Only NPM_TOKEN stands in the way.
+4. **Tenant data isolation** — Still global singletons. Biggest production gap.
+5. **Fly.io deploy** — Docker image is built, changelog page would make the deployment announcement richer. Waiting on Fly.io credentials.
+
+---
+
+### 5. Blockers and questions for the CoS?
+
+- **`NPM_TOKEN`**: Unchanged. v0.3.0 is tagged and ready.
+- **Fly.io deploy**: Unchanged.
+- **Changelog filter**: Should `reflect:` / `cos:` / `reflection:` commits be suppressed from the external changelog? They're internal governance noise, not user-facing changes.
+- **Coverage gate**: Confirm threshold before adding `--coverage` to CI.
+
+---
 
 > **Reflection cycle**: 2026-03-20 (scan history export) — HEAD `72b3d99`
 
