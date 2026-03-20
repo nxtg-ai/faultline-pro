@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-20 (Claim DB search UI + cache warmup + analytics dashboard. 1,224 api tests / 3,394 CI total. 70 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-20 (Integration tests + API playground + Mission Control dashboard. 1,290 api tests / ~3,460 CI total. 73 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -80,6 +80,9 @@
 | N-68 | Claim Database Search UI — GET /claims/view (HTML), GET /claims/stats (JSON), ClaimIndex.getStats() with accuracy/verified rates, topSources | FORENSIC | SHIPPED | P1 | 2026-03-20 |
 | N-69 | Scan Cache Warmup — WarmupStore (dedup, priority order, run history), CacheWarmer (warmOne/warmAll), 9 admin endpoints, suggestions from ScanHistory | PERFORMANCE | SHIPPED | P1 | 2026-03-20 |
 | N-70 | Usage Analytics Dashboard — GET /analytics (HTML), GET /analytics/overview (JSON): scan volume, provider distribution, trust trend, risk stacked-bar, latency trend, cache ring gauge | ENTERPRISE | SHIPPED | P1 | 2026-03-20 |
+| N-71 | Integration Testing Framework — 10 end-to-end flow scenarios (auth→scan→claims→verdict→compliance→webhook→audit), shared server state, 42 tests | DEVELOPER-X | SHIPPED | P2 | 2026-03-20 |
+| N-72 | API Playground — GET /playground (interactive HTML): 5 sample texts, provider/endpoint selectors, tabbed results (Overview/Claims/Raw/Request), Ctrl+Enter, dark theme | DEVELOPER-X | SHIPPED | P1 | 2026-03-20 |
+| N-73 | Mission Control Dashboard — GET /mission-control (HTML) + GET /mission-control/status (JSON): API latency, provider health grid, cache stats, queue depth, active keys, scan rate, auto-refresh 10s | ENTERPRISE | SHIPPED | P1 | 2026-03-20 |
 
 ---
 
@@ -807,6 +810,68 @@ The Kaggle version remains at  (tagged  at commit ).
 - **Coverage gate threshold**: Seventh cycle asking. 70%? 80%? Without a threshold, adding `vitest --coverage` to CI will report a number but never fail a build — making it cosmetic rather than a quality gate.
 - **Stripe billing priority**: D-162 laid the enterprise billing foundation (org model, plan field, usage metering). Should Stripe checkout be the next directive, or is there a higher-priority initiative waiting? The org model is the right abstraction layer for per-seat or per-scan billing.
 - **Schedule error auto-disable threshold**: How many consecutive errors should trigger `status = 'error'` on a schedule? Suggest N=3 (same philosophy as the 3-failure circuit breaker). Or should this be configurable per schedule? Proposing `maxConsecutiveErrors?: number` field on `CreateScheduleInput`.
+
+---
+
+> **Reflection cycle**: 2026-03-20 (integration testing + API playground + mission control. D-166/D-167/D-168) — HEAD `e88f586`
+
+### 1. What did we ship since last check-in?
+
+**3 directives / 3 commits: D-166 Integration Testing, D-167 API Playground, D-168 Mission Control**
+
+| Commit | Deliverable | Tests |
+|--------|-------------|-------|
+| D-166 `feat: integration testing framework` | `tests/integration-flow.test.ts` — 10 end-to-end scenarios (F1–F10) on a shared server with shared state: F1 full scan pipeline (auth→scan→ClaimIndex→ScanHistory→AuditTrail), F2 cache hit/miss cycle, F3 webhook delivery (HMAC), F4 audit trail completeness, F5 verdict propagation, F6 compliance report chain (scan→PDF→EU PDF), F7 rate-limit enforcement (quota→429→reset→200), F8 org-scoped key (org→orgKey→scan→usage), F9 schedule trigger flow, F10 analytics data flow. Mock via `vi.mock('@nxtg/faultline/cli/scan.js')`. | +42 (1186→1228) |
+| D-167 `feat: API Playground` | `routes/playground.ts` — `GET /playground` (public HTML): 5 pre-loaded sample texts (AI revenue, medical, climate, product, financial), form (textarea, provider select × 5, endpoint select × 4, optional API key, auth pill), tabbed results panel (Overview: risk badge + stat cards + compliance summary; Claims: verdict cards; Raw JSON: syntax-highlighted; Request: method/URL/timing/body), Ctrl+Enter shortcut, PDF endpoints open via blob URL in new tab. Dark theme, no Chart.js needed. | +29 (1228→1257) |
+| D-168 `feat: Mission Control dashboard` | `routes/mission-control.ts` — `GET /mission-control/status` (public JSON aggregating API latency p50/p95/avg + throughput, provider health grid, cache hit rate, queue depth breakdown, active keys, scan rate + today's count + risk distribution from last 50 scans, overall system status healthy/warning/degraded); `GET /mission-control` (public HTML): 6 KPI cards, provider health grid cards with health score/status dot/latency/error rate, 3-panel subsystem detail (cache ring/queue breakdown/risk chips), API latency + throughput panels, progress-bar refresh animation, 10s auto-refresh. | +33 (1257→1290) |
+
+**Running total**: ~3,460 tests (CI gate) · 61 test files · 73 initiatives SHIPPED · 1,290 api package tests.
+
+---
+
+### 2. What surprised us?
+
+- **`/audit/log` route doesn't exist.** F4 of the integration flow test initially called `GET /audit/log` expecting a 200 with the audit trail. That route was never created — the audit log is accessed directly via `getAuditLogger().getEntries()` in the store. The route to check audit completeness ended up being a direct store assertion rather than an HTTP call. The naming mismatch (`/health/deep` embeds audit data; there's no `/audit/log` endpoint) is a gap worth noting: if any external consumer wants an audit trail endpoint, it doesn't exist yet.
+
+- **`requireApiKey` returns 401, not 403, for missing keys.** F4.3 expected a 403 for a POST /scan with no API key, based on the mental model of "401 = unauthenticated, 403 = unauthorized". Our `requireApiKey` returns 401 for both missing and invalid keys. Only `requireAdmin` returns 403. The distinction matters: an integration test that cross-validates auth semantics will see different codes on different routes. Fixed by checking for 401 on public auth-required routes.
+
+- **Fastify 400 on bodyless POST with `content-type: application/json`.** F9.2 POSTed to `/schedules/:id/trigger` (no body needed) while including the `content-type: application/json` header. Fastify's JSON parser treats an empty body as invalid JSON → 400 before the handler runs. Rule: for bodyless POST requests in inject tests, omit the content-type header entirely. Established pattern; third time this has caught a test.
+
+- **`/scan/eu-report` returns PDF, not JSON.** F6.3 attempted `JSON.parse(res.body)` on the EU report response — which is a PDF binary — and got a SyntaxError at parse time. Fixed by checking `content-type: application/pdf` and `res.rawPayload.length > 100` instead. Lesson: whenever a route returns `Content-Type: application/pdf`, tests must check rawPayload or headers, never try to JSON.parse.
+
+- **`OrgKey.keyName`, not `.name`.** The `OrgKey` interface stores the key display name as `keyName` (not `name`). F8.2 checked `body.orgKey.name` which was undefined. The route response also uses `body.key` (the raw API key secret) not `body.apiKey`. These naming conventions are non-obvious and not exposed by esbuild-transpiled TypeScript — another case where `tsc --noEmit` in CI would surface the error at push time.
+
+---
+
+### 3. Cross-project signals
+
+- **Integration test shared-state pattern** — Module-level `let` variables (`scanKey`, `orgId`, `orgKey`) set inside early `it()` blocks and used by later ones within the same `describe` create readable scenario chains without complex fixture setups. The pattern works because vitest runs `it()` blocks sequentially within a `describe` by default. Any project needing multi-step flow tests (checkout → subscription → usage) can use this same approach. Key constraint: the `describe` must use `beforeAll` (not `beforeEach`) so state persists across tests.
+
+- **`vi.mock` at module level for singleton services** — Mocking `scan()` via `vi.mock('@nxtg/faultline/cli/scan.js', ...)` at the top of the test file makes the mock available to all tests without per-test setup. The mock returns a stable result shape that satisfies every downstream assertion (ClaimIndex, ScanHistory, Compliance, etc.). Any test suite that exercises routes calling `scan()` should mock this way rather than spying per-test.
+
+- **Mission Control aggregation pattern** — `computeStatus()` pulls from 5 independent stores in one function call and returns a flat serialisable object. This is structurally identical to `computeOverview()` in the analytics route but with different aggregations. The two could be unified into a single "system telemetry" module, but the separation makes each route independently testable without cross-concern coupling. The pattern — one function per page, all store reads inline, no caching — is the right default until latency becomes a concern.
+
+- **Progress bar with CSS `transition: width Xs linear`** — The mission control dashboard uses a CSS progress bar that animates from 0% to 100% over 10 seconds to visualise the next refresh countdown. The technique: reset `transition: none`, force reflow via `el.offsetWidth`, then set `transition: width 10s linear` + `width: 100%`. Zero JS animation frames, no `requestAnimationFrame`, works in all browsers. Any auto-refreshing dashboard can copy this 6-line pattern.
+
+---
+
+### 4. What would we prioritise next?
+
+1. **Stripe billing wired to org plans** — The billing surface is complete: `Org.plan` (free/pro/enterprise), per-org usage metering, org CRUD. The missing piece is `POST /orgs/:id/billing/checkout` → Stripe Checkout session + `customer.subscription.updated` webhook → plan field update. This is 1 directive of work and completes the revenue loop.
+2. **`tsc --noEmit` in CI gate** — Three incidents (D-164 `list()` method, D-166 `body.orgKey.name`, D-166 `body.apiKey`) where valid-JS / invalid-TS code reached tests undetected. The CI gate runs vitest but skips type-checking. Adding `tsc --noEmit` before vitest would surface all three of these errors at push time instead of test-failure time.
+3. **`/audit/log` endpoint** — Four integration test scenarios tried to read the audit trail via HTTP. The route doesn't exist. `GET /audit/log` returning the most recent N audit entries (admin-gated) is a 10-line route and would make the integration tests more realistic.
+4. **Playwright smoke test for HTML dashboards** — `/mission-control`, `/analytics`, `/claims/view`, `/schedules/view`, `/providers/health/view`, `/playground` all render HTML that makes client-side `fetch()` calls. Body-string assertions pass even if the JS crashes at runtime. A single Playwright test navigating to each page and asserting `no console errors` would catch JS failures that string tests cannot.
+5. **`vitest --coverage` baseline** — Ninth cycle. Still zero branch coverage visibility.
+
+---
+
+### 5. Blockers and questions for the CoS?
+
+- **`NPM_TOKEN`**: Still blocked. 73 initiatives SHIPPED, 1,290 api tests green, v0.3.0 tagged and ready.
+- **Fly.io credentials**: Still blocked. Docker image, health check endpoint, all routes wired — platform is deploy-ready.
+- **Coverage gate threshold**: Ninth cycle asking. Without a threshold, coverage reporting is cosmetic.
+- **`tsc --noEmit` in CI gate**: Three incidents now. Is this approved to add to the pre-push hook? It adds ~3–5s per push but eliminates a real class of test failures.
+- **`/audit/log` endpoint**: Should this be added as a directive? It surfaced as a gap in 4 of the 10 integration scenarios. Admin-gated `GET /audit/log?limit=N` seems like standard operating tooling.
 
 ---
 
