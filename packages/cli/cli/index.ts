@@ -10,10 +10,12 @@
 
 import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { execSync } from 'node:child_process';
 import { scan, batchScan } from './scan.js';
 import { renderReport, renderReportAs, type OutputFormat, type SarifOptions } from './report.js';
 import { listRules, getRule } from '../rules/index.js';
-import { loadConfig, mergeFlags, generateSampleConfig, getLocalTemplate } from './config.js';
+import { loadConfig, mergeFlags, generateSampleConfig, getLocalTemplate, addPluginToConfig, removePluginFromConfig } from './config.js';
+import { loadPlugin, loadPluginsFromConfig, getLoadedPlugins } from '../plugins/loader.js';
 import { startWatch } from './watch.js';
 import { getAllTemplates, getTemplatesByCategories, listCategories, validateCategories, type TemplateCategory } from '../templates/index.js';
 import { checkThreshold, countFromScanResult, type SeverityLevel } from './action.js';
@@ -93,6 +95,9 @@ Usage:
   faultline graph --input <file> [--format mermaid|dot]             Export claim graph
   faultline critique --input <file> [--provider gemini]             Critique failed claims + improved prompt
   faultline compare --before <text|file> --after <text|file> [--provider mock]   Compare two scans side-by-side
+  faultline plugin install <pkg>                                    Install a plugin (npm install + register)
+  faultline plugin remove  <pkg>                                    Remove a plugin
+  faultline plugin list                                             List loaded plugins
   faultline rules                                                   List available rules
   faultline init                                                    Generate .faultlinerc.json
   faultline version                                                 Print version
@@ -146,6 +151,93 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
     case '--help':
     case '-h':
       return { exitCode: 0, output: usage() };
+
+    case 'plugin': {
+      const sub = args[1]; // install | remove | list
+      const pkgArg = args[2];
+
+      if (sub === 'list') {
+        // Auto-load config plugins so the list is accurate
+        const cfg = loadConfig();
+        if (cfg.plugins?.length) {
+          await loadPluginsFromConfig(cfg.plugins);
+        }
+        const loaded = getLoadedPlugins();
+        if (loaded.length === 0) {
+          return { exitCode: 0, output: 'No plugins loaded. Install one with: faultline plugin install <package>' };
+        }
+        const lines = ['Loaded plugins:', ''];
+        for (const p of loaded) {
+          lines.push(`  ${p.plugin.name.padEnd(30)} ${p.plugin.version ?? ''}`);
+          lines.push(`    package: ${p.packageName}`);
+          lines.push(`    loaded:  ${p.loadedAt}`);
+        }
+        return { exitCode: 0, output: lines.join('\n') };
+      }
+
+      if (sub === 'install') {
+        if (!pkgArg) {
+          return { exitCode: 1, output: 'Usage: faultline plugin install <package-name>' };
+        }
+
+        // 1. npm install
+        try {
+          process.stderr.write(`Installing ${pkgArg}...\n`);
+          execSync(`npm install ${pkgArg}`, { cwd: process.cwd(), stdio: 'inherit' });
+        } catch {
+          return { exitCode: 1, output: `Failed to install ${pkgArg}. Check the package name and your npm registry.` };
+        }
+
+        // 2. Add to .faultlinerc.json
+        const configPath = addPluginToConfig(process.cwd(), pkgArg);
+
+        // 3. Verify the plugin loads
+        try {
+          const loaded = await loadPlugin(pkgArg);
+          return {
+            exitCode: 0,
+            output: [
+              `Plugin installed: ${loaded.plugin.name}${loaded.plugin.version ? ` v${loaded.plugin.version}` : ''}`,
+              `Package:  ${pkgArg}`,
+              `Config:   ${configPath}`,
+              '',
+              'The plugin will be loaded automatically on every scan.',
+            ].join('\n'),
+          };
+        } catch (err) {
+          return {
+            exitCode: 1,
+            output: `Plugin installed via npm but failed to load: ${(err as Error).message}\n\nCheck the plugin's documentation.`,
+          };
+        }
+      }
+
+      if (sub === 'remove') {
+        if (!pkgArg) {
+          return { exitCode: 1, output: 'Usage: faultline plugin remove <package-name>' };
+        }
+
+        // Remove from config
+        const configPath = removePluginFromConfig(process.cwd(), pkgArg);
+
+        // npm uninstall (best-effort)
+        try {
+          execSync(`npm uninstall ${pkgArg}`, { cwd: process.cwd(), stdio: 'inherit' });
+        } catch { /* ignore — might not be installed via npm */ }
+
+        return {
+          exitCode: 0,
+          output: configPath
+            ? `Plugin "${pkgArg}" removed from ${configPath}.`
+            : `Plugin "${pkgArg}" was not found in .faultlinerc.json.`,
+        };
+      }
+
+      return {
+        exitCode: 1,
+        output: 'Usage:\n  faultline plugin install <package>\n  faultline plugin remove <package>\n  faultline plugin list',
+      };
+    }
 
     case 'rules': {
       const rules = listRules();
@@ -467,6 +559,11 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
       // Load config file (walks up from cwd), then merge with CLI flags
       const config = loadConfig();
       let { provider: providerName, minConfidence, outputFormat, ruleNames } = mergeFlags(config, flags);
+
+      // Auto-load plugins from config before scanning
+      if (config.plugins?.length) {
+        await loadPluginsFromConfig(config.plugins);
+      }
 
       // Auto-detect provider from env if not explicitly specified
       if (!flags['provider'] && !config.provider) {

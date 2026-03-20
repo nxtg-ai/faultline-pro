@@ -1,0 +1,9 @@
+{
+  "name": "@example/faultline-custom-rules",
+  "version": "1.0.0",
+  "description": "Example Faultline plugin — demonstrates custom rules and providers",
+  "main": "index.js",
+  "type": "module",
+  "keywords": ["faultline", "faultline-plugin"],
+  "license": "MIT"
+}

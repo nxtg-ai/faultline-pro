@@ -16,6 +16,12 @@ export interface FaultlineConfig {
   'output-format'?: OutputFormat;
   rules?: string[];
   templates?: Record<string, LocalScanTemplate>;
+  /**
+   * npm package names or relative paths to Faultline plugins.
+   * Loaded automatically before every scan.
+   * @example ["@my/faultline-rules", "./local-plugin.js"]
+   */
+  plugins?: string[];
 }
 
 const CONFIG_FILENAME = '.faultlinerc.json';
@@ -103,6 +109,13 @@ function validateConfig(raw: Record<string, unknown>): FaultlineConfig {
     }
   }
 
+  if (Array.isArray(raw['plugins'])) {
+    const plugins = raw['plugins'].filter((p): p is string => typeof p === 'string');
+    if (plugins.length > 0) {
+      config.plugins = plugins;
+    }
+  }
+
   if (raw['templates'] && typeof raw['templates'] === 'object' && !Array.isArray(raw['templates'])) {
     const tpls: Record<string, LocalScanTemplate> = {};
     for (const [k, v] of Object.entries(raw['templates'] as Record<string, unknown>)) {
@@ -169,4 +182,55 @@ export function generateSampleConfig(targetDir: string): string {
   const filePath = resolve(targetDir, CONFIG_FILENAME);
   writeFileSync(filePath, JSON.stringify(SAMPLE_CONFIG, null, 2) + '\n', 'utf-8');
   return filePath;
+}
+
+/**
+ * Write (or overwrite) a .faultlinerc.json file at targetDir.
+ */
+export function saveConfig(targetDir: string, config: FaultlineConfig): string {
+  const filePath = resolve(targetDir, CONFIG_FILENAME);
+  writeFileSync(filePath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+  return filePath;
+}
+
+/**
+ * Add a plugin entry to an existing (or new) .faultlinerc.json.
+ * Idempotent — does nothing if the plugin is already listed.
+ * Returns the path to the config file.
+ */
+export function addPluginToConfig(projectDir: string, packageName: string): string {
+  const configPath = findConfigFile(projectDir) || resolve(projectDir, CONFIG_FILENAME);
+
+  let config: FaultlineConfig = {};
+  if (existsSync(configPath)) {
+    try {
+      config = validateConfig(JSON.parse(readFileSync(configPath, 'utf-8')));
+    } catch { /* start fresh */ }
+  }
+
+  const plugins = config.plugins ?? [];
+  if (!plugins.includes(packageName)) {
+    config.plugins = [...plugins, packageName];
+    writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+  }
+
+  return configPath;
+}
+
+/**
+ * Remove a plugin entry from .faultlinerc.json.
+ * Returns the config file path, or null if no config was found.
+ */
+export function removePluginFromConfig(projectDir: string, packageName: string): string | null {
+  const configPath = findConfigFile(projectDir);
+  if (!configPath) return null;
+
+  try {
+    const config = validateConfig(JSON.parse(readFileSync(configPath, 'utf-8')));
+    config.plugins = (config.plugins ?? []).filter((p) => p !== packageName);
+    writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+    return configPath;
+  } catch {
+    return null;
+  }
 }
