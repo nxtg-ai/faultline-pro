@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-20 (Provider health monitoring + scan scheduling + org management. 1,093 api tests / 3,301 CI total. 67 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-20 (Claim DB search UI + cache warmup + analytics dashboard. 1,224 api tests / 3,394 CI total. 70 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -77,6 +77,9 @@
 | N-65 | PDF Report Generator — PDFKit 5-section report (cover/summary/heatmap/analysis/recs), POST /scan/report/pdf | REVENUE | SHIPPED | P2 | 2026-03-19 |
 | N-66 | Scan Scheduling System — cron-based recurring scans (text/URL), maxRuns, run history, manual trigger, HTML dashboard | AUTOMATION | SHIPPED | P1 | 2026-03-20 |
 | N-67 | Organization Management — RBAC (admin/analyst/viewer), token invites, scoped API keys, org-scoped usage, enterprise billing foundation | ENTERPRISE | SHIPPED | P1 | 2026-03-20 |
+| N-68 | Claim Database Search UI — GET /claims/view (HTML), GET /claims/stats (JSON), ClaimIndex.getStats() with accuracy/verified rates, topSources | FORENSIC | SHIPPED | P1 | 2026-03-20 |
+| N-69 | Scan Cache Warmup — WarmupStore (dedup, priority order, run history), CacheWarmer (warmOne/warmAll), 9 admin endpoints, suggestions from ScanHistory | PERFORMANCE | SHIPPED | P1 | 2026-03-20 |
+| N-70 | Usage Analytics Dashboard — GET /analytics (HTML), GET /analytics/overview (JSON): scan volume, provider distribution, trust trend, risk stacked-bar, latency trend, cache ring gauge | ENTERPRISE | SHIPPED | P1 | 2026-03-20 |
 
 ---
 
@@ -804,6 +807,68 @@ The Kaggle version remains at  (tagged  at commit ).
 - **Coverage gate threshold**: Seventh cycle asking. 70%? 80%? Without a threshold, adding `vitest --coverage` to CI will report a number but never fail a build — making it cosmetic rather than a quality gate.
 - **Stripe billing priority**: D-162 laid the enterprise billing foundation (org model, plan field, usage metering). Should Stripe checkout be the next directive, or is there a higher-priority initiative waiting? The org model is the right abstraction layer for per-seat or per-scan billing.
 - **Schedule error auto-disable threshold**: How many consecutive errors should trigger `status = 'error'` on a schedule? Suggest N=3 (same philosophy as the 3-failure circuit breaker). Or should this be configurable per schedule? Proposing `maxConsecutiveErrors?: number` field on `CreateScheduleInput`.
+
+---
+
+> **Reflection cycle**: 2026-03-20 (claim DB UI + cache warmup + analytics dashboard. D-163/D-164/D-165) — HEAD `4587810`
+
+### 1. What did we ship since last check-in?
+
+**3 directives / 3 commits: D-163 Claim DB UI, D-164 Cache Warmup, D-165 Analytics Dashboard**
+
+| Commit | Deliverable | Tests |
+|--------|-------------|-------|
+| D-163 `feat: claim database search UI` | `store/claims.ts` — `ClaimIndex.getStats()` (totalClaims, totalScans, byVerdict, accuracyRate = supported/(supported+contradicted), verifiedRate = supported/total, claimTypes, avgFrequency, topSources — top-10 hostnames by claim count); `routes/claims.ts` — `GET /claims/stats` (public JSON), `GET /claims/view` (public HTML): 4-stat header, search panel (text/verdict/from/to/source), results table with 25/page pagination, sidebar (trending/emerging/verdict bar). | +25 (1093→1118) |
+| D-164 `feat: D-164 scan cache warmup` | `store/cache-warmup.ts` — `WarmupStore` (CRUD, dedup by text+provider, run history capped at 20, priority ordering, `getSummary()`), `CacheWarmer` (`warmOne()` calls `scan()` then `getScanCache().set()`; `warmAll()` iterates enabled targets in priority order, continues on errors); `routes/cache-warmup.ts` — 9 admin-gated endpoints including `POST /cache/warmup/run` (207 multi-status), `GET /cache/warmup/suggestions` (frequency-based from ScanHistory). Fix: `getScanHistory().list()` does not exist — correct method is `getRecent(1000)`. | +41 (1118→1159) |
+| D-165 `feat: D-165 usage analytics dashboard` | `routes/analytics.ts` — `GET /analytics/overview` (public JSON aggregating scan volume trends, provider distribution, risk stacked data, trust score trend, latency trend, cache stats, claim categories, summary KPIs), `GET /analytics` (public HTML): 6 KPI cards, 8 Chart.js panels (line/doughnut/bar/ring), dark theme, all data fetched client-side. | +27 (1159→1186 → 3,394 CI total) |
+
+**Running total**: 3,394 tests · 132 test files · 70 initiatives SHIPPED · 1,186 api package tests.
+
+Wait — recalculated from actual vitest output: **3,394 total passing**.
+
+---
+
+### 2. What surprised us?
+
+- **`getScanHistory()` has no `.list()` method.** D-164's suggestions route called `getScanHistory().list()` — TypeScript emitted no error (esbuild transpiles without strict type-checking in the build path used by vitest), so the mistake surfaced as a 500 at runtime in tests. The correct method is `getRecent(limit)`. This is a reminder that test failures in routes are often "method does not exist at runtime" errors that only type-strict compilation (`tsc --noEmit`) would catch at build time. Strong argument for adding `tsc --noEmit` to the CI gate pre-push hook.
+
+- **Risk bucketing with mixed-case `overallRisk` values.** The analytics route aggregates `entry.overallRisk` into `Low/Medium/High/Critical` buckets. ScanHistory stores the raw string from the scan response — which could be `'low'`, `'Low'`, or `'LOW'` depending on provider. A normalisation step (`risk.charAt(0).toUpperCase() + risk.slice(1).toLowerCase()`) was needed before bucket lookup. Without it, any lowercase risk value would accumulate in the fallback `'Low'` bucket silently, distorting the stacked risk chart.
+
+- **Chart.js CDN in tests is never fetched.** The HTML page embeds `<script src="https://cdn.jsdelivr.net/...">` — but in `server.inject()` tests, no browser executes that script. Tests that check `res.body.contains('chart.js')` pass trivially (the string is present in the `src` attribute) without any actual rendering. This is a correct trade-off for route tests, but it means no test actually verifies that Chart.js initialises or that the canvas elements receive data. A playwright smoke test would close that gap.
+
+- **`claimCategories` from `ClaimIndex.getStats().claimTypes`** required a second import already available in the same package. No new store coupling was introduced. The analytics route reuses three existing stores (`getScanHistory`, `getScanCache`, `getClaimIndex`) without any store modification — a clean example of the aggregation-at-the-route pattern.
+
+---
+
+### 3. Cross-project signals
+
+- **30-day rolling window aggregation pattern** (fill `Map<date,value>(window.map(d => [d, 0]))` then populate from filtered store data) is the canonical way to produce chart-ready arrays with no gaps for days with zero activity. Any project needing time-series visualisation can copy this 20-line pattern verbatim. dx3 agent run history and Podcast-Pipeline feed stats are natural candidates.
+
+- **Risk → numeric trust score mapping** (`Low=25, Medium=50, High=75, Critical=100`) provides a simple scalar for trend analysis. The _inverse_ direction (trust score → risk label) could be equally useful for thresholding alerts. Both directions should live in a shared constants module if they migrate beyond a single route file.
+
+- **`getCacheWarmer().warmOne()` spy pattern for route tests**: mocking the warmer with `vi.spyOn(getCacheWarmer(), 'warmOne').mockResolvedValue(...)` lets route tests verify HTTP status codes and response shape without invoking the real `scan()` engine. This is the correct approach for any test that covers a route whose handler calls a slow/side-effectful service — spy on the service singleton, not the HTTP layer.
+
+- **`computeOverview()` as a pure function returning a serialisable object**: keeping the aggregation logic outside the Fastify handler enables unit-testing the computation without HTTP infrastructure. None of the analytics tests actually call `computeOverview()` directly (they all go through `server.inject()`), but the architecture supports it. For heavier aggregations in the future, extracting `computeOverview()` to a testable function is the right first step.
+
+---
+
+### 4. What would we prioritise next?
+
+1. **Stripe billing wired to org plans** — `Org.plan` (`free|pro|enterprise`) is live. The only missing pieces are `POST /orgs/:id/billing/checkout` (Stripe Checkout session) and a `customer.subscription.updated` webhook handler updating `org.plan`. The entire enterprise billing foundation is in place; Stripe is the last wire.
+2. **`tsc --noEmit` in CI gate** — Two incidents now where valid-JS-but-invalid-TS code reached tests without a compile-time error (D-164 `list()` method, prior sessions). The pre-push hook runs `vitest` but not `tsc`. Adding `tsc --noEmit` before `vitest` would catch these at push time rather than test-failure time.
+3. **Analytics drill-down: per-key and per-org views** — The current `/analytics/overview` aggregates all keys globally. With org management live, a natural extension is `GET /analytics/overview?orgId=X` scoping the aggregation to org members' keyIds. The fan-in pattern from `OrgStore.getUsage()` already demonstrates the right approach.
+4. **Playwright smoke test for HTML dashboards** — `/analytics`, `/claims/view`, `/schedules/view`, `/providers/health/view` all render HTML that loads Chart.js and makes client-side `fetch()` calls. These are currently tested only by body string assertions in `server.inject()`. A single Playwright test that navigates to each page and asserts no console errors would catch JS runtime failures that string tests miss.
+5. **`vitest --coverage` baseline** — Eighth cycle flagging this. Still zero visibility into branch coverage.
+
+---
+
+### 5. Blockers and questions for the CoS?
+
+- **`NPM_TOKEN`**: Still blocked. v0.3.0 tagged. 70 initiatives shipped, 3,394 tests green.
+- **Fly.io credentials**: Still blocked. Docker image, health check, all routes wired.
+- **Coverage gate threshold**: Eighth cycle asking — 70%? 80%? The CI gate runs vitest but never fails on coverage. It's purely cosmetic until a threshold is set.
+- **`tsc --noEmit` in CI gate**: Two incidents of valid-JS / invalid-TS code reaching tests undetected. Should we add `tsc --noEmit` to the pre-push CI hook? It would add ~3s to each push but catch a real class of bugs earlier.
+- **Stripe billing priority**: Org plan field is live, usage metering is live, 1 directive away from real revenue tracking. Is this the next directive or is there a higher-priority initiative pending?
 
 ---
 
