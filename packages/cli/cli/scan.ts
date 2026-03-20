@@ -28,6 +28,62 @@ function calculateRisk(
   return 'low';
 }
 
+// ── Sentence-level claim coverage guarantee ───────────────────────────────────
+
+/**
+ * Split text into independently verifiable sentence candidates.
+ * Filters out fragments shorter than 3 words (not verifiable on their own).
+ */
+function splitSentences(text: string): string[] {
+  return text
+    .split(/(?<=[.!?])\s+|(?<=[.!?])$/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0 && /[a-zA-Z]/.test(s) && s.split(/\s+/).length >= 3);
+}
+
+function normalizeSentence(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Guarantee that every independently verifiable sentence in the input text
+ * is represented by at least one claim.
+ *
+ * If an LLM merges or drops sentences, this function adds a synthetic `fact`
+ * claim for each unrepresented sentence. Synthetic IDs use an 's' prefix to
+ * distinguish them from LLM-extracted claims (e.g. "s1", "s2").
+ *
+ * This is the primary defence against claim-merging behaviour and works
+ * identically across all providers.
+ */
+export function guaranteeClaimPerSentence(text: string, claims: Claim[]): Claim[] {
+  const sentences = splitSentences(text);
+  if (sentences.length < 2) return claims;
+
+  const result = [...claims];
+  let idx = result.length + 1;
+
+  for (const sentence of sentences) {
+    const normSentence = normalizeSentence(sentence);
+    if (!normSentence) continue;
+
+    // Use the first 40 normalised chars as a fingerprint to detect coverage.
+    const fingerprint = normSentence.slice(0, 40);
+    const covered = result.some(c => {
+      const nc = normalizeSentence(c.text);
+      return nc.includes(fingerprint) || normSentence.includes(nc.slice(0, 40));
+    });
+
+    if (!covered) {
+      result.push({ id: `s${idx++}`, text: sentence, type: 'fact', importance: 3 });
+    }
+  }
+
+  return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function filterClaimsForVerification(claims: Claim[]): Claim[] {
   return claims
     .filter((c) => c.type === 'fact' && c.importance >= 3)
@@ -63,7 +119,8 @@ export async function scan(text: string, providerName?: string, minConfidence?: 
   const provider: LLMProvider = getProvider(apiKey, resolvedProvider);
 
   onProgress?.('Extracting claims...');
-  const claims = await provider.extractClaims(text);
+  const rawClaims = await provider.extractClaims(text);
+  const claims = guaranteeClaimPerSentence(text, rawClaims);
   const toVerify = filterClaimsForVerification(claims);
 
   const verifications: Record<string, VerificationResult> = {};

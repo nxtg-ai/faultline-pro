@@ -59,6 +59,8 @@ export const extractClaims = async (text: string, apiKey: string, image?: { data
     Focus on extracting assertions that bear the weight of the argument.
     ${image ? 'If the image contains text or data, treat that as the primary source of structural elements.' : ''}
 
+    CRITICAL RULE: Each sentence that contains an independently verifiable assertion must be extracted as its own separate claim. Do not merge claims from different sentences. If the text contains N distinct factual sentences, return at least N claims.
+
     ${text ? `Text: "${text}"` : ''}
 
     Return a JSON array where each object has:

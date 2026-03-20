@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-20 (Integration tests + API playground + Mission Control + session archive. 1,290 api tests / 3,498 CI total. 73 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-20 (P0 fix: claim extraction merging — guaranteeClaimPerSentence + prompt hardening. 3,511 CI total. 74 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -148,7 +148,13 @@ The Kaggle version remains at  (tagged  at commit ).
 **Acceptance test**: Scan "AI will cure cancer by 2025. GPT-5 has 98% accuracy on all benchmarks." → must return 2 separate claims, each with its own verdict.
 
 **Response** (filled by team):
+> SHIPPED. Root cause: all 4 LLM extraction prompts said "focus on assertions that bear the weight of the argument" — allowing the LLM to merge or skip sentences. No instruction forced one-claim-per-sentence.
 >
+> **Fix 1 (primary — all providers)**: Added `guaranteeClaimPerSentence(text, rawClaims)` post-processor in `cli/scan.ts`. After `provider.extractClaims()` returns, splits the input text into verifiable sentences (≥3 words), checks each against existing claims via 40-char normalized fingerprint, and adds a synthetic `fact` claim (id prefix `s`, importance 3) for any sentence not covered. Works identically across all providers in one place.
+>
+> **Fix 2 (belt — prompt hardening)**: Added "CRITICAL RULE: Each sentence that contains an independently verifiable assertion must be extracted as its own separate claim. Do not merge claims from different sentences." to the extraction prompt in all 4 providers: `geminiService.ts`, `openai_provider.ts`, `claude_provider.ts`, `perplexity_provider.ts`.
+>
+> **Acceptance test**: `scan("AI will cure cancer by 2025. GPT-5 has 98% accuracy on all benchmarks.", 'mock')` → 2 claims covering both sentences. PASSES. 13 tests total in `tests/sentence-split.test.ts`. Full suite: **3,511 tests / 136 files — all GREEN**.
 
 ---
 

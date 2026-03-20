@@ -34,6 +34,8 @@ class ClaudeProvider implements LLMProvider {
       text: `Analyze the following ${image ? 'image and text' : 'text'} and decompose it into atomic claims.
 Focus on extracting assertions that bear the weight of the argument.
 
+CRITICAL RULE: Each sentence that contains an independently verifiable assertion must be extracted as its own separate claim. Do not merge claims from different sentences. If the text contains N distinct factual sentences, return at least N claims.
+
 ${text ? `Text: "${text}"` : ''}
 
 Return a JSON array where each object has:
