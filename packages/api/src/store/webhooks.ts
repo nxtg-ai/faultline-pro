@@ -1,6 +1,6 @@
 import { createHmac, randomBytes, randomUUID } from 'node:crypto';
 
-export type WebhookEvent = 'scan.complete' | 'scan.failed' | 'job.complete' | 'job.failed' | 'claim.verdict_changed';
+export type WebhookEvent = 'scan.complete' | 'scan.failed' | 'job.complete' | 'job.failed' | 'claim.verdict_changed' | 'compliance.deadline_approaching';
 
 export interface Webhook {
   id: string;

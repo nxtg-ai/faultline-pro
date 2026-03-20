@@ -37,6 +37,7 @@ import { graphRoutes } from './routes/graph.js';
 import { claimsRoutes } from './routes/claims.js';
 import { euReportRoutes } from './routes/eu-report.js';
 import { complianceRoutes } from './routes/compliance.js';
+import { complianceCalendarRoutes } from './routes/compliance-calendar.js';
 import { tenantsRoutes } from './routes/tenants.js';
 import { costsRoutes } from './routes/costs.js';
 import { scansRoutes } from './routes/scans.js';
@@ -108,6 +109,7 @@ export function buildServer() {
   fastify.register(claimsRoutes);
   fastify.register(euReportRoutes);
   fastify.register(complianceRoutes);
+  fastify.register(complianceCalendarRoutes);
   fastify.register(tenantsRoutes);
   fastify.register(costsRoutes);
   fastify.register(scansRoutes);

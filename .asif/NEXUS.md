@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-19 (D-192/193/194 done. Claim explainability, scan diff, MAXOUT archive. JS: 2,733 tests (109 files). 105 directives archived. 55 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-19 (D-206/207 done. Regulatory calendar, deadline alerts, webhook notifications. JS: 2,747 tests (110 files). 107 directives archived. 57 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -65,6 +65,8 @@
 | N-53 | Claim Explainability (GET /claims/:id/explain — reasoning chain, suggestions) | FORENSIC | SHIPPED | P1 | 2026-03-19 |
 | N-54 | Scan Diff (POST /scan/diff — two texts, inline diff, added/removed/changed) | FORENSIC | SHIPPED | P1 | 2026-03-19 |
 | N-55 | MAXOUT Archive — 2,733 tests (109 files), 55 initiatives, 105 directives | DISTRIBUTION | SHIPPED | P2 | 2026-03-19 |
+| N-56 | Regulatory Calendar (GET /compliance/deadlines, scan-check, deadline webhooks) | COMPLIANCE | SHIPPED | P1 | 2026-03-19 |
+| N-57 | Final Session Archive — 2,747 tests (110 files), 57 initiatives, 107 directives | DISTRIBUTION | SHIPPED | P2 | 2026-03-19 |
 
 ---
 
@@ -112,31 +114,31 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
-> **105 directives archived** (+ D-192 explainability, D-193 scan diff, D-194 MAXOUT).
+> **107 directives archived** (+ D-206 regulatory calendar, D-207 final archive).
 
 ### DIRECTIVE-NXTG-20260319-206 — P1: Regulatory Calendar — Upcoming Compliance Deadlines
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-03-19 11:30 | **Estimate**: M | **Status**: PENDING
+**Injected**: 2026-03-19 11:30 | **Estimate**: M | **Status**: DONE
 
 **Action Items**:
-1. [ ] **`GET /compliance/deadlines`** — list upcoming regulatory deadlines relevant to user's scans (EU AI Act Aug 2, 2026 etc).
-2. [ ] **Scan alert** — if scan contains claims about a deadline, highlight the regulatory context.
-3. [ ] **Notification** — webhook/email when a tracked deadline is approaching (30/14/7 days).
-4. [ ] Tests.
+1. [x] **`GET /compliance/deadlines`** — list upcoming regulatory deadlines relevant to user's scans (EU AI Act Aug 2, 2026 etc).
+2. [x] **Scan alert** — if scan contains claims about a deadline, highlight the regulatory context.
+3. [x] **Notification** — webhook/email when a tracked deadline is approaching (30/14/7 days).
+4. [x] Tests.
 
 **CHAIN**: When done, start DIRECTIVE-NXTG-20260319-207.
-**Response** (filled by team): >
+**Response** (filled by team): SHIPPED. `store/compliance-calendar.ts` — 5 hardcoded deadlines (EU AI Act ×3, GDPR, NIST AI RMF), `getUpcoming()`, `checkClaims()` (keyword matching), `getApproaching([30,14,7])`. `store/webhooks.ts` + `routes/webhooks.ts` — `compliance.deadline_approaching` event added. `routes/compliance-calendar.ts` — GET /compliance/deadlines (open, ?days=N), POST /compliance/scan-check (requireApiKey, claim keyword alerts), POST /compliance/deadlines/notify (requireAdmin, fires webhooks for 30/14/7-day thresholds). `tests/compliance-calendar.test.ts` — 14 tests (CC1–CC14).
 
 ---
 
 ### DIRECTIVE-NXTG-20260319-207 — P2: Final Session Archive + README
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P2
-**Injected**: 2026-03-19 11:30 | **Estimate**: S | **Status**: PENDING
+**Injected**: 2026-03-19 11:30 | **Estimate**: S | **Status**: DONE
 
 **Action Items**:
-1. [ ] Final test count. 2. [ ] Archive. 3. [ ] README.
+1. [x] Final test count. 2. [x] Archive. 3. [x] README.
 
-**Response** (filled by team): >
+**Response** (filled by team): DONE. **2,747 tests · 110 files · all green.** 107 directives archived. 57 initiatives SHIPPED. README badge 2733→2747, +2 capability rows (regulatory calendar, compliance scan-check).
 
 ---
 

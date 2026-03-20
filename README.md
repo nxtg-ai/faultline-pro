@@ -4,7 +4,7 @@ Forensic verification for AI-generated text. Faultline decomposes output into at
 
 [![CI](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@nxtg/faultline.svg)](https://www.npmjs.com/package/@nxtg/faultline)
-[![Tests](https://img.shields.io/badge/tests-2733%20passing-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-2747%20passing-brightgreen)](tests/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 
@@ -35,6 +35,8 @@ Forensic verification for AI-generated text. Faultline decomposes output into at
 | Swagger UI | `GET /docs` — interactive OpenAPI 3.0 spec with Try-it for every endpoint |
 | Claim explainability | `GET /claims/:id/explain` — reasoning chain, evidence found, actionable suggestions |
 | Scan diff | `POST /scan/diff` — scan two texts, inline diff (added/removed/changed/unchanged) |
+| Regulatory calendar | `GET /compliance/deadlines` — EU AI Act, GDPR, NIST deadlines with days-until |
+| Compliance scan-check | `POST /compliance/scan-check` — match claim text against approaching deadlines |
 
 ---
 
