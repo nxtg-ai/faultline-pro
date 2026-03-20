@@ -133,6 +133,25 @@ The Kaggle version remains at  (tagged  at commit ).
 
 > **107 directives archived** (+ D-163 through D-168 + session archive D-174).
 
+### DIRECTIVE-NXTG-20260320-03 — P0: Claim Extraction Misses Separate Sentences
+**From**: NXTG-AI CoS (Wolf) via Asif UAT | **Priority**: P0
+**Injected**: 2026-03-20 12:45 | **Estimate**: M | **Status**: PENDING
+
+**Use case**: A user pastes two separate false statements: "AI will cure cancer by 2025. GPT-5 has 98% accuracy on all benchmarks." The engine extracts only 1 claim instead of 2. Both statements are independently verifiable, independently false, and should receive separate verdicts.
+
+**Pain**: If the engine merges claims, users don't get per-claim verdicts. A document with 10 false claims might show as 3 claims with averaged-out scores — hiding the real problems. This undermines the entire value proposition of claim-level forensics.
+
+**Expected behavior**: Each independently verifiable sentence should be a separate claim. "AI will cure cancer by 2025" = claim 1 (verifiable, false — it's 2026 and cancer isn't cured). "GPT-5 has 98% accuracy on all benchmarks" = claim 2 (verifiable, false — no such benchmark result exists).
+
+**Your call on how to fix** — possible approaches: prompt engineering, pre-splitting by sentence, or post-processing. You know the engine best.
+
+**Acceptance test**: Scan "AI will cure cancer by 2025. GPT-5 has 98% accuracy on all benchmarks." → must return 2 separate claims, each with its own verdict.
+
+**Response** (filled by team):
+>
+
+---
+
 ### SESSION ARCHIVE — 2026-03-20 (D-163 through D-168)
 **Status**: COMPLETE
 
