@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-19 (Scan queue + timeline + custom rules + PDF report. 972 api tests / 3,107 CI total. 65 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-20 (Provider health monitoring + scan scheduling + org management. 1,093 api tests / 3,301 CI total. 67 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -75,6 +75,8 @@
 | N-63 | Scan Timeline — trust score trend, claim delta, risk changes, GET /scans/timeline, HTML view | FORENSIC | SHIPPED | P1 | 2026-03-19 |
 | N-64 | Custom Rule Builder — YAML/JSON rules, 5 condition types, CRUD + test + apply endpoints | FORENSIC | SHIPPED | P1 | 2026-03-19 |
 | N-65 | PDF Report Generator — PDFKit 5-section report (cover/summary/heatmap/analysis/recs), POST /scan/report/pdf | REVENUE | SHIPPED | P2 | 2026-03-19 |
+| N-66 | Scan Scheduling System — cron-based recurring scans (text/URL), maxRuns, run history, manual trigger, HTML dashboard | AUTOMATION | SHIPPED | P1 | 2026-03-20 |
+| N-67 | Organization Management — RBAC (admin/analyst/viewer), token invites, scoped API keys, org-scoped usage, enterprise billing foundation | ENTERPRISE | SHIPPED | P1 | 2026-03-20 |
 
 ---
 
@@ -742,6 +744,68 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-03-20 (provider health monitoring + scan scheduling + org management) — HEAD `609a8b3`
+
+### 1. What did we ship since last check-in?
+
+**3 commits: provider health monitoring (D-160) + scan scheduling (D-161) + organization management (D-162)**
+
+| Commit | Deliverable | Tests |
+|--------|-------------|-------|
+| D-160 `feat: provider health monitoring` | `store/providers.ts` — extended `ProviderHealth` with `timeSeries: HealthDataPoint[]` (last 120 points), `checkAutoDisable()` (80% error rate over last 10 calls), `setDisabled()` / `setEnabled()` / `isDisabled()` methods; `getHealthSnapshot()` enriched with `disabled`, `disabledAt`, `disabledReason`, `timeSeries` fields; `healthScore = 0` when disabled; `routes/providers.ts` — `GET /providers/health/view` (HTML dashboard with SVG sparkline charts, 15s auto-refresh, enable/disable buttons), `POST /providers/:name/disable` (admin, reason), `POST /providers/:name/enable` (admin). | +20 (1023→1043) |
+| D-161 `feat: scan scheduling system` | `store/schedules.ts` — `parseCron()` (5-field validator: *, N, */N, N,M, N-M per field), `nextCronTime()` (minute-by-minute forward search up to 366 days), `ScheduleStore` (CRUD, per-schedule run history capped at 20, `maxRuns` ceiling, URL fetch 30s timeout / 50K cap), `ScheduleRunner` (60s tick, `runSchedule()` calls `scan()` then `dispatchScheduleNotification()`); `routes/schedules.ts` — 8 endpoints: `POST/GET/PATCH/DELETE /schedules`, `POST /schedules/:id/trigger` (202 fire-and-forget), `GET /schedules/:id/history`, `GET /schedules/view` (HTML dashboard with pause/resume/delete, 15s auto-refresh); server.ts — runner starts on `onReady`, stops on `onClose`. | +51 (1043→1094) |
+| D-162 `feat: organization management` | `store/orgs.ts` — `OrgStore` with auto-slug generation (uniqueness suffix: `acme` → `acme-2`), three-tier RBAC (`admin/analyst/viewer`), last-admin guard on demotion + removal, token-based invitations (48-char hex, 7-day TTL, `acceptedAt` idempotency guard), scoped API keys (`createOrgKey()` via global KeyStore with `[org-slug] name` prefix; `revokeOrgKey()` removes from both stores), org-scoped usage aggregation (`getUsage(orgId, month?)` fans in across all member + org-scoped keyIds); `routes/orgs.ts` — 14 endpoints covering full CRUD, membership, invites, keys, usage, invites list. | +50 (1043→1093) |
+
+**Running total**: 3,301 tests (CI gate) · 129 test files · 67 initiatives SHIPPED · 1,093 api package tests.
+
+---
+
+### 2. What surprised us?
+
+- **`*/N` in a JSDoc block comment terminates the comment.** The `store/schedules.ts` JSDoc for `parseCron()` included the string `` `*/N` `` to document step syntax — which esbuild parsed as the end of the `/** ... */` comment, producing a parse error ("Expected ';' but found 'N'"). Fixed by converting the JSDoc to a `//`-style comment. Rule: never write `*/` inside a `/** */` block comment, even in a code fence or backtick.
+
+- **`request.keyId = 'admin'` when env key matches.** The auth plugin sets `keyId` to the string `'admin'` (not the raw API key value) when `x-api-key` matches `FAULTLINE_API_KEY`. Tests that create store entries directly and then exercise HTTP routes must use `'admin'` as the `keyId` argument — not `'test-key'` or any other value. This caught 5 test failures across the scheduling and org suites. It's a non-obvious convention that should be documented in the test setup pattern.
+
+- **Invite-accept ownership collision.** The invite-accept HTTP test created an org under `'admin'` (the env keyId), then tried to accept the invite using the same `x-api-key`. Since `'admin'` was already an org member (the owner), `acceptInvite()` threw `'Member already belongs to this organization.'`. Fix: create the org under a different keyId (`'other-owner'`) so the admin env key is available as the acceptor. This is a test-design smell — the test was accidentally testing the happy path using an identity already in the org. The store logic is correct; the fixture was wrong.
+
+- **`toSlug('SlugTest')` produces `'slugtest'`, not `'slug-test'`.** The `toSlug()` function lowercases the string then collapses non-alphanumeric characters to hyphens. 'SlugTest' has no non-alphanumeric characters after lowercasing (`'slugtest'`), so no hyphens appear. A test checking `getBySlug('slug-test')` for the org named `'SlugTest'` failed. Fixed by using `'Slug Test'` (with a space) as the test org name — a word boundary that produces the expected hyphen.
+
+---
+
+### 3. Cross-project signals
+
+- **Token-based invite pattern** (48-char hex token, 7-day TTL, `acceptedAt` idempotency guard, `expiresAt` check) is the canonical pattern for any project needing out-of-band member onboarding. It requires no email service — the caller delivers the token via their own channel. FamilyMind and dx3 both need this exact pattern. The whole implementation is 30 lines in the store.
+
+- **Last-admin guard pattern** (count admins with `role === 'admin'` before allowing demotion/removal, throw if count ≤ 1) prevents an org from becoming unmanageable. The check lives in both `updateMemberRole()` and `removeMember()`. Any project with multi-admin roles should implement this — without it a single accidental self-demotion locks everyone out.
+
+- **Scoped key pattern** (`createOrgKey()` issues via the global KeyStore, stores `keyId` reference in the org; `revokeOrgKey()` removes from both): this dual-store approach means org-scoped keys authenticate normally through the existing auth plugin with zero changes to the auth layer. The org layer is purely a registry on top. This is the right way to add scoped credentials without forking the auth system.
+
+- **Org-scoped usage metering by fan-in** (`getUsage()` aggregates `getUsageMeter().getUsage(keyId)` across all member + org-scoped keyIds): this works without any changes to the usage meter itself. The meter doesn't need to know about orgs — the org store knows which keyIds belong to it. This composability pattern (identity is separate from metering) keeps each store single-purpose and avoids cross-store coupling in the hot path.
+
+- **`parseCron()` + `nextCronTime()` as a standalone module**: the 120-line cron implementation (validation + next-time calculation, no external deps) is directly portable to any project needing background scheduling without pulling in `node-cron` or `cron`. It handles the full 5-field grammar including *, N, `*/N`, `N,M`, `N-M`. Podcast-Pipeline could use it for scheduled feed ingestion; dx3 for scheduled agent runs.
+
+---
+
+### 4. What would we prioritize next?
+
+1. **Stripe billing wired to org plans** — `Org.plan` is already `free | pro | enterprise`. The billing surface (plan field, org CRUD, per-org usage metering) is fully defined. The next step is a `POST /orgs/:id/billing/checkout` → Stripe Checkout session and a webhook handler for `customer.subscription.updated` → `getOrgStore().update(id, { plan })`. This is 1–2 directives of work and completes the enterprise billing foundation.
+2. **`vitest --coverage` baseline** — Seventh cycle flagging this. One config line in `vitest.config.ts`. The coverage number would be immediately useful: we're at 1,093 tests but have no visibility into which branches are untested.
+3. **Tenant/org data isolation** — All stores remain global singletons. The org layer defines the right data model (keyId → org membership) but the underlying scan/history/rules/cache stores don't filter by org. Before any multi-tenant production deployment, those stores need to accept a `keyId` or `orgId` filter on every read.
+4. **`ScheduleRunner.runSchedule()` error status update** — On scan failure, `recordRun()` records the error in history but the schedule status remains `active`. If a schedule consistently errors (e.g., the target URL is down), it silently keeps firing. Should add logic: if last N consecutive runs have `error` set, auto-set `status = 'error'` and notify via the notification store.
+5. **`parseCron()` step-range combinations** — The current parser accepts `*/N` and `N-M` but not `N-M/S` (range with step, e.g. `1-5/2`). This is valid cron syntax in most implementations. Not a current user need but a known gap.
+
+---
+
+### 5. Blockers and questions for the CoS?
+
+- **`NPM_TOKEN`**: Still blocked. v0.3.0 tagged and ready.
+- **Fly.io credentials**: Still blocked. Docker image builds clean; all routes wired; status/changelog pages live.
+- **Coverage gate threshold**: Seventh cycle asking. 70%? 80%? Without a threshold, adding `vitest --coverage` to CI will report a number but never fail a build — making it cosmetic rather than a quality gate.
+- **Stripe billing priority**: D-162 laid the enterprise billing foundation (org model, plan field, usage metering). Should Stripe checkout be the next directive, or is there a higher-priority initiative waiting? The org model is the right abstraction layer for per-seat or per-scan billing.
+- **Schedule error auto-disable threshold**: How many consecutive errors should trigger `status = 'error'` on a schedule? Suggest N=3 (same philosophy as the 3-failure circuit breaker). Or should this be configurable per schedule? Proposing `maxConsecutiveErrors?: number` field on `CreateScheduleInput`.
+
+---
 
 > **Reflection cycle**: 2026-03-19 (scan queue + timeline + custom rules + PDF report) — HEAD `311d794`
 
