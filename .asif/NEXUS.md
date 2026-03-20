@@ -869,6 +869,14 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ---
 
+> **Reflection cycle**: 2026-03-20 (no-delta — reflection gate firing without intervening code) — HEAD `01013e1`
+
+**No new code since last reflection.** This is the fourth consecutive reflection cycle with zero product commits. No new information to add — all five questions were answered in full in the previous cycle. Repeating answers here would be noise.
+
+**Signal for CoS**: The reflection gate is firing once per session regardless of whether any code was shipped. This cycle's entry is intentionally minimal. The open questions from the last cycle (reflection gate threshold, machine-readable status markers, NPM_TOKEN, Fly.io, Stripe billing) remain open and unchanged.
+
+---
+
 > **Reflection cycle**: 2026-03-20 (housekeeping session — no code shipped) — HEAD `c2146b8`
 
 ### 1. What did we ship since last check-in?
