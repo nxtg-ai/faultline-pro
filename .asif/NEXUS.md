@@ -735,6 +735,81 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-19 session close — HEAD `367a6b2`
+
+### 1. What did we ship since last check-in?
+
+**Session sprint: 2026-03-19 (afternoon) — 14 initiatives shipped, 2,621 → 2,747 tests (+126), 10 commits**
+
+| Directive | Initiative | Deliverable | Tests |
+|-----------|-----------|-------------|-------|
+| D-140 | N-44 | Claim Database Search — `GET /claims?text=&verdict=&from=&to=&source=` | +15 |
+| D-141 | N-45 | Multi-Tenant API — TenantStore, 7 admin-gated routes, per-tenant usage | +12 |
+| D-142 | N-46 | Provider Cost Tracking — PROVIDER_RATES, `GET /costs`, wired into scan | +10 |
+| D-153/154 | N-47/48 | Scan History Store + `GET /scans/search` (cursor pagination) | +15 |
+| D-155 | N-49 | Swagger UI — `GET /docs` via @fastify/swagger, OpenAPI 3.0 spec | +5 |
+| D-174 | N-50 | Industry Compliance Templates — HIPAA/SOX/FERPA/Gov, `POST /scan/compliance/:t` | +16 |
+| D-175 | N-51 | Bulk ZIP Import — `POST /scan/bulk`, async job, `GET /jobs/:id/progress` | +15 |
+| D-176 | N-52 | 100-Directive Milestone — README showcase, test badge | — |
+| D-192 | N-53 | Claim Explainability — `GET /claims/:id/explain`, reasoning chain + suggestions | +12 |
+| D-193 | N-54 | Scan Diff — `POST /scan/diff`, parallel scan, `inlineDiff[]` with added/removed/changed | +12 |
+| D-194 | N-55 | MAXOUT Archive | — |
+| D-206 | N-56 | Regulatory Calendar — deadlines, `POST /compliance/scan-check`, webhook notify | +14 |
+| D-207 | N-57 | Final Archive | — |
+
+**Running total**: 2,747 tests · 110 files · 57 initiatives SHIPPED · 107 directives archived.
+
+---
+
+### 2. What surprised us?
+
+- **Parallel agent coordination at scale**: Running 3 independent agents simultaneously (D-140/141/142, D-153/154 + D-155, D-174/175 + D-176) never produced a merge conflict because each agent was given explicit file ownership. The key insight: agents that touch `server.ts` need to be serialized or given a clear "you register, I'll skip" contract. The one case where both agents registered in server.ts (D-141 and D-142) worked fine because the file was structurally idempotent — adding two independent import/register lines. Worth codifying as a team rule.
+
+- **`adm-zip` for ZIP handling is pure-JS and zero native deps** — dropped into the monorepo without any build complexity. For bulk import this was the right call; `unzipper` (streaming) would have been overkill for a background job context.
+
+- **Regulatory deadlines are already past**: Two of the five EU AI Act deadlines (GPAI obligations Aug 2025, prohibited practices Feb 2026) are already in the past relative to today (2026-03-19). `getDaysUntil()` correctly returns negative values. The compliance-calendar tests had to account for this — asserting `daysUntil` is a number (not `> 0`) to stay correct regardless of date. Good CRUCIBLE discipline: tests that depend on wall-clock dates are inherently fragile.
+
+- **`@fastify/swagger` registers before routes but doesn't auto-document them** unless routes declare explicit schemas. Our existing routes have partial schema coverage — only the body/params schemas we added for validation. The OpenAPI spec at `/docs/json` is sparse for older routes. Full schema decoration would be a meaningful follow-up directive.
+
+- **Scan diff vs. scan compare**: The existing `POST /scan/compare` takes two pre-computed scan objects; the new `POST /scan/diff` takes two raw texts and scans them inline. This creates a deliberate two-tier API: developers with cached scan results use `/compare`, developers who want a one-shot diff use `/diff`. The `inlineDiff[]` field is the only truly new capability — the diff logic itself was extracted from `computeCompare()`.
+
+---
+
+### 3. Cross-project signals
+
+- **ScanHistoryStore pattern** (newest-first circular buffer, max 1000, cursor pagination by entry ID) is directly reusable in any project needing a lightweight audit-trail-style read model without a database. Clone the pattern into any Fastify project.
+
+- **ComplianceTemplateStore keyword-matching approach** (case-insensitive substring scan against a `keywords[]` per rule) is a zero-dependency alternative to regex-based rule engines for content classification. If FamilyMind or any other NXTG project needs to flag content against a policy rule set, this store is a copy-paste starting point.
+
+- **BulkJobStore async-background pattern**: `POST` returns 202 + jobId immediately; background function runs after `reply.send()`. This is a clean Fastify idiom for long-running operations without a proper queue. Any project needing async processing without Redis/BullMQ can use this pattern up to ~10 concurrent jobs before it needs upgrading to a real queue.
+
+- **Regulatory calendar is reusable across portfolio**: Any NXTG project dealing with compliance (FamilyMind COPPA/HIPAA, any enterprise tool) could import the `ComplianceCalendar` store directly. The deadline data is static/hardcoded — easy to extend with project-specific deadlines.
+
+---
+
+### 4. What would we prioritize next?
+
+1. **OpenAPI schema decoration sweep** — add `schema: { tags, summary, description }` to every route so `GET /docs` becomes genuinely useful rather than mostly empty. This is a P0 for the "First Dollar" revenue sprint — customers evaluating the API will hit `/docs` first.
+
+2. **CRUCIBLE property-based oracle coverage** — still a standing gap (Gate 6 / oracle type 2). The claim forensics path (`extractClaims → verifyClaims → computeRisk`) is safety-critical and has only example-based tests. Fast-check or similar would catch edge cases we haven't manually written.
+
+3. **Tenant-scoped data isolation** — the multi-tenant API (D-141) creates tenants and associates keys, but scans/claims/costs are still global singletons. A tenant in a real deployment should only see their own scan history, claims, and costs. Filtering by `keyId` membership is the fix, but it needs to thread through every store query.
+
+4. **npm publish + Fly.io live deploy** — both are blocked on Asif's credentials (NPM_TOKEN, Fly account). The platform is production-ready; the only missing step is turning the key. Once live, `curl https://faultline-api.fly.dev/health` should immediately confirm.
+
+5. **VS Code extension `.vsix` publish** — `vsce package` builds the extension; publishing to the Marketplace requires a PAT. Ready to go the moment credentials are available.
+
+---
+
+### 5. Blockers and questions for the CoS?
+
+- **`NPM_TOKEN`**: `npm publish --workspace=packages/cli --access=public` is staged and dry-run clean (61.2 kB, 45 files). Awaiting credentials.
+- **Fly.io deploy**: `fly deploy --config packages/api/fly.toml` is ready. Needs Fly account + `flyctl auth login` + secrets set (`FAULTLINE_API_KEY`, `GEMINI_API_KEY`).
+- **CRUCIBLE property-based testing**: Is there a directive budget for Gate 6 (fast-check on claim forensics critical path)? This is an open Team Question since D-22.
+- **Tenant data isolation**: D-141 created the tenant model but didn't scope the stores. Should full isolation be a follow-up directive, or is the current "associate keys to tenants" level sufficient for MVP?
+
+---
+
 > **Reflection cycle**: 2026-03-19 (no delta — fourth prompt) — HEAD `560d922`
 
 Still `560d922`. No new code. Standing questions open. Cadence note: four reflection prompts with no intervening directives — same pattern as 2026-03-14 (resolved via heartbeat v4.6 fix). If this persists, flagging as a Team Question.
