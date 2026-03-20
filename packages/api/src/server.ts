@@ -49,6 +49,7 @@ import { telemetryRoutes } from './routes/telemetry.js';
 import { rateLimitRoutes } from './routes/rate-limits.js';
 import { notificationRoutes } from './routes/notifications.js';
 import { getNotificationStore } from './store/notifications.js';
+import { getKeyStore } from './store/keys.js';
 import { getJobScheduler, resetJobScheduler } from './store/jobs.js';
 import { getAuditLogger, hashInput } from './store/audit.js';
 import { getUsageMeter } from './store/usage.js';
@@ -157,6 +158,9 @@ export function buildServer() {
 
     // Weekly summary notification — fires every Sunday 09:00 UTC
     setInterval(() => {
+      // Clean expired grace-period keys every minute
+      getKeyStore().cleanExpiredRotations();
+
       const now = new Date();
       if (now.getUTCDay() === 0 && now.getUTCHours() === 9 && now.getUTCMinutes() === 0) {
         const prefs = getNotificationStore().listPrefs().filter(p => p.events.includes('weekly.summary'));
