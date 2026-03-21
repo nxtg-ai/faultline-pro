@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-109 Webhook delivery log HTML dashboard. 4,032 tests. 109 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-110 Tenant-scoped webhooks. 4,047 tests. 110 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -119,6 +119,7 @@
 | N-107 | `faultline scans prune` CLI — dry-run-safe destructive operator command; `getScansPrunePreview()` delegates to `getStaleScans()` (GET, read-only); `pruneScans()` calls `DELETE /scans/stale?days=N`; `formatScansPrunePreview()` shows DRY RUN header + per-document hash/preview/age + `--confirm` hint; `formatScansPruneResult()` shows deleted groups + entries count; `scans prune [--days 30] [--confirm]` subcommand wired in; `confirm` added to BOOLEAN_FLAGS (bug fix); 16 tests (SP1–SP15 + SP8b) | DEVELOPER-X | SHIPPED | P1 | 2026-03-21 |
 | N-108 | Tenant-scoped notifications — `NotificationRecord.tenantId?: string` resolved at `_deliver()` time via `getTenantStore().findByKeyId(keyId)?.id`; global `'*'` keyId resolves to `undefined`; `getHistory(keyId?, limit, tenantId?)` gains third optional filter param; `GET /notifications/history?tenantId=` scoped view; tenantId snapshot (frozen at dispatch, survives key removal from tenant); 15 tests (TN1–TN15) with cross-tenant isolation negative assertions (TN10/TN11/TN12) | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
 | N-109 | Webhook delivery log HTML dashboard — `GET /webhooks/deliveries/view` (admin-gated); summary stat cards (Total/Delivered/Failed/Success Rate with colour coding); per-row table (WebhookID/Event/Attempt#/DELIVERED·FAILED chips/HTTP status/Latency/Error/Time); empty-state row when log empty; auto-refresh 30s; `buildDeliveryDashboardHtml()` + `esc()` helpers; 15 tests (WDV1–WDV15) | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
+| N-110 | Tenant-scoped webhooks — `Webhook.tenantId?` stored at `create()` time via route-level resolution (`getTenantStore().findByKeyId(keyId)?.id`); admin key → `tenantId = undefined`; `WebhookStore.list(tenantId?)` filter; `POST /webhooks` resolves + stores tenantId; `GET /webhooks?tenantId=` scoped query; existing `webhook-delivery-log.test.ts` `makeWebhook` factory updated for new field; 15 tests (TW1–TW15) | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
 
 ---
 

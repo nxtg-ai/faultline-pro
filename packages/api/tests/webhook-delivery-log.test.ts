@@ -28,6 +28,7 @@ function makeWebhook(overrides: Partial<Webhook> = {}): Webhook {
     url:       overrides.url       ?? 'https://example.com/hook',
     events:    overrides.events    ?? ['scan.complete'],
     secret:    overrides.secret    ?? 'test-secret',
+    tenantId:  overrides.tenantId,
     createdAt: overrides.createdAt ?? new Date().toISOString(),
   };
 }

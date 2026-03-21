@@ -7,6 +7,7 @@ export interface Webhook {
   url: string;
   events: WebhookEvent[];
   secret: string;
+  tenantId: string | undefined;
   createdAt: string;
 }
 
@@ -37,20 +38,24 @@ function signPayload(body: string, secret: string): string {
 class WebhookStore {
   private webhooks: Webhook[] = [];
 
-  create(url: string, events: WebhookEvent[], secret?: string): Webhook {
+  create(url: string, events: WebhookEvent[], secret?: string, tenantId?: string): Webhook {
     const entry: Webhook = {
       id: randomUUID(),
       url,
       events,
       secret: secret ?? randomBytes(32).toString('hex'),
+      tenantId,
       createdAt: new Date().toISOString(),
     };
     this.webhooks.push(entry);
     return entry;
   }
 
-  list(): WebhookPublic[] {
-    return this.webhooks.map(({ secret: _secret, ...rest }) => rest);
+  list(tenantId?: string): WebhookPublic[] {
+    const all = tenantId
+      ? this.webhooks.filter((w) => w.tenantId === tenantId)
+      : this.webhooks;
+    return all.map(({ secret: _secret, ...rest }) => rest);
   }
 
   delete(id: string): boolean {

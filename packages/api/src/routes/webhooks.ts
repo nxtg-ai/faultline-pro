@@ -3,6 +3,7 @@ import { requireAdmin } from '../plugins/auth.js';
 import { requireApiKey } from '../plugins/auth.js';
 import { getWebhookStore, getWebhookTestHistory, getWebhookDeliveryLog, sendTestWebhook, SAMPLE_PAYLOADS } from '../store/webhooks.js';
 import type { WebhookEvent } from '../store/webhooks.js';
+import { getTenantStore } from '../store/tenants.js';
 
 const VALID_EVENTS: WebhookEvent[] = ['scan.complete', 'scan.failed', 'claim.verdict_changed', 'compliance.deadline_approaching'];
 
@@ -33,14 +34,22 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     { preHandler: requireAdmin, schema: { tags: ['Webhooks'], summary: 'Register a new webhook endpoint and event subscription', body: CREATE_BODY_SCHEMA } },
     async (request, reply) => {
       const { url, events, secret } = request.body;
-      const entry = getWebhookStore().create(url, events, secret);
+      const keyId = request.keyId;
+      const tenantId = keyId && keyId !== 'admin'
+        ? getTenantStore().findByKeyId(keyId)?.id
+        : undefined;
+      const entry = getWebhookStore().create(url, events, secret, tenantId);
       return reply.status(201).send(entry);
     },
   );
 
-  fastify.get('/webhooks', { preHandler: requireAdmin, schema: { tags: ['Webhooks'], summary: 'List all registered webhook subscriptions' } }, async (_request, reply) => {
-    return reply.status(200).send(getWebhookStore().list());
-  });
+  fastify.get<{ Querystring: { tenantId?: string } }>(
+    '/webhooks',
+    { preHandler: requireAdmin, schema: { tags: ['Webhooks'], summary: 'List all registered webhook subscriptions' } },
+    async (request, reply) => {
+      return reply.status(200).send(getWebhookStore().list(request.query.tenantId));
+    },
+  );
 
   fastify.delete<{ Params: { id: string } }>(
     '/webhooks/:id',
