@@ -25,6 +25,23 @@ export interface ApiKey {
   expiresAt?: string;
 }
 
+export interface KeyUsageStat {
+  id: string;
+  name: string;
+  permissions: Permission[];
+  disabled: boolean;
+  createdAt: string;
+  lastUsedAt: string | null;
+  lastRotatedAt: string | null;
+  expiresAt: string | null;
+  daysSinceCreation: number;
+  daysSinceLastUse: number | null;
+  daysSinceLastRotation: number | null;
+  isDormant: boolean;
+  isExpiringSoon: boolean;
+  isExpired: boolean;
+}
+
 export interface RotationResult {
   id:                   string;
   newKey:               string;
@@ -151,6 +168,41 @@ class KeyStore {
     return this.keys.filter((k) => {
       const reference = k.lastUsedAt ?? k.createdAt;
       return new Date(reference) < cutoff;
+    });
+  }
+
+  /**
+   * Returns per-key usage statistics with derived hygiene flags.
+   * No secrets (key, previousKey) are included.
+   */
+  getUsageStats(dormantDays = 30, expiringSoonDays = 7): KeyUsageStat[] {
+    const now = Date.now();
+    const msPerDay = 86_400_000;
+    const daysSince = (iso: string) => Math.floor((now - new Date(iso).getTime()) / msPerDay);
+
+    return this.keys.map((k) => {
+      const isExpired = k.expiresAt ? new Date(k.expiresAt) <= new Date() : false;
+      const isDormant = new Date(k.lastUsedAt ?? k.createdAt) < new Date(now - dormantDays * msPerDay);
+      const isExpiringSoon = k.expiresAt
+        ? !isExpired && new Date(k.expiresAt) <= new Date(now + expiringSoonDays * msPerDay)
+        : false;
+
+      return {
+        id:                    k.id,
+        name:                  k.name,
+        permissions:           k.permissions,
+        disabled:              k.disabled ?? false,
+        createdAt:             k.createdAt,
+        lastUsedAt:            k.lastUsedAt ?? null,
+        lastRotatedAt:         k.lastRotatedAt ?? null,
+        expiresAt:             k.expiresAt ?? null,
+        daysSinceCreation:     daysSince(k.createdAt),
+        daysSinceLastUse:      k.lastUsedAt ? daysSince(k.lastUsedAt) : null,
+        daysSinceLastRotation: k.lastRotatedAt ? daysSince(k.lastRotatedAt) : null,
+        isDormant,
+        isExpiringSoon,
+        isExpired,
+      };
     });
   }
 

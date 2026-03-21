@@ -44,6 +44,40 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
     return reply.status(200).send(keys);
   });
 
+  fastify.get<{ Querystring: { dormantDays?: string; expiringSoonDays?: string } }>(
+    '/keys/usage',
+    {
+      preHandler: requireAdmin,
+      schema: {
+        tags: ['Keys'],
+        summary: 'Per-key usage analytics — hygiene stats (dormant, expiring-soon, expired, disabled) with summary counts.',
+        querystring: {
+          type: 'object',
+          properties: {
+            dormantDays:      { type: 'string', pattern: '^[0-9]+$' },
+            expiringSoonDays: { type: 'string', pattern: '^[0-9]+$' },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const dormantDays      = Math.min(365, Math.max(1, parseInt(request.query.dormantDays      ?? '30', 10)));
+      const expiringSoonDays = Math.min(365, Math.max(1, parseInt(request.query.expiringSoonDays ?? '7',  10)));
+      const store = getKeyStore();
+      const keys  = store.getUsageStats(dormantDays, expiringSoonDays);
+
+      const summary = {
+        total:            keys.length,
+        dormantCount:     keys.filter((k) => k.isDormant).length,
+        expiringSoonCount: keys.filter((k) => k.isExpiringSoon).length,
+        expiredCount:     keys.filter((k) => k.isExpired).length,
+        disabledCount:    keys.filter((k) => k.disabled).length,
+      };
+
+      return reply.status(200).send({ ...summary, keys });
+    },
+  );
+
   fastify.get<{ Querystring: { days?: string } }>(
     '/keys/dormant',
     {

@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-93 Bulk disable/enable keys. 3,790 tests. 93 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-94 Key usage analytics. 3,805 tests. 94 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -103,6 +103,7 @@
 | N-91 | Expiring-soon key list — `KeyStore.getExpiringSoon(days)` filters expiresAt > now && <= cutoff; `GET /keys/expiring-soon?days=N` (default 7, clamped 1–365); secrets redacted; already-expired excluded; `expiresAt` surfaced in response; 15 tests (KES1–KES15) | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
 | N-92 | `faultline keys` CLI commands — `keys-client.ts` HTTP wrappers (list/dormant/expiring/rotate) + formatters; `keys list`, `keys dormant --days N`, `keys expiring --days N`, `keys rotate <id>` subcommands; FAULTLINE_API_KEY/URL env var fallback; 15 tests (KC1–KC15) | DEVELOPER-X | SHIPPED | P1 | 2026-03-21 |
 | N-93 | Bulk disable/enable — `KeyStore.bulkDisable(ids[])` + `bulkEnable(ids[])` (skip unknowns, skip no-ops, return changed IDs only); `POST /keys/bulk-disable` body `{ ids?, days? }` union-deduped via Set; `POST /keys/bulk-enable` body `{ ids }`; auth enforced end-to-end (KBS14/15); 15 tests (KBS1–KBS15) | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
+| N-94 | Key usage analytics — `KeyUsageStat` interface; `KeyStore.getUsageStats(dormantDays, expiringSoonDays)` computes daysSinceCreation/LastUse/LastRotation + isDormant/isExpiringSoon/isExpired per key; `GET /keys/usage?dormantDays=30&expiringSoonDays=7` returns summary counts + per-key hygiene array; secrets redacted; 15 tests (KUA1–KUA15) | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
 
 ---
 
@@ -841,6 +842,56 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-03-21 — N-93 + N-94 — 2 initiatives SHIPPED, 30 net new tests
+
+### 1. What did we ship since last check-in?
+
+**N-93 — Bulk disable/enable** (`POST /keys/bulk-disable` + `POST /keys/bulk-enable`) + **N-94 — Key usage analytics** (`GET /keys/usage`)
+
+| Commit | Deliverable | +Tests |
+|--------|-------------|--------|
+| `dad8da6` `feat: N-93` | `KeyStore.bulkDisable(ids[])` + `bulkEnable(ids[])`: skip unknowns, skip no-ops, return only changed IDs. `POST /keys/bulk-disable` body `{ ids?, days? }` — union-deduped via `Set<string>`, same pattern as bulk-delete. `POST /keys/bulk-enable` body `{ ids }` — explicit IDs only. Auth enforcement verified end-to-end (KBS14/KBS15). 15 tests (KBS1–KBS15). | +15 (3,775 → 3,790) |
+| `<N-94>` `feat: N-94` | `KeyUsageStat` interface exported from `store/keys.ts`. `getUsageStats(dormantDays=30, expiringSoonDays=7)` computes `daysSinceCreation`, `daysSinceLastUse`, `daysSinceLastRotation`, `isDormant`, `isExpiringSoon`, `isExpired` per key — pure derived fields, no new state. `GET /keys/usage?dormantDays=N&expiringSoonDays=N` returns `{ total, dormantCount, expiringSoonCount, expiredCount, disabledCount, keys[] }`. Secrets redacted. 15 tests (KUA1–KUA15). | +15 (3,790 → 3,805) |
+
+**Total this cycle**: 2 commits · 30 tests · 3,805 total · 94 initiatives SHIPPED.
+
+---
+
+### 2. What surprised you?
+
+**`isExpiringSoon` and `isExpired` are mutually exclusive — the guard matters.** An expired key (`expiresAt <= now`) should never appear as `isExpiringSoon`, but if you compute `isExpiringSoon` as `expiresAt <= now + N days` without checking `> now` first, expired keys satisfy both conditions. The fix is `!isExpired && expiresAt <= cutoff`. KUA5 specifically tests this: expired key → `isExpired:true`, `isExpiringSoon:false`. It's a simple boundary condition but easy to miss on first pass.
+
+**No new state needed for a rich hygiene dashboard.** All fields in `KeyUsageStat` are derived from fields already on `ApiKey`: `createdAt`, `lastUsedAt`, `lastRotatedAt`, `expiresAt`, `disabled`. The store method is entirely a projection — it maps existing state to derived booleans and day-counts. This means the analytics endpoint is free to add with zero risk of state mutation bugs.
+
+**The key lifecycle cluster is now genuinely complete.** 10 operations (create, list, get, update, disable, enable, rotate, expire, delete, bulk-delete), 3 lifecycle queries (dormant, expiring-soon, usage), 2 bulk state operations (bulk-disable, bulk-enable), CLI coverage for list/dormant/expiring/rotate. It took 12 sequential initiatives (N-82–N-94) and ~180 tests to close out the full surface. Every operation has auth enforcement, secret redaction, and edge case coverage.
+
+---
+
+### 3. Cross-project signals
+
+**`getUsageStats()` as a pure projection pattern.** Anywhere a domain object accumulates fields over time (last-used, last-rotated, created, expires), a single "compute derived hygiene flags" method is vastly simpler than trying to maintain those flags as live state. Derived fields can't drift. They can't be corrupted by a failed update. They can't be forgotten when state changes. The tradeoff is CPU per request — acceptable until the keystore is large enough to warrant caching. This pattern applies to: tenant health (last-billed, last-active, subscription status), provider health (last-success, last-failure, error rate), scan history (last-scan, scan frequency, claim volume).
+
+**Parameterised thresholds on hygiene queries.** `GET /keys/usage?dormantDays=14&expiringSoonDays=3` — the caller decides what "dormant" and "expiring soon" mean for their use case. Default sane values (30d, 7d) cover most cases, but a monthly ops review might use `dormantDays=90` while an automation script might use `expiringSoonDays=1`. Make thresholds a query param, not a hardcoded business rule. Applied in: N-87 (dormant), N-91 (expiring-soon), N-94 (usage analytics). All three are consistent.
+
+---
+
+### 4. What would you prioritize next?
+
+1. **CRUCIBLE Gate 6 (Stryker mutation testing)** — key lifecycle cluster fully closed at N-94. This is the last open quality gate; the right time to add mutation coverage is now that the critical paths are stable.
+2. **Key lifecycle capability matrix doc** — a reference table mapping all 12 key operations to their HTTP endpoints, CLI commands, and test coverage. Useful for DEVELOPER-X pillar docs and future onboarding.
+3. **`GET /keys/usage` HTML dashboard view** — a human-readable hygiene report mirroring what Mission Control shows for provider health. Consistent with N-70 (analytics dashboard), N-73 (mission control).
+4. **Key rotation history** — persist rotation events per key (timestamp, rotatedBy, previous expiry). Currently `lastRotatedAt` is a single timestamp; a history array would enable audit trail queries.
+
+---
+
+### 5. Blockers / questions for CoS
+
+- **CRUCIBLE Gate 6 (Stryker)**: Third cycle raising this. Key lifecycle cluster complete — this is the ideal window before the next feature cluster begins. Approve?
+- **Key hygiene HTML dashboard**: Approve as N-95? Would close the "operations UI" gap for the keys surface.
+- **NPM_TOKEN / Fly.io**: Still needed for v0.3.0 publish and hosted deployment.
+
+---
 
 > **Reflection cycle**: 2026-03-21 — N-91 + N-92 — 2 initiatives SHIPPED, 30 net new tests
 
