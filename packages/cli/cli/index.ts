@@ -32,6 +32,7 @@ import { render as renderExport, applyFilter, type ExportFormat } from './export
 import { setLang } from '../lib/i18n.js';
 import { getDemoResult } from './demo.js';
 import { listKeys, getDormantKeys, getExpiringSoonKeys, rotateKey, formatKeyList, formatDormantList, formatExpiringSoonList, formatRotateResult } from './keys-client.js';
+import { getStaleScans, getScanUsage, formatStaleList, formatScanUsage } from './scans-client.js';
 
 const VERSION = '0.2.0';
 
@@ -109,6 +110,8 @@ Usage:
   faultline keys dormant [--days 30] [--api-url URL] [--api-key KEY]  List dormant keys
   faultline keys expiring [--days 7] [--api-url URL] [--api-key KEY]  List keys expiring soon
   faultline keys rotate <id> [--api-url URL] [--api-key KEY]       Rotate an API key
+  faultline scans stale [--days 30] [--api-url URL] [--api-key KEY]  List stale scan groups
+  faultline scans usage [--staleDays 30] [--api-url URL] [--api-key KEY]  Scan usage analytics
   faultline version                                                 Print version
 
 Config:
@@ -961,6 +964,38 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
       return {
         exitCode: 1,
         output: 'Usage:\n  faultline keys list [--api-url URL] [--api-key KEY]\n  faultline keys dormant [--days 30] [--api-url URL] [--api-key KEY]\n  faultline keys expiring [--days 7] [--api-url URL] [--api-key KEY]\n  faultline keys rotate <id> [--api-url URL] [--api-key KEY]',
+      };
+    }
+
+    case 'scans': {
+      const sub    = args[1]; // stale | usage
+      const apiUrl = flags['api-url'] || process.env.FAULTLINE_API_URL || 'http://localhost:3000';
+      const apiKey = flags['api-key'] || process.env.FAULTLINE_API_KEY || '';
+
+      if (!apiKey) {
+        return {
+          exitCode: 1,
+          output: 'Error: --api-key or FAULTLINE_API_KEY environment variable is required.\n\nUsage: faultline scans stale --api-url http://localhost:3000 --api-key <key>',
+        };
+      }
+
+      if (sub === 'stale') {
+        const days = Math.min(365, Math.max(1, parseInt(flags['days'] ?? '30', 10) || 30));
+        const result = await getStaleScans(apiUrl, apiKey, days);
+        if (result.error) return { exitCode: 1, output: `Error: ${result.error}` };
+        return { exitCode: 0, output: formatStaleList(result) };
+      }
+
+      if (sub === 'usage') {
+        const staleDays = Math.min(365, Math.max(1, parseInt(flags['staleDays'] ?? '30', 10) || 30));
+        const result = await getScanUsage(apiUrl, apiKey, staleDays);
+        if (result.error) return { exitCode: 1, output: `Error: ${result.error}` };
+        return { exitCode: 0, output: formatScanUsage(result) };
+      }
+
+      return {
+        exitCode: 1,
+        output: 'Usage:\n  faultline scans stale [--days 30] [--api-url URL] [--api-key KEY]\n  faultline scans usage [--staleDays 30] [--api-url URL] [--api-key KEY]',
       };
     }
 
