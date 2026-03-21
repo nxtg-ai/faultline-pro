@@ -883,7 +883,65 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
-> **Reflection cycle**: 2026-03-21 — CoS check-in — N-133 session close (schedules.ts 77.35%→80.94%, GDPR cluster 86.31%)
+> **Reflection cycle**: 2026-03-21 — CoS check-in — N-134 session close (SSE scan streaming; 4,407 tests; 134 initiatives SHIPPED)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests | Total |
+|--------|-----------|-------------|--------|-------|
+| `f844bee` | N-134 SSE scan streaming | `GET /scan/stream`; `routes/stream.ts`; 15 tests WS1–WS15; README badge 4,392→4,407 | +15 | 4,407 |
+
+**4,407 tests · 134 initiatives SHIPPED.** First product feature since seven consecutive hardening/fix passes (N-127–N-133). The platform now has a real-time streaming API surface alongside the existing request-response REST API.
+
+---
+
+### 2. What surprised you?
+
+**SSE is genuinely simpler than WebSocket for unidirectional server-to-client streaming.** Multiple prior reflections nominated "WebSocket real-time scan streaming" as the v0.5.0 feature, but SSE required zero new packages, zero new plugins, and the implementation fit in 70 lines. The Fastify `reply.send(string)` approach works identically with `inject()` in tests — no special SSE test client needed. If a future initiative needs bidirectional communication, WebSocket is the right tool. For scan progress (server-only events), SSE is strictly better.
+
+**The `as Record<string, unknown>` double-cast footgun.** TypeScript rejected `claims[i] as Record<string, unknown>` because `Claim` doesn't have an index signature. The fix is `claims[i] as unknown as Record<string, unknown>`. This is a standard TypeScript escape hatch for non-overlapping type assertions, and the pre-push `tsc --noEmit` check caught it immediately. Without the CI gate, this would have been a runtime-only bug (esbuild doesn't type-check).
+
+**The scan result already contains all the data needed for per-claim streaming.** The `ScanResult.verifications` record is keyed by claim ID, and `ScanResult.claims` is ordered. Iterating `claims[i]` and looking up `verifications[claim.id]` produces the claim×verdict pairs without any additional provider calls. The mock provider runs fast enough that the "fake" streaming (scan completes, then events are emitted) is invisible in tests and acceptable for the current use case.
+
+---
+
+### 3. Cross-project signals
+
+**The SSE-via-reply.send() pattern is portable to any Fastify project.** Build the full event stream body as a string, set `Content-Type: text/event-stream`, send via `reply.send()`. Works with `inject()`, works with real HTTP clients, and requires no additional packages. Any ASIF project on Fastify that needs one-directional streaming (job progress, log tailing, webhook replay) can use this pattern verbatim.
+
+**The `as unknown as TargetType` escape hatch should be the standard for cross-package type assertions.** Across multiple initiatives in this codebase (`scan.ts` route, `stream.ts` route), the pattern recurs: a type from `@nxtg/faultline` package doesn't overlap with `Record<string, unknown>`. The correct fix is always `as unknown as Record<string, unknown>`, never suppressing with `// @ts-ignore`. The double-cast documents intent: "I know this type doesn't structurally overlap, and I'm intentionally widening through unknown."
+
+**SSE + `onProgress` callback combination for true per-claim streaming is possible.** The `scan()` function accepts an `onProgress?: (message: string) => void` callback. A future enhancement could replace the current "scan-then-stream" pattern with a "stream-as-it-runs" pattern: emit a `claim_verified` event inside the `onProgress` callback for each claim. This would require the callback to receive structured claim data (not just a string), which would be a small change to `scan()`. Worth noting for any project that wants truly progressive streaming.
+
+---
+
+### 4. What would I prioritize next?
+
+**P1 — v0.4.0 git tag + npm publish.** Ten reflection cycles. Nothing has changed about the quality case: 4,407 tests, 134 initiatives, GDPR cluster 86.31%, all stores above 80%, two correctness fixes shipped. The codebase is in its strongest state ever. Two commands, zero risk.
+
+**P2 — SSE streaming enhancement: true per-claim progressive streaming.** The current N-134 implementation scans completely then streams events. A follow-up (N-135) could add a `ScanProgressEvent` callback to `scan()` that fires after each `verifyClaim()` call, enabling genuine progressive delivery. This would make the streaming feel live — first claim arrives in ~200ms rather than waiting for all N claims.
+
+**P3 — CLI streaming command: `faultline stream`.** Mirrors the N-92 pattern (`faultline keys` CLI) applied to streaming. `faultline stream "text"` would call `GET /scan/stream`, display claims as they arrive with a live progress indicator, and print the final risk verdict. This would make the streaming feature visible in the CLI experience.
+
+**P4 — `docs/mutation-testing.md`.** Five reflections have documented the same patterns (`testFiles` footgun, `+=` accumulator kill, 3-mutant guard pattern). Writing this once ends the repetition. 30 minutes.
+
+---
+
+### 5. Blockers and questions for the CoS
+
+1. **v0.4.0 publish**: Ten cycles. Ready. `git tag v0.4.0 && git push --tags` + `npm publish`. Go/no-go?
+
+2. **v0.5.0 feature direction confirmed?** N-134 SSE streaming is shipped. Should the v0.5.0 arc continue with streaming (N-135 progressive per-claim delivery + N-136 `faultline stream` CLI), or pivot to something else?
+
+3. **`scan()` progressive callback**: N-135 would add a `ScanProgressEvent` callback to the `scan()` function signature. This changes a shared API. Approve or scope to a separate internal function?
+
+4. **`docs/mutation-testing.md`**: Five reflections, same three patterns. Approve writing this doc during idle time?
+
+5. **CLAUDE.md `testFiles` checklist**: Same footgun documented five times. Approve adding "add new test file to stryker config immediately" as step 0 in the mutation hardening checklist in CLAUDE.md?
+
+---
+
+> **Previous reflection cycle**: 2026-03-21 — CoS check-in — N-133 session close (schedules.ts 77.35%→80.94%, GDPR cluster 86.31%)
 
 ### 1. What did we ship since last check-in?
 
