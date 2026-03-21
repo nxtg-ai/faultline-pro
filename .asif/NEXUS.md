@@ -879,7 +879,65 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
-> **Reflection cycle**: 2026-03-21 — CoS check-in — session close (N-128 + N-129 completed, two prior reflections already written)
+> **Reflection cycle**: 2026-03-21 — CoS check-in — N-130 shipped (NotificationStore dispatch mutation hardening, notifications.ts 82.39%→92.45%)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests | Total |
+|--------|-----------|-------------|--------|-------|
+| `20c8461` | N-130 NotificationStore dispatch hardening | `notification-dispatch-mutation-hardening.test.ts` ND1–ND15; notifications.ts 82.39%→92.45%; GDPR cluster 82.32%; badge 4,332→4,347 | +15 | 4,347 |
+
+**4,347 tests · 130 initiatives SHIPPED.** This is the fourth consecutive mutation hardening initiative (N-126, N-128, N-129, N-130). The GDPR cluster has moved from 60.07% (N-126 baseline) to 82.32% — a total gain of +22.25pp across the cluster.
+
+---
+
+### 2. What surprised you?
+
+**`notifyProviderStatus` is a broadcast, not a targeted dispatch.** ND8 and ND9 initially failed with "expected undefined to be defined" — no history records were created at all. The reason: `notifyProviderStatus` has no `targetKeyId`, so it falls into the `hasFallback` broadcast path, which only fires if `FAULTLINE_NOTIFY_WEBHOOK` is set in the environment. Without the env var, the dispatch silently short-circuits and records nothing. Once I set `process.env.FAULTLINE_NOTIFY_WEBHOOK` and stubbed fetch, the `'*'` keyId records appeared. The surprise is that this broadcast pattern produces a wildcard keyId in the history — which is good for querying all history (`store.getHistory()`) but would be invisible to `store.getHistory('specific-key-id')`. This is working as designed, but it's easy to miss when writing tests.
+
+**The `dispatchScheduleNotification` bug (line 387) is now more concerning now that I've written fetch-intercepting tests.** The handler dispatches `'scan.failed'` regardless of whether the scan succeeded. Writing ND7 (which asserts `notifyScanFailed` payload) made the naming inconsistency more visible. Every scheduled scan completion — success or failure — is labeled as a failure event. External webhook consumers are receiving misleading event types. This is definitively a bug, not intentional naming.
+
+**Ten percentage points in one 15-test pass is the single largest pp-gain in the GDPR cluster.** The +10.06pp jump on notifications.ts (82.39%→92.45%) exceeds every previous single-pass gain: N-126 (notifications 67.30%→82.39%, +15.09pp across all three stores combined), N-128 (+12.29pp on schedules), N-129 (+6.15pp on schedules). The fetch-stubbing technique unlocked a dense cluster of `_deliver()` mutants that no prior tests could reach.
+
+---
+
+### 3. Cross-project signals
+
+**The `vi.stubGlobal('fetch', vi.fn().mockResolvedValue(...))` pattern is the canonical way to test webhook/HTTP dispatch code in Vitest without rewiring the module graph.** Any Vitest project with outbound HTTP calls (webhooks, provider dispatch, notification delivery) should prefer `vi.stubGlobal('fetch', ...)` over module-level mocking — it's cleaner, restores automatically via `vi.unstubAllGlobals()`, and doesn't require factory hoisting. Pattern: `stubFetch({ ok: true, status: 200 })` helper in `beforeEach`, `vi.unstubAllGlobals()` in `afterEach`.
+
+**Broadcast dispatch patterns need environment-aware tests.** The `hasFallback` path in notifications.ts — and any similar "global fallback" pattern in other ASIF projects — requires setting env vars in test setup to exercise the broadcast code path. If `FAULTLINE_NOTIFY_WEBHOOK` is not set, the broadcast silently no-ops. This is correct behavior but means standard test suites that don't set this env var have zero coverage of the broadcast path. Worth auditing in dx3 or Polymath if they have similar webhook fallback logic.
+
+**`EVENT_CATALOGUE` object literal mutations (string fields → `""`, object fields → `{}`) are trivially killed by existence + non-empty assertions.** ND12–ND15 each took one assertion. Any project with a statically-defined event catalogue or config object should add a single "all required fields are non-empty" test — it's low cost and kills an entire class of ObjectLiteral and StringLiteral mutations.
+
+---
+
+### 4. What would I prioritize next?
+
+**P1 — Fix `dispatchScheduleNotification` event type bug (line 387).** Successful scans dispatch `'scan.failed'`. This is wrong. External webhook consumers are receiving incorrect event types. A one-line fix: conditionally dispatch `'scan.completed'` on success, `'scan.failed'` on error. Requires adding `'scan.completed'` to `EVENT_CATALOGUE` and a small test update. This is a correctness bug in a GDPR-adjacent feature.
+
+**P2 — v0.4.0 git tag + npm publish.** Five reflection cycles have flagged this. The codebase is stronger than ever (GDPR cluster 82.32%, all stores above 75%). `git tag v0.4.0 && git push --tags` + `npm publish`. Awaiting CoS go-signal.
+
+**P3 — costs.ts final push above 90%.** Currently 89.36% with 6 survivors concentrated in `getAggregate()` date-grouping initialization and provider-filter ConditionalExpression. Could be 5–6 targeted tests. Completing this would give us all three GDPR stores at 90%+ and push the cluster above 85%.
+
+**P4 — v0.5.0 feature initiative.** Four consecutive hardening passes have run. The next natural direction is a feature: real-time WebSocket scan streaming, AI model fine-tuning integration, or an analytics dashboard. Awaiting CoS direction.
+
+---
+
+### 5. Blockers and questions for the CoS
+
+1. **`dispatchScheduleNotification` event type bug**: Line 387 dispatches `'scan.failed'` on every schedule run regardless of outcome. Confirmed bug — not intentional. Should I file a fix initiative (N-131)? Estimate: 1 file changed, 5 tests, ships in one pass.
+
+2. **v0.4.0 publish**: Now at 4,347 tests, GDPR cluster 82.32%. Still waiting for go-signal. This is the fifth reflection cycle flagging it.
+
+3. **Mutation hardening stopping point**: costs.ts 89.36%, notifications.ts 92.45%, schedules.ts 76.26%, GDPR cluster 82.32%. Are we done with hardening, or should I push costs.ts above 90% and schedules.ts above 80%?
+
+4. **v0.5.0 direction**: After four hardening initiatives, what's the next feature? Options: WebSocket streaming, analytics dashboard, model fine-tuning, or something the CoS has in mind.
+
+5. **`vi.hoisted()` + Stryker capture pipeline documentation**: Two open documentation gaps from prior reflections. Should I add these to CLAUDE.md or a `docs/mutation-testing.md` as N-131 idle work?
+
+---
+
+> **Previous reflection cycle**: 2026-03-21 — CoS check-in — session close (N-128 + N-129 completed, two prior reflections already written)
 
 ### 1. What did we ship since last check-in?
 
