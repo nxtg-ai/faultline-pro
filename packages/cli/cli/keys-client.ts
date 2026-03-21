@@ -139,3 +139,102 @@ export function formatRotateResult(result: RotateResult): string {
     `Store the new key securely — it will not be shown again.`,
   ].join('\n');
 }
+
+// ── Rotation status ───────────────────────────────────────────────────────────
+
+export interface RotationStat {
+  id: string;
+  name: string;
+  lastRotatedAt: string | null;
+  createdAt: string;
+  daysSinceLastRotation: number | null;
+  disabled: boolean;
+  isExpired: boolean;
+}
+
+export interface RotationStatusResult {
+  days: number;
+  overdueCount: number;
+  criticalCount: number;
+  keys: RotationStat[];
+  error?: string;
+}
+
+interface UsageStat {
+  id: string;
+  name: string;
+  createdAt: string;
+  lastRotatedAt: string | null;
+  daysSinceLastRotation: number | null;
+  disabled: boolean;
+  isExpired: boolean;
+}
+
+interface UsageResponse {
+  keys: UsageStat[];
+  error?: string;
+}
+
+export async function getRotationStatus(apiUrl: string, apiKey: string, days: number): Promise<RotationStatusResult> {
+  const result = await apiFetch(`${apiUrl}/keys/usage?dormantDays=1&expiringSoonDays=1`, apiKey);
+  if ((result as { error?: string }).error) {
+    return { days, overdueCount: 0, criticalCount: 0, keys: [], error: (result as { error: string }).error };
+  }
+  const { keys } = result as UsageResponse;
+  // Filter to keys where rotation age >= days threshold; null means never rotated (use createdAt age)
+  const filtered: RotationStat[] = (keys ?? [])
+    .map((k) => ({
+      id:                   k.id,
+      name:                 k.name,
+      lastRotatedAt:        k.lastRotatedAt,
+      createdAt:            k.createdAt,
+      daysSinceLastRotation: k.daysSinceLastRotation,
+      disabled:             k.disabled,
+      isExpired:            k.isExpired,
+    }))
+    .filter((k) => {
+      // daysSinceLastRotation is null when never rotated — treat as age since creation
+      const age = k.daysSinceLastRotation ??
+        Math.floor((Date.now() - new Date(k.createdAt).getTime()) / 86_400_000);
+      return age >= days;
+    })
+    .sort((a, b) => {
+      const ageA = a.daysSinceLastRotation ?? Math.floor((Date.now() - new Date(a.createdAt).getTime()) / 86_400_000);
+      const ageB = b.daysSinceLastRotation ?? Math.floor((Date.now() - new Date(b.createdAt).getTime()) / 86_400_000);
+      return ageB - ageA; // oldest-first
+    });
+
+  const overdueCount   = filtered.filter((k) => {
+    const age = k.daysSinceLastRotation ?? Math.floor((Date.now() - new Date(k.createdAt).getTime()) / 86_400_000);
+    return age >= 90;
+  }).length;
+  const criticalCount  = filtered.filter((k) => {
+    const age = k.daysSinceLastRotation ?? Math.floor((Date.now() - new Date(k.createdAt).getTime()) / 86_400_000);
+    return age >= 180;
+  }).length;
+
+  return { days, overdueCount, criticalCount, keys: filtered };
+}
+
+export function formatRotationStatus(result: RotationStatusResult): string {
+  if (result.error) return `Error: ${result.error}`;
+  if (result.keys.length === 0) {
+    return `All keys rotated within the last ${result.days} days.`;
+  }
+  const lines = [
+    `Keys overdue for rotation (>${result.days}d): ${result.keys.length}  [OVERDUE: ${result.overdueCount}  CRITICAL: ${result.criticalCount}]`,
+    '',
+  ];
+  for (const k of result.keys) {
+    const age = k.daysSinceLastRotation ??
+      Math.floor((Date.now() - new Date(k.createdAt).getTime()) / 86_400_000);
+    const chip  = age >= 180 ? ' [CRITICAL]' : ' [OVERDUE]';
+    const ref   = k.lastRotatedAt ? `last rotated ${k.lastRotatedAt.slice(0, 10)}` : `created ${k.createdAt.slice(0, 10)}, never rotated`;
+    const extra: string[] = [];
+    if (k.disabled)  extra.push('DISABLED');
+    if (k.isExpired) extra.push('EXPIRED');
+    const tagStr = extra.length ? `  [${extra.join(', ')}]` : '';
+    lines.push(`  ${k.id.slice(0, 8)}  ${k.name.padEnd(24)}  ${age}d${chip}  ${ref}${tagStr}`);
+  }
+  return lines.join('\n');
+}

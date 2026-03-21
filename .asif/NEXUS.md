@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-102 Key rotation reminder notifications. 3,926 tests. 102 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-103 `faultline keys rotation` CLI. 3,941 tests. 103 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -112,6 +112,7 @@
 | N-100 | `faultline scans` CLI — `scans-client.ts` HTTP wrappers (getStaleScans/getScanUsage) + formatters; `scans stale [--days 30]` and `scans usage [--staleDays 30]` subcommands; FAULTLINE_API_KEY/URL env var fallback; usage in help text; 15 tests (KSC1–KSC15) | DEVELOPER-X | SHIPPED | P1 | 2026-03-21 |
 | N-101 | Mission control scan hygiene — `getScanUsageStats(30)` wired into `computeStatus()`; `scans.totalDocuments`, `scans.staleCount`, `scans.riskDriftedCount` added to `/mission-control/status`; Scan Hygiene panel added to HTML dashboard (grid3→grid4); JS render populates hygiene-stats; backward-compat (existing fields unchanged); 15 tests (KMH1–KMH15) | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
 | N-102 | Key rotation reminder notifications — `key.rotation_due` added to `NotificationEventType` union, `ALL_EVENT_TYPES`, and `EVENT_CATALOGUE`; `KeyRotationNotifier` class: 90d/180d thresholds, per-key×threshold dedup via `Set<string>`, uses `lastRotatedAt ?? createdAt` as reference date, skips disabled/expired keys; wired into server 1-min tick alongside `getKeyExpiryNotifier()`; 15 tests (KRN1–KRN15) | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
+| N-103 | `faultline keys rotation` CLI — `getRotationStatus(apiUrl, apiKey, days)` calls `GET /keys/usage`, filters client-side to `daysSinceLastRotation >= days` (or creation age when never rotated), sorts oldest-first; `overdueCount` (≥90d) and `criticalCount` (≥180d) summary; `formatRotationStatus()` with OVERDUE/CRITICAL chips, never-rotated label, DISABLED/EXPIRED tags; `keys rotation [--days 90]` subcommand added; 15 tests (KRC1–KRC15) | DEVELOPER-X | SHIPPED | P1 | 2026-03-21 |
 
 ---
 
