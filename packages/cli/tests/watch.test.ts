@@ -20,6 +20,7 @@ import {
   WATCHED_EXTENSIONS,
   FindingsTracker,
   formatWatchOutput,
+  startWatch,
 } from '../cli/watch';
 import type { ScanResult } from '../cli/scan';
 
@@ -448,5 +449,114 @@ describe('processFileChange', () => {
     writeFileSync(file, '   \n\n  ');
     const scanned = await processFileChange(file, debouncer, opts());
     expect(scanned).toBe(false);
+  });
+
+  // WT9 — processFileChange error path (lines 218-220 in watch.ts)
+  it('WT9: returns false and calls onError when scan throws (invalid provider)', async () => {
+    const file = join(tmpDir, 'error-path.txt');
+    writeFileSync(file, 'Some verifiable content here.');
+    const scanned = await processFileChange(file, debouncer, {
+      provider: 'nonexistent-provider-xyz',
+      onResult: (f, o) => results.push({ file: f, output: o }),
+      onError: (f, e) => errors.push({ file: f, error: e }),
+    });
+    expect(scanned).toBe(false);
+    expect(results.length).toBe(0);
+    expect(errors.length).toBe(1);
+    expect(errors[0].file).toBe(file);
+    expect(typeof errors[0].error).toBe('string');
+    expect(errors[0].error.length).toBeGreaterThan(0);
+  });
+
+  // WT10 — outputFormat branch (options.outputFormat || 'json')
+  it('WT10: uses markdown output format when specified (options.outputFormat branch)', async () => {
+    const file = join(tmpDir, 'format-check.txt');
+    writeFileSync(file, 'The moon is round.');
+    await processFileChange(file, debouncer, {
+      ...opts(),
+      outputFormat: 'markdown',
+    });
+    expect(results.length).toBe(1);
+    // markdown format renders differently to json — verify output is non-empty
+    expect(results[0].output.length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WT11–WT15 — startWatch (lines 230-272 in watch.ts)
+// ---------------------------------------------------------------------------
+
+describe('startWatch', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'faultline-sw-'));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('WT11: startWatch returns a WatchHandle without throwing', () => {
+    const handle = startWatch({
+      dir: tmpDir,
+      provider: 'mock',
+      onResult: vi.fn(),
+      onError: vi.fn(),
+    });
+    expect(handle).toBeDefined();
+    expect(typeof handle.close).toBe('function');
+    handle.close();
+  });
+
+  it('WT12: WatchHandle.close() can be called without throwing', () => {
+    const handle = startWatch({
+      dir: tmpDir,
+      provider: 'mock',
+      onResult: vi.fn(),
+      onError: vi.fn(),
+    });
+    expect(() => handle.close()).not.toThrow();
+  });
+
+  it('WT13: startWatch registers a SIGINT listener', () => {
+    const before = process.listenerCount('SIGINT');
+    const handle = startWatch({
+      dir: tmpDir,
+      provider: 'mock',
+      onResult: vi.fn(),
+      onError: vi.fn(),
+    });
+    expect(process.listenerCount('SIGINT')).toBe(before + 1);
+    handle.close();
+  });
+
+  it('WT14: startWatch registers a SIGTERM listener', () => {
+    const before = process.listenerCount('SIGTERM');
+    const handle = startWatch({
+      dir: tmpDir,
+      provider: 'mock',
+      onResult: vi.fn(),
+      onError: vi.fn(),
+    });
+    expect(process.listenerCount('SIGTERM')).toBe(before + 1);
+    handle.close();
+  });
+
+  it('WT15: WatchHandle.close() removes SIGINT and SIGTERM listeners', () => {
+    const sigintBefore = process.listenerCount('SIGINT');
+    const sigtermBefore = process.listenerCount('SIGTERM');
+
+    const handle = startWatch({
+      dir: tmpDir,
+      provider: 'mock',
+      onResult: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    handle.close();
+
+    expect(process.listenerCount('SIGINT')).toBe(sigintBefore);
+    expect(process.listenerCount('SIGTERM')).toBe(sigtermBefore);
   });
 });
