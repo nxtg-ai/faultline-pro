@@ -5,6 +5,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+- N-129 ScheduleStore + nextCronTime + parseCron second-pass hardening — `schedules.ts` 70.11%→76.26%, GDPR cluster 79.87%; 15 tests (SH1–SH15) killing: `*/1` step boundary, `*/0` invalid step, comma-list validity, `nextCronTime` range lower bound (`value >= a`), range upper bound (`value <= b`), midpoint range (kills `if(false)` at line 134), plain-value match (kills `if(true)` at line 134), comma-list integer match; `ScheduleStore.create()` MAX_SCHEDULES capacity guard (500) and description default; `update()` provider/status conditional patches and cron→nextRunAt recalculation; `recordRun()` maxRuns=1 completion gate (`>= maxRuns` off-by-one)
 - N-128 ScheduleRunner + parseCron + nextCronTime mutation hardening — `schedules.ts` score 57.82% → 70.11% (overall GDPR cluster 76.27%); 16 hardening tests (SR1–SR16) in `schedule-runner-mutation-hardening.test.ts`; killed mutants in `parseCron` `/\s+/` regex, range bounds (day min=1, month min=1, weekday max=7), range-part bounds (`a < min`, `b > max`), `nextCronTime` step arithmetic (`value % step`), range match (`value >= a && value <= b`), UTC field extraction, `ScheduleStore.create()` defaults (provider='gemini', maxRuns=0), `ScheduleRunner.runSchedule()` text/URL/error paths and duration arithmetic
 
 ---
