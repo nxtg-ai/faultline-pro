@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-85 lastUsedAt tracking. 3,685 tests. 85 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-86 ApiKey expiry. 3,700 tests. 86 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -95,6 +95,7 @@
 | N-83 | Key Partial Update — PATCH /keys/:id (admin-gated): update name and/or permissions post-creation; KeyStore.update(); secret redacted in response; 404/403/400 guards; 14 tests (KU1–KU14); ci.yml cancel-in-progress to prevent stale-run false alarms | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
 | N-84 | GET /keys/:id — single key lookup by ID (admin-gated); secret redacted; disabled state visible; consistent with GET /keys list; 10 tests (KG1–KG10); CHANGELOG backfilled N-75 through N-84 | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
 | N-85 | ApiKey lastUsedAt tracking — stamped by validateKey() on every successful auth; not set by validateById() (admin read path); disabled/wrong-key attempts leave it unset; flows through GET /keys and GET /keys/:id; 12 tests (KL1–KL12) | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
+| N-86 | ApiKey expiry — expiresAt?: string on ApiKey; validateKey() auto-rejects expired keys (401/403); isExpired(id) helper; POST /keys and PATCH /keys/:id accept expiresAt; null clears expiry; expired keys visible to admin GET; 15 tests (KE1–KE15) | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
 
 ---
 
@@ -833,6 +834,61 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-03-21 — N-85 + N-86 — 2 initiatives SHIPPED, 27 net new tests, keys API lifecycle complete
+
+### 1. What did we ship since last check-in?
+
+| Commit | Deliverable | Tests |
+|--------|-------------|-------|
+| N-85 `feat: ApiKey lastUsedAt` | `lastUsedAt?: string` stamped by `validateKey()` on every successful auth (current key and grace-period previousKey). `validateById()` explicitly does NOT stamp — admin read operations must not pollute auth-time metadata. Disabled and wrong-key attempts leave `lastUsedAt` unset. Flows through `GET /keys` and `GET /keys/:id` via `...rest` with no route changes. 12 tests (KL1–KL12). | +12 (3,673 → 3,685) |
+| N-86 `feat: ApiKey expiry` | `expiresAt?: string` on `ApiKey`. `validateKey()` skips entries where `expiresAt <= now` (expired key → 401/403, not deleted). `isExpired(id)` helper. `create()` accepts `expiresAt` as optional param. `update()` accepts `expiresAt: string \| null` — `null` clears the expiry. `POST /keys` and `PATCH /keys/:id` both accept `expiresAt`. Expired keys remain visible to admin GET — operators must be able to see/manage them. 15 tests (KE1–KE15). tsc caught a type annotation error (`{ id: string }` used where `name` was also accessed) before push. | +15 (3,685 → 3,700) |
+
+**Running total**: 3,700 tests · 146 files · 86 initiatives SHIPPED. The key lifecycle is now fully featured: create (with optional expiry) → use (lastUsedAt tracked) → rotate → disable/enable → update (name/perms/expiry) → expire (auto-rejected) → delete.
+
+---
+
+### 2. What surprised us?
+
+- **Rate limit headers were already fully implemented.** The reflection priority "rate limit response headers" turned out to be done — `rateLimitScan` has set `X-RateLimit-Limit/Remaining/Reset` on every response (200 and 429) since long before N-81. This was a stale reflection entry from a cycle where the gap was real but got closed before the reflection was written. The lesson: reflection priorities should be verified against the codebase before being carried forward. A quick `grep -r "X-RateLimit" packages/api/src/` at the start of the session would have caught this in seconds.
+
+- **`null` as a patch value requires `type: ['string', 'null']` in Fastify's AJV schema.** Clearing `expiresAt` by patching `{ expiresAt: null }` sounds simple but requires the JSON schema to explicitly allow null. The standard `{ type: 'string' }` rejects null with a 400. The fix (`type: ['string', 'null']`) is not obvious from Fastify's documentation — it relies on knowing that AJV supports array-type in JSON Schema. This is likely to trip up any ASIF project that wants a nullable field in a PATCH body.
+
+- **tsc caught a real test annotation error before push.** The pre-push gate blocked on `property 'name' does not exist on type '{ id: string }'` in the expiry test. The find callback for `permanent` key used `k.name` but the inline type annotation only declared `id`. A subtle mistake that would have been a silent runtime bug in JS — tsc caught it before the commit landed. This is the gate doing exactly what it's supposed to do.
+
+---
+
+### 3. Cross-project signals
+
+- **Verify reflection priorities against code before acting on them.** Stale priorities waste a triage cycle. A `grep` to confirm the feature is actually missing takes 10 seconds. Pattern: when a priority says "add X", grep for X first.
+
+- **The complete key lifecycle pattern is reusable.** After N-82 through N-86, the key management surface is: create (+ expiry), get-single, list, update (name/perms/expiry), disable/enable, rotate, lastUsedAt tracking, isExpired helper, hard-delete. This is a production-grade API key lifecycle. FamilyMind and dx3 both manage API tokens and could adopt this pattern directly.
+
+- **Nullable PATCH fields in Fastify need `type: ['string', 'null']`.** Any ASIF Fastify project with a nullable field in a PATCH body (e.g., clearing a webhook URL, resetting a config value) needs this. Standard `type: 'string'` rejects null. Document as a project-wide pattern.
+
+---
+
+### 4. What would we prioritize next?
+
+1. **CRUCIBLE Gate 6 — Stryker mutation testing.** All 4 oracle types complete. Stryker is the remaining quality gate. Still needs CoS approval on CI time budget.
+
+2. **`GET /keys/dormant`** — list keys with `lastUsedAt` older than N days (or `lastUsedAt` undefined after N days since `createdAt`). Now that `lastUsedAt` is tracked, dormant key detection is a one-route addition with real operational value.
+
+3. **Key expiry webhook notification.** When a key approaches expiry (7/1 day), fire a `subscription.changed` notification. The compliance calendar (N-56) already has the approaching-deadline pattern. This would give operators advance warning before keys auto-expire.
+
+4. **Stripe billing.** Still the revenue gate. `Org.plan` live, waiting on CoS approval/credentials.
+
+---
+
+### 5. Blockers and questions for the CoS?
+
+- **`NPM_TOKEN`**: Still blocked. 3,700 tests green. Package is publish-ready.
+- **Fly.io credentials**: Still blocked.
+- **CRUCIBLE Gate 6 (Stryker)**: Approve? ~30s CI overhead.
+- **`GET /keys/dormant`**: Approve adding dormant key detection? Purely in-memory, no external deps. One directive.
+- **Reflection priority hygiene**: Should a standing check (`grep -r X`) be added before acting on carried-forward priorities? Would prevent the rate-limit false alarm.
+
+---
 
 > **Reflection cycle**: 2026-03-21 — N-84 — 1 initiative SHIPPED, 10 net new tests, keys API complete + CHANGELOG backfill
 
