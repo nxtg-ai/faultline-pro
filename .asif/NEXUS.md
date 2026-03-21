@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-115 Per-webhook retry configuration. 4,135 tests. 115 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-116 resolveRequestTenantId() auth helper. 4,136 tests. 116 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -125,6 +125,7 @@
 | N-113 | Webhook per-minute rate limiting — `WebhookRateLimiter` (sliding 60 s window, per-webhookId counter); `FAULTLINE_WEBHOOK_RATE_LIMIT` env var; `check(id, nowMs?)` advances + validates; `count(id, nowMs?)` peek; `reset(id?)` clears; `getWebhookRateLimiter()` singleton; `dispatchWebhook()` bails early when rate-limited, logs delivery record with `error='rate limited'`, `delivered=false`, `statusCode=null`; 15 tests (WRL1–WRL15) | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
 | N-114 | Webhook circuit breaker — `WebhookCircuitBreaker` (consecutive-failure threshold + cooldown window); `FAULTLINE_WEBHOOK_CIRCUIT_THRESHOLD` + `FAULTLINE_WEBHOOK_CIRCUIT_COOLDOWN_MS` env vars; `isOpen(id, nowMs?)` (auto-recovers after cooldown); `recordFailure/recordSuccess/failureCount/reset`; circuit checked before rate limiter in `dispatchWebhook()`; success/failure outcome recorded after retry loop; `error='circuit open'` log records; 15 tests (CB1–CB15) | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
 | N-115 | Per-webhook retry configuration — `Webhook.maxAttempts` (1–5, default 3) and `Webhook.retryDelayMs` (0–30 000 ms, default 500); `WebhookStore.create()` accepts both with defaults; `dispatchWebhook()` loops `webhook.maxAttempts` times using flat `retryDelayMs` delay between retries (first attempt always immediate); `CREATE_BODY_SCHEMA` validates ranges; `POST /webhooks` passes through to store; existing RETRY_DELAYS constant superseded; R7 test updated for flat delay; 15 tests (RC1–RC15) | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
+| N-116 | `resolveRequestTenantId()` auth helper — single function in `auth.ts` guards `'admin'`/`undefined` keyIds and delegates to `getTenantStore().findByKeyId(keyId)?.id`; webhooks route and scan route both updated to use it (both `getTenantStore` imports removed from route files); `RETRY_DELAYS` dead constant removed from webhooks store; shared `makeWebhook()` test factory extracted to `tests/helpers/make-webhook.ts` (3 test files migrated); 15 tests (RT1–RT15): unit, route integration, consistency/idempotency | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
 
 ---
 
