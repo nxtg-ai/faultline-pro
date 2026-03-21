@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-147 route hardening — deep.ts 503/500 + queue.ts resolvePriority branches RH1–RH12; 3,424 tests; 147 initiatives SHIPPED. All Gate 6 above threshold. v0.4.0 awaiting CoS go-signal.)
+> **Last Updated**: 2026-03-21 (N-148 url-validator.ts + resolveTier() — UV1–UV13 + RT1–RT5; 3,442 tests; 148 initiatives SHIPPED. All Gate 6 above threshold. v0.4.0 awaiting CoS go-signal.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -132,6 +132,7 @@
 | N-120 | GDPR export endpoint — `GET /tenants/:id/export` (admin-gated); returns ZIP archive via `adm-zip` containing `manifest.json` (tenant metadata + counts), `scan-history.json` (all tenant scans via `getRecent(10_000).filter(tenantId)`), `audit-log.ndjson` (NDJSON one entry per line), `notifications.json`, `webhooks.json`, `usage.json` (keyed by keyId); `Content-Disposition: attachment; filename=faultline-gdpr-export-{tenantId}-{date}.zip`; 404 for unknown tenant; 403 without admin; 15 tests (GE1–GE15): 200/content-type/disposition/zip structure/manifest counts/scan isolation/tenant isolation/empty-tenant zero-counts | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
 | N-121 | GDPR erasure endpoint — `DELETE /tenants/:id/data` (admin-gated, Article 17 right-to-erasure); adds `deleteTenantEntries(tenantId)` to `ScanHistoryStore` + `AuditLogger`, `deleteTenantHistory(tenantId)` to `NotificationStore`, `deleteTenant(tenantId)` to `WebhookStore`, `deleteKey(keyId)` to `UsageMeter`; returns `{ tenantId, deleted: { scanEntries, auditEntries, notifications, webhooks, usageKeys } }`; tenant record itself preserved (data only); idempotent (second call returns all zeros); 15 tests (ER1–ER15): counts, actual store erasure, tenant-not-deleted, idempotency, isolation (tenant B untouched), export-after-erasure returns empty ZIP | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
 | N-127 | v0.4.0 publish prep — CHANGELOG `[v0.4.0]` block cut (N-119–N-127 initiatives); `@nxtg/faultline` + `@nxtg/faultline-api` bumped 0.2.0→0.4.0; README `[Capability table]` gains GDPR compliance + mutation-tested core rows; Enterprise API section updated with GDPR export/erasure endpoints; README badge 4,286→4,301; `release-prep.test.ts` RP10 updated (Unreleased → full changelog scope); 15 tests (RP16–RP30): badge≥4286, GDPR mentions, erasure, mutation, `[v0.4.0]` block, date, GDPR+mutation content, empty Unreleased, cli 0.4.0, api 0.4.0, N-119–N-127 all present, v0.3.0 preserved, /changelog 200 | DISTRIBUTION | SHIPPED | P1 | 2026-03-21 |
+| N-148 | `api/lib` + `api/plugins` hardening — `url-validator-ratelimit.test.ts` (new, 18 tests UV1–UV13+RT1–RT5); UV1–UV3: default `_fetcher` try/catch body (lines 20-30) via `vi.stubGlobal('fetch')` after `resetUrlFetcher()` — 200, 404, network-throw catch branch; UV4: `resetUrlFetcher()` internal body (lines 40-50) confirmed via custom→reset→stub sequence; UV5: 3xx redirect → `score += 30` branch (line 67), available=true, evidenceScore 30-49; UV6–UV8: `scoreSource()` title-keyword relevance, last-modified within 2 years (+20), last-modified >2 years (no bonus); UV9: status=0 unreachable; UV10–UV13: `buildEvidenceLinks()` no claims, no verification entry, empty sources, multiple claims; RT1–RT5: `resolveTier()` — env-admin shortcut, keystore-admin, keystore-pro, scan-only free default, unknown-keyId fallback; `url-validator.ts` 69%→~95% branch; `plugins/ratelimit.ts` 66%→100% branch; total tests 3,424→3,442 | FORENSIC | SHIPPED | P2 | 2026-03-21 |
 | N-147 | `api/routes` hardening — `route-hardening.test.ts` (new, 12 tests RH1–RH12); RH1–RH3: `deep.ts` all-providers circuit-broken → 503 "All providers are currently unavailable." (lines 56-58, `chain.length === 0` branch); RH4–RH5: `deep.ts` all `scan()` calls throw → 500 with lastError (lines 79-86 catch + final 500); RH6–RH8: `queue.ts` `resolvePriority()` — keystore keys (not env var) so keyId is UUID: admin-permission→priority 0 (line 28), pro-permission→priority 1 (line 29), scan-only→priority 2 (line 30); RH9: 202 response structure; RH10: `getScanQueue().enqueue` spy throws → 503 (line 57); RH11–RH12: post-reset smoke guards; `deep.ts` 50%→~75% branch, `queue.ts` 59%→~80% branch; total tests 3,412→3,424 | DEVELOPER-X | SHIPPED | P2 | 2026-03-21 |
 | N-146 | `api/store` hardening — `store-hardening.test.ts` (new, 15 tests SQ1–SQ5+BJ1–BJ5+RA1–RA5); SQ1–SQ5: `scan-queue.ts` — maxConcurrency reads `FAULTLINE_QUEUE_CONCURRENCY` env var (line 64), `tick()` success path via mocked `scan()` → status='completed' (lines 140-154 `processItem`), `tick()` fail path → status='failed'+error (catch branch), `start()`/`stop()` timer lifecycle, `start()` idempotency guard; BJ1–BJ5: `bulk-jobs.ts` — `fail()` sets status/completedAt/error (lines 127-134), `fail()` unknown-id guard (line 128), `worstOffenders` sort by RISK_SEVERITY_ORDER critical>high (lines 114-118), zero-totalFiles `\|\| 1` guard (line 100), riskDistribution accumulation; RA1–RA5: `rate-alerts.ts` — `shouldAlert()` limit≤0 guard, below-threshold guard, `fire()` console-only, `fire()` webhook success, `fire()` webhook fetch-throw → error note; `scan-queue.ts` 51%→72% branch; `bulk-jobs.ts` 50%→80% branch; `rate-alerts.ts` 0%→80% branch; total tests 3,397→3,412 | DEVELOPER-X | SHIPPED | P2 | 2026-03-21 |
 | N-145 | `cli/extract.ts` 0%→100% + `streamScan()` HTTP coverage — `extract.test.ts` (new, 16 tests EX1–EX16): `mimeFromExtension()` all 5 extensions + ?? fallback + empty string (EX1–EX7); `extractTextFromBuffer()` PDF text/empty/over-limit, image OCR text/empty, unsupported mime (EX8–EX13); `extractTextFromFile()` .pdf delegates correctly, unsupported extension throws before read (EX14–EX15); SUPPORTED_EXTENSIONS sanity (EX16); `extract.ts` 0%→100% branch/function; `stream-client.test.ts` +5 tests SC16–SC20: `streamScan()` fetch-throws, HTTP non-ok+no-JSON, HTTP non-ok+JSON-error, SSE errEvent, success path; `stream-client.ts` branch 57%→100%; **CRUCIBLE-G4**: worktree at `.claude/worktrees/agent-ac3398fb` (commit 7a9d726, 236 commits behind main) removed — was inflating test count by ~1,140 phantom tests; real count corrected from reported 4,516 to 3,397; real suite 163 files 3,397 tests | DEVELOPER-X | SHIPPED | P2 | 2026-03-21 |
@@ -895,6 +896,65 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-03-21 — CoS check-in — N-148 session close (url-validator.ts + resolveTier() UV1–UV13+RT1–RT5; 3,442 tests; 148 initiatives SHIPPED)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests | Total |
+|--------|-----------|-------------|--------|-------|
+| `6510fed` | N-147 route hardening | `route-hardening.test.ts` (12 tests RH1–RH12): `deep.ts` 503 circuit-broken + 500 all-fail; `queue.ts` resolvePriority() admin/pro/free branches via keystore keys; enqueue-throw 503; post-reset smoke | +12 | 3,424 |
+| `799ad57` | N-148 url-validator + ratelimit | `url-validator-ratelimit.test.ts` (18 tests UV1–UV13+RT1–RT5): default _fetcher 200/404/network-throw, resetUrlFetcher body, 3xx redirect scoreSource branch, title-keyword relevance, last-modified recency, buildEvidenceLinks edge cases, resolveTier() all 5 branches | +18 | 3,442 |
+
+**3,442 tests · 148 initiatives SHIPPED.** Two library modules lifted: `url-validator.ts` 69%→~95% branch, `plugins/ratelimit.ts` 66%→100% branch.
+
+---
+
+### 2. What surprised you?
+
+**The default `_fetcher` was a complete blind spot.** `url-validator.ts` ships with a real `fetch` call behind an injectable seam — the `setUrlFetcher()` / `resetUrlFetcher()` API exists precisely so tests can inject a stub. But no test had ever called `resetUrlFetcher()` to reinstate the default, so lines 20-30 and 40-50 (the actual `fetch`, `res.headers.forEach`, and `catch { return { status: 0 } }`) were uncovered. The fix was two steps: `resetUrlFetcher()` to reinstall the default fetcher, then `vi.stubGlobal('fetch', vi.fn())` to control what it calls. The pattern is reusable for any injectable-fetcher module.
+
+**`scoreSource()` has three distinct scoring axes that compound independently.** Availability (50), keyword relevance (0-30), recency (20). The 3xx redirect branch grants 30 not 50 — a redirect "implies existence" but isn't a confirmed source. This subtle business logic was untested. UV5 confirms a 301 response scores 30-49 (below the 50 threshold for "available" source); UV7 confirms `last-modified` within 2 years adds exactly 20. The compound nature means tests must control all three axes independently to isolate each branch.
+
+**`resolveTier()` was mirroring the same uncovered-branches problem as `resolvePriority()` from N-147.** Both functions gate on `keyId === 'admin'` first (env-var path, always hit by existing tests), then call `validateById()` for keystore keys (never hit). RT2-RT5 now cover the keystore lookup with specific permission combinations. The pattern is identical across both route and plugin layers.
+
+---
+
+### 3. Cross-project signals
+
+**Injectable seam + stub-global pattern is reusable for any HTTP-calling module.** The pattern: inject a custom fetcher via `setUrlFetcher()`, call `resetUrlFetcher()` to reinstate the default, then `vi.stubGlobal('fetch', vi.fn())` to intercept real calls. Any ASIF project with a similar "real HTTP behind a seam" pattern (Podcast-Pipeline's feed fetcher, Forge's webhook delivery) can use this to achieve 100% branch coverage without network calls.
+
+**Multi-axis scoring functions need axis-isolation tests.** When a scoring function has N independent bonuses (availability, relevance, recency), tests must vary each axis while holding others constant. A single "golden path" test (all bonuses hit) leaves every non-max branch uncovered. The pattern: write one test per bonus path, ensure claim text and title have no overlapping keywords when testing recency, and vice versa.
+
+---
+
+### 4. What would I prioritize next?
+
+**P1 — v0.4.0 git tag + npm publish.** Twenty-first cycle. 3,442 tests. 8/8 CRUCIBLE gates PASS. Zero technical blockers. Go/no-go?
+
+**P2 — `notifications.ts` branch gaps** (76%, lines 220-221, 252-253 in api package). Medium-complexity delivery-dispatch branches — likely notification-send error paths or webhook failure routes. ~10 targeted tests.
+
+**P3 — Fix `BulkJob.error` type cast tech debt.** Add `error?: string` to `BulkJob` interface. One-liner.
+
+**P4 — Add Vitest exclude for `.claude/worktrees/**`.** One-line vitest config change to prevent future phantom-count inflation.
+
+---
+
+### 5. Blockers and questions for the CoS
+
+1. **v0.4.0 publish**: Twenty-first cycle. 3,442 real tests. Go/no-go?
+
+2. **`BulkJob.error` type fix**: Approve as one-liner, or leave cast and accept the misleading type?
+
+3. **Vitest worktree exclude**: Add now or track as future config initiative?
+
+4. **Callback unification** (`onClaimVerified` + `onProgress` → `onEvent?`): Ninth consecutive cycle. Approve, close, or officially backlog?
+
+5. **VALID_PROVIDERS mutation resistance**: Sixth cycle open. Accept / integration test / extract validator?
+
+6. **Historical NEXUS counts**: N-141 through N-144 inflated counts. Correct or leave with N-145 note?
+
+---
 
 > **Reflection cycle**: 2026-03-21 — CoS check-in — N-146 session close (scan-queue/bulk-jobs/rate-alerts store hardening SQ1–SQ5+BJ1–BJ5+RA1–RA5; 3,412 tests; 146 initiatives SHIPPED)
 
