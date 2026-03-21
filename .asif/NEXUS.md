@@ -837,6 +837,54 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-21 — N-88 Key expiry notifications — 1 initiative SHIPPED, 15 net new tests
+
+### 1. What did we ship since last check-in?
+
+**N-88 — Key expiry notifications** (`key.expiring_soon`)
+
+| Commit | Deliverable | +Tests |
+|--------|-------------|--------|
+| `2351fba` `feat: N-88 Key expiry notifications` | `KeyExpiryNotifier` class: `check()` fires at 7-day and 1-day thresholds, per-key×threshold dedup via `Set<string>`. Wired into the existing 1-minute server tick. `key.expiring_soon` added to `NotificationEventType` union, `ALL_EVENT_TYPES`, and the `/notifications/events` catalogue (hardcoded route array). Fixed `notifications.test.ts` count 6→7 and catalogue route entry. 15 tests (KEN1–KEN15): 10 unit (via `vi.spyOn`) + 5 integration (via `setPrefs`). | +15 (3,715 → 3,730) |
+
+**Total this cycle**: 1 commit · 15 tests · 3,730 total.
+
+---
+
+### 2. What surprised you?
+
+**The `/notifications/events` route has a hardcoded array — not derived from `ALL_EVENT_TYPES`.** Adding a new event type to the `NotificationEventType` union and `ALL_EVENT_TYPES` is not enough. There is a second registration point: the `GET /notifications/events` route in `routes/notifications.ts` builds a hardcoded array of objects with `{ type, description, example }`. That array must be updated separately. The test (`lists all 7 event types`) caught this immediately, but it meant a two-file edit that is easy to miss. The right long-term fix is to make the route derive its list from `ALL_EVENT_TYPES` and a separate `EVENT_DESCRIPTIONS` map — so new types added to the union automatically appear in the catalogue. Not changed now (avoiding scope creep), but flagged.
+
+**`vi.spyOn` is the right tool when the observable output is a side-effecting call with no stored state.** The `dispatch()` method only records to history when the target key has notification prefs configured. Tests that checked `getHistory().toHaveLength(1)` were all returning 0 because no prefs were set up. Two approaches: (a) `vi.spyOn(getNotificationStore(), 'dispatch')` — observe the call directly without needing prefs; (b) `setPrefs(keyId, ['key.expiring_soon'], null, null)` — configure prefs so dispatch actually records. The final test file uses both: spying in the pure unit section (no server, no prefs needed), `setPrefs` in the integration section (verifying the full write-to-history path). This split is the right pattern for any feature that produces side effects via an injected collaborator.
+
+**Disabled keys should NOT get expiry notifications.** The notifier skips disabled keys. At first this felt inconsistent with the dormant-key endpoint (N-87), which *includes* disabled keys because the purpose there is cleanup visibility. But expiry notifications are operational — they exist to prompt action before a key goes dark. If a key is already disabled, the operator has already acted. Firing a notification on a disabled key would be noise. The distinction: dormant endpoint = audit/cleanup view (include everything); expiry notifier = operational alert (skip already-managed keys).
+
+---
+
+### 3. Cross-project signals
+
+**Hardcoded catalogue arrays are a two-registration-point anti-pattern.** Any project that has both a type union (or enum) AND a human-readable catalogue endpoint will have this problem: add a value to the enum, forget to update the catalogue, tests catch it (if they exist), but the fix requires two separate edits. The remedy is a single source of truth: derive the catalogue from the enum with a `descriptions` map. This pattern applies to: webhook event types (FaultlinePro), webhook event types (FamilyMind), notification event types (any project with configurable alerts). Worth codifying as a portfolio-level rule: never hardcode a catalogue array when you have an authoritative type union.
+
+**`vi.spyOn` + `mockResolvedValue(undefined)` for async void methods.** The pattern `vi.spyOn(store, 'dispatch').mockResolvedValue(undefined)` is clean and composable: it intercepts the async call, prevents network side effects, and lets you assert on call arguments. The `mockResolvedValue(undefined)` is required because Vitest complains if a mocked async function returns `void` implicitly. This is the right pattern for testing any class that calls a fire-and-forget async collaborator.
+
+---
+
+### 4. What would you prioritize next?
+
+1. **`POST /keys/bulk-delete`** — delete all dormant keys at once (or by `days` threshold). Closes the cleanup loop: N-87 surfaces dormant keys, N-88 alerts on expiring ones, bulk-delete lets operators act on both without N individual DELETE calls.
+2. **`GET /notifications/events` catalogue refactor** — derive from `ALL_EVENT_TYPES` + a descriptions map instead of a hardcoded array. One-time fix that prevents the two-registration-point bug from recurring.
+3. **CRUCIBLE Gate 6 (Stryker)** — still the top quality gap, still needs CoS approval.
+
+---
+
+### 5. Blockers / questions for CoS
+
+- **CRUCIBLE Gate 6 (Stryker)**: Approve? ~30s CI overhead.
+- **`/notifications/events` catalogue refactor**: Approve as a standalone directive? It is pure refactoring — no new behaviour, but prevents a recurring bug class.
+- **NPM_TOKEN / Fly.io**: Still needed for v0.3.0 publish and hosted deployment.
+
+---
+
 > **Reflection cycle**: 2026-03-21 — N-87 Dormant key detection — 1 initiative SHIPPED, 15 net new tests
 
 ### 1. What did we ship since last check-in?
