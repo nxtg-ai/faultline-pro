@@ -43,6 +43,17 @@ export const ALL_EVENT_TYPES: NotificationEventType[] = [
   'key.expiring_soon',
 ];
 
+/** Human-readable metadata for each event type. Authoritative single source of truth. */
+export const EVENT_CATALOGUE: Record<NotificationEventType, { description: string; example: Record<string, unknown> }> = {
+  'scan.failed':          { description: 'Fired when a scan request fails across all providers.',                                  example: { error: 'Rate limit exceeded', provider: 'gemini' } },
+  'weekly.summary':       { description: 'Sent every Sunday at 09:00 UTC with a usage digest.',                                    example: { scanCount: 42, errorCount: 1, topProvider: 'gemini' } },
+  'provider.available':   { description: 'Fired when a circuit-broken provider comes back online.',                                example: { provider: 'openai', available: true } },
+  'provider.unavailable': { description: 'Fired when a provider circuit-breaker opens.',                                           example: { provider: 'openai', available: false } },
+  'subscription.changed': { description: "Fired when an API key's tier or permissions are updated.",                               example: { change: 'tier_upgrade', oldTier: 'free', newTier: 'pro' } },
+  'rate_limit.warning':   { description: 'Fired when an API key reaches 80% of its per-minute rate limit.',                       example: { used: 8, limit: 10, pct: 80 } },
+  'key.expiring_soon':    { description: "Fired when a key's expiresAt is within 7 days (threshold=7d) or 1 day (threshold=1d).", example: { keyId: 'abc', keyName: 'My Key', hoursRemaining: 24, threshold: '1d' } },
+};
+
 export interface NotificationPrefs {
   keyId:       string;
   events:      NotificationEventType[];

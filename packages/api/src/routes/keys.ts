@@ -92,6 +92,51 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
+  // ── Bulk delete ────────────────────────────────────────────────────────────
+
+  const BULK_DELETE_BODY_SCHEMA = {
+    type: 'object',
+    properties: {
+      days: { type: 'integer', minimum: 1, maximum: 365 },
+      ids:  { type: 'array', items: { type: 'string' }, maxItems: 500 },
+    },
+    additionalProperties: false,
+  } as const;
+
+  interface BulkDeleteBody {
+    days?: number;
+    ids?:  string[];
+  }
+
+  fastify.post<{ Body: BulkDeleteBody }>(
+    '/keys/bulk-delete',
+    {
+      preHandler: requireAdmin,
+      schema: {
+        tags: ['Keys'],
+        summary: 'Bulk-delete keys. Provide ids[] to delete specific keys, or days to delete all dormant keys (unused for ≥N days). Both fields may be combined.',
+        body: BULK_DELETE_BODY_SCHEMA,
+      },
+    },
+    async (request, reply) => {
+      const store = getKeyStore();
+      const { days, ids = [] } = request.body;
+
+      // Collect IDs to delete: explicit list + dormant keys older than `days`
+      const targets = new Set<string>(ids);
+      if (days !== undefined) {
+        for (const k of store.getDormant(days)) targets.add(k.id);
+      }
+
+      if (targets.size === 0) {
+        return reply.status(200).send({ deleted: 0, ids: [] });
+      }
+
+      const deleted = store.bulkDelete(Array.from(targets));
+      return reply.status(200).send({ deleted: deleted.length, ids: deleted });
+    },
+  );
+
   // ── Partial update ─────────────────────────────────────────────────────────
 
   const PATCH_BODY_SCHEMA = {

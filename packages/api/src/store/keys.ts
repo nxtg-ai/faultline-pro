@@ -61,6 +61,18 @@ class KeyStore {
   }
 
   /**
+   * Delete multiple keys by ID in one operation.
+   * Returns the IDs that were actually deleted (skips unknown IDs).
+   */
+  bulkDelete(ids: string[]): string[] {
+    const deleted: string[] = [];
+    for (const id of ids) {
+      if (this.delete(id)) deleted.push(id);
+    }
+    return deleted;
+  }
+
+  /**
    * Validates a raw key string.
    * Accepts both the current key and the previous key within the 24-hour grace window.
    * Returns null if the key is unknown or the grace period has expired.

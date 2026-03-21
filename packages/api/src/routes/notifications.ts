@@ -3,6 +3,7 @@ import { requireApiKey } from '../plugins/auth.js';
 import {
   getNotificationStore,
   ALL_EVENT_TYPES,
+  EVENT_CATALOGUE,
 } from '../store/notifications.js';
 import type { NotificationEventType } from '../store/notifications.js';
 import { getAnalyticsStore } from '../store/analytics.js';
@@ -229,15 +230,7 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
     },
     async (_request, reply) => {
       return reply.send({
-        eventTypes: [
-          { type: 'scan.failed',           description: 'Fired when a scan request fails across all providers.',          example: { error: 'Rate limit exceeded', provider: 'gemini' } },
-          { type: 'weekly.summary',         description: 'Sent every Sunday at 09:00 UTC with a usage digest.',            example: { scanCount: 42, errorCount: 1, topProvider: 'gemini' } },
-          { type: 'provider.available',     description: 'Fired when a circuit-broken provider comes back online.',        example: { provider: 'openai', available: true } },
-          { type: 'provider.unavailable',   description: 'Fired when a provider circuit-breaker opens.',                   example: { provider: 'openai', available: false } },
-          { type: 'subscription.changed',   description: 'Fired when an API key\'s tier or permissions are updated.',      example: { change: 'tier_upgrade', oldTier: 'free', newTier: 'pro' } },
-          { type: 'rate_limit.warning',     description: 'Fired when an API key reaches 80% of its per-minute limit.',    example: { used: 8, limit: 10, pct: 80 } },
-          { type: 'key.expiring_soon',      description: 'Fired when a key expiresAt is within 7 days or 1 day.',           example: { keyId: 'abc', keyName: 'My Key', hoursRemaining: 24, threshold: '1d' } },
-        ],
+        eventTypes: ALL_EVENT_TYPES.map(type => ({ type, ...EVENT_CATALOGUE[type] })),
         deliveryModel: 'webhook',
         note: 'Set webhookUrl in your preferences, or configure FAULTLINE_NOTIFY_WEBHOOK globally. The webhook receives a JSON POST with { event, keyId, ...payload }.',
       });
