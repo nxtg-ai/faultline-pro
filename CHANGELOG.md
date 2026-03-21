@@ -3,16 +3,36 @@
 All notable changes to Faultline Pro are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased] — 2026-03-20
+## [Unreleased] — 2026-03-21
 
 ### Added
 
+- N-84 GET /keys/:id — single key lookup by ID (secret redacted, includes disabled state)
+- N-83 PATCH /keys/:id — update key name and/or permissions post-creation
+- N-82 ApiKey soft-disable — PATCH /keys/:id/disable + /enable; validateKey() rejects disabled keys; mission-control activeKeys count fixed
+- N-81 Real Integration Oracle — 12 E2E tests (no scan mock); full pipeline HTTP→scan()→mock provider; closes CRUCIBLE 4/4 oracle types
+- N-80 Coverage gate — vitest thresholds (stmts 80%, branch 70%, funcs 85%, lines 80%) enforced on push via .asif-ci
+- N-79 Claim filter threshold — filterClaimsForVerification importance >= 2 (was >= 3); exported for direct testing
+- N-78 Audit Log API — GET /audit/log (query+filter), GET /audit/log/stats, GET /audit/log/export (NDJSON)
+- N-77 Contract oracle (Zod) — 29 schema validation tests across all 6 core pipeline types
+- N-76 Property-based oracle (fast-check) — 19 properties across guaranteeClaimPerSentence, mapClaimToRiskCategory, generateComplianceReport
+- N-75 Interactive demo mode — faultline scan --demo; no API key required
 - D-148 status page — /status HTML + /status.json API
 - D-147 scan history export — faultline export + POST /export
 - D-146 benchmark suite — provider latency, cache, concurrent throughput
 - D-145 Docker image — multi-stage Dockerfile + docker-compose
 - D-144 CLI plugin system — custom rules + providers as npm packages
 - SG-01 OpenAPI decoration + SG-02 property-based tests + CRUCIBLE audit
+
+### Fixed
+
+- mission-control activeKeys was always 0 (ApiKey has no .active field); now correctly counts !disabled keys
+- tsc: 15 pre-existing type errors across 9 files resolved (avgLatency→avgLatencyMs, response.json() as any, double-cast ScanResult, fontSize in TextOptions)
+
+### Changed
+
+- ci.yml: cancel-in-progress: true — cancels superseded CI runs on rapid pushes (prevents stale-run false alarms)
+- .asif-ci: added --coverage flag to enforce coverage thresholds on every push
 
 ### Fixed
 

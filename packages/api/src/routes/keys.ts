@@ -42,6 +42,18 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
     return reply.status(200).send(keys);
   });
 
+  fastify.get<{ Params: { id: string } }>(
+    '/keys/:id',
+    { preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Get a single API key by ID (secret redacted)' } },
+    async (request, reply) => {
+      const store = getKeyStore();
+      const entry = store.validateById(request.params.id);
+      if (!entry) return reply.status(404).send({ error: 'Key not found.' });
+      const { key: _key, previousKey: _prev, ...rest } = entry;
+      return reply.status(200).send(rest);
+    },
+  );
+
   fastify.delete<{ Params: { id: string } }>(
     '/keys/:id',
     { preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Delete an API key by ID' } },
