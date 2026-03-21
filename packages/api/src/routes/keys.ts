@@ -55,6 +55,37 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
+  // ── Partial update ─────────────────────────────────────────────────────────
+
+  const PATCH_BODY_SCHEMA = {
+    type: 'object',
+    properties: {
+      name: { type: 'string', minLength: 1, maxLength: 100 },
+      permissions: {
+        type: 'array',
+        items: { type: 'string', enum: VALID_PERMISSIONS },
+      },
+    },
+    additionalProperties: false,
+  } as const;
+
+  interface PatchKeyBody {
+    name?: string;
+    permissions?: Permission[];
+  }
+
+  fastify.patch<{ Params: { id: string }; Body: PatchKeyBody }>(
+    '/keys/:id',
+    { preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Update key name and/or permissions', body: PATCH_BODY_SCHEMA } },
+    async (request, reply) => {
+      const store = getKeyStore();
+      const updated = store.update(request.params.id, request.body);
+      if (!updated) return reply.status(404).send({ error: 'Key not found.' });
+      const { key: _key, previousKey: _prev, ...rest } = updated;
+      return reply.status(200).send(rest);
+    },
+  );
+
   // ── Rotation ───────────────────────────────────────────────────────────────
 
   fastify.post<{ Params: { id: string } }>(

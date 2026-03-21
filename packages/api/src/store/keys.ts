@@ -76,6 +76,14 @@ class KeyStore {
     return null;
   }
 
+  update(id: string, patch: { name?: string; permissions?: Permission[] }): ApiKey | null {
+    const entry = this.keys.find((k) => k.id === id);
+    if (!entry) return null;
+    if (patch.name !== undefined) entry.name = patch.name;
+    if (patch.permissions !== undefined) entry.permissions = patch.permissions;
+    return entry;
+  }
+
   disable(id: string): boolean {
     const entry = this.keys.find((k) => k.id === id);
     if (!entry) return false;
