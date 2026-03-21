@@ -169,6 +169,24 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
+  // GET /webhooks/deliveries/view — HTML delivery log dashboard
+  fastify.get<{ Querystring: { limit?: string } }>(
+    '/webhooks/deliveries/view',
+    {
+      preHandler: requireAdmin,
+      schema: { tags: ['Webhooks'], summary: 'Webhook delivery log dashboard (HTML)' },
+    },
+    async (request, reply) => {
+      const limit   = Math.min(500, Math.max(1, parseInt(request.query.limit ?? '100', 10)));
+      const records = getWebhookDeliveryLog().list(undefined, limit);
+      const total       = records.length;
+      const delivered   = records.filter((r) => r.delivered).length;
+      const failed      = total - delivered;
+      reply.header('Content-Type', 'text/html; charset=utf-8');
+      return reply.send(buildDeliveryDashboardHtml(records, total, delivered, failed));
+    },
+  );
+
   // GET /webhooks/:id/deliveries — delivery history for a specific webhook
   fastify.get<{ Params: { id: string }; Querystring: { limit?: string } }>(
     '/webhooks/:id/deliveries',
@@ -198,6 +216,107 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       return reply.send({ webhookId: id, total: records.length, failedCount, records });
     },
   );
+}
+
+// ── HTML delivery dashboard ───────────────────────────────────────────────────
+
+import type { WebhookDeliveryRecord } from '../store/webhooks.js';
+
+function buildDeliveryDashboardHtml(
+  records: WebhookDeliveryRecord[],
+  total: number,
+  delivered: number,
+  failed: number,
+): string {
+  const successRate = total > 0 ? Math.round((delivered / total) * 100) : 100;
+
+  const rows = records.length === 0
+    ? `<tr><td colspan="7" style="text-align:center;padding:24px;color:#7d8590">No delivery records yet — records appear after webhooks fire.</td></tr>`
+    : records.map((r) => {
+        const chip = r.delivered
+          ? `<span class="chip delivered">DELIVERED</span>`
+          : `<span class="chip failed">FAILED</span>`;
+        const attempt = `<span class="attempt">#${r.attempt}</span>`;
+        const latency = `${r.latencyMs}ms`;
+        const errCell = r.error ? `<span class="err-msg">${esc(r.error)}</span>` : `<span style="color:#3fb950">—</span>`;
+        const status  = r.statusCode != null ? String(r.statusCode) : '—';
+        const ts      = new Date(r.timestamp).toISOString().replace('T', ' ').slice(0, 19);
+        return `<tr>
+          <td class="mono">${esc(r.webhookId.slice(0, 8))}</td>
+          <td class="mono">${esc(r.event)}</td>
+          <td>${attempt}</td>
+          <td>${chip}</td>
+          <td>${status}</td>
+          <td>${latency}</td>
+          <td>${errCell}</td>
+          <td style="color:#7d8590;font-size:.75rem">${ts}</td>
+        </tr>`;
+      }).join('');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Webhook Delivery Log — Faultline Pro</title>
+<meta http-equiv="refresh" content="30">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,-apple-system,sans-serif;background:#0d1117;color:#e6edf3;min-height:100vh}
+  header{background:#161b22;border-bottom:1px solid #30363d;padding:16px 24px;display:flex;align-items:center;gap:12px}
+  header h1{font-size:1.1rem;font-weight:600;color:#58a6ff}
+  .container{max-width:1200px;margin:0 auto;padding:24px}
+  .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
+  .stat-card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px}
+  .stat-card .label{font-size:.75rem;color:#7d8590;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
+  .stat-card .value{font-size:1.8rem;font-weight:700;color:#58a6ff}
+  .stat-card .value.ok{color:#3fb950}
+  .stat-card .value.bad{color:#f85149}
+  h2{font-size:.9rem;font-weight:600;color:#8b949e;text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px}
+  table{width:100%;border-collapse:collapse;font-size:.83rem}
+  th{text-align:left;padding:8px 12px;background:#161b22;color:#7d8590;border-bottom:1px solid #30363d;font-weight:500;font-size:.75rem;text-transform:uppercase}
+  td{padding:8px 12px;border-bottom:1px solid #21262d;vertical-align:middle}
+  .mono{font-family:'Fira Code','Courier New',monospace;font-size:.78rem;color:#79c0ff}
+  .chip{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.72rem;font-weight:700}
+  .chip.delivered{background:#122023;color:#3fb950;border:1px solid #3fb950}
+  .chip.failed{background:#3d1a1a;color:#f85149;border:1px solid #f85149}
+  .attempt{display:inline-block;padding:1px 6px;border-radius:3px;background:#21262d;color:#8b949e;font-size:.75rem;font-family:'Fira Code','Courier New',monospace}
+  .err-msg{color:#f85149;font-size:.78rem;font-family:'Fira Code','Courier New',monospace;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block}
+  .refresh-note{font-size:.75rem;color:#7d8590;text-align:right;margin-bottom:8px}
+</style>
+</head>
+<body>
+<header>
+  <div style="font-size:1.2rem;font-weight:700;letter-spacing:-.02em"><span style="color:#f85149">fault</span>line pro</div>
+  <h1>Webhook Delivery Log</h1>
+</header>
+<div class="container">
+
+  <div class="stat-row">
+    <div class="stat-card"><div class="label">Total Attempts</div><div class="value">${total}</div></div>
+    <div class="stat-card"><div class="label">Delivered</div><div class="value ok">${delivered}</div></div>
+    <div class="stat-card"><div class="label">Failed</div><div class="value ${failed > 0 ? 'bad' : 'ok'}">${failed}</div></div>
+    <div class="stat-card"><div class="label">Success Rate</div><div class="value ${successRate < 80 ? 'bad' : 'ok'}">${successRate}%</div></div>
+  </div>
+
+  <div class="refresh-note">Auto-refreshes every 30s</div>
+  <h2>Recent Delivery Attempts (last ${total})</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Webhook</th><th>Event</th><th>Attempt</th><th>Status</th><th>HTTP</th><th>Latency</th><th>Error</th><th>Time</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+
+</div>
+</body>
+</html>`;
+}
+
+function esc(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // ── HTML tester page ──────────────────────────────────────────────────────────
