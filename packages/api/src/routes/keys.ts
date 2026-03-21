@@ -78,6 +78,96 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
+  fastify.get<{ Querystring: { dormantDays?: string; expiringSoonDays?: string } }>(
+    '/keys/usage/view',
+    {
+      preHandler: requireAdmin,
+      schema: { tags: ['Keys'], summary: 'Key hygiene dashboard (HTML)' },
+    },
+    async (request, reply) => {
+      const dormantDays      = Math.min(365, Math.max(1, parseInt(request.query.dormantDays      ?? '30', 10)));
+      const expiringSoonDays = Math.min(365, Math.max(1, parseInt(request.query.expiringSoonDays ?? '7',  10)));
+      const store = getKeyStore();
+      const keys  = store.getUsageStats(dormantDays, expiringSoonDays);
+
+      const total            = keys.length;
+      const dormantCount     = keys.filter((k) => k.isDormant).length;
+      const expiringSoonCount = keys.filter((k) => k.isExpiringSoon).length;
+      const expiredCount     = keys.filter((k) => k.isExpired).length;
+      const disabledCount    = keys.filter((k) => k.disabled).length;
+
+      const badge = (label: string, count: number, colour: string) =>
+        `<div style="background:${colour};border-radius:8px;padding:16px 24px;min-width:100px;text-align:center;">
+          <div style="font-size:2em;font-weight:700;">${count}</div>
+          <div style="font-size:.85em;opacity:.85;">${label}</div>
+        </div>`;
+
+      const statusChip = (k: (typeof keys)[0]) => {
+        if (k.isExpired)     return '<span style="background:#dc2626;color:#fff;border-radius:4px;padding:2px 6px;font-size:.75em;">EXPIRED</span>';
+        if (k.disabled)      return '<span style="background:#6b7280;color:#fff;border-radius:4px;padding:2px 6px;font-size:.75em;">DISABLED</span>';
+        if (k.isExpiringSoon) return '<span style="background:#d97706;color:#fff;border-radius:4px;padding:2px 6px;font-size:.75em;">EXPIRING SOON</span>';
+        if (k.isDormant)     return '<span style="background:#ca8a04;color:#fff;border-radius:4px;padding:2px 6px;font-size:.75em;">DORMANT</span>';
+        return '<span style="background:#16a34a;color:#fff;border-radius:4px;padding:2px 6px;font-size:.75em;">HEALTHY</span>';
+      };
+
+      const rows = keys.length === 0
+        ? '<tr><td colspan="7" style="text-align:center;padding:32px;color:#9ca3af;">No API keys found.</td></tr>'
+        : keys.map((k) => `
+          <tr style="border-bottom:1px solid #1f2937;">
+            <td style="padding:10px 12px;font-family:monospace;font-size:.85em;">${k.id.slice(0, 8)}</td>
+            <td style="padding:10px 12px;">${k.name}</td>
+            <td style="padding:10px 12px;">${statusChip(k)}</td>
+            <td style="padding:10px 12px;color:#9ca3af;font-size:.85em;">${k.daysSinceLastUse !== null ? `${k.daysSinceLastUse}d ago` : '—'}</td>
+            <td style="padding:10px 12px;color:#9ca3af;font-size:.85em;">${k.daysSinceLastRotation !== null ? `${k.daysSinceLastRotation}d ago` : '—'}</td>
+            <td style="padding:10px 12px;color:#9ca3af;font-size:.85em;">${k.expiresAt ? k.expiresAt.slice(0, 10) : '—'}</td>
+            <td style="padding:10px 12px;color:#9ca3af;font-size:.85em;">${k.permissions.join(', ')}</td>
+          </tr>`).join('');
+
+      const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="refresh" content="60">
+  <title>Key Hygiene — Faultline</title>
+  <style>
+    body{margin:0;background:#0f172a;color:#f1f5f9;font-family:system-ui,sans-serif;}
+    h1{margin:0;font-size:1.4em;font-weight:700;}
+    table{width:100%;border-collapse:collapse;}
+    th{text-align:left;padding:8px 12px;font-size:.75em;text-transform:uppercase;color:#64748b;border-bottom:1px solid #1f2937;}
+    tr:hover td{background:#1e293b;}
+  </style>
+</head>
+<body>
+  <div style="padding:24px 32px;border-bottom:1px solid #1f2937;display:flex;align-items:center;justify-content:space-between;">
+    <h1>🔑 Key Hygiene Dashboard</h1>
+    <span style="color:#64748b;font-size:.85em;">dormant≥${dormantDays}d · expiring≤${expiringSoonDays}d · auto-refresh 60s</span>
+  </div>
+  <div style="padding:24px 32px;">
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:32px;">
+      ${badge('Total', total, '#1e293b')}
+      ${badge('Dormant', dormantCount, '#78350f')}
+      ${badge('Expiring Soon', expiringSoonCount, '#7c2d12')}
+      ${badge('Expired', expiredCount, '#7f1d1d')}
+      ${badge('Disabled', disabledCount, '#374151')}
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th><th>Name</th><th>Status</th>
+          <th>Last Used</th><th>Last Rotated</th><th>Expires</th><th>Permissions</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>
+</body>
+</html>`;
+
+      return reply.status(200).header('content-type', 'text/html; charset=utf-8').send(html);
+    },
+  );
+
   fastify.get<{ Querystring: { days?: string } }>(
     '/keys/dormant',
     {

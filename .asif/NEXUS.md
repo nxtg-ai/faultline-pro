@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-94 Key usage analytics. 3,805 tests. 94 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-95 Key hygiene HTML dashboard. 3,820 tests. 95 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -104,6 +104,7 @@
 | N-92 | `faultline keys` CLI commands — `keys-client.ts` HTTP wrappers (list/dormant/expiring/rotate) + formatters; `keys list`, `keys dormant --days N`, `keys expiring --days N`, `keys rotate <id>` subcommands; FAULTLINE_API_KEY/URL env var fallback; 15 tests (KC1–KC15) | DEVELOPER-X | SHIPPED | P1 | 2026-03-21 |
 | N-93 | Bulk disable/enable — `KeyStore.bulkDisable(ids[])` + `bulkEnable(ids[])` (skip unknowns, skip no-ops, return changed IDs only); `POST /keys/bulk-disable` body `{ ids?, days? }` union-deduped via Set; `POST /keys/bulk-enable` body `{ ids }`; auth enforced end-to-end (KBS14/15); 15 tests (KBS1–KBS15) | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
 | N-94 | Key usage analytics — `KeyUsageStat` interface; `KeyStore.getUsageStats(dormantDays, expiringSoonDays)` computes daysSinceCreation/LastUse/LastRotation + isDormant/isExpiringSoon/isExpired per key; `GET /keys/usage?dormantDays=30&expiringSoonDays=7` returns summary counts + per-key hygiene array; secrets redacted; 15 tests (KUA1–KUA15) | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
+| N-95 | Key hygiene HTML dashboard — `GET /keys/usage/view?dormantDays=N&expiringSoonDays=N`; summary badges (Total/Dormant/Expiring/Expired/Disabled); per-key table with HEALTHY/DORMANT/EXPIRING SOON/EXPIRED/DISABLED status chips; empty state; auto-refresh 60s; 403 guard; 15 tests (KHD1–KHD15) | DEVELOPER-X | SHIPPED | P2 | 2026-03-21 |
 
 ---
 
