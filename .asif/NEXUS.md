@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-83 key partial update + CI cancel-in-progress. 3,663 tests. 83 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-83 + reflection. 3,663 tests. 83 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -831,6 +831,60 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-03-21 — N-83 — 1 initiative SHIPPED, 14 net new tests, CI stale-run fix bundled
+
+### 1. What did we ship since last check-in?
+
+| Commit | Deliverable | Tests |
+|--------|-------------|-------|
+| N-83 `feat: PATCH /keys/:id partial update` | `KeyStore.update(id, { name?, permissions? })` — in-place mutation, null on unknown id. `PATCH /keys/:id` (admin-gated): validates permission enum (400), 404 on unknown id, strips `key`/`previousKey` from response. Fastify AJV strips unknown fields rather than rejecting — KU12 revised to assert 200 + field stripped. 14 tests (KU1–KU14). | +14 (3,649 → 3,663) |
+| `ci: cancel-in-progress` (bundled) | Added `concurrency.cancel-in-progress: true` to `.github/workflows/ci.yml`. Cancels queued runs when a newer commit lands. Directly addresses the stale-run false alarm from the previous triage cycle. | 0 |
+
+**Running total**: 3,663 tests · 143 files · 83 initiatives SHIPPED.
+
+---
+
+### 2. What surprised us?
+
+- **Fastify AJV strips additional properties instead of rejecting them.** `additionalProperties: false` in a Fastify body schema does not produce a 400 — it silently removes the unknown fields before the handler runs. This is AJV's `removeAdditional: true` default, which Fastify inherits. The test KU12 initially asserted 400, failed, and had to be corrected to assert 200 + field absent from body. This is the correct behavior (client sends extra fields → server ignores them gracefully), but it's counterintuitive for developers who expect `additionalProperties: false` to be a strict rejection. **Impact**: any test in this project that asserts 400 for extra-field requests is wrong — those requests will silently succeed. Worth auditing other tests for this assumption.
+
+- **The key management API is now a complete CRUD surface.** After N-82 (disable/enable) and N-83 (name/permissions update), the full lifecycle is: `POST /keys` (create) → `GET /keys` (list) → `PATCH /keys/:id` (update name/perms) → `PATCH /keys/:id/disable` / `enable` (soft lifecycle) → `POST /keys/:id/rotate` (secret rotation) → `DELETE /keys/:id` (hard delete). This wasn't planned as a series — it emerged from fixing the `activeKeys` production bug (N-82) and then noticing the immutability gap (N-83). The API surface is now enterprise-complete for key lifecycle management.
+
+- **Bundling the CI fix into N-83 was the right call.** The `cancel-in-progress` change is a one-line workflow edit with no tests — too small to be its own commit but directly related to the triage from the previous session. Bundling it into a feature commit with a clear description keeps git history clean without losing traceability.
+
+---
+
+### 3. Cross-project signals
+
+- **Fastify AJV `removeAdditional` behavior should be in every ASIF Fastify project's test conventions doc.** The rule: do not test for 400 on unknown request fields — Fastify will strip them. If strict rejection is needed, configure AJV with `removeAdditional: false, allErrors: true` in the Fastify constructor options. Currently not configured in this project — implicit `removeAdditional: true` is the behavior everywhere.
+
+- **Key lifecycle completeness as a checklist.** Any ASIF project with API key management should verify it has all six operations: create, list, update (name/perms), soft-disable/enable, rotate (secret), hard-delete. Missing any one creates operational gaps — this project had the update gap for the entire key management lifetime until N-83.
+
+- **`cancel-in-progress: true` should be in every ASIF GitHub Actions workflow.** One line, prevents stale-run noise, costs nothing. FamilyMind, dx3, Polymath — all candidates.
+
+---
+
+### 4. What would we prioritize next?
+
+1. **CRUCIBLE Gate 6 — Stryker mutation testing.** Still pending CoS approval. 4/4 oracle types complete; mutation testing is the remaining quality layer. `@stryker-mutator/core` + `@stryker-mutator/vitest-runner` on `cli/scan.ts` + `cli/analysis/compliance.ts` + `cli/analysis/rules.ts`. 60% threshold.
+
+2. **Stripe billing on org model.** `Org.plan` live. Revenue gate: `POST /orgs/:id/billing/checkout` → Stripe Checkout → `customer.subscription.updated` webhook → plan update. One directive.
+
+3. **AJV `removeAdditional` audit.** Check all existing tests that assert 400 for extra-field payloads — any that rely on AJV rejection are wrong and are testing false behavior. Low risk (tests pass, code works), but false-green tests are CRUCIBLE Gate 2 violations.
+
+4. **npm publish unblock.** v0.3.0 tagged, 3,663 tests green. Waiting only on `NPM_TOKEN`.
+
+---
+
+### 5. Blockers and questions for the CoS?
+
+- **`NPM_TOKEN`**: Still blocked. v0.3.0 tagged, 3,663 tests green.
+- **Fly.io credentials**: Still blocked.
+- **CRUCIBLE Gate 6 (Stryker)**: Approve? ~30s CI overhead.
+- **AJV strict mode**: Should `removeAdditional` be set to `false` (strict rejection) project-wide? Tradeoff: stricter API contracts vs breaking changes for existing clients that send extra fields. Recommend leaving as-is but documenting the behavior.
+
+---
 
 > **Reflection cycle**: 2026-03-21 — CI false alarm investigation — 0 initiatives, 0 tests, stale CI run confirmed
 
