@@ -21,6 +21,7 @@ export default {
     'packages/cli/tests/integration.test.ts',
     'packages/cli/tests/scan-mutation-hardening.test.ts',
     'packages/cli/tests/scan-mutation-hardening-2.test.ts',
+    'packages/cli/tests/scan-mutation-hardening-3.test.ts',
   ],
   vitest: {
     dir: 'packages/cli',
