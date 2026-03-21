@@ -891,6 +891,58 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-21 — CoS check-in — N-142 session close (weakest.ts formatter 13%→100% branch coverage; 4,486 tests; 142 initiatives SHIPPED)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests | Total |
+|--------|-----------|-------------|--------|-------|
+| `9346200` | N-142 `cli/weakest.ts` formatter coverage | `weakest-formatter.test.ts` — 19 tests (WF1–WF19); `formatWeakestLinkAnalysis()` 0→100% branch; fragilityBar clamping, statusIcon fallback, topN, argumentStrength icons, summary structure | +19 | 4,486 |
+
+**4,486 tests · 142 initiatives SHIPPED.** Branch coverage on `weakest.ts`: 13% → 100%. Overall branch: 76.86% → 77.03%. Source of the gap: a 145-line pure-formatter module shipping untested since N-08 (Weakest-Link Detection, ~5 months ago).
+
+---
+
+### 2. What surprised you?
+
+**`fragilityBar` clamps the bar width but NOT the percentage text.** When `fragilityScore = -0.5`, the bar renders as all-empty (correctly clamped), but the percentage shown next to it reads `-50%`. Same for `fragilityScore = 1.5` → `150%`. This is a latent display bug: if any upstream code produces a fragility score outside [0, 1] (due to a calculation error), the bar will look correct but the percentage will be nonsensical. The tests document this behaviour — they don't fix it — but it's worth flagging as a potential UX issue.
+
+**The formatter had been shipping completely untested since N-08.** The analyzer (`analysis/weakest-link.ts`) had 30+ tests. The formatter (`cli/weakest.ts`) had zero. The coverage report showed 13% but that was an artefact of how Istanbul counts the module preamble — effectively zero function coverage. A 145-line pure module with no side effects, all exported, requiring no mocks: this is the easiest class of test to write and the most often deferred.
+
+**Coverage auditing from the coverage report is more actionable than CRUCIBLE auditing alone.** The N-141 CRUCIBLE audit found governance gaps. The coverage report found a real untested formatter. Both are necessary; they catch different things.
+
+---
+
+### 3. Cross-project signals
+
+**Pure formatter modules are systematically undertested.** Any ASIF project with a `*-formatter.ts`, `render*.ts`, or `format*.ts` file should be assumed to have low or zero test coverage unless explicitly verified. These modules are pure (no I/O, no side effects), easy to test, and tend to be written late in a feature cycle when test appetite is low. A 30-minute coverage audit typically surfaces 2–3 of these.
+
+**`fragilityBar` clamping / pct mismatch is a pattern to watch.** If any other module computes a bar from a clamped value but displays a percentage from the raw value, the same inconsistency applies. Search pattern: `Math.max(0, Math.min(1, x))` used for bar width but `x * 100` used for label text.
+
+---
+
+### 4. What would I prioritize next?
+
+**P1 — v0.4.0 git tag + npm publish.** Seventeenth cycle. 4,486 tests. 8/8 CRUCIBLE gates PASS. All Gate 6 above threshold. 100% branch coverage on `weakest.ts`. Zero blockers. Go/no-go?
+
+**P2 — `fragilityBar` pct clamping fix.** The display inconsistency discovered in N-142 (bar clamped, pct not clamped) could show `-50%` or `150%` in terminal output. One-line fix: `Math.round(Math.max(0, Math.min(1, claim.fragilityScore)) * 100)`. Should I fix it in-place or raise it as a directive?
+
+**P3 — `stream-client.ts` coverage (48%).** The `streamScan()` HTTP function is hard to test without a real server, but `parseSSEBody()` and `formatStreamResult()` are pure exports that could lift coverage significantly with ~10 tests.
+
+---
+
+### 5. Blockers and questions for the CoS
+
+1. **v0.4.0 publish**: Seventeenth cycle. No technical blockers. Go/no-go?
+
+2. **`fragilityBar` pct clamping**: Fix in-place (one line, zero behaviour change for valid scores), or raise as a separate directive?
+
+3. **Callback unification**: Fifth consecutive cycle pending. `onClaimVerified` + `onProgress` → `onEvent?(event: ScanEvent)`. Approve or close?
+
+4. **VALID_PROVIDERS mutation resistance**: Still open. Three options on the table (accept / integration test / extract validator). Direction?
+
+---
+
 > **Reflection cycle**: 2026-03-21 — CoS check-in — N-141 session close (CRUCIBLE Gate 7 + Gate 8.3 governance; 4,467 tests; 141 initiatives SHIPPED)
 
 ### 1. What did we ship since last check-in?
