@@ -876,7 +876,61 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
-> **Reflection cycle**: 2026-03-21 — CoS check-in — N-126 (Stryker GDPR stores, overall 60.07%→69.07%)
+> **Reflection cycle**: 2026-03-21 — CoS check-in — N-127 (v0.4.0 publish prep — CHANGELOG cut, packages 0.2.0→0.4.0)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests | Total |
+|--------|-----------|-------------|--------|-------|
+| `46a9c1d` | N-127 v0.4.0 publish prep | CHANGELOG `[v0.4.0]` block cut (N-119–N-127); `@nxtg/faultline` + `@nxtg/faultline-api` 0.2.0→0.4.0; README GDPR + mutation rows; RP10 fix; 15 tests (RP16–RP30); badge 4,286→4,301 | +15 | 4,301 |
+
+**4,301 tests · 127 initiatives SHIPPED.** v0.4.0 is cut: 9 initiatives (N-119–N-127) in the release block — the complete GDPR compliance cluster plus dual Stryker hardening passes plus this publish prep.
+
+---
+
+### 2. What surprised you?
+
+**RP10 was a silent casualty of the v0.4.0 cut.** The N-119 test asserted that the `[Unreleased]` section mentions circuit breaker or rate limiting. That was correct when written — everything was in Unreleased at the time. But after moving all those initiatives to `[v0.4.0]`, the Unreleased section became empty and RP10 failed. This is a category of pre-push hook failure that's easy to miss: a test that was valid when written becomes stale due to *unrelated structural changes*. The fix was trivial (check the full CHANGELOG instead of just Unreleased), but it shows that section-scoped CHANGELOG assertions have a shelf life.
+
+**The changelog API builds from git tags, not from CHANGELOG.md.** RP28–RP30 initially tested the `/changelog.json` API endpoint for a v0.4.0 block. They failed immediately because no `v0.4.0` git tag exists yet — and won't until the actual npm publish. This is a legitimate ordering constraint: release tests can't pass until the tag is created, but the tag can't be created until the commit is pushed. The resolution was to test the CHANGELOG.md file directly for structural assertions (all N-NNN entries present, v0.3.0 preserved) and test the API endpoint only for the non-version-specific invariant (returns 200, non-empty body). The tag-creation step is a separate action that follows the publish.
+
+**CHANGELOG bloat from accumulated `[Unreleased]` entries.** The `[Unreleased]` section had grown to include N-82–N-126 (45 initiatives, most of which were already in `[v0.3.0]`). The N-119 cleanup had correctly populated `[v0.3.0]` but left all those entries duplicated in `[Unreleased]`. The v0.4.0 cut cleaned this up: only N-119–N-127 (the genuinely post-v0.3.0 work) went into `[v0.4.0]`, and the rest were dropped from `[Unreleased]`. The file shrank by 53 lines.
+
+---
+
+### 3. Cross-project signals
+
+**Version bump discipline: don't skip minor versions.** `@nxtg/faultline` jumped from 0.2.0 → 0.4.0 (skipping 0.3.0). This happened because the v0.3.0 publish prep (N-119) wrote the CHANGELOG section but never bumped `package.json`. For FamilyMind and other ASIF projects, the lesson is: the version bump in `package.json` should be the first commit in the publish-prep initiative, not the last — so it's impossible to forget. Consider making the version-bump test (like RP26/RP27) a blocking pre-push check in a future governance update.
+
+**Release-prep tests are a forcing function for artefact hygiene.** RP16–RP30 caught: (1) the stale badge from a prior session, (2) the missing GDPR entry in the capability table, (3) the RP10 Unreleased scope issue. Without explicit tests for the release artefacts, all three would have shipped silently. This pattern — writing tests that validate documentation state, not just code behaviour — is worth encoding in every project's publish-prep directive template.
+
+**The "test the file, not the API" pattern for git-tag-dependent endpoints.** Any endpoint that sources data from git tags (changelog, version info, release notes) will fail in pre-push tests because the tag doesn't exist yet. The canonical pattern: test the source file directly for content assertions; test the endpoint only for format and availability invariants. This applies to any project with a `/changelog`, `/version`, or `/release-notes` endpoint.
+
+---
+
+### 4. What would I prioritize next?
+
+**P1 — Create the v0.4.0 git tag and run `npm publish --dry-run`.** The CHANGELOG is cut, packages are bumped, README is updated. The only remaining step to make v0.4.0 "real" is: `git tag v0.4.0 && git push --tags`, then `cd packages/cli && npm publish --dry-run`. This is a 2-command action that converts the publish prep into an actual release. Awaiting CoS signal.
+
+**P2 — `ScheduleRunner` integration tests (N-128).** schedules.ts is at 57.82% mutation score — the remaining surviving mutants are in `ScheduleRunner.tick()` and `runSchedule()`. These require `vi.useFakeTimers()` + `vi.stubGlobal('fetch')` integration tests. Targeted 30 minutes of work to push schedules.ts past 70%.
+
+**P3 — Cross-project GDPR reuse audit.** The GDPR cluster (N-120–N-124) implemented a clean 3-endpoint pattern: export ZIP → erasure → re-export yields empty manifest. FamilyMind stores user data (subscriptions, usage, Stripe customer IDs). If FamilyMind is ever subject to GDPR compliance review, this same pattern would apply. Worth adding a GDPR gap item to FamilyMind's NEXUS before the pattern drifts from memory.
+
+---
+
+### 5. Blockers and questions for the CoS
+
+1. **v0.4.0 tag + npm publish signal**: Everything is ready. `git tag v0.4.0 && git push --tags` + `npm publish` on `@nxtg/faultline`. Should I execute this now, or is there a publish gate (security scan, npm 2FA, changelog review) I should wait for?
+
+2. **`@nxtg/faultline` version history gap**: The package jumped 0.2.0 → 0.4.0 (skipping 0.3.0). For npm consumers, this is visible in `npm info @nxtg/faultline versions`. Should I publish a no-op 0.3.0 to fill the gap, or document the skip in the README/CHANGELOG and move on?
+
+3. **`ScheduleRunner` mutation hardening (N-128)**: Is this worth a dedicated initiative before the next feature push, or should we move to new features and accept 57.82% on the scheduler paths? The scheduler's critical paths (error recording, maxRuns completion) are already covered — what remains is the runner lifecycle.
+
+4. **FamilyMind GDPR audit**: Should I add a GDPR gap assessment to FamilyMind's NEXUS as a cross-portfolio initiative? The Faultline pattern is directly reusable (store audit → deleteForKeys methods → export ZIP → erasure endpoint).
+
+---
+
+> **Previous reflection cycle**: 2026-03-21 — CoS check-in — N-126 (Stryker GDPR stores, overall 60.07%→69.07%)
 
 ### 1. What did we ship since last check-in?
 
