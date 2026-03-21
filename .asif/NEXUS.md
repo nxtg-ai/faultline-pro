@@ -845,6 +845,55 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-21 — N-96 — 1 initiative SHIPPED, 15 net new tests
+
+### 1. What did we ship since last check-in?
+
+**N-96 — Stale scan detection** (`GET /scans/stale`)
+
+| Commit | Deliverable | +Tests |
+|--------|-------------|--------|
+| `97ead61` `feat: N-96` | `ScanHistoryStore.getStaleScanGroups(days)`: groups all scan entries by `textHash`, takes the most-recent scan per group, returns groups whose most-recent scan is older than the threshold. Re-scanning a text resets its staleness clock — only the latest scan counts. `GET /scans/stale?days=N` (default 30, clamped 1–365) → `{ days, count, scans[] }` sorted oldest-first. `requireApiKey` guard (not admin-only). 15 tests (KSS1–KSS15). | +15 (3,820 → 3,835) |
+
+**Total this cycle**: 1 commit · 15 tests · 3,835 total · 96 initiatives SHIPPED.
+
+---
+
+### 2. What surprised you?
+
+**The "most-recent-wins" semantic is the right default but needs an explicit test.** KSS4 tests the key invariant: a text scanned 45 days ago and re-scanned 2 days ago is NOT stale. Without that test, the `getStaleScanGroups()` implementation could be written naively as "any scan older than threshold" — which would incorrectly flag re-verified documents. The grouping logic (group by textHash → take max timestamp → filter) is the correct design, and the test locks it in.
+
+**The scan domain maps cleanly onto the key lifecycle playbook but with one important difference.** Keys have identity (a key IS a thing); scans have grouping (a scan IS a snapshot of a thing). "Stale" for a key means the key itself hasn't been used. "Stale" for a scan means the underlying text hasn't been re-verified. The abstraction is: `lastUsedAt` for keys → `max(timestamp) per textHash group` for scans. The data structure differs but the operator query is identical: "what needs my attention because it hasn't been touched recently?"
+
+**`requireApiKey` vs `requireAdmin` on scan endpoints.** All existing scan endpoints (`/scan`, `/scans/search`, `/scans/timeline`) use `requireApiKey`, not `requireAdmin`. The stale endpoint follows this convention — any authenticated caller can ask "what documents haven't been re-verified?" This is appropriate because stale scans represent an operational concern for the API user, not just the platform operator. Contrast with key management endpoints which use `requireAdmin` because they affect authentication infrastructure.
+
+---
+
+### 3. Cross-project signals
+
+**"Group by identity, take latest, filter on age" is a reusable staleness pattern.** The `getStaleScanGroups` algorithm is generalizable: given a collection of timestamped events keyed by an entity ID, find entities whose most-recent event is older than a threshold. This applies to: webhook delivery (delivery attempts grouped by webhook ID — find webhooks with no successful delivery in N days), provider health (health checks grouped by provider — find providers with no successful check in N hours), tenant activity (scan events grouped by tenant ID — find inactive tenants). The pattern is: `Map<entityId, latestEvent>` → filter by timestamp. O(n) time, O(k) space where k is distinct entities.
+
+**Scan lifecycle playbook is on track.** N-96 is step 1 (filter query) of the lifecycle sequence: query → analytics → bulk → CLI → dashboard. The next two steps for the scan domain are already clear: scan usage analytics (`GET /scans/usage`) and bulk scan operations (`DELETE /scans/stale` — prune old stale entries). The CLI equivalent (`faultline scan list --stale`) would complete the developer-facing surface.
+
+---
+
+### 4. What would you prioritize next?
+
+1. **N-97 — Scan usage analytics** (`GET /scans/usage`): per-textHash scan stats — scan frequency, latest risk, risk drift (has the verdict changed across re-scans?), provider distribution. Mirrors `GET /keys/usage`. Pure projection over existing `ScanHistory` state.
+2. **N-98 — Bulk scan pruning** (`DELETE /scans/stale?days=N`): remove stale scan entries from history to cap memory growth. Mirrors `POST /keys/bulk-delete`. Returns `{ deleted, freedEntries }`.
+3. **N-99 — Scan hygiene HTML dashboard** (`GET /scans/stale/view`): HTML view of stale documents with last-verified date, risk level, re-verify link. Mirrors `GET /keys/usage/view`.
+4. **CRUCIBLE Gate 6 (Stryker)**: Still the highest-quality unblocked gate. Fifth cycle raising this.
+
+---
+
+### 5. Blockers / questions for CoS
+
+- **CRUCIBLE Gate 6 (Stryker)**: Fifth cycle. Key lifecycle cluster closed at N-95, scan lifecycle starting at N-96. This is the last open quality gate — it has been raised every cycle since N-87. Approve?
+- **Scan lifecycle scope**: Should the scan lifecycle follow the same full 14-initiative arc as keys, or stop at the essentials (stale query + analytics + bulk prune)? Key lifecycle depth was driven by enterprise requirements; scan lifecycle might only need 3–5 initiatives.
+- **NPM_TOKEN / Fly.io**: Still needed for v0.3.0 publish.
+
+---
+
 > **Reflection cycle**: 2026-03-21 — N-93 + N-94 + N-95 — 3 initiatives SHIPPED, 45 net new tests
 
 ### 1. What did we ship since last check-in?
