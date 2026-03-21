@@ -38,6 +38,13 @@ class AuditLogger {
     return this.entries.slice();
   }
 
+  /** Deletes all audit entries for a specific tenant. Returns count of deleted entries. */
+  deleteTenantEntries(tenantId: string): number {
+    const before = this.entries.length;
+    this.entries = this.entries.filter((e) => e.tenantId !== tenantId);
+    return before - this.entries.length;
+  }
+
   clear(): void {
     this.entries = [];
   }

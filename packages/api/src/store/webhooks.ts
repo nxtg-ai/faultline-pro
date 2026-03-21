@@ -194,6 +194,13 @@ class WebhookStore {
     return true;
   }
 
+  /** Deletes all webhooks belonging to a specific tenant. Returns count deleted. */
+  deleteTenant(tenantId: string): number {
+    const before = this.webhooks.length;
+    this.webhooks = this.webhooks.filter((w) => w.tenantId !== tenantId);
+    return before - this.webhooks.length;
+  }
+
   getByEvent(event: WebhookEvent): Webhook[] {
     return this.webhooks.filter((w) => w.events.includes(event));
   }

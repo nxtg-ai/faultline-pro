@@ -120,6 +120,13 @@ class NotificationStore {
     return all.slice(0, limit);
   }
 
+  /** Deletes all notification history entries for a specific tenant. Returns count deleted. */
+  deleteTenantHistory(tenantId: string): number {
+    const before = this.history.length;
+    this.history = this.history.filter((r) => r.tenantId !== tenantId);
+    return before - this.history.length;
+  }
+
   private pushRecord(record: NotificationRecord): void {
     this.history.unshift(record);
     if (this.history.length > MAX_HISTORY) this.history.pop();

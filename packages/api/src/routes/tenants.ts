@@ -2,6 +2,10 @@ import type { FastifyInstance } from 'fastify';
 import { requireAdmin } from '../plugins/auth.js';
 import { getTenantStore } from '../store/tenants.js';
 import { getUsageMeter } from '../store/usage.js';
+import { getScanHistory } from '../store/scan-history.js';
+import { getAuditLogger } from '../store/audit.js';
+import { getNotificationStore } from '../store/notifications.js';
+import { getWebhookStore } from '../store/webhooks.js';
 
 const CREATE_BODY_SCHEMA = {
   type: 'object',
@@ -137,6 +141,48 @@ export async function tenantsRoutes(fastify: FastifyInstance): Promise<void> {
         keyIds: tenant.keyIds,
         usage: aggregated,
       });
+    },
+  );
+
+  // ── GDPR Article 17 — Right to Erasure ────────────────────────────────────
+
+  fastify.delete(
+    '/tenants/:id/data',
+    {
+      preHandler: requireAdmin,
+      schema: {
+        tags: ['Tenants'],
+        summary: 'GDPR erasure — delete all data held for a tenant (Article 17)',
+        params: {
+          type: 'object',
+          properties: { id: { type: 'string' } },
+          required: ['id'],
+        },
+      },
+    },
+    async (request, reply) => {
+      const { id: tenantId } = request.params as { id: string };
+
+      const tenant = getTenantStore().get(tenantId);
+      if (!tenant) {
+        return reply.code(404).send({ error: 'Tenant not found' });
+      }
+
+      const meter = getUsageMeter();
+      let usageKeysDeleted = 0;
+      for (const keyId of tenant.keyIds ?? []) {
+        if (meter.deleteKey(keyId)) usageKeysDeleted++;
+      }
+
+      const deleted = {
+        scanEntries:   getScanHistory().deleteTenantEntries(tenantId),
+        auditEntries:  getAuditLogger().deleteTenantEntries(tenantId),
+        notifications: getNotificationStore().deleteTenantHistory(tenantId),
+        webhooks:      getWebhookStore().deleteTenant(tenantId),
+        usageKeys:     usageKeysDeleted,
+      };
+
+      return reply.code(200).send({ tenantId, deleted });
     },
   );
 }

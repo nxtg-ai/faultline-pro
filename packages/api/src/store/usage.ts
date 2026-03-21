@@ -16,6 +16,10 @@ class UsageMeter {
     return Object.fromEntries(byDay.entries());
   }
 
+  deleteKey(keyId: string): boolean {
+    return this.data.delete(keyId);
+  }
+
   reset(): void {
     this.data = new Map();
   }

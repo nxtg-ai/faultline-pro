@@ -176,6 +176,13 @@ class ScanHistoryStore {
    * A group is stale when its most-recent scan is older than `days` days.
    * Returns the counts of deleted groups and individual entries.
    */
+  /** Deletes all scan entries belonging to a specific tenant. Returns count of deleted entries. */
+  deleteTenantEntries(tenantId: string): number {
+    const before = this.entries.length;
+    this.entries = this.entries.filter((e) => e.tenantId !== tenantId);
+    return before - this.entries.length;
+  }
+
   pruneStaleGroups(days: number): { deletedGroups: number; deletedEntries: number } {
     const stale = this.getStaleScanGroups(days);
     if (stale.length === 0) return { deletedGroups: 0, deletedEntries: 0 };

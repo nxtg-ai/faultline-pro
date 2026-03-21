@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-120 GDPR export endpoint — GET /tenants/:id/export → ZIP archive. 4,196 tests. 120 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-121 GDPR erasure endpoint — DELETE /tenants/:id/data. 4,211 tests. 121 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -130,6 +130,7 @@
 | N-118 | CRUCIBLE Gate 6 — Stryker mutation testing on `packages/cli/cli/scan.ts` (claim forensics critical path); root-level `stryker-cli.config.mjs` (monorepo-root run to resolve `node_modules`); initial score 26.75% (65 killed, 61 survived, 117 no cov); 15 hardening tests (MH1–MH15) in `scan-mutation-hardening.test.ts` targeting `calculateRisk()` boundary conditions (contradicted/mixed thresholds), `scan()` API-key guard + loop + 200-char truncation, `aggregateResults()` highestRisk ordering via `batchScan()`; final score 60.91% (148 killed, 62 survived, 33 no cov) — CRUCIBLE Gate 6 threshold 60% MET | DEVELOPER-X | SHIPPED | P2 | 2026-03-21 |
 | N-119 | v0.3.0 publish prep — CHANGELOG.md full rewrite (clean [Unreleased]/[v0.3.0]/[v0.2.0]/[v0.1.0] sections; N-82 through N-118 in Unreleased; stripped 300+ "Team Feedback no delta" noise lines); README badge 2,757→4,166; Enterprise API section updated with key lifecycle, webhook resilience (rate limiting, circuit breaker, retry config), tenant-scoped resources, scan hygiene, `faultline keys`/`scans` CLI; 15 release-prep tests (RP1–RP15) validating README badge count, CHANGELOG structure, key capability mentions, and changelog API endpoints | DISTRIBUTION | SHIPPED | P2 | 2026-03-21 |
 | N-120 | GDPR export endpoint — `GET /tenants/:id/export` (admin-gated); returns ZIP archive via `adm-zip` containing `manifest.json` (tenant metadata + counts), `scan-history.json` (all tenant scans via `getRecent(10_000).filter(tenantId)`), `audit-log.ndjson` (NDJSON one entry per line), `notifications.json`, `webhooks.json`, `usage.json` (keyed by keyId); `Content-Disposition: attachment; filename=faultline-gdpr-export-{tenantId}-{date}.zip`; 404 for unknown tenant; 403 without admin; 15 tests (GE1–GE15): 200/content-type/disposition/zip structure/manifest counts/scan isolation/tenant isolation/empty-tenant zero-counts | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
+| N-121 | GDPR erasure endpoint — `DELETE /tenants/:id/data` (admin-gated, Article 17 right-to-erasure); adds `deleteTenantEntries(tenantId)` to `ScanHistoryStore` + `AuditLogger`, `deleteTenantHistory(tenantId)` to `NotificationStore`, `deleteTenant(tenantId)` to `WebhookStore`, `deleteKey(keyId)` to `UsageMeter`; returns `{ tenantId, deleted: { scanEntries, auditEntries, notifications, webhooks, usageKeys } }`; tenant record itself preserved (data only); idempotent (second call returns all zeros); 15 tests (ER1–ER15): counts, actual store erasure, tenant-not-deleted, idempotency, isolation (tenant B untouched), export-after-erasure returns empty ZIP | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
 
 ---
 
@@ -868,6 +869,51 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-03-21 — N-121 — 1 initiative SHIPPED, 15 net new tests (ER1–ER15)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests |
+|--------|-----------|-------------|--------|
+| `feat: N-121` | GDPR erasure endpoint | `DELETE /tenants/:id/data`; `deleteTenantEntries()` on ScanHistory + Audit; `deleteTenantHistory()` on NotificationStore; `deleteTenant()` on WebhookStore; `deleteKey()` on UsageMeter; 15 tests (ER1–ER15) | +15 (4,196 → 4,211) |
+
+**Total this cycle**: 1 initiative · 15 net new tests · **4,211 total · 121 initiatives SHIPPED**.
+
+---
+
+### 2. What surprised you?
+
+**All 15 tests passed first run — no fixture or type errors.** The N-120 session gave me the exact fixture patterns (correct Permission values like `'scan'` not `'scan:read'`, correct event types, `process.env.FAULTLINE_API_KEY` for admin auth). No iteration needed. Strong test-infrastructure knowledge compounds well.
+
+**ER15 (export-after-erasure) is the most valuable test.** It validates that N-120 and N-121 form a coherent pair — erase followed by export returns zero-count manifest. This is a cross-endpoint integration assertion that neither initiative's test suite could produce alone. The test is 7 lines but covers the entire GDPR access-then-erase workflow.
+
+**Store deletion methods are four identical one-liners.** Each store's `deleteTenant*()` method is `before = length; entries = entries.filter(...); return before - length`. No complex logic, no edge cases. The risk was zero; the value is high. These should have been added when the tenant-scoping was first built (N-45).
+
+---
+
+### 3. Cross-project signals
+
+**GDPR compliance is now a two-endpoint pattern.** Any ASIF project with multi-tenant data needs both: `GET /tenants/:id/export` (Article 15 access) and `DELETE /tenants/:id/data` (Article 17 erasure). The pattern: each store gets a `deleteTenant(tenantId)` method that filters its array and returns the deleted count; the route aggregates all counts into a single response. This is a template that FamilyMind (Stripe billing, user data) should implement before launch.
+
+**ER11 (idempotency test) is the most overlooked test in GDPR implementations.** Most teams test that data is erased but not that a second erasure request succeeds gracefully. The correct behavior: 200 with `{ deleted: { scanEntries: 0, ... } }`. A 404 or 500 on the second call would break automated compliance workflows that retry on network failure.
+
+---
+
+### 4. What would you prioritize next?
+
+1. **README badge update** — badge still says 4,166; actual is now 4,211 after N-120 + N-121.
+2. **v0.3.0 npm publish** — N-120 and N-121 both belong in the Unreleased section of CHANGELOG. After moving them in, publish is ready.
+3. **GDPR notification prefs erasure** — `deleteTenantHistory()` deletes notification _records_, but not the notification _prefs_ (webhook URL, email) for the tenant's keys. A complete erasure should also call `deletePrefs(keyId)` for each key. Low risk to defer, but worth noting.
+
+---
+
+### 5. Blockers / questions for CoS
+
+- Should `DELETE /tenants/:id/data` also delete the tenant's API keys from KeyStore, or just their data? Currently the tenant and keys remain; only the generated data is erased. GDPR is ambiguous here — account records are often retained for billing/legal purposes.
+- GDPR notification prefs gap: `deleteTenantHistory()` removes records but not prefs. Should that be part of N-121 or a separate N-122 cleanup?
+
+---
 
 > **Reflection cycle**: 2026-03-21 — N-119 + N-120 — 2 initiatives SHIPPED, 30 net new tests (15 RP + 15 GE)
 
