@@ -17,7 +17,9 @@ const CREATE_BODY_SCHEMA = {
       minItems: 1,
       items: { type: 'string', enum: VALID_EVENTS },
     },
-    secret: { type: 'string', minLength: 1, maxLength: 128 },
+    secret:       { type: 'string', minLength: 1, maxLength: 128 },
+    maxAttempts:  { type: 'integer', minimum: 1, maximum: 5 },
+    retryDelayMs: { type: 'integer', minimum: 0, maximum: 30000 },
   },
   additionalProperties: false,
 } as const;
@@ -26,6 +28,8 @@ interface CreateWebhookBody {
   url: string;
   events: WebhookEvent[];
   secret?: string;
+  maxAttempts?: number;
+  retryDelayMs?: number;
 }
 
 export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
@@ -33,12 +37,12 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     '/webhooks',
     { preHandler: requireAdmin, schema: { tags: ['Webhooks'], summary: 'Register a new webhook endpoint and event subscription', body: CREATE_BODY_SCHEMA } },
     async (request, reply) => {
-      const { url, events, secret } = request.body;
+      const { url, events, secret, maxAttempts, retryDelayMs } = request.body;
       const keyId = request.keyId;
       const tenantId = keyId && keyId !== 'admin'
         ? getTenantStore().findByKeyId(keyId)?.id
         : undefined;
-      const entry = getWebhookStore().create(url, events, secret, tenantId);
+      const entry = getWebhookStore().create(url, events, secret, tenantId, maxAttempts, retryDelayMs);
       return reply.status(201).send(entry);
     },
   );

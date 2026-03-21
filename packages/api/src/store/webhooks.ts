@@ -8,6 +8,10 @@ export interface Webhook {
   events: WebhookEvent[];
   secret: string;
   tenantId: string | undefined;
+  /** Max delivery attempts per event (1–5, default 3). */
+  maxAttempts: number;
+  /** Delay in ms between retry attempts (0–30 000, default 500). First attempt always immediate. */
+  retryDelayMs: number;
   createdAt: string;
 }
 
@@ -163,13 +167,15 @@ export function resetWebhookCircuitBreaker(): void {
 class WebhookStore {
   private webhooks: Webhook[] = [];
 
-  create(url: string, events: WebhookEvent[], secret?: string, tenantId?: string): Webhook {
+  create(url: string, events: WebhookEvent[], secret?: string, tenantId?: string, maxAttempts = 3, retryDelayMs = 500): Webhook {
     const entry: Webhook = {
       id: randomUUID(),
       url,
       events,
       secret: secret ?? randomBytes(32).toString('hex'),
       tenantId,
+      maxAttempts,
+      retryDelayMs,
       createdAt: new Date().toISOString(),
     };
     this.webhooks.push(entry);
@@ -261,9 +267,11 @@ export async function dispatchWebhook(
   const signature = signPayload(body, webhook.secret);
 
   let succeeded = false;
+  const maxAttempts  = webhook.maxAttempts;
+  const retryDelayMs = webhook.retryDelayMs;
 
-  for (let attempt = 0; attempt < 3; attempt++) {
-    await _sleep(RETRY_DELAYS[attempt]);
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    await _sleep(attempt === 0 ? 0 : retryDelayMs);
     const start = Date.now();
     let statusCode: number | null = null;
     let delivered = false;

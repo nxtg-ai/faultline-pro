@@ -375,11 +375,11 @@ describe('Webhook retry logic', () => {
     expect(sleepFn.mock.calls[1][0]).toBe(500);
   });
 
-  it('R7. sleep called with 1000ms before attempt 2 (after two failures)', async () => {
+  it('R7. sleep called with retryDelayMs (500ms default) before attempt 2', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
     const wh = getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret');
     await dispatchWebhook(wh, 'scan.complete', {});
-    expect(sleepFn.mock.calls[2][0]).toBe(1000);
+    expect(sleepFn.mock.calls[2][0]).toBe(500);
   });
 });
 

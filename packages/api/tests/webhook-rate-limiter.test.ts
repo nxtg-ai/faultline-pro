@@ -29,11 +29,13 @@ const BASE_MS = 1_000_000; // arbitrary fixed "now" for deterministic tests
 function makeWebhook(id = 'wh-rate-test'): Webhook {
   return {
     id,
-    url:       'https://example.com/hook',
-    events:    ['scan.complete'],
-    secret:    'secret',
-    tenantId:  undefined,
-    createdAt: new Date().toISOString(),
+    url:          'https://example.com/hook',
+    events:       ['scan.complete'],
+    secret:       'secret',
+    tenantId:     undefined,
+    maxAttempts:  3,
+    retryDelayMs: 500,
+    createdAt:    new Date().toISOString(),
   };
 }
 
