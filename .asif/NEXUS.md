@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-118 CRUCIBLE Gate 6 — Stryker on claim forensics `cli/scan.ts`. 4,166 tests. 118 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-119 v0.3.0 publish prep — CHANGELOG rewrite, README badge 2,757→4,166, release-prep tests. 4,181 tests. 119 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -128,6 +128,7 @@
 | N-116 | `resolveRequestTenantId()` auth helper — single function in `auth.ts` guards `'admin'`/`undefined` keyIds and delegates to `getTenantStore().findByKeyId(keyId)?.id`; webhooks route and scan route both updated to use it (both `getTenantStore` imports removed from route files); `RETRY_DELAYS` dead constant removed from webhooks store; shared `makeWebhook()` test factory extracted to `tests/helpers/make-webhook.ts` (3 test files migrated); 15 tests (RT1–RT15): unit, route integration, consistency/idempotency | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
 | N-117 | CRUCIBLE Gate 6 — Stryker mutation testing on `src/store/webhooks.ts`; `@stryker-mutator/core` + `@stryker-mutator/vitest-runner` 9.6.0 installed; initial score 86.51% (212 killed, 51 timeout, 32 survived); 15 hardening tests (MH1–MH15) kill boundary mutations (`>=` vs `>` in rate limiter + circuit breaker windows, reset() scoped vs all, defensive copy list(), getById() discrimination, sendTestWebhook signature + latency); final score 91.45% (228 killed, 50 timeout, 19 survived); vitest.config.ts excludes `.stryker-tmp/`; tempDirName → `/tmp` | DEVELOPER-X | SHIPPED | P2 | 2026-03-21 |
 | N-118 | CRUCIBLE Gate 6 — Stryker mutation testing on `packages/cli/cli/scan.ts` (claim forensics critical path); root-level `stryker-cli.config.mjs` (monorepo-root run to resolve `node_modules`); initial score 26.75% (65 killed, 61 survived, 117 no cov); 15 hardening tests (MH1–MH15) in `scan-mutation-hardening.test.ts` targeting `calculateRisk()` boundary conditions (contradicted/mixed thresholds), `scan()` API-key guard + loop + 200-char truncation, `aggregateResults()` highestRisk ordering via `batchScan()`; final score 60.91% (148 killed, 62 survived, 33 no cov) — CRUCIBLE Gate 6 threshold 60% MET | DEVELOPER-X | SHIPPED | P2 | 2026-03-21 |
+| N-119 | v0.3.0 publish prep — CHANGELOG.md full rewrite (clean [Unreleased]/[v0.3.0]/[v0.2.0]/[v0.1.0] sections; N-82 through N-118 in Unreleased; stripped 300+ "Team Feedback no delta" noise lines); README badge 2,757→4,166; Enterprise API section updated with key lifecycle, webhook resilience (rate limiting, circuit breaker, retry config), tenant-scoped resources, scan hygiene, `faultline keys`/`scans` CLI; 15 release-prep tests (RP1–RP15) validating README badge count, CHANGELOG structure, key capability mentions, and changelog API endpoints | DISTRIBUTION | SHIPPED | P2 | 2026-03-21 |
 
 ---
 

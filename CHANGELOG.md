@@ -3,441 +3,120 @@
 All notable changes to Faultline Pro are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased] — 2026-03-21
+## [Unreleased]
 
 ### Added
 
-- N-84 GET /keys/:id — single key lookup by ID (secret redacted, includes disabled state)
-- N-83 PATCH /keys/:id — update key name and/or permissions post-creation
-- N-82 ApiKey soft-disable — PATCH /keys/:id/disable + /enable; validateKey() rejects disabled keys; mission-control activeKeys count fixed
-- N-81 Real Integration Oracle — 12 E2E tests (no scan mock); full pipeline HTTP→scan()→mock provider; closes CRUCIBLE 4/4 oracle types
-- N-80 Coverage gate — vitest thresholds (stmts 80%, branch 70%, funcs 85%, lines 80%) enforced on push via .asif-ci
-- N-79 Claim filter threshold — filterClaimsForVerification importance >= 2 (was >= 3); exported for direct testing
-- N-78 Audit Log API — GET /audit/log (query+filter), GET /audit/log/stats, GET /audit/log/export (NDJSON)
+- N-118 CRUCIBLE Gate 6 — Stryker mutation testing on `cli/scan.ts` (claim forensics critical path); root-level monorepo config; initial 26.75% → final 60.91%; 15 hardening tests (MH1–MH15)
+- N-117 CRUCIBLE Gate 6 — Stryker mutation testing on `webhooks.ts`; initial 86.51% → final 91.45%; 15 hardening tests (MH1–MH15)
+- N-116 `resolveRequestTenantId()` auth helper — centralized tenant resolution in `auth.ts`; dead code cleanup
+- N-115 Per-webhook retry configuration — `maxAttempts` (1–5) and `retryDelayMs` (0–30 000 ms) per webhook
+- N-114 Webhook circuit breaker — `WebhookCircuitBreaker`; `FAULTLINE_WEBHOOK_CIRCUIT_THRESHOLD` + `FAULTLINE_WEBHOOK_CIRCUIT_COOLDOWN_MS` env vars
+- N-113 Webhook per-minute rate limiting — `WebhookRateLimiter` sliding 60 s window; `FAULTLINE_WEBHOOK_RATE_LIMIT` env var
+- N-112 Shared HTML escape utility — `src/lib/html.ts` `esc(unknown)` + `escHtml`; XSS auditable at one grep target
+- N-111 Tenant-scoped audit log — `AuditEntry.tenantId?` resolved at record time; `GET /audit/log?tenantId=`; closes enterprise tenancy surface
+- N-110 Tenant-scoped webhooks — `Webhook.tenantId?` stored at create time; `GET /webhooks?tenantId=`
+- N-109 Webhook delivery log HTML dashboard — `GET /webhooks/deliveries/view`; stat cards, per-delivery table, auto-refresh
+- N-108 Tenant-scoped notifications — `NotificationRecord.tenantId?`; `GET /notifications/history?tenantId=`
+- N-107 `faultline scans prune` CLI — dry-run-safe destructive command; `--confirm` gate; preview + execute modes
+- N-106 Webhook delivery retry dashboard — `WebhookDeliveryRecord` ring-buffer; `GET /webhooks/deliveries` + `GET /webhooks/:id/deliveries`
+- N-105 Tenant-scoped scan history — `ScanEntry.tenantId?`; `GET /scans/search`, `/scans/usage`, `/scans/stale` all support `?tenantId=`
+- N-104 `faultline keys prune` CLI — dry-run-safe; `GET /keys/dormant` preview; `POST /keys/bulk-delete` execute; `--confirm` gate
+- N-103 `faultline keys rotation` CLI — `keys rotation [--days 90]`; OVERDUE/CRITICAL chips; never-rotated label
+- N-102 Key rotation reminder notifications — `key.rotation_due` event; 90d/180d thresholds with per-key×threshold dedup
+- N-101 Mission control scan hygiene — `GET /mission-control/status` includes `scans.totalDocuments`, `staleCount`, `riskDriftedCount`
+- N-100 `faultline scans` CLI — `scans stale [--days 30]` and `scans usage [--staleDays 30]`; FAULTLINE_API_KEY/URL env vars
+- N-99 Scan hygiene HTML dashboard — `GET /scans/stale/view`; STALE + DRIFT chips; auto-refresh 60 s
+- N-98 Bulk scan pruning — `DELETE /scans/stale?days=N` (admin-gated); group-level delete; returns `{ deletedGroups, deletedEntries }`
+- N-97 Scan usage analytics — `GET /scans/usage?staleDays=N`; per-textHash stats: scanCount, firstScannedAt, riskDrifted, avgLatencyMs
+- N-96 Stale scan detection — `GET /scans/stale?days=N`; entries grouped by textHash, oldest-first
+- N-95 Key hygiene HTML dashboard — `GET /keys/usage/view`; HEALTHY/DORMANT/EXPIRING/EXPIRED/DISABLED chips; auto-refresh 60 s
+- N-94 Key usage analytics — `GET /keys/usage`; daysSinceCreation/LastUse/LastRotation; isDormant/isExpiringSoon/isExpired per key
+- N-93 Bulk disable/enable — `POST /keys/bulk-disable` + `POST /keys/bulk-enable`
+- N-92 `faultline keys` CLI — `keys list`, `keys dormant`, `keys expiring`, `keys rotation`; FAULTLINE_API_KEY/URL env vars
+- N-91 Expiring-soon key list — `GET /keys/expiring-soon?days=N` (default 7)
+- N-90 Notifications event catalogue refactor — `EVENT_CATALOGUE` as single source of truth; future event types auto-register
+- N-89 Bulk key deletion — `KeyStore.bulkDelete(ids[])` + `POST /keys/bulk-delete`
+- N-88 Key expiry notifications — `key.expiring_soon` event; 7d/1d thresholds with per-key×threshold dedup
+- N-87 Dormant key detection — `GET /keys/dormant?days=N`; uses lastUsedAt ?? createdAt
+- N-86 ApiKey expiry — `expiresAt?: string`; `validateKey()` rejects expired keys; `PATCH /keys/:id` accepts `expiresAt`
+- N-85 ApiKey `lastUsedAt` tracking — stamped by `validateKey()` on every successful auth
+- N-82 — N-84 Additional API key management: `GET /keys/:id`, `PATCH /keys/:id`, soft-disable/enable
+
+### Fixed
+
+- CI shallow clone: added `fetch-depth: 0` to `actions/checkout@v4` — changelog endpoint needs git tags
+
+---
+
+## [v0.3.0] — 2026-03-20
+
+### Added
+
+- N-84 `GET /keys/:id` — single key lookup (secret redacted, disabled state visible)
+- N-83 `PATCH /keys/:id` — update name and/or permissions post-creation (admin-gated)
+- N-82 ApiKey soft-disable — `disabled?: boolean`; `PATCH /keys/:id/disable` + `/enable`; `validateKey()` rejects disabled keys
+- N-81 Real Integration Oracle — 12 E2E tests (no scan mock); full pipeline HTTP→scan()→mock provider; CRUCIBLE 4/4 oracle types complete
+- N-80 Coverage gate — vitest thresholds (stmts 80%, branch 70%, funcs 85%, lines 80%) enforced on every push via `.asif-ci`
+- N-79 Claim filter threshold — `filterClaimsForVerification` importance `>= 2` (was `>= 3`); exported for direct testing
+- N-78 Audit Log API — `GET /audit/log`, `GET /audit/log/stats`, `GET /audit/log/export` (NDJSON)
 - N-77 Contract oracle (Zod) — 29 schema validation tests across all 6 core pipeline types
-- N-76 Property-based oracle (fast-check) — 19 properties across guaranteeClaimPerSentence, mapClaimToRiskCategory, generateComplianceReport
-- N-75 Interactive demo mode — faultline scan --demo; no API key required
-- D-148 status page — /status HTML + /status.json API
-- D-147 scan history export — faultline export + POST /export
-- D-146 benchmark suite — provider latency, cache, concurrent throughput
-- D-145 Docker image — multi-stage Dockerfile + docker-compose
+- N-76 Property-based oracle (fast-check) — 19 properties: `guaranteeClaimPerSentence`, `mapClaimToRiskCategory`, `generateComplianceReport`
+- N-75 Interactive demo mode — `faultline scan --demo`; no API key required
+- D-149 Changelog page — `/changelog` HTML + `/changelog.json` + `/changelog.md`
+- D-148 Status page — `/status` HTML + `/status.json`
+- D-147 Scan history export — `faultline export` + `POST /export`
+- D-146 Benchmark suite — provider latency, cache, concurrent throughput
+- D-145 Docker image — multi-stage `Dockerfile` + `docker-compose.yml`
 - D-144 CLI plugin system — custom rules + providers as npm packages
-- SG-01 OpenAPI decoration + SG-02 property-based tests + CRUCIBLE audit
+- D-143 i18n — `Accept-Language: es/fr/en`; localized error messages and report labels
+- D-142 Multi-language support — EN/ES/FR translations
+- D-149 Regulatory calendar — `GET /compliance/deadlines`; EU AI Act ×3, GDPR, NIST AI RMF deadlines
+- D-149 Compliance scan-check — `POST /compliance/scan-check`; claim keyword alerts against approaching deadlines
+- SG-01 OpenAPI decoration — full 48-path spec; `GET /docs` Swagger UI
+- SG-02 Property-based tests + CRUCIBLE audit (Phase 1 complete)
+- N-57 through N-74: claim explainability, scan diff, mission control, claim graph, GraphQL, Python SDK, GitHub Action, Terraform provider, caching, scheduled jobs, provider failover, bulk import, industry templates, scan search, cost tracking, multi-tenant, claim search, Swagger UI, scan dashboard
 
 ### Fixed
 
-- mission-control activeKeys was always 0 (ApiKey has no .active field); now correctly counts !disabled keys
-- tsc: 15 pre-existing type errors across 9 files resolved (avgLatency→avgLatencyMs, response.json() as any, double-cast ScanResult, fontSize in TextOptions)
+- `validateKey()` now counts `!disabled` keys correctly for `activeKeys` in mission control
+- 15 pre-existing TypeScript errors resolved across 9 files
+- `ci.yml`: `cancel-in-progress: true` to prevent stale-run false alarms
 
-### Changed
-
-- ci.yml: cancel-in-progress: true — cancels superseded CI runs on rapid pushes (prevents stale-run false alarms)
-- .asif-ci: added --coverage flag to enforce coverage thresholds on every push
-
-### Fixed
-
-- mark D-140/141/142 Status DONE, bump archive count 93→96
-
-### Changed
-
-- reflection: 2026-03-20 — scan history export (D-147), 2,821 tests
-- reflection: 2026-03-19 — API docs shipped, openapi.yaml 11→48 paths
-- comprehensive API reference — index.html + full openapi.yaml (48 paths)
-- reflection: 2026-03-19 evening — CRUCIBLE audit complete, SG-01/SG-02 closed
-- reflect: no-delta check-in — 2026-03-19 (no new code since last reflection)
-- reflect: Team Feedback — 2026-03-19 afternoon session close
-- D-206 Regulatory Calendar + D-207 Archive — N-56/57 SHIPPED
-- CHAIN — Regulatory Calendar (M) → Final Archive (S)
-- D-192 Claim Explainability + D-193 Scan Diff + D-194 MAXOUT — N-53/54/55 SHIPPED
-- CHAIN x3 — Claim Explainability (M) → Scan Diff (M) → Final Archive (S)
-- D-174 Compliance Templates + D-175 Bulk Import + D-176 Milestone — N-50/51/52 SHIPPED
-- CHAIN x3 — Compliance Templates (M) → Bulk Import (M) → 100th Directive Celebration (S)
-- D-153 Scan Dashboard + D-154 Scan Search + D-155 Swagger UI — N-47/48/49 SHIPPED
-- CHAIN x3 — Scan Dashboard (M) → History Search (M) → Swagger UI (S)
-- D-140 Claim Search + D-141 Multi-Tenant + D-142 Cost Tracking — N-44/45/46 SHIPPED
-- CHAIN x3 — Claim Database (M) → Multi-Tenant API (M) → Cost Tracking (S)
-- D-125/126/127 provider auto-detect + demo cmd + VS Code extension
-- CHAIN x3 — Zero-to-value test (M) → Interactive CLI init (M) → VS Code extension (M)
-- D-117/118 npm launch assets + GitHub Action path input
-- CHAIN — npm README rewrite (M) → GitHub Action (M)
+---
 
 ## [v0.2.0] — 2026-03-19
 
 ### Added
 
-- N-15 Rate Limiting + Usage Dashboards + Docs Refresh (DIRECTIVE-NXTG-20260318-32/33)
-- N-12 Enterprise Features — API keys + audit trail + usage metering (DIRECTIVE-NXTG-20260318-15/16)
-- N-14 Compliance PDF Reports — POST /scan/report (self-authorized)
-- N-13 Cloud Platform MVP — POST /scan Fastify endpoint (DIRECTIVE-NXTG-20260314-09)
-- React workspace split — clean CLI install footprint
-- add Perplexity provider + provider documentation
-- publish @nxtg/faultline@0.1.0 to npm
-- adopt CRUCIBLE Protocol — Gate 2 fixes, Gate 4 delta hook
-- add ASIF NEXUS — P-08b Faultline Pro split
-- critique + improved prompt — N-13 SYNTHESIS SHIPPED (868 tests)
-- claim graph visualization — N-10 SHIPPED (829 tests)
-- weakest-link detection — N-12 SHIPPED (794 tests)
-- SARIF enhancements — SarifOptions, inputUri, uriBaseId, codeFlows
-- OpenAI provider with gpt-4o-mini, registry wiring, and tests
-- scan history + trend analysis (DIRECTIVE-NXTG-20260223-17)
-- YAML rule engine with 3 built-in rule files and js-yaml parsing (713 tests)
-- watch mode with file type filter, 500ms debounce, and diff highlights (656 tests)
-- Claude provider with configurable model and comprehensive tests (624 tests)
-- report aggregation with multi-file summary and risk heatmap (547 tests)
-- confidence score calibration with per-provider profiles (505 tests)
-- formalize MockProvider as first-class provider in registry (473 tests)
-- add --fail-on flag for severity-based exit codes in CI (453 tests)
-- SARIF output, VS Code extension, red-team templates, GitHub Action (445 tests)
-- confidence scoring, report formats, batch scan, rules, config, watch, npm package (338 tests)
-- add CLI entry point + quickstart demo (192 tests)
-- add EU AI Act compliance module (151 tests)
-- add Claude provider + provider registry (123 tests)
-- add LLMProvider abstraction + expand tests to 95
-- add 73 unit tests + CI pipeline (N-08/N-09 SHIPPED)
-- add ASIF NEXUS — vision-to-execution dashboard
-- add Seismic Barometer, dynamic charts, and enhance UX feedback
-- Initialize project structure and dependencies
+- Enterprise API: API keys + audit trail + usage metering
+- Rate limiting (per-tier per-minute limits)
+- POST /scan Fastify cloud endpoint (N-13)
+- Compliance PDF reports (`POST /scan/report`)
+- Scan history + trend analysis
+- YAML rule engine (PII, bias, toxicity built-in rulesets)
+- Watch mode with file type filter and debounce
+- Claude provider (configurable model)
+- Report aggregation with multi-file summary and risk heatmap
+- Confidence score calibration with per-provider profiles
+- MockProvider as first-class registered provider
+- `--fail-on` flag for severity-based exit codes in CI
+- SARIF output, VS Code extension, GitHub Action
+- Batch scan, rules engine, caching layer
+- CRUCIBLE Protocol Phase 1: Gates 2, 4, 6, 7 (Critical tier)
 
 ### Fixed
 
-- augment MercuriusContext with keyId to fix TS2769 typecheck error
-- correct D-41 inline Status field PENDING → DONE in NEXUS header
-- mark D-142 + D-143 DONE — statuses were PENDING after prior ship
-- guard templateRoutes binding before register — Node 20 ESM TDZ
-- move POST /scan/template/:id from templateRoutes to scanRoutes
-- TS2352 in scan.ts — double-cast ScanResult to Record<string, unknown>
-- tsc CI — cast upload.test.ts scan mock to any (ComplianceReport shape mismatch)
-- remove defineWorkspace import for vitest v4 compatibility
-- map Perplexity citations to {title, uri} source objects
-- update all provider models per Emma's model audit
-- update Gemini default model to 2.5-flash, expand npm keywords
-- bump to v0.1.1 — republish with corrected README on npm
-- CLI spinner, model IDs, package metadata [SHIP-STOPPER]
-- real-first experience — Gemini Quick Start, API key detection, mock → Testing & CI
-- add continue-on-error to demo safety scans
-- add analysis/ and history/ to npm package files
-- add --help (-h) and --version (-v) flag support to CLI
-- update repository URL to nxtg-ai/faultline-pro
-- resolve 4 TypeScript errors in watch.ts + watch.test.ts; add Team Questions
+- Perplexity citation type fix
+- All provider models updated to current versions
+- CLI spinner, model IDs, package metadata
 
-### Changed
-
-- D-103/104/105 OPERATION FIRST DOLLAR — production hardening + v0.2.0 prep + deployment
-- P0 OPERATION FIRST DOLLAR — API hardening (M) → npm v0.2.0 (S) → Deploy (M)
-- reflect: 2026-03-19 no delta (4th prompt) — cadence note added
-- reflect: 2026-03-19 no delta (3rd prompt) — awaiting directives
-- reflect: 2026-03-19 no delta (2nd prompt) — awaiting directives
-- reflect: 2026-03-19 session close — 8 initiatives, 87 tests, 38 SHIPPED
-- D-41 Final Session Archive — 85 directives, 2595 tests, 38 initiatives SHIPPED
-- Final session archive + test count (S) — CCUIC conservation
-- D-32 Claim Attribution + D-33 EU AI Act PDF — N-37/N-38 SHIPPED
-- CHAIN — Claim Attribution (M) → EU AI Act PDF report (S)
-- D-22 Claim Trending + D-23 NEXUS Archive — N-36 SHIPPED
-- CHAIN — Claim Trending (M) → Final archive (S)
-- D-16 Claim Evidence Linking + D-17 Dependency Graph
-- CHAIN — Claim Evidence Linking (M) → Dependency Graph (S)
-- D-03 GraphQL API + D-04 Performance Benchmarks
-- CHAIN — GraphQL API (M) → Performance benchmarks (S)
-- D-142 Multi-Language Support (i18n) + D-143 Final Day Summary — N-31 SHIPPED
-- debug: add type check for templateRoutes in server.ts
-- debug: add stderr diagnostics to templateRoutes to surface Node 20 CI failure
-- CHAIN — i18n multi-language (M) → Final day summary (S)
-- CHAIN — N-29 Scan Templates + N-30 Full Platform E2E (D-132/133)
-- CHAIN — Scan Templates (M) → Full platform E2E (S)
-- CHAIN — N-27 Provider Plugin System + N-28 Health Monitoring (D-124/125)
-- CHAIN — Provider Plugin System (M) → Health Monitoring + Auto-Rotation (S)
-- DIRECTIVE-114/115 — Scan Comparison API + CLI + README
-- CHAIN — Comparison API (M) → README + npm ready (S)
-- DIRECTIVE-106/107 — Scheduled Scan Jobs + Final Archive
-- CHAIN — Scheduled scan jobs (M) → Final session summary (S)
-- DIRECTIVE-94/95 — Caching Layer + Final Archive
-- CHAIN — Caching layer (M) → Session archive (S)
-- Team Feedback reflection — session close 2026-03-18
-- DIRECTIVE-87/88/89 — Monitoring + Failover + Archive
-- CHAIN x3 — Health dashboard (M) → Provider auto-failover (M) → Session archive (S)
-- DIRECTIVE-NXTG-20260318-72/73/74 — Python SDK + Terraform Provider + Benchmark
-- CHAIN x3 — Python SDK (M) → Terraform provider (M) → Provider benchmark (S)
-- DIRECTIVE-NXTG-20260318-58/59/60 — SDK + GitHub Action + VS Code upload
-- CHAIN x3 — TS SDK (M) → GH Action (M) → VS Code update (S)
-- DIRECTIVE-NXTG-20260318-54 — E2E Smoke Test + Executive Dashboard update
-- P0 E2E smoke test — verify full API surface
-- Team Feedback — no-delta reflection 2026-03-18
-- Team Feedback reflection — 2026-03-18 session 2 (DIRECTIVE-44/45 complete)
-- DIRECTIVE-NXTG-20260318-44/45 — Batch Scan API + CI Guide + NEXUS Archive
-- CHAIN — Batch Scan API + CI guide (M) → NEXUS archive (S)
-- Team Feedback reflection — 2026-03-18 session (DIRECTIVE-38/39 complete)
-- DIRECTIVE-NXTG-20260318-38/39 — Webhook System + OpenAPI Spec
-- CHAIN — Webhooks (M) → OpenAPI spec (S)
-- CHAIN — N-15 Rate Limiting (M) → Docs refresh (S)
-- mark DIRECTIVE-15/16 as DONE in NEXUS (status headers + checkboxes)
-- CHAIN — N-12 Enterprise Features (M) → CRUCIBLE (S). N-11 ACK'd (980 tests).
-- DIRECTIVE-NXTG-20260318-06 — N-11 Multimodal Upload (PDF/OCR)
-- DIRECTIVE-NXTG-20260318-06 — N-11 Multimodal Upload (PDF/OCR)
-- DIRECTIVE-NXTG-20260318-04 — Post-N-14 hardening complete
-- DIRECTIVE-NXTG-20260318-04 — Post-N-14 Hardening (npm verify + API docs + Dependabot + CRUCIBLE)
-- Answer Q — heartbeat v4.6 fix (cadence guard) + Dependabot triage (batch at v0.1.4)
-- Team Feedback 2026-03-17 — no delta
-- Team Feedback 2026-03-17 — no delta
-- Team Feedback 2026-03-17 — no delta
-- Team Feedback 2026-03-17 — no delta
-- Team Feedback 2026-03-17 — no delta
-- Team Feedback 2026-03-17 — no delta
-- Team Feedback 2026-03-17 — no delta
-- Team Feedback 2026-03-17 — no delta
-- Team Feedback 2026-03-17 — no delta
-- Team Feedback 2026-03-17 — no delta
-- Team Feedback 2026-03-17 — no delta
-- Team Feedback 2026-03-17 — no delta
-- Team Feedback 2026-03-17 — no delta
-- Team Feedback 2026-03-17 — no delta
-- Team Feedback 2026-03-17 — no delta
-- Team Feedback 2026-03-17 — no delta
-- Team Feedback 2026-03-17 — no delta
-- Team Feedback 2026-03-17 — no delta
-- Team Feedback 2026-03-17 — no delta
-- Team Feedback 2026-03-17 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta (100th)
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-16 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- governance: add Idle Time Protocol (INIT-PULSE Phase 2)
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta (post-N-14, context resume)
-- Team Feedback 2026-03-15 — no delta (post-N-14)
-- Team Feedback 2026-03-15 — v0.1.5 + Dockerfile + fly.toml shipped
-- publish v0.1.5 + Dockerfile + fly.toml (self-authorized)
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — N-14 PDF spec complete, fully unblocked
-- Answer N-14 PDF structure — cover page + risk summary + claims table (1-3 pages)
-- Team Feedback 2026-03-15 — CoS answers received, next session unblocked
-- Answer 3 FP questions — pdfkit for N-14, publish v0.1.4 NOW, Fly.io for deploy
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta
-- Team Feedback 2026-03-15 — no delta, session open
-- Team Feedback 2026-03-14 — no delta (post-N-13)
-- Team Feedback 2026-03-14 — post-N-13 substantive
-- ACK N-13 Cloud Platform SHIPPED — 940 tests, revenue path LIVE
-- DIRECTIVE-NXTG-20260314-09 — N-13 Cloud Platform MVP (POST /scan)
-- ACK DIRECTIVE-07 DONE (Dependabot triage + npm verify)
-- Team Feedback 2026-03-14 (25th) — no delta
-- Team Feedback 2026-03-14 (24th) — post-DIRECTIVE-07
-- update lockfile after clean install (DIRECTIVE-07 cleanup)
-- pre-N-13 hygiene — Dependabot triage + npm verify (DIRECTIVE-NXTG-20260314-07)
-- DIRECTIVE-NXTG-20260314-07 — Pre-N-13 Hygiene: Dependabot Triage + npm Verify
-- Team Feedback 2026-03-14 (23rd) — substantive
-- Team Feedback 2026-03-14 (22nd) — no delta
-- Team Feedback 2026-03-14 (21st) — no delta
-- bump minimatch from 9.0.5 to 9.0.9 (#3)
-- bump rollup from 4.53.3 to 4.59.0 (#4)
-- bump undici from 7.22.0 to 7.24.3 (#5)
-- Team Feedback 2026-03-14 (20th) — no delta
-- Team Feedback 2026-03-14 (19th) — no delta
-- Team Feedback 2026-03-14 — workspace cleanup session (substantive)
-- cleanup orphan root files, wire workspace, fix geminiService location
-- surface GitHub Dependabot 7 vulns (5 high, 2 moderate) to Team Questions
-- Team Feedback 2026-03-14 (18th) — no delta
-- Team Feedback 2026-03-14 (17th) — no delta
-- Team Feedback 2026-03-14 (16th) — no delta
-- Team Feedback 2026-03-14 (15th) — no delta
-- Team Feedback 2026-03-14 (14th) — no delta
-- Team Feedback 2026-03-14 (13th) — no delta
-- Team Feedback 2026-03-14 (12th) — no delta
-- Team Feedback 2026-03-14 (11th) — no delta
-- Team Feedback 2026-03-14 (10th) — no delta
-- Team Feedback 2026-03-14 (9th) — no delta
-- Team Feedback 2026-03-14 (8th) — no delta
-- Team Feedback 2026-03-14 (7th) — no delta
-- Team Feedback 2026-03-14 (6th) — no delta
-- Team Feedback 2026-03-14 (5th) — no delta
-- Team Feedback 2026-03-14 — no delta, cadence issue escalated to Team Questions
-- Team Feedback 2026-03-13 (3rd) — no delta, cadence meta-note repeated
-- Team Feedback 2026-03-13 (2nd) — no delta, CoS answers surfaced, next session unblocked
-- ACK N-18 Workspace Split DONE + answer 3 team questions
-- Team Feedback 2026-03-13 — N-18 complete, root cleanup + N-13 scoping questions
-- nexus: N-18 React Workspace Split directive — Wolf decides N-18 before N-13
-- CoS responses to 4 team questions: N-16 GO, N-13 sequencing escalated, EU AI Act greenfield, vhs for demos
-- nexus: archive 10 DONE directives (715→317 lines, 56% reduction)
-- Team Feedback 2026-03-09 (4th) — no delta
-- Team Feedback 2026-03-09 (3rd) — no delta, reflection cadence observation
-- Team Feedback 2026-03-09 (2nd) — no delta, N-16-before-N-13 recommendation
-- Team Feedback 2026-03-09 — post-publish reflection, N-16/N-13 next
-- DIRECTIVE-05 DONE — archive 9 directives, What's Next section, vision pillar updates
-- DIRECTIVE-09 DONE — Perplexity citation type fix, CI green, GH#1 closed
-- P0 CI RED — fix Perplexity provider type error (DIRECTIVE-09)
-- P0 directive — Perplexity provider + provider docs + search gap callout
-- bump to v0.1.3 — all providers on current models
-- bump to v0.1.2 — published to npm
-- rename all @nxtg-ai/faultline refs to @nxtg/faultline
-- DIRECTIVE-NXTG-20260308-06 DONE — all Human Oracle items resolved
-- P0 DIRECTIVE-NXTG-20260308-06 — spinner + model IDs [SHIP-STOPPER]
-- directive NXTG-20260308-05 — archive + post-publish roadmap
-- clean stale blocker — CC-BY-4.0→Apache-2.0 resolved 2026-03-05
-- acknowledge 3 FP directives COMPLETE→DONE
-- D-03 status PENDING → DONE (team completed DX fix)
-- faultline-pro DX fix — real-first experience (Human Oracle P0)
-- faultline-pro automated UAT — pre-publish checks
-- fix Gate 4 hook — use NO_COLOR=1 for parseable test count output
-- CRUCIBLE Protocol Phase 1 — Gates 2,4,6,7 Critical tier
-- team feedback reflection 2026-03-06 — CI fix noted, N-16 queued, holding for npm GO
-- enrichment cycle 2026-03-06 — CoS answers to npm publish, React deps, orphan repo
-- team feedback reflection — shipped D03-D05, surprises, next priorities
-- prepare v0.1.0 for npm publish — Apache-2.0, examples, pre-publish checklist
-- cos-directive: ASIF GO — npm publish approved, Apache-2.0, Phase 1 execution
-- revenue model research — competitor pricing, market sizing, phased plan
-- cos-directive: NXTG-20260305-05 revenue model alignment
-- mark DIRECTIVE-03 and DIRECTIVE-04 as DONE
-- ops: install ASIF CI gate pre-push hook + update NEXUS
-- rewrite README with AI Claim Forensics positioning
-- GTM plan for npm launch — AI Claim Forensics positioning
-- cos-directive: NXTG-20260305-04 read competitive brief + draft GTM plan
-- inject competitive intelligence into PI section
-- cos-directive: NXTG-20260305-03 CI Gate Protocol + test reconciliation
-- add workflow permissions for issue creation
-- add failed-build-issue-action for CI failure notifications
-- Add welcome.yml — ASIF community automation
-- Add stale.yml — ASIF community automation
-- add: GitHub Sponsors funding link
-- nexus: team feedback reflection 2026-03-03
-- nexus: reconcile initiative details, verify 868 tests (DIRECTIVE-NXTG-20260228-02)
-- Wolf BUILD Beat #7 — inject directives for idle teams
-- nexus: archive 36 completed directives to NEXUS-archive.md
-- CoS BUILD beat: verify 868 tests, update changelog, clean stash artifacts
-- document intended Claim.dependencies field for P-08b (TQ-003)
-- answer TQ-001-005 (P-08b escalated, claim deps defer, npm publish escalated, README ack)
-- update ARCHITECTURE.md — add OpenAI, CLI layer, rules engine, analysis modules
-- update README (7 stale areas) + add TQ-005 to NEXUS
-- gitignore .faultline/ and *.sarif; add .claude project settings
-- Add Execution Strategy to CLAUDE.md — plan mode + agent teams for complex directives
-- add multi-provider pipeline integration tests (176 tests)
-- rewrite README + add architecture docs
-- add full pipeline + multi-provider integration tests (164 tests)
-- enrichment: directive for test bootstrap + CI (N-08/N-09)
-- Update Gemini badge to version 3 Pro
-- Add badges, contributor guidelines, and citation info
-- Update README with project and partnership information
-- added image assets
-- include image assets
-- Added Guided Tour for informational purposes and full transparency.
-- Added 'Live Demo' and learn more sections
-- Add performance modes, proxy fixes, and UX polish
+---
 
 ## [v0.1.0] — 2025-12-09
 
-### Changed
+### Added
 
-- Initial commit
+- Initial project structure: React frontend, Gemini provider, EU AI Act compliance module
+- 4-phase pipeline: Extract → Verify → Synthesize → Refine
+- Seismic Barometer risk visualization
