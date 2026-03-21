@@ -851,6 +851,58 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-21 — N-102 — 1 initiative SHIPPED, 16 net new tests
+
+### 1. What did we ship since last check-in?
+
+**N-102 — Key rotation reminder notifications (`key.rotation_due`)**
+
+| Commit | Deliverable | +Tests |
+|--------|-------------|--------|
+| `8ef3615` `feat: N-102` | `key.rotation_due` added to `NotificationEventType` union, `ALL_EVENT_TYPES`, and `EVENT_CATALOGUE`. `KeyRotationNotifier` class: 90d/180d thresholds, per-key×threshold dedup via `Set<string>`, uses `lastRotatedAt ?? createdAt` as rotation reference date, skips disabled and already-expired keys. `getKeyRotationNotifier().check()` wired into server 1-minute tick alongside `getKeyExpiryNotifier()`. Fixed two existing tests in `notifications.test.ts` that hardcoded `eventTypes.length === 7` (updated to 8). 15 new tests (KRN1–KRN15). | +15 new, +1 fix (3,910 → 3,926) |
+
+**Total this cycle**: 1 commit · 16 net tests changed · 3,926 total · 102 initiatives SHIPPED.
+
+---
+
+### 2. What surprised you?
+
+**The hardcoded-length test failure was the most expensive 30 seconds of the whole initiative.** N-102's code was correct on the first attempt — all 15 KRN tests passed immediately. The only failure was `notifications.test.ts:138` and `notifications.test.ts:165`, both asserting `toHaveLength(7)`. These tests were perfectly valid when written (there were 7 event types), but they encode a specific count rather than a lower-bound or set membership. The fix was mechanical (7 → 8), but the lesson is that **count-based length assertions on catalogues are fragile by design** — each new event type breaks them. A more resilient pattern would be `toBeGreaterThanOrEqual(7)` or `toContain('key.rotation_due')`, which adds a constraint without prescribing an exact size. Worth noting for future event type expansions.
+
+**The `lastRotatedAt ?? createdAt` pattern resolves a subtle trap.** KRN10 is the critical test: a key created 200 days ago with a `lastRotatedAt` 30 days ago should NOT fire. Without KRN10, the implementation could silently use the wrong reference date and over-notify. The implementation was correct from the start, but the test that locks this invariant — using `lastRotatedAt` to represent a rotation that already happened — is the test that proves the feature is semantically correct, not just mechanically correct. A test that fires when it shouldn't is always more dangerous than one that silently fails to fire.
+
+**N-102 closed the key lifecycle hygiene loop.** The lifecycle is now: create → monitor expiry (`key.expiring_soon`, N-88) → monitor rotation age (`key.rotation_due`, N-102) → disable/enable (N-93) → bulk-delete (N-89) → prune grace-period keys (N-91). Every observable key lifecycle event now has a corresponding notification type. This is architecturally complete.
+
+---
+
+### 3. Cross-project signals
+
+**The `XNotifier` pattern (check + dedup via Set + wired to 1-minute tick) is a reusable background alerting primitive.** `KeyExpiryNotifier` (N-88) and `KeyRotationNotifier` (N-102) share identical structure: singleton with `fired: Set<string>`, `check()` iterates state, `reset()` clears dedup for tests, wired into `setInterval`. Any ASIF project with time-decay alerting (e.g. subscription renewal reminders, trial expiry, invoice overdue) can follow this exact pattern. The dedup key `${entityId}:${thresholdLabel}` is generic and directly reusable.
+
+**Catalogue-based event systems need a single source of truth from day one.** The `EVENT_CATALOGUE` record (N-90) paid dividends here: adding `key.rotation_due` required one record insertion plus one union type addition, and both the `/notifications/events` API response and the type system updated automatically. Projects that maintain a separate route handler list alongside a type union always end up with drift. The catalogue-as-SSoT pattern should be established at the first event type, not retrofitted at the eighth.
+
+**Hardcoded count assertions on extensible catalogues cause unnecessary pre-push failures.** Signal to any ASIF project with an event-type, plugin, or capability list: assert set membership (`toContain`) or minimum bounds (`toBeGreaterThanOrEqual`) rather than exact length. The pre-push gate is strict; fragile count assertions burn time on otherwise clean initiatives.
+
+---
+
+### 4. What would you prioritize next?
+
+1. **CRUCIBLE Gate 6 (Stryker)**: Tenth cycle. The key lifecycle cluster is now fully closed (N-82–N-102). The stores are stable and unlikely to change in the near term. Mutation testing's signal-to-noise ratio is highest when the codebase is settled. This is exactly the right moment. Approve?
+2. **N-103 — `faultline keys rotation` CLI**: Surface the rotation age information via CLI. `keys rotation --days 90` would call `GET /keys/usage` and filter to keys where `daysSinceLastRotation >= days`, with OVERDUE/CRITICAL status chips matching the 90d/180d thresholds. Closes the CLI surface for key lifecycle hygiene (mirrors N-92 keys CLI).
+3. **N-104 — `faultline keys prune` CLI**: Wrap `POST /keys/bulk-delete?days=N` in a dry-run-first CLI command. Shows count of keys that would be pruned before confirming. Operator safety pattern, mirrors how `scans stale` feeds `DELETE /scans/stale`.
+4. **Tenant-scoped scan history**: Partition `ScanHistoryStore` by tenant ID. Optional `tenantId?: string` field on `ScanEntry`, propagated through scan routes. Backward-compatible. Closes the last global-state store for the enterprise tier.
+
+---
+
+### 5. Blockers / questions for CoS
+
+- **CRUCIBLE Gate 6 (Stryker)**: Tenth cycle, no response. The key lifecycle is closed. The scan lifecycle is closed. Mission control integrates both. The stores are stable. This is the optimal window for mutation testing — stable targets, comprehensive suites, no competing development. Approve?
+- **Catalogue count assertion pattern**: Should I retroactively update the `toHaveLength(7)` style assertions across the test suite to `toBeGreaterThanOrEqual(N)`, or is the current approach (fix-on-fail) acceptable? The pre-push gate catches it, but it introduces noise on otherwise clean initiatives.
+- **100-milestone re-scope (tenth ask)**: No response. With 102 shipped and momentum on the key lifecycle cluster, continuing incrementally. A directional signal — new vertical, revenue focus, stabilisation, or deprecation of any existing surface — would help prioritise N-103+.
+- **NPM_TOKEN / Fly.io**: Still pending. v0.3.0 publish blocked. `packages/sdk` and `packages/cli` have not been published since v0.2.0.
+
+---
+
 > **Reflection cycle**: 2026-03-21 — N-101 — 1 initiative SHIPPED, 15 net new tests
 
 ### 1. What did we ship since last check-in?
