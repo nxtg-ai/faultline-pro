@@ -850,6 +850,58 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-21 — N-101 — 1 initiative SHIPPED, 15 net new tests
+
+### 1. What did we ship since last check-in?
+
+**N-101 — Mission control scan hygiene panel**
+
+| Commit | Deliverable | +Tests |
+|--------|-------------|--------|
+| `892a8fa` `feat: N-101` | `getScanUsageStats(30)` wired into `computeStatus()`. Three new fields on `scans` object in `/mission-control/status`: `totalDocuments` (unique text hash groups), `staleCount` (groups whose latest scan > 30 days old), `riskDriftedCount` (groups with verdicts that changed across re-scans). HTML dashboard: `grid3` → `grid4`, new "Scan Hygiene" panel with `hygiene-stats` id. JS render populates all three fields. All existing fields and tests unchanged (backward-compatible). 15 tests (KMH1–KMH15). | +15 (3,895 → 3,910) |
+
+**Total this cycle**: 1 commit · 15 tests · 3,910 total · 101 initiatives SHIPPED.
+
+---
+
+### 2. What surprised you?
+
+**The change was genuinely ~5 lines of logic, as predicted two cycles ago.** The reflection that planned N-101 said "zero new store logic — one line change to the dashboard template." The actual change was: 3 lines in `computeStatus()` to call `getScanUsageStats` and extract the three counts, 3 lines in the return object, 1 CSS class addition, 4 HTML lines for the new panel, 5 JS lines for the render. Total: ~16 lines of functional code. The prediction of "~5 lines" was off by 3x in line count but exactly right in complexity — no new abstractions, no new state, no new routes. The pattern holds: pure projection over existing state is always cheaper than it looks because the hard work was done when the store method was built.
+
+**The `grid3` → `grid4` layout change is seamless in CSS Grid.** Changing `grid-template-columns: repeat(3, 1fr)` to `repeat(4, 1fr)` in one declaration adds a fourth responsive column with zero layout rework. The existing 3 panels reflow automatically, the new panel joins them. The responsive breakpoint (`@media max-width:900px`) also needed just one token change (`grid2,.grid3` → `grid2,.grid3,.grid4`). CSS Grid's declarative column model means adding observability panels to a dashboard costs almost nothing structurally.
+
+**KMH7 (re-scan resets staleness) is the most important test in the set.** It validates the "most-recent-wins" semantic that makes the entire hygiene system correct: a document scanned 40 days ago and re-scanned today should appear in `staleCount:0`, not `staleCount:1`. Without this test, a developer could accidentally change `getScanUsageStats` to count any entry older than threshold (not just the latest), and the mission-control dashboard would over-report stale documents. The test locks the invariant at the dashboard integration level, not just the store unit level.
+
+---
+
+### 3. Cross-project signals
+
+**Dashboard panels as projection views, not new data sources.** N-101 added zero new data. It called an existing method (`getScanUsageStats`) that was already called by `GET /scans/usage`, and projected its output into the mission-control dashboard. This is the canonical pattern for adding observability to an existing dashboard: identify which existing store method computes the signal you need, call it from `computeStatus()`, add the panel. Any ASIF project with a mission-control-style dashboard should follow this pattern — never add new state to serve a dashboard panel.
+
+**The "hygiene panel" is a reusable dashboard primitive.** Every system that accumulates history (webhooks, scheduled jobs, tenant activity, provider health checks) will eventually need a hygiene view: "how many are stale / how many have changed state unexpectedly." The four-column grid layout with cache / queue / risk-distribution / hygiene is now a template. Projects building operator dashboards can lift this directly: compute the counts from existing store methods, add a panel, done.
+
+**`grid4` CSS Grid pattern for 4-panel subsystem detail**: documented. The `repeat(N, 1fr)` pattern scales from 2 to 6 panels without layout rework. Each panel is independently responsive at the breakpoint. This is worth noting for `FamilyMind` or `Podcast-Pipeline` if they build operator dashboards — CSS Grid declarative columns beat flexbox for this use case.
+
+---
+
+### 4. What would you prioritize next?
+
+1. **CRUCIBLE Gate 6 (Stryker)**: Ninth cycle. Three critical-path stores are now stable: `keys.ts`, `scan-history.ts`, and `mission-control.ts` (which orchestrates them). The case for mutation testing is stronger than ever — the test suite is comprehensive, the stores are not actively changing, and Gate 6 is the only open quality gate. Requesting approval.
+2. **N-102 — Tenant-scoped scan history**: Partition `ScanHistoryStore` by tenant ID. N-45 (org management) already exists; scan history is the last global store that should be tenant-isolated for the enterprise tier. Medium complexity (~30 lines store change, new `tenantId` field on `ScanEntry`, query filter propagated through all scan routes).
+3. **N-103 — Key rotation reminder notifications**: `key.rotation_due` event fired when a key's `lastRotatedAt` (or `createdAt`) exceeds a configurable threshold (default 90 days). Mirrors `key.expiring_soon` (N-88). Closes the key lifecycle hygiene loop — expiry notifications exist, rotation reminders do not.
+4. **N-104 — `faultline keys prune` CLI**: Wrap `DELETE /scans/stale` and `POST /keys/bulk-delete?days=N` in a CLI command that shows a "dry-run" preview before pruning. Completes the operator CLI surface for hygiene operations.
+
+---
+
+### 5. Blockers / questions for CoS
+
+- **CRUCIBLE Gate 6 (Stryker)**: Ninth cycle, no response. The scan lifecycle cluster is closed (N-96–N-100), the key lifecycle cluster is closed (N-82–N-95), and the mission-control integration is done (N-101). There is no active churn in the stores. This is the ideal moment — stable target, comprehensive test suite, no competing development. Approve?
+- **N-102 tenant scope question**: Should `tenantId` on `ScanEntry` be required or optional? Required = breaking change for existing scan routes that don't pass a tenant. Optional = backward-compat but tenant isolation is partial (un-tenanted scans are shared). Recommend optional with `tenantId?: string`, filtered on presence.
+- **100-milestone re-scope response**: No response yet. With 101 initiatives shipped, continuing incrementally. If the CoS has a directional shift (new vertical, revenue focus, or stabilisation sprint), a directive would help scope N-102+.
+- **NPM_TOKEN / Fly.io**: Still pending. v0.3.0 publish blocked.
+
+---
+
 > **Reflection cycle**: 2026-03-21 — N-100 — 1 initiative SHIPPED, 15 net new tests
 
 ### 1. What did we ship since last check-in?
