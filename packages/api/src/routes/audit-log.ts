@@ -20,6 +20,7 @@ import { requireAdmin } from '../plugins/auth.js';
 
 function filterEntries(entries: AuditEntry[], params: {
   keyId?: string;
+  tenantId?: string;
   endpoint?: string;
   method?: string;
   statusCode?: string;
@@ -30,6 +31,9 @@ function filterEntries(entries: AuditEntry[], params: {
 
   if (params.keyId)
     result = result.filter(e => e.keyId === params.keyId);
+
+  if (params.tenantId)
+    result = result.filter(e => e.tenantId === params.tenantId);
 
   if (params.endpoint)
     result = result.filter(e => e.endpoint.includes(params.endpoint!));

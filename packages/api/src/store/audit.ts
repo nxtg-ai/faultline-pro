@@ -1,9 +1,11 @@
 import { appendFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { getTenantStore } from './tenants.js';
 
 export interface AuditEntry {
   timestamp: string;
   keyId: string;
+  tenantId?: string;
   endpoint: string;
   method: string;
   statusCode: number;
@@ -19,8 +21,9 @@ export function hashInput(text: string): string {
 class AuditLogger {
   private entries: AuditEntry[] = [];
 
-  log(entry: AuditEntry): void {
-    this.entries.push(entry);
+  log(entry: Omit<AuditEntry, 'tenantId'> & { tenantId?: string }): void {
+    const tenantId = entry.tenantId ?? getTenantStore().findByKeyId(entry.keyId)?.id;
+    this.entries.push({ ...entry, tenantId });
     const path = process.env.FAULTLINE_AUDIT_PATH;
     if (path) {
       try {
