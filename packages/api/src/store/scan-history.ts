@@ -167,6 +167,21 @@ class ScanHistoryStore {
   }
 
   /**
+   * Deletes all scan entries belonging to stale textHash groups.
+   * A group is stale when its most-recent scan is older than `days` days.
+   * Returns the counts of deleted groups and individual entries.
+   */
+  pruneStaleGroups(days: number): { deletedGroups: number; deletedEntries: number } {
+    const stale = this.getStaleScanGroups(days);
+    if (stale.length === 0) return { deletedGroups: 0, deletedEntries: 0 };
+
+    const staleHashes = new Set(stale.map((e) => e.textHash));
+    const before = this.entries.length;
+    this.entries = this.entries.filter((e) => !staleHashes.has(e.textHash));
+    return { deletedGroups: staleHashes.size, deletedEntries: before - this.entries.length };
+  }
+
+  /**
    * Returns the most-recent scan entry per unique textHash group where
    * the most recent scan for that group is older than `days` days ago.
    * These are "stale" documents — texts that haven't been re-verified recently.
