@@ -238,3 +238,75 @@ export function formatRotationStatus(result: RotationStatusResult): string {
   }
   return lines.join('\n');
 }
+
+// ── Prune (bulk-delete dormant) ───────────────────────────────────────────────
+
+export interface PrunePreviewResult {
+  days: number;
+  count: number;
+  keys: KeyEntry[];
+  error?: string;
+}
+
+export interface PruneResult {
+  days: number;
+  deleted: number;
+  ids: string[];
+  error?: string;
+}
+
+/** Preview: fetches dormant keys that WOULD be deleted (dry-run). */
+export async function getKeysPrunePreview(apiUrl: string, apiKey: string, days: number): Promise<PrunePreviewResult> {
+  const result = await apiFetch(`${apiUrl}/keys/dormant?days=${days}`, apiKey);
+  if ((result as { error?: string }).error) {
+    return { days, count: 0, keys: [], error: (result as { error: string }).error };
+  }
+  return result as PrunePreviewResult;
+}
+
+/** Execute: calls POST /keys/bulk-delete with { days } to actually delete dormant keys. */
+export async function pruneKeys(apiUrl: string, apiKey: string, days: number): Promise<PruneResult> {
+  const result = await apiFetch(`${apiUrl}/keys/bulk-delete`, apiKey, {
+    method: 'POST',
+    body: JSON.stringify({ days }),
+  });
+  if ((result as { error?: string }).error) {
+    return { days, deleted: 0, ids: [], error: (result as { error: string }).error };
+  }
+  const { deleted, ids } = result as { deleted: number; ids: string[] };
+  return { days, deleted, ids };
+}
+
+export function formatPrunePreview(result: PrunePreviewResult): string {
+  if (result.error) return `Error: ${result.error}`;
+  if (result.count === 0) {
+    return `No dormant keys found (threshold: ${result.days} days). Nothing to prune.`;
+  }
+  const lines = [
+    `DRY RUN — would delete ${result.count} dormant key${result.count === 1 ? '' : 's'} (unused for >${result.days} days):`,
+    '',
+  ];
+  for (const k of result.keys) {
+    const ref      = k.lastUsedAt ?? k.createdAt;
+    const daysSince = Math.floor((Date.now() - new Date(ref).getTime()) / 86_400_000);
+    lines.push(`  ${k.id.slice(0, 8)}  ${k.name.padEnd(24)}  ${daysSince}d since last use`);
+  }
+  lines.push('');
+  lines.push(`Run with --confirm to permanently delete these keys.`);
+  return lines.join('\n');
+}
+
+export function formatPruneResult(result: PruneResult): string {
+  if (result.error) return `Error: ${result.error}`;
+  if (result.deleted === 0) {
+    return `No dormant keys found (threshold: ${result.days} days). Nothing pruned.`;
+  }
+  const lines = [
+    `Pruned ${result.deleted} dormant key${result.deleted === 1 ? '' : 's'} (unused for >${result.days} days).`,
+    '',
+  ];
+  for (const id of result.ids) {
+    lines.push(`  ${id.slice(0, 8)}`);
+  }
+  return lines.join('\n');
+}

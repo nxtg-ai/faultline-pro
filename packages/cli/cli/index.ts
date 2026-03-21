@@ -31,7 +31,7 @@ import { compareScanResults, renderCompare } from './compare.js';
 import { render as renderExport, applyFilter, type ExportFormat } from './export.js';
 import { setLang } from '../lib/i18n.js';
 import { getDemoResult } from './demo.js';
-import { listKeys, getDormantKeys, getExpiringSoonKeys, rotateKey, getRotationStatus, formatKeyList, formatDormantList, formatExpiringSoonList, formatRotateResult, formatRotationStatus } from './keys-client.js';
+import { listKeys, getDormantKeys, getExpiringSoonKeys, rotateKey, getRotationStatus, getKeysPrunePreview, pruneKeys, formatKeyList, formatDormantList, formatExpiringSoonList, formatRotateResult, formatRotationStatus, formatPrunePreview, formatPruneResult } from './keys-client.js';
 import { getStaleScans, getScanUsage, formatStaleList, formatScanUsage } from './scans-client.js';
 
 const VERSION = '0.2.0';
@@ -968,9 +968,22 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
         return { exitCode: 0, output: formatRotationStatus(result) };
       }
 
+      if (sub === 'prune') {
+        const days    = Math.min(365, Math.max(1, parseInt(flags['days'] ?? '90', 10) || 90));
+        const confirm = 'confirm' in flags;
+        if (!confirm) {
+          const preview = await getKeysPrunePreview(apiUrl, apiKey, days);
+          if (preview.error) return { exitCode: 1, output: `Error: ${preview.error}` };
+          return { exitCode: 0, output: formatPrunePreview(preview) };
+        }
+        const result = await pruneKeys(apiUrl, apiKey, days);
+        if (result.error) return { exitCode: 1, output: `Error: ${result.error}` };
+        return { exitCode: 0, output: formatPruneResult(result) };
+      }
+
       return {
         exitCode: 1,
-        output: 'Usage:\n  faultline keys list [--api-url URL] [--api-key KEY]\n  faultline keys dormant [--days 30] [--api-url URL] [--api-key KEY]\n  faultline keys expiring [--days 7] [--api-url URL] [--api-key KEY]\n  faultline keys rotate <id> [--api-url URL] [--api-key KEY]\n  faultline keys rotation [--days 90] [--api-url URL] [--api-key KEY]',
+        output: 'Usage:\n  faultline keys list [--api-url URL] [--api-key KEY]\n  faultline keys dormant [--days 30] [--api-url URL] [--api-key KEY]\n  faultline keys expiring [--days 7] [--api-url URL] [--api-key KEY]\n  faultline keys rotate <id> [--api-url URL] [--api-key KEY]\n  faultline keys rotation [--days 90] [--api-url URL] [--api-key KEY]\n  faultline keys prune [--days 90] [--confirm] [--api-url URL] [--api-key KEY]',
       };
     }
 
