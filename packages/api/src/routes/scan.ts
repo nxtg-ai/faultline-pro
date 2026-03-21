@@ -13,6 +13,7 @@ import { getTemplateStore } from '../store/templates.js';
 import { getClaimIndex } from '../store/claims.js';
 import { getCostStore } from '../store/costs.js';
 import { getScanHistory, hashText } from '../store/scan-history.js';
+import { getTenantStore } from '../store/tenants.js';
 import { recordScanTelemetry } from '../store/telemetry.js';
 import { notifyScanFailed } from '../store/notifications.js';
 
@@ -109,6 +110,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
             latencyMs: Date.now() - startTime,
             timestamp: new Date().toISOString(),
             keyId,
+            tenantId: getTenantStore().findByKeyId(keyId)?.id,
           });
 
           if (attempted.length > 0) {

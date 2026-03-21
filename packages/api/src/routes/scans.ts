@@ -56,7 +56,7 @@ export async function scansRoutes(fastify: FastifyInstance): Promise<void> {
   );
 
   // GET /scans/usage — per-textHash scan analytics
-  fastify.get<{ Querystring: { staleDays?: string } }>(
+  fastify.get<{ Querystring: { staleDays?: string; tenantId?: string } }>(
     '/scans/usage',
     {
       preHandler: requireApiKey,
@@ -67,13 +67,14 @@ export async function scansRoutes(fastify: FastifyInstance): Promise<void> {
           type: 'object',
           properties: {
             staleDays: { type: 'string', pattern: '^[0-9]+$' },
+            tenantId:  { type: 'string' },
           },
         },
       },
     },
     async (request, reply) => {
       const staleDays = Math.min(365, Math.max(1, parseInt(request.query.staleDays ?? '30', 10)));
-      const stats     = getScanHistory().getScanUsageStats(staleDays);
+      const stats     = getScanHistory().getScanUsageStats(staleDays, request.query.tenantId);
 
       const summary = {
         total:            stats.length,
@@ -199,7 +200,7 @@ export async function scansRoutes(fastify: FastifyInstance): Promise<void> {
   );
 
   // GET /scans/stale — documents not re-verified for ≥N days
-  fastify.get<{ Querystring: { days?: string } }>(
+  fastify.get<{ Querystring: { days?: string; tenantId?: string } }>(
     '/scans/stale',
     {
       preHandler: requireApiKey,
@@ -209,14 +210,15 @@ export async function scansRoutes(fastify: FastifyInstance): Promise<void> {
         querystring: {
           type: 'object',
           properties: {
-            days: { type: 'string', pattern: '^[0-9]+$' },
+            days:     { type: 'string', pattern: '^[0-9]+$' },
+            tenantId: { type: 'string' },
           },
         },
       },
     },
     async (request, reply) => {
       const days  = Math.min(365, Math.max(1, parseInt(request.query.days ?? '30', 10)));
-      const scans = getScanHistory().getStaleScanGroups(days);
+      const scans = getScanHistory().getStaleScanGroups(days, request.query.tenantId);
       return reply.status(200).send({ days, count: scans.length, scans });
     },
   );
@@ -230,6 +232,7 @@ export async function scansRoutes(fastify: FastifyInstance): Promise<void> {
       risk?: string;
       cursor?: string;
       limit?: string;
+      tenantId?: string;
     };
   }>(
     '/scans/search',
@@ -247,15 +250,16 @@ export async function scansRoutes(fastify: FastifyInstance): Promise<void> {
             risk:     { type: 'string' },
             cursor:   { type: 'string' },
             limit:    { type: 'string' },
+            tenantId: { type: 'string' },
           },
           additionalProperties: false,
         },
       },
     },
     async (request, reply) => {
-      const { q, from, to, provider, risk, cursor, limit } = request.query;
+      const { q, from, to, provider, risk, cursor, limit, tenantId } = request.query;
       const limitNum = limit ? Math.min(parseInt(limit, 10) || 20, 100) : 20;
-      const result = getScanHistory().search({ q, from, to, provider, risk, cursor, limit: limitNum });
+      const result = getScanHistory().search({ q, from, to, provider, risk, cursor, limit: limitNum, tenantId });
       return reply.status(200).send({
         scans: result.entries,
         nextCursor: result.nextCursor,

@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-104 `faultline keys prune` CLI. 3,956 tests. 104 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-105 Tenant-scoped scan history. 3,971 tests. 105 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -114,6 +114,7 @@
 | N-102 | Key rotation reminder notifications — `key.rotation_due` added to `NotificationEventType` union, `ALL_EVENT_TYPES`, and `EVENT_CATALOGUE`; `KeyRotationNotifier` class: 90d/180d thresholds, per-key×threshold dedup via `Set<string>`, uses `lastRotatedAt ?? createdAt` as reference date, skips disabled/expired keys; wired into server 1-min tick alongside `getKeyExpiryNotifier()`; 15 tests (KRN1–KRN15) | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
 | N-103 | `faultline keys rotation` CLI — `getRotationStatus(apiUrl, apiKey, days)` calls `GET /keys/usage`, filters client-side to `daysSinceLastRotation >= days` (or creation age when never rotated), sorts oldest-first; `overdueCount` (≥90d) and `criticalCount` (≥180d) summary; `formatRotationStatus()` with OVERDUE/CRITICAL chips, never-rotated label, DISABLED/EXPIRED tags; `keys rotation [--days 90]` subcommand added; 15 tests (KRC1–KRC15) | DEVELOPER-X | SHIPPED | P1 | 2026-03-21 |
 | N-104 | `faultline keys prune` CLI — dry-run-safe destructive operator command; `getKeysPrunePreview()` calls `GET /keys/dormant` (read-only preview); `pruneKeys()` calls `POST /keys/bulk-delete` with `{ days }` (actual delete); `--confirm` flag gates execution (no confirm = dry-run); `formatPrunePreview()` shows DRY RUN header + key list + --confirm hint; `formatPruneResult()` shows deleted count + ID list; `keys prune [--days 90] [--confirm]` subcommand added; 15 tests (KKP1–KKP15) | DEVELOPER-X | SHIPPED | P1 | 2026-03-21 |
+| N-105 | Tenant-scoped scan history — `ScanEntry.tenantId?: string` added (backward-compat optional field); resolved at `record()` time via `getTenantStore().findByKeyId(keyId)?.id`; `search()`, `getScanUsageStats()`, `getStaleScanGroups()` each gain optional `tenantId` filter parameter; `GET /scans/search`, `GET /scans/usage`, `GET /scans/stale` routes expose `?tenantId=` query param; un-tenanted queries unchanged (no filter = global view); 15 tests (TSH1–TSH15) | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
 
 ---
 

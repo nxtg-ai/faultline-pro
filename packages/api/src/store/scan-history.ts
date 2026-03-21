@@ -30,6 +30,7 @@ export interface ScanEntry {
   latencyMs: number;
   timestamp: string;     // ISO string
   keyId: string;
+  tenantId?: string;     // resolved from TenantStore at record time; undefined for un-tenanted keys
 }
 
 export interface TimelineEntry extends ScanEntry {
@@ -63,6 +64,7 @@ class ScanHistoryStore {
     risk?: string;
     cursor?: string;
     limit?: number;
+    tenantId?: string;
   }): { entries: ScanEntry[]; nextCursor: string | null } {
     const limit = Math.min(params.limit ?? 20, 100);
     let results = this.entries; // already newest-first
@@ -73,6 +75,7 @@ class ScanHistoryStore {
       if (cursorIdx !== -1) results = results.slice(cursorIdx + 1);
     }
 
+    if (params.tenantId) results = results.filter((e) => e.tenantId === params.tenantId);
     if (params.q) {
       const q = params.q.toLowerCase();
       results = results.filter((e) => e.textPreview.toLowerCase().includes(q));
@@ -113,15 +116,17 @@ class ScanHistoryStore {
 
   /**
    * Returns per-textHash usage statistics with derived hygiene flags.
+   * When tenantId is provided, only entries belonging to that tenant are included.
    */
-  getScanUsageStats(staleDays = 30): ScanUsageStat[] {
+  getScanUsageStats(staleDays = 30, tenantId?: string): ScanUsageStat[] {
     const now = Date.now();
     const msPerDay = 86_400_000;
     const staleCutoff = new Date(now - staleDays * msPerDay);
 
-    // Group entries by textHash
+    // Group entries by textHash (filter by tenantId when specified)
     const groups = new Map<string, ScanEntry[]>();
-    for (const entry of this.entries) {
+    const source = tenantId ? this.entries.filter((e) => e.tenantId === tenantId) : this.entries;
+    for (const entry of source) {
       const g = groups.get(entry.textHash) ?? [];
       g.push(entry);
       groups.set(entry.textHash, g);
@@ -186,13 +191,15 @@ class ScanHistoryStore {
    * the most recent scan for that group is older than `days` days ago.
    * These are "stale" documents — texts that haven't been re-verified recently.
    * Results are sorted oldest-first.
+   * When tenantId is provided, only entries belonging to that tenant are considered.
    */
-  getStaleScanGroups(days: number): ScanEntry[] {
+  getStaleScanGroups(days: number, tenantId?: string): ScanEntry[] {
     const cutoff = new Date(Date.now() - days * 86_400_000);
 
-    // Most recent entry per textHash
+    // Most recent entry per textHash (scoped to tenant when specified)
+    const source = tenantId ? this.entries.filter((e) => e.tenantId === tenantId) : this.entries;
     const mostRecent = new Map<string, ScanEntry>();
-    for (const entry of this.entries) {
+    for (const entry of source) {
       const existing = mostRecent.get(entry.textHash);
       if (!existing || new Date(entry.timestamp) > new Date(existing.timestamp)) {
         mostRecent.set(entry.textHash, entry);
