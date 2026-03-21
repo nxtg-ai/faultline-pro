@@ -12,8 +12,8 @@
  *              verdict, confidenceScore denominator)
  */
 
-import { describe, it, expect } from 'vitest';
-import { parseSSEBody, formatStreamResult, type StreamResult, type StreamEvent } from '../cli/stream-client.js';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { parseSSEBody, formatStreamResult, streamScan, type StreamResult, type StreamEvent } from '../cli/stream-client.js';
 
 // ---------------------------------------------------------------------------
 // SC1–SC7 — parseSSEBody
@@ -179,5 +179,76 @@ describe('formatStreamResult — null-coalescing fallbacks', () => {
     });
     expect(result).toContain('"' + 'B'.repeat(77) + '..."');
     expect(result).not.toContain('B'.repeat(78));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SC16–SC20 — streamScan() HTTP client branches (lines 54-79 in stream-client.ts)
+// ---------------------------------------------------------------------------
+
+describe('streamScan — HTTP client branches', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('SC16: fetch throws network error → returns { events: [], error: message }', async () => {
+    vi.mocked(fetch).mockRejectedValue(new Error('Network connection refused'));
+    const result = await streamScan('http://localhost:3000', 'key', 'test text');
+    expect(result.events).toEqual([]);
+    expect(result.error).toBe('Network connection refused');
+  });
+
+  it('SC17: HTTP non-ok response with non-JSON body → returns "HTTP N" error', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: vi.fn().mockRejectedValue(new Error('not json')),
+    } as unknown as Response);
+    const result = await streamScan('http://localhost:3000', 'bad-key', 'test');
+    expect(result.events).toEqual([]);
+    expect(result.error).toBe('HTTP 401');
+  });
+
+  it('SC18: HTTP non-ok with JSON error body → uses error field from JSON', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: vi.fn().mockResolvedValue({ error: 'Forbidden: quota exceeded' }),
+    } as unknown as Response);
+    const result = await streamScan('http://localhost:3000', 'key', 'test');
+    expect(result.error).toBe('Forbidden: quota exceeded');
+    expect(result.events).toEqual([]);
+  });
+
+  it('SC19: response contains error event → returns { events, error: errEvent.message }', async () => {
+    const sseBody = 'data: {"type":"error","message":"Provider timeout"}';
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      text: vi.fn().mockResolvedValue(sseBody),
+    } as unknown as Response);
+    const result = await streamScan('http://localhost:3000', 'key', 'test');
+    expect(result.events).toHaveLength(1);
+    expect(result.error).toBe('Provider timeout');
+  });
+
+  it('SC20: successful SSE response → parsed events, overallRisk, claimCount, provider', async () => {
+    const sseBody = [
+      'data: {"type":"start","claimCount":2,"provider":"mock"}',
+      'data: {"type":"complete","overallRisk":"low"}',
+    ].join('\n\n');
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      text: vi.fn().mockResolvedValue(sseBody),
+    } as unknown as Response);
+    const result = await streamScan('http://localhost:3000', 'key', 'test text', 'mock');
+    expect(result.events).toHaveLength(2);
+    expect(result.overallRisk).toBe('low');
+    expect(result.claimCount).toBe(2);
+    expect(result.provider).toBe('mock');
+    expect(result.error).toBeUndefined();
   });
 });
