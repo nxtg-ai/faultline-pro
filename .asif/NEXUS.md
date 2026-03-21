@@ -854,6 +854,59 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-21 — N-105 — 1 initiative SHIPPED, 15 net new tests
+
+### 1. What did we ship since last check-in?
+
+**N-105 — Tenant-scoped scan history**
+
+| Commit | Deliverable | +Tests |
+|--------|-------------|--------|
+| `0eb63b2` `feat: N-105` | `ScanEntry.tenantId?: string` — optional field, backward-compat. Resolved at `record()` time via `getTenantStore().findByKeyId(keyId)?.id` (undefined for un-tenanted keys). `ScanHistoryStore.search()` gains `tenantId?` filter. `getScanUsageStats(staleDays, tenantId?)` scopes group aggregation to tenant. `getStaleScanGroups(days, tenantId?)` scopes stale detection to tenant. `GET /scans/search`, `GET /scans/usage`, `GET /scans/stale` each expose `?tenantId=` query param. Un-tenanted queries unchanged — no filter = global view. 15 tests (TSH1–TSH15). | +15 (3,956 → 3,971) |
+
+**Total this cycle**: 1 commit · 15 tests · 3,971 total · 105 initiatives SHIPPED.
+
+---
+
+### 2. What surprised you?
+
+**The tenant lookup is a one-liner at record time, not a query-time join.** The alternative design — store only `keyId` and derive `tenantId` at query time by calling `getTenantStore().findByKeyId()` inside the filter — would make every `search()` call touch the tenant store, adding a cross-store dependency inside a query method. The record-time approach avoids that entirely: `tenantId` is resolved once when the scan is written, then stored alongside the entry as a simple string. Query filters are just string comparisons. This is the standard denormalization pattern for in-memory stores where cross-store lookups in hot paths are undesirable.
+
+**TSH10/TSH12/TSH15 (cross-tenant isolation tests) are the most important tests in the set.** Each verifies not just that tenant A's data is returned, but that tenant B's data is explicitly absent. This asymmetric assertion pattern — "contains A, does not contain B" — is what makes isolation tests meaningful. A test that only asserts `entries[0].tenantId === 'alpha'` without checking that `'beta'` is absent would pass even with a bug that returns all entries when the filter matches anything. The negative assertion is what locks the invariant.
+
+**`getScanUsageStats` tenant filter required only 2 lines.** Adding the `tenantId?` parameter to a method that groups by `textHash` could have been complex — if groups span tenants, the grouping logic needs to be tenant-aware. But because each `ScanEntry` carries its own `tenantId`, the filter is a simple pre-filter on the entry list before grouping: `const source = tenantId ? this.entries.filter((e) => e.tenantId === tenantId) : this.entries`. The grouping logic is unchanged. This confirms that the record-time denormalization was the right design choice — it made all downstream filters trivial.
+
+---
+
+### 3. Cross-project signals
+
+**The "optional tenantId on every entity" pattern for backward-compatible multi-tenancy.** Adding `tenantId?: string` to an existing record type is the lowest-friction path to multi-tenancy: no schema migration (in-memory), no breaking change (optional field), no new routes (filter on existing endpoints via query param). Existing callers that omit `tenantId` continue to get global views. New callers that pass `tenantId` get scoped views. This pattern is directly reusable for: `NotificationRecord.tenantId?`, `AuditEntry.tenantId?`, `WebhookRecord.tenantId?`, `ScheduledJob.tenantId?`. Each would follow the same three-step pattern: add optional field, resolve at write time, filter at read time.
+
+**Record-time denormalization over query-time joins for in-memory stores.** In-memory stores have no join capability. The pattern established here — resolve cross-store lookups at write time, store the result as a scalar — is the canonical approach. Any ASIF project with in-memory stores that need cross-entity filtering (e.g. "show all webhooks for this tenant") should resolve the foreign key at record time, not filter by calling back into a parent store at query time.
+
+**The `?tenantId=` query param pattern on existing endpoints is cleaner than new tenant-scoped routes.** Instead of adding `GET /tenants/:tenantId/scans/search`, the filter is added to the existing `GET /scans/search?tenantId=`. This avoids route proliferation and keeps the API surface flat. FamilyMind and any project planning multi-tenant API surfaces should consider this approach before adding nested tenant routes.
+
+---
+
+### 4. What would you prioritize next?
+
+1. **CRUCIBLE Gate 6 (Stryker)**: Thirteenth cycle. The enterprise tenancy cluster is now growing (N-45, N-105). The scan + key + CLI surfaces are all stable. The mutation testing window is still open. Approve?
+2. **N-106 — Webhook delivery retry dashboard**: `GET /webhooks/deliveries` — list recent delivery attempts with status, error, and retry eligibility. Webhooks (N-19) dispatch but provide no operator visibility into failed deliveries. This closes the webhook observability gap.
+3. **N-107 — `faultline scans prune` CLI**: Mirror `keys prune` for scan history. `scans prune [--days 30] [--confirm]` with dry-run preview via `GET /scans/stale` + actual delete via `DELETE /scans/stale`. Completes the scan lifecycle CLI surface.
+4. **N-108 — Tenant-scoped notifications**: `NotificationPrefs.tenantId?` and `NotificationRecord.tenantId?` following the same pattern as N-105. Would make `GET /notifications/history?tenantId=` return only that tenant's notification records.
+
+---
+
+### 5. Blockers / questions for CoS
+
+- **CRUCIBLE Gate 6 (Stryker)**: Thirteenth cycle, no response. The scan history store (`getStaleScanGroups`, `getScanUsageStats`, `search`) now has tenant-scoped variants. The key store has lifecycle methods. Both are stable, tested, and high-value mutation targets. Approve?
+- **Tenant-scoped notification records (N-108 scope question)**: `NotificationRecord` is stored in `NotificationStore.history[]` and keyed by `keyId`. Should `tenantId` be resolved from the key at dispatch time (same pattern as N-105), or should it be a parameter passed by the caller? The N-105 pattern (resolve at write time) is preferred — confirm before implementing.
+- **100-milestone re-scope (thirteenth ask)**: 105 initiatives shipped. No directional signal received. The enterprise tenancy cluster (N-45, N-105, N-108) is the natural next vertical. Continuing unless redirected.
+- **NPM_TOKEN / Fly.io**: v0.3.0 still unpublished. `packages/sdk`, `packages/cli`, `packages/api` have diverged significantly from the last publish.
+- **UX questions from N-103/N-104 reflections**: `keys rotation` and `keys prune` — should DISABLED/EXPIRED keys be excluded by default? Still open.
+
+---
+
 > **Reflection cycle**: 2026-03-21 — N-104 — 1 initiative SHIPPED, 15 net new tests
 
 ### 1. What did we ship since last check-in?
