@@ -84,6 +84,80 @@ function signPayload(body: string, secret: string): string {
   return 'sha256=' + createHmac('sha256', secret).update(body).digest('hex');
 }
 
+// ─── Circuit breaker ──────────────────────────────────────────────────────
+
+const DEFAULT_FAILURE_THRESHOLD = 5;
+const DEFAULT_COOLDOWN_MS       = 60_000;
+
+interface CircuitEntry {
+  failures:  number;
+  openedAt?: number; // Date.now() when circuit tripped
+}
+
+export class WebhookCircuitBreaker {
+  private circuits: Map<string, CircuitEntry> = new Map();
+  readonly failureThreshold: number;
+  readonly cooldownMs:       number;
+
+  constructor(failureThreshold?: number, cooldownMs?: number) {
+    this.failureThreshold = failureThreshold
+      ?? Math.max(1, parseInt(process.env.FAULTLINE_WEBHOOK_CIRCUIT_THRESHOLD ?? String(DEFAULT_FAILURE_THRESHOLD), 10) || DEFAULT_FAILURE_THRESHOLD);
+    this.cooldownMs = cooldownMs
+      ?? Math.max(1000, parseInt(process.env.FAULTLINE_WEBHOOK_CIRCUIT_COOLDOWN_MS ?? String(DEFAULT_COOLDOWN_MS), 10) || DEFAULT_COOLDOWN_MS);
+  }
+
+  /**
+   * Returns true when the circuit is OPEN (dispatches should be suppressed).
+   * Auto-recovers to CLOSED after the cooldown window passes.
+   */
+  isOpen(webhookId: string, nowMs = Date.now()): boolean {
+    const entry = this.circuits.get(webhookId);
+    if (!entry?.openedAt) return false;
+    if (nowMs - entry.openedAt >= this.cooldownMs) {
+      // Cooldown elapsed — auto-recover
+      entry.failures  = 0;
+      entry.openedAt  = undefined;
+      return false;
+    }
+    return true;
+  }
+
+  /** Call after every failed delivery attempt (all retries exhausted). */
+  recordFailure(webhookId: string, nowMs = Date.now()): void {
+    const entry = this.circuits.get(webhookId) ?? { failures: 0 };
+    entry.failures++;
+    if (entry.failures >= this.failureThreshold && !entry.openedAt) {
+      entry.openedAt = nowMs;
+    }
+    this.circuits.set(webhookId, entry);
+  }
+
+  /** Call after a successful delivery. Resets the failure counter. */
+  recordSuccess(webhookId: string): void {
+    this.circuits.delete(webhookId);
+  }
+
+  /** Returns the current consecutive failure count (0 if no entry). */
+  failureCount(webhookId: string): number {
+    return this.circuits.get(webhookId)?.failures ?? 0;
+  }
+
+  /** Clear circuit state — optionally scoped to one webhook. */
+  reset(webhookId?: string): void {
+    if (webhookId) this.circuits.delete(webhookId);
+    else this.circuits.clear();
+  }
+}
+
+let circuitBreakerInstance: WebhookCircuitBreaker | null = null;
+export function getWebhookCircuitBreaker(): WebhookCircuitBreaker {
+  if (!circuitBreakerInstance) circuitBreakerInstance = new WebhookCircuitBreaker();
+  return circuitBreakerInstance;
+}
+export function resetWebhookCircuitBreaker(): void {
+  circuitBreakerInstance = new WebhookCircuitBreaker();
+}
+
 // ─── WebhookStore ──────────────────────────────────────────────────────────
 
 class WebhookStore {
@@ -144,6 +218,23 @@ export async function dispatchWebhook(
   data: unknown,
   timestamp?: string,
 ): Promise<void> {
+  // Circuit-breaker check — bail out if circuit is open
+  if (getWebhookCircuitBreaker().isOpen(webhook.id)) {
+    getWebhookDeliveryLog().push({
+      id:         randomUUID(),
+      webhookId:  webhook.id,
+      event,
+      url:        webhook.url,
+      timestamp:  new Date().toISOString(),
+      attempt:    1,
+      statusCode: null,
+      delivered:  false,
+      latencyMs:  0,
+      error:      'circuit open',
+    });
+    return;
+  }
+
   // Rate-limit check — bail out before fetch if over limit
   if (!getWebhookRateLimiter().check(webhook.id)) {
     getWebhookDeliveryLog().push({
@@ -168,6 +259,8 @@ export async function dispatchWebhook(
   };
   const body = JSON.stringify(payload);
   const signature = signPayload(body, webhook.secret);
+
+  let succeeded = false;
 
   for (let attempt = 0; attempt < 3; attempt++) {
     await _sleep(RETRY_DELAYS[attempt]);
@@ -207,9 +300,15 @@ export async function dispatchWebhook(
       error,
     });
 
-    if (delivered) return;
+    if (delivered) { succeeded = true; break; }
   }
-  // All 3 attempts exhausted
+
+  // Update circuit breaker with outcome
+  if (succeeded) {
+    getWebhookCircuitBreaker().recordSuccess(webhook.id);
+  } else {
+    getWebhookCircuitBreaker().recordFailure(webhook.id);
+  }
 }
 
 // ─── Test tool ────────────────────────────────────────────────────────────
