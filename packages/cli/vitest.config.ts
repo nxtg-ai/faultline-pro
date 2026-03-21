@@ -12,6 +12,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./tests/setup.ts'],
     include: ['tests/**/*.test.{ts,tsx}'],
+    exclude: ['**/node_modules/**', '**/.stryker-tmp/**', '**/dist/**'],
     coverage: {
       provider: 'v8',
       include: [
