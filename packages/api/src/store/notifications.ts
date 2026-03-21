@@ -2,6 +2,7 @@
  * Notification Store — configurable per-API-key event notifications.
  *
  * Event types:
+ *   scan.completed       — a scheduled scan completed successfully
  *   scan.failed          — a scan request returned an error (all providers failed)
  *   weekly.summary       — weekly usage digest (sent every Sunday 09:00 UTC)
  *   provider.available   — a previously-unavailable provider comes back online
@@ -26,6 +27,7 @@ import { getTenantStore } from './tenants.js';
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 export type NotificationEventType =
+  | 'scan.completed'
   | 'scan.failed'
   | 'weekly.summary'
   | 'provider.available'
@@ -36,6 +38,7 @@ export type NotificationEventType =
   | 'key.rotation_due';
 
 export const ALL_EVENT_TYPES: NotificationEventType[] = [
+  'scan.completed',
   'scan.failed',
   'weekly.summary',
   'provider.available',
@@ -48,6 +51,7 @@ export const ALL_EVENT_TYPES: NotificationEventType[] = [
 
 /** Human-readable metadata for each event type. Authoritative single source of truth. */
 export const EVENT_CATALOGUE: Record<NotificationEventType, { description: string; example: Record<string, unknown> }> = {
+  'scan.completed':       { description: 'Fired when a scheduled scan completes successfully.',                                     example: { scheduleId: 'sched-1', overallRisk: 'low', claimCount: 5, durationMs: 1200 } },
   'scan.failed':          { description: 'Fired when a scan request fails across all providers.',                                  example: { error: 'Rate limit exceeded', provider: 'gemini' } },
   'weekly.summary':       { description: 'Sent every Sunday at 09:00 UTC with a usage digest.',                                    example: { scanCount: 42, errorCount: 1, topProvider: 'gemini' } },
   'provider.available':   { description: 'Fired when a circuit-broken provider comes back online.',                                example: { provider: 'openai', available: true } },

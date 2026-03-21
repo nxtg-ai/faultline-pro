@@ -13,7 +13,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { scan } from '@nxtg/faultline/cli/scan.js';
-import { getNotificationStore } from './notifications.js';
+import { getNotificationStore, type NotificationEventType } from './notifications.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -362,6 +362,7 @@ class ScheduleRunner {
         provider: schedule.provider, error: errorMsg, inputSource, inputSize,
       };
       getScheduleStore().recordRun(schedule.id, runResult);
+      await dispatchScheduleNotification(schedule, runResult, null);
     }
   }
 }
@@ -372,7 +373,8 @@ async function dispatchScheduleNotification(
   _scanResult: unknown,
 ): Promise<void> {
   try {
-    const payload = {
+    const eventType: NotificationEventType = runResult.error ? 'scan.failed' : 'scan.completed';
+    const payload: Record<string, unknown> = {
       scheduleId:   schedule.id,
       scheduleName: schedule.name,
       ranAt:        runResult.ranAt,
@@ -384,7 +386,8 @@ async function dispatchScheduleNotification(
       runCount:     (getScheduleStore().get(schedule.id)?.runCount ?? 0),
       notifyEmail:  schedule.notifyEmail,
     };
-    await getNotificationStore().dispatch('scan.failed', payload, schedule.keyId);
+    if (runResult.error) payload['error'] = runResult.error;
+    await getNotificationStore().dispatch(eventType, payload, schedule.keyId);
   } catch { /* non-fatal */ }
 }
 
