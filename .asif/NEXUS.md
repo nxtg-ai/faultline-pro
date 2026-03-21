@@ -847,6 +847,57 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-21 — N-97 + N-98 — 2 initiatives SHIPPED, 30 net new tests
+
+### 1. What did we ship since last check-in?
+
+**N-97 — Scan usage analytics** (`GET /scans/usage`) + **N-98 — Bulk scan pruning** (`DELETE /scans/stale`)
+
+| Commit | Deliverable | +Tests |
+|--------|-------------|--------|
+| `75e11af` `feat: N-97` | `ScanUsageStat` interface. `getScanUsageStats(staleDays=30)`: groups all history by `textHash`, computes `scanCount`, `firstScannedAt`, `lastScannedAt`, `daysSince*`, `latestRisk`, `riskDrifted` (`Set(risks).size > 1`), `providers[]` (distinct), `avgLatencyMs`, `isStale`. `GET /scans/usage?staleDays=N` → `{ staleDays, total, staleCount, riskDriftedCount, stats[] }` sorted most-recently-scanned first. 401 guard. 15 tests (KSU1–KSU15). | +15 (3,835 → 3,850) |
+| `7258c71` `feat: N-98` | `pruneStaleGroups(days)`: deletes ALL scan entries for stale textHash groups (group-level, not entry-level). Returns `{ deletedGroups, deletedEntries }` as separate counts. `DELETE /scans/stale?days=N` admin-gated (403). Round-trip test KSP14: prune then verify `GET /scans/stale` empty. 15 tests (KSP1–KSP15). | +15 (3,850 → 3,865) |
+
+**Total this cycle**: 2 commits · 30 tests · 3,865 total · 98 initiatives SHIPPED.
+
+---
+
+### 2. What surprised you?
+
+**`deletedGroups` and `deletedEntries` are necessarily separate return values.** When designing the prune response, it's tempting to return a single `deleted` count. But for scan history, a "group" (unique text) can have many historical entries (daily scans over months). An operator running `DELETE /scans/stale?days=30` needs to know: how many distinct documents were pruned (groups) AND how much history was freed (entries). These numbers diverge in production: 50 groups × 30 entries = 1,500 entries deleted. KSP15 explicitly validates both counts for a multi-entry group scenario. This is the same insight that drove `{ deleted: N, ids: [] }` for bulk-delete of keys — the response must reflect what actually changed.
+
+**`riskDrifted` is forensically meaningful in a way that has no key-domain equivalent.** In the key lifecycle, all flags are operational (is it usable? is it old?). `riskDrifted` is epistemological — it signals that re-scanning the same text produced a different verdict. This could mean: the LLM is non-deterministic on borderline claims, the web evidence has changed, or the text is ambiguous. A document with `riskDrifted: true` and `scanCount > 3` is a candidate for human review. This metric should eventually surface in the mission-control dashboard as a quality signal.
+
+**The scan lifecycle playbook completes faster than the key lifecycle.** At N-98 we have: stale query, usage analytics, bulk prune — the three essentials. The key lifecycle needed 14 initiatives because keys are mutable (disable, enable, rotate, patch), have auth enforcement, and require both admin and user-facing surfaces. Scan history is mostly read-only (no mutation other than pruning), so the lifecycle cluster is ~5 initiatives rather than 14.
+
+---
+
+### 3. Cross-project signals
+
+**Group-level vs entry-level bulk operations.** For key bulk-delete we deleted individual keys (one entity = one entry). For scan prune we deleted entire groups (one document = N entries). The right granularity depends on whether the entity has history: keys have no intrinsic history (each is independent), scans are grouped by textHash. Any time a domain entity accumulates a history log, bulk operations should operate at the group level and report both group count and entry count. Apply to: webhook delivery logs (group by webhook ID), provider health checks (group by provider ID), tenant audit events (group by tenant ID).
+
+**`DELETE` for idempotent pruning, `POST /bulk-delete` for targeted deletion.** N-98 uses `DELETE /scans/stale?days=N` while N-89 uses `POST /keys/bulk-delete`. The distinction: `DELETE` on a filter query is appropriate when the caller specifies a threshold ("delete everything older than N days") and the server determines the targets. `POST /bulk-delete` with a body is appropriate when the caller specifies exact IDs. Both patterns coexist in the same API and follow HTTP semantics correctly. Worth documenting in the ASIF API design standard.
+
+---
+
+### 4. What would you prioritize next?
+
+1. **N-99 — Scan hygiene HTML dashboard** (`GET /scans/stale/view`): HTML table of stale documents — last-verified date, latest risk, scan count, risk-drift indicator, re-verify hint. Closes the scan lifecycle cluster. Mirrors `GET /keys/usage/view`.
+2. **CRUCIBLE Gate 6 (Stryker)**: Sixth cycle. Scan lifecycle is 4/5 steps done. This is the last open quality gate — it has been deferred every cycle without a blocker resolution.
+3. **`faultline scan list --stale`**: CLI subcommand wrapping `GET /scans/stale`. Mirrors `faultline keys dormant`.
+4. **Mission control integration**: Surface `riskDriftedCount` from `GET /scans/usage` in the mission-control dashboard as a claim quality signal. One line addition to the existing dashboard.
+
+---
+
+### 5. Blockers / questions for CoS
+
+- **CRUCIBLE Gate 6 (Stryker)**: Sixth cycle with no response. Is this waiting for a specific milestone? Scan lifecycle closes at N-99 — that would be a natural gate before adding mutation testing.
+- **`riskDrifted` in mission control**: Approve adding this signal to the existing mission-control dashboard? Zero new code — just expose the count already computed by `GET /scans/usage`.
+- **Scan lifecycle scope confirmed**: 5 initiatives (N-96–N-100): stale query ✅, analytics ✅, bulk prune ✅, dashboard (N-99), CLI (N-100). Matches the 3–5 initiative estimate from the previous reflection.
+- **NPM_TOKEN / Fly.io**: Still pending.
+
+---
+
 > **Reflection cycle**: 2026-03-21 — N-96 — 1 initiative SHIPPED, 15 net new tests
 
 ### 1. What did we ship since last check-in?
