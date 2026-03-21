@@ -890,6 +890,58 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-21 — CoS check-in — N-141 session close (CRUCIBLE Gate 7 + Gate 8.3 governance; 4,467 tests; 141 initiatives SHIPPED)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests | Total |
+|--------|-----------|-------------|--------|-------|
+| `735d147` | N-141 CRUCIBLE Gate 7 + Gate 8.3 | `// Validates:` spec refs on all 7 integration/E2E files (2/7 → 7/7 = 100%); `// MOCK JUSTIFIED:` comments on 8 `vi.mock()` calls; CLAUDE.md Gate 7 denominator clarified | +0 | 4,467 |
+
+**4,467 tests · 141 initiatives SHIPPED.** No test delta — governance and traceability improvements only. First CRUCIBLE audit to score **8/8 gates PASS** (all gates including Gate 7 and Gate 8.3 now clean).
+
+---
+
+### 2. What surprised you?
+
+**Gate 7 was 2/7 (29%), not 44%.** In the previous N-140 audit, Gate 7 was reported as 44% using the denominator "API test files with spec refs / total API test files." That was the wrong denominator. The correct denominator for Gate 7 is integration/E2E test files, not all test files. When I reframed to the right denominator, `real-integration.test.ts` and `integration-flow.test.ts` had refs but none of the CLI integration files did — giving 2/7 = 29%, which is worse than the 44% previously reported. The denominator error had been masking the real traceability gap for multiple cycles.
+
+**`real-integration.test.ts` had an implicit spec ref but no explicit one.** The file header opened with `"Real Integration Oracle (N-81 — CRUCIBLE Gate: integration oracle)"` — a direct N-81 reference embedded in the title string, not in the standardised `// Validates:` format. Grep for `Validates:` missed it. This is a format-not-just-presence problem: the spec ref standard needs to be consistent to be auditable. The fix: add explicit `// Validates:` to the file, which also serves as the format canonical.
+
+**8/8 PASS is achievable with zero new tests.** The prior 7/8 gap was entirely governance paperwork — missing comments in the right format. No assertion quality was added, no mutation score improved, no code changed. This means the project's actual test quality was already at 8/8; only the documentary evidence was lagging. That's a better outcome than the reverse (passing gates on paper but failing in practice).
+
+---
+
+### 3. Cross-project signals
+
+**Gate 7 denominator is a common audit error.** Any ASIF project that measures "spec-test traceability" against all test files will get an inflated denominator and a deflated percentage. The signal looks worse than reality (44% vs 100% for integration/E2E). Projects should define Gate 7 denominator = integration/E2E test files only, with explicit `// Validates:` comments. Unit tests, mutation hardening tests, and contract tests don't map to acceptance criteria — they belong to implementation correctness.
+
+**`// MOCK JUSTIFIED:` is a forcing function for explanation quality.** Writing the comment forces the author to articulate *why* mocking is acceptable at this level. Three distinct justification patterns emerged in this session: (a) external LLM API — no credentials available; (b) HTTP pipeline test — scan logic tested separately in unmocked oracle; (c) shape-contract test — only provider shape matters, not network. Projects with integration tests that use `vi.mock()` without explanation comments carry silent debt: future maintainers don't know if the mock is justified or lazy.
+
+---
+
+### 4. What would I prioritize next?
+
+**P1 — v0.4.0 git tag + npm publish.** Sixteenth cycle raising this. 4,467 tests. 8/8 CRUCIBLE gates PASS — the first clean sweep. All Gate 6 scores above threshold. Governance documentation current. Nothing technical is blocking this. Go/no-go?
+
+**P2 — Callback unification (`onClaimVerified` + `onProgress` → `onEvent?`).** Fourth consecutive cycle. Awaiting direction. The current dual-callback API is a minor wart but will become a breaking change cost if left past v0.5.0.
+
+**P3 — Self-Improvement Log in NEXUS.** CLAUDE.md says "Log actions in NEXUS ## Self-Improvement Log" but the section doesn't exist. Idle-time sessions (N-139, N-140, N-141) have no durable log of self-initiated work separate from the Directive history. Worth creating as a lightweight section.
+
+---
+
+### 5. Blockers and questions for the CoS
+
+1. **v0.4.0 publish**: Sixteenth cycle. 8/8 CRUCIBLE gates PASS for the first time. No blockers. Go/no-go?
+
+2. **Callback unification**: Fourth cycle. `onClaimVerified` + `onProgress` → `onEvent?(event: ScanEvent)`. Approve or close as won't-fix?
+
+3. **VALID_PROVIDERS mutation resistance**: Still open from multiple prior cycles. Three resolution strategies on the table: (a) accept as known limitation, (b) add real integration test that validates non-mock routing, (c) extract validator function for unit testability. Which?
+
+4. **Self-Improvement Log**: Should idle-time initiatives (N-139, N-140, N-141) be logged in a separate `## Self-Improvement Log` section in NEXUS, or is the Executive Dashboard sufficient?
+
+---
+
 > **Reflection cycle**: 2026-03-21 — CoS check-in — N-140 session close (CRUCIBLE self-audit 7/8 PASS + CLAUDE.md process hardening; 4,467 tests; 140 initiatives SHIPPED)
 
 ### 1. What did we ship since last check-in?
