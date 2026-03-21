@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-139 docs/mutation-testing.md — permanent mutation hardening reference; 9 killable patterns, 3 untestable patterns documented. 4,467 tests. 139 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-139 docs/mutation-testing.md + reflection cycle 14; 4,467 tests; 139 initiatives SHIPPED. All Gate 6 scores above threshold. v0.4.0 awaiting CoS go-signal.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -887,6 +887,57 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-03-21 — CoS check-in — N-139 session close (docs/mutation-testing.md; 4,467 tests; 139 initiatives SHIPPED)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests | Total |
+|--------|-----------|-------------|--------|-------|
+| `854dc34` | N-138 `cli/scan.ts` hardening round 3 | `scan-mutation-hardening-3.test.ts`; 75.41%→81.97%; HN1–HN15; `stryker-cli.config.mjs` updated | +15 | 4,467 |
+| `7f0031d` | N-139 `docs/mutation-testing.md` | Permanent mutation hardening reference; 9 killable patterns, 3 untestable patterns, config reference, threshold table | +0 | 4,467 |
+
+**4,467 tests · 139 initiatives SHIPPED.** Both the hardening work and the documentation gap are now closed. All 5 hardened modules exceed Gate 6 (80%). The eight-cycle `docs/mutation-testing.md` backlog is cleared.
+
+---
+
+### 2. What surprised you?
+
+**Eight reflection cycles of the same documentation request is a process smell, not a content problem.** The patterns were fully understood after N-126. The reason they weren't written down immediately is that each hardening session felt like "there's one more pattern to add before the doc is complete." The doc was never blocked — it was perpetually deferred in favour of another kill. The lesson: write the doc immediately after the *first* session that produces a reusable pattern, even if it's incomplete. Incomplete docs that exist are more valuable than complete docs that don't.
+
+**`docs/mutation-testing.md` required no research — it was pure extraction.** Every sentence in the document had already been written in a reflection somewhere between N-126 and N-138. The work was assembly, not discovery. This is the cost of deferred documentation: the knowledge existed but was buried in reflection prose rather than findable reference material.
+
+---
+
+### 3. Cross-project signals
+
+**The mutation testing reference patterns are portfolio-wide.** Any ASIF project that uses Stryker + Vitest can apply the exact same patterns verbatim: catch-block injection via missing credentials, two-entry exact-sum accumulator kills, exact-count boolean guard kills, ObjectLiteral field assertion. The config reference (coverageAnalysis: 'off', explicit testFiles manifest, vitest.dir) applies to every monorepo setup. Consider linking `docs/mutation-testing.md` from the ASIF standards directory.
+
+**"Write the doc at first discovery" is a standing rule worth adding to CLAUDE.md.** The eight-cycle deferral cost approximately 8 × (30 seconds to read reflection + cognitive overhead of re-deriving the pattern). Trivial per cycle, but it compounds. A one-line rule in CLAUDE.md under Idle Time Protocol would prevent recurrence.
+
+---
+
+### 4. What would I prioritize next?
+
+**P1 — v0.4.0 git tag + npm publish.** Fourteenth cycle. 4,467 tests. All Gate 6 scores above threshold. GDPR cluster complete. Streaming arc complete. Documentation complete. The codebase is in the strongest state it has ever been. There is no technical reason to delay. Two commands: `git tag v0.4.0 && npm publish`.
+
+**P2 — Add "document patterns at first discovery" to CLAUDE.md Idle Time Protocol.** One-line addition, prevents the 8-cycle recurrence.
+
+**P3 — Callback unification (`onClaimVerified` + `onProgress` → `onEvent`).** Still awaiting CoS direction. Raising for the third time.
+
+---
+
+### 5. Blockers and questions for the CoS
+
+1. **v0.4.0 publish**: Fourteenth cycle. 4,467 tests. All gates cleared. No technical blockers. Go/no-go?
+
+2. **Callback unification**: `onClaimVerified` + `onProgress` → single `onEvent?(event: ScanEvent)` discriminated union. Third time raising. Approve or definitively defer?
+
+3. **VALID_PROVIDERS resistance**: 6 mutants permanently surviving in mock-only environment. Options documented in `docs/mutation-testing.md`. CoS preference: (a) accept known limitation, (b) real integration test, (c) extract validator to testable unit?
+
+4. **CLAUDE.md update**: Add "document reusable patterns immediately at first discovery" to Idle Time Protocol? This would prevent 8-cycle recurrence.
+
+---
 
 > **Reflection cycle**: 2026-03-21 — CoS check-in — N-138 session close (cli/scan.ts mutation hardening round 3 75.41%→81.97%; 4,467 tests; 138 initiatives SHIPPED)
 
