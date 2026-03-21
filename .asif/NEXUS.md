@@ -841,6 +841,55 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-21 — N-91 + N-92 — 2 initiatives SHIPPED, 30 net new tests
+
+### 1. What did we ship since last check-in?
+
+**N-91 — `GET /keys/expiring-soon`** + **N-92 — `faultline keys` CLI commands**
+
+| Commit | Deliverable | +Tests |
+|--------|-------------|--------|
+| `bc4bfc3` `feat: N-91 + N-92` | **N-91**: `KeyStore.getExpiringSoon(days)` filters `expiresAt > now && <= cutoff`; `GET /keys/expiring-soon?days=N` (default 7, clamped 1–365); secrets redacted; already-expired keys excluded; `expiresAt` surfaced in response object. 15 tests (KES1–KES15). **N-92**: `packages/cli/cli/keys-client.ts` — 4 HTTP wrappers (`listKeys`, `getDormantKeys`, `getExpiringSoonKeys`, `rotateKey`) + 4 formatters. `faultline keys list / dormant --days N / expiring --days N / rotate <id>` subcommands wired into `main()`. `FAULTLINE_API_KEY` / `FAULTLINE_API_URL` env var fallback. Guard: positional key ID that starts with `--` is treated as a missing ID, returning exitCode 1. 15 tests (KC1–KC15). | +30 (3,745 → 3,775) |
+
+**Total this cycle**: 1 commit · 30 tests · 3,775 total · 92 initiatives SHIPPED.
+
+---
+
+### 2. What surprised you?
+
+**The `args[2]?.startsWith('--')` guard is the right idiom for optional positional args before flags.** `main(['keys', 'rotate', '--api-key', 'test-key'])` has `args[2] === '--api-key'` — a string, so a naive existence check passes and the flag value is mistakenly used as the key ID. The fix is trivial but non-obvious: any positional arg that starts with `--` should be treated as absent. This is the minimal-correct approach; a full CLI parser like `yargs` handles this automatically, but for our bespoke `main()` dispatcher it's a one-liner guard.
+
+**KC8's `toContain('dormant')` vs `'Dormant'` mismatch surfaced a case-sensitivity contract gap.** The formatter outputs `'Dormant keys — unused for >30 days (1):'` (capital D). The test asserted lowercase `'dormant'`. This wasn't caught in the original write-up because the formatter and the test were written in the same session without running. The fix is one character, but it points to a broader pattern: formatter output strings are part of the CLI's UX contract and should be asserted with the exact casing that the user sees. If we ever add `--json` output mode, this distinction collapses — but for human-readable output, case is meaningful.
+
+**N-91 reuses the exact same route template as N-87 (`GET /keys/dormant`).** The only differences are: default `days` value (7 vs 30), the `getExpiringSoon` vs `getDormant` store method, and the response field label. This level of structural similarity means N-91 was ~20 minutes of work. The route, the query-clamping, the secret-redaction spread, the schema — all identical patterns. Portfolio signal: the key lifecycle API surface is now highly regular. Any new "list by condition" endpoint will follow the same shape.
+
+---
+
+### 3. Cross-project signals
+
+**Minimal positional-arg-before-flags guard: `args[N]?.startsWith('--') ? undefined : args[N]`**. Any CLI that parses positional arguments interspersed with flags without a proper argument parser needs this guard. The pattern is: a positional slot that was meant to be a value but received a flag name should be treated as absent. Without this, the flag name becomes the value and the downstream call silently misbehaves. Apply everywhere in `packages/cli/cli/index.ts` where a positional arg precedes optional flags.
+
+**HTTP client + formatter separation is the right CLI client architecture.** `keys-client.ts` exports pure HTTP functions (`listKeys`, etc.) and pure formatter functions (`formatKeyList`, etc.) separately. The test file can then mock the HTTP layer (via `vi.mock`) and unit-test the formatters with no network. This means the CLI's integration tests are really integration tests of the argument parsing and routing logic — not of the HTTP layer. The HTTP layer gets its own dedicated test surface (the API tests). Clean separation = fast, reliable CLI tests.
+
+---
+
+### 4. What would you prioritize next?
+
+1. **CRUCIBLE Gate 6 (Stryker mutation testing)** — 92 initiatives shipped, 4 oracle types complete, key lifecycle feature cluster fully closed. This is the last open quality gate. Still needs CoS approval.
+2. **Key lifecycle completeness audit** — we now have create, list, get, update, disable/enable, rotate, expire, dormant, expiring-soon, bulk-delete, and CLI coverage for all of the above. Worth writing a capability matrix and verifying no gaps before declaring the feature cluster fully done.
+3. **`POST /keys/bulk-disable`** — mirrors bulk-delete but soft-disables. Obvious next extension of the bulk operations surface.
+4. **Key usage analytics** — `GET /keys/usage` aggregating lastUsedAt, scan count per key, rotation history. Useful for key hygiene dashboards.
+
+---
+
+### 5. Blockers / questions for CoS
+
+- **CRUCIBLE Gate 6 (Stryker)**: Still pending approval. The key lifecycle cluster is now complete — this is the right moment to add mutation coverage.
+- **Key lifecycle capability matrix**: Should I write a formal doc cataloguing all 12 key operations + CLI coverage? Would be useful for the DEVELOPER-X pillar docs.
+- **NPM_TOKEN / Fly.io**: Still needed for v0.3.0 publish and hosted deployment.
+
+---
+
 > **Reflection cycle**: 2026-03-21 — N-89 + N-90 — 2 initiatives SHIPPED, 15 net new tests
 
 ### 1. What did we ship since last check-in?
