@@ -859,6 +859,59 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-21 — N-110 — 1 initiative SHIPPED, 15 net new tests (+ 1 existing test fixed)
+
+### 1. What did we ship since last check-in?
+
+**N-110 — Tenant-scoped webhooks**
+
+| Commit | Deliverable | +Tests |
+|--------|-------------|--------|
+| `9917cca` `feat: N-110` | `Webhook.tenantId?` stored at `create()` time via route-level resolution; `WebhookStore.list(tenantId?)` filter; `POST /webhooks` auto-resolves tenantId from authenticating key; `GET /webhooks?tenantId=` scoped list; `webhook-delivery-log.test.ts` `makeWebhook` factory updated to include new field; 15 tests (TW1–TW15). | +15 (4,032 → 4,047) |
+
+**Total this cycle**: 1 commit · 15 net new tests · 4,047 total · 110 initiatives SHIPPED.
+
+---
+
+### 2. What surprised you?
+
+**The TypeScript compiler caught the interface break immediately.** Adding `tenantId: string | undefined` to the `Webhook` interface (from the previous session) caused a compile error in `webhook-delivery-log.test.ts` line 26 — the `makeWebhook` factory there built a `Webhook` literal that didn't include `tenantId`. The pre-push hook caught this before any push. The fix was one line: `tenantId: overrides.tenantId,`. This is CRUCIBLE Gate 2 working as designed — a structural change to a shared type surfaces all the places that were previously silently out-of-sync.
+
+**Route-level tenantId resolution is cleaner than store-level.** N-108 (notifications) resolved `tenantId` inside `_deliver()` in the store itself, which required the notifications store to import the tenant store. For N-110, the resolution was done in the route handler before calling `create()`. The result: the webhook store has zero cross-store imports and the tenantId is just a passed-in scalar. This is the right direction — stores should be dumb containers; routes are the right place for cross-domain lookups. N-108 is a slight deviation from this principle (though it works correctly). If N-108 were refactored, the tenantId resolution would move to the `dispatch()` caller site.
+
+**Admin key maps to `keyId = 'admin'` — not a real key ID.** The `requireAdmin` prehandler sets `request.keyId = 'admin'` for the FAULTLINE_API_KEY env var path. This means `getTenantStore().findByKeyId('admin')` returns `undefined` — correct, since the admin env key is not a keystore key and has no tenant. The guard `keyId && keyId !== 'admin'` in the POST /webhooks route handles this explicitly. Worth documenting: any route that needs to resolve tenantId from `request.keyId` must special-case `'admin'`.
+
+---
+
+### 3. Cross-project signals
+
+**The `keyId !== 'admin'` guard is a recurring pattern.** Three routes now need it: notifications `_deliver()`, webhooks `POST /webhooks`, and (upcoming) audit log `POST /audit/log`. Any ASIF project with tenant-aware multi-key auth will need the same guard. The pattern is: `const tenantId = keyId && keyId !== 'admin' ? getTenantStore().findByKeyId(keyId)?.id : undefined`. This should be documented as a standard helper in any project that combines env-var admin keys with keystore tenant keys.
+
+**Denormalization at write time has zero query-time cost.** All three tenanted stores (scan history N-105, notifications N-108, webhooks N-110) filter by a stored scalar string. The `getHistory()` / `list()` / `getByEvent()` filter paths are a single `Array.filter` over a ring buffer. No cross-store lookups at read time. For an in-memory store this is already optimal — but the pattern also translates cleanly to a SQL index on `tenantId` if these stores are ever persisted. Record-time denormalization is the right default for ASIF projects.
+
+**The `WebhookPublic = Omit<Webhook, 'secret'>` pattern works well for field-hiding.** The list endpoint exposes `WebhookPublic` (no secret), but the internal store holds `Webhook` (with secret). Since `tenantId` was added to `Webhook`, it automatically appears in `WebhookPublic` with no additional work — the `Omit` type utility correctly propagates new fields. Any ASIF project that needs to expose a redacted view of a stored entity should prefer `Omit<T, 'sensitiveField'>` over a separate interface.
+
+---
+
+### 4. What would you prioritize next?
+
+1. **N-111 — Tenant-scoped audit log**: `AuditEntry.tenantId?` resolved at `log()` time, `GET /audit/log?tenantId=`. Closes the enterprise tenancy surface — the last resource not yet scoped.
+2. **CRUCIBLE Gate 6 (Stryker)**: Seventeenth cycle. The entire enterprise tenancy cluster (N-105, N-108, N-110) is now stable. The denormalization pattern is set. This is the right window before moving to a new vertical.
+3. **`esc()` shared utility**: Extract to `src/lib/html.ts`. Four routes inline the same four-replacement chain. Low effort, closes XSS auditability gap.
+4. **v0.3.0 publish**: 14 initiatives shipped since v0.2.0. Growing divergence from the published package. If NPM_TOKEN / Fly.io credentials are available, this is overdue.
+
+---
+
+### 5. Blockers / questions for CoS
+
+- **N-111 — Tenant-scoped audit log**: Proceeding unless redirected. One initiative closes the tenancy surface.
+- **CRUCIBLE Gate 6 (Stryker)**: Seventeenth cycle. No response across 16 cycles. The stores are stable, test counts are rising cleanly, no active churn. Requesting approval or explicit deferral. If deferred, what's the trigger condition?
+- **`keyId !== 'admin'` guard**: Should this be extracted to a shared helper in `auth.ts` (e.g., `resolveRequestTenantId(request)`)? Currently copy-pasted in notifications and webhooks routes. A helper would make it auditable and prevent future routes from forgetting the guard.
+- **NPM_TOKEN / Fly.io**: Seventeenth ask. v0.3.0 is overdue. The package is meaningfully different from what's published.
+- **100-milestone re-scope (seventeenth ask)**: 110 initiatives SHIPPED. The enterprise tenancy surface closes at N-111. After that: new vertical (revenue infrastructure, GDPR compliance module, provider expansion), stability pass, or publish? Signal welcome.
+
+---
+
 > **Reflection cycle**: 2026-03-21 — N-109 — 1 initiative SHIPPED, 15 net new tests
 
 ### 1. What did we ship since last check-in?
