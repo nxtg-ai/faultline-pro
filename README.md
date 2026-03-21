@@ -4,7 +4,7 @@ Forensic verification for AI-generated text. Faultline decomposes output into at
 
 [![CI](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@nxtg/faultline.svg)](https://www.npmjs.com/package/@nxtg/faultline)
-[![Tests](https://img.shields.io/badge/tests-4286%20passing-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-4301%20passing-brightgreen)](tests/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 
@@ -39,6 +39,8 @@ Forensic verification for AI-generated text. Faultline decomposes output into at
 | Compliance scan-check | `POST /compliance/scan-check` — match claim text against approaching deadlines |
 | i18n | `Accept-Language: es/fr/en` — localized error messages and report labels (EN/ES/FR) |
 | Property-based tests | `fast-check` oracle coverage: confidence bounds, dedup invariants, cost aggregation, sort stability |
+| GDPR compliance | Article 15 export (`GET /tenants/:id/export` → ZIP) + Article 17 erasure (`DELETE /tenants/:id/data`) covering scan history, audit log, notifications, webhooks, costs, schedules |
+| Mutation-tested core | Stryker gate: claim forensics 75.31%, webhook store 91.45%, GDPR stores (costs 89.36%, notifications 82.39%); CRUCIBLE Protocol Gate 6 |
 
 ---
 
@@ -93,6 +95,7 @@ Switch providers with `--provider <name>`. No code changes required.
 - **Monitoring** — `GET /health/deep` (subsystem status + provider config flags), `GET /metrics` (Prometheus text), `GET /status` (HTML)
 - **Swagger UI** — `GET /docs` (interactive OpenAPI 3.0), `GET /docs/json`, `GET /docs/yaml`
 - **Claim search** — `GET /claims?text=&verdict=&from=&to=&source=` full-text claim index search
+- **GDPR compliance** — `GET /tenants/:id/export` (Article 15, admin-gated): ZIP archive with manifest, scan-history, audit-log (NDJSON), notifications, webhooks, usage, costs, schedules; `DELETE /tenants/:id/data` (Article 17, admin-gated): erases all PII across 8 data categories for a tenant; idempotent; tenant record preserved
 - **i18n** — send `Accept-Language: es` or `Accept-Language: fr` for localized error messages; defaults to English
 
 ---

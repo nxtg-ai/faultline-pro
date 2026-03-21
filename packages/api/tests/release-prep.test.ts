@@ -106,15 +106,13 @@ describe('CHANGELOG.md — release-prep validation', () => {
     expect(changelog).toContain('## [Unreleased]');
   });
 
-  // RP10: Unreleased section mentions webhook resilience features (N-113–N-115)
-  it('RP10: Unreleased section mentions webhook circuit breaker or rate limiting', () => {
-    const unreleasedStart = changelog.indexOf('## [Unreleased]');
-    const nextSection = changelog.indexOf('\n## [', unreleasedStart + 1);
-    const unreleased = changelog.slice(unreleasedStart, nextSection > 0 ? nextSection : undefined);
-    const lower = unreleased.toLowerCase();
+  // RP10: CHANGELOG mentions webhook resilience features (N-113–N-115)
+  // Updated: originally checked [Unreleased]; moved to [v0.4.0] at N-127 publish prep.
+  it('RP10: CHANGELOG mentions webhook circuit breaker or rate limiting', () => {
+    const lower = changelog.toLowerCase();
     expect(
       lower.includes('circuit breaker') || lower.includes('rate limit'),
-      'Unreleased section should document webhook resilience features',
+      'CHANGELOG should document webhook resilience features',
     ).toBe(true);
   });
 });

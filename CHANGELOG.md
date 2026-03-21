@@ -5,51 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [v0.4.0] — 2026-03-21
+
 ### Added
 
-- N-126 CRUCIBLE Gate 6 — Stryker mutation testing on GDPR stores (`costs.ts`, `schedules.ts`, `notifications.ts`); baseline 60.07% → final 69.07% (costs 62.77%→89.36%, notifications 67.30%→82.39%, schedules 56.15%→57.82%); 15 hardening tests (NH1–NH15) in `gdpr-store-mutation-hardening.test.ts`; killed mutants in `CostStore` token arithmetic (ceil/4, ×2, cost formula /1000), date range filters (from/to boundaries), `getAggregate` accumulators (+=/-= arithmetic), unknown-provider zero-cost fallback; `NotificationStore` broadcast event-type filter, targeted dispatch guard, `hasFallback` global-webhook condition (targets.length===0), `deletePrefsForKeys` count; `ScheduleStore` `recordRun` run-count increment, `maxRuns` completion gate, history-cap (MAX_HISTORY=20), `parseCron` inverted-range rejection; `stryker-gdpr.config.mjs` updated with hardening test file
-- N-125 CRUCIBLE Gate 6 hardening round 2 — Stryker mutation score on `cli/scan.ts` raised 60.91% → 75.31%; 15 new hardening tests (MH16–MH30) in `scan-mutation-hardening-2.test.ts`; killed mutants in `splitSentences` word-count filter (`>= 3` boundary, letter guard, `&&`/`||`, double-space 2-word exclusion), `onProgress` callbacks (Extracting/Verifying/Generating messages), default provider 'gemini' error message, `collectFiles`/`walk` recursion, hidden-dir/node_modules skip, glob pattern include/exclude, `globToRegex` `?` wildcard; Stryker config updated with new test file
-- N-124 GDPR schedule erasure — `ScheduleStore.deleteForKeys(keyIds[])` + `listForKeys(keyIds[])`; GDPR export ZIP gains `schedules.json` with `manifest.counts.schedules`; `DELETE /tenants/:id/data` extended with `schedules` in deleted counts; 15 tests (SS1–SS15); `JobStore`, `BulkJobStore`, `ScanCache`, `ClaimIndex` audited — no tenant association (no PII risk, no action needed)
-- N-123 Tenant-scoped cost tracking — `ScanCost.tenantId?`; `CostStore.record()` accepts tenantId; `CostFilter.tenantId?`; `CostStore.deleteTenantCosts(tenantId)`; GDPR export adds `costs.json`; erasure adds `costs` to deleted counts; 15 tests (TC1–TC15)
-- N-122 GDPR notification prefs erasure — `deletePrefsForKeys(keyIds[])` on `NotificationStore`; `DELETE /tenants/:id/data` now also erases notification prefs for all tenant keys; response extended with `notificationPrefs` count; 15 tests (EP1–EP15)
-- N-121 GDPR erasure endpoint — `DELETE /tenants/:id/data` (admin-gated, Article 17); `deleteTenantEntries()` on ScanHistory + Audit, `deleteTenantHistory()` on Notifications, `deleteTenant()` on Webhooks, `deleteKey()` on UsageMeter; tenant record preserved; idempotent; 15 tests (ER1–ER15)
-- N-120 GDPR export endpoint — `GET /tenants/:id/export` (admin-gated, Article 15); ZIP archive via `adm-zip` with manifest, scan-history, audit-log (NDJSON), notifications, webhooks, usage; 15 tests (GE1–GE15)
+- N-127 v0.4.0 publish prep — CHANGELOG v0.4.0 block cut; `@nxtg/faultline` + `@nxtg/faultline-api` bumped to 0.4.0; README updated with GDPR compliance + mutation testing rows; 15 release-prep tests (RP16–RP30)
+- N-126 CRUCIBLE Gate 6 — Stryker mutation testing on GDPR stores (`costs.ts`, `schedules.ts`, `notifications.ts`); baseline 60.07% → final 69.07% (costs 62.77%→89.36%, notifications 67.30%→82.39%, schedules 56.15%→57.82%); 15 hardening tests (NH1–NH15) in `gdpr-store-mutation-hardening.test.ts`; killed mutants in `CostStore` token arithmetic (ceil/4, ×2, cost formula /1000), date range filters, `getAggregate` accumulators; `NotificationStore` broadcast event-type filter, `hasFallback` condition; `ScheduleStore` `recordRun`, `parseCron` range validation; `stryker-gdpr.config.mjs` created
+- N-125 CRUCIBLE Gate 6 hardening round 2 — Stryker mutation score on `cli/scan.ts` raised 60.91% → 75.31%; 15 new hardening tests (MH16–MH30) in `scan-mutation-hardening-2.test.ts`; killed mutants in `splitSentences` word-count filter, `onProgress` callbacks, default provider 'gemini' error message, `collectFiles`/`walk` recursion, glob pattern include/exclude, `globToRegex` `?` wildcard
+- N-124 GDPR schedule erasure — `ScheduleStore.deleteForKeys(keyIds[])` + `listForKeys(keyIds[])`; GDPR export ZIP gains `schedules.json`; `DELETE /tenants/:id/data` extended with `schedules` count; 15 tests (SS1–SS15); store audit complete — `JobStore`/`BulkJobStore`/`ScanCache`/`ClaimIndex` have no tenant association (no action needed)
+- N-123 Tenant-scoped cost tracking — `ScanCost.tenantId?`; `CostStore.record()` accepts tenantId; `CostStore.deleteTenantCosts(tenantId)`; GDPR export adds `costs.json`; erasure adds `costs` to deleted counts; 15 tests (TC1–TC15)
+- N-122 GDPR notification prefs erasure — `deletePrefsForKeys(keyIds[])` on `NotificationStore`; `DELETE /tenants/:id/data` erases notification prefs for all tenant keys; 15 tests (EP1–EP15)
+- N-121 GDPR erasure endpoint — `DELETE /tenants/:id/data` (admin-gated, Article 17); erases scan history, audit log, notifications, webhooks, usage across all tenant keys; tenant record preserved; idempotent; 15 tests (ER1–ER15)
+- N-120 GDPR export endpoint — `GET /tenants/:id/export` (admin-gated, Article 15); ZIP archive with manifest, scan-history, audit-log (NDJSON), notifications, webhooks, usage, costs, schedules; 15 tests (GE1–GE15)
 - N-119 v0.3.0 publish prep — CHANGELOG rewrite; README badge 2,757→4,166; 15 release-prep tests (RP1–RP15)
-- N-118 CRUCIBLE Gate 6 — Stryker mutation testing on `cli/scan.ts` (claim forensics critical path); root-level monorepo config; initial 26.75% → final 60.91%; 15 hardening tests (MH1–MH15)
-- N-117 CRUCIBLE Gate 6 — Stryker mutation testing on `webhooks.ts`; initial 86.51% → final 91.45%; 15 hardening tests (MH1–MH15)
-- N-116 `resolveRequestTenantId()` auth helper — centralized tenant resolution in `auth.ts`; dead code cleanup
-- N-115 Per-webhook retry configuration — `maxAttempts` (1–5) and `retryDelayMs` (0–30 000 ms) per webhook
-- N-114 Webhook circuit breaker — `WebhookCircuitBreaker`; `FAULTLINE_WEBHOOK_CIRCUIT_THRESHOLD` + `FAULTLINE_WEBHOOK_CIRCUIT_COOLDOWN_MS` env vars
-- N-113 Webhook per-minute rate limiting — `WebhookRateLimiter` sliding 60 s window; `FAULTLINE_WEBHOOK_RATE_LIMIT` env var
-- N-112 Shared HTML escape utility — `src/lib/html.ts` `esc(unknown)` + `escHtml`; XSS auditable at one grep target
-- N-111 Tenant-scoped audit log — `AuditEntry.tenantId?` resolved at record time; `GET /audit/log?tenantId=`; closes enterprise tenancy surface
-- N-110 Tenant-scoped webhooks — `Webhook.tenantId?` stored at create time; `GET /webhooks?tenantId=`
-- N-109 Webhook delivery log HTML dashboard — `GET /webhooks/deliveries/view`; stat cards, per-delivery table, auto-refresh
-- N-108 Tenant-scoped notifications — `NotificationRecord.tenantId?`; `GET /notifications/history?tenantId=`
-- N-107 `faultline scans prune` CLI — dry-run-safe destructive command; `--confirm` gate; preview + execute modes
-- N-106 Webhook delivery retry dashboard — `WebhookDeliveryRecord` ring-buffer; `GET /webhooks/deliveries` + `GET /webhooks/:id/deliveries`
-- N-105 Tenant-scoped scan history — `ScanEntry.tenantId?`; `GET /scans/search`, `/scans/usage`, `/scans/stale` all support `?tenantId=`
-- N-104 `faultline keys prune` CLI — dry-run-safe; `GET /keys/dormant` preview; `POST /keys/bulk-delete` execute; `--confirm` gate
-- N-103 `faultline keys rotation` CLI — `keys rotation [--days 90]`; OVERDUE/CRITICAL chips; never-rotated label
-- N-102 Key rotation reminder notifications — `key.rotation_due` event; 90d/180d thresholds with per-key×threshold dedup
-- N-101 Mission control scan hygiene — `GET /mission-control/status` includes `scans.totalDocuments`, `staleCount`, `riskDriftedCount`
-- N-100 `faultline scans` CLI — `scans stale [--days 30]` and `scans usage [--staleDays 30]`; FAULTLINE_API_KEY/URL env vars
-- N-99 Scan hygiene HTML dashboard — `GET /scans/stale/view`; STALE + DRIFT chips; auto-refresh 60 s
-- N-98 Bulk scan pruning — `DELETE /scans/stale?days=N` (admin-gated); group-level delete; returns `{ deletedGroups, deletedEntries }`
-- N-97 Scan usage analytics — `GET /scans/usage?staleDays=N`; per-textHash stats: scanCount, firstScannedAt, riskDrifted, avgLatencyMs
-- N-96 Stale scan detection — `GET /scans/stale?days=N`; entries grouped by textHash, oldest-first
-- N-95 Key hygiene HTML dashboard — `GET /keys/usage/view`; HEALTHY/DORMANT/EXPIRING/EXPIRED/DISABLED chips; auto-refresh 60 s
-- N-94 Key usage analytics — `GET /keys/usage`; daysSinceCreation/LastUse/LastRotation; isDormant/isExpiringSoon/isExpired per key
-- N-93 Bulk disable/enable — `POST /keys/bulk-disable` + `POST /keys/bulk-enable`
-- N-92 `faultline keys` CLI — `keys list`, `keys dormant`, `keys expiring`, `keys rotation`; FAULTLINE_API_KEY/URL env vars
-- N-91 Expiring-soon key list — `GET /keys/expiring-soon?days=N` (default 7)
-- N-90 Notifications event catalogue refactor — `EVENT_CATALOGUE` as single source of truth; future event types auto-register
-- N-89 Bulk key deletion — `KeyStore.bulkDelete(ids[])` + `POST /keys/bulk-delete`
-- N-88 Key expiry notifications — `key.expiring_soon` event; 7d/1d thresholds with per-key×threshold dedup
-- N-87 Dormant key detection — `GET /keys/dormant?days=N`; uses lastUsedAt ?? createdAt
-- N-86 ApiKey expiry — `expiresAt?: string`; `validateKey()` rejects expired keys; `PATCH /keys/:id` accepts `expiresAt`
-- N-85 ApiKey `lastUsedAt` tracking — stamped by `validateKey()` on every successful auth
-- N-82 — N-84 Additional API key management: `GET /keys/:id`, `PATCH /keys/:id`, soft-disable/enable
 
 ### Fixed
 
