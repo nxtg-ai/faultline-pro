@@ -67,6 +67,12 @@ function computeStatus() {
   const scansLast60s = history.filter(e => new Date(e.timestamp).getTime() >= last60s).length;
   const scansLast5min = history.filter(e => new Date(e.timestamp).getTime() >= last5min).length;
 
+  // ── Scan hygiene signals (staleness + risk drift) ─────────────────────────
+  const usageStats = getScanHistory().getScanUsageStats(30);
+  const totalDocuments  = usageStats.length;
+  const staleCount      = usageStats.filter((s) => s.isStale).length;
+  const riskDriftedCount = usageStats.filter((s) => s.riskDrifted).length;
+
   // Recent risk distribution (last 50 scans)
   const last50 = history.slice(0, 50);
   const riskCounts: Record<string, number> = { Low: 0, Medium: 0, High: 0, Critical: 0 };
@@ -115,10 +121,13 @@ function computeStatus() {
     },
     keys: { active: activeKeys, total: totalKeys },
     scans: {
-      today:       scansToday,
-      last60s:     scansLast60s,
-      last5min:    scansLast5min,
+      today:           scansToday,
+      last60s:         scansLast60s,
+      last5min:        scansLast5min,
       riskCounts,
+      totalDocuments,
+      staleCount,
+      riskDriftedCount,
     },
   };
 }
@@ -159,6 +168,7 @@ function buildMissionControlHtml(): string {
   .kpi.neutral .value{color:var(--text)}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
   .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px}
   .panel h3{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px}
   .provider-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
@@ -194,7 +204,7 @@ function buildMissionControlHtml(): string {
   .refresh-bar{height:3px;background:var(--border);position:fixed;top:0;left:0;width:100%}
   .refresh-progress{height:3px;background:var(--accent);transition:width 10s linear}
   .ts{font-size:11px;color:var(--muted)}
-  @media(max-width:900px){.kpi-grid{grid-template-columns:repeat(3,1fr)}.provider-grid{grid-template-columns:repeat(2,1fr)}.grid2,.grid3{grid-template-columns:1fr}}
+  @media(max-width:900px){.kpi-grid{grid-template-columns:repeat(3,1fr)}.provider-grid{grid-template-columns:repeat(2,1fr)}.grid2,.grid3,.grid4{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -224,7 +234,7 @@ function buildMissionControlHtml(): string {
   <div class="provider-grid" id="prov-grid"></div>
 
   <div class="section-title">Subsystem Detail</div>
-  <div class="grid3">
+  <div class="grid4">
     <div class="panel">
       <h3>Cache</h3>
       <div class="stat-row" id="cache-stats"></div>
@@ -236,6 +246,10 @@ function buildMissionControlHtml(): string {
     <div class="panel">
       <h3>Recent Risk Distribution <span style="font-weight:400;color:var(--muted)">(last 50 scans)</span></h3>
       <div id="risk-dist" style="margin-top:8px"></div>
+    </div>
+    <div class="panel">
+      <h3>Scan Hygiene</h3>
+      <div class="stat-row" id="hygiene-stats"></div>
     </div>
   </div>
 
@@ -328,6 +342,14 @@ function render(d) {
     ['Processing', d.queue.processing],
     ['Completed', d.queue.completed],
     ['Failed', d.queue.failed],
+  ]);
+
+  // Scan hygiene
+  const hy = document.getElementById('hygiene-stats');
+  if (hy) hy.innerHTML = statRow([
+    ['Total Documents', d.scans.totalDocuments ?? 0],
+    ['Stale (>30d)', d.scans.staleCount ?? 0],
+    ['Risk Drifted', d.scans.riskDriftedCount ?? 0],
   ]);
 
   // Risk distribution

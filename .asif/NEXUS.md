@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-100 faultline scans CLI. 3,895 tests. 100 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-101 Mission control scan hygiene. 3,910 tests. 101 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -110,6 +110,7 @@
 | N-98 | Bulk scan pruning — `pruneStaleGroups(days)`: deletes ALL entries for stale textHash groups (group-level delete, not entry-level); returns `{ deletedGroups, deletedEntries }`; `DELETE /scans/stale?days=N` admin-gated (403); ?days clamped 1–365; prune + verify via GET /scans/stale round-trip (KSP14); 15 tests (KSP1–KSP15) | FORENSIC | SHIPPED | P2 | 2026-03-21 |
 | N-99 | Scan hygiene HTML dashboard — `GET /scans/stale/view?staleDays=N`; summary badges (Total/Stale/Risk Drifted); per-row chips STALE + DRIFT (independent, not priority-ordered); table columns: Hash/Preview/Risk/Scans/Last Verified/Providers/Avg Latency; auto-refresh 60s; 401 guard; 15 tests (KSH1–KSH15) | FORENSIC | SHIPPED | P2 | 2026-03-21 |
 | N-100 | `faultline scans` CLI — `scans-client.ts` HTTP wrappers (getStaleScans/getScanUsage) + formatters; `scans stale [--days 30]` and `scans usage [--staleDays 30]` subcommands; FAULTLINE_API_KEY/URL env var fallback; usage in help text; 15 tests (KSC1–KSC15) | DEVELOPER-X | SHIPPED | P1 | 2026-03-21 |
+| N-101 | Mission control scan hygiene — `getScanUsageStats(30)` wired into `computeStatus()`; `scans.totalDocuments`, `scans.staleCount`, `scans.riskDriftedCount` added to `/mission-control/status`; Scan Hygiene panel added to HTML dashboard (grid3→grid4); JS render populates hygiene-stats; backward-compat (existing fields unchanged); 15 tests (KMH1–KMH15) | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
 
 ---
 
