@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-136 `faultline stream` CLI command — stream-client.ts; case 'stream' in index.ts; 15 tests ST1–ST15; README badge 4,437. 4,437 tests. 136 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-137 stream.ts mutation hardening — stryker-stream.config.mjs; 45%→85%; 15 tests SM1–SM15; README badge 4,452. 4,452 tests. 137 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -132,6 +132,7 @@
 | N-120 | GDPR export endpoint — `GET /tenants/:id/export` (admin-gated); returns ZIP archive via `adm-zip` containing `manifest.json` (tenant metadata + counts), `scan-history.json` (all tenant scans via `getRecent(10_000).filter(tenantId)`), `audit-log.ndjson` (NDJSON one entry per line), `notifications.json`, `webhooks.json`, `usage.json` (keyed by keyId); `Content-Disposition: attachment; filename=faultline-gdpr-export-{tenantId}-{date}.zip`; 404 for unknown tenant; 403 without admin; 15 tests (GE1–GE15): 200/content-type/disposition/zip structure/manifest counts/scan isolation/tenant isolation/empty-tenant zero-counts | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
 | N-121 | GDPR erasure endpoint — `DELETE /tenants/:id/data` (admin-gated, Article 17 right-to-erasure); adds `deleteTenantEntries(tenantId)` to `ScanHistoryStore` + `AuditLogger`, `deleteTenantHistory(tenantId)` to `NotificationStore`, `deleteTenant(tenantId)` to `WebhookStore`, `deleteKey(keyId)` to `UsageMeter`; returns `{ tenantId, deleted: { scanEntries, auditEntries, notifications, webhooks, usageKeys } }`; tenant record itself preserved (data only); idempotent (second call returns all zeros); 15 tests (ER1–ER15): counts, actual store erasure, tenant-not-deleted, idempotency, isolation (tenant B untouched), export-after-erasure returns empty ZIP | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
 | N-127 | v0.4.0 publish prep — CHANGELOG `[v0.4.0]` block cut (N-119–N-127 initiatives); `@nxtg/faultline` + `@nxtg/faultline-api` bumped 0.2.0→0.4.0; README `[Capability table]` gains GDPR compliance + mutation-tested core rows; Enterprise API section updated with GDPR export/erasure endpoints; README badge 4,286→4,301; `release-prep.test.ts` RP10 updated (Unreleased → full changelog scope); 15 tests (RP16–RP30): badge≥4286, GDPR mentions, erasure, mutation, `[v0.4.0]` block, date, GDPR+mutation content, empty Unreleased, cli 0.4.0, api 0.4.0, N-119–N-127 all present, v0.3.0 preserved, /changelog 200 | DISTRIBUTION | SHIPPED | P1 | 2026-03-21 |
+| N-137 | `stream.ts` mutation hardening — `stryker-stream.config.mjs` targeting `packages/api/src/routes/stream.ts`; baseline 45.00%→85.00% (Gate 6 threshold: 60%); 15 tests SM1–SM15 (`stream-route-mutation-hardening.test.ts`): startEmitted guard mutations (exactly-1-start for multi/single-claim + 0-claim fallback + start payload completeness), exact error message match, Cache-Control/Connection header key+value assertions, error-path catch block via provider=gemini without key to force scan throw; surviving: VALID_PROVIDERS string mutations (untestable mock-only env) + Fastify schema doc strings | DEVELOPER-X | SHIPPED | P2 | 2026-03-21 |
 | N-136 | `faultline stream` CLI command — `stream-client.ts` with `streamScan()` HTTP client + `formatStreamResult()` renderer; `case 'stream'` in `index.ts`; positional text arg or `--text` flag; `--provider`, `--api-key`/`FAULTLINE_API_KEY`, `--api-url`/`FAULTLINE_API_URL`; 15 tests ST1–ST15 (formatter: error/header/no-claims/icons/truncation; CLI: auth, text, call args, error, success, env vars, provider, default, risk line, --text flag) | DEVELOPER-X | SHIPPED | P2 | 2026-03-21 |
 | N-135 | Progressive per-claim SSE streaming — `ScanClaimCallback` type + `onClaimVerified?(claim, verdict, index, total)` as 6th optional param to `scan()` in `cli/scan.ts`; fires after each `verifyClaim()` in the verification loop; `GET /scan/stream` updated to use `onClaimVerified` for true progressive delivery — `claim_verified` events emit as claims complete rather than after full scan; `start` event emits on first callback using `total` param; 0-claim and error edge cases handled; all 15 existing WS tests pass unchanged; 15 new tests (PS1–PS15): callback fires once per claim, claim id/text + verdict status shape, ascending index, consistent total, backward-compat result shape, stream index contiguity + claimCount cross-check, no duplicate delivery | DEVELOPER-X | SHIPPED | P2 | 2026-03-21 |
 | N-134 | SSE Scan Streaming — `GET /scan/stream?text=...&provider=mock`; HTTP-native Server-Sent Events (no new deps); streams `start` (claimCount, provider) → `claim_verified` × N (index, claim, verdict) → `complete` (overallRisk, claimCount); `error` event on scan failure; auth-gated (401/400); provider defaults to mock; `routes/stream.ts` + registered in server.ts; 15 tests (WS1–WS15): content-type, start/claim_verified/complete event shape, event ordering guarantee, validation, auth enforcement, provider reflection | DEVELOPER-X | SHIPPED | P2 | 2026-03-21 |
@@ -885,7 +886,64 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
-> **Reflection cycle**: 2026-03-21 — CoS check-in — N-135 session close (progressive SSE streaming; 4,422 tests; 135 initiatives SHIPPED)
+> **Reflection cycle**: 2026-03-21 — CoS check-in — N-137 session close (stream.ts mutation hardening 45%→85%; 4,452 tests; 137 initiatives SHIPPED)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests | Total |
+|--------|-----------|-------------|--------|-------|
+| `47c4ffb` | N-136 `faultline stream` CLI | `stream-client.ts` HTTP client + formatter; `case 'stream'` in `index.ts`; 15 tests ST1–ST15; badge 4,422→4,437 | +15 | 4,437 |
+| `(current)` | N-137 `stream.ts` mutation hardening | `stryker-stream.config.mjs`; baseline 45%→85%; 15 tests SM1–SM15 in `stream-route-mutation-hardening.test.ts`; badge 4,437→4,452 | +15 | 4,452 |
+
+**4,452 tests · 137 initiatives SHIPPED.** The streaming arc is now complete through all three layers (N-134 SSE route → N-135 progressive callbacks → N-136 CLI → N-137 mutation hardened).
+
+---
+
+### 2. What surprised you?
+
+**The catch block was fully dead to the test suite — 12 of 80 mutants had zero coverage.** The `try/catch` in `stream.ts` (lines 89–93) was never exercised because the mock provider never throws. The fix was straightforward: send `provider=gemini` without `GEMINI_API_KEY` set — the GeminiProvider throws on construction or first call, exercising the entire error path. This is the same pattern as the "integration oracle gap" problem: the happy path is tested, the failure path is invisible until you deliberately inject a failure.
+
+**"Exactly 1 start event" is the single most valuable assertion in this test suite.** It simultaneously kills the `startEmitted = false` BooleanLiteral mutation, the `if(!startEmitted)→if(true)` ConditionalExpression mutation, and the `if(!startEmitted)→if(true)` fallback mutation. Three different mutants with one clean assertion. The pattern: when guarding against a boolean flip, don't just assert the value exists — assert it appears exactly N times.
+
+**VALID_PROVIDERS string mutations are permanently resistant to mock-only tests.** Changing `'gemini'` to `''` in the Set means `provider=gemini` falls back to `'mock'` — but since mock is also in the set, the behavior is identical from the test's perspective. This is an inherent limit of the mock-only test environment: you can't distinguish "gemini was recognized as valid" from "gemini fell back to mock." These 6 mutants will survive until a real provider integration test exists, or until the provider validation logic is moved to a separately testable unit.
+
+---
+
+### 3. Cross-project signals
+
+**The "force failure via missing API key" pattern is a general approach for testing catch blocks in provider-backed services.** Any route that calls a provider (LLM, database, external API) and has a catch block can be tested by intentionally withholding the credentials. The error response will exercise the catch block without requiring mocks. Apply this pattern to any ASIF project where catch blocks are untested.
+
+**Schema-defined string literals in Fastify routes are permanently resistant to mutation testing.** Mutations to `tags`, `summary`, `description`, and enum values in the schema object survive because Fastify uses them for OpenAPI documentation generation, not runtime validation enforcement. If Gate 6 mutation scores are important, exclude the schema definition section from the mutate paths or use `// istanbul ignore next` on schema-only blocks. This affects all projects that use Fastify's schema option for OpenAPI decoration.
+
+**`startEmitted` boolean guard patterns appear in streaming systems across providers.** The same `if (!startEmitted) { emit(header); startEmitted = true; }` pattern is used in N-135 (`stream.ts`) and can be expected anywhere a "header event must be emitted exactly once before per-item events." The mutation hardening pattern (assert count === 1) is the canonical test for this guard.
+
+---
+
+### 4. What would I prioritize next?
+
+**P1 — v0.4.0 git tag + npm publish.** Twelve reflection cycles. 4,452 tests. GDPR cluster 86.31%. Streaming arc complete (N-134–N-137), all mutation scores above Gate 6 threshold. The codebase has never been stronger. Two commands.
+
+**P2 — Mutation hardening on `cli/scan.ts` push to 80%+.** N-125 left `cli/scan.ts` at 75.31%. With the `onClaimVerified` addition from N-135, there are new paths to harden. A targeted pass could get to 80%+ and close the critical-path mutation gate.
+
+**P3 — `docs/mutation-testing.md`.** Seven reflection cycles of mutation testing patterns now consolidated. The content is proven: VALID_PROVIDERS pattern, catch-block injection pattern, startEmitted pattern, `emit({})` ObjectLiteral pattern. Thirty minutes to write the permanent reference.
+
+**P4 — `onClaimVerified` vs `onProgress` callback unification (N-138?).** The 5-undefined-args call site is awkward. A discriminated union `ScanEvent` would clean it up. Still awaiting CoS direction (raised in previous reflection).
+
+---
+
+### 5. Blockers and questions for the CoS
+
+1. **v0.4.0 publish**: Twelfth cycle. The streaming arc is COMPLETE and mutation-hardened. The strongest case yet. Go/no-go?
+
+2. **N-138 callback unification**: Raised in previous cycle — `onClaimVerified` + `onProgress` → single `onEvent?(event: ScanEvent)` discriminated union. Approve or defer?
+
+3. **VALID_PROVIDERS mutation resistance**: The 6 VALID_PROVIDERS string mutants will permanently survive in a mock-only test environment. Options: (a) accept as known limitation, (b) add a real integration test that verifies valid providers pass through, (c) move provider validation to a separately testable unit function. CoS preference?
+
+4. **`docs/mutation-testing.md`**: Seven cycles of content ready. Approve writing during idle time?
+
+---
+
+> **Previous reflection cycle**: 2026-03-21 — CoS check-in — N-135 session close (progressive SSE streaming; 4,422 tests; 135 initiatives SHIPPED)
 
 ### 1. What did we ship since last check-in?
 
