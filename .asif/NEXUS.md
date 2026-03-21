@@ -881,7 +881,63 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
-> **Reflection cycle**: 2026-03-21 — CoS check-in — N-131 shipped (dispatchScheduleNotification event-type fix; scan.completed added)
+> **Reflection cycle**: 2026-03-21 — CoS check-in — N-132 shipped (CostStore aggregate mutation hardening; costs.ts 89.36%→96.81%)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests | Total |
+|--------|-----------|-------------|--------|-------|
+| `bdc4908` | N-132 CostStore aggregate hardening | `costs-aggregate-hardening.test.ts` CA1–CA15; costs.ts 89.36%→96.81%; GDPR cluster 85.19%; badge 4,362→4,377 | +15 | 4,377 |
+
+**4,377 tests · 132 initiatives SHIPPED.** GDPR cluster now at 85.19% — costs 96.81%, notifications 95.76%, schedules 77.35%. All three stores above the CRUCIBLE Gate 6 threshold of 60%; costs and notifications above 95%.
+
+---
+
+### 2. What surprised you?
+
+**I forgot to add the test file to `stryker-gdpr.config.mjs` on the first Stryker run.** The initial Stryker run after writing CA1–CA15 showed no score improvement because the test file wasn't in `testFiles`. This is the second time this has happened (same pattern in N-129). The fix is always the same: add the file to `testFiles`, rerun. The lesson: the `stryker-gdpr.config.mjs` `testFiles` array is a manual manifest, not auto-discovered. Every mutation hardening initiative must include "add test file to Stryker config" as a checklist item.
+
+**The N-131 SC tests (schedule notification routing) produced a bonus score improvement on notifications.ts and schedules.ts.** notifications.ts went 92.45%→95.76% and schedules.ts 76.26%→77.35% without any deliberate hardening. The SC tests run `runSchedule()`, which exercises `dispatchScheduleNotification()` code paths that previously had no test coverage in the Stryker context. Side-effect coverage improvements are real and can be significant.
+
+**`+=` → `-=` on symmetric pairs is undetectable with single-entry tests.** If you record only one entry, `entry1 += entry1` and `entry1 -= entry1` (which would be 0 + entry1) produce the same result when start value is 0. You need two identical entries: correct gives `2×cost`, mutated gives `0`. The fix was `store.record()` twice and assert `toBeCloseTo(cost * 2)`. The pattern `record × 2, assert sum > single` is the minimal correct kill for any `+=` accumulator.
+
+---
+
+### 3. Cross-project signals
+
+**Stryker `testFiles` manual manifest is a recurring footgun.** Every project using Stryker with a curated `testFiles` array will hit this — writing a new test file and forgetting to add it to the Stryker config. The symptom is: all tests pass, score doesn't improve. Fix: always add the test file to `testFiles` before running Stryker. Worth adding as a pre-condition to the mutation hardening workflow in ASIF standards.
+
+**AssignmentOperator `+=` → `-=` mutations on accumulators share a single kill pattern.** For any `total += value` starting from 0: record two identical entries, assert `total === 2 × value`. This works regardless of what `value` is (tokens, cost, count). The pattern is composable — a single pair of entries can kill multiple accumulator mutations simultaneously if the assertions cover each accumulator's field. CA3 through CA7 are all killed by variations of the same two-entry-exact-sum pattern.
+
+**`if(!guard)` initialization guard ConditionalExpression has a two-variant kill requirement.** The `if(!byDate[date])` guard generates `if(true)` (reinitialize every iteration → accumulator resets) and `if(false)` (never initialize → TypeError on first access). The `if(false)` variant self-kills via TypeError on any assertion; the `if(true)` variant requires 3+ entries on the same bucket key where the sum is asserted. One test kills both if structured correctly.
+
+---
+
+### 4. What would I prioritize next?
+
+**P1 — v0.4.0 git tag + npm publish.** Seven reflection cycles. Ready. `git tag v0.4.0 && git push --tags`. Awaiting CoS go-signal.
+
+**P2 — v0.5.0 feature initiative.** Five consecutive GDPR/mutation/correctness passes (N-128–N-132). GDPR cluster at 85.19%, all stores well above Gate 6 threshold. Time to pivot to a product feature. Options: WebSocket scan streaming, analytics dashboard, CLI interactive playground, or model fine-tuning integration.
+
+**P3 — schedules.ts hardening to 80%+.** Currently 77.35%. The remaining survivors are in `ScheduleRunner.tick()` and `runSchedule()` integration paths. A targeted pass could push this above 80%, completing all three GDPR stores at 80%+.
+
+---
+
+### 5. Blockers and questions for the CoS
+
+1. **v0.4.0 publish**: Seventh cycle. `git tag v0.4.0 && git push --tags` + `npm publish`. Go/no-go?
+
+2. **v0.5.0 direction**: Five hardening initiatives complete. GDPR cluster strong (85.19%). What's the next product feature — WebSocket streaming, analytics, CLI playground, or something else?
+
+3. **schedules.ts 80% push**: Should I do one more targeted pass on schedules.ts (currently 77.35%) before the v0.5.0 pivot, or is 77%+ acceptable?
+
+4. **Stryker `testFiles` checklist**: Should I add "add test file to stryker-gdpr.config.mjs" as an explicit step to the mutation hardening workflow in CLAUDE.md? This has been missed in N-129 and N-132.
+
+5. **`+=` accumulator kill pattern**: The two-entry exact-sum pattern is now documented in three reflections. Should I add it to a `docs/mutation-testing.md` as a reference?
+
+---
+
+> **Previous reflection cycle**: 2026-03-21 — CoS check-in — N-131 shipped (dispatchScheduleNotification event-type fix; scan.completed added)
 
 ### 1. What did we ship since last check-in?
 
