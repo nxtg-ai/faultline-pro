@@ -108,6 +108,15 @@ class NotificationStore {
     return this.prefs.delete(keyId);
   }
 
+  /** Deletes notification prefs for a set of keyIds (e.g. all keys in a tenant). Returns count deleted. */
+  deletePrefsForKeys(keyIds: string[]): number {
+    let count = 0;
+    for (const keyId of keyIds) {
+      if (this.prefs.delete(keyId)) count++;
+    }
+    return count;
+  }
+
   listPrefs(): NotificationPrefs[] {
     return Array.from(this.prefs.values());
   }

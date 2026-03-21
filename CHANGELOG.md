@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- N-122 GDPR notification prefs erasure — `deletePrefsForKeys(keyIds[])` on `NotificationStore`; `DELETE /tenants/:id/data` now also erases notification prefs for all tenant keys; response extended with `notificationPrefs` count; 15 tests (EP1–EP15)
+- N-121 GDPR erasure endpoint — `DELETE /tenants/:id/data` (admin-gated, Article 17); `deleteTenantEntries()` on ScanHistory + Audit, `deleteTenantHistory()` on Notifications, `deleteTenant()` on Webhooks, `deleteKey()` on UsageMeter; tenant record preserved; idempotent; 15 tests (ER1–ER15)
+- N-120 GDPR export endpoint — `GET /tenants/:id/export` (admin-gated, Article 15); ZIP archive via `adm-zip` with manifest, scan-history, audit-log (NDJSON), notifications, webhooks, usage; 15 tests (GE1–GE15)
+- N-119 v0.3.0 publish prep — CHANGELOG rewrite; README badge 2,757→4,166; 15 release-prep tests (RP1–RP15)
 - N-118 CRUCIBLE Gate 6 — Stryker mutation testing on `cli/scan.ts` (claim forensics critical path); root-level monorepo config; initial 26.75% → final 60.91%; 15 hardening tests (MH1–MH15)
 - N-117 CRUCIBLE Gate 6 — Stryker mutation testing on `webhooks.ts`; initial 86.51% → final 91.45%; 15 hardening tests (MH1–MH15)
 - N-116 `resolveRequestTenantId()` auth helper — centralized tenant resolution in `auth.ts`; dead code cleanup

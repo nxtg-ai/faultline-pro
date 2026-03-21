@@ -174,12 +174,14 @@ export async function tenantsRoutes(fastify: FastifyInstance): Promise<void> {
         if (meter.deleteKey(keyId)) usageKeysDeleted++;
       }
 
+      const notifStore = getNotificationStore();
       const deleted = {
-        scanEntries:   getScanHistory().deleteTenantEntries(tenantId),
-        auditEntries:  getAuditLogger().deleteTenantEntries(tenantId),
-        notifications: getNotificationStore().deleteTenantHistory(tenantId),
-        webhooks:      getWebhookStore().deleteTenant(tenantId),
-        usageKeys:     usageKeysDeleted,
+        scanEntries:       getScanHistory().deleteTenantEntries(tenantId),
+        auditEntries:      getAuditLogger().deleteTenantEntries(tenantId),
+        notifications:     notifStore.deleteTenantHistory(tenantId),
+        notificationPrefs: notifStore.deletePrefsForKeys(tenant.keyIds ?? []),
+        webhooks:          getWebhookStore().deleteTenant(tenantId),
+        usageKeys:         usageKeysDeleted,
       };
 
       return reply.code(200).send({ tenantId, deleted });

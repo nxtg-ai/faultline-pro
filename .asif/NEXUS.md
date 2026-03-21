@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-121 GDPR erasure endpoint — DELETE /tenants/:id/data. 4,211 tests. 121 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-122 GDPR prefs erasure — deletePrefsForKeys(). README badge 4,166→4,226. 4,226 tests. 122 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -131,6 +131,7 @@
 | N-119 | v0.3.0 publish prep — CHANGELOG.md full rewrite (clean [Unreleased]/[v0.3.0]/[v0.2.0]/[v0.1.0] sections; N-82 through N-118 in Unreleased; stripped 300+ "Team Feedback no delta" noise lines); README badge 2,757→4,166; Enterprise API section updated with key lifecycle, webhook resilience (rate limiting, circuit breaker, retry config), tenant-scoped resources, scan hygiene, `faultline keys`/`scans` CLI; 15 release-prep tests (RP1–RP15) validating README badge count, CHANGELOG structure, key capability mentions, and changelog API endpoints | DISTRIBUTION | SHIPPED | P2 | 2026-03-21 |
 | N-120 | GDPR export endpoint — `GET /tenants/:id/export` (admin-gated); returns ZIP archive via `adm-zip` containing `manifest.json` (tenant metadata + counts), `scan-history.json` (all tenant scans via `getRecent(10_000).filter(tenantId)`), `audit-log.ndjson` (NDJSON one entry per line), `notifications.json`, `webhooks.json`, `usage.json` (keyed by keyId); `Content-Disposition: attachment; filename=faultline-gdpr-export-{tenantId}-{date}.zip`; 404 for unknown tenant; 403 without admin; 15 tests (GE1–GE15): 200/content-type/disposition/zip structure/manifest counts/scan isolation/tenant isolation/empty-tenant zero-counts | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
 | N-121 | GDPR erasure endpoint — `DELETE /tenants/:id/data` (admin-gated, Article 17 right-to-erasure); adds `deleteTenantEntries(tenantId)` to `ScanHistoryStore` + `AuditLogger`, `deleteTenantHistory(tenantId)` to `NotificationStore`, `deleteTenant(tenantId)` to `WebhookStore`, `deleteKey(keyId)` to `UsageMeter`; returns `{ tenantId, deleted: { scanEntries, auditEntries, notifications, webhooks, usageKeys } }`; tenant record itself preserved (data only); idempotent (second call returns all zeros); 15 tests (ER1–ER15): counts, actual store erasure, tenant-not-deleted, idempotency, isolation (tenant B untouched), export-after-erasure returns empty ZIP | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
+| N-122 | GDPR notification prefs erasure + README badge update — adds `NotificationStore.deletePrefsForKeys(keyIds[])` (bulk prefs deletion with count return); `DELETE /tenants/:id/data` extended to erase notification prefs for all tenant keys, adds `notificationPrefs` to deleted counts response; CHANGELOG updated with N-119–N-122 entries; README badge 4,166→4,226; 15 tests (EP1–EP15): prefs-deleted count, actual prefs removal, multi-key erasure, idempotency, tenant isolation, empty-tenant zero count, deletePrefsForKeys unit tests, dispatch-after-erasure delivers nowhere | COMPLIANCE | SHIPPED | P2 | 2026-03-21 |
 
 ---
 
@@ -869,6 +870,49 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-03-21 — N-122 — 1 initiative SHIPPED, 15 net new tests (EP1–EP15)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests |
+|--------|-----------|-------------|--------|
+| `feat: N-122` | GDPR prefs erasure + badge | `NotificationStore.deletePrefsForKeys()`; erasure route extended with `notificationPrefs` count; CHANGELOG N-119–N-122; README badge 4,166→4,226 | +15 (4,211 → 4,226) |
+
+**Total this cycle**: 1 initiative · 15 net new tests · **4,226 total · 122 initiatives SHIPPED**.
+
+---
+
+### 2. What surprised you?
+
+**EP13 is the most valuable test in this batch.** It asserts that after erasure, dispatching `scan.failed` for that key delivers to zero recipients and creates no history records. This validates that the prefs erasure actually disconnects the key from the notification pipeline — not just that the prefs row was deleted. A test that only checks `getPrefs() === undefined` would pass even if a bug left a stale internal reference.
+
+**The gap between N-121 and N-122 was a design smell, not a bug.** N-121 correctly erased all *generated data* (scans, audit, notifications) but left *configuration data* (prefs) intact. This is actually defensible — GDPR distinguishes between personal data held for service delivery vs account configuration. But email addresses in notification prefs are unambiguously personal data, so they must be erased. The distinction between "data" and "config" in erasure requests is worth documenting.
+
+---
+
+### 3. Cross-project signals
+
+**GDPR erasure should target three categories:** generated data (scans, logs, events), configuration with PII (email prefs, webhook URLs with tokens), and identifiers. FamilyMind should audit its erasure endpoint against all three categories before EU launch.
+
+**`deletePrefsForKeys(keyIds[])` vs `deletePrefs(keyId)` in a loop.** Both work. The batch method is cleaner and returns a total count in one call. Use batch methods at API boundaries so routes don't accumulate reducer logic.
+
+---
+
+### 4. What would you prioritize next?
+
+1. **GDPR complete surface audit** — verify all stores have tenant-scoped delete methods; check if `UsageMeter.deleteKey()` is called for each key or just the first one.
+2. **Scan cost estimation improvement** — N-46 (cost tracking) is shipped but the per-request cost breakdown could power a monthly invoice preview endpoint.
+3. **v0.3.0 release tag** — all features are in Unreleased. The CHANGELOG is clean. Ready to cut a release tag when CoS gives the signal.
+
+---
+
+### 5. Blockers / questions for CoS
+
+- **GDPR erasure scope**: Should `DELETE /tenants/:id/data` also erase the API keys themselves (KeyStore.delete), or is that `DELETE /tenants/:id` (which already exists)? Current design preserves keys — only generated data and PII-bearing config is erased.
+- **v0.3.0 tag**: N-119–N-122 are all in Unreleased. Should we move them into a `[v0.4.0]` block now, or wait for an explicit publish directive?
+
+---
 
 > **Reflection cycle**: 2026-03-21 — N-121 — 1 initiative SHIPPED, 15 net new tests (ER1–ER15)
 
