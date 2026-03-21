@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-116 resolveRequestTenantId() auth helper. 4,136 tests. 116 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-117 CRUCIBLE Gate 6 Stryker mutation testing. 4,151 tests. 117 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -126,6 +126,7 @@
 | N-114 | Webhook circuit breaker — `WebhookCircuitBreaker` (consecutive-failure threshold + cooldown window); `FAULTLINE_WEBHOOK_CIRCUIT_THRESHOLD` + `FAULTLINE_WEBHOOK_CIRCUIT_COOLDOWN_MS` env vars; `isOpen(id, nowMs?)` (auto-recovers after cooldown); `recordFailure/recordSuccess/failureCount/reset`; circuit checked before rate limiter in `dispatchWebhook()`; success/failure outcome recorded after retry loop; `error='circuit open'` log records; 15 tests (CB1–CB15) | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
 | N-115 | Per-webhook retry configuration — `Webhook.maxAttempts` (1–5, default 3) and `Webhook.retryDelayMs` (0–30 000 ms, default 500); `WebhookStore.create()` accepts both with defaults; `dispatchWebhook()` loops `webhook.maxAttempts` times using flat `retryDelayMs` delay between retries (first attempt always immediate); `CREATE_BODY_SCHEMA` validates ranges; `POST /webhooks` passes through to store; existing RETRY_DELAYS constant superseded; R7 test updated for flat delay; 15 tests (RC1–RC15) | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
 | N-116 | `resolveRequestTenantId()` auth helper — single function in `auth.ts` guards `'admin'`/`undefined` keyIds and delegates to `getTenantStore().findByKeyId(keyId)?.id`; webhooks route and scan route both updated to use it (both `getTenantStore` imports removed from route files); `RETRY_DELAYS` dead constant removed from webhooks store; shared `makeWebhook()` test factory extracted to `tests/helpers/make-webhook.ts` (3 test files migrated); 15 tests (RT1–RT15): unit, route integration, consistency/idempotency | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
+| N-117 | CRUCIBLE Gate 6 — Stryker mutation testing on `src/store/webhooks.ts`; `@stryker-mutator/core` + `@stryker-mutator/vitest-runner` 9.6.0 installed; initial score 86.51% (212 killed, 51 timeout, 32 survived); 15 hardening tests (MH1–MH15) kill boundary mutations (`>=` vs `>` in rate limiter + circuit breaker windows, reset() scoped vs all, defensive copy list(), getById() discrimination, sendTestWebhook signature + latency); final score 91.45% (228 killed, 50 timeout, 19 survived); vitest.config.ts excludes `.stryker-tmp/`; tempDirName → `/tmp` | DEVELOPER-X | SHIPPED | P2 | 2026-03-21 |
 
 ---
 
@@ -864,6 +865,56 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-03-21 — N-116 + N-117 — 2 initiatives SHIPPED, 30 net new tests
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests |
+|--------|-----------|-------------|--------|
+| `8f3da3e` `feat: N-116` | `resolveRequestTenantId()` auth helper | Single guarded lookup in `auth.ts`; webhooks + scan routes updated; `RETRY_DELAYS` removed; shared `makeWebhook()` helper extracted | +15 (4,136 → 4,151 net after N-117 fixes) |
+| `aa4e663` `feat: N-117` | CRUCIBLE Gate 6 (Stryker) | `stryker.config.mjs`; initial 86.51% → final 91.45%; 15 hardening tests (MH1–MH15) kill 13 surviving mutants | +15 |
+| `b4640ab` `fix: .stryker-tmp` | Stryker sandbox fix | `vitest.config.ts` excludes stryker tmp; `tempDirName` → `/tmp`; `.gitignore` updated | 0 net change |
+
+**Total this cycle**: 2 initiatives · 30 net new tests · **4,151 total · 117 initiatives SHIPPED**.
+
+---
+
+### 2. What surprised you?
+
+**The `>=` vs `>` boundary mutations both survived the initial run — and they were easy to kill.** The existing tests for `WRL5` (window reset) used `BASE_MS + 60_001` — one millisecond past the boundary. This is a common pattern that leaves the exact-boundary case untested. The mutant `> WINDOW_MS` would behave identically for all values `> 60_000` but differently at exactly `60_000`. Adding one test at exactly `BASE_MS + WIN` (no `+1`) killed both the rate limiter and circuit breaker boundary mutants. The lesson is that boundary tests must hit the exact boundary value, not just "comfortably past it."
+
+**Stryker's sandbox polluted vitest discovery.** The `@stryker-mutator/vitest-runner` creates a `.stryker-tmp/sandbox-XXXXX/` directory inside the package root by default. Vitest, running from the monorepo root, picked it up and doubled the test count (4151 → ~5900). The fix was to: (1) add `**/.stryker-tmp/**` to vitest's exclude list, and (2) set `tempDirName: '/tmp/stryker-faultline-api'` in the Stryker config to keep sandboxes outside the project tree entirely. This is an important monorepo-with-mutation-testing gotcha that is almost never documented.
+
+**91.45% is a real score on the resilience-critical code.** The remaining 19 survivors are all in non-critical paths: `sendTestWebhook` request headers (the test tool, not the dispatch engine), ring-buffer cap constants, and reset function bodies that are exercised but have no way to observe the internal state directly without adding test-only accessors. These are "observable only via side effects" survivors — not hollow tests, just genuinely difficult to kill without over-coupling tests to internals.
+
+---
+
+### 3. Cross-project signals
+
+**The exact-boundary test pattern is a universal fix for `>=` vs `>` mutations.** Any project with sliding windows (rate limiters, TTL caches, session timeouts) should add tests at `windowStart + WINDOW_MS` (not `+ WINDOW_MS + 1`). This is the simplest CRUCIBLE Gate 6 improvement available to any project.
+
+**Mutation testing sandbox placement is a monorepo concern.** Any ASIF project that adds Stryker should set `tempDirName` to a path outside the package directory — otherwise the sandbox will be discovered by the test runner. Recommend `/tmp/stryker-<project>-<package>` as the standard convention.
+
+**91% mutation score on the webhook resilience cluster is meaningful.** This cluster (N-113 rate limiter + N-114 circuit breaker + N-115 retry config + N-116 auth helper + N-117 mutation hardening) is now the best-tested surface in the codebase from a mutation perspective. The claim forensics engine has never been Stryker-tested — that is the real remaining gap.
+
+---
+
+### 4. What would you prioritize next?
+
+1. **N-118 — Stryker on claim forensics critical path**: The `services/geminiService.ts` / `cli/scan.ts` claim extraction and verification logic has never been mutation-tested. CLAUDE.md specifies it as the primary target. Previous cycles deferred this because Stryker wasn't installed — that blocker is now gone.
+2. **v0.3.0 publish prep**: Consolidated `FAULTLINE_*` env var reference, updated README, CHANGELOG from `git log --oneline`. No credentials needed. The prep work is overdue.
+3. **GDPR export endpoint** — `POST /users/{id}/export` returns all data for a tenantId as a zip. Compliance surface, closes the GDPR chapter from the EU AI Act work.
+
+---
+
+### 5. Blockers / questions for CoS
+
+- **Stryker on claim forensics (N-118)**: Proceeding autonomously next roadmap session. The `packages/cli/src/services/geminiService.ts` is the primary target — this is the CLAUDE.md-specified critical path. Mutation score threshold: 60% minimum.
+- **v0.3.0 publish**: 21st ask. The prep work can happen this session. I just need the npm publish token when ready to ship.
+- **Stryker tmp leak is fixed** — no action needed from CoS. Documenting for portfolio reuse.
+
+---
 
 > **Reflection cycle**: 2026-03-21 — N-114 + N-115 — 2 initiatives SHIPPED, 30 net new tests
 
