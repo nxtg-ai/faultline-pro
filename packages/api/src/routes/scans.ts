@@ -85,6 +85,96 @@ export async function scansRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
+  // GET /scans/stale/view — scan hygiene HTML dashboard
+  fastify.get<{ Querystring: { staleDays?: string } }>(
+    '/scans/stale/view',
+    {
+      preHandler: requireApiKey,
+      schema: { tags: ['Claims'], summary: 'Scan hygiene dashboard (HTML)' },
+    },
+    async (request, reply) => {
+      const staleDays = Math.min(365, Math.max(1, parseInt(request.query.staleDays ?? '30', 10)));
+      const stats     = getScanHistory().getScanUsageStats(staleDays);
+
+      const staleCount       = stats.filter((s) => s.isStale).length;
+      const riskDriftedCount = stats.filter((s) => s.riskDrifted).length;
+      const total            = stats.length;
+
+      const badge = (label: string, count: number, colour: string) =>
+        `<div style="background:${colour};border-radius:8px;padding:16px 24px;min-width:100px;text-align:center;">
+          <div style="font-size:2em;font-weight:700;">${count}</div>
+          <div style="font-size:.85em;opacity:.85;">${label}</div>
+        </div>`;
+
+      const riskColour = (risk: string) => {
+        const map: Record<string, string> = { Critical: '#dc2626', High: '#ea580c', Medium: '#ca8a04', Low: '#16a34a' };
+        return map[risk] ?? '#6b7280';
+      };
+
+      const rows = stats.length === 0
+        ? '<tr><td colspan="7" style="text-align:center;padding:32px;color:#9ca3af;">No scan history found.</td></tr>'
+        : stats.map((s) => {
+            const staleChip = s.isStale
+              ? '<span style="background:#ca8a04;color:#fff;border-radius:4px;padding:2px 6px;font-size:.75em;margin-left:4px;">STALE</span>'
+              : '';
+            const driftChip = s.riskDrifted
+              ? '<span style="background:#7c3aed;color:#fff;border-radius:4px;padding:2px 6px;font-size:.75em;margin-left:4px;">DRIFT</span>'
+              : '';
+            const riskBadge = `<span style="color:${riskColour(s.latestRisk)};font-weight:600;">${s.latestRisk}</span>`;
+            return `<tr style="border-bottom:1px solid #1f2937;">
+              <td style="padding:10px 12px;font-family:monospace;font-size:.8em;color:#64748b;">${s.textHash.slice(0, 8)}</td>
+              <td style="padding:10px 12px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${s.textPreview}">${s.textPreview.slice(0, 60)}…</td>
+              <td style="padding:10px 12px;">${riskBadge}${staleChip}${driftChip}</td>
+              <td style="padding:10px 12px;text-align:center;">${s.scanCount}</td>
+              <td style="padding:10px 12px;color:#9ca3af;font-size:.85em;">${s.daysSinceLastScan}d ago</td>
+              <td style="padding:10px 12px;color:#9ca3af;font-size:.85em;">${s.providers.join(', ')}</td>
+              <td style="padding:10px 12px;color:#9ca3af;font-size:.85em;">${s.avgLatencyMs}ms</td>
+            </tr>`;
+          }).join('');
+
+      const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="refresh" content="60">
+  <title>Scan Hygiene — Faultline</title>
+  <style>
+    body{margin:0;background:#0f172a;color:#f1f5f9;font-family:system-ui,sans-serif;}
+    h1{margin:0;font-size:1.4em;font-weight:700;}
+    table{width:100%;border-collapse:collapse;}
+    th{text-align:left;padding:8px 12px;font-size:.75em;text-transform:uppercase;color:#64748b;border-bottom:1px solid #1f2937;}
+    tr:hover td{background:#1e293b;}
+  </style>
+</head>
+<body>
+  <div style="padding:24px 32px;border-bottom:1px solid #1f2937;display:flex;align-items:center;justify-content:space-between;">
+    <h1>🔍 Scan Hygiene Dashboard</h1>
+    <span style="color:#64748b;font-size:.85em;">stale≥${staleDays}d · auto-refresh 60s</span>
+  </div>
+  <div style="padding:24px 32px;">
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:32px;">
+      ${badge('Total Documents', total, '#1e293b')}
+      ${badge('Stale', staleCount, '#78350f')}
+      ${badge('Risk Drifted', riskDriftedCount, '#4c1d95')}
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Hash</th><th>Preview</th><th>Risk / Flags</th>
+          <th>Scans</th><th>Last Verified</th><th>Providers</th><th>Avg Latency</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>
+</body>
+</html>`;
+
+      return reply.status(200).header('content-type', 'text/html; charset=utf-8').send(html);
+    },
+  );
+
   // DELETE /scans/stale — prune all entries for stale textHash groups
   fastify.delete<{ Querystring: { days?: string } }>(
     '/scans/stale',
