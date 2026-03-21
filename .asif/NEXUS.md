@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-20 (P0 fix: claim extraction merging — guaranteeClaimPerSentence + prompt hardening. 3,511 CI total. 74 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (MAXOUT BURN: faultline scan --demo shipped. 3,537 tests. 75 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -84,6 +84,7 @@
 | N-72 | API Playground — GET /playground (interactive HTML): 5 sample texts, provider/endpoint selectors, tabbed results (Overview/Claims/Raw/Request), Ctrl+Enter, dark theme | DEVELOPER-X | SHIPPED | P1 | 2026-03-20 |
 | N-73 | Mission Control Dashboard — GET /mission-control (HTML) + GET /mission-control/status (JSON): API latency, provider health grid, cache stats, queue depth, active keys, scan rate, auto-refresh 10s | ENTERPRISE | SHIPPED | P1 | 2026-03-20 |
 | N-74 | Session Archive — 3,498 tests (135 files), 73 initiatives SHIPPED, D-164 through D-168 complete | DISTRIBUTION | SHIPPED | P2 | 2026-03-20 |
+| N-75 | Interactive Demo Mode (`faultline scan --demo`) — hardcoded rich scan result (5 claims, 3 verdicts, EU AI Act articles, sources, trust score), no API key required | DEVELOPER-X | SHIPPED | P1 | 2026-03-21 |
 
 ---
 
@@ -131,7 +132,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
-> **107 directives archived** (+ D-163 through D-168 + session archive D-174).
+> **107 directives archived** (+ D-163 through D-169 + MAXOUT BURN).
 
 ### DIRECTIVE-NXTG-20260320-03 — P0: Claim Extraction Misses Separate Sentences
 **From**: NXTG-AI CoS (Wolf) via Asif UAT | **Priority**: P0
@@ -185,6 +186,22 @@ The Kaggle version remains at  (tagged  at commit ).
 3. Bodyless POST + `content-type: application/json` → Fastify JSON parser returns 400 on empty body. Pattern: omit content-type header for bodyless POST requests in inject tests.
 4. `/scan/eu-report` returns `application/pdf` — never try `JSON.parse()` on it. Check `rawPayload.length > 100` and content-type header.
 5. `OrgKey` interface uses `.keyName` (not `.name`); org key route returns `body.key` (raw secret, not `body.apiKey`).
+
+---
+
+### MAXOUT BURN — Interactive Demo Mode (`faultline scan --demo`)
+**From**: Asif | **Priority**: P1 | **Status**: DONE | **Injected**: 2026-03-21
+
+**Directive**: Build a self-contained demo mode accessible at `faultline scan --demo`. No API keys required. Hardcoded rich sample scan results showing the full product experience — claims, verdicts, compliance report, trust score.
+
+**Response** (filled by team):
+> SHIPPED. Created `packages/cli/cli/demo.ts` — exports `getDemoResult(): ScanResult` with hardcoded hiring AI scenario: 5 claims, mixed verdicts (2 contradicted, 1 mixed, 1 unverified, 1 supported), EU AI Act articles (Annex III §4, Article 10, Article 43), real-looking sources, confidence distribution.
+>
+> `packages/cli/cli/index.ts` — added `'demo'` to `BOOLEAN_FLAGS` set, added `--demo` to `usage()` string, added early-exit handler at top of `scan` case that calls `getDemoResult()` and renders via `renderReportAs()` with the specified `--output-format` (defaults to markdown). No API key check performed — demo path completely bypasses all provider logic.
+>
+> `packages/cli/tests/demo.test.ts` — 27 tests: 14 unit tests on `getDemoResult()` (claim count, verdict mix, EU articles, mitigations, sources, confidence sums), 13 CLI integration tests (`main(['scan', '--demo'])` exits 0, output contains verdict indicators, EU AI Act references, HTML/JSON format modes, boolean flag behavior).
+>
+> **Final counts: 3,537 tests / 137 files — all GREEN** (changelog.test.ts timeout pre-existed). N-75 added to Executive Dashboard.
 
 ---
 

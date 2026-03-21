@@ -30,6 +30,7 @@ import { createScanSpinner } from './spinner.js';
 import { compareScanResults, renderCompare } from './compare.js';
 import { render as renderExport, applyFilter, type ExportFormat } from './export.js';
 import { setLang } from '../lib/i18n.js';
+import { getDemoResult } from './demo.js';
 
 const VERSION = '0.2.0';
 
@@ -82,6 +83,7 @@ Example output:
     Annex III §4: Employment and recruitment AI (affects: c2)
 
 Usage:
+  faultline scan --demo                                               Run interactive demo (no API key required)
   faultline scan --input <file> [--provider gemini|claude|openai|perplexity|mock] [--min-confidence 0.0-1.0] [--output-format json|markdown|html|sarif] [--sarif] [--rules pii,bias,toxicity] [--fail-on critical|high|medium|low]
   faultline scan --dir <path> [--glob "*.txt"] [--provider gemini] [--output-format sarif] [--fail-on high]
   faultline aggregate --dir <path> [--output-format json|markdown|html|sarif]  Aggregate scan results
@@ -118,7 +120,7 @@ For CI/testing without an API key, use --provider mock (returns synthetic result
 }
 
 // Boolean flags that take no value argument
-const BOOLEAN_FLAGS = new Set(['sarif', 'all']);
+const BOOLEAN_FLAGS = new Set(['sarif', 'all', 'demo']);
 
 function parseArgs(args: string[]): { command: string; flags: Record<string, string> } {
   const command = args[0] || '';
@@ -544,6 +546,14 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
     }
 
     case 'scan': {
+      // --demo: self-contained demo mode, no API key required
+      if (flags['demo'] === 'true') {
+        const demoResult = getDemoResult();
+        const outputFormat = (flags['output-format'] as OutputFormat) || 'markdown';
+        const report = renderReportAs(demoResult, outputFormat, {});
+        return { exitCode: 0, output: report };
+      }
+
       const inputPath = flags['input'];
       const dirPath = flags['dir'];
       const templateFlag = flags['templates'];
