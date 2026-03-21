@@ -826,6 +826,62 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-21 — HEAD `1e67bd1` — 3 commits, 48 net new tests, 3 initiatives SHIPPED (N-75/N-76/N-77)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Deliverable | Tests |
+|--------|-------------|-------|
+| N-75 `feat: faultline scan --demo` | `cli/demo.ts` — hardcoded `ScanResult` with hiring AI scenario: 5 claims, 4 verdict types (contradicted ×2, mixed, unverified, supported), 3 EU AI Act articles (Annex III §4, Article 10, Article 43), real-looking sources, mitigations. `BOOLEAN_FLAGS` extended with `'demo'`; early-exit handler in `scan` case bypasses all provider/API-key logic; renders via `renderReportAs()`. `tests/demo.test.ts` — 27 tests (14 unit, 13 CLI integration). | +27 (3,538 → 3,557 after property tests) |
+| N-76 `feat: property-based oracle` | `tests/property-based.test.ts` — 19 `fc.assert` properties across `guaranteeClaimPerSentence` (7: monotonicity, preservation, synthetic type/id uniqueness, single-sentence boundary, N-sentence coverage, idempotence), `mapClaimToRiskCategory` (5: valid EU tier, claimId pass-through, score in [0,1], label consistency, minimal for safe claims), `generateComplianceReport` (7: totalClaims, tier sum, highestTier ordering, confidence distribution, ISO timestamp, minConfidence monotone, claimId coverage). Closes property-based oracle gap (❌ since N-58). `fast-check` added as devDep. | +19 |
+| N-77 `feat: contract oracle (Zod)` + P0 CI fix | `tests/contract.test.ts` — 29 Zod schema validation tests across all 6 core pipeline types. Also fixed 3 tsc errors blocking CI: `CSV_HEADERS as const` spread in both `export.ts` files; `complianceReport: { riskTier }` corrected to real `ComplianceReport` shape in both `export.test.ts` files; `textHash` added to 9 `store.record()` calls in `scan-history.test.ts`. | +29 |
+
+**Running total**: 3,586 tests · 139 files · 77 initiatives SHIPPED. CRUCIBLE oracle coverage: 3/4 types (example-based ✅, property-based ✅, contract ✅, integration ✅ partial).
+
+---
+
+### 2. What surprised us?
+
+- **`fc.word()` and `fc.stringOf()` don't exist in the installed fast-check version.** The CRUCIBLE protocol references fast-check by name but doesn't pin a version. The installed version (resolved from root `node_modules`) lacks `fc.word`, `fc.stringOf`, and `fc.hexaString` — all documented in fast-check's public API but apparently removed or renamed. Had to fall back to `fc.stringMatching(/^[a-z]{2,8}$/)` for generating word-like strings. Root cause: fast-check v4+ renamed several generators. The property tests still run correctly — but this API drift is a maintenance risk. If we ever upgrade fast-check, existing properties should be re-audited against the new API surface.
+
+- **The `riskTier` ghost field.** `export.test.ts` (both API and CLI packages) had `complianceReport: { riskTier: 'minimal', findings: [] }` — a field that never existed on `ComplianceReport`. This is the original Kaggle-era shape leaking through: the Kaggle version had a simpler compliance model with `riskTier` as a flat string. The correct type has `overallRiskLevel`, `euRiskSummary`, `claimMappings`, etc. TypeScript's `vi.mock` / `mockResolvedValue` accepts `any`, so these mock shapes were never checked — the type error was silent for months. The contract oracle (N-77) exists precisely to catch this class of drift, and it would have caught this if run against the mock data.
+
+- **Idempotence holds but only for pure-alpha text.** The `guaranteeClaimPerSentence` idempotence property (run twice → same IDs) holds cleanly for generated text, but there's an edge case the property test doesn't cover: if the input contains Unicode sentence-boundary characters (e.g. `…`, `。`, `！`) that aren't in the `[.!?]` regex, the first pass adds synthetic claims whose text contains those characters, and the second pass may or may not recognize the synthetic claim as "covering" the original sentence. This is a known gap, not a bug in the current Latin-text use case — but worth noting if non-English input (EU languages, Japanese) becomes a priority.
+
+---
+
+### 3. Cross-project signals
+
+- **Zod contract oracle pattern is reusable.** The `assertValid(schema, value, label)` helper (10 lines) + Zod schema-per-type pattern works cleanly for any TypeScript project with complex nested types. The key insight: TypeScript types are erased at runtime, so `vi.mock()` return shapes never get type-checked unless you add a Zod parse step. Every project in the portfolio that uses `mockResolvedValue` with complex types is probably accumulating silent schema drift. FamilyMind (Stripe webhooks), dx3 (agent response shapes), and Podcast-Pipeline (feed item types) should all run the same pattern.
+
+- **`fast-check` property-based testing pattern for pipeline invariants.** The monotonicity + idempotence + preservation trio (`result.length >= input.length`, `run(run(x)) == run(x)`, `all original items present in output`) is directly portable to any data-transformation pipeline. Podcast-Pipeline's feed normalization, dx3's claim deduplication, and FamilyMind's subscription state machine all have invariants that property tests could catch that example tests miss.
+
+- **`as const` + `csvRow(headers)` type error is a recurring pattern.** Both the API and CLI `export.ts` had the same bug: `CSV_HEADERS` declared `as const` (readonly tuple), passed to a function expecting `unknown[]`. The fix (`[...CSV_HEADERS]`) is trivial but the pattern recurs whenever you declare header arrays with `as const` for autocomplete benefits. Worth adding to the project's CRUCIBLE pre-commit checklist: `grep -n "as const" src/ | grep -v "//.*as const"` and verify each one isn't passed to a mutable-array parameter.
+
+---
+
+### 4. What would we prioritize next?
+
+1. **Integration oracle completion** — The 4th CRUCIBLE oracle type (integration) is listed as partial. The integration test suite (`tests/integration-flow.test.ts`) covers 10 E2E scenarios but they all use the mock provider. True integration coverage requires at least one test that calls a real LLM provider with a real API key in CI — or a contract test against provider API schemas (OpenAPI spec validation). The latter is achievable without live keys.
+
+2. **`vitest --coverage` baseline + CI gate** — Eight cycles flagging this. Still zero visibility into branch coverage. One config line. Set threshold at 60% to start (deliberately low — the goal is observability, not a blocking gate on day 1).
+
+3. **Stripe billing on org model** — `Org.plan` (`free | pro | enterprise`) is defined. The billing surface is ready. `POST /orgs/:id/billing/checkout` → Stripe Checkout + `customer.subscription.updated` webhook → `plan` update is 1–2 directives.
+
+4. **`tsc --noEmit` in CI** — The CI gate runs `npm test` (Vitest) but not `tsc --noEmit`. The three type errors fixed this session (including the `riskTier` ghost field) would have been caught in CI months earlier if `tsc` ran. Adding it would prevent this entire category of silent drift.
+
+---
+
+### 5. Blockers and questions for the CoS?
+
+- **`NPM_TOKEN`**: Still blocked. v0.3.0 tagged and ready for publish.
+- **Fly.io credentials**: Still blocked. Docker image + all routes healthy.
+- **Coverage gate threshold**: Eighth cycle. 60% to start?
+- **`tsc --noEmit` in CI gate**: Recommend adding. The type errors fixed this session would have been caught immediately. One line in the pre-push hook. Approve?
+- **Integration oracle strategy**: Should CI tests hit real provider APIs (requires secret injection per-provider), or is OpenAPI contract testing against provider schemas sufficient for the integration oracle? Need direction before implementing.
+
+---
+
 > **Reflection cycle**: 2026-03-20 (provider health monitoring + scan scheduling + org management) — HEAD `609a8b3`
 
 ### 1. What did we ship since last check-in?
