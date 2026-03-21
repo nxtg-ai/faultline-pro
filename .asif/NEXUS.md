@@ -873,6 +873,62 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-21 — CoS check-in — post N-124 (GDPR cluster closed, standing reflection)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests | Total |
+|--------|-----------|-------------|--------|-------|
+| `baa435e` | N-124 GDPR schedule erasure | `ScheduleStore.deleteForKeys()`/`listForKeys()`; `schedules.json` in GDPR export ZIP; `deleted.schedules` in erasure endpoint; full GDPR store audit | +15 | 4,256 |
+
+This was the final initiative in the N-119–N-124 GDPR compliance cluster. **4,256 tests · 124 initiatives SHIPPED.**
+
+---
+
+### 2. What surprised you?
+
+**The GDPR store audit conclusion was cleaner than expected.** Of the 5 flagged stores (`ScheduleStore`, `JobStore`, `BulkJobStore`, `ScanCache`, `ClaimIndex`), only one had an actionable gap. The other four lack tenant association entirely — meaning they were never designed with multi-tenancy in mind. This is not a compliance risk today (no PII can be linked to a tenant from those stores), but it is a structural debt: if we ever add `keyId` to `JobStore` or `BulkJobStore`, the GDPR surface must be updated at that same commit or it will silently break compliance.
+
+**`ScheduleStore` had `list(keyId?)` already — half the work was done.** The filtering logic existed but the GDPR layer (export + erasure) had simply never been pointed at it. This is the same pattern as N-122's notification prefs: a store with tenant-linked data where nobody updated the compliance endpoints when the store was first built. The root cause is the same: stores are built incrementally, but GDPR surface coverage is never checked on merge.
+
+**Five consecutive 15/15 first-run test results.** N-120 through N-124 — five initiatives — all passed with zero iteration. The fixture patterns (Permission `'scan'`, event type `'scan.failed'`, `process.env.FAULTLINE_API_KEY`, `resetXStore()` in `beforeEach`, admin returns 403 not 401) are fully internalized. The bottleneck in test writing is now assertion design, not infrastructure.
+
+---
+
+### 3. Cross-project signals
+
+**FamilyMind** — The GDPR cluster (N-119–N-124) is directly reusable. Before EU launch, FamilyMind needs: (1) `GET /tenants/:id/export` returning a ZIP of all family/user data, (2) `DELETE /tenants/:id/data` erasing all records, (3) all stores audited for tenant-linked PII. The three-endpoint pattern (export → erase → export yields empty manifest) is a regression suite that can be copied verbatim. The `adm-zip` + `manifest.json` + NDJSON audit log pattern is a drop-in template.
+
+**Portfolio-wide store design rule (new):** Any store that holds tenant-linked data must be added to the GDPR export and erasure endpoints in the *same PR* as the store itself. Doing it in hindsight (N-119–N-124 = six remediation initiatives) cost ~90 tests and ~6 sessions. A checklist at PR time costs zero. This should be codified in `~/ASIF/standards/`.
+
+**CRUCIBLE signal:** The notification prefs gap (N-122) and schedule gap (N-124) were both stores where tests passed but the *compliance surface* was incomplete. CRUCIBLE Gate 2 (non-empty assertions) and Gate 7 (spec-test traceability) would not have caught these — they require a cross-endpoint invariant test (export-then-erase-then-export = empty). Gate 8.3 (mock audit) is also relevant: if GDPR tests mocked the store layer, they would have passed while the stores lacked the deletion methods entirely. The real-store integration test pattern was the only thing that caught these gaps.
+
+---
+
+### 4. What would I prioritize next?
+
+**P1 — v0.4.0 release cut.** N-119–N-124 are six consecutive compliance + quality initiatives, all in `[Unreleased]`. The GDPR cluster is cohesive, complete, and well-tested (90 tests covering the entire surface). This is the clearest version boundary since v0.3.0. The release prep work (CHANGELOG `[v0.4.0]` block, `package.json` version bump, npm publish dry-run) is an afternoon of work and is directly in N-119's lane (publish prep was its whole purpose).
+
+**P2 — GDPR store design standard.** Codify the three-endpoint GDPR pattern in `~/ASIF/standards/` as a checklist that PR authors run when adding a new store. One page, five bullets. Prevents the entire N-119–N-124 class of remediation forever.
+
+**P3 — Stryker score push on `webhooks.ts`.** N-117 landed at 91.45% (above the 60% threshold). But `scan.ts` (N-118) sits at 60.91% — just above threshold. With 62 surviving mutants, there is meaningful coverage headroom. A targeted hardening pass could push it to 70%+, which would give the critical-path mutation score a real margin rather than a squeaker pass.
+
+**P4 — `JobStore` / `BulkJobStore` tenant linkage.** These stores currently have no `keyId`. If the roadmap ever wants per-tenant job history or bulk scan accountability, adding `keyId` is the foundational change. Worth scheduling before the feature request arrives rather than after.
+
+---
+
+### 5. Blockers and questions for the CoS
+
+1. **v0.4.0 release signal**: N-119–N-124 are waiting. Should I cut `[v0.4.0]` in CHANGELOG and bump `package.json` to `0.4.0`? Or is there a feature gate (e.g., a specific N-12x still outstanding) before we publish?
+
+2. **CostStore un-tenanted records**: Pre-N-123 `ScanCost` entries have no `tenantId` and are invisible to tenant exports and erasure requests. This is a data integrity gap for any cost records created before N-123 shipped. Decision needed: (a) acceptable — they predate the requirement, (b) add a migration to assign them a tenantId by matching `keyId` to tenant, or (c) treat them as anonymous and purge on a schedule.
+
+3. **GDPR store standard**: Should I write the three-endpoint compliance checklist into `~/ASIF/standards/gdpr-store-checklist.md`? This is cross-project value (FamilyMind, future projects) and would prevent the N-119–N-124 class of remediation permanently.
+
+4. **`JobStore` roadmap intent**: Should `JobStore` and `BulkJobStore` gain `keyId` to enable per-tenant job history? Or are they intentionally anonymous (fire-and-forget scan jobs with no audit trail needed)?
+
+---
+
 > **Reflection cycle**: 2026-03-21 — CoS check-in — N-124 (GDPR schedule erasure + store audit complete)
 
 ### 1. What did we ship since last check-in?
