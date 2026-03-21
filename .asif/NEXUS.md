@@ -877,7 +877,59 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
-> **Reflection cycle**: 2026-03-21 — CoS check-in — N-127 (v0.4.0 publish prep — CHANGELOG cut, packages 0.2.0→0.4.0)
+> **Reflection cycle**: 2026-03-21 — CoS check-in — N-128 (ScheduleRunner + parseCron + nextCronTime mutation hardening, schedules.ts 57.82%→70.11%)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests | Total |
+|--------|-----------|-------------|--------|-------|
+| `75da0e1` | N-128 ScheduleRunner mutation hardening | `schedule-runner-mutation-hardening.test.ts` SR1–SR16; schedules.ts 57.82%→70.11%; GDPR cluster 76.27%; badge 4,301→4,317; RP25 relaxed for post-v0.4.0 CHANGELOG entries | +16 | 4,317 |
+
+**4,317 tests · 128 initiatives SHIPPED.** schedules.ts crossed the 70% CRUCIBLE Gate 6 threshold. The GDPR store cluster is now: costs 89.36%, notifications 82.39%, schedules 70.11%.
+
+---
+
+### 2. What surprised you?
+
+**`vi.hoisted()` is required for factory-referenced mocks, not optional.** The initial test file used `const mockScan = vi.fn()` before `vi.mock('@nxtg/faultline/cli/scan.js', () => ({ scan: mockScan }))`. Vitest hoists `vi.mock()` to the top of the file, so when the factory runs it can't access `mockScan` yet — TDZ error. Fixing it required wrapping the declaration in `vi.hoisted()`. This is the third time this pattern has caused a first-run failure in this codebase. The lesson is simple: any variable used inside a `vi.mock()` factory must be declared via `vi.hoisted()` — never bare `const`.
+
+**The initial `inputSource = 'text'` assignment (line 319) is an unkillable mutant.** Stryker mutated `'text'` → `""` on the initial default assignment. All tests passed because both the text branch (line 335) and URL branch (line 332) unconditionally overwrite that value before it's ever read. This is a case where a surviving mutant is not a test gap — it's a code smell (the initializer is dead). The value survives because the mutant is semantically equivalent (the default is always overwritten). Future readers should not try to kill this by adding a test that reads the pre-branch value; it's architecturally equivalent.
+
+**SR16 (duration arithmetic) was the 1-mutant margin to cross 70%.** schedules.ts was at 69.83% with the first 15 tests. One additional test asserting `durationMs < 5_000` on the error path killed the `Date.now() + start` arithmetic mutation and pushed the score to 70.11%. The arithmetic mutant in the catch block is particularly insidious: if duration is reported as `2 × Unix timestamp` (≈3.5 trillion ms), every alerting or analytics system consuming it would fire incorrectly. The guard test is cheap to write and genuinely safety-relevant.
+
+---
+
+### 3. Cross-project signals
+
+**The GDPR cluster mutation scores are a useful portfolio benchmark.** costs.ts at 89.36%, notifications.ts at 82.39%, schedules.ts at 70.11% — the spread is informative. Notification dispatch logic has complex branching (per-key prefs, global fallback, broadcast) that makes mutations harder to kill. Cost arithmetic is simple formulas that kill easily with exact-value assertions. Schedulers are hybrid: pure-logic functions (parseCron, nextCronTime) kill easily; integration paths (runSchedule, tick) are harder. Any equivalent store cluster in another project should expect a similar 70–90% range depending on the mix.
+
+**Arithmetic operator mutations in duration/time calculations are a systematic risk class.** SR16 killed a `+` vs `-` mutation on `Date.now() - start`. This same class exists wherever timing or duration arithmetic appears: `endTime - startTime`, `Date.now() - created`, `expiresAt - now`. For any project with TTL, rate-limiting windows, circuit-breaker cooldowns, or SLA measurement — a test asserting the value is small and non-negative will kill the entire class. One test per timing calculation, not one per function.
+
+---
+
+### 4. What would I prioritize next?
+
+**P1 — v0.4.0 git tag + npm publish.** Three reflection cycles have flagged this. The codebase is clean, tests pass, packages are bumped. The only remaining action: `git tag v0.4.0 && git push --tags`, then `npm publish` for `@nxtg/faultline`. Awaiting CoS signal to proceed.
+
+**P2 — Push schedules.ts above 75%.** Three surviving mutants remain: (1) `'scan.failed'` event name in `dispatchScheduleNotification` — killable by spying on `getNotificationStore().dispatch` and asserting the event string; (2) initial `inputSource = 'text'` default (unkillable by design); (3) `Date.now() - start` in the success path (covered in catch by SR16; success path needs a parallel assertion). With targeted tests these could push schedules.ts to ~75% and the GDPR cluster above 77%.
+
+**P3 — FamilyMind timing arithmetic Stryker pass.** The `Date.now() - start` mutation class identified here applies directly to FamilyMind's subscription expiry and grace period calculations. Worth a targeted audit of `expiresAt`, `trialEnd`, and similar fields.
+
+---
+
+### 5. Blockers and questions for the CoS
+
+1. **v0.4.0 tag + publish**: Still waiting on the go-signal. Is there a publishing protocol I should follow (2FA prompt, dry-run first, etc.)?
+
+2. **schedules.ts 70% vs 75% target**: The three remaining survivors are: `'scan.failed'` string literal (killable), unkillable default initializer, and success-path duration (killable). Should I schedule a N-129 to clean these up, or accept 70.11% as the stopping point for this cluster?
+
+3. **`dispatchScheduleNotification` event hardcoded to `'scan.failed'`**: Line 387 dispatches `'scan.failed'` for *all* runs — successful or not. This looks like a bug: a successful scan completion should not be labeled `'scan.failed'`. Is this intentional (using the event as a "scan-completed" notification regardless of outcome) or a naming bug?
+
+4. **RP25 relaxation scope**: I updated RP25 to only block N-119–N-127 from `[Unreleased]`, allowing newer initiatives. Should RP25 be updated on every release (to block up to N-NNN for the latest version), or is the N-119–N-127 hard-coded guard sufficient?
+
+---
+
+> **Previous reflection cycle**: 2026-03-21 — CoS check-in — N-127 (v0.4.0 publish prep — CHANGELOG cut, packages 0.2.0→0.4.0)
 
 ### 1. What did we ship since last check-in?
 
