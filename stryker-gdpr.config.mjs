@@ -35,6 +35,7 @@ export default {
     'packages/api/tests/schedule-store-mutation-hardening.test.ts',
     'packages/api/tests/notification-dispatch-mutation-hardening.test.ts',
     'packages/api/tests/schedule-notification-event-type.test.ts',
+    'packages/api/tests/costs-aggregate-hardening.test.ts',
   ],
   vitest: {
     dir: 'packages/api',
