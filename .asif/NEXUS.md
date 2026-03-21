@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (Contract oracle N-77 + P0 CI type fixes. 3,586 tests. 77 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-78 Audit Log API. tsc CI gate fixed. 3,605 tests. 78 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -87,6 +87,7 @@
 | N-75 | Interactive Demo Mode (`faultline scan --demo`) — hardcoded rich scan result (5 claims, 3 verdicts, EU AI Act articles, sources, trust score), no API key required | DEVELOPER-X | SHIPPED | P1 | 2026-03-21 |
 | N-76 | Property-Based Oracle (fast-check, CRUCIBLE Gate 6) — 19 properties across guaranteeClaimPerSentence, mapClaimToRiskCategory, generateComplianceReport; closes oracle triangulation gap | FORENSIC | SHIPPED | P1 | 2026-03-21 |
 | N-77 | Contract Oracle (Zod, CRUCIBLE) — 29 schema-validation tests across Claim, VerificationResult, ClaimRiskMapping, ComplianceReport, ScanResult, demo data; closes 3rd oracle type | FORENSIC | SHIPPED | P1 | 2026-03-21 |
+| N-78 | Audit Log API — GET /audit/log (query + filter), GET /audit/log/stats (summary), GET /audit/log/export (NDJSON download); closes 4-session gap flagged in integration scenarios | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
 
 ---
 

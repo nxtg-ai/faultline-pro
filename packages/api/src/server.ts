@@ -57,6 +57,7 @@ import { cacheWarmupRoutes } from './routes/cache-warmup.js';
 import { analyticsRoutes } from './routes/analytics.js';
 import { playgroundRoutes } from './routes/playground.js';
 import { missionControlRoutes } from './routes/mission-control.js';
+import { auditLogRoutes } from './routes/audit-log.js';
 import { getNotificationStore } from './store/notifications.js';
 import { getKeyStore } from './store/keys.js';
 import { getScanQueue, resetScanQueue } from './store/scan-queue.js';
@@ -162,6 +163,7 @@ export function buildServer() {
   fastify.register(analyticsRoutes);
   fastify.register(playgroundRoutes);
   fastify.register(missionControlRoutes);
+  fastify.register(auditLogRoutes);
 
   fastify.register(mercurius, {
     schema: gqlSchema,
