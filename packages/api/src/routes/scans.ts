@@ -55,6 +55,36 @@ export async function scansRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
+  // GET /scans/usage — per-textHash scan analytics
+  fastify.get<{ Querystring: { staleDays?: string } }>(
+    '/scans/usage',
+    {
+      preHandler: requireApiKey,
+      schema: {
+        tags: ['Claims'],
+        summary: 'Per-document scan analytics — frequency, risk drift, provider distribution, staleness flag.',
+        querystring: {
+          type: 'object',
+          properties: {
+            staleDays: { type: 'string', pattern: '^[0-9]+$' },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const staleDays = Math.min(365, Math.max(1, parseInt(request.query.staleDays ?? '30', 10)));
+      const stats     = getScanHistory().getScanUsageStats(staleDays);
+
+      const summary = {
+        total:            stats.length,
+        staleCount:       stats.filter((s) => s.isStale).length,
+        riskDriftedCount: stats.filter((s) => s.riskDrifted).length,
+      };
+
+      return reply.status(200).send({ staleDays, ...summary, stats });
+    },
+  );
+
   // GET /scans/stale — documents not re-verified for ≥N days
   fastify.get<{ Querystring: { days?: string } }>(
     '/scans/stale',

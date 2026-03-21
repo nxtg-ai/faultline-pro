@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-96 Stale scan detection. 3,835 tests. 96 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-97 Scan usage analytics. 3,850 tests. 97 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -106,6 +106,7 @@
 | N-94 | Key usage analytics — `KeyUsageStat` interface; `KeyStore.getUsageStats(dormantDays, expiringSoonDays)` computes daysSinceCreation/LastUse/LastRotation + isDormant/isExpiringSoon/isExpired per key; `GET /keys/usage?dormantDays=30&expiringSoonDays=7` returns summary counts + per-key hygiene array; secrets redacted; 15 tests (KUA1–KUA15) | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
 | N-95 | Key hygiene HTML dashboard — `GET /keys/usage/view?dormantDays=N&expiringSoonDays=N`; summary badges (Total/Dormant/Expiring/Expired/Disabled); per-key table with HEALTHY/DORMANT/EXPIRING SOON/EXPIRED/DISABLED status chips; empty state; auto-refresh 60s; 403 guard; 15 tests (KHD1–KHD15) | DEVELOPER-X | SHIPPED | P2 | 2026-03-21 |
 | N-96 | Stale scan detection — `ScanHistoryStore.getStaleScanGroups(days)`: groups entries by textHash, takes most-recent per group, filters groups older than threshold (mirrors `getDormant`); `GET /scans/stale?days=N` (default 30, clamped 1–365); results sorted oldest-first; 401 guard; 15 tests (KSS1–KSS15) | FORENSIC | SHIPPED | P1 | 2026-03-21 |
+| N-97 | Scan usage analytics — `ScanUsageStat` interface; `getScanUsageStats(staleDays=30)`: groups by textHash, computes scanCount, firstScannedAt, lastScannedAt, daysSince*, latestRisk, riskDrifted, providers[], avgLatencyMs, isStale; `GET /scans/usage?staleDays=N` → `{ staleDays, total, staleCount, riskDriftedCount, stats[] }` sorted most-recent-first; 401 guard; 15 tests (KSU1–KSU15) | FORENSIC | SHIPPED | P2 | 2026-03-21 |
 
 ---
 

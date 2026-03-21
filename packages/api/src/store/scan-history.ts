@@ -5,6 +5,21 @@ export function hashText(text: string): string {
   return createHash('sha256').update(text).digest('hex');
 }
 
+export interface ScanUsageStat {
+  textHash:           string;
+  textPreview:        string;
+  scanCount:          number;
+  firstScannedAt:     string;
+  lastScannedAt:      string;
+  daysSinceFirstScan: number;
+  daysSinceLastScan:  number;
+  latestRisk:         string;
+  riskDrifted:        boolean;   // risk changed at least once across scans
+  providers:          string[];  // distinct providers used
+  avgLatencyMs:       number;
+  isStale:            boolean;   // lastScan older than staleDays threshold
+}
+
 export interface ScanEntry {
   id: string;
   textHash: string;      // sha256 of original input text (enables timeline grouping)
@@ -94,6 +109,61 @@ class ScanHistoryStore {
         previousRisk: prev?.overallRisk ?? null,
       };
     });
+  }
+
+  /**
+   * Returns per-textHash usage statistics with derived hygiene flags.
+   */
+  getScanUsageStats(staleDays = 30): ScanUsageStat[] {
+    const now = Date.now();
+    const msPerDay = 86_400_000;
+    const staleCutoff = new Date(now - staleDays * msPerDay);
+
+    // Group entries by textHash
+    const groups = new Map<string, ScanEntry[]>();
+    for (const entry of this.entries) {
+      const g = groups.get(entry.textHash) ?? [];
+      g.push(entry);
+      groups.set(entry.textHash, g);
+    }
+
+    const stats: ScanUsageStat[] = [];
+    for (const [textHash, group] of groups) {
+      const sorted = group.slice().sort(
+        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+      );
+      const first = sorted[0];
+      const last  = sorted[sorted.length - 1];
+
+      const risks      = sorted.map((e) => e.overallRisk);
+      const riskDrifted = new Set(risks).size > 1;
+      const providers  = [...new Set(sorted.map((e) => e.provider))];
+      const avgLatencyMs = Math.round(sorted.reduce((s, e) => s + e.latencyMs, 0) / sorted.length);
+
+      const daysSinceFirstScan = Math.floor((now - new Date(first.timestamp).getTime()) / msPerDay);
+      const daysSinceLastScan  = Math.floor((now - new Date(last.timestamp).getTime())  / msPerDay);
+      const isStale            = new Date(last.timestamp) < staleCutoff;
+
+      stats.push({
+        textHash,
+        textPreview:        first.textPreview,
+        scanCount:          sorted.length,
+        firstScannedAt:     first.timestamp,
+        lastScannedAt:      last.timestamp,
+        daysSinceFirstScan,
+        daysSinceLastScan,
+        latestRisk:         last.overallRisk,
+        riskDrifted,
+        providers,
+        avgLatencyMs,
+        isStale,
+      });
+    }
+
+    // Sort by lastScannedAt descending (most recently scanned first)
+    return stats.sort(
+      (a, b) => new Date(b.lastScannedAt).getTime() - new Date(a.lastScannedAt).getTime(),
+    );
   }
 
   /**
