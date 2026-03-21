@@ -33,6 +33,7 @@ import { setLang } from '../lib/i18n.js';
 import { getDemoResult } from './demo.js';
 import { listKeys, getDormantKeys, getExpiringSoonKeys, rotateKey, getRotationStatus, getKeysPrunePreview, pruneKeys, formatKeyList, formatDormantList, formatExpiringSoonList, formatRotateResult, formatRotationStatus, formatPrunePreview, formatPruneResult } from './keys-client.js';
 import { getStaleScans, getScanUsage, getScansPrunePreview, pruneScans, formatStaleList, formatScanUsage, formatScansPrunePreview, formatScansPruneResult } from './scans-client.js';
+import { streamScan, formatStreamResult } from './stream-client.js';
 
 const VERSION = '0.2.0';
 
@@ -113,6 +114,7 @@ Usage:
   faultline scans stale [--days 30] [--api-url URL] [--api-key KEY]  List stale scan groups
   faultline scans usage [--staleDays 30] [--api-url URL] [--api-key KEY]  Scan usage analytics
   faultline scans prune [--days 30] [--confirm] [--api-url URL] [--api-key KEY]  Delete stale scan groups
+  faultline stream <text> [--provider mock] [--api-url URL] [--api-key KEY]  Stream scan via SSE
   faultline version                                                 Print version
 
 Config:
@@ -1031,6 +1033,24 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
         exitCode: 1,
         output: 'Usage:\n  faultline scans stale [--days 30] [--api-url URL] [--api-key KEY]\n  faultline scans usage [--staleDays 30] [--api-url URL] [--api-key KEY]\n  faultline scans prune [--days 30] [--confirm] [--api-url URL] [--api-key KEY]',
       };
+    }
+
+    case 'stream': {
+      const text    = flags['text'] || (args[1]?.startsWith('--') ? '' : args[1]) || '';
+      const apiUrl  = flags['api-url'] || process.env.FAULTLINE_API_URL || 'http://localhost:3000';
+      const apiKey  = flags['api-key'] || process.env.FAULTLINE_API_KEY || '';
+      const provider = flags['provider'] || 'mock';
+
+      if (!apiKey) {
+        return { exitCode: 1, output: 'Error: --api-key or FAULTLINE_API_KEY environment variable is required.\n\nUsage: faultline stream <text> --api-key <key>' };
+      }
+      if (!text) {
+        return { exitCode: 1, output: 'Error: provide text as first argument or --text flag.\n\nUsage: faultline stream <text> [--provider mock] [--api-key KEY] [--api-url URL]' };
+      }
+
+      const streamResult = await streamScan(apiUrl, apiKey, text, provider);
+      if (streamResult.error) return { exitCode: 1, output: `Error: ${streamResult.error}` };
+      return { exitCode: 0, output: formatStreamResult(streamResult) };
     }
 
     default:
