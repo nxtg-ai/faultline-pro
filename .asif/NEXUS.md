@@ -894,6 +894,61 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-21 — CoS check-in — N-145 session close (extract.ts 0→100%, streamScan() SC16–SC20, worktree phantom count corrected; 3,397 real tests; 145 initiatives SHIPPED)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests | Total |
+|--------|-----------|-------------|--------|-------|
+| `55736e6` | N-144 spinner.ts + watch.ts coverage | `spinner.test.ts` (new, 8 tests SP1–SP8): no-op + TTY/ora branch via `vi.mock`; `watch.test.ts` (+7 tests WT9–WT15): processFileChange error catch, outputFormat branch, startWatch SIGINT/SIGTERM listener lifecycle | +15 | 3,376 (real) |
+| `9f9242c` | N-145 extract.ts + streamScan() | `extract.test.ts` (new, 16 tests EX1–EX16): mimeFromExtension, extractTextFromBuffer (PDF/image/unsupported), extractTextFromFile; stream-client.test.ts (+5 tests SC16–SC20): streamScan() all HTTP branches; stale worktree removed (was inflating count by ~1,140) | +21 | 3,397 (real) |
+
+**3,397 real tests · 145 initiatives SHIPPED.** Stale worktree at `.claude/worktrees/agent-ac3398fb` (commit 7a9d726, 236 commits behind main) was silently inflating reported test counts. Removed. `extract.ts` 0%→100% branch/function. `stream-client.ts` branch 57%→100%.
+
+---
+
+### 2. What surprised you?
+
+**The worktree phantom count.** The stale agent worktree was 236 commits behind main. Its test files were being discovered by Vitest during the full suite run, adding ~1,140 duplicate (but outdated) tests to the count. Reported totals of "4,501" and "4,516" in N-143/N-144 were wrong — the real count was ~3,376. The pre-push hook passed throughout because the tests ran and passed (the old tests still passed against new code), but the count metric was inflated. Detection method: removing the worktree dropped the count by 1,119 in one command. Pattern to watch: any time `git worktree list` shows a non-main worktree, it's a candidate for Vitest discovery pollution.
+
+**`extract.ts` had zero test coverage despite shipping with N-11 (Multimodal Upload).** The module has three exported functions — all were zero-coverage. The mock strategy was straightforward: `vi.mock('pdf-parse')` + `vi.mock('tesseract.js')` + real temp files for the file path tests. The `finally { await worker.terminate() }` block in `extractTextFromBuffer` was particularly worth testing — it's a resource leak prevention guard that should survive even when OCR returns empty text.
+
+**`streamScan()` SC17 revealed a nested try/catch pattern.** Line 64 is `try { msg = ... await res.json() ... } catch { /* ignore */ }` — a silent swallow. Istanbul counts this as a branch (json succeeds vs json throws). The test for it (SC17: mock `res.json` to throw) covers the `/* ignore */` path and confirms the fallback to "HTTP 401" works. This is a textbook CRUCIBLE Gate 5 pattern — except it's intentional (graceful degradation when error body isn't JSON).
+
+---
+
+### 3. Cross-project signals
+
+**Stale agent worktrees pollute Vitest test discovery.** Any project using Claude Code agent worktrees that runs Vitest from the monorepo root risks this. The fix: `git worktree list` in the CI gate, fail if non-main worktrees exist. Or configure Vitest's `exclude` to ignore `.claude/worktrees/**`. Recommend adding this to the pre-push hook or a CI check. Affects any ASIF project that uses agent worktrees (Podcast-Pipeline, Forge, synapps).
+
+**Zero-coverage modules with complex I/O can be fully tested via vi.mock.** `extract.ts` uses `pdf-parse` (C binary wrapper) and `tesseract.js` (WASM OCR engine) — both too heavy for real test execution. But `vi.mock` + a mock worker object gives full branch coverage with zero real I/O. Pattern: any module that calls a binary/WASM library can be tested this way if the library is the only barrier. The key is testing the module's logic (trim, slice, throw on empty) not the library.
+
+---
+
+### 4. What would I prioritize next?
+
+**P1 — v0.4.0 git tag + npm publish.** Nineteenth cycle. 3,397 real tests (corrected from phantom 4,516). 8/8 CRUCIBLE gates PASS. Zero technical blockers. Go/no-go?
+
+**P2 — Vitest exclude config for `.claude/worktrees/`.** One-line fix to `vitest.config.ts` to prevent future worktree pollution. Low effort, prevents recurring measurement fraud. Should I add it now or is this a CoS call?
+
+**P3 — Remaining low-coverage modules.** After N-144/N-145 the biggest remaining gaps: `scan-queue.ts` (51% branch), `bulk-jobs.ts` (50% branch), `rate-alerts.ts` (56% branch). All in `packages/api/src/`.
+
+---
+
+### 5. Blockers and questions for the CoS
+
+1. **v0.4.0 publish**: Nineteenth cycle. 3,397 real tests. Go/no-go?
+
+2. **Vitest exclude for `.claude/worktrees/`**: Add now, or leave for a later config initiative?
+
+3. **Callback unification** (`onClaimVerified` + `onProgress` → `onEvent?`): Seventh consecutive cycle. Approve, close, or backlog?
+
+4. **VALID_PROVIDERS mutation resistance**: Fourth cycle open. Accept / integration test / extract validator?
+
+5. **Historical test count correction**: NEXUS records N-141 through N-144 with inflated counts (4,467 / 4,486 / 4,501 / 4,516). Should I go back and correct those rows, or note the correction only in N-145 and move forward?
+
+---
+
 > **Reflection cycle**: 2026-03-21 — CoS check-in — N-143 session close (stream-client.ts 48%→100% branch coverage + fragilityBar pct clamping fix; 4,501 tests; 143 initiatives SHIPPED)
 
 ### 1. What did we ship since last check-in?
