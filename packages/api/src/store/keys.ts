@@ -21,6 +21,8 @@ export interface ApiKey {
   lastRotatedAt?: string;
   /** ISO datetime of the most recent successful authentication */
   lastUsedAt?: string;
+  /** ISO datetime after which the key is automatically rejected */
+  expiresAt?: string;
 }
 
 export interface RotationResult {
@@ -34,13 +36,14 @@ export interface RotationResult {
 class KeyStore {
   private keys: ApiKey[] = [];
 
-  create(name: string, permissions: Permission[] = ['scan']): ApiKey {
+  create(name: string, permissions: Permission[] = ['scan'], expiresAt?: string): ApiKey {
     const entry: ApiKey = {
       id: randomUUID(),
       key: randomBytes(32).toString('hex'),
       name,
       permissions,
       createdAt: new Date().toISOString(),
+      ...(expiresAt ? { expiresAt } : {}),
     };
     this.keys.push(entry);
     return entry;
@@ -66,6 +69,7 @@ class KeyStore {
     const now = new Date();
     for (const entry of this.keys) {
       if (entry.disabled) continue;
+      if (entry.expiresAt && new Date(entry.expiresAt) <= now) continue;
       if (entry.key === key || (
         entry.previousKey === key &&
         entry.previousKeyExpiresAt &&
@@ -78,11 +82,25 @@ class KeyStore {
     return null;
   }
 
-  update(id: string, patch: { name?: string; permissions?: Permission[] }): ApiKey | null {
+  /** True if the key has passed its expiresAt date. */
+  isExpired(id: string): boolean {
+    const entry = this.keys.find((k) => k.id === id);
+    if (!entry?.expiresAt) return false;
+    return new Date(entry.expiresAt) <= new Date();
+  }
+
+  update(id: string, patch: { name?: string; permissions?: Permission[]; expiresAt?: string | null }): ApiKey | null {
     const entry = this.keys.find((k) => k.id === id);
     if (!entry) return null;
     if (patch.name !== undefined) entry.name = patch.name;
     if (patch.permissions !== undefined) entry.permissions = patch.permissions;
+    if (patch.expiresAt !== undefined) {
+      if (patch.expiresAt === null) {
+        delete entry.expiresAt;
+      } else {
+        entry.expiresAt = patch.expiresAt;
+      }
+    }
     return entry;
   }
 

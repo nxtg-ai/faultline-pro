@@ -15,6 +15,7 @@ const CREATE_BODY_SCHEMA = {
       type: 'array',
       items: { type: 'string', enum: VALID_PERMISSIONS },
     },
+    expiresAt: { type: 'string', format: 'date-time' },
   },
   additionalProperties: false,
 } as const;
@@ -22,6 +23,7 @@ const CREATE_BODY_SCHEMA = {
 interface CreateKeyBody {
   name: string;
   permissions?: Permission[];
+  expiresAt?: string;
 }
 
 export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
@@ -29,9 +31,9 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
     '/keys',
     { preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Create a new API key', body: CREATE_BODY_SCHEMA } },
     async (request, reply) => {
-      const { name, permissions } = request.body;
+      const { name, permissions, expiresAt } = request.body;
       const store = getKeyStore();
-      const entry = store.create(name, permissions);
+      const entry = store.create(name, permissions, expiresAt);
       return reply.status(201).send(entry);
     },
   );
@@ -77,6 +79,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
         type: 'array',
         items: { type: 'string', enum: VALID_PERMISSIONS },
       },
+      expiresAt: { type: ['string', 'null'] },
     },
     additionalProperties: false,
   } as const;
@@ -84,6 +87,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
   interface PatchKeyBody {
     name?: string;
     permissions?: Permission[];
+    expiresAt?: string | null;
   }
 
   fastify.patch<{ Params: { id: string }; Body: PatchKeyBody }>(
