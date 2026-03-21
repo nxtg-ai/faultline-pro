@@ -27,6 +27,57 @@ export function _setSleepFn(fn: SleepFn): void { _sleep = fn; }
 
 const RETRY_DELAYS = [0, 500, 1000]; // ms before each of the 3 attempts
 
+// ─── Per-webhook rate limiter ──────────────────────────────────────────────
+
+const WINDOW_MS = 60_000; // 1-minute sliding window
+
+export class WebhookRateLimiter {
+  private windows: Map<string, { count: number; windowStart: number }> = new Map();
+  readonly limitPerMinute: number;
+
+  constructor(limitPerMinute?: number) {
+    this.limitPerMinute = limitPerMinute
+      ?? Math.max(1, parseInt(process.env.FAULTLINE_WEBHOOK_RATE_LIMIT ?? '60', 10) || 60);
+  }
+
+  /**
+   * Returns true if this dispatch is within the rate limit for the given webhookId.
+   * Advances the counter if allowed; does not advance if denied.
+   */
+  check(webhookId: string, nowMs = Date.now()): boolean {
+    const entry = this.windows.get(webhookId);
+    if (!entry || nowMs - entry.windowStart >= WINDOW_MS) {
+      this.windows.set(webhookId, { count: 1, windowStart: nowMs });
+      return true;
+    }
+    if (entry.count >= this.limitPerMinute) return false;
+    entry.count++;
+    return true;
+  }
+
+  /** Reset counters — optionally scoped to one webhook. */
+  reset(webhookId?: string): void {
+    if (webhookId) this.windows.delete(webhookId);
+    else this.windows.clear();
+  }
+
+  /** Peek at current window count without advancing. */
+  count(webhookId: string, nowMs = Date.now()): number {
+    const entry = this.windows.get(webhookId);
+    if (!entry || nowMs - entry.windowStart >= WINDOW_MS) return 0;
+    return entry.count;
+  }
+}
+
+let rateLimiterInstance: WebhookRateLimiter | null = null;
+export function getWebhookRateLimiter(): WebhookRateLimiter {
+  if (!rateLimiterInstance) rateLimiterInstance = new WebhookRateLimiter();
+  return rateLimiterInstance;
+}
+export function resetWebhookRateLimiter(): void {
+  rateLimiterInstance = new WebhookRateLimiter();
+}
+
 // ─── HMAC signing ──────────────────────────────────────────────────────────
 
 function signPayload(body: string, secret: string): string {
@@ -93,6 +144,23 @@ export async function dispatchWebhook(
   data: unknown,
   timestamp?: string,
 ): Promise<void> {
+  // Rate-limit check — bail out before fetch if over limit
+  if (!getWebhookRateLimiter().check(webhook.id)) {
+    getWebhookDeliveryLog().push({
+      id:        randomUUID(),
+      webhookId: webhook.id,
+      event,
+      url:       webhook.url,
+      timestamp: new Date().toISOString(),
+      attempt:   1,
+      statusCode: null,
+      delivered:  false,
+      latencyMs:  0,
+      error:     'rate limited',
+    });
+    return;
+  }
+
   const payload: WebhookPayload = {
     event,
     timestamp: timestamp ?? new Date().toISOString(),
