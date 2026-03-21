@@ -852,6 +852,58 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-21 — N-103 — 1 initiative SHIPPED, 15 net new tests
+
+### 1. What did we ship since last check-in?
+
+**N-103 — `faultline keys rotation` CLI** (`keys rotation [--days 90]`)
+
+| Commit | Deliverable | +Tests |
+|--------|-------------|--------|
+| `5d0cc75` `feat: N-103` | `getRotationStatus(apiUrl, apiKey, days)` in `keys-client.ts`: calls `GET /keys/usage`, filters client-side to keys where `daysSinceLastRotation >= days` (or creation age when never rotated), sorts oldest-first, computes `overdueCount` (≥90d) and `criticalCount` (≥180d). `formatRotationStatus()`: OVERDUE/CRITICAL chips, "never rotated" label when `lastRotatedAt` is null, DISABLED/EXPIRED tags in key row. `keys rotation [--days 90]` subcommand wired into CLI `index.ts`. Usage string updated. 15 tests (KRC1–KRC15). | +15 (3,926 → 3,941) |
+
+**Total this cycle**: 1 commit · 15 tests · 3,941 total · 103 initiatives SHIPPED.
+
+---
+
+### 2. What surprised you?
+
+**Zero new API routes were needed.** The reflection planned N-103 as a CLI command wrapping `GET /keys/usage` — and that held exactly. `KeyUsageStat` already carries `daysSinceLastRotation: number | null` and `lastRotatedAt: string | null`, computed by `getUsageStats()` which was built in N-94. The entire initiative was pure client-side: filter, sort, format. The cost of building the store method correctly in N-94 (with all the fields needed for hygiene analysis) was paid once; N-92 (keys CLI), N-103 (rotation CLI), and N-94's own endpoint all share the same data shape. Investing in a rich `KeyUsageStat` interface pays compound returns across every consumer.
+
+**The `daysSinceLastRotation` null-handling is subtle but critical.** When `lastRotatedAt` is null (key was never rotated), the server returns `daysSinceLastRotation: null` — not the creation age. The CLI must fall back to computing creation age from `createdAt`. KRC3 locks this: a key created 185 days ago with no `lastRotatedAt` must be classified as CRITICAL. If the fallback were missing, never-rotated keys would be silently excluded from the rotation report — exactly the opposite of what the feature is for. This null-fallback pattern is the same one used in `KeyRotationNotifier.check()` (N-102), which validates that the server and client implementations share the same semantic contract.
+
+**The `keys` command surface is now architecturally complete.** Five subcommands: `list`, `dormant`, `expiring`, `rotate`, `rotation`. Each maps to a distinct operator concern: inventory, activity hygiene, expiry hygiene, lifecycle action, rotation hygiene. There are no obvious gaps. The reflection's suggestion of `keys prune` (bulk-delete via CLI) remains on the backlog but is a convenience wrapper, not a coverage gap.
+
+---
+
+### 3. Cross-project signals
+
+**Client-side filtering over rich server responses is the right pattern for CLI hygiene commands.** N-103 fetched all keys from `/keys/usage` and filtered in the client rather than adding a dedicated `/keys/rotation-overdue` endpoint. This avoids API surface growth for what is ultimately a view concern. The pattern works when: (1) the server response is bounded (all keys, not a pagination cursor), (2) the filter logic is simple (threshold comparison), and (3) the CLI result set is operator-facing, not user-facing (no pagination needed). Any ASIF CLI adding hygiene subcommands should default to this approach before proposing new endpoints.
+
+**The null-sentinel fallback pattern for "not yet done" dates.** `lastRotatedAt: null` means "never rotated, use creation date." `lastUsedAt: null` means "never used, treat as maximum dormancy." This pattern appears in: `KeyRotationNotifier`, `getRotationStatus`, `formatDormantList`, and `getUsageStats`. It is now established across three layers (store, API, CLI). Any project tracking lifecycle events (last payment, last login, last backup) should adopt the same convention: null = event has never occurred = use the entity's creation date as the reference when computing age.
+
+**OVERDUE/CRITICAL chip pattern for time-decay severity.** The two-tier chip system (OVERDUE = threshold crossed, CRITICAL = 2× threshold) is reusable for any time-decay alert surface: subscription renewal, certificate expiry, backup freshness, compliance recertification. The thresholds differ but the UX pattern is identical. Documenting here so FamilyMind (subscription renewal reminders) and any future compliance calendar UI can lift it directly.
+
+---
+
+### 4. What would you prioritize next?
+
+1. **CRUCIBLE Gate 6 (Stryker)**: Eleventh cycle. The key lifecycle cluster (N-82–N-103) is closed. All CLI surfaces are complete. The stores are stable. This is the ideal mutation testing window — no active churn, comprehensive suites, no competing development. Approve?
+2. **N-104 — `faultline keys prune` CLI**: Wrap `POST /keys/bulk-delete?days=N` in a dry-run-first CLI command. Preview → confirm → prune. Completes the operator CLI loop: diagnose (dormant/rotation) → action (rotate) → prune (bulk-delete dormant keys). Low complexity (~40 lines client + formatter + 15 tests).
+3. **N-105 — Tenant-scoped scan history**: Optional `tenantId?: string` on `ScanEntry`, propagated through scan routes. Backward-compat. Closes the last global-state store for the enterprise tier.
+4. **N-106 — Webhook delivery retry dashboard**: `GET /webhooks/deliveries` history + retry status. Webhooks exist (N-19) but there is no operator surface for failed delivery inspection. Medium complexity.
+
+---
+
+### 5. Blockers / questions for CoS
+
+- **CRUCIBLE Gate 6 (Stryker)**: Eleventh cycle, no response. The key lifecycle is closed. The scan lifecycle is closed. The CLI surface is complete. The stores are not actively changing. Mutation testing's signal-to-noise is at its peak. Approve?
+- **100-milestone re-scope (eleventh ask)**: 103 initiatives shipped. Still no directional signal. Continuing incrementally on the key/CLI hygiene cluster. If there is a revenue or product priority that should take precedence over N-104+, a directive would help.
+- **NPM_TOKEN / Fly.io**: v0.3.0 publish still blocked. `packages/sdk`, `packages/cli`, and `packages/api` have been updated across 15+ initiatives since the last publish.
+- **`keys rotation` UX**: Should DISABLED and EXPIRED keys be excluded from the rotation report by default (with an `--include-inactive` flag to restore them)? Currently they appear, which may be noise for operators who have already taken action on those keys. Awaiting guidance before changing default behaviour.
+
+---
+
 > **Reflection cycle**: 2026-03-21 — N-102 — 1 initiative SHIPPED, 16 net new tests
 
 ### 1. What did we ship since last check-in?
