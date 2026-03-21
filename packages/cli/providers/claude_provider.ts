@@ -140,7 +140,7 @@ Return JSON: { "critique": string, "improvedPrompt": string }`;
       throw new Error(`Anthropic API error: ${response.status} ${response.statusText}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as any;
     const textBlock = data.content?.find((b: any) => b.type === 'text');
     return textBlock?.text || '';
   }

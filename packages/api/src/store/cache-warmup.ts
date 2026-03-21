@@ -182,7 +182,7 @@ export class CacheWarmer {
 
     try {
       const result = await scan(target.text, target.provider);
-      getScanCache().set(target.text, target.provider, result as Record<string, unknown>);
+      getScanCache().set(target.text, target.provider, result as unknown as Record<string, unknown>);
       const durationMs  = Date.now() - start;
       return store.recordRun(targetId, {
         startedAt,

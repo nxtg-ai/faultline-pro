@@ -36,7 +36,7 @@ export async function pdfReportRoutes(fastify: FastifyInstance): Promise<void> {
     async (request, reply) => {
       let scanData: PdfScanResult;
 
-      const body = request.body as Record<string, unknown>;
+      const body = request.body as unknown as Record<string, unknown>;
 
       // If scanId is provided, load from the scan store
       if (body.scanId) {

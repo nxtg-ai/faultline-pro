@@ -72,7 +72,7 @@ export async function diffRoutes(fastify: FastifyInstance): Promise<void> {
       const [scanBefore, scanAfter] = await Promise.all([
         scan(before, effectiveProvider),
         scan(after, effectiveProvider),
-      ]) as [ScanResult, ScanResult];
+      ]) as unknown as [ScanResult, ScanResult];
 
       const beforeByText = new Map(scanBefore.claims.map(c => [normalize(c.text), c]));
       const afterByText  = new Map(scanAfter.claims.map(c => [normalize(c.text), c]));

@@ -383,7 +383,6 @@ function drawHeatmap(
         height: cellH - 24,
         ellipsis: true,
         lineGap: 1,
-        fontSize: 7,
       })
       .fontSize(7)
       .fillColor(COLORS.muted)

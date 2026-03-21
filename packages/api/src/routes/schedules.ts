@@ -158,7 +158,7 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.status(403).send({ error: 'Forbidden.' });
       }
       try {
-        const updated = getScheduleStore().update(request.params.id, request.body as Parameters<ReturnType<typeof getScheduleStore>['update']>[1]);
+        const updated = getScheduleStore().update(request.params.id, request.body as unknown as Parameters<ReturnType<typeof getScheduleStore>['update']>[1]);
         return reply.send(updated);
       } catch (err) {
         return reply.status(400).send({ error: (err as Error).message });

@@ -140,7 +140,7 @@ Return a JSON object: { "critique": string, "improvedPrompt": string }`,
       throw new Error(`Perplexity API error: ${response.status} ${response.statusText}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as any;
     return data.choices?.[0]?.message?.content || '';
   }
 
@@ -166,7 +166,7 @@ Return a JSON object: { "critique": string, "improvedPrompt": string }`,
       throw new Error(`Perplexity API error: ${response.status} ${response.statusText}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as any;
     return {
       content: data.choices?.[0]?.message?.content || '',
       citations: Array.isArray(data.citations) ? data.citations : [],

@@ -33,7 +33,7 @@ interface PrefsBody {
 
 function buildWeeklySummaryPayload(keyId: string): Record<string, unknown> {
   const analytics = getAnalyticsStore();
-  const stats = analytics.getSummary ? analytics.getSummary() : { totalScans: 0 };
+  const stats = (analytics as any).getSummary ? (analytics as any).getSummary() : { totalScans: 0 };
   return {
     keyId,
     week:      new Date().toISOString().slice(0, 10),

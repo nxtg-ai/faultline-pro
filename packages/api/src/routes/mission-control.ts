@@ -42,7 +42,7 @@ function computeStatus() {
     name,
     status:     h.disabled ? 'disabled' : h.healthScore >= 0.8 ? 'healthy' : h.healthScore >= 0.5 ? 'degraded' : 'unhealthy',
     healthScore: Math.round((h.healthScore ?? 0) * 100),
-    avgLatency:  h.avgLatency ?? 0,
+    avgLatency:  h.avgLatencyMs ?? 0,
     errorRate:   Math.round((h.errorRate ?? 0) * 100),
     disabled:    h.disabled ?? false,
     totalRequests: h.totalRequests ?? 0,
@@ -58,7 +58,7 @@ function computeStatus() {
 
   // ── Active keys ───────────────────────────────────────────────────────────
   const keys = getKeyStore().list();
-  const activeKeys = keys.filter(k => k.active).length;
+  const activeKeys = keys.length;
   const totalKeys = keys.length;
 
   // ── Scan rate / today's volume ────────────────────────────────────────────
