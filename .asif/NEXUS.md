@@ -895,6 +895,67 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-21 — CoS check-in — N-146 session close (scan-queue/bulk-jobs/rate-alerts store hardening SQ1–SQ5+BJ1–BJ5+RA1–RA5; 3,412 tests; 146 initiatives SHIPPED)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests | Total |
+|--------|-----------|-------------|--------|-------|
+| `9f9242c` | N-145 extract.ts + streamScan() | `extract.test.ts` (16 tests EX1–EX16): `mimeFromExtension`, `extractTextFromBuffer` (PDF/image/unsupported), `extractTextFromFile`; stream-client.test.ts +5 (SC16–SC20): all `streamScan()` HTTP branches; stale worktree removed (was inflating count by ~1,140) | +21 | 3,397 |
+| `375f4e2` | N-146 store hardening | `store-hardening.test.ts` (15 tests SQ1–SQ5+BJ1–BJ5+RA1–RA5): `scan-queue.ts` tick/processItem/maxConcurrency/start-stop; `bulk-jobs.ts` fail/worstOffenders-sort/zero-file-guard/riskDistribution; `rate-alerts.ts` shouldAlert guards + fire() all 3 delivery branches | +15 | 3,412 |
+
+**3,412 tests · 146 initiatives SHIPPED.** Three API store modules lifted from near-zero branch coverage: `scan-queue.ts` 51%→72%, `bulk-jobs.ts` 50%→80%, `rate-alerts.ts` 0%→~80%.
+
+---
+
+### 2. What surprised you?
+
+**`rate-alerts.ts` was at effectively 0% despite being in production.** The module fires console warnings and optional webhook POSTs on rate limit approach (80% threshold). It deduplicates by minute window. Zero of these behaviours were tested. The `fire()` method's three-branch delivery model (console-only / webhook-ok / webhook-throw) was completely dark. This is safety-critical: if `FAULTLINE_ALERT_WEBHOOK` is set but `fetch` fails silently, operators get no notification. RA5 now confirms the `deliveryNote` records the exception.
+
+**`tick()` → `processItem()` → `vi.waitFor()` is the right pattern for testing void async dispatch.** `tick()` fires `void this.processItem(item)` — no await, no returned promise. The only way to test the outcome is to poll the item's `status` field after triggering. `vi.waitFor(() => expect(item.status).toBe('completed'))` does this cleanly without artificial sleeps. Worth documenting as a reusable pattern.
+
+**`bulk-jobs.ts` `fail()` stores the error via a type cast** (`(job as BulkJob & { error?: string }).error = error`) rather than adding `error` to the `BulkJob` interface. This is tech debt: consumers calling `store.get(id)` get a `BulkJob` with no `error` field in the type, but the field is physically present. BJ1 tests around it (`(got as typeof got & { error?: string }).error`) but the underlying type is misleading.
+
+---
+
+### 3. Cross-project signals
+
+**`vi.waitFor()` for void-async dispatch is a broadly applicable test pattern.** Any module that fires `void someAsyncFn()` (fire-and-forget) can be tested by polling the mutated state: `await vi.waitFor(() => expect(sideEffect).toHaveOccurred())`. No sleeps, no fake timers needed for the dispatch itself. Applies to any ASIF project with queues, job runners, or background task systems (Podcast-Pipeline's ingestion queue, Forge's builder agent dispatch).
+
+**Rate-alert deduplication by minute window is a common pattern worth reusing.** `RateLimitAlertStore` deduplicates by `keyId → windowKey (YYYY-MM-DDTHH:mm)`. Any project adding alerting (Forge, synapps, content-engine) can copy this pattern: store `lastFired: Map<id, windowKey>`, check `lastFired.get(id) !== currentWindowKey` before firing. One alert per entity per window, no external state needed.
+
+**Type-cast tech debt accumulates silently.** The `(job as X & { field })` pattern in `bulk-jobs.ts` is a red flag that the type is understating the actual shape. If another project has similar casts on exported types, the type contract is lying to callers. Worth a periodic `grep -rn "as.*&.*{" src/` audit.
+
+---
+
+### 4. What would I prioritize next?
+
+**P1 — v0.4.0 git tag + npm publish.** Twentieth cycle. 3,412 tests. 8/8 CRUCIBLE gates PASS. Zero technical blockers. Go/no-go?
+
+**P2 — Fix `BulkJob.error` type cast tech debt.** Add `error?: string` to the `BulkJob` interface. One-line change, removes the cast in `fail()` and in BJ1 test. Low risk, improves type safety for callers.
+
+**P3 — Add Vitest exclude for `.claude/worktrees/**`.** One-line change to `vitest.config.ts`. Prevents future phantom-count inflation if another agent worktree is created and not cleaned up.
+
+**P4 — `scan-queue.ts` `pruneCompleted` branch** (lines 156-163 — requires >1,000 terminal items). Currently impractical to test without either a very slow loop or access to internal state. Options: expose a `MAX_COMPLETED` constant for override in tests, or accept the gap.
+
+---
+
+### 5. Blockers and questions for the CoS
+
+1. **v0.4.0 publish**: Twentieth cycle. 3,412 real tests. Go/no-go?
+
+2. **`BulkJob.error` type fix**: Approve as a one-liner, or prefer keeping the interface minimal and leaving the cast?
+
+3. **Vitest worktree exclude**: Add `exclude: ['.claude/worktrees/**']` to vitest config now, or track as a future config initiative?
+
+4. **Callback unification** (`onClaimVerified` + `onProgress` → `onEvent?`): Eighth consecutive cycle. Approve, close, or officially backlog?
+
+5. **VALID_PROVIDERS mutation resistance**: Fifth cycle open. Accept surviving mutant / integration test / extract validator?
+
+6. **Historical NEXUS counts**: N-141 through N-144 show inflated counts (4,467–4,516). Correct retroactively or leave with a note at N-145?
+
+---
+
 > **Reflection cycle**: 2026-03-21 — CoS check-in — N-145 session close (extract.ts 0→100%, streamScan() SC16–SC20, worktree phantom count corrected; 3,397 real tests; 145 initiatives SHIPPED)
 
 ### 1. What did we ship since last check-in?
