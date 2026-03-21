@@ -880,7 +880,65 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
-> **Reflection cycle**: 2026-03-21 — CoS check-in — N-130 shipped (NotificationStore dispatch mutation hardening, notifications.ts 82.39%→92.45%)
+> **Reflection cycle**: 2026-03-21 — CoS check-in — N-131 shipped (dispatchScheduleNotification event-type fix; scan.completed added)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests | Total |
+|--------|-----------|-------------|--------|-------|
+| `a0e86df` | N-131 dispatchScheduleNotification event-type fix | `notifications.ts` + `schedules.ts` fix; `schedule-notification-event-type.test.ts` SC1–SC15; `'scan.completed'` event type added; badge 4,347→4,362 | +15 | 4,362 |
+
+**4,362 tests · 131 initiatives SHIPPED.** This was a correctness bug fix, not a hardening pass. The bug had been present since the schedule notification system was built (N-25/N-66) and flagged as a "suspected bug" in the N-128 reflection cycle — five reflection entries ago.
+
+---
+
+### 2. What surprised you?
+
+**The bug was worse than it first appeared.** The original diagnosis (line 387 always dispatches `'scan.failed'`) was correct, but there was a second defect not initially visible: the error catch block in `runSchedule()` never called `dispatchScheduleNotification` at all. So the real behavior was: successful scans → wrong event type (`'scan.failed'`); failed scans → no notification at all. Both legs were broken. A user subscribing to `'scan.failed'` would receive spurious "failures" on every successful scheduled run AND silence on actual failures. The fix addressed both defects.
+
+**Two existing tests asserted `ALL_EVENT_TYPES.toHaveLength(8)`.** These were hardcoded count assertions that broke when `'scan.completed'` was added. They were easy to fix (8→9), but they represent a fragile testing pattern — counting array length by magic number rather than checking presence of expected members. The correct test is `expect(ALL_EVENT_TYPES).toContain('scan.failed')`, not `toHaveLength(N)`. The SC1/SC5 tests use the correct pattern.
+
+**TypeScript caught a `create()` call signature error** on the first run. `ScheduleStore.create(input, keyId)` takes `keyId` as a separate second argument, not inside the input object. The test file initially had `{ ..., keyId: '...' }` in the input object (following `CreateScheduleInput`), but `keyId` is not in that interface. The tsc pre-push hook caught this before any push — Gate 1 working as designed.
+
+---
+
+### 3. Cross-project signals
+
+**Any event dispatch function with a hardcoded event type string is a latent bug.** The pattern `await dispatch('scan.failed', payload)` with no conditional logic is suspicious whenever the calling context includes both success and error paths. The fix was to make the event type a derived variable: `const eventType = runResult.error ? 'scan.failed' : 'scan.completed'`. This pattern applies to any project with typed event dispatch: always derive the event type from the data, never hardcode it at the call site.
+
+**Double-defect pattern**: when a bug is in an error dispatch function, check both the event type AND whether the error path calls it at all. The pattern "wrong event on success AND no dispatch on failure" is common when notification code is added to the success path first and the error path is treated as an afterthought.
+
+**`toHaveLength(N)` on an expanding enum is a maintenance trap.** Use `toContain()` for membership tests and `toBeGreaterThanOrEqual()` for minimum-count tests. A `toHaveLength(8)` assertion on `ALL_EVENT_TYPES` will break every time a new event type is added — which is the right thing to do (it forces the developer to notice the count), but the assertion intent was "all types are listed" not "there are exactly 8". The right test for that intent is `ALL_EVENT_TYPES.includes('type-name')`.
+
+---
+
+### 4. What would I prioritize next?
+
+**P1 — v0.4.0 git tag + npm publish.** Six reflection cycles. Two commands. Still waiting.
+
+**P2 — costs.ts final push above 90%.** 89.36% with 6 survivors. Likely 5–7 targeted tests. Closes out the GDPR cluster at all stores ≥90%.
+
+**P3 — schedules.ts push above 80%.** Currently 76.26%. With the N-131 fix adding new paths (dispatchScheduleNotification success/error routing, catch block dispatch), some previously-uncovered mutants may now be killable. Would benefit from a fresh Stryker run.
+
+**P4 — v0.5.0 feature.** After N-131, five consecutive GDPR/mutation/correctness initiatives. Strong candidate for a feature pivot: WebSocket scan streaming, analytics dashboard, or whatever the CoS has in mind.
+
+---
+
+### 5. Blockers and questions for the CoS
+
+1. **v0.4.0 publish**: Sixth cycle. Ready. Go/no-go?
+
+2. **schedules.ts post-N-131 Stryker re-run**: The N-131 fix adds new execution paths in `dispatchScheduleNotification`. Should I run a fresh Stryker pass on schedules.ts to capture the updated score, or is 76.26% (pre-fix baseline) acceptable?
+
+3. **costs.ts 90% push**: 6 survivors, estimated 5–7 tests. Approve as N-132, or pivot to features?
+
+4. **v0.5.0 direction**: What's the next feature initiative? I have four options ready to plan: WebSocket streaming, analytics dashboard, model fine-tuning integration, or CLI interactive playground.
+
+5. **`toHaveLength(N)` on event type count**: Should I sweep the codebase for this pattern and convert them to `toContain()` assertions? It affects at least 2 tests that broke with N-131. A broader sweep would prevent future breakage.
+
+---
+
+> **Previous reflection cycle**: 2026-03-21 — CoS check-in — N-130 shipped (NotificationStore dispatch mutation hardening, notifications.ts 82.39%→92.45%)
 
 ### 1. What did we ship since last check-in?
 
