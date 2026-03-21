@@ -7,12 +7,15 @@ type ScanProvider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
 const VALID_PROVIDERS = new Set<ScanProvider>(['gemini', 'openai', 'claude', 'perplexity', 'mock']);
 
 /**
- * N-134 — Server-Sent Events scan streaming.
+ * N-134/N-135 — Server-Sent Events scan streaming with progressive per-claim delivery.
  * GET /scan/stream?text=...&provider=mock
  *
- * Streams scan progress as SSE events:
- *   data: {"type":"start","claimCount":N,"provider":"mock"}
- *   data: {"type":"claim_verified","index":0,"claim":{...},"verdict":{...}}  (one per claim)
+ * Uses scan()'s onClaimVerified callback (N-135) to emit claim_verified events
+ * as each claim is verified, rather than buffering until scan completes.
+ *
+ * Event sequence:
+ *   data: {"type":"start","claimCount":N,"provider":"mock"}        ← on first claim verified
+ *   data: {"type":"claim_verified","index":0,"claim":{...},"verdict":{...}}  × N
  *   data: {"type":"complete","overallRisk":"low","claimCount":N}
  *   data: {"type":"error","message":"..."}  (on failure only)
  */
@@ -23,8 +26,8 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
       preHandler: [requireApiKey],
       schema: {
         tags: ['Scan'],
-        summary: 'Stream scan results via Server-Sent Events',
-        description: 'Runs a scan and streams progress events (start → claim_verified × N → complete) in SSE format.',
+        summary: 'Stream scan results via Server-Sent Events (progressive per-claim delivery)',
+        description: 'Runs a scan and streams progress events (start → claim_verified × N → complete) in SSE format. claim_verified events are emitted progressively as each claim is verified.',
         querystring: {
           type: 'object',
           properties: {
@@ -51,20 +54,42 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
         chunks.push(`data: ${JSON.stringify(data)}\n\n`);
       };
 
+      let startEmitted = false;
+
       try {
-        const result = await scan(text, effectiveProvider);
-        const claims = Array.isArray(result.claims) ? result.claims : [];
+        const result = await scan(
+          text,
+          effectiveProvider,
+          undefined,
+          undefined,
+          undefined,
+          (claim, verdict, index, total) => {
+            // Emit start on first claim — claimCount known from total param
+            if (!startEmitted) {
+              emit({ type: 'start', claimCount: total, provider: effectiveProvider });
+              startEmitted = true;
+            }
+            emit({
+              type: 'claim_verified',
+              index,
+              claim: claim as unknown as Record<string, unknown>,
+              verdict: verdict as unknown as Record<string, unknown>,
+            });
+          },
+        );
 
-        emit({ type: 'start', claimCount: claims.length, provider: effectiveProvider });
+        const claimCount = Array.isArray(result.claims) ? result.claims.length : 0;
 
-        for (let i = 0; i < claims.length; i++) {
-          const claim = claims[i] as unknown as Record<string, unknown>;
-          const verdict = (result.verifications as Record<string, unknown>)[claim['id'] as string] ?? null;
-          emit({ type: 'claim_verified', index: i, claim, verdict });
+        // Fallback: emit start if no claims were verified (0-claim edge case)
+        if (!startEmitted) {
+          emit({ type: 'start', claimCount, provider: effectiveProvider });
         }
 
-        emit({ type: 'complete', overallRisk: result.overallRisk, claimCount: claims.length });
+        emit({ type: 'complete', overallRisk: result.overallRisk, claimCount });
       } catch (err) {
+        if (!startEmitted) {
+          emit({ type: 'start', claimCount: 0, provider: effectiveProvider });
+        }
         emit({ type: 'error', message: err instanceof Error ? err.message : String(err) });
       }
 

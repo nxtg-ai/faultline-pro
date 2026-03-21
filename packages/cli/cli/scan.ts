@@ -94,7 +94,15 @@ export function filterClaimsForVerification(claims: Claim[]): Claim[] {
 /** Callback for reporting scan progress to the caller (e.g., a CLI spinner). */
 export type ScanProgressCallback = (message: string) => void;
 
-export async function scan(text: string, providerName?: string, minConfidence?: number, ruleNames?: string[], onProgress?: ScanProgressCallback): Promise<ScanResult> {
+/** Fired after each claim is verified, enabling progressive streaming. */
+export type ScanClaimCallback = (
+  claim: Claim,
+  verdict: VerificationResult,
+  index: number,
+  total: number,
+) => void;
+
+export async function scan(text: string, providerName?: string, minConfidence?: number, ruleNames?: string[], onProgress?: ScanProgressCallback, onClaimVerified?: ScanClaimCallback): Promise<ScanResult> {
   const resolvedProvider = providerName || 'gemini';
 
   let apiKey = '';
@@ -127,6 +135,7 @@ export async function scan(text: string, providerName?: string, minConfidence?: 
   for (let i = 0; i < toVerify.length; i++) {
     onProgress?.(`Verifying claim ${i + 1}/${toVerify.length}...`);
     verifications[toVerify[i].id] = await provider.verifyClaim(toVerify[i]);
+    onClaimVerified?.(toVerify[i], verifications[toVerify[i].id], i, toVerify.length);
   }
 
   onProgress?.('Generating report...');
