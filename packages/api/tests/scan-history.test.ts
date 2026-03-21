@@ -83,6 +83,7 @@ describe('ScanHistory — integration tests', () => {
     for (let i = 0; i < 15; i++) {
       store.record({
         textPreview: `scan text ${i}`,
+        textHash: `hash-${i}`,
         provider: 'mock',
         overallRisk: 'low',
         claimCount: 1,
@@ -147,8 +148,8 @@ describe('ScanHistory — integration tests', () => {
   // SH7: GET /scans/search?q= filters by text preview
   it('SH7: GET /scans/search?q= filters by text preview', async () => {
     const store = getScanHistory();
-    store.record({ textPreview: 'moon landing facts', provider: 'mock', overallRisk: 'low', claimCount: 1, latencyMs: 100, timestamp: new Date().toISOString(), keyId: 'k1' });
-    store.record({ textPreview: 'weather forecast data', provider: 'mock', overallRisk: 'low', claimCount: 1, latencyMs: 100, timestamp: new Date().toISOString(), keyId: 'k2' });
+    store.record({ textPreview: 'moon landing facts', textHash: 'hash-moon', provider: 'mock', overallRisk: 'low', claimCount: 1, latencyMs: 100, timestamp: new Date().toISOString(), keyId: 'k1' });
+    store.record({ textPreview: 'weather forecast data', textHash: 'hash-weather', provider: 'mock', overallRisk: 'low', claimCount: 1, latencyMs: 100, timestamp: new Date().toISOString(), keyId: 'k2' });
 
     const res = await server.inject({ method: 'GET', url: '/scans/search?q=moon' });
     expect(res.statusCode).toBe(200);
@@ -160,8 +161,8 @@ describe('ScanHistory — integration tests', () => {
   // SH8: GET /scans/search?provider= filters by provider
   it('SH8: GET /scans/search?provider= filters by provider', async () => {
     const store = getScanHistory();
-    store.record({ textPreview: 'gemini scan text', provider: 'gemini', overallRisk: 'low', claimCount: 1, latencyMs: 100, timestamp: new Date().toISOString(), keyId: 'k1' });
-    store.record({ textPreview: 'openai scan text', provider: 'openai', overallRisk: 'low', claimCount: 1, latencyMs: 100, timestamp: new Date().toISOString(), keyId: 'k2' });
+    store.record({ textPreview: 'gemini scan text', textHash: 'hash-gemini', provider: 'gemini', overallRisk: 'low', claimCount: 1, latencyMs: 100, timestamp: new Date().toISOString(), keyId: 'k1' });
+    store.record({ textPreview: 'openai scan text', textHash: 'hash-openai', provider: 'openai', overallRisk: 'low', claimCount: 1, latencyMs: 100, timestamp: new Date().toISOString(), keyId: 'k2' });
 
     const res = await server.inject({ method: 'GET', url: '/scans/search?provider=gemini' });
     expect(res.statusCode).toBe(200);
@@ -173,8 +174,8 @@ describe('ScanHistory — integration tests', () => {
   // SH9: GET /scans/search?risk= filters by risk level
   it('SH9: GET /scans/search?risk= filters by risk level', async () => {
     const store = getScanHistory();
-    store.record({ textPreview: 'high risk content', provider: 'mock', overallRisk: 'high', claimCount: 2, latencyMs: 100, timestamp: new Date().toISOString(), keyId: 'k1' });
-    store.record({ textPreview: 'low risk content', provider: 'mock', overallRisk: 'low', claimCount: 1, latencyMs: 100, timestamp: new Date().toISOString(), keyId: 'k2' });
+    store.record({ textPreview: 'high risk content', textHash: 'hash-high', provider: 'mock', overallRisk: 'high', claimCount: 2, latencyMs: 100, timestamp: new Date().toISOString(), keyId: 'k1' });
+    store.record({ textPreview: 'low risk content', textHash: 'hash-low', provider: 'mock', overallRisk: 'low', claimCount: 1, latencyMs: 100, timestamp: new Date().toISOString(), keyId: 'k2' });
 
     const res = await server.inject({ method: 'GET', url: '/scans/search?risk=high' });
     expect(res.statusCode).toBe(200);
@@ -187,7 +188,7 @@ describe('ScanHistory — integration tests', () => {
   it('SH10: nextCursor is set when more pages exist', async () => {
     const store = getScanHistory();
     for (let i = 0; i < 5; i++) {
-      store.record({ textPreview: `entry ${i}`, provider: 'mock', overallRisk: 'low', claimCount: 1, latencyMs: 100, timestamp: new Date().toISOString(), keyId: 'k' });
+      store.record({ textPreview: `entry ${i}`, textHash: `hash-entry-${i}`, provider: 'mock', overallRisk: 'low', claimCount: 1, latencyMs: 100, timestamp: new Date().toISOString(), keyId: 'k' });
     }
 
     const res = await server.inject({ method: 'GET', url: '/scans/search?limit=2' });
@@ -201,7 +202,7 @@ describe('ScanHistory — integration tests', () => {
   it('SH11: passing cursor returns next page', async () => {
     const store = getScanHistory();
     for (let i = 0; i < 5; i++) {
-      store.record({ textPreview: `entry ${i}`, provider: 'mock', overallRisk: 'low', claimCount: 1, latencyMs: 100, timestamp: new Date().toISOString(), keyId: 'k' });
+      store.record({ textPreview: `entry ${i}`, textHash: `hash-entry-${i}`, provider: 'mock', overallRisk: 'low', claimCount: 1, latencyMs: 100, timestamp: new Date().toISOString(), keyId: 'k' });
     }
 
     const firstRes = await server.inject({ method: 'GET', url: '/scans/search?limit=2' });
@@ -223,7 +224,7 @@ describe('ScanHistory — integration tests', () => {
   it('SH12: GET /scans/search?limit=2 respects limit', async () => {
     const store = getScanHistory();
     for (let i = 0; i < 10; i++) {
-      store.record({ textPreview: `entry ${i}`, provider: 'mock', overallRisk: 'low', claimCount: 1, latencyMs: 100, timestamp: new Date().toISOString(), keyId: 'k' });
+      store.record({ textPreview: `entry ${i}`, textHash: `hash-entry-${i}`, provider: 'mock', overallRisk: 'low', claimCount: 1, latencyMs: 100, timestamp: new Date().toISOString(), keyId: 'k' });
     }
 
     const res = await server.inject({ method: 'GET', url: '/scans/search?limit=2' });
@@ -255,6 +256,7 @@ describe('ScanHistoryStore — unit tests', () => {
     const store = getScanHistory();
     const entry = store.record({
       textPreview: 'some text',
+      textHash: 'hash-some',
       provider: 'mock',
       overallRisk: 'low',
       claimCount: 3,
@@ -275,6 +277,7 @@ describe('ScanHistoryStore — unit tests', () => {
     for (let i = 0; i < 1005; i++) {
       store.record({
         textPreview: `entry ${i}`,
+        textHash: `hash-${i}`,
         provider: 'mock',
         overallRisk: 'low',
         claimCount: 1,

@@ -94,4 +94,4 @@ Rules that apply to this project (Critical tier — claim forensics is safety-cr
 - **Gate 7**: Spec-test traceability (future) — new integration tests must cite a NEXUS acceptance criterion.
 - **Oracle tier: CRITICAL** — all 4 oracle types required on claim forensics (example-based, property-based, contract, integration).
 
-Current oracle coverage: example-based (✅ 3,557 tests), property-based (✅ 19 properties — fast-check, N-76), contract (❌ pending), integration (✅ partial).
+Current oracle coverage: example-based (✅ 3,586 tests), property-based (✅ 19 properties — fast-check, N-76), contract (✅ 29 Zod schema tests — N-77), integration (✅ partial).

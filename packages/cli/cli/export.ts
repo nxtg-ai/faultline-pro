@@ -123,7 +123,7 @@ function toScanRow(entry: HistoryEntry): ExportScanRow {
 // ── Format renderers ──────────────────────────────────────────────────────────
 
 export function renderCsv(entries: HistoryEntry[]): string {
-  const rows: string[] = [csvRow(CSV_HEADERS)];
+  const rows: string[] = [csvRow([...CSV_HEADERS])];
 
   for (const entry of entries) {
     const claims: Claim[] = entry.scanResult.claims ?? [];

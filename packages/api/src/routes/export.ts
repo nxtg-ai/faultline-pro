@@ -65,7 +65,7 @@ function trustScore(entry: ScanEntry): number {
 // ── Format renderers ──────────────────────────────────────────────────────────
 
 function renderCsv(entries: ScanEntry[]): string {
-  const rows: string[] = [csvRow(CSV_HEADERS)];
+  const rows: string[] = [csvRow([...CSV_HEADERS])];
   for (const e of entries) {
     rows.push(csvRow([
       e.id,

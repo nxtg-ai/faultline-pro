@@ -11,7 +11,7 @@ vi.mock('@nxtg/faultline/cli/scan.js', () => ({
     claims: [{ id: 'c1', text: 'Mock scan input.', type: 'fact', importance: 3 }],
     verifications: { c1: { claimId: 'c1', status: 'supported', explanation: 'OK', sources: [] } },
     overallRisk: 'low',
-    complianceReport: { riskTier: 'minimal', findings: [] },
+    complianceReport: { overallRiskLevel: 'low', euRiskSummary: { unacceptable: 0, high: 0, limited: 0, minimal: 1, totalClaims: 1, highestTier: 'minimal' }, claimMappings: [], triggeredArticles: [], mitigations: [], confidenceDistribution: { high: 0, medium: 0, low: 1 }, generatedAt: new Date().toISOString() },
     ruleFindings: [],
   }),
 }));
@@ -23,6 +23,7 @@ function seedHistory(server: FastifyInstance): void {
   const store = getScanHistory();
   const base = (i: number) => ({
     textPreview: `Test scan number ${i}`,
+    textHash: `hash-${i}`,
     provider: i % 2 === 0 ? 'mock' : 'gemini',
     overallRisk: ['low', 'medium', 'high', 'critical', 'low'][i % 5] as string,
     claimCount: i + 1,

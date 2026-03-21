@@ -29,7 +29,7 @@ function makeScanResult(overrides: Partial<ScanResult> = {}): ScanResult {
       },
     },
     overallRisk: 'low',
-    complianceReport: { riskTier: 'minimal', findings: [] },
+    complianceReport: { overallRiskLevel: 'low', euRiskSummary: { unacceptable: 0, high: 0, limited: 0, minimal: 1, totalClaims: 1, highestTier: 'minimal' }, claimMappings: [], triggeredArticles: [], mitigations: [], confidenceDistribution: { high: 0, medium: 0, low: 1 }, generatedAt: new Date().toISOString() },
     ruleFindings: [],
     ...overrides,
   };
