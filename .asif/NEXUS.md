@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-83 + reflection. 3,663 tests. 83 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-84 GET /keys/:id + CHANGELOG backfill. 3,673 tests. 84 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -93,6 +93,7 @@
 | N-81 | Real Integration Oracle (CRUCIBLE) — 12 integration tests (RI1–RI12) with NO scan mock; full pipeline HTTP→Fastify→scan()→mock provider runs; covers extraction shape, verifications keyed by claim ID, overallRisk, complianceReport, ScanHistory recording, audit trail, sentence splitting, cache HIT, auth enforcement, ruleFindings, scan/deep, claimCount accuracy | FORENSIC | SHIPPED | P1 | 2026-03-21 |
 | N-82 | ApiKey Soft-Disable — disabled?: boolean on ApiKey; validateKey() rejects disabled keys (401 auth); PATCH /keys/:id/disable + /enable (admin-gated); GET /keys includes disabled field; mission-control activeKeys now correctly counts !disabled; 17 tests (KD1–KD17) | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
 | N-83 | Key Partial Update — PATCH /keys/:id (admin-gated): update name and/or permissions post-creation; KeyStore.update(); secret redacted in response; 404/403/400 guards; 14 tests (KU1–KU14); ci.yml cancel-in-progress to prevent stale-run false alarms | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
+| N-84 | GET /keys/:id — single key lookup by ID (admin-gated); secret redacted; disabled state visible; consistent with GET /keys list; 10 tests (KG1–KG10); CHANGELOG backfilled N-75 through N-84 | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
 
 ---
 
