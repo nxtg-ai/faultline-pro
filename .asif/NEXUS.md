@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-123 Tenant-scoped cost tracking — CostStore tenantId, GDPR export + erasure complete. README badge 4,241. 4,241 tests. 123 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-124 GDPR schedule erasure — ScheduleStore.deleteForKeys() + schedules.json in GDPR export + erasure. GDPR store audit complete. README badge 4,256. 4,256 tests. 124 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -131,6 +131,7 @@
 | N-119 | v0.3.0 publish prep — CHANGELOG.md full rewrite (clean [Unreleased]/[v0.3.0]/[v0.2.0]/[v0.1.0] sections; N-82 through N-118 in Unreleased; stripped 300+ "Team Feedback no delta" noise lines); README badge 2,757→4,166; Enterprise API section updated with key lifecycle, webhook resilience (rate limiting, circuit breaker, retry config), tenant-scoped resources, scan hygiene, `faultline keys`/`scans` CLI; 15 release-prep tests (RP1–RP15) validating README badge count, CHANGELOG structure, key capability mentions, and changelog API endpoints | DISTRIBUTION | SHIPPED | P2 | 2026-03-21 |
 | N-120 | GDPR export endpoint — `GET /tenants/:id/export` (admin-gated); returns ZIP archive via `adm-zip` containing `manifest.json` (tenant metadata + counts), `scan-history.json` (all tenant scans via `getRecent(10_000).filter(tenantId)`), `audit-log.ndjson` (NDJSON one entry per line), `notifications.json`, `webhooks.json`, `usage.json` (keyed by keyId); `Content-Disposition: attachment; filename=faultline-gdpr-export-{tenantId}-{date}.zip`; 404 for unknown tenant; 403 without admin; 15 tests (GE1–GE15): 200/content-type/disposition/zip structure/manifest counts/scan isolation/tenant isolation/empty-tenant zero-counts | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
 | N-121 | GDPR erasure endpoint — `DELETE /tenants/:id/data` (admin-gated, Article 17 right-to-erasure); adds `deleteTenantEntries(tenantId)` to `ScanHistoryStore` + `AuditLogger`, `deleteTenantHistory(tenantId)` to `NotificationStore`, `deleteTenant(tenantId)` to `WebhookStore`, `deleteKey(keyId)` to `UsageMeter`; returns `{ tenantId, deleted: { scanEntries, auditEntries, notifications, webhooks, usageKeys } }`; tenant record itself preserved (data only); idempotent (second call returns all zeros); 15 tests (ER1–ER15): counts, actual store erasure, tenant-not-deleted, idempotency, isolation (tenant B untouched), export-after-erasure returns empty ZIP | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
+| N-124 | GDPR schedule erasure — `ScheduleStore.deleteForKeys(keyIds[])` + `listForKeys(keyIds[])`; GDPR export ZIP gains `schedules.json` with `manifest.counts.schedules`; `DELETE /tenants/:id/data` extended with `schedules` in deleted counts; GDPR store audit complete (JobStore/BulkJobStore/ScanCache/ClaimIndex have no tenant association — no action needed); 15 tests (SS1–SS15): listForKeys, deleteForKeys accuracy, idempotency, multi-key, isolation, ZIP entry, manifest count, export isolation, erasure count, erasure isolation, export-after-erasure | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
 | N-123 | Tenant-scoped cost tracking — `ScanCost.tenantId?`; `CostFilter.tenantId?`; `CostStore.record()` passes tenantId from `resolveRequestTenantId()`; `deleteTenantCosts(tenantId)` → count; GDPR export ZIP gains `costs.json` with `manifest.counts.costs`; `DELETE /tenants/:id/data` extended with `costs` in deleted counts; scan.ts passes tenantId to CostStore; 15 tests (TC1–TC15): record+filter, delete isolation, idempotency, ZIP entry, manifest count, export isolation, erasure count, erasure isolation, un-tenanted records excluded | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
 | N-122 | GDPR notification prefs erasure + README badge update — adds `NotificationStore.deletePrefsForKeys(keyIds[])` (bulk prefs deletion with count return); `DELETE /tenants/:id/data` extended to erase notification prefs for all tenant keys, adds `notificationPrefs` to deleted counts response; CHANGELOG updated with N-119–N-122 entries; README badge 4,166→4,226; 15 tests (EP1–EP15): prefs-deleted count, actual prefs removal, multi-key erasure, idempotency, tenant isolation, empty-tenant zero count, deletePrefsForKeys unit tests, dispatch-after-erasure delivers nowhere | COMPLIANCE | SHIPPED | P2 | 2026-03-21 |
 
@@ -871,6 +872,51 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-03-21 — CoS check-in — N-124 (GDPR schedule erasure + store audit complete)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests | Total |
+|--------|-----------|-------------|--------|-------|
+| `baa435e` | N-124 GDPR schedule erasure | `ScheduleStore.deleteForKeys()`/`listForKeys()`; `schedules.json` in GDPR export; `deleted.schedules` in erasure; store audit (JobStore/BulkJobStore/ScanCache/ClaimIndex — no tenant association); badge 4,241→4,256 | +15 | 4,256 |
+
+**GDPR surface is now fully closed**: 8 data categories (scans, audit, notifications, notification prefs, webhooks, usage, costs, schedules) present in both export and erasure. **4,256 tests · 124 initiatives SHIPPED.**
+
+---
+
+### 2. What is the engineering signal?
+
+**The GDPR store audit is complete.** N-124 was the final open gap. The audit covered 5 flagged stores:
+- `ScheduleStore` — **gap confirmed**: holds `notifyEmail` (PII), linked via `keyId` → fixed
+- `JobStore` — no tenant association (no keyId/tenantId field) — no action possible
+- `BulkJobStore` — no tenant association — no action possible
+- `ScanCache` — content-addressed by hash, no PII — no action needed
+- `ClaimIndex` — global dedup index for AI statements, no personal data — no action needed
+
+The pattern of `ScheduleStore` is instructive: the store already had `list(keyId?)` filtering, meaning tenant-scoping was partially considered but the GDPR surface (export + erasure) was never updated to include it. The `deleteForKeys(keyIds[])` and `listForKeys(keyIds[])` methods follow the same pattern as `deletePrefsForKeys()` in N-122 — bulk operation over a set of keyIds rather than a single tenantId.
+
+**N-124 shipped 15/15 first run — fifth consecutive clean first-run.** No fixture errors, no type errors, no wrong enum values. The test infrastructure knowledge is now fully stable.
+
+---
+
+### 3. What should the CoS know?
+
+1. **GDPR store audit is complete.** N-119–N-124 form a complete GDPR compliance cluster (Article 15 access, Article 17 erasure, 8 data categories). This is a strong `[v0.4.0]` release boundary.
+
+2. **v0.4.0 readiness**: N-119–N-124 are all in `[Unreleased]`. Six consecutive compliance/quality initiatives. Awaiting CoS signal to cut the release.
+
+3. **Future compliance surface note**: `JobStore` and `BulkJobStore` have no tenant linkage. If we ever add `keyId` to those stores (to support per-tenant job history), the GDPR surface will need to be updated immediately at that time.
+
+---
+
+### 4. Pending CoS questions (from prior cycles — now partially answered)
+
+- **GDPR store audit scope**: ✅ Complete. `ScheduleStore` fixed (N-124). Other stores have no tenant association.
+- **CostStore un-tenanted records**: Pre-N-123 costs have no tenantId and are invisible to tenant queries. Still requires CoS decision on backfill strategy.
+- **v0.4.0 versioning**: Still awaiting signal.
+
+---
 
 > **Reflection cycle**: 2026-03-21 — CoS check-in — N-123 (CostStore tenant-scoping, GDPR surface complete)
 
