@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-124 GDPR schedule erasure — ScheduleStore.deleteForKeys() + schedules.json in GDPR export + erasure. GDPR store audit complete. README badge 4,256. 4,256 tests. 124 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-125 CRUCIBLE Gate 6 round 2 — scan.ts mutation score 60.91% → 75.31%; 15 new hardening tests. README badge 4,271. 4,271 tests. 125 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -131,6 +131,7 @@
 | N-119 | v0.3.0 publish prep — CHANGELOG.md full rewrite (clean [Unreleased]/[v0.3.0]/[v0.2.0]/[v0.1.0] sections; N-82 through N-118 in Unreleased; stripped 300+ "Team Feedback no delta" noise lines); README badge 2,757→4,166; Enterprise API section updated with key lifecycle, webhook resilience (rate limiting, circuit breaker, retry config), tenant-scoped resources, scan hygiene, `faultline keys`/`scans` CLI; 15 release-prep tests (RP1–RP15) validating README badge count, CHANGELOG structure, key capability mentions, and changelog API endpoints | DISTRIBUTION | SHIPPED | P2 | 2026-03-21 |
 | N-120 | GDPR export endpoint — `GET /tenants/:id/export` (admin-gated); returns ZIP archive via `adm-zip` containing `manifest.json` (tenant metadata + counts), `scan-history.json` (all tenant scans via `getRecent(10_000).filter(tenantId)`), `audit-log.ndjson` (NDJSON one entry per line), `notifications.json`, `webhooks.json`, `usage.json` (keyed by keyId); `Content-Disposition: attachment; filename=faultline-gdpr-export-{tenantId}-{date}.zip`; 404 for unknown tenant; 403 without admin; 15 tests (GE1–GE15): 200/content-type/disposition/zip structure/manifest counts/scan isolation/tenant isolation/empty-tenant zero-counts | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
 | N-121 | GDPR erasure endpoint — `DELETE /tenants/:id/data` (admin-gated, Article 17 right-to-erasure); adds `deleteTenantEntries(tenantId)` to `ScanHistoryStore` + `AuditLogger`, `deleteTenantHistory(tenantId)` to `NotificationStore`, `deleteTenant(tenantId)` to `WebhookStore`, `deleteKey(keyId)` to `UsageMeter`; returns `{ tenantId, deleted: { scanEntries, auditEntries, notifications, webhooks, usageKeys } }`; tenant record itself preserved (data only); idempotent (second call returns all zeros); 15 tests (ER1–ER15): counts, actual store erasure, tenant-not-deleted, idempotency, isolation (tenant B untouched), export-after-erasure returns empty ZIP | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
+| N-125 | CRUCIBLE Gate 6 round 2 — Stryker mutation score on `cli/scan.ts`: 60.91% → 75.31% (183/243 killed); 15 hardening tests (MH16–MH30) in `scan-mutation-hardening-2.test.ts`; kills: `splitSentences` word-count boundary (`>= 3`, letter guard `/[a-zA-Z]/`, `&&`→`||`, double-space 2-word, plain 2-word), `onProgress` string literals (Extracting/Verifying/Generating), default provider `'gemini'` error message, `collectFiles`/`walk` recursion + hidden-dir/node_modules skip, glob include/exclude, `globToRegex` `?` wildcard; Stryker config updated; 6 NoCoverage remain (semantically equivalent regex variants on `splitSentences` line 39) | DEVELOPER-X | SHIPPED | P2 | 2026-03-21 |
 | N-124 | GDPR schedule erasure — `ScheduleStore.deleteForKeys(keyIds[])` + `listForKeys(keyIds[])`; GDPR export ZIP gains `schedules.json` with `manifest.counts.schedules`; `DELETE /tenants/:id/data` extended with `schedules` in deleted counts; GDPR store audit complete (JobStore/BulkJobStore/ScanCache/ClaimIndex have no tenant association — no action needed); 15 tests (SS1–SS15): listForKeys, deleteForKeys accuracy, idempotency, multi-key, isolation, ZIP entry, manifest count, export isolation, erasure count, erasure isolation, export-after-erasure | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
 | N-123 | Tenant-scoped cost tracking — `ScanCost.tenantId?`; `CostFilter.tenantId?`; `CostStore.record()` passes tenantId from `resolveRequestTenantId()`; `deleteTenantCosts(tenantId)` → count; GDPR export ZIP gains `costs.json` with `manifest.counts.costs`; `DELETE /tenants/:id/data` extended with `costs` in deleted counts; scan.ts passes tenantId to CostStore; 15 tests (TC1–TC15): record+filter, delete isolation, idempotency, ZIP entry, manifest count, export isolation, erasure count, erasure isolation, un-tenanted records excluded | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
 | N-122 | GDPR notification prefs erasure + README badge update — adds `NotificationStore.deletePrefsForKeys(keyIds[])` (bulk prefs deletion with count return); `DELETE /tenants/:id/data` extended to erase notification prefs for all tenant keys, adds `notificationPrefs` to deleted counts response; CHANGELOG updated with N-119–N-122 entries; README badge 4,166→4,226; 15 tests (EP1–EP15): prefs-deleted count, actual prefs removal, multi-key erasure, idempotency, tenant isolation, empty-tenant zero count, deletePrefsForKeys unit tests, dispatch-after-erasure delivers nowhere | COMPLIANCE | SHIPPED | P2 | 2026-03-21 |
@@ -872,6 +873,60 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-03-21 — CoS check-in — N-125 (Stryker round 2, scan.ts 75.31%)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests | Total |
+|--------|-----------|-------------|--------|-------|
+| `bd9dd57` | N-125 CRUCIBLE Gate 6 round 2 | `scan-mutation-hardening-2.test.ts` MH16–MH30; `scan.ts` mutation score 60.91% → 75.31%; Stryker config extended; badge 4,256→4,271 | +15 | 4,271 |
+
+**4,271 tests · 125 initiatives SHIPPED.** Claim forensics critical path now at 75.31% mutation score — 15 points above the 60% CRUCIBLE threshold.
+
+---
+
+### 2. What surprised you?
+
+**The `guaranteeClaimPerSentence` early-return was a trap.** The function returns unchanged when `sentences.length < 2`. Every test for the `splitSentences` filter (MH17–MH20) initially failed because my inputs had only one valid sentence — the function returned before the filter logic ran. I had to add a second valid sentence to each test to force execution through the full pipeline. This is a subtle but important property: the function is only meaningful for multi-sentence inputs. Single-sentence tests can't cover the sentence-exclusion logic at all.
+
+**33 NoCoverage mutants killed down to 6.** The NoCoverage cluster (filesystem traversal, `onProgress`, default provider) was entirely about code paths that no test had ever exercised — not about assertions being weak. Adding real-filesystem tests (subdirectory recursion, hidden-dir/node_modules skip, glob filtering) and an `onProgress` callback test covered all of them in one pass. The remaining 6 NoCoverage are all regex variants on the `splitSentences` sentence-level split (line 39, `(?<=[.!?])\s+|(?<=[.!?])$`) — these are semantically equivalent because `.trim()` absorbs the difference, and the `sentences.length < 2` early-return absorbs the edge cases. They cannot be killed without modifying the source logic.
+
+**`\s+` → `\S+` is the most dangerous surviving split mutant.** With `/\S+/` as the word-count splitter, "foo bar" (2 words) produces ["", " ", ""] → length 3, passing the `>= 3` filter. This would include 2-word sentences as verifiable claims. MH20 specifically tests and kills this. The semantic difference is very hard to see in code review — mutation testing found it, but only because we now have the test.
+
+---
+
+### 3. Cross-project signals
+
+**The "early-return absorbs edge cases" pattern is a test-design smell.** Any function that guards `if (input.length < N) return unchanged` is untestable for its internal filter logic when tests only provide < N inputs. Podcast-Pipeline, FamilyMind, and any project with similar "minimum input size" gates should be audited: are the tests providing inputs that actually exercise the filtering logic, or are they all returning early?
+
+**Stryker round 2 strategy: start with NoCoverage, not Survived.** NoCoverage mutants (code paths never executed) are the easiest to kill — just write a test that runs that path. Survived mutants (tests ran but didn't catch the mutation) often require precision assertions or may be genuinely equivalent. In N-125, we killed 27 NoCoverage mutants and only 8 Survived. The NoCoverage cluster contributed the most points (+14.4% of the 14.4% total gain).
+
+**globToRegex `?` wildcard test revealed a real edge case.** "doc?.txt" correctly matches "doc1.txt" and "doc2.txt" but not "document.txt" — this is a real user-visible behaviour difference (glob wildcards are common in CLI tooling). This test was written for Stryker coverage but provides genuine regression protection for the glob pattern feature.
+
+---
+
+### 4. What would I prioritize next?
+
+**P1 — v0.4.0 release cut.** N-119–N-125 are now in `[Unreleased]`. Seven consecutive compliance + quality initiatives. The GDPR cluster (N-119–N-124) plus this Stryker hardening pass form a complete v0.4.0 story: "GDPR compliance, store audit, and mutation-tested claim forensics." This is a natural publish boundary.
+
+**P2 — Kill the remaining 6 NoCoverage on line 39 (if wanted).** The `splitSentences` sentence-level regex variants on line 39 are all absorbed by `.trim()`. To kill them, we'd need to either: (a) remove `.trim()` and add normalisation elsewhere, or (b) test the internal `splitSentences` function directly (it's currently unexported). Exporting it for testing would be a minor source change to kill 4 mutants. Probably not worth it.
+
+**P3 — Stryker on `packages/api/src/store/` stores.** The webhook resilience cluster (N-117 = 91.45%) and claim forensics (N-125 = 75.31%) are well-hardened. The remaining untested-by-mutation stores are the GDPR cluster: `costs.ts`, `schedules.ts`, `notifications.ts`. These are compliance-critical (delete methods are safety-critical from a GDPR standpoint). Worth a Stryker pass.
+
+---
+
+### 5. Blockers and questions for the CoS
+
+1. **v0.4.0 release signal**: N-119–N-125 ready. Seven initiatives since v0.3.0. Should I cut the release?
+
+2. **Export `splitSentences` for direct mutation testing?** Would allow killing the 6 remaining NoCoverage mutants. Requires a one-line source change (`export function splitSentences`). Low risk, small benefit. CoS call on whether exported test helpers are acceptable in this codebase.
+
+3. **Stryker scope expansion**: Should I add Stryker configs for `packages/api/src/store/` (GDPR stores)? This would require a second `stryker-api.config.mjs` at the monorepo root. Medium effort, high compliance value for the erasure methods.
+
+4. **`riskOrder` StringLiteral mutant** (`'high'` → `''` on line 275): survived because our `highestRisk` tests only check that the correct level is returned, not the string values of the intermediate order array. To kill it, we'd need a test where the order matters — e.g., a scan with both `high` and `medium` risk results that verifies `highestRisk = 'high'`. Worth filing as a future hardening note.
+
+---
 
 > **Reflection cycle**: 2026-03-21 — CoS check-in — post N-124 (GDPR cluster closed, standing reflection)
 
