@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock @google/genai
+// Validates: N-01 (Multi-Provider Pipeline), N-02 (CLI Tool)
+
+// MOCK JUSTIFIED: @google/genai is an external LLM API — mocked to keep tests
+// deterministic and key-free. These tests exercise CLI pipeline logic (claim
+// extraction shape, verification result handling, risk scoring, critique
+// generation), not the Gemini network layer. Provider integration is covered
+// by real provider tests in pipeline-providers.test.ts.
 const mockGenerateContent = vi.fn();
 
 vi.mock('@google/genai', () => {

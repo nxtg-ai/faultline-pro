@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock @google/genai
+// Validates: N-01 (Multi-Provider Pipeline), N-03 (EU AI Act Compliance Module)
+
+// MOCK JUSTIFIED: @google/genai is an external LLM API. Mocked to exercise the
+// full extract→verify→risk-score→EU-tier→compliance-report pipeline with controlled
+// claim text and verdicts. The real compliance and risk modules are NOT mocked —
+// only the LLM network call. Deterministic input enables precise tier assertions
+// (e.g. social-scoring claim → 'unacceptable' tier).
 const mockGenerateContent = vi.fn();
 
 vi.mock('@google/genai', () => ({

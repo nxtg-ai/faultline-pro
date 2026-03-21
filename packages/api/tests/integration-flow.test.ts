@@ -1,6 +1,10 @@
 /**
  * Integration Flow Tests (D-166)
  *
+ * Validates: N-13 (Cloud Platform — hosted API + auth), N-19 (Webhook System),
+ *            N-24 (Caching Layer), N-25 (Scheduled Scans), N-39 (Production Hardening),
+ *            N-45 (Multi-Tenant API), N-70 (Usage Analytics Dashboard)
+ *
  * 10 end-to-end scenarios exercising the complete Faultline Pro pipeline:
  *   API key auth → scan → claims → verdict → compliance report →
  *   webhook delivery → audit trail → cache → rate limiting → org keys → analytics
@@ -43,6 +47,10 @@ import { resetScheduleStore } from '../src/store/schedules.js';
 import type { FastifyInstance } from 'fastify';
 
 // ── Mock scan engine ──────────────────────────────────────────────────────────
+// MOCK JUSTIFIED: @nxtg/faultline/cli/scan.js calls external LLM providers.
+// These tests exercise the HTTP route pipeline (auth, cache, webhooks, audit,
+// rate-limiting, analytics) not the scan engine internals. Scan logic is
+// covered unmocked in real-integration.test.ts (CRUCIBLE integration oracle).
 
 vi.mock('@nxtg/faultline/cli/scan.js', () => ({
   scan: vi.fn().mockResolvedValue({

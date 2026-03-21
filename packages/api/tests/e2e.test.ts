@@ -1,6 +1,10 @@
 /**
  * E2E Smoke Test — Full API Surface
  *
+ * Validates: N-13 (Cloud Platform), N-15 (Revenue Infrastructure — API keys/usage),
+ *            N-19 (Webhook System), N-39 (Production API Hardening),
+ *            N-51 (Bulk Document Import), N-65 (PDF Report Generator)
+ *
  * Exercises the complete enterprise API flow in sequence:
  * create key → scan → batch → upload → report → usage → audit →
  * webhook registration + dispatch → rate limit enforcement → teardown
@@ -22,6 +26,10 @@ import { resetCircuitBreaker } from '../src/store/circuit-breaker.js';
 import type { FastifyInstance } from 'fastify';
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
+// MOCK JUSTIFIED: @nxtg/faultline/cli/scan.js calls external LLM providers.
+// This file smoke-tests the full API surface (key CRUD, batch, upload, PDF,
+// webhooks, rate-limiting) not the scan engine. Scan pipeline is covered
+// unmocked in real-integration.test.ts (CRUCIBLE integration oracle).
 
 vi.mock('@nxtg/faultline/cli/scan.js', () => ({
   scan: vi.fn().mockResolvedValue({

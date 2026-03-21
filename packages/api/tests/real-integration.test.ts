@@ -1,6 +1,10 @@
 /**
  * Real Integration Oracle (N-81 — CRUCIBLE Gate: integration oracle)
  *
+ * Validates: N-81 (Real Integration Oracle — CRUCIBLE 4th oracle type),
+ *            N-79 (Claim Filter Threshold), N-03 (EU AI Act Compliance),
+ *            N-13 (Cloud Platform — real scan pipeline end-to-end)
+ *
  * Unlike integration-flow.test.ts, these tests do NOT mock the scan engine.
  * The full call chain runs: HTTP request → Fastify route → scan() → mock provider
  * → extractClaims() → verifyClaim() → response body.

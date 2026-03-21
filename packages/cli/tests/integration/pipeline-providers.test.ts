@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// Mock @google/genai for Gemini
+// Validates: N-01 (Multi-Provider Pipeline — provider registry, registration, listing)
+
+// MOCK JUSTIFIED: @google/genai is an external LLM API; global fetch is used by
+// Claude/OpenAI providers. Mocked to verify provider registry operations (register,
+// get, list, default) and per-provider extract/verify shapes without live credentials.
 const mockGenerateContent = vi.fn();
 vi.mock('@google/genai', () => ({
   GoogleGenAI: class MockGoogleGenAI {

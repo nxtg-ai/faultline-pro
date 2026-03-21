@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock @google/genai for Gemini provider
+// Validates: N-01 (Multi-Provider Pipeline — shape contract for Gemini/Claude/OpenAI)
+
+// MOCK JUSTIFIED: @google/genai is an external LLM API; global fetch is used by
+// Claude/OpenAI providers. Mocked to verify all three provider implementations
+// return the same Claim/VerificationResult shape without live credentials.
+// Network behaviour is out of scope; shape contract and error normalisation are.
 const mockGenerateContent = vi.fn();
 
 vi.mock('@google/genai', () => ({
