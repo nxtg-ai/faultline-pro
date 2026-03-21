@@ -98,6 +98,11 @@ export async function dispatchWebhook(
 
   for (let attempt = 0; attempt < 3; attempt++) {
     await _sleep(RETRY_DELAYS[attempt]);
+    const start = Date.now();
+    let statusCode: number | null = null;
+    let delivered = false;
+    let error: string | null = null;
+
     try {
       const res = await fetch(webhook.url, {
         method: 'POST',
@@ -107,12 +112,31 @@ export async function dispatchWebhook(
         },
         body,
       });
-      if (res.ok) return;
-    } catch {
-      // network error — retry or swallow
+      statusCode = res.status;
+      delivered  = res.ok;
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
     }
+
+    const latencyMs = Date.now() - start;
+
+    // Log this attempt
+    getWebhookDeliveryLog().push({
+      id:         randomUUID(),
+      webhookId:  webhook.id,
+      event,
+      url:        webhook.url,
+      timestamp:  new Date().toISOString(),
+      attempt:    attempt + 1,
+      statusCode,
+      delivered,
+      latencyMs,
+      error,
+    });
+
+    if (delivered) return;
   }
-  // All 3 attempts exhausted — swallow silently
+  // All 3 attempts exhausted
 }
 
 // ─── Test tool ────────────────────────────────────────────────────────────
@@ -232,6 +256,50 @@ export async function sendTestWebhook(
 
   getWebhookTestHistory().push(result);
   return result;
+}
+
+// ─── Delivery log ─────────────────────────────────────────────────────────
+
+export interface WebhookDeliveryRecord {
+  id:            string;
+  webhookId:     string;
+  event:         WebhookEvent;
+  url:           string;
+  timestamp:     string;
+  attempt:       number;   // 1-indexed attempt number that succeeded or was final
+  statusCode:    number | null;
+  delivered:     boolean;
+  latencyMs:     number;
+  error:         string | null;
+}
+
+const MAX_DELIVERY_LOG = 1_000;
+
+class WebhookDeliveryLog {
+  private records: WebhookDeliveryRecord[] = [];
+
+  push(record: WebhookDeliveryRecord): void {
+    this.records.unshift(record);
+    if (this.records.length > MAX_DELIVERY_LOG) this.records.pop();
+  }
+
+  list(webhookId?: string, limit = 100): WebhookDeliveryRecord[] {
+    const all = webhookId
+      ? this.records.filter((r) => r.webhookId === webhookId)
+      : this.records.slice();
+    return all.slice(0, limit);
+  }
+
+  reset(): void { this.records = []; }
+}
+
+let deliveryLogInstance: WebhookDeliveryLog | null = null;
+export function getWebhookDeliveryLog(): WebhookDeliveryLog {
+  if (!deliveryLogInstance) deliveryLogInstance = new WebhookDeliveryLog();
+  return deliveryLogInstance;
+}
+export function resetWebhookDeliveryLog(): void {
+  deliveryLogInstance = new WebhookDeliveryLog();
 }
 
 export function fireWebhookEvent(event: WebhookEvent, data: unknown): void {

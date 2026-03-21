@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAdmin } from '../plugins/auth.js';
 import { requireApiKey } from '../plugins/auth.js';
-import { getWebhookStore, getWebhookTestHistory, sendTestWebhook, SAMPLE_PAYLOADS } from '../store/webhooks.js';
+import { getWebhookStore, getWebhookTestHistory, getWebhookDeliveryLog, sendTestWebhook, SAMPLE_PAYLOADS } from '../store/webhooks.js';
 import type { WebhookEvent } from '../store/webhooks.js';
 
 const VALID_EVENTS: WebhookEvent[] = ['scan.complete', 'scan.failed', 'claim.verdict_changed', 'compliance.deadline_approaching'];
@@ -144,6 +144,58 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const records = getWebhookTestHistory().list(request.query.webhookId);
       return reply.send({ total: records.length, records });
+    },
+  );
+
+  // GET /webhooks/deliveries — recent real delivery attempts (all webhooks)
+  fastify.get<{ Querystring: { limit?: string } }>(
+    '/webhooks/deliveries',
+    {
+      preHandler: requireAdmin,
+      schema: {
+        tags: ['Webhooks'],
+        summary: 'Recent webhook delivery attempts across all subscriptions. Shows status, latency, and error for each attempt.',
+        querystring: {
+          type: 'object',
+          properties: { limit: { type: 'string', pattern: '^[0-9]+$' } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const limit   = Math.min(500, Math.max(1, parseInt(request.query.limit ?? '100', 10)));
+      const records = getWebhookDeliveryLog().list(undefined, limit);
+      const failedCount = records.filter((r) => !r.delivered).length;
+      return reply.send({ total: records.length, failedCount, records });
+    },
+  );
+
+  // GET /webhooks/:id/deliveries — delivery history for a specific webhook
+  fastify.get<{ Params: { id: string }; Querystring: { limit?: string } }>(
+    '/webhooks/:id/deliveries',
+    {
+      preHandler: requireAdmin,
+      schema: {
+        tags: ['Webhooks'],
+        summary: 'Delivery history for a specific webhook subscription.',
+        params: {
+          type: 'object',
+          properties: { id: { type: 'string' } },
+          required: ['id'],
+        },
+        querystring: {
+          type: 'object',
+          properties: { limit: { type: 'string', pattern: '^[0-9]+$' } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const { id }  = request.params;
+      const webhook = getWebhookStore().getById(id);
+      if (!webhook) return reply.status(404).send({ error: 'Webhook not found', code: 'NOT_FOUND' });
+      const limit   = Math.min(500, Math.max(1, parseInt(request.query.limit ?? '100', 10)));
+      const records = getWebhookDeliveryLog().list(id, limit);
+      const failedCount = records.filter((r) => !r.delivered).length;
+      return reply.send({ webhookId: id, total: records.length, failedCount, records });
     },
   );
 }
