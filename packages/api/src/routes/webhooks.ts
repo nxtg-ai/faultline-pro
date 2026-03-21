@@ -230,6 +230,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
 // ── HTML delivery dashboard ───────────────────────────────────────────────────
 
 import type { WebhookDeliveryRecord } from '../store/webhooks.js';
+import { esc } from '../lib/html.js';
 
 function buildDeliveryDashboardHtml(
   records: WebhookDeliveryRecord[],
@@ -322,10 +323,6 @@ function buildDeliveryDashboardHtml(
 </div>
 </body>
 </html>`;
-}
-
-function esc(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // ── HTML tester page ──────────────────────────────────────────────────────────

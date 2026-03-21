@@ -8,6 +8,7 @@ import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { buildChangelog, toMarkdown } from '../lib/changelog.js';
+import { escHtml } from '../lib/html.js';
 import type { VersionBlock } from '../lib/changelog.js';
 
 // Walk up from this file until we find the .git directory
@@ -147,9 +148,6 @@ a:hover{text-decoration:underline}
 </html>`;
 }
 
-function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 

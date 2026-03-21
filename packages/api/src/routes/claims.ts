@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getClaimIndex, computeAttributionConfidence } from '../store/claims.js';
+import { escHtml } from '../lib/html.js';
 
 export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{
@@ -358,9 +359,6 @@ function fmt(iso) {
   return iso.slice(0, 10);
 }
 
-function escHtml(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
 
 // ── Stats ──────────────────────────────────────────────────────────────────────
 async function loadStats() {

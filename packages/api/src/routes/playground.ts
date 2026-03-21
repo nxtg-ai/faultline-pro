@@ -5,6 +5,7 @@
  */
 
 import type { FastifyInstance } from 'fastify';
+import { escHtml } from '../lib/html.js';
 
 // ── Sample data ───────────────────────────────────────────────────────────────
 
@@ -472,9 +473,6 @@ function renderResult(data, endpoint, elapsed, status) {
   showTab('overview');
 }
 
-function escHtml(str) {
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
 </script>
 </body>
 </html>`;

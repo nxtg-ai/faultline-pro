@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-111 Tenant-scoped audit log. 4,062 tests. 111 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-112 Shared HTML escape utility. 4,077 tests. 112 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -121,6 +121,7 @@
 | N-109 | Webhook delivery log HTML dashboard — `GET /webhooks/deliveries/view` (admin-gated); summary stat cards (Total/Delivered/Failed/Success Rate with colour coding); per-row table (WebhookID/Event/Attempt#/DELIVERED·FAILED chips/HTTP status/Latency/Error/Time); empty-state row when log empty; auto-refresh 30s; `buildDeliveryDashboardHtml()` + `esc()` helpers; 15 tests (WDV1–WDV15) | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
 | N-110 | Tenant-scoped webhooks — `Webhook.tenantId?` stored at `create()` time via route-level resolution (`getTenantStore().findByKeyId(keyId)?.id`); admin key → `tenantId = undefined`; `WebhookStore.list(tenantId?)` filter; `POST /webhooks` resolves + stores tenantId; `GET /webhooks?tenantId=` scoped query; existing `webhook-delivery-log.test.ts` `makeWebhook` factory updated for new field; 15 tests (TW1–TW15) | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
 | N-111 | Tenant-scoped audit log — `AuditEntry.tenantId?` resolved inside `AuditLogger.log()` via `getTenantStore().findByKeyId(keyId)?.id`; `tenantId` made optional in interface (backward compatible — existing call sites unchanged); `filterEntries()` gains `tenantId?` param; `GET /audit/log?tenantId=` scoped by stored scalar; existing tests unaffected (type: optional, not required); 15 tests (TA1–TA15); closes enterprise tenancy surface | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
+| N-112 | Shared HTML escape utility — `src/lib/html.ts` exports `esc(s: unknown): string` (4-char encoder) and `escHtml` alias; 5 inline copies removed from `webhooks.ts`, `playground.ts`, `changelog.ts`, `claims.ts`; XSS auditable via single grep target; `esc` accepts `unknown` (String() coercion); 15 tests (ET1–ET15): unit, alias, XSS neutralisation, route integration | DEVELOPER-X | SHIPPED | P2 | 2026-03-21 |
 
 ---
 
