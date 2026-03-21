@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-79 claim filter fix + N-80 coverage gate. 3,620 tests. 80 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-81 Real Integration Oracle. 3,632 tests. 81 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -90,6 +90,7 @@
 | N-78 | Audit Log API — GET /audit/log (query + filter), GET /audit/log/stats (summary), GET /audit/log/export (NDJSON download); closes 4-session gap flagged in integration scenarios | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
 | N-79 | Claim Filter Threshold Fix — filterClaimsForVerification importance >= 2 (was >= 3); exported for testing; 15 unit tests covering threshold, type filter, sort, cap, edge cases | FORENSIC | SHIPPED | P1 | 2026-03-21 |
 | N-80 | Coverage Baseline Gate — vitest coverage thresholds (stmts 80%, branch 70%, funcs 85%, lines 80%) in both API and CLI vitest.config.ts; .asif-ci updated to enforce coverage on push; closes 9-cycle open question | DEVELOPER-X | SHIPPED | P1 | 2026-03-21 |
+| N-81 | Real Integration Oracle (CRUCIBLE) — 12 integration tests (RI1–RI12) with NO scan mock; full pipeline HTTP→Fastify→scan()→mock provider runs; covers extraction shape, verifications keyed by claim ID, overallRisk, complianceReport, ScanHistory recording, audit trail, sentence splitting, cache HIT, auth enforcement, ruleFindings, scan/deep, claimCount accuracy | FORENSIC | SHIPPED | P1 | 2026-03-21 |
 
 ---
 
@@ -828,6 +829,61 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-03-21 — N-79 through N-81 — 3 initiatives SHIPPED, 12 net new tests, CRUCIBLE integration oracle now COMPLETE
+
+### 1. What did we ship since last check-in?
+
+| Commit | Deliverable | Tests |
+|--------|-------------|-------|
+| N-79 `fix: claim filter threshold` | `filterClaimsForVerification` threshold lowered from `importance >= 3` to `importance >= 2`; function exported for direct testing. `tests/claim-filter.test.ts` — 15 unit tests across threshold, type filter, sort order, 8-claim cap, edge cases. Closes importance-2 claim silently excluded from verification (flagged 3+ cycles). | +15 |
+| N-80 `ci: coverage gate` | vitest coverage thresholds added to both `packages/api/vitest.config.ts` and `packages/cli/vitest.config.ts` (stmts 80%, branch 70%, funcs 85%, lines 80%). `.asif-ci` updated to pass `--coverage` flag. Both packages pass at current baselines (API: 88%/73%/89%/91%, CLI: 83%/74%/88%/84%). Closes 9-cycle open question. | 0 |
+| N-81 `feat: real integration oracle` | `packages/api/tests/real-integration.test.ts` — 12 integration tests (RI1–RI12) with **zero** `vi.mock` calls on the scan engine. Full pipeline runs: HTTP request → Fastify → real `scan()` → mock provider → `extractClaims()` → `verifyClaim()` → response. Tests: real claim shape (RI1), verifications keyed by claim ID (RI2), valid overallRisk (RI3), complianceReport structure (RI4), ScanHistory recording (RI5), audit trail entry (RI6), sentence splitting fires in production path (RI7), cache HIT on repeat scan (RI8), 401 without key (RI9), ruleFindings array (RI10), scan/deep evidenceLinks (RI11), ScanHistory.claimCount accuracy (RI12). All 12 pass. | +12 |
+
+**Running total**: 3,632 tests · 141 files · 81 initiatives SHIPPED. CRUCIBLE oracle coverage: **4/4 types** (example-based ✅, property-based ✅, contract ✅, integration ✅ COMPLETE).
+
+---
+
+### 2. What surprised us?
+
+- **All 12 integration tests passed on first run.** No failures to fix. This is a sign the pipeline is well-wired and the mock provider is correctly deterministic. The real surprise is how much of the stack runs identically with `provider='mock'` — sentence splitting, complianceReport generation, rule engine, ScanHistory, AuditLogger, and cache all fire with zero code changes from production. The mock provider is a faithful stand-in for everything except the LLM call itself.
+
+- **Coverage thresholds enforce at the per-package level, not per-file.** When `v8` thresholds fail, they report the `All files` aggregate row — so VS Code extension files (`extension.ts` 26%, `scanner.ts` 41%) with low coverage are hidden behind the package average staying above the threshold. This means individual files can fall far below the stated threshold without triggering a failure. The aggregate gate is a blunt instrument. Stryker mutation testing (Gate 6) would expose this more precisely.
+
+- **The N-80 coverage thresholds are deliberately conservative.** At 80/70/85/80, both packages already exceed the thresholds by 3–10 points. This was intentional — the gate's job is to prevent catastrophic regression, not to enforce a ceiling. It will only fire if someone deletes a large block of tested code without updating tests, which is the real failure mode we're guarding against.
+
+---
+
+### 3. Cross-project signals
+
+- **"Integration test" with vi.mock is not an integration test.** The existing `tests/integration-flow.test.ts` mocks `@nxtg/faultline/cli/scan.js` — it tests the HTTP layer only. RI1–RI12 prove that true integration tests (no mocks on the subject under test) catch different bugs: any wiring error in the real `scan()` pipeline (extractClaims, filterClaimsForVerification, guaranteeClaimPerSentence, generateComplianceReport, applyRules, recordHistory, logAudit) would surface as a test failure, not a production incident. Any ASIF project with an "integration test" suite should audit whether it mocks the core subject under test — if it does, it's not an integration test.
+
+- **CRUCIBLE Critical tier is now fully satisfied: 4/4 oracle types.** The three-session journey: N-76 (property-based, fast-check), N-77 (contract, Zod), N-81 (integration, no mock). Together they close every oracle gap flagged by the CRUCIBLE protocol. FamilyMind's billing pipeline and dx3's agent decision engine both have example-based tests only — they are good candidates for property and contract oracle additions.
+
+- **Mock provider as integration test substrate.** The `provider='mock'` path is deterministic and key-free, making it the right substrate for integration tests in CI. Any provider-level integration test should use the mock provider for pipeline correctness and reserve real provider tests for contract/schema validation only. This pattern should propagate to any ASIF project with a pluggable provider system.
+
+---
+
+### 4. What would we prioritize next?
+
+1. **`ApiKey.disabled` field** — `keys.length` papers over the missing soft-disable mechanism. Enterprise operators need to disable a key without deletion (revoke, investigation, rotation). One field, one filter in the auth middleware, one test. Would also fix the `mission-control.ts` activeKeys count to be semantically correct rather than "all keys."
+
+2. **Stryker mutation testing (CRUCIBLE Gate 6)** — The four oracle types are complete. Gate 6 (mutation testing, 60% score threshold on claim forensics critical paths) is the next CRUCIBLE gap. `@stryker-mutator/core` + `@stryker-mutator/vitest-runner` on `cli/scan.ts` + `cli/analysis/compliance.ts` + `cli/analysis/rules.ts`.
+
+3. **Stripe billing on org model** — `Org.plan` is live. One directive: `POST /orgs/:id/billing/checkout` → Stripe Checkout → `customer.subscription.updated` webhook → plan update.
+
+4. **NPM publish unblock** — v0.3.0 tagged, 3,632 tests green. Waiting on `NPM_TOKEN`. No technical blockers.
+
+---
+
+### 5. Blockers and questions for the CoS?
+
+- **`NPM_TOKEN`**: Still blocked. v0.3.0 tagged, 3,632 tests green. Package is ready to publish.
+- **Fly.io credentials**: Still blocked. Docker image healthy.
+- **CRUCIBLE Gate 6 (mutation testing)**: Ready to implement. Approve Stryker installation? Stryker adds ~30s to the test suite.
+- **`ApiKey.disabled` field**: Approve adding soft-disable to the `ApiKey` interface and auth middleware?
+
+---
 
 > **Reflection cycle**: 2026-03-21 — HEAD `55c575f` — 4 commits, 19 net new tests, 1 initiative SHIPPED (N-78), CI gate hardened
 
