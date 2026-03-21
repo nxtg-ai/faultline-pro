@@ -19,6 +19,8 @@ export interface ApiKey {
   previousKeyExpiresAt?: string;
   /** ISO datetime of the most recent rotation */
   lastRotatedAt?: string;
+  /** ISO datetime of the most recent successful authentication */
+  lastUsedAt?: string;
 }
 
 export interface RotationResult {
@@ -64,12 +66,12 @@ class KeyStore {
     const now = new Date();
     for (const entry of this.keys) {
       if (entry.disabled) continue;
-      if (entry.key === key) return entry;
-      if (
+      if (entry.key === key || (
         entry.previousKey === key &&
         entry.previousKeyExpiresAt &&
         new Date(entry.previousKeyExpiresAt) > now
-      ) {
+      )) {
+        entry.lastUsedAt = now.toISOString();
         return entry;
       }
     }
