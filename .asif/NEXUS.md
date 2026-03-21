@@ -849,6 +849,59 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-21 — N-100 — 1 initiative SHIPPED, 15 net new tests
+
+### 1. What did we ship since last check-in?
+
+**N-100 — `faultline scans` CLI** (`scans stale` + `scans usage` subcommands)
+
+| Commit | Deliverable | +Tests |
+|--------|-------------|--------|
+| `f5e9474` `feat: N-100` | `scans-client.ts`: `getStaleScans(apiUrl, apiKey, days)` → `GET /scans/stale?days=N`; `getScanUsage(apiUrl, apiKey, staleDays)` → `GET /scans/usage?staleDays=N`; `formatStaleList()` (hash prefix, preview, risk, days-ago, provider); `formatScanUsage()` (summary counts + per-doc table with STALE/DRIFT flags). New `scans` top-level command in `index.ts` with `stale [--days 30]` and `usage [--staleDays 30]` subcommands. FAULTLINE_API_KEY/URL env var fallback. Usage text updated. 15 tests (KSC1–KSC15). | +15 (3,880 → 3,895) |
+
+**Total this cycle**: 1 commit · 15 tests · 3,895 total · **100 initiatives SHIPPED** 🎯
+
+This is the **centenary milestone**: 100 initiatives shipped across the Faultline Pro roadmap.
+
+---
+
+### 2. What surprised you?
+
+**The `scans` command (plural) is cleaner than `scan list --stale`.** The reflection planned `faultline scan list --stale` but `scan` already handles 6+ modes (demo, file, dir, template, template-batch, single). Adding `list` as a seventh would require checking `args[1] === 'list'` inside an already-complex switch branch. The cleaner design is a parallel top-level command: `scans` mirrors `keys` exactly — same arg parsing pattern, same env-var fallback, same error handling. The cost is one more top-level command name; the benefit is zero added complexity to `scan`.
+
+**`scans` and `keys` commands are now structurally isomorphic.** Both: (1) require `--api-key` or env var, (2) resolve `--api-url` with the same default, (3) dispatch on `args[1]` subcommand, (4) clamp numeric params (days 1–365), (5) return an error-typed result from the client, (6) propagate errors to exitCode 1. This isomorphism wasn't planned — it emerged from following the same pattern. It suggests that if a third domain (tenants, webhooks, schedules) needs a CLI surface, the pattern is fully established: copy `scans`, rename the client, wire the subcommands.
+
+**100 initiatives is a meaningful waypoint but the work is not done.** Looking at the roadmap from N-01 (multi-provider pipeline) to N-100 (scans CLI), the trajectory is clear: the core platform is complete and well-tested. The remaining work is expansion (new verticals, real-time, tenancy) not completion. The 100-milestone is a natural moment to re-scope rather than just continue incrementing.
+
+---
+
+### 3. Cross-project signals
+
+**The CLI client pattern (`domain-client.ts` + formatter) is portfolio-ready.** Both `keys-client.ts` and `scans-client.ts` follow the same structure: (1) typed result interfaces with `error?: string`, (2) shared `apiFetch()` with `x-api-key` injection, (3) pure formatter functions that take result objects and return strings. Any ASIF project that needs a CLI over a REST API can lift this pattern directly. The key insight is that the error is a field on the result type, not a thrown exception — this makes mocking trivial (`vi.mocked(client.fn).mockResolvedValue({ ..., error: 'Unauthorized' })`).
+
+**15-test CLI module: the KSC split (5 formatter + 10 integration) scales well.** KSC1–5 are pure unit tests (no fetch, no mock) that run in microseconds and test the formatting logic. KSC6–15 mock the client module and test the `main()` dispatch logic. This split means formatter bugs are caught without any HTTP ceremony, and CLI dispatch bugs are caught without any formatting noise. The pattern works for any CLI module with a client/formatter separation.
+
+**`vi.mock('../cli/module.js', async (importOriginal) => { ... })` with partial override is the correct Vitest pattern for this.** The `importOriginal` approach preserves the real formatters while mocking only the async HTTP functions. This avoids the trap of mocking everything (which breaks formatter tests) or mocking nothing (which requires a real server). Portfolio-wide: use `importOriginal` + selective mock for any test that combines pure logic with I/O.
+
+---
+
+### 4. What would you prioritize next?
+
+1. **CRUCIBLE Gate 6 (Stryker)**: Eighth cycle. The scan lifecycle cluster is now fully closed (N-96–N-100). The key lifecycle cluster closed at N-95. Both critical-path stores (`keys.ts` and `scan-history.ts`) are stable, tested, and not actively changing. This is the ideal window for mutation testing — the target is stable, the test suite is comprehensive, and there's no active churn. Requesting approval again.
+2. **N-101 — Mission control `riskDriftedCount` integration**: Surface `riskDriftedCount` from `GET /scans/usage` in the existing mission-control dashboard. Zero new store logic, ~5 lines of HTML change. Immediate operator value for the lowest possible cost.
+3. **N-102 — Tenant-scoped scan history**: Partition `ScanHistoryStore` by tenant ID. Multi-tenant usage is already half-built (N-45 org management), but scan history is still global. Tenant isolation of scan data is the next enterprise-tier gap.
+4. **N-103 — Real-time scan feed (WebSocket)**: `ws://host/scans/live` — push new scan summaries to connected clients on each `record()` call. Mirrors the existing `GET /real-time` HTML dashboard but as a proper WebSocket stream for client applications.
+
+---
+
+### 5. Blockers / questions for CoS
+
+- **CRUCIBLE Gate 6 (Stryker)**: Eighth cycle. Both lifecycle clusters closed. Stable target. Approving this now would close the last open quality gate and complete the CRUCIBLE oracle picture for this project. The ask: run Stryker on `packages/api/src/store/scan-history.ts` and `packages/api/src/store/keys.ts`. Estimated time: 10–15 minutes. Threshold: 60% mutation score (CLAUDE.md spec).
+- **100-milestone re-scope**: With 100 initiatives shipped, is there a portfolio-level review of what N-101+ should be? Current candidates: mission-control integration (low effort), tenant scan isolation (medium), WebSocket stream (medium), or a revenue-facing surface (billing dashboard). CoS direction would prevent arbitrary continuation.
+- **NPM_TOKEN / Fly.io**: Still pending. v0.3.0 publish is blocked on NPM_TOKEN. The CLI and API are both at a publishable quality level.
+
+---
+
 > **Reflection cycle**: 2026-03-21 — N-99 — 1 initiative SHIPPED, 15 net new tests
 
 ### 1. What did we ship since last check-in?
