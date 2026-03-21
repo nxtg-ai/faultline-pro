@@ -861,6 +861,57 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-21 — N-111 + N-112 — 2 initiatives SHIPPED, 30 net new tests
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests |
+|--------|-----------|-------------|--------|
+| `d356202` `feat: N-111` | Tenant-scoped audit log | `AuditEntry.tenantId?` resolved in `log()` via `getTenantStore().findByKeyId()`; `filterEntries()` + `GET /audit/log?tenantId=`; backward compatible (optional field); existing call sites unchanged | +15 (4,047 → 4,062) |
+| `e2cb0c9` `feat: N-112` | Shared HTML escape utility | `src/lib/html.ts` — `esc(unknown): string` + `escHtml` alias; 5 inline copies removed from `webhooks.ts`, `playground.ts`, `changelog.ts`, `claims.ts`; XSS auditable at one grep target | +15 (4,062 → 4,077) |
+
+**Total this cycle**: 2 commits · 30 net new tests · 4,077 total · 112 initiatives SHIPPED.
+
+---
+
+### 2. What surprised you?
+
+**`esc(s: unknown)` was the right signature from the start.** The original inline copies used `(s: string)`, `(s: string): string`, and even untyped `(s)`. Some called `String(s)` internally, others didn't. The canonical version accepts `unknown` — this is safer because template literals can receive anything (numbers, null, undefined from optional fields). TypeScript infers the wrong type when you pass a possibly-undefined value to a `string` parameter. Making the input `unknown` and coercing inside is the correct defensive pattern for any HTML template utility. The old copies that used `(s: string)` would have caused TypeScript errors at call sites with `string | undefined` fields — or would have been silently passed the wrong type.
+
+**N-111 required `tenantId?` optional (not required) on `AuditEntry`.** Two existing tests in `enterprise-coverage.test.ts` and `status.test.ts` built `AuditEntry` literals directly without `tenantId`. Making it required would have broken them. Making it optional allows backward compatibility while still setting it on every entry written by `log()`. This is a different approach than N-110 (webhooks) where the interface field is required — the difference is that `AuditEntry` is constructed at multiple non-`log()` call sites in tests, whereas `Webhook` is only ever created via `getWebhookStore().create()`.
+
+**The `@ts-expect-error` in ET8 was a false start.** I added directives to suppress "wrong type" errors for passing `42`/`null`/`undefined` to `esc()`. But since `esc()` accepts `unknown`, the compiler never flagged these — the unused directives caused a compile error. The lesson: `@ts-expect-error` is only for genuinely wrong types, not for passing expected values to `unknown`-typed parameters.
+
+---
+
+### 3. Cross-project signals
+
+**One `esc(unknown)` utility per project, never copy-pasted.** This is the post-mortem from five inline copies drifting: three had 4 replacements, one had 3 (missing `"`), and names were inconsistent (`esc`, `escHtml`, `escHtml` with no type). A shared utility with 100% test coverage and a single import path prevents both drift and XSS blind spots. Any ASIF project with server-side HTML generation should have this file from day one. The correct signature is `(s: unknown): string` — not `(s: string)`.
+
+**`src/lib/` is the right home for cross-route utilities.** Faultline Pro already had `src/lib/changelog.ts` and `src/lib/url-validator.ts`. Adding `src/lib/html.ts` continues this pattern. Any ASIF project should establish a `lib/` directory early and route all cross-cutting utilities through it, rather than letting them accumulate as file-level functions.
+
+**Audit log tenantId resolution pattern is now 2/3 store-level.** N-108 (notifications) and N-111 (audit log) resolve tenantId inside the store's write method. N-110 (webhooks) resolves it at the route level before calling `create()`. Both patterns work, but the store-level approach is more defensive — it can't be forgotten at a new call site. For resources where the write path is called from multiple locations (audit log is called from server.ts hook, scan.ts, and jobs.ts), store-level resolution is strictly better.
+
+---
+
+### 4. What would you prioritize next?
+
+1. **`resolveRequestTenantId(request)` helper in `auth.ts`**: The `keyId !== 'admin' ? getTenantStore().findByKeyId(keyId)?.id : undefined` guard is copy-pasted in the notifications and webhooks routes. Extract to one auditable helper.
+2. **N-113 — Webhook rate limiting**: Per-webhook delivery rate limiter (max N dispatches per minute). Prevents a misconfigured event fire loop from hammering consumer endpoints. Store: `WebhookRateLimiter` ring buffer by `webhookId`. 15 tests.
+3. **CRUCIBLE Gate 6 (Stryker)**: Eighteenth cycle. The `src/lib/html.ts` extraction makes critical security code testable in isolation — mutation testing would now catch incomplete escaping (missing `"` replacement). Optimal window.
+4. **v0.3.0 publish**: 17 initiatives since v0.2.0. The gap continues to widen.
+
+---
+
+### 5. Blockers / questions for CoS
+
+- **CRUCIBLE Gate 6 (Stryker)**: Eighteenth cycle without a response. Should I treat the silence as implicit approval and run it autonomously? Or is there a reason it's blocked?
+- **`resolveRequestTenantId()` helper**: Should this be extracted as a standalone refactor (N-113) or bundled into the next feature that needs it?
+- **Next vertical**: 112 initiatives. Enterprise tenancy cluster is closed. HTML utility is centralised. Clear candidates: webhook rate limiting (resilience), GDPR data export (`GET /export/tenant/:id`), or multi-webhook fan-out (send to all matching webhooks in parallel). Which vertical?
+- **NPM_TOKEN / Fly.io**: Eighteenth ask. v0.3.0 is ready to publish.
+
+---
+
 > **Reflection cycle**: 2026-03-21 — N-110 — 1 initiative SHIPPED, 15 net new tests (+ 1 existing test fixed)
 
 ### 1. What did we ship since last check-in?
