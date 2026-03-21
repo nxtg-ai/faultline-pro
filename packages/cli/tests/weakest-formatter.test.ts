@@ -97,22 +97,22 @@ describe('formatWeakestLinkAnalysis — fragilityBar via output', () => {
     expect(result).toContain('Fragility: [' + '\u2588'.repeat(10) + '] 100%');
   });
 
-  it('WF6: fragilityScore=-0.5 clamps bar to all-empty (Math.max branch)', () => {
-    // Bar is clamped to 0 → all light-shade chars; pct text reflects raw score (-50%)
+  it('WF6: fragilityScore=-0.5 clamps bar AND pct to 0 (Math.max branch)', () => {
+    // Both bar and pct now consistently clamped — bar all-empty, pct shows 0%
     const result = formatWeakestLinkAnalysis(makeAnalysis({
       rankedClaims: [makeClaim({ fragilityScore: -0.5 })],
       weakestClaim: makeClaim({ fragilityScore: -0.5 }),
     }));
-    expect(result).toContain('Fragility: [' + '\u2591'.repeat(10) + '] -50%');
+    expect(result).toContain('Fragility: [' + '\u2591'.repeat(10) + '] 0%');
   });
 
-  it('WF7: fragilityScore=1.5 clamps bar to all-filled (Math.min branch)', () => {
-    // Bar is clamped to 1 → all block chars; pct text reflects raw score (150%)
+  it('WF7: fragilityScore=1.5 clamps bar AND pct to 1 (Math.min branch)', () => {
+    // Both bar and pct now consistently clamped — bar all-filled, pct shows 100%
     const result = formatWeakestLinkAnalysis(makeAnalysis({
       rankedClaims: [makeClaim({ fragilityScore: 1.5 })],
       weakestClaim: makeClaim({ fragilityScore: 1.5 }),
     }));
-    expect(result).toContain('Fragility: [' + '\u2588'.repeat(10) + '] 150%');
+    expect(result).toContain('Fragility: [' + '\u2588'.repeat(10) + '] 100%');
   });
 });
 

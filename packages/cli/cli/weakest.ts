@@ -87,7 +87,7 @@ function statusIcon(status: string): string {
 function formatClaimEntry(claim: ClaimFragility, rank: number, isWeakest: boolean): string {
   const icon = statusIcon(claim.status);
   const label = isWeakest ? '  << WEAKEST LINK' : '';
-  const fragilityPct = Math.round(claim.fragilityScore * 100);
+  const fragilityPct = Math.round(Math.max(0, Math.min(1, claim.fragilityScore)) * 100);
   const confidencePct = Math.round(claim.confidenceScore * 100);
   const bar = fragilityBar(claim.fragilityScore);
 
