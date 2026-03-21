@@ -160,6 +160,86 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
+  // ── Bulk disable / enable ──────────────────────────────────────────────────
+
+  const BULK_DISABLE_BODY_SCHEMA = {
+    type: 'object',
+    properties: {
+      days: { type: 'integer', minimum: 1, maximum: 365 },
+      ids:  { type: 'array', items: { type: 'string' }, maxItems: 500 },
+    },
+    additionalProperties: false,
+  } as const;
+
+  interface BulkDisableBody {
+    days?: number;
+    ids?:  string[];
+  }
+
+  fastify.post<{ Body: BulkDisableBody }>(
+    '/keys/bulk-disable',
+    {
+      preHandler: requireAdmin,
+      schema: {
+        tags: ['Keys'],
+        summary: 'Bulk-disable keys. Provide ids[] to disable specific keys, or days to disable all dormant keys (unused for ≥N days). Both fields may be combined.',
+        body: BULK_DISABLE_BODY_SCHEMA,
+      },
+    },
+    async (request, reply) => {
+      const store = getKeyStore();
+      const { days, ids = [] } = request.body;
+
+      const targets = new Set<string>(ids);
+      if (days !== undefined) {
+        for (const k of store.getDormant(days)) targets.add(k.id);
+      }
+
+      if (targets.size === 0) {
+        return reply.status(200).send({ disabled: 0, ids: [] });
+      }
+
+      const changed = store.bulkDisable(Array.from(targets));
+      return reply.status(200).send({ disabled: changed.length, ids: changed });
+    },
+  );
+
+  const BULK_ENABLE_BODY_SCHEMA = {
+    type: 'object',
+    properties: {
+      ids: { type: 'array', items: { type: 'string' }, maxItems: 500 },
+    },
+    required: ['ids'],
+    additionalProperties: false,
+  } as const;
+
+  interface BulkEnableBody {
+    ids: string[];
+  }
+
+  fastify.post<{ Body: BulkEnableBody }>(
+    '/keys/bulk-enable',
+    {
+      preHandler: requireAdmin,
+      schema: {
+        tags: ['Keys'],
+        summary: 'Bulk-enable previously disabled keys by ID.',
+        body: BULK_ENABLE_BODY_SCHEMA,
+      },
+    },
+    async (request, reply) => {
+      const store = getKeyStore();
+      const { ids } = request.body;
+
+      if (ids.length === 0) {
+        return reply.status(200).send({ enabled: 0, ids: [] });
+      }
+
+      const changed = store.bulkEnable(ids);
+      return reply.status(200).send({ enabled: changed.length, ids: changed });
+    },
+  );
+
   // ── Partial update ─────────────────────────────────────────────────────────
 
   const PATCH_BODY_SCHEMA = {

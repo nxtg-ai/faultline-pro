@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-92 faultline keys CLI commands. 3,775 tests. 92 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-93 Bulk disable/enable keys. 3,790 tests. 93 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -102,6 +102,7 @@
 | N-90 | Notifications catalogue refactor — `EVENT_CATALOGUE` record in notifications store as single source of truth; `GET /notifications/events` now derives list via `ALL_EVENT_TYPES.map(t => ({ type, ...EVENT_CATALOGUE[t] }))` — future event types appear automatically; eliminates two-registration-point bug | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
 | N-91 | Expiring-soon key list — `KeyStore.getExpiringSoon(days)` filters expiresAt > now && <= cutoff; `GET /keys/expiring-soon?days=N` (default 7, clamped 1–365); secrets redacted; already-expired excluded; `expiresAt` surfaced in response; 15 tests (KES1–KES15) | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
 | N-92 | `faultline keys` CLI commands — `keys-client.ts` HTTP wrappers (list/dormant/expiring/rotate) + formatters; `keys list`, `keys dormant --days N`, `keys expiring --days N`, `keys rotate <id>` subcommands; FAULTLINE_API_KEY/URL env var fallback; 15 tests (KC1–KC15) | DEVELOPER-X | SHIPPED | P1 | 2026-03-21 |
+| N-93 | Bulk disable/enable — `KeyStore.bulkDisable(ids[])` + `bulkEnable(ids[])` (skip unknowns, skip no-ops, return changed IDs only); `POST /keys/bulk-disable` body `{ ids?, days? }` union-deduped via Set; `POST /keys/bulk-enable` body `{ ids }`; auth enforced end-to-end (KBS14/15); 15 tests (KBS1–KBS15) | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
 
 ---
 

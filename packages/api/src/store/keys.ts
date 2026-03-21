@@ -73,6 +73,38 @@ class KeyStore {
   }
 
   /**
+   * Disable multiple keys by ID.
+   * Returns the IDs that were actually changed (already-disabled keys skipped).
+   */
+  bulkDisable(ids: string[]): string[] {
+    const changed: string[] = [];
+    for (const id of ids) {
+      const entry = this.keys.find((k) => k.id === id);
+      if (entry && !entry.disabled) {
+        entry.disabled = true;
+        changed.push(id);
+      }
+    }
+    return changed;
+  }
+
+  /**
+   * Re-enable multiple keys by ID.
+   * Returns the IDs that were actually changed (already-enabled keys skipped).
+   */
+  bulkEnable(ids: string[]): string[] {
+    const changed: string[] = [];
+    for (const id of ids) {
+      const entry = this.keys.find((k) => k.id === id);
+      if (entry && entry.disabled) {
+        entry.disabled = false;
+        changed.push(id);
+      }
+    }
+    return changed;
+  }
+
+  /**
    * Validates a raw key string.
    * Accepts both the current key and the previous key within the 24-hour grace window.
    * Returns null if the key is unknown or the grace period has expired.
