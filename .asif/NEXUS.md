@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-82 ApiKey soft-disable. 3,649 tests. 82 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-82 + reflection. 3,649 tests. 82 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -830,6 +830,62 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-03-21 — N-81 + N-82 — 2 initiatives SHIPPED, 29 net new tests, CRUCIBLE 4/4 + activeKeys bug fixed
+
+### 1. What did we ship since last check-in?
+
+| Commit | Deliverable | Tests |
+|--------|-------------|-------|
+| N-81 `feat: Real Integration Oracle` | `packages/api/tests/real-integration.test.ts` — 12 integration tests (RI1–RI12) with zero `vi.mock` on `scan.js`. Full pipeline runs: HTTP → Fastify → real `scan()` → mock provider → `extractClaims()` → `verifyClaim()` → response. Closes CRUCIBLE 4th oracle type (integration). All 12 passed on first run. | +12 (3,620 → 3,632) |
+| N-82 `feat: ApiKey soft-disable` | `disabled?: boolean` field on `ApiKey` interface. `validateKey()` skips disabled entries → auth rejects with 401. `disable(id)` / `enable(id)` on `KeyStore`. `PATCH /keys/:id/disable` + `/enable` (admin-gated, 404 on unknown id). `GET /keys` list now includes `disabled` field. `mission-control.ts` `activeKeys` fixed to `keys.filter(k => !k.disabled).length`. 17 tests (KD1–KD17). | +17 (3,632 → 3,649) |
+
+**Running total**: 3,649 tests · 142 files · 82 initiatives SHIPPED. CRUCIBLE: **4/4 oracle types complete**. `activeKeys` count in mission-control is now semantically correct.
+
+---
+
+### 2. What surprised us?
+
+- **All 12 real integration tests passed on first run.** No pipeline wiring errors, no missing store resets, no import mismatches. This is notable because the existing integration tests all mock `scan.js` — so there was zero prior validation that the real pipeline (sentence splitter, claim filter, compliance engine, rule engine, ScanHistory, AuditLogger, cache) composed correctly end-to-end through HTTP. The fact that it all worked first-try suggests the mock provider is genuinely faithful to the real provider contract.
+
+- **PATCH with `content-type: application/json` and no body returns 400, not 404.** KD5–KD8 initially failed because `authHeaders()` sets `content-type: application/json`, and Fastify's JSON body parser fires on PATCH/POST regardless of whether the route has a body schema. An empty body with `content-type: application/json` triggers a 400 JSON parse error before the route handler runs. Fix: use a separate `adminHeader()` without content-type for bodyless PATCH requests. This is the third time this pattern has tripped a test in this project (earlier: bodyless POST in integration-flow tests). Should be documented as a project-specific test pattern.
+
+- **The `activeKeys` bug was more subtle than "missing field."** The original `mission-control.ts` fix was `keys.length` (from `keys.filter(k => k.active)` which was always 0). But `keys.length` was also wrong — it counts disabled keys as active. The correct fix required both adding `disabled` to the interface AND updating the count. The interim `keys.length` was a known approximation. N-82 closes it properly: `keys.filter(k => !k.disabled).length` against real data.
+
+- **`enable(id)` needed for round-trip — not just `disable()`.** In the initial design I only thought about disabling. But without `enable()`, a disabled key is permanently dead (you'd have to delete and recreate). The enable path is equally important for operational workflows: key investigation → disable → resolve → enable. The API has both.
+
+---
+
+### 3. Cross-project signals
+
+- **"Bodyless PATCH/POST + JSON content-type = 400" is a universal Fastify pattern.** Any ASIF project using Fastify should add this to its test authoring conventions: `content-type: application/json` must only be sent when a body is present. For admin action endpoints (disable, enable, rotate, flush) that carry no body, use a bare auth header. FamilyMind and dx3 both use Fastify — this pattern applies to both.
+
+- **Soft-disable is the right default for credential revocation.** Hard delete (DELETE /keys/:id) is irreversible and loses audit history. Soft-disable preserves the key record (name, createdAt, permissions, rotation history) while making it inert. Any ASIF project with API keys or access tokens should prefer soft-disable + hard-delete as two separate operations. The pattern is: `PATCH /:resource/:id/disable` (reversible), `DELETE /:resource/:id` (permanent).
+
+- **Real integration tests are cheap to add once the mock provider exists.** RI1–RI12 cost one file and one afternoon. The full pipeline ran correctly because the mock provider already returns deterministic, correctly-shaped responses. Any ASIF project with a mock/stub provider should add a real integration oracle that uses the mock — it catches wiring bugs that unit tests and mocked integration tests both miss.
+
+---
+
+### 4. What would we prioritize next?
+
+1. **CRUCIBLE Gate 6 — Stryker mutation testing.** All 4 oracle types are complete. Gate 6 (mutation testing, 60% threshold on `cli/scan.ts` + `cli/analysis/compliance.ts` + `cli/analysis/rules.ts`) is the next quality layer. `@stryker-mutator/core` + `@stryker-mutator/vitest-runner`. Needs CoS approval on adding ~30s to CI.
+
+2. **Stripe billing on org model.** `Org.plan` (`free | pro | enterprise`) is live in `store/orgs.ts`. One directive: `POST /orgs/:id/billing/checkout` → Stripe Checkout session → `customer.subscription.updated` webhook → plan update. Revenue unlock.
+
+3. **`PATCH /keys/:id` — partial update (name, permissions).** Keys can currently be created, deleted, rotated, disabled, and enabled — but name and permissions are immutable after creation. Operators need to rename keys and add/remove permissions without recreating. One small route addition.
+
+4. **npm publish unblock.** 3,649 tests, pre-push gate enforced, v0.3.0 tagged. Waiting only on `NPM_TOKEN`.
+
+---
+
+### 5. Blockers and questions for the CoS?
+
+- **`NPM_TOKEN`**: Still blocked. v0.3.0 tagged, 3,649 tests green. Package is ready to publish.
+- **Fly.io credentials**: Still blocked. Docker image healthy.
+- **CRUCIBLE Gate 6 (Stryker)**: Approve adding `@stryker-mutator/core` + `@stryker-mutator/vitest-runner`? Adds ~30s to CI per push.
+- **Stripe billing**: Ready to implement. Approve N-83 directive?
+
+---
 
 > **Reflection cycle**: 2026-03-21 — N-79 through N-81 — 3 initiatives SHIPPED, 12 net new tests, CRUCIBLE integration oracle now COMPLETE
 
