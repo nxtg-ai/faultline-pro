@@ -78,6 +78,7 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.14.0",
     "@vitest/coverage-v8": "^4.0.18",
+    "fast-check": "^4.6.0",
     "jsdom": "^28.1.0",
     "typescript": "~5.8.2",
     "vitest": "^4.0.18",
