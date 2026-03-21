@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-84 GET /keys/:id + CHANGELOG backfill. 3,673 tests. 84 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-84 + reflection. 3,673 tests. 84 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -832,6 +832,60 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-03-21 — N-84 — 1 initiative SHIPPED, 10 net new tests, keys API complete + CHANGELOG backfill
+
+### 1. What did we ship since last check-in?
+
+| Commit | Deliverable | Tests |
+|--------|-------------|-------|
+| N-84 `feat: GET /keys/:id` | Single key lookup by ID (admin-gated). Secret fields redacted identically to `GET /keys` list. Returns `disabled` state. 404 on unknown id, 403 without admin. 10 tests (KG1–KG10): validateById unit (including KG3: disabled keys are still visible to GET), HTTP shape, secret not exposed, error guards, update consistency, list parity. | +10 (3,663 → 3,673) |
+| CHANGELOG backfill (bundled) | `[Unreleased]` section updated to cover N-75 through N-84: demo mode, CRUCIBLE oracles (property-based, contract, integration), audit log API, claim filter fix, coverage gate, soft-disable, partial update, CI cancel-in-progress, GET /keys/:id. Also noted tsc debt repayment (15 errors across 9 files) and AJV removeAdditional behavior. | 0 |
+
+**Running total**: 3,673 tests · 144 files · 84 initiatives SHIPPED. Keys API is now a complete 8-operation REST surface (create, list, get-by-id, update, disable, enable, rotate, delete).
+
+---
+
+### 2. What surprised us?
+
+- **`validateById` returns disabled keys — and that's correct.** KG3 documents that `validateById()` does not filter by `disabled`. This is intentional: GET /keys/:id is an admin read operation, not an auth validation. Admins need to see disabled keys to manage them. Only `validateKey()` (the auth path) skips disabled entries. The distinction matters: every other operation on a key (GET, PATCH, DELETE, rotate) uses `validateById` and should return disabled keys — only the `x-api-key` header auth flow uses `validateKey`. This design is correct but easy to confuse.
+
+- **The AJV audit found nothing to fix.** The anticipated false-green test audit turned up clean: all existing 400 assertions test valid rejection causes (missing required fields, invalid enums, string length). The one false-green (KU12 in key-update.test.ts) was caught and corrected during N-83. The codebase had already absorbed the lesson before the explicit audit ran. This is a good sign — the pattern was caught at introduction rather than post-hoc.
+
+- **CHANGELOG had drifted 10 initiatives behind.** N-75 through N-84 had not been reflected in `[Unreleased]`. This is partly structural: NEXUS is the primary governance artifact, CHANGELOG is secondary, and they get out of sync when velocity is high. The backfill took longer than writing a single test (10 entries to summarize accurately). A standing commitment to update CHANGELOG at commit time, not batch-at-reflection, would prevent future drift.
+
+---
+
+### 3. Cross-project signals
+
+- **`validateById` vs `validateKey` is a fundamental auth/admin distinction** that any ASIF project with API keys must get right. Auth path: use the key string lookup (`validateKey`) which filters disabled. Admin/management path: use ID lookup (`validateById`) which does not filter disabled. Conflating the two would break either auth (disabled keys could re-authenticate) or key management (admins couldn't see/manage disabled keys). FamilyMind and dx3 should audit their key store implementations against this distinction.
+
+- **8-operation REST surface is the complete key management contract.** POST-create, GET-list, GET-single, PATCH-update, PATCH-disable, PATCH-enable, POST-rotate, DELETE. Any project shipping an API key management system can use this as a reference checklist. All 8 operations together, nothing more, nothing less for a production-grade key lifecycle.
+
+- **CHANGELOG drift is a silent quality risk.** When CHANGELOG falls behind by 10 initiatives, any consumer (human or tooling) reading it gets a false picture of what the project contains. At 84 initiatives, the gap between NEXUS (ground truth) and CHANGELOG (public record) was ~12%. For portfolio projects with external consumers (npm publish candidates, Fly.io deployments), CHANGELOG accuracy matters more. Recommend: update `[Unreleased]` in every feature commit, not at reflection time.
+
+---
+
+### 4. What would we prioritize next?
+
+1. **CRUCIBLE Gate 6 — Stryker mutation testing.** Still the top quality gap. CoS approval pending. All 4 oracle types complete; mutation testing is the remaining CRUCIBLE layer.
+
+2. **Stripe billing on org model.** `Org.plan` live. Revenue gate: `POST /orgs/:id/billing/checkout` → Stripe Checkout → webhook → plan update.
+
+3. **Rate limit response headers.** `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` on scan responses. Standard API practice. Operators need quota visibility without polling `/mission-control/status`.
+
+4. **npm publish unblock.** 3,673 tests green, CHANGELOG current. Waiting only on `NPM_TOKEN`.
+
+---
+
+### 5. Blockers and questions for the CoS?
+
+- **`NPM_TOKEN`**: Still blocked. 3,673 tests green, CHANGELOG current, v0.3.0 tagged.
+- **Fly.io credentials**: Still blocked.
+- **CRUCIBLE Gate 6 (Stryker)**: Approve? ~30s CI overhead per push.
+- **CHANGELOG update discipline**: Should CHANGELOG be gated by the pre-push hook? A simple check that `[Unreleased]` was touched in the last commit when `src/**` changes would prevent 10-initiative drift.
+
+---
 
 > **Reflection cycle**: 2026-03-21 — N-83 — 1 initiative SHIPPED, 14 net new tests, CI stale-run fix bundled
 
