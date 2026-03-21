@@ -839,6 +839,55 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-21 — N-89 + N-90 — 2 initiatives SHIPPED, 15 net new tests
+
+### 1. What did we ship since last check-in?
+
+**N-89 — Bulk key deletion** (`POST /keys/bulk-delete`) + **N-90 — Notifications catalogue refactor**
+
+| Commit | Deliverable | +Tests |
+|--------|-------------|--------|
+| `8bfdf9a` `feat: N-89 + N-90` | **N-89**: `KeyStore.bulkDelete(ids[])` — deletes by ID list, skips unknowns, returns only deleted IDs. Route body `{ ids?, days? }`: `ids[]` for explicit targets, `days` for dormant threshold, both fields union-deduped via `Set<string>` so a key appearing in both is deleted once. Empty body → 200 `deleted:0`. 15 tests (KBD1–KBD15). **N-90**: `EVENT_CATALOGUE: Record<NotificationEventType, {description, example}>` exported from `store/notifications.ts`. `GET /notifications/events` now derives its list via `ALL_EVENT_TYPES.map(t => ({ type, ...EVENT_CATALOGUE[t] }))` — no hardcoded array. Future event types registered in the union appear automatically. | +15 (3,730 → 3,745) |
+
+**Total this cycle**: 1 commit · 15 tests · 3,745 total.
+
+---
+
+### 2. What surprised you?
+
+**The `415 Unsupported Media Type` before `403 Forbidden` ordering.** KBD11 tested "403 without admin key" by sending a POST with no headers and a JSON payload. Fastify returned 415 instead of 403. The body parser fires before the `preHandler` auth hook — if the request lacks `content-type: application/json`, Fastify rejects with 415 before auth is ever checked. The fix was to include `content-type: application/json` in the no-auth test (omitting only `x-api-key`). This is the same lesson from N-82 (bodyless PATCH), but in reverse: then it was content-type causing a 400 on bodyless requests; now it's missing content-type causing a 415 before a 403. The middleware ordering is: (1) content negotiation → (2) body parsing → (3) preHandler hooks → (4) route handler. Auth lives at step 3 — anything that fails earlier never reaches it.
+
+**`Set<string>` dedup is the exact right data structure for union-of-targets.** The bulk-delete body accepts both `ids[]` and `days` (dormant threshold). A key could appear in both. Using a `Set` before calling `bulkDelete` means: no duplicate deletes, no need for the store to handle idempotency, and the response accurately reflects how many distinct keys were removed. The test KBD13 specifically verifies the dedup: same key in both `ids[]` and the dormant list → `deleted: 1`, not `2`.
+
+**N-90 is a zero-test refactor that prevents a class of future bugs.** No new tests were added because the existing `notifications.test.ts` already covers the count (now 7) and the route response. The change is purely structural — moving ownership of catalogue content from the route to the store. This is one of those refactors where the value is entirely in what it prevents: next time someone adds an event type to the union and `ALL_EVENT_TYPES`, the catalogue is updated for free. No test catches the omission gap (because the test checks count, not completeness per se), but the architecture makes the gap impossible.
+
+---
+
+### 3. Cross-project signals
+
+**Middleware ordering: content negotiation fires before auth.** In Fastify (and Express, and most HTTP frameworks), the request lifecycle is: parsing → body decoding → preHandler hooks → route. Auth hooks live in preHandler, so any request that fails parsing never reaches auth. Tests that assert auth rejection (401/403) must include a well-formed content-type so the request reaches the auth layer. This is a portfolio-wide pattern to document: always include `content-type: application/json` in inject() calls that test auth behaviour on POST/PATCH routes, even when testing the "no key" case.
+
+**`Record<UnionType, Metadata>` as a single-source-of-truth pattern.** Anywhere a TypeScript union type drives multiple downstream artefacts (HTTP catalogue, CLI help text, documentation, validation lists), a `Record<UnionType, Metadata>` keyed on the union ensures completeness at compile time — TypeScript will error if a new union member is missing from the record. This is stronger than an array (which can be accidentally incomplete) and stronger than a switch statement (which requires an explicit exhaustiveness check). This pattern applies to: claim types → UI badge colours, provider names → feature flag mappings, rule condition types → help text. All exist in this codebase.
+
+---
+
+### 4. What would you prioritize next?
+
+1. **CRUCIBLE Gate 6 (Stryker mutation testing)** — all 4 oracle types complete, N-89/N-90 close out the key lifecycle feature cluster. The remaining quality gap is mutation testing on the claim forensics critical paths. Still needs CoS approval (~30s CI overhead).
+2. **Key lifecycle CLI commands** — `faultline keys list`, `faultline keys rotate <id>`, `faultline keys dormant`. The API surface is now complete (N-82–N-90); a CLI layer would close the developer-experience gap. Currently keys can only be managed via HTTP.
+3. **`GET /keys/expiring-soon`** — list keys whose `expiresAt` is within N days. Mirrors the dormant endpoint but for the expiry dimension. Pairs naturally with N-88 (notification) and N-89 (bulk-delete): surface → alert → delete.
+
+---
+
+### 5. Blockers / questions for CoS
+
+- **CRUCIBLE Gate 6 (Stryker)**: Approve? ~30s CI overhead per push.
+- **Key lifecycle CLI**: Approve as N-91? Purely additive to the CLI package.
+- **`GET /keys/expiring-soon`**: Approve as N-92? One route, mirrors `GET /keys/dormant`.
+- **NPM_TOKEN / Fly.io**: Still needed for v0.3.0 publish and hosted deployment.
+
+---
+
 > **Reflection cycle**: 2026-03-21 — N-88 Key expiry notifications — 1 initiative SHIPPED, 15 net new tests
 
 ### 1. What did we ship since last check-in?
