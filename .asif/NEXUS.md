@@ -836,6 +836,55 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-21 — N-87 Dormant key detection — 1 initiative SHIPPED, 15 net new tests
+
+### 1. What did we ship since last check-in?
+
+**N-87 — Dormant key detection** (`GET /keys/dormant?days=N`)
+
+| Commit | Deliverable | +Tests |
+|--------|-------------|--------|
+| `279e8a6` `feat: N-87 Dormant key detection` | `KeyStore.getDormant(days)` — filters on `lastUsedAt ?? createdAt` vs cutoff; `GET /keys/dormant?days=N` (default 30, clamped 1–365): admin-gated, secrets redacted, returns `{ days, count, keys[] }`. Disabled and expired keys intentionally included. 15 tests (KDo1–KDo15): 7 unit (KeyStore) + 8 HTTP (clamping, redaction, 403, lastUsedAt visible, custom threshold). | +15 (3,700 → 3,715) |
+
+**Total this cycle**: 1 commit · 15 tests · 3,715 total.
+
+---
+
+### 2. What surprised you?
+
+**`lastUsedAt ?? createdAt` is the right reference — not just `lastUsedAt`.** The naive dormant query is `lastUsedAt < cutoff`. But a key that was *never used* has no `lastUsedAt` at all — a simple `undefined < cutoff` comparison would silently exclude those keys from the dormant list, defeating the whole purpose. The correct logic falls back to `createdAt` when `lastUsedAt` is absent. This covers the most dangerous case: a provisioned key that was never activated sitting open for 90 days. Verified with KDo1 (new key, not dormant) and KDo2 (old key never used, dormant).
+
+**Disabled and expired keys belong in the dormant list.** Initial instinct was to filter them out (they can't auth, so why flag them?). But the operational purpose of `/keys/dormant` is *cleanup*: finding keys that should be deleted. A disabled key that hasn't been used in 60 days is exactly the thing an operator should delete — it's noise in the key list, and leaving it means the audit log stays cluttered. Including it (and noting why in tests KDo5, KDo6) makes the endpoint more useful, not less.
+
+**Route ordering matters in Fastify: `/keys/dormant` before `/keys/:id`.** If the parameterised route `/keys/:id` is registered before `/keys/dormant`, Fastify will route `GET /keys/dormant` to the `:id` handler with `id = "dormant"`, return 404 ("Key not found"), and the test will fail with a confusing error. The fix is to register the static-path route first. The current `routes/keys.ts` already has `GET /keys` before `GET /keys/:id`, so inserting the dormant route in that same block (after the list route, before the single-key route) naturally gets the order right.
+
+---
+
+### 3. Cross-project signals
+
+**`lastUsedAt ?? createdAt` fallback pattern** — any project tracking "last activity" on a resource (keys, sessions, webhooks, jobs) should use the creation timestamp as the fallback reference when activity timestamp is absent. Otherwise newly-provisioned-but-never-used resources silently escape dormancy detection. This applies to: webhook endpoint dormancy (when was it last triggered?), scheduled job dormancy (when did it last run?), and org member dormancy (last login or invite date). All three exist in this codebase and could benefit from the same pattern.
+
+**Clamped query params (`Math.min(max, Math.max(min, parseInt(...)))`)** — the one-liner that clamps `days` to `[1, 365]` is the right pattern for any integer query param with valid bounds. It's safer than AJV `minimum`/`maximum` validation because it degrades gracefully (bad input → clamped result, not 400). Worth standardising across all query-param-driven endpoints.
+
+---
+
+### 4. What would you prioritize next?
+
+1. **Key expiry webhook notification** — when a key's `expiresAt` is within 7 days (or 1 day), dispatch a `key.expiring_soon` notification. The `NotificationStore` already exists; the `expiresAt` field is on every key. This is a one-scheduler addition. High operational value — no one manually checks key expiry dates.
+2. **CRUCIBLE Gate 6 (Stryker mutation testing)** — all 4 oracle types complete, mutation testing is the remaining quality layer. Still needs CoS approval (~30s CI overhead).
+3. **`POST /keys/bulk-delete`** — delete all dormant keys at once (or a filtered list by `days`). The `/keys/dormant` endpoint surfaces them; a bulk-delete action closes the cleanup loop without N individual `DELETE /keys/:id` calls.
+
+---
+
+### 5. Blockers / questions for CoS
+
+- **CRUCIBLE Gate 6 (Stryker)**: Approve? Adds ~30s to CI per push.
+- **Key expiry notifications**: Approve adding a `key.expiring_soon` event to `NotificationStore`? Would require a background scan (e.g., on the existing 1-minute tick in `server.ts`) that dispatches when `expiresAt` crosses the 7-day and 1-day thresholds.
+- **NPM_TOKEN**: Still needed for v0.3.0 publish.
+- **Fly.io credentials**: Still needed for hosted deployment.
+
+---
+
 > **Reflection cycle**: 2026-03-21 — N-85 + N-86 — 2 initiatives SHIPPED, 27 net new tests, keys API lifecycle complete
 
 ### 1. What did we ship since last check-in?
