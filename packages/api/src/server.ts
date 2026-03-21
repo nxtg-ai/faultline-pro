@@ -59,6 +59,7 @@ import { analyticsRoutes } from './routes/analytics.js';
 import { playgroundRoutes } from './routes/playground.js';
 import { missionControlRoutes } from './routes/mission-control.js';
 import { auditLogRoutes } from './routes/audit-log.js';
+import { streamRoutes } from './routes/stream.js';
 import { getNotificationStore } from './store/notifications.js';
 import { getKeyExpiryNotifier } from './store/key-expiry-notifier.js';
 import { getKeyRotationNotifier } from './store/key-rotation-notifier.js';
@@ -168,6 +169,7 @@ export function buildServer() {
   fastify.register(playgroundRoutes);
   fastify.register(missionControlRoutes);
   fastify.register(auditLogRoutes);
+  fastify.register(streamRoutes);
 
   fastify.register(mercurius, {
     schema: gqlSchema,
