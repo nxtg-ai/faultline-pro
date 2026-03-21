@@ -158,7 +158,7 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
   );
 
   // GET /notifications/history — full history (admin)
-  fastify.get<{ Querystring: { keyId?: string; limit?: string } }>(
+  fastify.get<{ Querystring: { keyId?: string; limit?: string; tenantId?: string } }>(
     '/notifications/history',
     {
       preHandler: [requireApiKey],
@@ -168,8 +168,9 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
         querystring: {
           type: 'object',
           properties: {
-            keyId: { type: 'string' },
-            limit: { type: 'string' },
+            keyId:    { type: 'string' },
+            limit:    { type: 'string' },
+            tenantId: { type: 'string' },
           },
         },
         security: [{ apiKey: [] }],
@@ -177,7 +178,7 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
     },
     async (request, reply) => {
       const limit = Math.min(500, Number(request.query.limit ?? 100));
-      const records = getNotificationStore().getHistory(request.query.keyId, limit);
+      const records = getNotificationStore().getHistory(request.query.keyId, limit, request.query.tenantId);
       return reply.send({ total: records.length, records });
     },
   );

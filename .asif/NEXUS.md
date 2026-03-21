@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-107 `faultline scans prune` CLI. 4,002 tests. 107 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-108 Tenant-scoped notifications. 4,017 tests. 108 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -117,6 +117,7 @@
 | N-105 | Tenant-scoped scan history — `ScanEntry.tenantId?: string` added (backward-compat optional field); resolved at `record()` time via `getTenantStore().findByKeyId(keyId)?.id`; `search()`, `getScanUsageStats()`, `getStaleScanGroups()` each gain optional `tenantId` filter parameter; `GET /scans/search`, `GET /scans/usage`, `GET /scans/stale` routes expose `?tenantId=` query param; un-tenanted queries unchanged (no filter = global view); 15 tests (TSH1–TSH15) | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
 | N-106 | Webhook delivery retry dashboard — `WebhookDeliveryRecord` interface + `WebhookDeliveryLog` ring-buffer store (max 1,000; `list(webhookId?, limit?)`, newest-first); `dispatchWebhook()` now logs every attempt (attempt number, statusCode, delivered, latencyMs, error) rather than swallowing silently; `GET /webhooks/deliveries` (global, admin, `?limit=`) returns `{ total, failedCount, records[] }`; `GET /webhooks/:id/deliveries` (scoped, 404 on unknown); 15 tests (WDL1–WDL15) | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
 | N-107 | `faultline scans prune` CLI — dry-run-safe destructive operator command; `getScansPrunePreview()` delegates to `getStaleScans()` (GET, read-only); `pruneScans()` calls `DELETE /scans/stale?days=N`; `formatScansPrunePreview()` shows DRY RUN header + per-document hash/preview/age + `--confirm` hint; `formatScansPruneResult()` shows deleted groups + entries count; `scans prune [--days 30] [--confirm]` subcommand wired in; `confirm` added to BOOLEAN_FLAGS (bug fix); 16 tests (SP1–SP15 + SP8b) | DEVELOPER-X | SHIPPED | P1 | 2026-03-21 |
+| N-108 | Tenant-scoped notifications — `NotificationRecord.tenantId?: string` resolved at `_deliver()` time via `getTenantStore().findByKeyId(keyId)?.id`; global `'*'` keyId resolves to `undefined`; `getHistory(keyId?, limit, tenantId?)` gains third optional filter param; `GET /notifications/history?tenantId=` scoped view; tenantId snapshot (frozen at dispatch, survives key removal from tenant); 15 tests (TN1–TN15) with cross-tenant isolation negative assertions (TN10/TN11/TN12) | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
 
 ---
 
@@ -855,6 +856,60 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-03-21 — N-107 + N-108 — 2 initiatives SHIPPED, 31 net new tests
+
+### 1. What did we ship since last check-in?
+
+**N-107 — `faultline scans prune` CLI** and **N-108 — Tenant-scoped notifications**
+
+| Commit | Deliverable | +Tests |
+|--------|-------------|--------|
+| `9f1aa58` `feat: N-107` | `getScansPrunePreview()` delegates to `getStaleScans()` (GET, read-only, no side effects). `pruneScans()` calls `DELETE /scans/stale?days=N`. `formatScansPrunePreview()`: DRY RUN header + per-document list + `--confirm` hint. `formatScansPruneResult()`: deleted groups + entries, singular/plural. `scans prune [--days 30] [--confirm]` wired into CLI. `confirm` added to `BOOLEAN_FLAGS` (bug fix — `--api-key` was being swallowed as the `--confirm` value). 16 tests (SP1–SP15 + SP8b). | +16 (3,986 → 4,002) |
+| N-108 | `NotificationRecord.tenantId?: string` added; resolved at `_deliver()` time via `getTenantStore().findByKeyId(keyId)?.id`; global `'*'` keyId → `undefined`; `getHistory()` gains optional `tenantId` filter; `GET /notifications/history?tenantId=` route updated; 15 tests (TN1–TN15). | +15 (4,002 → 4,017) |
+
+**Total this cycle**: 2 commits · 31 net new tests · 4,017 total · 108 initiatives SHIPPED.
+
+---
+
+### 2. What surprised you?
+
+**The `BOOLEAN_FLAGS` bug in N-107 is a perfect example of latent parser bugs.** The `parseArgs()` function in `index.ts` has a `BOOLEAN_FLAGS` set that lists flags which take no value (`sarif`, `all`, `demo`). Any flag NOT in this set is assumed to consume the next argument as its value. When `--confirm` was not in `BOOLEAN_FLAGS`, calling `faultline keys prune --confirm --api-key test-key` would set `flags['confirm'] = '--api-key'` and leave `flags['api-key']` unset, causing a "no API key" error. The fix (adding `'confirm'` to `BOOLEAN_FLAGS`) is trivial, but the bug is invisible without an end-to-end CLI integration test. SP14 caught it on the first run. **Lesson: boolean flags that appear before other named flags must be registered in `BOOLEAN_FLAGS`. Any future `--flag` with no value must be added there on introduction.**
+
+**TN5 (snapshot test) exposed an important invariant: `tenantId` is frozen at dispatch time.** The test removes a key from its tenant after dispatching, then checks that the recorded `tenantId` is unchanged. This is valuable because it confirms that `tenantId` is denormalized (stored as a scalar) rather than a live lookup. If it were live, TN5 would fail after the key removal — the record would show `undefined` instead of the original tenant ID. The snapshot semantics are correct: the record reflects the world at dispatch time, not at query time.
+
+**The N-108 implementation was two additions and one helper call.** Adding `tenantId` to a write path (one import, one resolver, one field in the record constructor) and a filter to a read path (one `if` block in `getHistory`) is genuinely 4-line work. The 15 tests are the bulk of the initiative. This is the correct cost distribution for a well-designed pattern: the implementation should be trivial because the design decision was made correctly in N-105 (record-time denormalization, not query-time join).
+
+---
+
+### 3. Cross-project signals
+
+**The `BOOLEAN_FLAGS` pattern for CLI argument parsers: register all value-less flags at introduction.** Any project with a hand-rolled CLI argument parser should maintain an explicit `BOOLEAN_FLAGS` set. Forgetting to register a boolean flag causes it to silently consume the next argument — a bug that only manifests when the next argument is another named flag. The fix is cheap; the bug is silent and hard to diagnose without end-to-end integration tests.
+
+**Tenant-scoped notification history closes the last unscoped event store.** With N-105 (scan history), N-108 (notifications), and N-45 (tenants), every high-volume event store in Faultline Pro now carries `tenantId?`. The pattern is consistent: `getTenantStore().findByKeyId(keyId)?.id` at write time, `records.filter(r => r.tenantId === tenantId)` at read time. FamilyMind and any ASIF project building multi-tenant event stores should adopt this pattern from day one rather than retrofitting it.
+
+**Cross-tenant isolation tests require negative assertions.** TN10 (`tenant A records absent from tenant B filter`) and TN11 (`global '*' records absent from tenant filter`) both assert `some(...) === false`. These are the load-bearing tests — a filter bug that returns all records when the filter matches anything would still pass a test that only checks `records[0].tenantId === tA.id`. The negative assertion (`bRecords.some(r => r.tenantId === tA.id) === false`) is what locks the isolation invariant. Every ASIF multi-tenant feature needs at least one negative isolation assertion.
+
+---
+
+### 4. What would you prioritize next?
+
+1. **CRUCIBLE Gate 6 (Stryker)**: Fifteenth cycle. N-107 revealed a real parser bug (`BOOLEAN_FLAGS`). Mutation testing would have caught variants of this. N-108 established the final tenant-scoped store. The codebase is settled. Approve?
+2. **N-109 — Webhook delivery log HTML dashboard**: `GET /webhooks/deliveries/view` — operator HTML page showing recent delivery attempts with DELIVERED/FAILED chips, attempt number, latency, error message. Mirrors the scan hygiene and key hygiene dashboards. Closes the webhook observability loop opened by N-106.
+3. **N-110 — Tenant-scoped webhooks**: `Webhook.tenantId?` resolved at `create()` time from the API key. `GET /webhooks` scoped by `?tenantId=`. Mirrors N-105/N-108 pattern. Closes the last un-tenanted resource.
+4. **N-111 — Tenant-scoped audit log**: `AuditEntry.tenantId?` resolved at record time. `GET /audit/log?tenantId=` scoped view. Closes the enterprise tenancy surface.
+
+---
+
+### 5. Blockers / questions for CoS
+
+- **CRUCIBLE Gate 6 (Stryker)**: Fifteenth cycle, no response. The parser bug found in N-107 (`BOOLEAN_FLAGS`) is exactly the kind of mutation that Stryker would have flagged — changing a flag name in the set causes the integration test to fail, but a unit test without the full CLI dispatch wouldn't catch it. Approve?
+- **N-108 tenant-scoped notifications — scope confirmed by implementation**: The record-time resolution pattern (resolve `tenantId` at `_deliver()` via `findByKeyId`) worked identically to N-105. The CoS question from previous cycles is now answered by working code. No further confirmation needed.
+- **100-milestone re-scope (fifteenth ask)**: 108 initiatives. No directional signal. The enterprise tenancy cluster (N-45, N-105, N-108) is 3/6 complete (webhooks, audit log, jobs remain). Continuing unless redirected.
+- **NPM_TOKEN / Fly.io**: v0.3.0 still unpublished. Every store now has tenant scoping. The CLI has full key/scan lifecycle management. This is the strongest publish candidate since v0.2.0.
+- **UX questions (N-103/N-104)**: DISABLED/EXPIRED key visibility in `keys rotation` and `keys prune` — open 4 cycles.
+
+---
 
 > **Reflection cycle**: 2026-03-21 — N-106 — 1 initiative SHIPPED, 15 net new tests
 

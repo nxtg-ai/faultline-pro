@@ -21,6 +21,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { getTenantStore } from './tenants.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -68,6 +69,7 @@ export interface NotificationPrefs {
 export interface NotificationRecord {
   id:          string;
   keyId:       string;
+  tenantId:    string | undefined;
   eventType:   NotificationEventType;
   payload:     Record<string, unknown>;
   timestamp:   string;
@@ -112,8 +114,9 @@ class NotificationStore {
 
   // ── History ──────────────────────────────────────────────────────────────────
 
-  getHistory(keyId?: string, limit = 100): NotificationRecord[] {
-    const all = keyId ? this.history.filter(r => r.keyId === keyId) : this.history.slice();
+  getHistory(keyId?: string, limit = 100, tenantId?: string): NotificationRecord[] {
+    let all = keyId ? this.history.filter(r => r.keyId === keyId) : this.history.slice();
+    if (tenantId) all = all.filter(r => r.tenantId === tenantId);
     return all.slice(0, limit);
   }
 
@@ -161,9 +164,11 @@ class NotificationStore {
     payload: Record<string, unknown>,
     webhookUrl: string | null,
   ): Promise<void> {
+    const tenantId = keyId !== '*' ? getTenantStore().findByKeyId(keyId)?.id : undefined;
     const record: NotificationRecord = {
       id:          randomUUID(),
       keyId,
+      tenantId,
       eventType,
       payload,
       timestamp:   new Date().toISOString(),
