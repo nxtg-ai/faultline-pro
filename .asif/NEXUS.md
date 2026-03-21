@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-117 CRUCIBLE Gate 6 Stryker mutation testing. 4,151 tests. 117 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-118 CRUCIBLE Gate 6 — Stryker on claim forensics `cli/scan.ts`. 4,166 tests. 118 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -127,6 +127,7 @@
 | N-115 | Per-webhook retry configuration — `Webhook.maxAttempts` (1–5, default 3) and `Webhook.retryDelayMs` (0–30 000 ms, default 500); `WebhookStore.create()` accepts both with defaults; `dispatchWebhook()` loops `webhook.maxAttempts` times using flat `retryDelayMs` delay between retries (first attempt always immediate); `CREATE_BODY_SCHEMA` validates ranges; `POST /webhooks` passes through to store; existing RETRY_DELAYS constant superseded; R7 test updated for flat delay; 15 tests (RC1–RC15) | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
 | N-116 | `resolveRequestTenantId()` auth helper — single function in `auth.ts` guards `'admin'`/`undefined` keyIds and delegates to `getTenantStore().findByKeyId(keyId)?.id`; webhooks route and scan route both updated to use it (both `getTenantStore` imports removed from route files); `RETRY_DELAYS` dead constant removed from webhooks store; shared `makeWebhook()` test factory extracted to `tests/helpers/make-webhook.ts` (3 test files migrated); 15 tests (RT1–RT15): unit, route integration, consistency/idempotency | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
 | N-117 | CRUCIBLE Gate 6 — Stryker mutation testing on `src/store/webhooks.ts`; `@stryker-mutator/core` + `@stryker-mutator/vitest-runner` 9.6.0 installed; initial score 86.51% (212 killed, 51 timeout, 32 survived); 15 hardening tests (MH1–MH15) kill boundary mutations (`>=` vs `>` in rate limiter + circuit breaker windows, reset() scoped vs all, defensive copy list(), getById() discrimination, sendTestWebhook signature + latency); final score 91.45% (228 killed, 50 timeout, 19 survived); vitest.config.ts excludes `.stryker-tmp/`; tempDirName → `/tmp` | DEVELOPER-X | SHIPPED | P2 | 2026-03-21 |
+| N-118 | CRUCIBLE Gate 6 — Stryker mutation testing on `packages/cli/cli/scan.ts` (claim forensics critical path); root-level `stryker-cli.config.mjs` (monorepo-root run to resolve `node_modules`); initial score 26.75% (65 killed, 61 survived, 117 no cov); 15 hardening tests (MH1–MH15) in `scan-mutation-hardening.test.ts` targeting `calculateRisk()` boundary conditions (contradicted/mixed thresholds), `scan()` API-key guard + loop + 200-char truncation, `aggregateResults()` highestRisk ordering via `batchScan()`; final score 60.91% (148 killed, 62 survived, 33 no cov) — CRUCIBLE Gate 6 threshold 60% MET | DEVELOPER-X | SHIPPED | P2 | 2026-03-21 |
 
 ---
 
@@ -865,6 +866,52 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-03-21 — N-118 — 1 initiative SHIPPED, 16 net new tests (15 hardening + 1 CI fix)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests |
+|--------|-----------|-------------|--------|
+| `feat: N-118` | CRUCIBLE Gate 6 — Stryker on claim forensics | `stryker-cli.config.mjs` (root-level monorepo run); `scan-mutation-hardening.test.ts` 15 tests (MH1–MH15); initial 26.75% → final **60.91%** — CRUCIBLE threshold met | +15 (4,151 → 4,166) |
+| `fix: CI` | CI shallow clone | `fetch-depth: 0` in `actions/checkout@v4` — changelog tests needed git tags | 0 |
+
+**Total this cycle**: 1 initiative · 15 net new tests · **4,166 total · 118 initiatives SHIPPED**.
+
+---
+
+### 2. What surprised you?
+
+**The monorepo `node_modules` problem was the hardest part.** Stryker creates a sandbox with a `node_modules` symlink pointing to the package's own `node_modules` — which is empty in an npm workspace because all packages are hoisted to the root. Running Stryker from the monorepo root resolves everything: the sandbox symlinks to the root `node_modules`. This is almost never documented and consumed most of the previous session. The fix is simple once understood: always run Stryker from the workspace root.
+
+**`vi.hoisted()` is mandatory for mocks that reference external variables.** `vi.mock()` is hoisted to the top of the file before any variable declarations. If the mock factory references `vi.fn()` vars declared with `const`, those vars aren't initialized yet. `vi.hoisted(() => ({ fn: vi.fn() }))` is the correct pattern — it runs during hoisting so the fns exist when the mock factory runs.
+
+**Claim forensics scored 60.91% vs webhooks' 91.45% — the gap is structural.** The webhook resilience cluster has deterministic, pure state transitions that Stryker can exercise with simple inputs. `scan.ts` has `batchScan()` and `aggregateResults()` with filesystem reads and multi-call provider chains that are harder to control. The 33 still-uncovered mutants are mostly in `collectFiles()` and error handling in `batchScan()` catch blocks. These require real filesystem edge cases (symlinks, permissions errors) that aren't worth mocking at this stage.
+
+---
+
+### 3. Cross-project signals
+
+**Root-level Stryker is the right pattern for monorepos.** Any ASIF project with npm workspaces should put the Stryker config at the monorepo root, use `mutate: ['packages/X/path']` absolute-from-root paths, and set `vitest.dir: 'packages/X'` so vitest finds its config. The per-package config fails because the sandbox symlinks to the empty package `node_modules`.
+
+**CI shallow clone breaks git-derived features.** The changelog endpoint used `git tag` to build version blocks — shallow clone returns no tags. Any project that builds UI or API output from git history needs `fetch-depth: 0` in `actions/checkout@v4`. This is a silent failure: tests pass locally (full history) but fail in CI (shallow).
+
+---
+
+### 4. What would you prioritize next?
+
+1. **v0.3.0 publish prep**: README badge update (4,166 tests), CHANGELOG from `git log`, npm publish. This is the 22nd ask — the prep work is now blocking.
+2. **GDPR export endpoint** — `POST /users/{id}/export` returns all tenant data as a zip. Closes the EU AI Act / GDPR compliance surface.
+3. **Raise Stryker score on claim forensics above 70%**: `collectFiles()` and `batchScan()` catch-block survivors need filesystem edge-case tests. Not urgent at 60.91%, but on the backlog.
+
+---
+
+### 5. Blockers / questions for CoS
+
+- **v0.3.0 publish**: 22nd ask. npm publish token needed when ready to ship.
+- **N-118 complete**: claim forensics mutation score at 60.91% — CRUCIBLE Gate 6 threshold met. No blocker.
+
+---
 
 > **Reflection cycle**: 2026-03-21 — N-116 + N-117 — 2 initiatives SHIPPED, 30 net new tests
 
