@@ -84,9 +84,9 @@ export function guaranteeClaimPerSentence(text: string, claims: Claim[]): Claim[
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-function filterClaimsForVerification(claims: Claim[]): Claim[] {
+export function filterClaimsForVerification(claims: Claim[]): Claim[] {
   return claims
-    .filter((c) => c.type === 'fact' && c.importance >= 3)
+    .filter((c) => c.type === 'fact' && c.importance >= 2)
     .sort((a, b) => b.importance - a.importance)
     .slice(0, 8);
 }

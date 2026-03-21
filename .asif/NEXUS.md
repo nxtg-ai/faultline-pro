@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-78 Audit Log API. tsc CI gate fixed. 3,605 tests. 78 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-79 claim filter fix + N-80 coverage gate. 3,620 tests. 80 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -88,6 +88,8 @@
 | N-76 | Property-Based Oracle (fast-check, CRUCIBLE Gate 6) — 19 properties across guaranteeClaimPerSentence, mapClaimToRiskCategory, generateComplianceReport; closes oracle triangulation gap | FORENSIC | SHIPPED | P1 | 2026-03-21 |
 | N-77 | Contract Oracle (Zod, CRUCIBLE) — 29 schema-validation tests across Claim, VerificationResult, ClaimRiskMapping, ComplianceReport, ScanResult, demo data; closes 3rd oracle type | FORENSIC | SHIPPED | P1 | 2026-03-21 |
 | N-78 | Audit Log API — GET /audit/log (query + filter), GET /audit/log/stats (summary), GET /audit/log/export (NDJSON download); closes 4-session gap flagged in integration scenarios | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
+| N-79 | Claim Filter Threshold Fix — filterClaimsForVerification importance >= 2 (was >= 3); exported for testing; 15 unit tests covering threshold, type filter, sort, cap, edge cases | FORENSIC | SHIPPED | P1 | 2026-03-21 |
+| N-80 | Coverage Baseline Gate — vitest coverage thresholds (stmts 80%, branch 70%, funcs 85%, lines 80%) in both API and CLI vitest.config.ts; .asif-ci updated to enforce coverage on push; closes 9-cycle open question | DEVELOPER-X | SHIPPED | P1 | 2026-03-21 |
 
 ---
 

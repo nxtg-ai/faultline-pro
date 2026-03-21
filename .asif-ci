@@ -1,1 +1,1 @@
-npx tsc --noEmit && npx vitest run --reporter=dot
+npx tsc --noEmit && npx vitest run --coverage --reporter=dot
