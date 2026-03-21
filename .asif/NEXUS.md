@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-125 CRUCIBLE Gate 6 round 2 — scan.ts mutation score 60.91% → 75.31%; 15 new hardening tests. README badge 4,271. 4,271 tests. 125 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-126 CRUCIBLE Gate 6 GDPR stores — costs 62.77%→89.36%, notifications 67.30%→82.39%, overall 60.07%→69.07%; 15 new hardening tests. README badge 4,286. 4,286 tests. 126 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -131,6 +131,7 @@
 | N-119 | v0.3.0 publish prep — CHANGELOG.md full rewrite (clean [Unreleased]/[v0.3.0]/[v0.2.0]/[v0.1.0] sections; N-82 through N-118 in Unreleased; stripped 300+ "Team Feedback no delta" noise lines); README badge 2,757→4,166; Enterprise API section updated with key lifecycle, webhook resilience (rate limiting, circuit breaker, retry config), tenant-scoped resources, scan hygiene, `faultline keys`/`scans` CLI; 15 release-prep tests (RP1–RP15) validating README badge count, CHANGELOG structure, key capability mentions, and changelog API endpoints | DISTRIBUTION | SHIPPED | P2 | 2026-03-21 |
 | N-120 | GDPR export endpoint — `GET /tenants/:id/export` (admin-gated); returns ZIP archive via `adm-zip` containing `manifest.json` (tenant metadata + counts), `scan-history.json` (all tenant scans via `getRecent(10_000).filter(tenantId)`), `audit-log.ndjson` (NDJSON one entry per line), `notifications.json`, `webhooks.json`, `usage.json` (keyed by keyId); `Content-Disposition: attachment; filename=faultline-gdpr-export-{tenantId}-{date}.zip`; 404 for unknown tenant; 403 without admin; 15 tests (GE1–GE15): 200/content-type/disposition/zip structure/manifest counts/scan isolation/tenant isolation/empty-tenant zero-counts | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
 | N-121 | GDPR erasure endpoint — `DELETE /tenants/:id/data` (admin-gated, Article 17 right-to-erasure); adds `deleteTenantEntries(tenantId)` to `ScanHistoryStore` + `AuditLogger`, `deleteTenantHistory(tenantId)` to `NotificationStore`, `deleteTenant(tenantId)` to `WebhookStore`, `deleteKey(keyId)` to `UsageMeter`; returns `{ tenantId, deleted: { scanEntries, auditEntries, notifications, webhooks, usageKeys } }`; tenant record itself preserved (data only); idempotent (second call returns all zeros); 15 tests (ER1–ER15): counts, actual store erasure, tenant-not-deleted, idempotency, isolation (tenant B untouched), export-after-erasure returns empty ZIP | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
+| N-126 | CRUCIBLE Gate 6 — Stryker mutation testing on GDPR stores (`costs.ts`/`schedules.ts`/`notifications.ts`); baseline 60.07% → final 69.07% (costs 62.77%→89.36%, notifications 67.30%→82.39%, schedules 56.15%→57.82%); `stryker-gdpr.config.mjs` created; 15 hardening tests (NH1–NH15) in `gdpr-store-mutation-hardening.test.ts`; kills: token arithmetic (`ceil/4`, `×2`, total sum), cost formula `/1000` guard, date range filter boundaries (from/to), `getAggregate` `+=` accumulators (total+byProvider), unknown-provider zero-cost fallback; broadcast event-type filter, targeted dispatch guard, `hasFallback` `targets.length===0` condition, `deletePrefsForKeys` count; `recordRun` runCount increment, maxRuns completion gate, history cap MAX_HISTORY=20, `parseCron` inverted-range rejection; remaining schedules survivors are in `ScheduleRunner.tick/runSchedule` (integration-level, not GDPR-critical paths) | DEVELOPER-X | SHIPPED | P2 | 2026-03-21 |
 | N-125 | CRUCIBLE Gate 6 round 2 — Stryker mutation score on `cli/scan.ts`: 60.91% → 75.31% (183/243 killed); 15 hardening tests (MH16–MH30) in `scan-mutation-hardening-2.test.ts`; kills: `splitSentences` word-count boundary (`>= 3`, letter guard `/[a-zA-Z]/`, `&&`→`||`, double-space 2-word, plain 2-word), `onProgress` string literals (Extracting/Verifying/Generating), default provider `'gemini'` error message, `collectFiles`/`walk` recursion + hidden-dir/node_modules skip, glob include/exclude, `globToRegex` `?` wildcard; Stryker config updated; 6 NoCoverage remain (semantically equivalent regex variants on `splitSentences` line 39) | DEVELOPER-X | SHIPPED | P2 | 2026-03-21 |
 | N-124 | GDPR schedule erasure — `ScheduleStore.deleteForKeys(keyIds[])` + `listForKeys(keyIds[])`; GDPR export ZIP gains `schedules.json` with `manifest.counts.schedules`; `DELETE /tenants/:id/data` extended with `schedules` in deleted counts; GDPR store audit complete (JobStore/BulkJobStore/ScanCache/ClaimIndex have no tenant association — no action needed); 15 tests (SS1–SS15): listForKeys, deleteForKeys accuracy, idempotency, multi-key, isolation, ZIP entry, manifest count, export isolation, erasure count, erasure isolation, export-after-erasure | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
 | N-123 | Tenant-scoped cost tracking — `ScanCost.tenantId?`; `CostFilter.tenantId?`; `CostStore.record()` passes tenantId from `resolveRequestTenantId()`; `deleteTenantCosts(tenantId)` → count; GDPR export ZIP gains `costs.json` with `manifest.counts.costs`; `DELETE /tenants/:id/data` extended with `costs` in deleted counts; scan.ts passes tenantId to CostStore; 15 tests (TC1–TC15): record+filter, delete isolation, idempotency, ZIP entry, manifest count, export isolation, erasure count, erasure isolation, un-tenanted records excluded | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
@@ -874,7 +875,61 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
-> **Reflection cycle**: 2026-03-21 — CoS check-in — N-125 (Stryker round 2, scan.ts 75.31%)
+> **Reflection cycle**: 2026-03-21 — CoS check-in — N-126 (Stryker GDPR stores, overall 60.07%→69.07%)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests | Total |
+|--------|-----------|-------------|--------|-------|
+| TBD | N-126 CRUCIBLE Gate 6 GDPR stores | `gdpr-store-mutation-hardening.test.ts` NH1–NH15; costs 62.77%→89.36%, notifications 67.30%→82.39%, overall 60.07%→69.07%; `stryker-gdpr.config.mjs` extended; badge 4,271→4,286 | +15 | 4,286 |
+
+**4,286 tests · 126 initiatives SHIPPED.** GDPR-critical store arithmetic is now mutation-hardened: costs.ts at 89.36%, notifications.ts at 82.39% — both well above the 60% CRUCIBLE threshold.
+
+---
+
+### 2. What surprised you?
+
+**Including the new test file in Stryker's `testFiles` array is a required step.** After writing NH1–NH15 and running `npx stryker run stryker-gdpr.config.mjs`, costs.ts stayed at 62.77% and schedules.ts was unchanged. The reason: the new test file wasn't listed in `testFiles`. Stryker has its own test discovery config separate from vitest's normal runner. Adding the file to the array immediately unlocked all 15 hardening contributions on the next run.
+
+**costs.ts arithmetic mutants were the easiest to kill with the highest yield.** Writing just two token-count tests (4-char and 12-char inputs with exact expected values) killed a cluster of arithmetic operator mutants: `/ 4` → `* 4`, `* 2` → `* 1`/`* 3`, and the cost formula `/1000` → `* 1000`. The cost formula mutant is particularly dangerous — `* 1000` would report costs 1,000,000× higher than reality, potentially triggering rate-limit alarms or billing anomalies. Mutation testing caught it; code review probably wouldn't.
+
+**schedules.ts survivors are concentrated in `ScheduleRunner.runSchedule` and `tick`.** These are not the GDPR-critical paths (the erasure is `deleteForKeys`/`listForKeys` which are now covered). The runner methods require mocking `fetch` for URL-based schedules and starting/stopping the actual interval timer — integration-level infrastructure that belongs in a future E2E test, not a unit hardening pass. The score improvement for schedules.ts was minimal (56.15%→57.82%) because the NH tests targeted `recordRun`/`parseCron`/`list()`, not the runner.
+
+---
+
+### 3. Cross-project signals
+
+**Arithmetic mutations in cost/billing code are safety-critical, not just quality.** A `/1000` → `*1000` mutant in a billing store would cause costs to appear 1 billion times higher than actual (inputTokens * outputTokens * rate difference). For FamilyMind's Stripe metering code, the equivalent arithmetic is `amount / 100` (cents to dollars). If that mutant survived, Stripe charges would be reported incorrectly. Worth a targeted Stryker pass on FamilyMind's billing arithmetic.
+
+**`vi.useFakeTimers()` + `vi.setSystemTime()` is the cleanest pattern for date-dependent store methods.** The `CostStore.record()` uses `new Date().toISOString().split('T')[0]` to stamp the date. Without fake timers, date-filter tests would be fragile (test day boundary) or require injecting dates via side channel. The fake timer pattern is stable and reproducible — worth documenting as the canonical approach for any date-stamped store in this codebase.
+
+**`hasFallback` condition has a global-webhook priority inversion risk.** If `targets.length === 0` were removed from the hasFallback condition, any broadcast event with a global webhook set would bypass all per-key prefs and deliver to the global URL instead. This would be invisible in normal operation (if global webhook is not set, nothing changes). NH10/NH11 specifically test both sides of this — they're among the most valuable tests in this batch from a correctness standpoint.
+
+---
+
+### 4. What would I prioritize next?
+
+**P1 — v0.4.0 release cut.** N-119–N-126 in `[Unreleased]`. Eight consecutive compliance + quality initiatives. The complete story: "GDPR compliance (export, erasure, store audit, cost tracking, schedule erasure, notification prefs), mutation-hardened claim forensics, mutation-hardened GDPR stores." This is the strongest v0.4.0 boundary we've had.
+
+**P2 — `ScheduleRunner.runSchedule` integration tests.** The runner methods (tick, URL fetch, error recording) have ~40% of schedules.ts NoCoverage. A dedicated integration test using `vi.stubGlobal('fetch')` + timer control could push schedules.ts from 57.82% to 75%+. Medium effort, meaningful compliance coverage for the scheduler's error path.
+
+**P3 — FamilyMind billing arithmetic Stryker pass.** Cross-project signal from this session: billing arithmetic (cents/dollars, token ratios) is the highest-risk mutation target. Worth checking FamilyMind's `stripe.ts` / billing service for similar arithmetic operators.
+
+---
+
+### 5. Blockers and questions for the CoS
+
+1. **v0.4.0 release signal**: N-119–N-126 ready. Eight initiatives since v0.3.0 — GDPR cluster complete + dual Stryker hardening passes. Should I cut the release now?
+
+2. **`ScheduleRunner` integration tests scope**: Running the scheduler timer requires `start()`/`stop()` lifecycle management in tests and `vi.stubGlobal('fetch')` mocking. Worth a dedicated initiative (N-127) or is the current schedules coverage (57.82%) sufficient for v0.4.0?
+
+3. **Cross-project: FamilyMind billing Stryker?** The `/ 1000` arithmetic pattern we hardened here is directly analogous to Stripe cents-to-dollars. Should N-127 be a cross-project Stryker pass on FamilyMind billing, or should we stay focused on Faultline?
+
+4. **CostStore backfill decision**: Pre-N-123 costs have no `tenantId`. The GDPR export correctly excludes them (filter by keyId match), but if a tenant's key is reused by another tenant after deletion, costs from the original tenant would be mis-attributed. Awaiting CoS signal on whether a backfill migration is needed or acceptable to document as a known limitation.
+
+---
+
+> **Previous reflection cycle**: 2026-03-21 — CoS check-in — N-125 (Stryker round 2, scan.ts 75.31%)
 
 ### 1. What did we ship since last check-in?
 
