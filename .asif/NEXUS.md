@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (CI false alarm triaged. 3,649 tests. 82 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-83 key partial update + CI cancel-in-progress. 3,663 tests. 83 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -92,6 +92,7 @@
 | N-80 | Coverage Baseline Gate — vitest coverage thresholds (stmts 80%, branch 70%, funcs 85%, lines 80%) in both API and CLI vitest.config.ts; .asif-ci updated to enforce coverage on push; closes 9-cycle open question | DEVELOPER-X | SHIPPED | P1 | 2026-03-21 |
 | N-81 | Real Integration Oracle (CRUCIBLE) — 12 integration tests (RI1–RI12) with NO scan mock; full pipeline HTTP→Fastify→scan()→mock provider runs; covers extraction shape, verifications keyed by claim ID, overallRisk, complianceReport, ScanHistory recording, audit trail, sentence splitting, cache HIT, auth enforcement, ruleFindings, scan/deep, claimCount accuracy | FORENSIC | SHIPPED | P1 | 2026-03-21 |
 | N-82 | ApiKey Soft-Disable — disabled?: boolean on ApiKey; validateKey() rejects disabled keys (401 auth); PATCH /keys/:id/disable + /enable (admin-gated); GET /keys includes disabled field; mission-control activeKeys now correctly counts !disabled; 17 tests (KD1–KD17) | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
+| N-83 | Key Partial Update — PATCH /keys/:id (admin-gated): update name and/or permissions post-creation; KeyStore.update(); secret redacted in response; 404/403/400 guards; 14 tests (KU1–KU14); ci.yml cancel-in-progress to prevent stale-run false alarms | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
 
 ---
 
