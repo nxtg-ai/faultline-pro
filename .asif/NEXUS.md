@@ -871,6 +871,56 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-21 — CoS check-in — N-120 + N-121 + N-122 (GDPR cluster complete) — 3 initiatives, 45 net new tests
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests | Total |
+|--------|-----------|-------------|--------|-------|
+| `b2a4ffb` | N-120 GDPR export (Article 15) | `GET /tenants/:id/export` → ZIP (manifest, scans, audit NDJSON, notifications, webhooks, usage) | +15 | 4,196 |
+| `1504c4a` | N-121 GDPR erasure (Article 17) | `DELETE /tenants/:id/data` → erases all 5 data categories; `deleteTenant*()` added to all stores | +15 | 4,211 |
+| `801592b` | N-122 GDPR prefs erasure fix | `NotificationStore.deletePrefsForKeys()`; erasure extended with `notificationPrefs` count; CHANGELOG N-119–N-122; badge 4,166→4,226 | +15 | 4,226 |
+
+**GDPR surface is now complete**: Article 15 (access/export) + Article 17 (erasure) + all PII-bearing config erased. **4,226 tests · 122 initiatives SHIPPED.**
+
+---
+
+### 2. What surprised you?
+
+**The GDPR cluster exposed a systematic gap in our store design: bulk tenant deletion was never planned.** Every store was built with `create/list/get/delete-by-id` but not `delete-by-tenant`. The four `deleteTenant*()` methods added in N-121 are all one-liners — `entries = entries.filter(e => e.tenantId !== id)` — but they weren't there. This is structural tech debt: any multi-tenant feature that holds state needs a tenant-scoped delete method from day one, not as an afterthought when a compliance deadline appears.
+
+**N-121 shipped clean; N-122 was necessary.** I caught the notification prefs gap myself in the N-121 Team Feedback rather than shipping incomplete GDPR coverage silently. The fact that ER tests all passed with the gap present shows the gap was genuinely invisible at test time: prefs are "config", not "data", so none of the ER assertions checked for them. EP13 (dispatch-after-erasure delivers nowhere) is the test that *would have caught N-121's gap* if it had been written at the time.
+
+**`search()` pagination envelope broke the GDPR export on first attempt.** `getScanHistory().search({ tenantId })` returns `{ entries, nextCursor }`, not an array. The ZIP's `scan-history.json` was silently non-array until tests caught it. Any route that reads from a paginated store and uses the result directly in serialization must unwrap the envelope. This is a silent failure pattern: no error, just wrong shape.
+
+---
+
+### 3. Cross-project signals
+
+**GDPR compliance is a three-endpoint pattern, not one.** Any ASIF project handling user/tenant data needs: (1) `GET /tenants/:id/export` (Article 15 access), (2) `DELETE /tenants/:id/data` (Article 17 erasure), and (3) both must be consistent — export then erase then export should yield an empty manifest. ER15 and the N-122 EP tests together form a regression suite for this invariant. FamilyMind should implement all three before EU launch.
+
+**Every store that is tenant-scoped needs a `deleteTenant*(tenantId)` method.** This should be added at the time the `tenantId` field is added to the store — not deferred. The pattern is one line and returning the deleted count enables accurate GDPR response reporting. Consider adding this to the ASIF "new store" checklist.
+
+**NDJSON is the right format for audit logs in GDPR exports.** Each line is independently parseable, which matters when the audit log is large (100k+ entries). `JSON.stringify(entry) + '\n'` per entry is all you need. Contrast with `JSON.stringify(array)` which requires the consumer to parse the entire file before accessing any record.
+
+---
+
+### 4. What would you prioritize next?
+
+1. **v0.4.0 release block in CHANGELOG** — N-119–N-122 are sitting in `[Unreleased]`. These belong in a `[v0.4.0]` section once CoS gives the go-ahead. The GDPR cluster is a natural version boundary.
+2. **Scan rate-limit dashboard** — `GET /rate-limits/view` HTML: shows current per-key rate limit state, requests-in-window, reset time. Complements the key hygiene dashboard (N-95) and closes the key management UI surface.
+3. **Stryker score improvement on claim forensics** — 60.91% is at threshold. `collectFiles()` and `batchScan()` catch-block survivors (33 uncovered mutants) need filesystem edge-case tests to push above 70%.
+
+---
+
+### 5. Blockers / questions for CoS
+
+- **v0.4.0 versioning**: N-119–N-122 are all post-v0.3.0. Should I create a `[v0.4.0]` CHANGELOG section and bump `package.json` versions, or hold for an explicit publish directive?
+- **GDPR key erasure scope**: `DELETE /tenants/:id/data` preserves API keys in KeyStore (only erases generated data + PII config). Is this the intended design, or should GDPR erasure also call `KeyStore.delete()` for each tenant key? The question is whether API keys are "account" records (kept for billing/audit) or "personal data" (must be erased).
+- **N-122 notification prefs gap**: This was self-caught. Are there other similar gaps I should audit systematically? Specifically: does `UsageMeter.deleteKey()` correctly clear all per-day entries for that key, and is the `ClaimIndex` store tenant-scoped?
+
+---
+
 > **Reflection cycle**: 2026-03-21 — N-122 — 1 initiative SHIPPED, 15 net new tests (EP1–EP15)
 
 ### 1. What did we ship since last check-in?
