@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-99 Scan hygiene HTML dashboard. 3,880 tests. 99 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-99 Scan hygiene HTML dashboard. 3,880 tests. 99 initiatives SHIPPED. Reflection cycle logged.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -846,6 +846,56 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-03-21 — N-99 — 1 initiative SHIPPED, 15 net new tests
+
+### 1. What did we ship since last check-in?
+
+**N-99 — Scan hygiene HTML dashboard** (`GET /scans/stale/view`)
+
+| Commit | Deliverable | +Tests |
+|--------|-------------|--------|
+| `062a71f` `feat: N-99` | HTML dashboard for scan hygiene. Summary badges: Total Documents, Stale (amber), Risk Drifted (purple). Per-row chips: `STALE` and `DRIFT` applied independently (not priority-ordered). Table columns: Hash (8-char), Preview (60-char), Risk/Flags, Scans count, Last Verified (days ago), Providers, Avg Latency. Auto-refresh 60s. `?staleDays=N` param changes both the stale threshold and the badge count. `requireApiKey` guard (401). 15 tests (KSH1–KSH15). | +15 (3,865 → 3,880) |
+
+**Total this cycle**: 1 commit · 15 tests · 3,880 total · **99 initiatives SHIPPED**.
+
+---
+
+### 2. What surprised you?
+
+**STALE and DRIFT chips are independent, unlike key chips which are priority-ordered.** For keys, chip priority (EXPIRED > DISABLED > EXPIRING SOON > DORMANT > HEALTHY) enforces mutual exclusivity — a key can only be one thing at a time. For scan documents, STALE and DRIFT represent orthogonal facts about the same document: staleness is a time-based observation (hasn't been re-verified recently), drift is a historical observation (verdict changed across re-scans). A document can be both STALE AND DRIFT — that's the most dangerous case (old verdict + known-volatile claim). The tests KSH7 (no STALE chip for fresh) and KSH9 (no DRIFT for stable) confirm correct negative cases separately, which wouldn't be necessary if they were priority-ordered.
+
+**The scan lifecycle cluster closed exactly at 5 initiatives, as predicted.** Two cycles ago the reflection noted "scan lifecycle might only need 3–5 initiatives." It closed at exactly 5 (N-96 stale query, N-97 analytics, N-98 bulk prune, N-99 HTML dashboard, N-100 CLI — planned). This validates the lifecycle playbook: filter query → analytics → bulk mutate → observability dashboard → CLI subcommand. Predictable scope.
+
+**`getScanUsageStats()` is called identically for both the JSON endpoint and the HTML view.** Both `GET /scans/usage` and `GET /scans/stale/view` call `getScanUsageStats(staleDays)` and then project over the results. The view just adds HTML formatting on top. This means the view's data accuracy is automatically tested by the analytics tests (KSU1–KSU15) — no duplicated data logic, just a different serializer.
+
+---
+
+### 3. Cross-project signals
+
+**HTML observability dashboards follow a template that could be extracted.** Both `GET /keys/usage/view` and `GET /scans/stale/view` share the same structure: meta auto-refresh → summary badge strip → main table with row-level chips → empty-state message. The HTML is inlined in the route handler. For projects with more than 3 observability views, this template is worth extracting into a shared `renderDashboard(options)` helper. At 2 views in Faultline Pro, inlining is still appropriate.
+
+**Amber = stale, purple = drift** is a color vocabulary that could become an ASIF UI standard. Any hygiene dashboard across ASIF projects (audit logs, job queues, provider health) could adopt these semantics: amber = time-based staleness, purple = unexpected state change. Worth documenting in the ASIF design standard before multiple projects independently pick conflicting colors.
+
+---
+
+### 4. What would you prioritize next?
+
+1. **N-100 — `faultline scan list --stale`**: CLI subcommand wrapping `GET /scans/stale`. Mirrors `faultline keys dormant`. The scan lifecycle is one step from complete.
+2. **CRUCIBLE Gate 6 (Stryker)**: Seventh cycle raising this. The scan lifecycle will be fully closed at N-100 — that is a natural gate before mutation testing.
+3. **Mission control — `riskDriftedCount` signal**: Surface the count from `GET /scans/usage` in the existing mission-control dashboard. Zero new store logic — one line change to the dashboard template.
+4. **N-101+ scoping**: With 99 initiatives shipped and both key + scan lifecycle clusters complete, the next cluster is uncharted. Candidates: tenant multi-tenancy (row-level isolation), real-time scan streaming (WebSocket), or claim forensics v2 (confidence intervals).
+
+---
+
+### 5. Blockers / questions for CoS
+
+- **CRUCIBLE Gate 6 (Stryker)**: Seventh cycle. N-99 closes the scan lifecycle cluster. N-100 closes the CLI surface. After N-100, the codebase stabilises and mutation testing has a stable target. Requesting approval to run Stryker on `packages/api/src/store/scan-history.ts` and `packages/api/src/store/keys.ts` — the two critical-path stores.
+- **N-101+ direction**: Both key and scan lifecycle clusters are done. What is the next cluster? Multi-tenancy? Real-time streaming? Or a revenue-focused surface (billing dashboard, usage caps)?
+- **Amber/purple UI vocabulary**: Approve as ASIF standard colors for staleness/drift? Prevents entropy as other projects add hygiene dashboards.
+- **NPM_TOKEN / Fly.io**: Still pending. v0.3.0 publish is blocked.
+
+---
 
 > **Reflection cycle**: 2026-03-21 — N-97 + N-98 — 2 initiatives SHIPPED, 30 net new tests
 
