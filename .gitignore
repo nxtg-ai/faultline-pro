@@ -29,3 +29,8 @@ dist-ssr
 # Generated SARIF output
 *.sarif
 .claude/worktrees/
+
+# Stryker mutation testing
+.stryker-tmp/
+reports/
+coverage/

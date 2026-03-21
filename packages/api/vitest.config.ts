@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: false,
+    exclude: ['**/node_modules/**', '**/.stryker-tmp/**', '**/dist/**'],
     coverage: {
       provider: 'v8',
       include: ['src/**'],

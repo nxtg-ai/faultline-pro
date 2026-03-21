@@ -4,9 +4,10 @@ export default {
   mutate: [
     'src/store/webhooks.ts',
   ],
-  // 'off' runs all tests for every mutant — slower but reliable
   coverageAnalysis: 'off',
   thresholds: { high: 80, low: 60, break: 0 },
   reporters: ['clear-text'],
   logLevel: 'warn',
+  // Keep temp sandbox outside the package so vitest doesn't pick it up
+  tempDirName: '/tmp/stryker-faultline-api',
 };
