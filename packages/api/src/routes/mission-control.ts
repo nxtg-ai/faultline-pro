@@ -58,7 +58,7 @@ function computeStatus() {
 
   // ── Active keys ───────────────────────────────────────────────────────────
   const keys = getKeyStore().list();
-  const activeKeys = keys.length;
+  const activeKeys = keys.filter((k) => !k.disabled).length;
   const totalKeys = keys.length;
 
   // ── Scan rate / today's volume ────────────────────────────────────────────

@@ -11,6 +11,8 @@ export interface ApiKey {
   name: string;
   permissions: Permission[];
   createdAt: string;
+  /** When true, key is rejected at auth time without deletion */
+  disabled?: boolean;
   /** Previous key value — still accepted until previousKeyExpiresAt */
   previousKey?: string;
   /** ISO datetime when previousKey stops being accepted */
@@ -61,6 +63,7 @@ class KeyStore {
   validateKey(key: string): ApiKey | null {
     const now = new Date();
     for (const entry of this.keys) {
+      if (entry.disabled) continue;
       if (entry.key === key) return entry;
       if (
         entry.previousKey === key &&
@@ -71,6 +74,20 @@ class KeyStore {
       }
     }
     return null;
+  }
+
+  disable(id: string): boolean {
+    const entry = this.keys.find((k) => k.id === id);
+    if (!entry) return false;
+    entry.disabled = true;
+    return true;
+  }
+
+  enable(id: string): boolean {
+    const entry = this.keys.find((k) => k.id === id);
+    if (!entry) return false;
+    entry.disabled = false;
+    return true;
   }
 
   validateById(id: string): ApiKey | null {

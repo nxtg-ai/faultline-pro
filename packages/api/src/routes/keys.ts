@@ -114,6 +114,32 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
+  // ── Disable / Enable ───────────────────────────────────────────────────────
+
+  fastify.patch<{ Params: { id: string } }>(
+    '/keys/:id/disable',
+    { preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Disable an API key — rejects auth without deleting the key' } },
+    async (request, reply) => {
+      const store = getKeyStore();
+      const ok = store.disable(request.params.id);
+      if (!ok) return reply.status(404).send({ error: 'Key not found.' });
+      const entry = store.validateById(request.params.id);
+      return reply.status(200).send({ id: entry!.id, name: entry!.name, disabled: true });
+    },
+  );
+
+  fastify.patch<{ Params: { id: string } }>(
+    '/keys/:id/enable',
+    { preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Re-enable a previously disabled API key' } },
+    async (request, reply) => {
+      const store = getKeyStore();
+      const ok = store.enable(request.params.id);
+      if (!ok) return reply.status(404).send({ error: 'Key not found.' });
+      const entry = store.validateById(request.params.id);
+      return reply.status(200).send({ id: entry!.id, name: entry!.name, disabled: false });
+    },
+  );
+
   // GET /keys/:id/rotation-status — check grace period status for a key
   fastify.get<{ Params: { id: string } }>(
     '/keys/:id/rotation-status',
