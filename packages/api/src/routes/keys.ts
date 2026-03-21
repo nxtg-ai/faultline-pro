@@ -44,6 +44,29 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
     return reply.status(200).send(keys);
   });
 
+  fastify.get<{ Querystring: { days?: string } }>(
+    '/keys/dormant',
+    {
+      preHandler: requireAdmin,
+      schema: {
+        tags: ['Keys'],
+        summary: 'List keys dormant for ≥N days (default 30). A key is dormant when lastUsedAt (or createdAt if never used) is older than the threshold.',
+        querystring: {
+          type: 'object',
+          properties: {
+            days: { type: 'string', pattern: '^[0-9]+$' },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const days = Math.min(365, Math.max(1, parseInt(request.query.days ?? '30', 10)));
+      const store = getKeyStore();
+      const keys = store.getDormant(days).map(({ key: _key, previousKey: _prev, ...rest }) => rest);
+      return reply.status(200).send({ days, count: keys.length, keys });
+    },
+  );
+
   fastify.get<{ Params: { id: string } }>(
     '/keys/:id',
     { preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Get a single API key by ID (secret redacted)' } },

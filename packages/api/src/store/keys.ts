@@ -82,6 +82,20 @@ class KeyStore {
     return null;
   }
 
+  /**
+   * Returns all keys that have not been used within the last `days` days.
+   * A key is dormant when:
+   *   - lastUsedAt is older than `days` days ago, OR
+   *   - lastUsedAt is absent AND createdAt is older than `days` days ago.
+   */
+  getDormant(days: number): ApiKey[] {
+    const cutoff = new Date(Date.now() - days * 86_400_000);
+    return this.keys.filter((k) => {
+      const reference = k.lastUsedAt ?? k.createdAt;
+      return new Date(reference) < cutoff;
+    });
+  }
+
   /** True if the key has passed its expiresAt date. */
   isExpired(id: string): boolean {
     const entry = this.keys.find((k) => k.id === id);

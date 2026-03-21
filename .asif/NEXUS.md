@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-86 ApiKey expiry. 3,700 tests. 86 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-87 Dormant key detection. 3,715 tests. 87 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -96,6 +96,7 @@
 | N-84 | GET /keys/:id — single key lookup by ID (admin-gated); secret redacted; disabled state visible; consistent with GET /keys list; 10 tests (KG1–KG10); CHANGELOG backfilled N-75 through N-84 | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
 | N-85 | ApiKey lastUsedAt tracking — stamped by validateKey() on every successful auth; not set by validateById() (admin read path); disabled/wrong-key attempts leave it unset; flows through GET /keys and GET /keys/:id; 12 tests (KL1–KL12) | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
 | N-86 | ApiKey expiry — expiresAt?: string on ApiKey; validateKey() auto-rejects expired keys (401/403); isExpired(id) helper; POST /keys and PATCH /keys/:id accept expiresAt; null clears expiry; expired keys visible to admin GET; 15 tests (KE1–KE15) | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
+| N-87 | Dormant key detection — `getDormant(days)` on KeyStore (uses lastUsedAt ?? createdAt vs cutoff); `GET /keys/dormant?days=N` (default 30, clamped 1–365); secrets redacted; disabled & expired keys included; 15 tests (KDo1–KDo15) | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
 
 ---
 
