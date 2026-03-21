@@ -33,6 +33,7 @@ export default {
     'packages/api/tests/gdpr-store-mutation-hardening.test.ts',
     'packages/api/tests/schedule-runner-mutation-hardening.test.ts',
     'packages/api/tests/schedule-store-mutation-hardening.test.ts',
+    'packages/api/tests/notification-dispatch-mutation-hardening.test.ts',
   ],
   vitest: {
     dir: 'packages/api',
