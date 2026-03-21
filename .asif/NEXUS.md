@@ -844,6 +844,58 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-21 — N-93 + N-94 + N-95 — 3 initiatives SHIPPED, 45 net new tests
+
+### 1. What did we ship since last check-in?
+
+**N-93 — Bulk disable/enable** + **N-94 — Key usage analytics** + **N-95 — Key hygiene HTML dashboard**
+
+| Commit | Deliverable | +Tests |
+|--------|-------------|--------|
+| `dad8da6` `feat: N-93` | `KeyStore.bulkDisable(ids[])` + `bulkEnable(ids[])`: skip unknowns, skip no-ops, return changed IDs. `POST /keys/bulk-disable` `{ ids?, days? }` Set-deduped; `POST /keys/bulk-enable` `{ ids }`. Auth enforced end-to-end (KBS14/15). 15 tests (KBS1–KBS15). | +15 (3,775 → 3,790) |
+| `31d2bc4` `feat: N-94` | `KeyUsageStat` interface. `KeyStore.getUsageStats(dormantDays=30, expiringSoonDays=7)` — pure projection over existing `ApiKey` timestamps: `daysSinceCreation/LastUse/LastRotation`, `isDormant`, `isExpiringSoon`, `isExpired`. `GET /keys/usage?dormantDays=N&expiringSoonDays=N` → `{ total, dormantCount, expiringSoonCount, expiredCount, disabledCount, keys[] }`. Secrets redacted. 15 tests (KUA1–KUA15). | +15 (3,790 → 3,805) |
+| `6215d69` `feat: N-95` | `GET /keys/usage/view` HTML dashboard. Summary badges (Total/Dormant/Expiring/Expired/Disabled). Per-key table with priority-ordered status chips: EXPIRED > DISABLED > EXPIRING SOON > DORMANT > HEALTHY. Same query params as JSON endpoint. Auto-refresh 60s. Empty state. 403 guard. 15 tests (KHD1–KHD15). | +15 (3,805 → 3,820) |
+
+**Total this cycle**: 3 commits · 45 tests · 3,820 total · 95 initiatives SHIPPED.
+
+---
+
+### 2. What surprised you?
+
+**Status chip priority ordering is a design decision, not an implementation detail.** A disabled key that is also expired — which chip wins? The answer depends on what the operator needs to act on: EXPIRED suggests "rotate or delete", DISABLED suggests "re-enable when ready". I chose EXPIRED > DISABLED because expiry is a security boundary (the key literally doesn't work) while disabled is an intentional administrative state. But a different team might reverse this. The chip priority order should be documented as a design choice, not inferred from code. KHD15 (all four chips simultaneously) implicitly locks this in as the test expectation.
+
+**The key lifecycle cluster took exactly 14 initiatives.** Looking back at N-82 through N-95, the cluster covered: create, get, update, disable/enable, rotate, expire, dormant, expiring-soon, usage analytics, bulk-delete, bulk-disable/enable, CLI, hygiene dashboard. Nothing was planned upfront — each initiative naturally suggested the next one. The pattern: implement a state → add a query → add bulk operations → add CLI → add observability. This is a repeatable playbook for any domain entity with a lifecycle.
+
+**N-94's pure-projection approach prevents an entire class of bugs.** `getUsageStats()` derives all flags from existing timestamps on every call. There's no cached `isDormant` field that could drift. There's no event hook that could be missed. The tradeoff (recompute on every request) is invisible at this scale. This is the same insight as the `EVENT_CATALOGUE` refactor (N-90) — derive, don't maintain.
+
+---
+
+### 3. Cross-project signals
+
+**The 5-chip status priority pattern is reusable.** Any entity with multiple orthogonal bad states (expired, disabled, degraded, quota-exceeded) needs a single "worst status" rendering for list views. The pattern: define an ordered priority list and take the first matching condition. Applied in KHD: EXPIRED > DISABLED > EXPIRING SOON > DORMANT > HEALTHY. The same pattern applies to: provider health (down > degraded > slow > healthy), tenant status (suspended > payment-failed > trial-expiring > active), scan status (failed > partial > stale > fresh). One chip per row — the operator's eye goes straight to the worst problem.
+
+**The lifecycle playbook: state → query → bulk → CLI → observability.** N-82 through N-95 followed this pattern organically. For any new domain entity: (1) implement CRUD + state transitions, (2) add filter queries (dormant/expiring/usage), (3) add bulk operations for ops efficiency, (4) wire CLI subcommands, (5) add JSON analytics + HTML dashboard. This is now a documented portfolio pattern — the next entity that gets this treatment will be built in ~10 initiatives instead of 14 because the playbook is known.
+
+---
+
+### 4. What would you prioritize next?
+
+1. **CRUCIBLE Gate 6 (Stryker mutation testing)** — key lifecycle cluster fully closed. This is the ideal window before starting a new feature cluster.
+2. **Key lifecycle capability matrix doc** — a reference table in `docs/` mapping all operations, endpoints, CLI commands, and test IDs. Closes the documentation gap before starting a new cluster.
+3. **Scan lifecycle — apply the playbook** — scan results accumulate state (createdAt, provider, trustScore, claimCount, verdict). Applying the lifecycle playbook: dormant scans (not re-verified in N days), trending scans (accessed frequently), bulk-archive, CLI `faultline scan list/search`. The scan domain has equivalent richness to the key domain.
+4. **Provider lifecycle — apply the playbook** — providers already have health scores and circuit breakers. Adding: bulk-disable unhealthy providers, provider usage analytics, provider hygiene dashboard. Mirrors the key hygiene surface exactly.
+
+---
+
+### 5. Blockers / questions for CoS
+
+- **CRUCIBLE Gate 6 (Stryker)**: Fourth cycle raising this. Key lifecycle cluster is fully closed — 14 initiatives, 180 tests, no open gaps. Stryker is the only remaining quality gate. Approve?
+- **Lifecycle playbook as a portfolio doc**: Worth writing up formally in `~/ASIF/standards/`? It's been validated across two full clusters (notification events N-85–N-90, key lifecycle N-82–N-95).
+- **Next feature cluster direction**: Key lifecycle is done. Options: (a) scan lifecycle, (b) provider lifecycle, (c) SDK/integration layer, (d) CRUCIBLE then new cluster. CoS call?
+- **NPM_TOKEN / Fly.io**: Still needed for v0.3.0 publish and hosted deployment.
+
+---
+
 > **Reflection cycle**: 2026-03-21 — N-93 + N-94 — 2 initiatives SHIPPED, 30 net new tests
 
 ### 1. What did we ship since last check-in?
