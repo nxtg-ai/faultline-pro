@@ -10,6 +10,7 @@
  *   - notifications.json   — notification history for the tenant
  *   - webhooks.json        — webhooks registered by the tenant
  *   - usage.json           — usage meter data for all keys in the tenant
+ *   - costs.json           — provider cost estimates for the tenant (N-123)
  */
 import type { FastifyInstance } from 'fastify';
 import AdmZip from 'adm-zip';
@@ -20,6 +21,7 @@ import { getAuditLogger } from '../store/audit.js';
 import { getNotificationStore } from '../store/notifications.js';
 import { getWebhookStore } from '../store/webhooks.js';
 import { getUsageMeter } from '../store/usage.js';
+import { getCostStore } from '../store/costs.js';
 
 export async function gdprExportRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
@@ -68,6 +70,8 @@ export async function gdprExportRoutes(fastify: FastifyInstance): Promise<void> 
         usageByKey[keyId] = getUsageMeter().getUsage(keyId);
       }
 
+      const costs = getCostStore().getCosts({ tenantId });
+
       // ── Build ZIP ───────────────────────────────────────────────────────────
 
       const zip = new AdmZip();
@@ -81,6 +85,7 @@ export async function gdprExportRoutes(fastify: FastifyInstance): Promise<void> 
           auditEntries: auditEntries.length,
           notifications: notifications.length,
           webhooks: webhooks.length,
+          costs: costs.length,
           keyIds: (tenant.keyIds ?? []).length,
         },
       };
@@ -94,6 +99,7 @@ export async function gdprExportRoutes(fastify: FastifyInstance): Promise<void> 
       zip.addFile('notifications.json', Buffer.from(JSON.stringify(notifications, null, 2)));
       zip.addFile('webhooks.json', Buffer.from(JSON.stringify(webhooks, null, 2)));
       zip.addFile('usage.json', Buffer.from(JSON.stringify(usageByKey, null, 2)));
+      zip.addFile('costs.json', Buffer.from(JSON.stringify(costs, null, 2)));
 
       const zipBuffer = zip.toBuffer();
       const filename = `faultline-gdpr-export-${tenantId}-${dateSlug}.zip`;

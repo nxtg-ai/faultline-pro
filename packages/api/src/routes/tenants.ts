@@ -6,6 +6,7 @@ import { getScanHistory } from '../store/scan-history.js';
 import { getAuditLogger } from '../store/audit.js';
 import { getNotificationStore } from '../store/notifications.js';
 import { getWebhookStore } from '../store/webhooks.js';
+import { getCostStore } from '../store/costs.js';
 
 const CREATE_BODY_SCHEMA = {
   type: 'object',
@@ -181,6 +182,7 @@ export async function tenantsRoutes(fastify: FastifyInstance): Promise<void> {
         notifications:     notifStore.deleteTenantHistory(tenantId),
         notificationPrefs: notifStore.deletePrefsForKeys(tenant.keyIds ?? []),
         webhooks:          getWebhookStore().deleteTenant(tenantId),
+        costs:             getCostStore().deleteTenantCosts(tenantId),
         usageKeys:         usageKeysDeleted,
       };
 

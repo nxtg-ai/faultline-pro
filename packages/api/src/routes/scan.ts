@@ -99,7 +99,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
         try {
           const result = await scan(text, p);
           cb.recordSuccess(p);
-          getCostStore().record(keyId, p, text);
+          getCostStore().record(keyId, p, text, resolveRequestTenantId(keyId));
           getScanHistory().record({
             textHash: hashText(text),
             textPreview: text.slice(0, 100),

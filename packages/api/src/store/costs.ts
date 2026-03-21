@@ -1,5 +1,6 @@
 export interface ScanCost {
   keyId: string;
+  tenantId?: string;
   provider: string;
   date: string; // YYYY-MM-DD
   estimatedTokens: number;
@@ -16,6 +17,7 @@ const PROVIDER_RATES: Record<string, { inputPer1k: number; outputPer1k: number }
 
 export interface CostFilter {
   keyId?: string;
+  tenantId?: string;
   provider?: string;
   from?: string; // YYYY-MM-DD inclusive
   to?: string;   // YYYY-MM-DD inclusive
@@ -31,7 +33,7 @@ export interface CostAggregate {
 class CostStore {
   private data: ScanCost[] = [];
 
-  record(keyId: string, provider: string, inputText: string): void {
+  record(keyId: string, provider: string, inputText: string, tenantId?: string): void {
     const date = new Date().toISOString().split('T')[0];
     const inputTokens = Math.ceil(inputText.length / 4);
     const outputTokens = inputTokens * 2;
@@ -42,17 +44,25 @@ class CostStore {
       (inputTokens / 1000) * rates.inputPer1k +
       (outputTokens / 1000) * rates.outputPer1k;
 
-    this.data.push({ keyId, provider, date, estimatedTokens: totalTokens, estimatedCostUsd });
+    this.data.push({ keyId, tenantId, provider, date, estimatedTokens: totalTokens, estimatedCostUsd });
   }
 
   getCosts(filter?: CostFilter): ScanCost[] {
     return this.data.filter((entry) => {
       if (filter?.keyId && entry.keyId !== filter.keyId) return false;
+      if (filter?.tenantId && entry.tenantId !== filter.tenantId) return false;
       if (filter?.provider && entry.provider !== filter.provider) return false;
       if (filter?.from && entry.date < filter.from) return false;
       if (filter?.to && entry.date > filter.to) return false;
       return true;
     });
+  }
+
+  /** Deletes all cost entries for a specific tenant. Returns count of deleted entries. */
+  deleteTenantCosts(tenantId: string): number {
+    const before = this.data.length;
+    this.data = this.data.filter((e) => e.tenantId !== tenantId);
+    return before - this.data.length;
   }
 
   getAggregate(filter?: CostFilter): CostAggregate {
