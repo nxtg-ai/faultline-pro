@@ -7,6 +7,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- N-124 GDPR schedule erasure — `ScheduleStore.deleteForKeys(keyIds[])` + `listForKeys(keyIds[])`; GDPR export ZIP gains `schedules.json` with `manifest.counts.schedules`; `DELETE /tenants/:id/data` extended with `schedules` in deleted counts; 15 tests (SS1–SS15); `JobStore`, `BulkJobStore`, `ScanCache`, `ClaimIndex` audited — no tenant association (no PII risk, no action needed)
 - N-123 Tenant-scoped cost tracking — `ScanCost.tenantId?`; `CostStore.record()` accepts tenantId; `CostFilter.tenantId?`; `CostStore.deleteTenantCosts(tenantId)`; GDPR export adds `costs.json`; erasure adds `costs` to deleted counts; 15 tests (TC1–TC15)
 - N-122 GDPR notification prefs erasure — `deletePrefsForKeys(keyIds[])` on `NotificationStore`; `DELETE /tenants/:id/data` now also erases notification prefs for all tenant keys; response extended with `notificationPrefs` count; 15 tests (EP1–EP15)
 - N-121 GDPR erasure endpoint — `DELETE /tenants/:id/data` (admin-gated, Article 17); `deleteTenantEntries()` on ScanHistory + Audit, `deleteTenantHistory()` on Notifications, `deleteTenant()` on Webhooks, `deleteKey()` on UsageMeter; tenant record preserved; idempotent; 15 tests (ER1–ER15)

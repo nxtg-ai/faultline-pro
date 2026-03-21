@@ -7,6 +7,7 @@ import { getAuditLogger } from '../store/audit.js';
 import { getNotificationStore } from '../store/notifications.js';
 import { getWebhookStore } from '../store/webhooks.js';
 import { getCostStore } from '../store/costs.js';
+import { getScheduleStore } from '../store/schedules.js';
 
 const CREATE_BODY_SCHEMA = {
   type: 'object',
@@ -183,6 +184,7 @@ export async function tenantsRoutes(fastify: FastifyInstance): Promise<void> {
         notificationPrefs: notifStore.deletePrefsForKeys(tenant.keyIds ?? []),
         webhooks:          getWebhookStore().deleteTenant(tenantId),
         costs:             getCostStore().deleteTenantCosts(tenantId),
+        schedules:         getScheduleStore().deleteForKeys(tenant.keyIds ?? []),
         usageKeys:         usageKeysDeleted,
       };
 

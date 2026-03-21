@@ -238,6 +238,25 @@ class ScheduleStore {
     return this.schedules.delete(id);
   }
 
+  /** Delete all schedules associated with any of the given keyIds. Returns deleted count. */
+  deleteForKeys(keyIds: string[]): number {
+    const keySet = new Set(keyIds);
+    let count = 0;
+    for (const [id, s] of this.schedules) {
+      if (keySet.has(s.keyId)) {
+        this.schedules.delete(id);
+        count++;
+      }
+    }
+    return count;
+  }
+
+  /** Return all schedules for a set of keyIds. */
+  listForKeys(keyIds: string[]): Schedule[] {
+    const keySet = new Set(keyIds);
+    return Array.from(this.schedules.values()).filter(s => keySet.has(s.keyId));
+  }
+
   /** Record a completed run, update nextRunAt, and check maxRuns. */
   recordRun(id: string, result: Omit<ScheduleRunResult, 'runId'>): void {
     const s = this.schedules.get(id);
