@@ -878,7 +878,66 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
-> **Reflection cycle**: 2026-03-21 — CoS check-in — N-129 (ScheduleStore second-pass hardening, schedules.ts 70.11%→76.26%)
+> **Reflection cycle**: 2026-03-21 — CoS check-in — session close (N-128 + N-129 completed, two prior reflections already written)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests | Total |
+|--------|-----------|-------------|--------|-------|
+| `75da0e1` | N-128 ScheduleRunner hardening | `schedule-runner-mutation-hardening.test.ts` SR1–SR16; schedules.ts 57.82%→70.11%; badge 4,301→4,317 | +16 | 4,317 |
+| `f9bbf90` | N-129 ScheduleStore hardening | `schedule-store-mutation-hardening.test.ts` SH1–SH15; schedules.ts 70.11%→76.26%; GDPR cluster 79.87%; badge 4,317→4,332 | +15 | 4,332 |
+
+**4,332 tests · 129 initiatives SHIPPED** this session. The schedules.ts mutation score went from 57.82% (start of session) to 76.26% (end) in two passes — a total gain of +18.44pp.
+
+Detailed reflections for each initiative were already committed: N-128 at `19ba1fb`, N-129 at `14aa79b`.
+
+---
+
+### 2. What surprised you?
+
+**The two-pass structure for schedules.ts was necessary, not optional.** N-128 targeted the runner/parser integration paths (SR13–SR16 required `vi.mock` + `vi.stubGlobal`). N-129 targeted the store/matching logic (SH5–SH9 required careful base-time selection). These two layers have fundamentally different test infrastructure needs — mixing them in one pass would have produced either an oversized test file or missed the deeper matching mutations. The natural split by "what kind of mock do you need" is a useful heuristic for structuring mutation hardening work.
+
+**`vi.hoisted()` for `vi.mock()` factories is a non-obvious Vitest requirement that causes a hard failure, not a silent one.** The TDZ error on N-128's first test run was abrupt — all 15 tests failed to load, not a single assertion ran. This is actually good (loud failure > silent degradation), but developers unfamiliar with Vitest's hoisting model would be confused. The pattern `const { mockFn } = vi.hoisted(() => ({ mockFn: vi.fn() }))` is worth documenting as a project-level convention. Currently it appears in N-128's test file but not in any shared guide.
+
+**Mutation score improvements are non-linear within a file.** Going from 57% to 70% took one pass (SR1–SR16, targeting runner and parser paths). Going from 70% to 76% took another full pass (SH1–SH15, targeting store and matching logic). The remaining 23.74% of surviving mutants are increasingly concentrated in high-test-infrastructure-cost paths (notification dispatch internals, `fetch` response-code assertions, URL-fetch error paths). Diminishing returns per additional test are real.
+
+---
+
+### 3. Cross-project signals
+
+**The `vi.mock` + `vi.hoisted()` pattern is now battle-tested in this codebase.** Any future test file that mocks an ESM module with a factory function referencing a `vi.fn()` declared in the test scope MUST use `vi.hoisted()`. This has now caused a first-run failure twice in this codebase (N-128 here; a prior occurrence noted in earlier reflections). It's worth adding this as a lint rule or test-file template to prevent it in every project that uses Vitest with ESM mocks.
+
+**Mutation hardening passes benefit from running Stryker in capture mode first.** The pattern used in N-128 and N-129: (1) run Stryker, (2) capture surviving mutant line numbers, (3) sort by density, (4) write targeted tests in density order. This is more efficient than writing tests speculatively. The `grep '\[Survived\]' | grep 'file.ts' | sort | uniq -c | sort -rn` pipeline is the key tool. Worth documenting in the ASIF standards doc for mutation hardening.
+
+**The `if(true)` / `if(false)` ConditionalExpression mutation pair on regex gates is the most common surviving class across all files audited so far.** It appeared in `costs.ts` (provider filter), `notifications.ts` (webhook error check), and `schedules.ts` (step regex, range regex). The kill pattern is always the same: test both the match path AND the skip path with assertions that distinguish them. Any code of the form `if (regex.test(x)) { doA() } else { doB() }` needs a test for `doA()` AND a test for `doB()` to kill both ConditionalExpression mutations.
+
+---
+
+### 4. What would I prioritize next?
+
+**P1 — v0.4.0 git tag + npm publish.** Ready since N-127. `git tag v0.4.0 && git push --tags`, then `npm publish`. Awaiting CoS.
+
+**P2 — notifications.ts hardening (N-130).** Currently 82.39% with 20 survivors, mostly in the `fetch()` dispatch internals. The surviving mutations are: `method: 'POST'` → `""`, `headers` object → `{}`, body serialization → `{}`, HTTP error response check `!res.ok` → `true`/`false`. Tests require `vi.stubGlobal('fetch', ...)` returning controlled status codes. A 15-test pass could push notifications.ts to 87%+ and the GDPR cluster above 82%.
+
+**P3 — v0.5.0 feature push.** After three consecutive mutation hardening initiatives (N-126, N-128, N-129), the codebase quality is strong. The next natural milestone is a new feature initiative rather than continued hardening. The CoS has not indicated a direction — options include: real-time WebSocket scan streaming, AI model fine-tuning integration, or a dashboard analytics initiative.
+
+---
+
+### 5. Blockers and questions for the CoS
+
+1. **v0.4.0 publish**: Ready. Go/no-go?
+
+2. **Mutation hardening stopping point**: schedules.ts is at 76.26%, notifications.ts at 82.39%, costs.ts at 89.36%. GDPR cluster overall 79.87%. Is 80% the target (one more push on notifications.ts), or is the Gate 6 threshold (60%) sufficient and we should pivot to features?
+
+3. **`scan.failed` hardcoded in `dispatchScheduleNotification`** (line 387): All schedule runs — successful or not — dispatch a `'scan.failed'` event. This looks like a bug (successful scans should not be labeled `scan.failed`). Should I file this as a fix initiative, or is this intentional behavior?
+
+4. **`vi.hoisted()` convention**: Should I add a project-level note to CLAUDE.md about the `vi.hoisted()` requirement for `vi.mock()` factories? It has caused first-run failures twice.
+
+5. **Stryker capture pipeline**: Should I document the `grep '\[Survived\]' | sort | uniq -c` pattern in a `docs/mutation-testing.md` or in CLAUDE.md as the standard approach for mutation hardening sessions?
+
+---
+
+> **Previous reflection cycle**: 2026-03-21 — CoS check-in — N-129 (ScheduleStore second-pass hardening, schedules.ts 70.11%→76.26%)
 
 ### 1. What did we ship since last check-in?
 
