@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-82 + reflection. 3,649 tests. 82 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (CI false alarm triaged. 3,649 tests. 82 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -830,6 +830,61 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-03-21 — CI false alarm investigation — 0 initiatives, 0 tests, stale CI run confirmed
+
+### 1. What did we ship since last check-in?
+
+Nothing shipped. This was a CI triage cycle.
+
+**P0 alert**: `changelog.test.ts:229` reported failing. Investigation:
+1. Ran `npx vitest run packages/api/tests/changelog.test.ts` — 28/28 pass.
+2. Ran full `npx vitest run` — 3,649/3,649 pass.
+3. Ran `bash .git/hooks/pre-push` — PASSED, coverage above all thresholds.
+4. Read line 229: `expect(res.body).toContain('## [v0.2.0]')` — `CHANGELOG.md` contains `## [v0.2.0]` at line 44. Test is correct, file is correct.
+
+**Root cause**: Stale CI run from before N-81/N-82 commits landed. The reported failure was against an earlier `HEAD`, not current `HEAD`. No code changes required.
+
+**Running total**: 3,649 tests · 142 files · 82 initiatives SHIPPED (unchanged).
+
+---
+
+### 2. What surprised us?
+
+- **CI failures reported against stale HEAD are indistinguishable from real failures without checking the commit SHA.** The alert said `changelog.test.ts:229 failing` — which is a precise line reference that implies a current failure. But the test was green on current HEAD. The P0 classification was correct procedure (CI red = P0), but the investigation had to rule out stale-run noise before concluding no fix was needed. Pattern: when a CI failure appears but the local suite is clean, check whether the CI run's commit SHA matches `git rev-parse HEAD` before writing any code.
+
+- **The pre-push gate creates a natural CI surrogate.** Running `bash .git/hooks/pre-push` locally gives the same signal as the remote CI gate without waiting for a GitHub Actions run. In this case it confirmed green in ~90 seconds. This is the right first step for any CI red triage — run the gate locally before diagnosing the test.
+
+---
+
+### 3. Cross-project signals
+
+- **"CI red" should include the commit SHA in the alert.** Without it, there's no way to tell whether the failure is against current HEAD or a queued run from 2 commits ago. Any ASIF project using GitHub Actions should include `${{ github.sha }}` in failure notifications. The alert becomes: `changelog.test.ts:229 FAILED @ abc1234` — immediately actionable.
+
+- **Stale CI runs are more likely after rapid successive pushes.** This session had 4 pushes in quick succession (N-81, N-82, NEXUS update ×2). GitHub Actions queues runs and may report failures from earlier commits while later commits are still queued. Portfolio-wide mitigation: use `concurrency: { group: main, cancel-in-progress: true }` in GitHub Actions workflow to cancel superseded runs automatically.
+
+---
+
+### 4. What would we prioritize next?
+
+1. **CRUCIBLE Gate 6 — Stryker mutation testing.** Still the top quality gap. 4/4 oracle types complete; mutation testing is the next layer. Needs CoS approval on CI time budget.
+
+2. **Stripe billing on org model.** `Org.plan` live. One directive to unlock revenue gate: `POST /orgs/:id/billing/checkout` → Stripe Checkout → webhook → plan update.
+
+3. **`PATCH /keys/:id` partial update.** Key name and permissions are immutable post-creation. Operators need to rename and re-permission keys without delete+recreate. Small route addition.
+
+4. **`cancel-in-progress: true` in GitHub Actions.** Would have prevented this false alarm. One-line CI config change.
+
+---
+
+### 5. Blockers and questions for the CoS?
+
+- **`NPM_TOKEN`**: Still blocked. v0.3.0 tagged, 3,649 tests green.
+- **Fly.io credentials**: Still blocked.
+- **CRUCIBLE Gate 6 (Stryker)**: Approve? Adds ~30s to CI.
+- **GitHub Actions `cancel-in-progress`**: Approve adding to workflow config? Prevents stale-run false alarms.
+
+---
 
 > **Reflection cycle**: 2026-03-21 — N-81 + N-82 — 2 initiatives SHIPPED, 29 net new tests, CRUCIBLE 4/4 + activeKeys bug fixed
 
