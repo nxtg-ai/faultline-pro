@@ -8,6 +8,7 @@
  *   provider.unavailable — a provider circuit-breaker opens
  *   subscription.changed — API key tier/permissions updated
  *   rate_limit.warning   — key reaches 80% of rate limit (integrates with rate-alerts)
+ *   key.expiring_soon   — key expiresAt within 7 days (threshold=7d) or 1 day (threshold=1d)
  *
  * Delivery:
  *   webhook — POST JSON to a URL (same pattern as jobs/rate-alerts)
@@ -29,7 +30,8 @@ export type NotificationEventType =
   | 'provider.available'
   | 'provider.unavailable'
   | 'subscription.changed'
-  | 'rate_limit.warning';
+  | 'rate_limit.warning'
+  | 'key.expiring_soon';
 
 export const ALL_EVENT_TYPES: NotificationEventType[] = [
   'scan.failed',
@@ -38,6 +40,7 @@ export const ALL_EVENT_TYPES: NotificationEventType[] = [
   'provider.unavailable',
   'subscription.changed',
   'rate_limit.warning',
+  'key.expiring_soon',
 ];
 
 export interface NotificationPrefs {

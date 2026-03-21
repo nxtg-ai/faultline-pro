@@ -236,6 +236,7 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
           { type: 'provider.unavailable',   description: 'Fired when a provider circuit-breaker opens.',                   example: { provider: 'openai', available: false } },
           { type: 'subscription.changed',   description: 'Fired when an API key\'s tier or permissions are updated.',      example: { change: 'tier_upgrade', oldTier: 'free', newTier: 'pro' } },
           { type: 'rate_limit.warning',     description: 'Fired when an API key reaches 80% of its per-minute limit.',    example: { used: 8, limit: 10, pct: 80 } },
+          { type: 'key.expiring_soon',      description: 'Fired when a key expiresAt is within 7 days or 1 day.',           example: { keyId: 'abc', keyName: 'My Key', hoursRemaining: 24, threshold: '1d' } },
         ],
         deliveryModel: 'webhook',
         note: 'Set webhookUrl in your preferences, or configure FAULTLINE_NOTIFY_WEBHOOK globally. The webhook receives a JSON POST with { event, keyId, ...payload }.',

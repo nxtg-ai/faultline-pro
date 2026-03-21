@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-87 Dormant key detection. 3,715 tests. 87 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-88 Key expiry notifications. 3,730 tests. 88 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -97,6 +97,7 @@
 | N-85 | ApiKey lastUsedAt tracking — stamped by validateKey() on every successful auth; not set by validateById() (admin read path); disabled/wrong-key attempts leave it unset; flows through GET /keys and GET /keys/:id; 12 tests (KL1–KL12) | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
 | N-86 | ApiKey expiry — expiresAt?: string on ApiKey; validateKey() auto-rejects expired keys (401/403); isExpired(id) helper; POST /keys and PATCH /keys/:id accept expiresAt; null clears expiry; expired keys visible to admin GET; 15 tests (KE1–KE15) | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
 | N-87 | Dormant key detection — `getDormant(days)` on KeyStore (uses lastUsedAt ?? createdAt vs cutoff); `GET /keys/dormant?days=N` (default 30, clamped 1–365); secrets redacted; disabled & expired keys included; 15 tests (KDo1–KDo15) | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
+| N-88 | Key expiry notifications — `key.expiring_soon` event type added to NotificationStore; `KeyExpiryNotifier.check()` fires at 7d and 1d thresholds with per-key×threshold dedup; wired into server 1-min tick; `/notifications/events` catalogue updated; 15 tests (KEN1–KEN15) | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
 
 ---
 
