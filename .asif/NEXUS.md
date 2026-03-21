@@ -853,6 +853,59 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-21 — N-104 — 1 initiative SHIPPED, 15 net new tests
+
+### 1. What did we ship since last check-in?
+
+**N-104 — `faultline keys prune` CLI** (dry-run-safe bulk delete)
+
+| Commit | Deliverable | +Tests |
+|--------|-------------|--------|
+| `13bf51f` `feat: N-104` | `getKeysPrunePreview(apiUrl, apiKey, days)`: calls `GET /keys/dormant` (read-only, no side effects). `pruneKeys(apiUrl, apiKey, days)`: calls `POST /keys/bulk-delete` with `{ days }`. `--confirm` flag gates execution — omitting it always shows dry-run preview. `formatPrunePreview()`: DRY RUN header + per-key list + `--confirm` hint. `formatPruneResult()`: deleted count + pruned ID list. `keys prune [--days 90] [--confirm]` subcommand added to CLI. 15 tests (KKP1–KKP15). | +15 (3,941 → 3,956) |
+
+**Total this cycle**: 1 commit · 15 tests · 3,956 total · 104 initiatives SHIPPED.
+
+---
+
+### 2. What surprised you?
+
+**The dry-run pattern required two separate API calls, not one.** The alternative — calling `POST /keys/bulk-delete` with a hypothetical `dryRun: true` body field — would require adding a query param or body field to the server route, adding a server-side branch, and testing that branch. Instead, the preview reuses the existing `GET /keys/dormant` endpoint (which was already tested in N-89) and the execute calls `POST /keys/bulk-delete` (also already tested). Two existing, tested endpoints; zero new server code. This is the correct design for a CLI safety gate: read the preview from a safe GET, write the action via POST. The server never needs to know about "dry-run mode."
+
+**KKP9 (body shape test) is the most important test in the set.** It asserts that `pruneKeys()` sends `{ days: 45 }` in the POST body — not `{ ids: [], days: 45 }` or `{ days: "45" }`. This locks the wire format. If someone refactors `pruneKeys()` and accidentally sends a string instead of a number, or wraps it in an extra field, the server's Fastify schema validation will reject it with a 400 — and KKP9 will catch that before it reaches the server. Type-level tests on request bodies are the CLI's equivalent of a contract test.
+
+**The operator CLI surface is now architecturally complete — six subcommands, two safety patterns.** The six `keys` subcommands cover every operator lifecycle action: `list` (inventory), `dormant` (activity hygiene view), `expiring` (expiry hygiene view), `rotation` (rotation hygiene view), `rotate` (lifecycle action), `prune` (bulk cleanup with safety gate). The two safety patterns established: `--confirm` for destructive operations (`prune`), positional arg for targeted operations (`rotate <id>`). Any future destructive `keys` subcommand should follow the `--confirm` pattern.
+
+---
+
+### 3. Cross-project signals
+
+**The `--confirm` gate pattern for destructive CLI commands is now established and tested.** The pattern: (1) default invocation = read-only preview via a GET endpoint; (2) `--confirm` = write via POST. No interactive prompts. No "are you sure?" strings. Just a flag that makes the destructive path explicit in shell scripts and CI. This pattern is copy-pasteable: any ASIF CLI adding a destructive subcommand (`scans prune`, `webhooks prune`, `tenants purge`) should follow this exact two-function structure: `getFooPrunePreview()` + `pruneFoos()` + `--confirm` routing in `index.ts`.
+
+**`GET` for preview, `POST` for action — never add `dryRun: true` to a write endpoint.** The anti-pattern of adding a `dryRun` flag to a POST/DELETE endpoint is tempting (one endpoint, one round-trip) but creates a server branch that is hard to test and violates REST semantics. The correct pattern uses idempotent GETs for previews and non-idempotent POSTs/DELETEs for actions. FamilyMind's subscription cancellation flow and Podcast-Pipeline's batch job deletion should follow this pattern when adding operator CLI surfaces.
+
+**Test for request body shape, not just response shape.** KKP9 inspects `mock.calls[0][1]` (the `fetch` init options) to assert the POST body. Most CLI tests only assert the formatted output — they don't check what was actually sent to the server. Body-shape tests are the CLI's contract tests and are cheap to write (one `JSON.parse(init.body)` assertion). Worth adding to any ASIF CLI test suite that wraps POST/DELETE endpoints.
+
+---
+
+### 4. What would you prioritize next?
+
+1. **CRUCIBLE Gate 6 (Stryker)**: Twelfth cycle. The CLI surface is complete (N-92–N-104). The store surface is stable (N-82–N-101). No active churn in any of the covered paths. This is the peak window for mutation testing. Approve?
+2. **N-105 — Tenant-scoped scan history**: Optional `tenantId?: string` on `ScanEntry`, propagated through scan routes. Backward-compat. Closes the last global-state store for the enterprise tier. Medium complexity (~30 lines store + route filter + 15 tests).
+3. **N-106 — Webhook delivery retry dashboard**: `GET /webhooks/deliveries` history + retry status. Webhooks exist (N-19) but there is no operator surface for inspecting failed deliveries. Medium complexity.
+4. **N-107 — `faultline scans prune` CLI**: Mirror `keys prune` for scan history. `getScanssPrunePreview()` + `pruneScans()` + `scans prune [--days 30] [--confirm]`. Would complete the scan lifecycle CLI surface alongside `scans stale` and `scans usage`.
+
+---
+
+### 5. Blockers / questions for CoS
+
+- **CRUCIBLE Gate 6 (Stryker)**: Twelfth cycle, no response. The complete CLI surface (N-104) is the natural boundary. Everything inside `keys-client.ts`, `scans-client.ts`, and the store layer is stable. Mutation testing now has a well-defined, stable target. This will not get easier to run — approve?
+- **`keys prune` UX question (from N-103 reflection)**: Still open. Should `keys prune` exclude DISABLED/EXPIRED keys by default? Currently `GET /keys/dormant` returns them (dormancy is about last-used time, not status). An EXPIRED key that is also dormant will appear in the prune preview. Is this correct operator behaviour?
+- **`keys rotation` UX question (from N-103 reflection)**: Still open. Should DISABLED/EXPIRED keys be excluded from `keys rotation` output by default?
+- **100-milestone re-scope (twelfth ask)**: 104 initiatives shipped. No response. Continuing on the established hygiene cluster. A directional signal — new vertical, revenue, stabilisation — would help scope N-105+.
+- **NPM_TOKEN / Fly.io**: v0.3.0 publish still blocked across `packages/sdk`, `packages/cli`, and `packages/api`.
+
+---
+
 > **Reflection cycle**: 2026-03-21 — N-103 — 1 initiative SHIPPED, 15 net new tests
 
 ### 1. What did we ship since last check-in?
