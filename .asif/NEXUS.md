@@ -884,7 +884,65 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
-> **Reflection cycle**: 2026-03-21 — CoS check-in — N-134 session close (SSE scan streaming; 4,407 tests; 134 initiatives SHIPPED)
+> **Reflection cycle**: 2026-03-21 — CoS check-in — N-135 session close (progressive SSE streaming; 4,422 tests; 135 initiatives SHIPPED)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests | Total |
+|--------|-----------|-------------|--------|-------|
+| `2b389c3` | N-135 progressive per-claim SSE | `ScanClaimCallback` + `onClaimVerified` param in `scan()`; `stream.ts` updated; 15 tests PS1–PS15; badge 4,407→4,422 | +15 | 4,422 |
+
+**4,422 tests · 135 initiatives SHIPPED.** The streaming arc (N-134 HTTP-native SSE → N-135 progressive callbacks) is complete. `GET /scan/stream` now delivers `claim_verified` events as claims complete rather than after the full scan finishes.
+
+---
+
+### 2. What surprised you?
+
+**The `total` parameter in `onClaimVerified` unlocked a clean `start` event without changing `scan()`'s return contract.** The key design question for N-135 was: how do we emit `start` (which needs `claimCount`) before any `claim_verified` events, when `claimCount` is only known after extraction? The answer was already in the callback signature: `total` is passed to every callback invocation, so emitting `start` on `index === 0` using `total` gives us `claimCount` at exactly the right moment — after extraction but before any delivery. No extra extraction callback needed.
+
+**Backward compatibility was genuinely free.** Adding an optional 6th parameter to `scan()` required zero changes to any existing caller. TypeScript optional params with `?` suffix cost nothing at call sites. The PS8 and PS9 tests confirm the result shape is identical. This is a counter-example to the common instinct to avoid shared API changes — when the addition is purely additive and optional, the risk is near-zero.
+
+**The 0-claim edge case is easy to forget.** If `filterClaimsForVerification()` returns an empty array, `onClaimVerified` never fires, so without the fallback guard (`if (!startEmitted) emit start`) the stream would skip the `start` event — breaking WS2 and WS12. The guard is three lines but matters for correctness. Any project implementing callback-driven event streaming needs this pattern.
+
+---
+
+### 3. Cross-project signals
+
+**The `onItem?(item, result, index, total)` optional callback pattern generalizes to any sequential async loop.** Batch scan loops, webhook retry loops, bulk import processors, GDPR erasure loops — all can be extended with a per-iteration callback without breaking callers. The `total` param is what makes the callback self-sufficient; callers don't need to pre-count. Pattern: (1) optional last param with `?`; (2) call inside loop after each await; (3) pass `index` and `total`.
+
+**"Emit on first callback" is the canonical pattern for stream header events.** When a streaming response needs a summary header (like `start` with `claimCount`) but the count is only known at runtime, the cleanest solution is: emit the header on `index === 0` using `total`. Add a fallback for the 0-item case. Avoids a separate pre-loop callback and keeps the API surface minimal.
+
+**Named callback types are better than inline anonymous types for exported APIs.** `ScanClaimCallback` is exported and named; callers can reference it in their own types. Unnamed inline types (`(message: string) => void`) are fine for private use but create friction at API boundaries. Apply this pattern to any exported async function that accepts callbacks.
+
+---
+
+### 4. What would I prioritize next?
+
+**P1 — v0.4.0 git tag + npm publish.** Eleven reflection cycles. 4,422 tests. GDPR cluster 86.31%. Two streaming initiatives complete. The codebase is in its strongest ever state. Two commands.
+
+**P2 — N-136: `faultline stream` CLI command.** Thin HTTP client calling `GET /scan/stream`, consuming SSE, rendering claims as they arrive with a live progress indicator. Closes the streaming arc at the CLI layer. Estimated: 15 tests, one session.
+
+**P3 — `docs/mutation-testing.md`.** Six reflections have documented the same three patterns. The content already exists across those six sections. 30 minutes to consolidate into a permanent reference.
+
+**P4 — CLAUDE.md mutation hardening checklist.** The `testFiles` footgun documented six times. Add it as step 0. Five-minute change, permanent prevention.
+
+---
+
+### 5. Blockers and questions for the CoS
+
+1. **v0.4.0 publish**: Eleventh cycle. Ready. Go/no-go?
+
+2. **v0.5.0 streaming arc**: N-134 and N-135 complete. Ship N-136 (`faultline stream` CLI) to close the arc, or pivot to a different product direction?
+
+3. **`docs/mutation-testing.md`**: Six reflections' worth of content ready to consolidate. Approve writing during idle time?
+
+4. **CLAUDE.md testFiles checklist**: Six occurrences documented. Approve the one-line addition?
+
+5. **`onClaimVerified` vs `onProgress` unification**: Both callbacks exist on `scan()`. Should a future N-137 unify them into a single `onEvent?(event: ScanEvent)` discriminated union, or leave them separate? The current two-callback design is functional but slightly awkward at call sites (5 `undefined` args before `onClaimVerified`).
+
+---
+
+> **Previous reflection cycle**: 2026-03-21 — CoS check-in — N-134 session close (SSE scan streaming; 4,407 tests; 134 initiatives SHIPPED)
 
 ### 1. What did we ship since last check-in?
 
