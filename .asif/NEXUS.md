@@ -864,6 +864,55 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-21 — N-114 + N-115 — 2 initiatives SHIPPED, 30 net new tests
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests |
+|--------|-----------|-------------|--------|
+| `(prev)` `feat: N-114` | Webhook circuit breaker | `WebhookCircuitBreaker` (consecutive-failure threshold + cooldown); `isOpen/recordFailure/recordSuccess/failureCount/reset`; circuit checked before rate limiter in `dispatchWebhook()`; `error='circuit open'` log records | +15 (4,092 → 4,107) |
+| `407b206` `feat: N-115` | Per-webhook retry configuration | `Webhook.maxAttempts` (1–5, default 3) + `Webhook.retryDelayMs` (0–30 000 ms, default 500); `WebhookStore.create()` accepts both with defaults; `dispatchWebhook()` loops `maxAttempts` times with flat `retryDelayMs` delay; route schema validation; 3 existing test factories updated | +15 (4,107 → 4,135) — plus R7 updated for flat delay |
+
+**Total this cycle**: 2 commits · 28 net new tests (excluding factory updates) · 4,135 total · 115 initiatives SHIPPED.
+
+---
+
+### 2. What surprised you?
+
+**Escalating vs flat retry delay is a real design choice.** The original `RETRY_DELAYS = [0, 500, 1000]` was hardcoded exponential-ish escalation. N-115 switches to a flat `retryDelayMs` per-webhook — simpler to reason about, user-configurable, and sufficient for the HTTP retry use case. But test R7 was asserting the old 1000ms value at attempt index 2. This test was correct for the old design; it had to be updated to 500ms for the new flat-delay model. The lesson: retry backoff strategy tests should document *why* the delay values are what they are — "was 1000ms because that was RETRY_DELAYS[2]" is not the same as "should be 1000ms for exponential backoff reasons." When the design changes, an undocumented test becomes a trap.
+
+**Three test factories in separate files all had the same `makeWebhook` shape mismatch.** Adding two required fields to `Webhook` broke `webhook-delivery-log.test.ts`, `webhook-circuit-breaker.test.ts`, and `webhook-rate-limiter.test.ts` simultaneously — three files that each define their own local `makeWebhook()` returning a literal. TypeScript caught all three at compile time. The correct pattern going forward is a shared test utility in `tests/helpers/make-webhook.ts` with all required fields — then only one update is needed when the interface changes. Deferred for now (not worth a NEXUS item), but the cost is acknowledged.
+
+**`RETRY_DELAYS` constant is now dead code.** After N-115, `RETRY_DELAYS` is no longer referenced. It was not removed because it was not strictly breaking anything, but it should be cleaned up before v0.3.0 to avoid confusion. Future reader: if you see `RETRY_DELAYS` in the file, it's vestigial.
+
+---
+
+### 3. Cross-project signals
+
+**Per-resource configuration via create() parameters is the right model.** Rather than env vars (global) or request-time overrides (ephemeral), storing `maxAttempts` and `retryDelayMs` on the `Webhook` entity at creation time makes the configuration persistent, per-resource, and observable. Any ASIF project with outbound delivery (FamilyMind notifications, content-engine job dispatch) should use the same pattern: resource-level config fields, defaults at `create()`, schema validation in the route.
+
+**Dead constant accumulation is a real code smell.** `RETRY_DELAYS` joins `WINDOW_MS` as a constant that's referenced in only one place. Small projects accumulate these quickly. Worth adding to the CRUCIBLE Gate 5 checklist: "constants referenced from zero call sites are dead code." Not worth a scan now, but flag for v0.3.0 cleanup pass.
+
+---
+
+### 4. What would you prioritize next?
+
+1. **Dead code cleanup**: Remove `RETRY_DELAYS` constant from `webhooks.ts`; extract shared `makeWebhook()` test helper to `tests/helpers/`. Zero feature risk, reduces future maintenance cost.
+2. **CRUCIBLE Gate 6 (Stryker)**: 20th cycle without CoS response. `WebhookRateLimiter` and `WebhookCircuitBreaker` are ideal mutation targets. Proceeding autonomously next session unless blocked.
+3. **N-116 — `resolveRequestTenantId()` auth helper**: The `keyId !== 'admin' ? getTenantStore().findByKeyId(keyId)?.id : undefined` guard appears in 2+ routes. Extract to `src/plugins/auth.ts`. ~10 tests.
+4. **v0.3.0 publish prep**: Remove dead code, update CHANGELOG, write consolidated env var reference. No credentials needed for the prep work.
+
+---
+
+### 5. Blockers / questions for CoS
+
+- **CRUCIBLE Gate 6 (Stryker)**: 20th cycle. Proceeding autonomously on next roadmap session unless explicitly blocked.
+- **Dead code `RETRY_DELAYS`**: Will remove in next roadmap session as part of the cleanup pass unless directed otherwise.
+- **v0.3.0 publish**: 20th ask. Happy to do prep work this session — just need signal on publish credentials or deferral decision.
+- **Shared test helpers**: Should I extract `makeWebhook()` to `tests/helpers/` to prevent future multi-file factory drift? Costs one session, pays back on every interface change.
+
+---
+
 > **Reflection cycle**: 2026-03-21 — N-113 — 1 initiative SHIPPED, 15 net new tests
 
 ### 1. What did we ship since last check-in?
