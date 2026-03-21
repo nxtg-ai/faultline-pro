@@ -67,6 +67,29 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
+  fastify.get<{ Querystring: { days?: string } }>(
+    '/keys/expiring-soon',
+    {
+      preHandler: requireAdmin,
+      schema: {
+        tags: ['Keys'],
+        summary: 'List keys expiring within N days (default 7). Excludes permanent keys and already-expired keys.',
+        querystring: {
+          type: 'object',
+          properties: {
+            days: { type: 'string', pattern: '^[0-9]+$' },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const days = Math.min(365, Math.max(1, parseInt(request.query.days ?? '7', 10)));
+      const store = getKeyStore();
+      const keys = store.getExpiringSoon(days).map(({ key: _key, previousKey: _prev, ...rest }) => rest);
+      return reply.status(200).send({ days, count: keys.length, keys });
+    },
+  );
+
   fastify.get<{ Params: { id: string } }>(
     '/keys/:id',
     { preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Get a single API key by ID (secret redacted)' } },

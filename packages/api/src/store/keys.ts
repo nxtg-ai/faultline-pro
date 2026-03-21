@@ -95,6 +95,20 @@ class KeyStore {
   }
 
   /**
+   * Returns keys whose expiresAt falls within the next `days` days.
+   * Excludes keys with no expiresAt (permanent) and already-expired keys.
+   */
+  getExpiringSoon(days: number): ApiKey[] {
+    const now = new Date();
+    const cutoff = new Date(Date.now() + days * 86_400_000);
+    return this.keys.filter((k) => {
+      if (!k.expiresAt) return false;
+      const exp = new Date(k.expiresAt);
+      return exp > now && exp <= cutoff;
+    });
+  }
+
+  /**
    * Returns all keys that have not been used within the last `days` days.
    * A key is dormant when:
    *   - lastUsedAt is older than `days` days ago, OR

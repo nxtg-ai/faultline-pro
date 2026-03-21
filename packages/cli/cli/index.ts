@@ -31,6 +31,7 @@ import { compareScanResults, renderCompare } from './compare.js';
 import { render as renderExport, applyFilter, type ExportFormat } from './export.js';
 import { setLang } from '../lib/i18n.js';
 import { getDemoResult } from './demo.js';
+import { listKeys, getDormantKeys, getExpiringSoonKeys, rotateKey, formatKeyList, formatDormantList, formatExpiringSoonList, formatRotateResult } from './keys-client.js';
 
 const VERSION = '0.2.0';
 
@@ -104,6 +105,10 @@ Usage:
   faultline plugin list                                             List loaded plugins
   faultline rules                                                   List available rules
   faultline init                                                    Generate .faultlinerc.json
+  faultline keys list [--api-url URL] [--api-key KEY]              List all API keys
+  faultline keys dormant [--days 30] [--api-url URL] [--api-key KEY]  List dormant keys
+  faultline keys expiring [--days 7] [--api-url URL] [--api-key KEY]  List keys expiring soon
+  faultline keys rotate <id> [--api-url URL] [--api-key KEY]       Rotate an API key
   faultline version                                                 Print version
 
 Config:
@@ -911,6 +916,52 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
 
       // No --output flag → write to stdout (allows piping)
       return { exitCode: 0, output: content.trimEnd() };
+    }
+
+    case 'keys': {
+      const sub = args[1]; // list | dormant | expiring | rotate
+      const apiUrl = flags['api-url'] || process.env.FAULTLINE_API_URL || 'http://localhost:3000';
+      const apiKey = flags['api-key'] || process.env.FAULTLINE_API_KEY || '';
+
+      if (!apiKey) {
+        return {
+          exitCode: 1,
+          output: 'Error: --api-key or FAULTLINE_API_KEY environment variable is required for key management.\n\nUsage: faultline keys list --api-url http://localhost:3000 --api-key <admin-key>',
+        };
+      }
+
+      if (sub === 'list') {
+        const result = await listKeys(apiUrl, apiKey);
+        if (result.error) return { exitCode: 1, output: `Error: ${result.error}` };
+        return { exitCode: 0, output: formatKeyList(result.keys) };
+      }
+
+      if (sub === 'dormant') {
+        const days = Math.max(1, parseInt(flags['days'] ?? '30', 10));
+        const result = await getDormantKeys(apiUrl, apiKey, isNaN(days) ? 30 : days);
+        if (result.error) return { exitCode: 1, output: `Error: ${result.error}` };
+        return { exitCode: 0, output: formatDormantList(result) };
+      }
+
+      if (sub === 'expiring') {
+        const days = Math.max(1, parseInt(flags['days'] ?? '7', 10));
+        const result = await getExpiringSoonKeys(apiUrl, apiKey, isNaN(days) ? 7 : days);
+        if (result.error) return { exitCode: 1, output: `Error: ${result.error}` };
+        return { exitCode: 0, output: formatExpiringSoonList(result) };
+      }
+
+      if (sub === 'rotate') {
+        const keyId = args[2]?.startsWith('--') ? undefined : args[2];
+        if (!keyId) return { exitCode: 1, output: 'Usage: faultline keys rotate <key-id> [--api-url URL] [--api-key KEY]' };
+        const result = await rotateKey(apiUrl, apiKey, keyId);
+        if (result.error) return { exitCode: 1, output: `Error: ${result.error}` };
+        return { exitCode: 0, output: formatRotateResult(result) };
+      }
+
+      return {
+        exitCode: 1,
+        output: 'Usage:\n  faultline keys list [--api-url URL] [--api-key KEY]\n  faultline keys dormant [--days 30] [--api-url URL] [--api-key KEY]\n  faultline keys expiring [--days 7] [--api-url URL] [--api-key KEY]\n  faultline keys rotate <id> [--api-url URL] [--api-key KEY]',
+      };
     }
 
     default:

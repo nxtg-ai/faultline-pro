@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-90 Notifications catalogue refactor. 3,745 tests. 90 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-92 faultline keys CLI commands. 3,775 tests. 92 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -100,6 +100,8 @@
 | N-88 | Key expiry notifications — `key.expiring_soon` event type added to NotificationStore; `KeyExpiryNotifier.check()` fires at 7d and 1d thresholds with per-key×threshold dedup; wired into server 1-min tick; `/notifications/events` catalogue updated; 15 tests (KEN1–KEN15) | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
 | N-89 | Bulk key deletion — `KeyStore.bulkDelete(ids[])` (skip unknowns, return deleted IDs); `POST /keys/bulk-delete` body: `{ ids?, days? }` union-deduped; empty body → 200 deleted:0; 403 guard; 15 tests (KBD1–KBD15) | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
 | N-90 | Notifications catalogue refactor — `EVENT_CATALOGUE` record in notifications store as single source of truth; `GET /notifications/events` now derives list via `ALL_EVENT_TYPES.map(t => ({ type, ...EVENT_CATALOGUE[t] }))` — future event types appear automatically; eliminates two-registration-point bug | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
+| N-91 | Expiring-soon key list — `KeyStore.getExpiringSoon(days)` filters expiresAt > now && <= cutoff; `GET /keys/expiring-soon?days=N` (default 7, clamped 1–365); secrets redacted; already-expired excluded; `expiresAt` surfaced in response; 15 tests (KES1–KES15) | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
+| N-92 | `faultline keys` CLI commands — `keys-client.ts` HTTP wrappers (list/dormant/expiring/rotate) + formatters; `keys list`, `keys dormant --days N`, `keys expiring --days N`, `keys rotate <id>` subcommands; FAULTLINE_API_KEY/URL env var fallback; 15 tests (KC1–KC15) | DEVELOPER-X | SHIPPED | P1 | 2026-03-21 |
 
 ---
 
