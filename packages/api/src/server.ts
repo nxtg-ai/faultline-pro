@@ -60,6 +60,7 @@ import { missionControlRoutes } from './routes/mission-control.js';
 import { auditLogRoutes } from './routes/audit-log.js';
 import { getNotificationStore } from './store/notifications.js';
 import { getKeyExpiryNotifier } from './store/key-expiry-notifier.js';
+import { getKeyRotationNotifier } from './store/key-rotation-notifier.js';
 import { getKeyStore } from './store/keys.js';
 import { getScanQueue, resetScanQueue } from './store/scan-queue.js';
 import { getScheduleRunner, resetScheduleRunner } from './store/schedules.js';
@@ -187,6 +188,8 @@ export function buildServer() {
       getKeyStore().cleanExpiredRotations();
       // Dispatch key.expiring_soon notifications (7d and 1d thresholds)
       getKeyExpiryNotifier().check();
+      // Dispatch key.rotation_due notifications (90d and 180d thresholds)
+      getKeyRotationNotifier().check();
 
       const now = new Date();
       if (now.getUTCDay() === 0 && now.getUTCHours() === 9 && now.getUTCMinutes() === 0) {

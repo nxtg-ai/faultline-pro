@@ -31,7 +31,8 @@ export type NotificationEventType =
   | 'provider.unavailable'
   | 'subscription.changed'
   | 'rate_limit.warning'
-  | 'key.expiring_soon';
+  | 'key.expiring_soon'
+  | 'key.rotation_due';
 
 export const ALL_EVENT_TYPES: NotificationEventType[] = [
   'scan.failed',
@@ -41,6 +42,7 @@ export const ALL_EVENT_TYPES: NotificationEventType[] = [
   'subscription.changed',
   'rate_limit.warning',
   'key.expiring_soon',
+  'key.rotation_due',
 ];
 
 /** Human-readable metadata for each event type. Authoritative single source of truth. */
@@ -52,6 +54,7 @@ export const EVENT_CATALOGUE: Record<NotificationEventType, { description: strin
   'subscription.changed': { description: "Fired when an API key's tier or permissions are updated.",                               example: { change: 'tier_upgrade', oldTier: 'free', newTier: 'pro' } },
   'rate_limit.warning':   { description: 'Fired when an API key reaches 80% of its per-minute rate limit.',                       example: { used: 8, limit: 10, pct: 80 } },
   'key.expiring_soon':    { description: "Fired when a key's expiresAt is within 7 days (threshold=7d) or 1 day (threshold=1d).", example: { keyId: 'abc', keyName: 'My Key', hoursRemaining: 24, threshold: '1d' } },
+  'key.rotation_due':     { description: "Fired when a key has not been rotated in 90 days (threshold=90d) or 180 days (threshold=180d). Uses lastRotatedAt if available, otherwise createdAt.", example: { keyId: 'abc', keyName: 'My Key', daysSinceRotation: 95, threshold: '90d' } },
 };
 
 export interface NotificationPrefs {

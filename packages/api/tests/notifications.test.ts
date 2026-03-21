@@ -134,8 +134,8 @@ describe('convenience dispatchers', () => {
 // ── ALL_EVENT_TYPES ───────────────────────────────────────────────────────────
 
 describe('ALL_EVENT_TYPES', () => {
-  it('contains 7 event types', () => {
-    expect(ALL_EVENT_TYPES).toHaveLength(7);
+  it('contains 8 event types', () => {
+    expect(ALL_EVENT_TYPES).toHaveLength(8);
   });
 
   it('includes expected events', () => {
@@ -158,11 +158,11 @@ describe('GET /notifications/events', () => {
     expect(res.statusCode).toBe(200);
   });
 
-  it('lists all 7 event types', async () => {
+  it('lists all 8 event types', async () => {
     const res = await server.inject({ method: 'GET', url: '/notifications/events' });
     const body = JSON.parse(res.body);
     expect(Array.isArray(body.eventTypes)).toBe(true);
-    expect(body.eventTypes).toHaveLength(7);
+    expect(body.eventTypes).toHaveLength(8);
   });
 });
 
