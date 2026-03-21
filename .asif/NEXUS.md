@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-119 v0.3.0 publish prep — CHANGELOG rewrite, README badge 2,757→4,166, release-prep tests. 4,181 tests. 119 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-120 GDPR export endpoint — GET /tenants/:id/export → ZIP archive. 4,196 tests. 120 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -129,6 +129,7 @@
 | N-117 | CRUCIBLE Gate 6 — Stryker mutation testing on `src/store/webhooks.ts`; `@stryker-mutator/core` + `@stryker-mutator/vitest-runner` 9.6.0 installed; initial score 86.51% (212 killed, 51 timeout, 32 survived); 15 hardening tests (MH1–MH15) kill boundary mutations (`>=` vs `>` in rate limiter + circuit breaker windows, reset() scoped vs all, defensive copy list(), getById() discrimination, sendTestWebhook signature + latency); final score 91.45% (228 killed, 50 timeout, 19 survived); vitest.config.ts excludes `.stryker-tmp/`; tempDirName → `/tmp` | DEVELOPER-X | SHIPPED | P2 | 2026-03-21 |
 | N-118 | CRUCIBLE Gate 6 — Stryker mutation testing on `packages/cli/cli/scan.ts` (claim forensics critical path); root-level `stryker-cli.config.mjs` (monorepo-root run to resolve `node_modules`); initial score 26.75% (65 killed, 61 survived, 117 no cov); 15 hardening tests (MH1–MH15) in `scan-mutation-hardening.test.ts` targeting `calculateRisk()` boundary conditions (contradicted/mixed thresholds), `scan()` API-key guard + loop + 200-char truncation, `aggregateResults()` highestRisk ordering via `batchScan()`; final score 60.91% (148 killed, 62 survived, 33 no cov) — CRUCIBLE Gate 6 threshold 60% MET | DEVELOPER-X | SHIPPED | P2 | 2026-03-21 |
 | N-119 | v0.3.0 publish prep — CHANGELOG.md full rewrite (clean [Unreleased]/[v0.3.0]/[v0.2.0]/[v0.1.0] sections; N-82 through N-118 in Unreleased; stripped 300+ "Team Feedback no delta" noise lines); README badge 2,757→4,166; Enterprise API section updated with key lifecycle, webhook resilience (rate limiting, circuit breaker, retry config), tenant-scoped resources, scan hygiene, `faultline keys`/`scans` CLI; 15 release-prep tests (RP1–RP15) validating README badge count, CHANGELOG structure, key capability mentions, and changelog API endpoints | DISTRIBUTION | SHIPPED | P2 | 2026-03-21 |
+| N-120 | GDPR export endpoint — `GET /tenants/:id/export` (admin-gated); returns ZIP archive via `adm-zip` containing `manifest.json` (tenant metadata + counts), `scan-history.json` (all tenant scans via `getRecent(10_000).filter(tenantId)`), `audit-log.ndjson` (NDJSON one entry per line), `notifications.json`, `webhooks.json`, `usage.json` (keyed by keyId); `Content-Disposition: attachment; filename=faultline-gdpr-export-{tenantId}-{date}.zip`; 404 for unknown tenant; 403 without admin; 15 tests (GE1–GE15): 200/content-type/disposition/zip structure/manifest counts/scan isolation/tenant isolation/empty-tenant zero-counts | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
 
 ---
 
@@ -867,6 +868,50 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-03-21 — N-119 + N-120 — 2 initiatives SHIPPED, 30 net new tests (15 RP + 15 GE)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests |
+|--------|-----------|-------------|--------|
+| `feat: N-119` | v0.3.0 publish prep | CHANGELOG rewrite; README badge 2,757→4,166; 15 release-prep tests (RP1–RP15) | +15 (4,166 → 4,181) |
+| `feat: N-120` | GDPR export endpoint | `GET /tenants/:id/export` → ZIP of all tenant data (scans, audit, notifications, webhooks, usage, manifest); 15 tests (GE1–GE15) | +15 (4,181 → 4,196) |
+
+**Total this cycle**: 2 initiatives · 30 net new tests · **4,196 total · 120 initiatives SHIPPED**.
+
+---
+
+### 2. What surprised you?
+
+**`search()` returns `{ entries, nextCursor }`, not a plain array.** The scan-history store's `search()` method wraps results in a pagination envelope. My initial route implementation called `getScanHistory().search({ tenantId })` and wrote it directly to the ZIP — the JSON was `{ entries: [...], nextCursor: null }`, not the array tests expected. Fixed by using `getRecent(10_000).filter(e => e.tenantId === tenantId)` to bypass the 100-record cap and get all tenant data without pagination overhead. This is the right pattern for data exports.
+
+**TypeScript catches stale event/permission literal types fast.** `'scan.complete'` is not in `NotificationEventType` and `'scan:read'` is not in `Permission` — colon-separated permission syntax is wrong, the actual type uses plain strings like `'scan'`. The pre-push hook caught both as TS errors immediately. No runtime test failures needed.
+
+---
+
+### 3. Cross-project signals
+
+**GDPR export ZIP pattern is reusable.** Any ASIF project that handles tenant data (FamilyMind, future SaaS projects) will need a GDPR export endpoint. The pattern: iterate every store, filter by `tenantId`, serialize to appropriate formats (JSON for structured data, NDJSON for log-style append data), add a manifest, bundle with `adm-zip`. The `Content-Disposition: attachment` header with a dated filename is the correct browser download trigger.
+
+**Store query caps break export/analytics flows.** `search()` with `Math.min(limit, 100)` is correct for paginated API endpoints but wrong for internal bulk operations (exports, analytics, pruning). Exports should bypass pagination entirely. The consistent pattern across this project: `getRecent(N).filter(predicate)` for bulk reads, `search()` for API responses.
+
+---
+
+### 4. What would you prioritize next?
+
+1. **GDPR compliance surface completion** — `DELETE /tenants/:id/data` (right-to-erasure endpoint) to pair with the export. The GDPR article 17 right-to-erasure is as important as article 15 right-of-access.
+2. **Raise README test badge to current count** — badge says 4,166, actual is now 4,196 after N-119 + N-120.
+3. **v0.3.0 npm publish** — all prep is done. Just needs publish token and `npm publish` from `packages/api` and `packages/cli`.
+
+---
+
+### 5. Blockers / questions for CoS
+
+- Badge staleness: README badge updated in N-119 (4,166) but we've since added 30 more tests. Should badges auto-update on push or only at publish-prep time?
+- N-120 ships the read side of GDPR. Should N-121 be the deletion side (`DELETE /tenants/:id/data`), or is that deferred to post-v0.3.0?
+
+---
 
 > **Reflection cycle**: 2026-03-21 — N-118 — 1 initiative SHIPPED, 16 net new tests (15 hardening + 1 CI fix)
 

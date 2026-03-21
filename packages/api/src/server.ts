@@ -43,6 +43,7 @@ import { costsRoutes } from './routes/costs.js';
 import { scansRoutes } from './routes/scans.js';
 import { bulkRoutes } from './routes/bulk.js';
 import { exportRoutes } from './routes/export.js';
+import { gdprExportRoutes } from './routes/gdpr-export.js';
 import { changelogRoutes } from './routes/changelog.js';
 import { pluginMarketplaceRoutes } from './routes/plugins.js';
 import { telemetryRoutes } from './routes/telemetry.js';
@@ -151,6 +152,7 @@ export function buildServer() {
   fastify.register(scansRoutes);
   fastify.register(bulkRoutes);
   fastify.register(exportRoutes);
+  fastify.register(gdprExportRoutes);
   fastify.register(changelogRoutes);
   fastify.register(pluginMarketplaceRoutes);
   fastify.register(telemetryRoutes);
