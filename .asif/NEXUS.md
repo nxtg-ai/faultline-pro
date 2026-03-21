@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-132 CostStore aggregate mutation hardening — costs.ts 89.36%→96.81%, GDPR cluster 85.19%; 15 tests CA1–CA15; README badge 4,377. 4,377 tests. 132 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-133 ScheduleStore update()+recordRun() mutation hardening — schedules.ts 77.35%→80.94%, GDPR cluster 86.31%; 15 tests SH16–SH30; README badge 4,392. 4,392 tests. 133 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -132,6 +132,7 @@
 | N-120 | GDPR export endpoint — `GET /tenants/:id/export` (admin-gated); returns ZIP archive via `adm-zip` containing `manifest.json` (tenant metadata + counts), `scan-history.json` (all tenant scans via `getRecent(10_000).filter(tenantId)`), `audit-log.ndjson` (NDJSON one entry per line), `notifications.json`, `webhooks.json`, `usage.json` (keyed by keyId); `Content-Disposition: attachment; filename=faultline-gdpr-export-{tenantId}-{date}.zip`; 404 for unknown tenant; 403 without admin; 15 tests (GE1–GE15): 200/content-type/disposition/zip structure/manifest counts/scan isolation/tenant isolation/empty-tenant zero-counts | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
 | N-121 | GDPR erasure endpoint — `DELETE /tenants/:id/data` (admin-gated, Article 17 right-to-erasure); adds `deleteTenantEntries(tenantId)` to `ScanHistoryStore` + `AuditLogger`, `deleteTenantHistory(tenantId)` to `NotificationStore`, `deleteTenant(tenantId)` to `WebhookStore`, `deleteKey(keyId)` to `UsageMeter`; returns `{ tenantId, deleted: { scanEntries, auditEntries, notifications, webhooks, usageKeys } }`; tenant record itself preserved (data only); idempotent (second call returns all zeros); 15 tests (ER1–ER15): counts, actual store erasure, tenant-not-deleted, idempotency, isolation (tenant B untouched), export-after-erasure returns empty ZIP | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
 | N-127 | v0.4.0 publish prep — CHANGELOG `[v0.4.0]` block cut (N-119–N-127 initiatives); `@nxtg/faultline` + `@nxtg/faultline-api` bumped 0.2.0→0.4.0; README `[Capability table]` gains GDPR compliance + mutation-tested core rows; Enterprise API section updated with GDPR export/erasure endpoints; README badge 4,286→4,301; `release-prep.test.ts` RP10 updated (Unreleased → full changelog scope); 15 tests (RP16–RP30): badge≥4286, GDPR mentions, erasure, mutation, `[v0.4.0]` block, date, GDPR+mutation content, empty Unreleased, cli 0.4.0, api 0.4.0, N-119–N-127 all present, v0.3.0 preserved, /changelog 200 | DISTRIBUTION | SHIPPED | P1 | 2026-03-21 |
+| N-133 | ScheduleStore.update() + recordRun() mutation hardening (SH16–SH30) — `schedules.ts` 77.35%→80.94%, GDPR cluster 85.19%→86.31%; 15 tests in `schedule-update-hardening.test.ts`; kills: `update()` conditional guards for notifyEmail/webhookUrl/maxRuns (3 mutants each: ConditionalExpression if(false)/if(true) + EqualityOperator `!==`→`===`); description/name guards (1 each); `recordRun()` maxRuns=0 unlimited guard `>` → `>=` (SH24); nextRunAt non-null (SH25) + ISO 8601 format (SH26); history cap MAX_HISTORY=20 after 21 runs (SH27); unknown-id early-return guard (SH28); parseCron step regex `/^\*\/\d+$/` "never matches" (SH29) + "always matches" (SH30) variants — schedules.ts now crosses 80% threshold | DEVELOPER-X | SHIPPED | P2 | 2026-03-21 |
 | N-132 | CostStore.getAggregate() + getCosts() mutation hardening — `costs.ts` 89.36%→96.81%, GDPR cluster 82.32%→85.19% (bonus: notifications.ts 92.45%→95.76%, schedules.ts 76.26%→77.35% from N-131 SC tests covering new dispatch paths); 15 tests (CA1–CA15) in `costs-aggregate-hardening.test.ts`; kills: `getCosts()` provider filter `if(false)` (CA1) and `if(true)` (CA2) ConditionalExpression at line 54; `totalCostUsd +=` at line 78 (CA3); `byProvider.costUsd +=` at line 84 (CA4); `!byDate[date]` initialization guard `if(true)` at line 86 (CA5); `byDate.tokens +=` at line 89 (CA6); `byDate.costUsd +=` at line 90 (CA7); supporting: multi-provider key isolation (CA8/CA14), same-date byDate coalescing (CA9), mock zero-cost (CA10), provider-filter aggregate token count (CA11), cross-provider cost exclusion (CA12), empty-set zero structure (CA13), per-provider independent accumulation (CA15) | DEVELOPER-X | SHIPPED | P2 | 2026-03-21 |
 | N-131 | `dispatchScheduleNotification` event-type correctness fix — adds `'scan.completed'` to `NotificationEventType` union, `ALL_EVENT_TYPES`, `EVENT_CATALOGUE`; `dispatchScheduleNotification` dispatches `'scan.completed'` on success, `'scan.failed'` on error (was always dispatching `'scan.failed'`); error catch block in `runSchedule()` now calls dispatch so failures are actually reported to subscribers; `stryker-gdpr.config.mjs` updated with new test file; 15 tests (SC1–SC15) covering catalogue membership/description/example, event routing isolation (success→completed, error→failed, no cross-dispatch), payload correctness (overallRisk/claimCount from scan result, error field from exception), subscription filtering (scan.completed sub receives success only, scan.failed sub receives error only) | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
 | N-130 | NotificationStore dispatch mutation hardening — `notifications.ts` 82.39%→92.45%, GDPR cluster overall 82.32%; 15 tests (ND1–ND15) in `notification-dispatch-mutation-hardening.test.ts`; kills: `_deliver()` HTTP 200→delivered=true/error=null (`if(true)` ConditionalExpression, ND1), HTTP 503→delivered=false/error='HTTP 503' (`if(false)`+`if(res.ok)` variants, ND2), fetch throws→error captured from exception (catch BlockStatement removal, ND3), method='POST'+Content-Type header mutations (ND4), body JSON contains event+keyId+payload (body:{} mutation, ND5), null webhookUrl→error='no-webhook-configured' (if(webhookUrl) BlockStatement removal, ND6); convenience dispatchers: `notifyScanFailed` payload error+provider (ND7), `notifyProviderStatus(false)` available:false via global webhook broadcast (ND8), `notifyProviderStatus(true)` available:true+timestamp (ND9), `notifySubscriptionChanged` spread change fields (ND10); `deleteTenantHistory` filter (r)=>false mutant preserved by non-matching tenantId (ND11); `EVENT_CATALOGUE['key.rotation_due']` description non-empty (ND12), example has keyId+keyName (ND13), keyId non-empty (ND14), keyName non-empty (ND15) | DEVELOPER-X | SHIPPED | P2 | 2026-03-21 |
@@ -881,7 +882,65 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
-> **Reflection cycle**: 2026-03-21 — CoS check-in — N-132 session close (costs.ts 96.81%, GDPR cluster 85.19%)
+> **Reflection cycle**: 2026-03-21 — CoS check-in — N-133 session close (schedules.ts 77.35%→80.94%, GDPR cluster 86.31%)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests | Total |
+|--------|-----------|-------------|--------|-------|
+| (pending) | N-133 ScheduleStore update()+recordRun() hardening | `schedule-update-hardening.test.ts` SH16–SH30; schedules.ts 77.35%→80.94%; GDPR cluster 86.31%; badge 4,377→4,392 | +15 | 4,392 |
+
+**4,392 tests · 133 initiatives SHIPPED.** schedules.ts has crossed 80% for the first time. The entire GDPR cluster now sits above 80%: costs 96.81%, notifications 92.12%, schedules 80.94%. CRUCIBLE Gate 6 threshold exceeded on all three stores.
+
+---
+
+### 2. What surprised you?
+
+**The `update()` conditional guard pattern generates 3 Stryker mutants per field, not 1.** Each `if (patch.notifyEmail !== undefined)` produces: ConditionalExpression `if(false)` (assignment never runs), ConditionalExpression `if(true)` (undefined always assigned), and EqualityOperator `!==`→`===` (inverts logic). Killing all three requires exactly two tests: (A) set the field → assert updated; (B) omit the field → assert unchanged. The two-test pattern that kills three mutants is now the standard template for optional-field guards.
+
+**Stryker's nondeterminism caused a 5.5pp score variance between two consecutive runs (86.46% vs 80.94%) on schedules.ts.** The difference is in `noCoverage` count: 26 vs 46. With `coverageAnalysis: 'off'`, this shouldn't happen — but the parallelism and sandboxing model can cause timing-dependent test attribution. The conservative number (80.94%) was used for reporting. Both runs cross 80%, which is the threshold that matters.
+
+**The `notifyEmail` and `webhookUrl` fields default to `undefined`, not `null`, despite the Schedule type having nullable-looking semantics.** Tests asserting `toBeNull()` on fresh-created schedules failed immediately. The fix was `toBeUndefined()`. This is a type contract edge case: TypeScript optional fields (`field?: T`) default to `undefined`, not `null`, unless the constructor explicitly sets them. Always read the `create()` function defaults before writing guard tests.
+
+---
+
+### 3. Cross-project signals
+
+**The 3-mutant-per-guard pattern applies to any `if (patch.field !== undefined)` guard in any TypeScript store.** If another ASIF project has a similar `update()` method that conditionally applies optional fields, Stryker will generate ConditionalExpression + EqualityOperator mutants for each. The kill pattern (set → assert updated; omit → assert unchanged) is the standard approach. Two tests per field, three kills.
+
+**Stryker score variance ≥5pp on consecutive runs of the same config signals measurement instability.** When the score swings this much between identical runs, the reported number is an estimate, not a fact. This is a known Stryker limitation with `coverageAnalysis: 'off'` and parallel workers. For any project using Stryker: run it twice, report the lower of the two results. Threshold decisions should add 3–5pp buffer.
+
+**The `toBeUndefined()` vs `toBeNull()` distinction is a recurring footgun.** TypeScript optional fields (`?`) default to `undefined`. Only fields with `| null` in their type and explicit `null` assignment in the constructor default to `null`. Before writing store tests, always read the constructor's initialization block. This applies across all ASIF projects using TypeScript stores.
+
+---
+
+### 4. What would I prioritize next?
+
+**P1 — v0.4.0 git tag + npm publish.** Nine reflection cycles at this point. GDPR cluster now at 86.31%, all three stores above 80%, 4,392 tests, two correctness fixes (N-113 rate-limiter, N-131 event-type). The quality case is unambiguous. Two commands: `git tag v0.4.0 && git push --tags`, then `npm publish`. Still waiting on CoS go-signal.
+
+**P2 — v0.5.0 product feature pivot.** Seven consecutive hardening/fix/infrastructure passes (N-127–N-133). The platform is ready for a user-visible capability. Top candidate: WebSocket real-time scan streaming. It makes the platform feel live rather than request-response, and no equivalent exists in the current API surface.
+
+**P3 — `docs/mutation-testing.md`.** Four reflections have documented the same three patterns (`testFiles` footgun, `+=` accumulator kill, 3-mutant guard pattern). Writing this doc once ends the repetition. 30-minute effort, permanent reference.
+
+**P4 — CLAUDE.md mutation hardening checklist.** Add "add test file to `stryker*.config.mjs` before running" as step 0 in the mutation hardening workflow. Prevents the most common footgun.
+
+---
+
+### 5. Blockers and questions for the CoS
+
+1. **v0.4.0 publish**: Ninth cycle. All three GDPR stores above 80%. Ready. Go/no-go?
+
+2. **v0.5.0 feature direction**: Seven hardening passes complete. What's the next product initiative? My top pick remains WebSocket real-time scan streaming. But CoS may have a different priority.
+
+3. **`docs/mutation-testing.md`**: Four reflections have flagged the same three patterns. Approve writing this during idle time?
+
+4. **CLAUDE.md checklist update**: Add "add test file to Stryker config before running" as explicit step. Low risk, high value. Approve?
+
+5. **Stryker score variance**: With 5pp variance between consecutive runs, should the ASIF mutation threshold policy require "average of two runs" rather than "single run"? Or should we add 3pp headroom to all pass thresholds (e.g., 83%+ for a "passing" 80% target)?
+
+---
+
+> **Previous reflection cycle**: 2026-03-21 — CoS check-in — N-132 session close (costs.ts 96.81%, GDPR cluster 85.19%)
 
 ### 1. What did we ship since last check-in?
 
