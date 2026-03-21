@@ -5,6 +5,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+- N-128 ScheduleRunner + parseCron + nextCronTime mutation hardening — `schedules.ts` score 57.82% → 70.11% (overall GDPR cluster 76.27%); 16 hardening tests (SR1–SR16) in `schedule-runner-mutation-hardening.test.ts`; killed mutants in `parseCron` `/\s+/` regex, range bounds (day min=1, month min=1, weekday max=7), range-part bounds (`a < min`, `b > max`), `nextCronTime` step arithmetic (`value % step`), range match (`value >= a && value <= b`), UTC field extraction, `ScheduleStore.create()` defaults (provider='gemini', maxRuns=0), `ScheduleRunner.runSchedule()` text/URL/error paths and duration arithmetic
+
 ---
 
 ## [v0.4.0] — 2026-03-21

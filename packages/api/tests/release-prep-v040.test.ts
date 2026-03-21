@@ -117,13 +117,15 @@ describe('CHANGELOG.md — v0.4.0 release validation', () => {
     ).toBe(true);
   });
 
-  // RP25: [Unreleased] section exists but has no initiative entries (correctly cut)
-  it('RP25: [Unreleased] section has no N-NNN initiative entries', () => {
+  // RP25: [Unreleased] section must not contain the v0.4.0 initiatives (N-119–N-127 correctly cut)
+  it('RP25: [Unreleased] section does not contain v0.4.0 initiatives (N-119–N-127)', () => {
     const unrelStart = changelog.indexOf('## [Unreleased]');
     const nextSection = changelog.indexOf('\n## [', unrelStart + 1);
     const unreleased = changelog.slice(unrelStart, nextSection > 0 ? nextSection : undefined);
-    // Should not contain N-NNN patterns (initiative bullet points)
-    expect(unreleased).not.toMatch(/^- N-\d{3}/m);
+    // N-119 through N-127 must not appear in Unreleased — they belong in [v0.4.0]
+    for (const n of ['N-119', 'N-120', 'N-121', 'N-122', 'N-123', 'N-124', 'N-125', 'N-126', 'N-127']) {
+      expect(unreleased, `[Unreleased] must not contain ${n} (already in v0.4.0)`).not.toContain(n);
+    }
   });
 });
 
