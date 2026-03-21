@@ -24,6 +24,8 @@
     "pdfkit": "^0.18.0"
   },
   "devDependencies": {
+    "@stryker-mutator/core": "^9.6.0",
+    "@stryker-mutator/vitest-runner": "^9.6.0",
     "@types/adm-zip": "^0.5.8",
     "@types/node": "^22.14.0",
     "@types/pdfkit": "^0.17.5",
