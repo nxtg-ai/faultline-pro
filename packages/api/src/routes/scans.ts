@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getScanHistory, hashText } from '../store/scan-history.js';
+import { requireApiKey } from '../plugins/auth.js';
 
 export async function scansRoutes(fastify: FastifyInstance): Promise<void> {
 
@@ -51,6 +52,29 @@ export async function scansRoutes(fastify: FastifyInstance): Promise<void> {
     async (_request, reply) => {
       reply.header('Content-Type', 'text/html; charset=utf-8');
       return reply.send(buildTimelineHtml());
+    },
+  );
+
+  // GET /scans/stale — documents not re-verified for ≥N days
+  fastify.get<{ Querystring: { days?: string } }>(
+    '/scans/stale',
+    {
+      preHandler: requireApiKey,
+      schema: {
+        tags: ['Claims'],
+        summary: 'List documents not re-verified for ≥N days (default 30). Returns the most recent scan per unique text, filtered to those older than the threshold.',
+        querystring: {
+          type: 'object',
+          properties: {
+            days: { type: 'string', pattern: '^[0-9]+$' },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const days  = Math.min(365, Math.max(1, parseInt(request.query.days ?? '30', 10)));
+      const scans = getScanHistory().getStaleScanGroups(days);
+      return reply.status(200).send({ days, count: scans.length, scans });
     },
   );
 

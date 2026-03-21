@@ -96,6 +96,29 @@ class ScanHistoryStore {
     });
   }
 
+  /**
+   * Returns the most-recent scan entry per unique textHash group where
+   * the most recent scan for that group is older than `days` days ago.
+   * These are "stale" documents — texts that haven't been re-verified recently.
+   * Results are sorted oldest-first.
+   */
+  getStaleScanGroups(days: number): ScanEntry[] {
+    const cutoff = new Date(Date.now() - days * 86_400_000);
+
+    // Most recent entry per textHash
+    const mostRecent = new Map<string, ScanEntry>();
+    for (const entry of this.entries) {
+      const existing = mostRecent.get(entry.textHash);
+      if (!existing || new Date(entry.timestamp) > new Date(existing.timestamp)) {
+        mostRecent.set(entry.textHash, entry);
+      }
+    }
+
+    return Array.from(mostRecent.values())
+      .filter((e) => new Date(e.timestamp) < cutoff)
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  }
+
   get size(): number {
     return this.entries.length;
   }
