@@ -878,7 +878,59 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
-> **Reflection cycle**: 2026-03-21 — CoS check-in — N-128 (ScheduleRunner + parseCron + nextCronTime mutation hardening, schedules.ts 57.82%→70.11%)
+> **Reflection cycle**: 2026-03-21 — CoS check-in — N-129 (ScheduleStore second-pass hardening, schedules.ts 70.11%→76.26%)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests | Total |
+|--------|-----------|-------------|--------|-------|
+| `f9bbf90` | N-129 ScheduleStore second-pass hardening | `schedule-store-mutation-hardening.test.ts` SH1–SH15; schedules.ts 70.11%→76.26%; GDPR cluster 79.87%; badge 4,317→4,332 | +15 | 4,332 |
+
+**4,332 tests · 129 initiatives SHIPPED.** schedules.ts is now 76.26%, well above the 70% watermark. The GDPR cluster is 79.87% overall — costs 89.36%, notifications 82.39%, schedules 76.26%.
+
+---
+
+### 2. What surprised you?
+
+**The `if(true)` and `if(false)` mutations at line 134 were killing the range check independently, and required different test shapes to kill each.** Line 134 is `if (/^\d+-\d+$/.test(part))` inside `matches()`. The `if(true)` mutation makes ALL fields enter the range block — plain integers like `'15'` get parsed as `[a=15, b=NaN]` → `value <= NaN` is always false → match fails. The `if(false)` mutation skips the range block entirely — `'10-20'` gets parsed by `parseInt('10-20') = 10` → only value=10 matches. These two mutations require tests with fundamentally different structures: SH5 (plain integer) kills `if(true)`, SH6 (range from midpoint) kills `if(false)`. Neither test alone kills both. This is a case where a single "works at all" test (SR10, from :05→:10) masks both mutations because the lower bound happens to coincide with what parseInt returns.
+
+**SR10 from the previous initiative had a structural blind spot.** SR10 tested `'10-20 * * * *'` from :05 and expected :10. But :10 is also what `parseInt('10-20')` returns — so the `if(false)` mutant also passes SR10. The minute I added SH6 (from :14 expecting :15), both the `if(false)` mutant and the `if(true)` mutant were killed. The lesson: for range tests, always test both a boundary value AND a non-boundary value within the range. Testing only a boundary value can accidentally pass with a degraded implementation.
+
+**The MAX_SCHEDULES=500 test (SH10) was the fastest meaningful test to write.** 500 in-memory Map.set() calls complete in <100ms. There was no practical reason to avoid this test — the concern about "too many iterations" was unfounded for pure in-memory operations. Any capacity guard backed by a Map can be stress-tested this way without I/O.
+
+---
+
+### 3. Cross-project signals
+
+**"Test both the boundary AND a non-boundary in range checks" is a universally applicable rule.** The SR10/SH6 lesson applies to any code that uses `value >= a && value <= b` style range matching — which appears in rate limiters (N-113), circuit breakers (N-114), rule engine confidence bounds, cost filter date ranges. For each of these, a test using only the boundary value (value=a or value=b) can accidentally pass with a `>` or `<` mutation. The canonical pattern: for any `[a,b]` range, have exactly three tests: value<a (invalid), value=a (valid), value between a and b (valid), value=b (valid), value>b (invalid). The middle three are needed to kill both bounds independently.
+
+**Stryker ConditionalExpression mutations on regex tests are a systematic risk.** Line 134 (`if (/regex/.test(part))`) had 7 survivors because the `if(true)` and `if(false)` mutations require specific test shapes that most developers don't naturally write. Any code path gated by a regex test — like parseCron's step check (`/^\*\/\d+$/`), range check (`/^\d+-\d+$/`), and value check (`/^\d+$/`) — needs tests that exercise both the match-and-enter-block and not-match-and-fall-through behavior. A single "valid expression" test only kills one of the two ConditionalExpression mutations.
+
+---
+
+### 4. What would I prioritize next?
+
+**P1 — v0.4.0 git tag + npm publish.** Four reflection cycles have flagged this. Awaiting CoS go-signal. Two commands: `git tag v0.4.0 && git push --tags`, then `npm publish`.
+
+**P2 — notifications.ts hardening to push above 85%.** Currently 82.39% with 20 survivors. The surviving mutants are concentrated in: `fetch()` call details (method POST, headers, body serialization), HTTP error response handling (`if (!res.ok)`), and notification payload ObjectLiterals. These require integration-style mocking of `fetch` with response status codes.
+
+**P3 — costs.ts push above 90%.** Currently 89.36% with 6 survivors. The 6 survivors involve `getAggregate()` date-grouping (`byDate[entry.date]` initialization guard) and provider-filter ConditionalExpression. Small targeted tests could push this above 90%.
+
+---
+
+### 5. Blockers and questions for the CoS
+
+1. **v0.4.0 tag + publish**: Still waiting. `git tag v0.4.0 && git push --tags` — ready to execute.
+
+2. **GDPR cluster target**: We're at 79.87% overall. Should I continue hardening to reach 80%+ (notifications.ts push) as a N-130, or pivot to a new feature initiative? The next natural threshold is 80%.
+
+3. **Benchmark for "done" on mutation hardening**: Is the goal CRUCIBLE Gate 6 threshold (60%) — already met across all stores — or a higher bar like 80%? Clarifying this determines whether N-130 should be another hardening pass or new feature work.
+
+4. **dispatchScheduleNotification event hardcoded to `'scan.failed'`**: Still an open question from N-128 reflection. Line 387 dispatches `'scan.failed'` regardless of whether the scan succeeded. Is this intentional naming (using `scan.failed` as a generic "scan completed" event) or a bug?
+
+---
+
+> **Previous reflection cycle**: 2026-03-21 — CoS check-in — N-128 (ScheduleRunner + parseCron + nextCronTime mutation hardening, schedules.ts 57.82%→70.11%)
 
 ### 1. What did we ship since last check-in?
 
