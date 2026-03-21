@@ -32,7 +32,7 @@ import { render as renderExport, applyFilter, type ExportFormat } from './export
 import { setLang } from '../lib/i18n.js';
 import { getDemoResult } from './demo.js';
 import { listKeys, getDormantKeys, getExpiringSoonKeys, rotateKey, getRotationStatus, getKeysPrunePreview, pruneKeys, formatKeyList, formatDormantList, formatExpiringSoonList, formatRotateResult, formatRotationStatus, formatPrunePreview, formatPruneResult } from './keys-client.js';
-import { getStaleScans, getScanUsage, formatStaleList, formatScanUsage } from './scans-client.js';
+import { getStaleScans, getScanUsage, getScansPrunePreview, pruneScans, formatStaleList, formatScanUsage, formatScansPrunePreview, formatScansPruneResult } from './scans-client.js';
 
 const VERSION = '0.2.0';
 
@@ -112,6 +112,7 @@ Usage:
   faultline keys rotate <id> [--api-url URL] [--api-key KEY]       Rotate an API key
   faultline scans stale [--days 30] [--api-url URL] [--api-key KEY]  List stale scan groups
   faultline scans usage [--staleDays 30] [--api-url URL] [--api-key KEY]  Scan usage analytics
+  faultline scans prune [--days 30] [--confirm] [--api-url URL] [--api-key KEY]  Delete stale scan groups
   faultline version                                                 Print version
 
 Config:
@@ -128,7 +129,7 @@ For CI/testing without an API key, use --provider mock (returns synthetic result
 }
 
 // Boolean flags that take no value argument
-const BOOLEAN_FLAGS = new Set(['sarif', 'all', 'demo']);
+const BOOLEAN_FLAGS = new Set(['sarif', 'all', 'demo', 'confirm']);
 
 function parseArgs(args: string[]): { command: string; flags: Record<string, string> } {
   const command = args[0] || '';
@@ -988,7 +989,7 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
     }
 
     case 'scans': {
-      const sub    = args[1]; // stale | usage
+      const sub    = args[1]; // stale | usage | prune
       const apiUrl = flags['api-url'] || process.env.FAULTLINE_API_URL || 'http://localhost:3000';
       const apiKey = flags['api-key'] || process.env.FAULTLINE_API_KEY || '';
 
@@ -1013,9 +1014,22 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
         return { exitCode: 0, output: formatScanUsage(result) };
       }
 
+      if (sub === 'prune') {
+        const days    = Math.min(365, Math.max(1, parseInt(flags['days'] ?? '30', 10) || 30));
+        const confirm = 'confirm' in flags;
+        if (!confirm) {
+          const preview = await getScansPrunePreview(apiUrl, apiKey, days);
+          if (preview.error) return { exitCode: 1, output: `Error: ${preview.error}` };
+          return { exitCode: 0, output: formatScansPrunePreview(preview) };
+        }
+        const result = await pruneScans(apiUrl, apiKey, days);
+        if (result.error) return { exitCode: 1, output: `Error: ${result.error}` };
+        return { exitCode: 0, output: formatScansPruneResult(result) };
+      }
+
       return {
         exitCode: 1,
-        output: 'Usage:\n  faultline scans stale [--days 30] [--api-url URL] [--api-key KEY]\n  faultline scans usage [--staleDays 30] [--api-url URL] [--api-key KEY]',
+        output: 'Usage:\n  faultline scans stale [--days 30] [--api-url URL] [--api-key KEY]\n  faultline scans usage [--staleDays 30] [--api-url URL] [--api-key KEY]\n  faultline scans prune [--days 30] [--confirm] [--api-url URL] [--api-key KEY]',
       };
     }
 

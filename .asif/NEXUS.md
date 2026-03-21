@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-106 Webhook delivery retry dashboard. 3,986 tests. 106 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-21 (N-107 `faultline scans prune` CLI. 4,002 tests. 107 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -116,6 +116,7 @@
 | N-104 | `faultline keys prune` CLI — dry-run-safe destructive operator command; `getKeysPrunePreview()` calls `GET /keys/dormant` (read-only preview); `pruneKeys()` calls `POST /keys/bulk-delete` with `{ days }` (actual delete); `--confirm` flag gates execution (no confirm = dry-run); `formatPrunePreview()` shows DRY RUN header + key list + --confirm hint; `formatPruneResult()` shows deleted count + ID list; `keys prune [--days 90] [--confirm]` subcommand added; 15 tests (KKP1–KKP15) | DEVELOPER-X | SHIPPED | P1 | 2026-03-21 |
 | N-105 | Tenant-scoped scan history — `ScanEntry.tenantId?: string` added (backward-compat optional field); resolved at `record()` time via `getTenantStore().findByKeyId(keyId)?.id`; `search()`, `getScanUsageStats()`, `getStaleScanGroups()` each gain optional `tenantId` filter parameter; `GET /scans/search`, `GET /scans/usage`, `GET /scans/stale` routes expose `?tenantId=` query param; un-tenanted queries unchanged (no filter = global view); 15 tests (TSH1–TSH15) | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
 | N-106 | Webhook delivery retry dashboard — `WebhookDeliveryRecord` interface + `WebhookDeliveryLog` ring-buffer store (max 1,000; `list(webhookId?, limit?)`, newest-first); `dispatchWebhook()` now logs every attempt (attempt number, statusCode, delivered, latencyMs, error) rather than swallowing silently; `GET /webhooks/deliveries` (global, admin, `?limit=`) returns `{ total, failedCount, records[] }`; `GET /webhooks/:id/deliveries` (scoped, 404 on unknown); 15 tests (WDL1–WDL15) | ENTERPRISE | SHIPPED | P1 | 2026-03-21 |
+| N-107 | `faultline scans prune` CLI — dry-run-safe destructive operator command; `getScansPrunePreview()` delegates to `getStaleScans()` (GET, read-only); `pruneScans()` calls `DELETE /scans/stale?days=N`; `formatScansPrunePreview()` shows DRY RUN header + per-document hash/preview/age + `--confirm` hint; `formatScansPruneResult()` shows deleted groups + entries count; `scans prune [--days 30] [--confirm]` subcommand wired in; `confirm` added to BOOLEAN_FLAGS (bug fix); 16 tests (SP1–SP15 + SP8b) | DEVELOPER-X | SHIPPED | P1 | 2026-03-21 |
 
 ---
 
