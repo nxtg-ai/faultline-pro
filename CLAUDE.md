@@ -73,13 +73,15 @@ Do NOT skip planning on complex directives. Plan mode and agent teams are your s
 ## Idle Time Protocol
 When no directives are pending and no active work exists:
 1. Run CRUCIBLE Gates 1-7 self-audit on your test suite
-2. Document recent research in docs/research/
+2. Document recent research in docs/ — **immediately at first discovery, not after the third recurrence**
 3. Review and strengthen hollow test assertions
 4. Check Portfolio Intelligence section for reuse signals
 5. Update stale documentation (README, badges, CHANGELOG)
 
 Time limit: 30 minutes. Log actions in NEXUS ## Self-Improvement Log.
 Do NOT make architecture changes or add new features during self-improvement.
+
+**Pattern documentation rule**: When a session produces a reusable pattern (mutation kill technique, test architecture, provider quirk), write it to `docs/` before closing the session. An incomplete doc that exists is more valuable than a complete doc that doesn't.
 
 ---
 
@@ -90,8 +92,8 @@ Rules that apply to this project (Critical tier — claim forensics is safety-cr
 
 - **Gate 2**: Non-empty assertions — data-producing tests must assert result is non-empty. If a test creates data then queries it, assert `length > 0` or exact count before checking downstream behavior.
 - **Gate 4**: Delta gate — test count decreases > 5 require justification in commit message: `CRUCIBLE-G4: <reason>`. Enforced by pre-push hook.
-- **Gate 6**: Mutation testing (future) — `@stryker-mutator/core` on claim forensics critical paths. Threshold: 60% mutation score.
-- **Gate 7**: Spec-test traceability (future) — new integration tests must cite a NEXUS acceptance criterion.
+- **Gate 6**: Mutation testing — `@stryker-mutator/core` active on claim forensics critical paths. Threshold: 80% mutation score. Configs: `stryker-cli.config.mjs`, `stryker-stream.config.mjs`, `stryker-gdpr.config.mjs`. See `docs/mutation-testing.md` for patterns. Current scores: `cli/scan.ts` 81.97%, `stream.ts` 85%, GDPR stores 80.94%–96.81% — all above threshold.
+- **Gate 7**: Spec-test traceability — new integration tests must cite a NEXUS acceptance criterion. Current: 48/108 API test files (44%) have spec refs. Not enforced by hook; tracked manually.
 - **Oracle tier: CRITICAL** — all 4 oracle types required on claim forensics (example-based, property-based, contract, integration).
 
-Current oracle coverage: example-based (✅ 3,586 tests), property-based (✅ 19 properties — fast-check, N-76), contract (✅ 29 Zod schema tests — N-77), integration (✅ partial).
+Current oracle coverage: example-based (✅ 4,467 tests), property-based (✅ 19 properties — fast-check, N-76), contract (✅ 29 Zod schema tests — N-77), integration (✅ 12 E2E tests, N-81).
