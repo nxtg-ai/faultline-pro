@@ -855,6 +855,59 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-21 — N-106 — 1 initiative SHIPPED, 15 net new tests
+
+### 1. What did we ship since last check-in?
+
+**N-106 — Webhook delivery retry dashboard**
+
+| Commit | Deliverable | +Tests |
+|--------|-------------|--------|
+| `612e690` `feat: N-106` | `WebhookDeliveryRecord` interface: `id`, `webhookId`, `event`, `url`, `timestamp`, `attempt` (1-indexed), `statusCode`, `delivered`, `latencyMs`, `error`. `WebhookDeliveryLog` class: 1,000-entry ring buffer, `push()`, `list(webhookId?, limit?)` newest-first, `reset()`. `dispatchWebhook()` refactored: each of the 3 retry attempts now logs its outcome — success, HTTP non-ok (with status code), or network error (with error string, null statusCode). `GET /webhooks/deliveries` (admin, `?limit=`): global view with `failedCount` summary. `GET /webhooks/:id/deliveries` (admin, 404 on unknown): per-webhook scoped view. 15 tests (WDL1–WDL15). | +15 (3,971 → 3,986) |
+
+**Total this cycle**: 1 commit · 15 tests · 3,986 total · 106 initiatives SHIPPED.
+
+---
+
+### 2. What surprised you?
+
+**The silent-failure bug in `dispatchWebhook` was worse than it appeared.** Before N-106, the loop caught exceptions and swallowed them — but it also swallowed non-ok HTTP responses. A 503 from the webhook endpoint looked identical to a 200 at the call site. Operators had zero visibility into whether their webhooks were actually delivering. The delivery log exposes this: `WDL10` and `WDL11` together verify that HTTP non-ok AND network errors are both logged, each with the right shape. The CRUCIBLE Gate 5 (silent exception audit) would have flagged this: the original `catch { // network error — retry or swallow }` is a textbook silent failure in a data pipeline. The fix logs before swallowing, which is the minimum acceptable pattern.
+
+**`_setSleepFn` made the retry tests trivial.** The existing test escape hatch (`_setSleepFn(async () => {})`) bypasses the `[0, 500, 1000]ms` retry delays. Without it, WDL11 (all 3 attempts logged) would take 1.5 seconds. With it, the full 15-test suite runs in under 1 second. This is the right design for testable retry logic: inject the sleep function, default to real `setTimeout`, override in tests. Any retry loop in an ASIF project should expose a `_setSleepFn` or equivalent escape hatch.
+
+**The `attempt` field (1-indexed) on `WebhookDeliveryRecord` is load-bearing.** An operator looking at 3 consecutive failed records needs to know which was the first attempt and which was the final exhausted retry. Without the attempt number, the records are indistinguishable. WDL11 explicitly asserts `attempts.sort() === [1, 2, 3]` — not just that 3 records exist, but that their attempt numbers are correct. This is the kind of assertion that would catch a regression where the loop counter resets mid-retry.
+
+---
+
+### 3. Cross-project signals
+
+**Every async dispatch loop that silently swallows failures needs a delivery log.** The pattern established in N-106 — log every attempt to a ring buffer before returning/continuing — is directly applicable to: `NotificationStore._deliver()` (already has a history but no per-attempt retry logging), `JobScheduler` retry logic, `ScanQueue` failure handling. Any ASIF project with a retry loop that catches and swallows should apply this pattern. The CRUCIBLE Gate 5 audit explicitly targets this category.
+
+**`_setSleepFn` / injectable sleep for testable retry logic.** Already existed in Faultline's webhook store. Confirming it as the standard: any retry loop with real delays should expose a `setSleepFn` or accept a `sleep` parameter in its constructor. This makes tests instant without mocking `setTimeout` globally.
+
+**Ring buffer (fixed-capacity unshift/pop) is the right store for delivery logs.** Delivery events are high-volume and time-bounded in operator interest — "show me the last 1,000 attempts" is always the right query. A growing array with no cap will OOM over time. The `MAX_DELIVERY_LOG = 1_000` constant with `unshift + pop` is the standard pattern. `NotificationStore.MAX_HISTORY = 5_000` follows the same pattern. Any ASIF project storing event history should cap it.
+
+---
+
+### 4. What would you prioritize next?
+
+1. **CRUCIBLE Gate 6 (Stryker)**: Fourteenth cycle. N-106 revealed a real silent failure in `dispatchWebhook` — mutation testing would have caught variants of this earlier. The case is now stronger than ever. Approve?
+2. **N-107 — `faultline scans prune` CLI**: Mirror `keys prune` for scan history. `scans prune [--days 30] [--confirm]` using `GET /scans/stale` for preview and `DELETE /scans/stale` for execution. Closes the scan lifecycle CLI surface to match the key lifecycle CLI surface.
+3. **N-108 — Tenant-scoped notifications**: `NotificationRecord.tenantId?` resolved at `_deliver()` time via `getTenantStore().findByKeyId(keyId)?.id`. `GET /notifications?tenantId=` scoped view. Follows the N-105 record-time denormalization pattern.
+4. **N-109 — Webhook delivery log HTML dashboard**: `GET /webhooks/deliveries/view` — operator HTML page showing recent attempts with DELIVERED/FAILED chips, attempt number, latency, error message. Mirrors the scan hygiene and key hygiene dashboards.
+
+---
+
+### 5. Blockers / questions for CoS
+
+- **CRUCIBLE Gate 6 (Stryker)**: Fourteenth cycle, no response. N-106 just found a real production silent failure (`catch { // swallow }`). Gate 5 would have flagged it. Gate 6 (mutation testing) would have caught variants. The value is demonstrated, not theoretical. Approve?
+- **N-108 tenant-scoped notifications**: Confirm the record-time resolution pattern (resolve `tenantId` at `_deliver()` via `findByKeyId`) is the right approach before implementing. Same question as N-105 — want to avoid implementing and then being asked to change the lookup timing.
+- **100-milestone re-scope (fourteenth ask)**: 106 initiatives. No directional signal. Continuing on the observability + tenancy cluster. Any revenue or product pivot would be welcome direction at this point.
+- **NPM_TOKEN / Fly.io**: Still blocked. `packages/api` now has 6 new routes, 2 new stores, and tenant scoping since the last publish.
+- **UX questions (N-103/N-104)**: DISABLED/EXPIRED key visibility in `keys rotation` and `keys prune` — still open after 3 cycles.
+
+---
+
 > **Reflection cycle**: 2026-03-21 — N-105 — 1 initiative SHIPPED, 15 net new tests
 
 ### 1. What did we ship since last check-in?
