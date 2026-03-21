@@ -22,22 +22,9 @@ import {
   _setSleepFn,
 } from '../src/store/webhooks.js';
 import { getWebhookDeliveryLog, resetWebhookDeliveryLog } from '../src/store/webhooks.js';
-import type { Webhook } from '../src/store/webhooks.js';
+import { makeWebhook } from './helpers/make-webhook.js';
 
 const BASE_MS = 1_000_000; // arbitrary fixed "now" for deterministic tests
-
-function makeWebhook(id = 'wh-rate-test'): Webhook {
-  return {
-    id,
-    url:          'https://example.com/hook',
-    events:       ['scan.complete'],
-    secret:       'secret',
-    tenantId:     undefined,
-    maxAttempts:  3,
-    retryDelayMs: 500,
-    createdAt:    new Date().toISOString(),
-  };
-}
 
 beforeEach(() => {
   resetWebhookRateLimiter();
@@ -154,7 +141,7 @@ describe('dispatchWebhook() — rate limiter integration', () => {
 
   it('WRL11: rate-limited delivery record has attempt=1 and latencyMs=0', async () => {
     const rl = getWebhookRateLimiter();
-    const wh = makeWebhook('wh-rl11');
+    const wh = makeWebhook({ id: 'wh-rl11' });
     for (let i = 0; i < rl.limitPerMinute; i++) rl.check(wh.id);
 
     await dispatchWebhook(wh, 'scan.failed', {});
@@ -169,7 +156,7 @@ describe('dispatchWebhook() — rate limiter integration', () => {
 
   it('WRL12: delivery resumes after rate limiter is reset', async () => {
     const rl = getWebhookRateLimiter();
-    const wh = makeWebhook('wh-rl12');
+    const wh = makeWebhook({ id: 'wh-rl12' });
     for (let i = 0; i < rl.limitPerMinute; i++) rl.check(wh.id);
 
     // Currently blocked
@@ -204,8 +191,8 @@ describe('WebhookRateLimiter — env + cross-webhook', () => {
 
   it('WRL14: rate-limiting wh-A does not affect wh-B delivery', async () => {
     const rl = getWebhookRateLimiter();
-    const whA = makeWebhook('wh-A-14');
-    const whB = makeWebhook('wh-B-14');
+    const whA = makeWebhook({ id: 'wh-A-14' });
+    const whB = makeWebhook({ id: 'wh-B-14' });
 
     // Exhaust wh-A
     for (let i = 0; i < rl.limitPerMinute; i++) rl.check(whA.id);

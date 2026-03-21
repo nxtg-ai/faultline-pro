@@ -22,22 +22,9 @@ import {
   _setSleepFn,
 } from '../src/store/webhooks.js';
 import { getWebhookDeliveryLog, resetWebhookDeliveryLog } from '../src/store/webhooks.js';
-import type { Webhook } from '../src/store/webhooks.js';
+import { makeWebhook } from './helpers/make-webhook.js';
 
 const NOW = 2_000_000; // fixed clock base for deterministic tests
-
-function makeWebhook(id = 'wh-cb-test'): Webhook {
-  return {
-    id,
-    url:          'https://example.com/hook',
-    events:       ['scan.complete'],
-    secret:       'secret',
-    tenantId:     undefined,
-    maxAttempts:  3,
-    retryDelayMs: 500,
-    createdAt:    new Date().toISOString(),
-  };
-}
 
 beforeEach(() => {
   resetWebhookCircuitBreaker();
@@ -131,7 +118,7 @@ describe('WebhookCircuitBreaker — configuration', () => {
 describe('dispatchWebhook() — circuit breaker integration', () => {
   it('CB10: open circuit causes dispatchWebhook to skip fetch entirely', async () => {
     const cb = getWebhookCircuitBreaker();
-    const wh = makeWebhook('wh-cb10');
+    const wh = makeWebhook({ id: 'wh-cb10' });
     // Manually trip the circuit by recording threshold failures
     for (let i = 0; i < cb.failureThreshold; i++) {
       cb.recordFailure(wh.id);
@@ -146,7 +133,7 @@ describe('dispatchWebhook() — circuit breaker integration', () => {
 
   it('CB11: open circuit logs a delivery record with error="circuit open"', async () => {
     const cb = getWebhookCircuitBreaker();
-    const wh = makeWebhook('wh-cb11');
+    const wh = makeWebhook({ id: 'wh-cb11' });
     for (let i = 0; i < cb.failureThreshold; i++) cb.recordFailure(wh.id);
 
     await dispatchWebhook(wh, 'scan.failed', {});
@@ -163,7 +150,7 @@ describe('dispatchWebhook() — circuit breaker integration', () => {
   it('CB12: all-failed dispatch increments circuit failure counter', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 503 }));
     const cb = getWebhookCircuitBreaker();
-    const wh = makeWebhook('wh-cb12');
+    const wh = makeWebhook({ id: 'wh-cb12' });
 
     await dispatchWebhook(wh, 'scan.complete', {});
     expect(cb.failureCount(wh.id)).toBe(1);
@@ -172,7 +159,7 @@ describe('dispatchWebhook() — circuit breaker integration', () => {
   it('CB13: successful dispatch records success and resets failure counter', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
     const cb = getWebhookCircuitBreaker();
-    const wh = makeWebhook('wh-cb13');
+    const wh = makeWebhook({ id: 'wh-cb13' });
 
     // Seed some failures first
     cb.recordFailure(wh.id);
@@ -189,8 +176,8 @@ describe('dispatchWebhook() — circuit breaker integration', () => {
 describe('WebhookCircuitBreaker — isolation + reset', () => {
   it('CB14: open circuit on wh-A does not affect wh-B', async () => {
     const cb = getWebhookCircuitBreaker();
-    const whA = makeWebhook('wh-A-cb14');
-    const whB = makeWebhook('wh-B-cb14');
+    const whA = makeWebhook({ id: 'wh-A-cb14' });
+    const whB = makeWebhook({ id: 'wh-B-cb14' });
 
     for (let i = 0; i < cb.failureThreshold; i++) cb.recordFailure(whA.id);
     expect(cb.isOpen(whA.id)).toBe(true);
@@ -205,7 +192,7 @@ describe('WebhookCircuitBreaker — isolation + reset', () => {
 
   it('CB15: reset() clears circuit state — dispatch resumes', async () => {
     const cb = getWebhookCircuitBreaker();
-    const wh = makeWebhook('wh-cb15');
+    const wh = makeWebhook({ id: 'wh-cb15' });
     for (let i = 0; i < cb.failureThreshold; i++) cb.recordFailure(wh.id);
     expect(cb.isOpen(wh.id)).toBe(true);
 

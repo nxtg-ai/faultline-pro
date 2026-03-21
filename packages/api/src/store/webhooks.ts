@@ -29,8 +29,6 @@ type SleepFn = (ms: number) => Promise<void>;
 let _sleep: SleepFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 export function _setSleepFn(fn: SleepFn): void { _sleep = fn; }
 
-const RETRY_DELAYS = [0, 500, 1000]; // ms before each of the 3 attempts
-
 // ─── Per-webhook rate limiter ──────────────────────────────────────────────
 
 const WINDOW_MS = 60_000; // 1-minute sliding window

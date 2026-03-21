@@ -20,20 +20,8 @@ import {
   dispatchWebhook,
   _setSleepFn,
 } from '../src/store/webhooks.js';
-import type { Webhook, WebhookEvent } from '../src/store/webhooks.js';
-
-function makeWebhook(overrides: Partial<Webhook> = {}): Webhook {
-  return {
-    id:           overrides.id           ?? 'wh-test-id',
-    url:          overrides.url          ?? 'https://example.com/hook',
-    events:       overrides.events       ?? ['scan.complete'],
-    secret:       overrides.secret       ?? 'test-secret',
-    tenantId:     overrides.tenantId,
-    maxAttempts:  overrides.maxAttempts  ?? 3,
-    retryDelayMs: overrides.retryDelayMs ?? 500,
-    createdAt:    overrides.createdAt    ?? new Date().toISOString(),
-  };
-}
+import type { WebhookEvent } from '../src/store/webhooks.js';
+import { makeWebhook } from './helpers/make-webhook.js';
 
 beforeEach(() => {
   resetWebhookDeliveryLog();

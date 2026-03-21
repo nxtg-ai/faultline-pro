@@ -1,5 +1,6 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { getKeyStore } from '../store/keys.js';
+import { getTenantStore } from '../store/tenants.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -78,4 +79,14 @@ export async function requireAdmin(request: FastifyRequest, reply: FastifyReply)
   }
 
   reply.status(403).send({ error: 'Forbidden. Admin access required.' });
+}
+
+/**
+ * Resolves the tenantId for a request's keyId.
+ * Returns undefined for admin keys ('admin'), missing keyIds, or keys not
+ * associated with any tenant.
+ */
+export function resolveRequestTenantId(keyId: string | undefined): string | undefined {
+  if (!keyId || keyId === 'admin') return undefined;
+  return getTenantStore().findByKeyId(keyId)?.id;
 }

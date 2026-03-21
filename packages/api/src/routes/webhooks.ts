@@ -1,9 +1,7 @@
 import type { FastifyInstance } from 'fastify';
-import { requireAdmin } from '../plugins/auth.js';
-import { requireApiKey } from '../plugins/auth.js';
+import { requireAdmin, requireApiKey, resolveRequestTenantId } from '../plugins/auth.js';
 import { getWebhookStore, getWebhookTestHistory, getWebhookDeliveryLog, sendTestWebhook, SAMPLE_PAYLOADS } from '../store/webhooks.js';
 import type { WebhookEvent } from '../store/webhooks.js';
-import { getTenantStore } from '../store/tenants.js';
 
 const VALID_EVENTS: WebhookEvent[] = ['scan.complete', 'scan.failed', 'claim.verdict_changed', 'compliance.deadline_approaching'];
 
@@ -38,10 +36,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     { preHandler: requireAdmin, schema: { tags: ['Webhooks'], summary: 'Register a new webhook endpoint and event subscription', body: CREATE_BODY_SCHEMA } },
     async (request, reply) => {
       const { url, events, secret, maxAttempts, retryDelayMs } = request.body;
-      const keyId = request.keyId;
-      const tenantId = keyId && keyId !== 'admin'
-        ? getTenantStore().findByKeyId(keyId)?.id
-        : undefined;
+      const tenantId = resolveRequestTenantId(request.keyId);
       const entry = getWebhookStore().create(url, events, secret, tenantId, maxAttempts, retryDelayMs);
       return reply.status(201).send(entry);
     },

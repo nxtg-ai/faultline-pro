@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { requireApiKey } from '../plugins/auth.js';
+import { requireApiKey, resolveRequestTenantId } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { getAnalyticsStore } from '../store/analytics.js';
@@ -13,7 +13,6 @@ import { getTemplateStore } from '../store/templates.js';
 import { getClaimIndex } from '../store/claims.js';
 import { getCostStore } from '../store/costs.js';
 import { getScanHistory, hashText } from '../store/scan-history.js';
-import { getTenantStore } from '../store/tenants.js';
 import { recordScanTelemetry } from '../store/telemetry.js';
 import { notifyScanFailed } from '../store/notifications.js';
 
@@ -110,7 +109,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
             latencyMs: Date.now() - startTime,
             timestamp: new Date().toISOString(),
             keyId,
-            tenantId: getTenantStore().findByKeyId(keyId)?.id,
+            tenantId: resolveRequestTenantId(keyId),
           });
 
           if (attempted.length > 0) {
