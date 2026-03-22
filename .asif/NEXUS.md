@@ -899,6 +899,64 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-21 — CoS check-in — N-150 session close (Job Scheduler Hardening JH1–JH8; 3,465 tests; 150 initiatives SHIPPED)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests | Total |
+|--------|-----------|-------------|--------|-------|
+| `15c6bae` | N-150 job scheduler hardening | `job-scheduler-hardening.test.ts` (8 tests JH1–JH8): `tick()` body — paused skip, not-due skip, due-run; `runJob()` catch — Error throw, non-Error string throw; `start()` idempotency + `stop()` no-op; `parseIntervalMs()` default branch | +8 | 3,465 |
+
+**3,465 tests · 150 initiatives SHIPPED.** `store/jobs.ts` branch coverage 55.55%→~80%. `tick()` was dead code from the test perspective — now exercised across all three branch paths.
+
+---
+
+### 2. What surprised you?
+
+**`tick()` was completely invisible despite J13–J16 exercising `runJob()` fully.** The existing scheduler tests all called `triggerJob(id)` directly, which calls `runJob()` without touching `tick()`. This means the for-loop, the paused-skip branch, and the not-yet-due-skip branch had never executed. The coverage report showed lines 122-126 as uncovered but the description "tick() never called" wasn't immediately obvious — it required tracing the call graph. The lesson: loop-body coverage and direct-call coverage are independent; both must be tested.
+
+**Back-dating `nextRunAt` is the only way to trigger tick() on a freshly created job.** `JobStore.create()` always sets `nextRunAt = Date.now() + intervalMs` — even for `'* * * * *'` (1-minute interval), the job won't fire for 60 seconds. Tests must mutate `nextRunAt` via `getJobStore().update()` to make a job immediately due. This is an important pattern for any time-based scheduler test.
+
+**`parseIntervalMs()` has a third branch nobody tested.** J17 tested `*/5 * * * *` (regex match) and J18 tested `* * * * *` (exact string). The default case — any other schedule string — returns 60 minutes. This branch is the "safe fallback for cron expressions we don't parse" and was covered for the first time in JH8.
+
+---
+
+### 3. Cross-project signals
+
+**Scheduler tick() vs triggerJob() test gap is a systemic pattern.** Any project with a scheduler that has both `tick()` (time-based dispatch) and `triggerJob()`/`runNow()` (manual trigger) will have the same gap: tests reach for the manual trigger and leave the tick path uncovered. Podcast-Pipeline's episode fetcher scheduler and Forge's background task runner are likely candidates. Check for `tick()` / `processQueue()` methods that are never directly invoked in tests.
+
+**Time-based test mutation pattern**: `store.update(id, { nextRunAt: new Date(Date.now() - 1000).toISOString() })` — back-date to trigger immediately. Generalizes to any system where a "next run" timestamp gates execution. Document this in project test patterns.
+
+---
+
+### 4. What would I prioritize next?
+
+**P1 — v0.4.0 git tag + npm publish.** Twenty-third cycle. 3,465 tests. 8/8 CRUCIBLE gates PASS. Zero technical blockers. Go/no-go?
+
+**P2 — `routes/scans.ts` + `store/scans.ts` branch gaps** (57% and 83% branch). `routes/scans.ts` uncovered lines 38-42 — likely the `/scans/timeline/view` HTML endpoint or an error branch.
+
+**P3 — Fix `BulkJob.error` type cast tech debt.** Add `error?: string` to `BulkJob` interface. One-liner.
+
+**P4 — Add Vitest exclude for `.claude/worktrees/**`.** One-line config change.
+
+---
+
+### 5. Blockers and questions for the CoS
+
+1. **v0.4.0 publish**: Twenty-third cycle. 3,465 real tests. Go/no-go?
+
+2. **`BulkJob.error` type fix**: Approve as one-liner, or leave cast?
+
+3. **Vitest worktree exclude**: Add now or track as future initiative?
+
+4. **Callback unification** (`onClaimVerified` + `onProgress` → `onEvent?`): Eleventh consecutive cycle. Approve, close, or officially backlog?
+
+5. **VALID_PROVIDERS mutation resistance**: Eighth cycle open. Accept / integration test / extract validator?
+
+6. **Historical NEXUS counts**: N-141 through N-144 inflated counts. Correct or leave with N-145 note?
+
+---
+
 > **Reflection cycle**: 2026-03-21 — CoS check-in — N-149 session close (Notification Hardening NH1–NH15; 3,457 tests; 149 initiatives SHIPPED)
 
 ### 1. What did we ship since last check-in?
