@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-150 Job Scheduler Hardening — JH1–JH8; 3,465 tests; 150 initiatives SHIPPED. All Gate 6 above threshold. v0.4.0 awaiting CoS go-signal.)
+> **Last Updated**: 2026-03-21 (N-151 Scan Store Hardening — SS1–SS10; 3,475 tests; 151 initiatives SHIPPED. All Gate 6 above threshold. v0.4.0 awaiting CoS go-signal.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -132,6 +132,7 @@
 | N-120 | GDPR export endpoint — `GET /tenants/:id/export` (admin-gated); returns ZIP archive via `adm-zip` containing `manifest.json` (tenant metadata + counts), `scan-history.json` (all tenant scans via `getRecent(10_000).filter(tenantId)`), `audit-log.ndjson` (NDJSON one entry per line), `notifications.json`, `webhooks.json`, `usage.json` (keyed by keyId); `Content-Disposition: attachment; filename=faultline-gdpr-export-{tenantId}-{date}.zip`; 404 for unknown tenant; 403 without admin; 15 tests (GE1–GE15): 200/content-type/disposition/zip structure/manifest counts/scan isolation/tenant isolation/empty-tenant zero-counts | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
 | N-121 | GDPR erasure endpoint — `DELETE /tenants/:id/data` (admin-gated, Article 17 right-to-erasure); adds `deleteTenantEntries(tenantId)` to `ScanHistoryStore` + `AuditLogger`, `deleteTenantHistory(tenantId)` to `NotificationStore`, `deleteTenant(tenantId)` to `WebhookStore`, `deleteKey(keyId)` to `UsageMeter`; returns `{ tenantId, deleted: { scanEntries, auditEntries, notifications, webhooks, usageKeys } }`; tenant record itself preserved (data only); idempotent (second call returns all zeros); 15 tests (ER1–ER15): counts, actual store erasure, tenant-not-deleted, idempotency, isolation (tenant B untouched), export-after-erasure returns empty ZIP | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
 | N-127 | v0.4.0 publish prep — CHANGELOG `[v0.4.0]` block cut (N-119–N-127 initiatives); `@nxtg/faultline` + `@nxtg/faultline-api` bumped 0.2.0→0.4.0; README `[Capability table]` gains GDPR compliance + mutation-tested core rows; Enterprise API section updated with GDPR export/erasure endpoints; README badge 4,286→4,301; `release-prep.test.ts` RP10 updated (Unreleased → full changelog scope); 15 tests (RP16–RP30): badge≥4286, GDPR mentions, erasure, mutation, `[v0.4.0]` block, date, GDPR+mutation content, empty Unreleased, cli 0.4.0, api 0.4.0, N-119–N-127 all present, v0.3.0 preserved, /changelog 200 | DISTRIBUTION | SHIPPED | P1 | 2026-03-21 |
+| N-151 | `store/scans.ts` + `routes/scans.ts` hardening — `scan-store-hardening.test.ts` (new, 10 tests SS1–SS10); SS1: `ScanStore.reset()` instance method (lines 37-39) — first coverage, all prior tests use `resetScanStore()` singleton swap; SS2: `size` getter (lines 41-43) — first coverage; SS3: `record()` overflow eviction (line 24 if-branch) — 1001st record triggers `shift()`, MAX=1000 enforced; SS4: `list()` without keyId (line 29 false-branch) — returns all scans; SS5: `GET /scans/timeline?limit=3` — `limit` truthy branch (line 32); SS6: `GET /scans/timeline?limit=abc` — `parseInt NaN → || 50` fallback; SS7: `GET /scans/search?limit=5` — `limit` branch (line 261); SS8: `/scans/stale/view` with `overallRisk='unusual'` — `riskColour() ?? '#6b7280'` default (line 112); SS9–SS10: `list(keyId)` filter + `getScanStore()` singleton; `store/scans.ts` branch 57%→~90%; `routes/scans.ts` branch 83%→100%; total tests 3,465→3,475 | FORENSIC | SHIPPED | P2 | 2026-03-21 |
 | N-150 | `api/store` job scheduler hardening — `job-scheduler-hardening.test.ts` (new, 8 tests JH1–JH8); JH1–JH3: `JobScheduler.tick()` body (lines 122-126) — all prior tests only used `triggerJob()` directly, leaving `tick()` entirely uncovered: paused job skip (status !== 'active' continue branch), not-yet-due job skip (nextRunAt > now continue branch), due active job runs (scan called, runCount incremented); JH4–JH5: `runJob()` catch block (lines 163-165) — scan throws Error → job updated + job.failed event, scan throws non-Error string → String(err) fallback; JH6–JH7: `start()` idempotency guard (if (this.timer) return branch) + `stop()` when never started (null timer no-op); JH8: `parseIntervalMs()` unrecognized schedule → 60-min default; `store/jobs.ts` branch 55.55%→~80%; total tests 3,457→3,465 | AUTOMATION | SHIPPED | P2 | 2026-03-21 |
 | N-149 | `api/store` notification hardening — `notification-hardening.test.ts` (new, 15 tests NH1–NH15); NH1–NH3: `NotificationStore.reset()` instance method (lines 220-221 of store/notifications.ts) — clears prefs map, clears history array, safe on empty store; previously only `resetNotificationStore()` (singleton swap) was exercised; NH4–NH6: `notifyWeeklySummary()` for-loop body (lines 252-253) — empty array (no-op), single entry, two entries covering loop-body execution twice; NH7–NH8: `GET /notifications/prefs` admin list route (line 62 of routes/notifications.ts) via HTTP inject — empty prefs 200, populated prefs 200; NH9–NH11: `KeyExpiryNotifier` `.catch(() => undefined)` callbacks (lines 51, 72) covered by mocking dispatch to reject + flushing microtasks; `getKeyExpiryNotifier()`/`resetKeyExpiryNotifier()` singleton first coverage; NH12–NH15: `KeyRotationNotifier` identical pattern — `.catch` callbacks (lines 52, 73), `createdAt` mutated to 200d ago to trigger 90d+180d thresholds, `getKeyRotationNotifier()`/`resetKeyRotationNotifier()` (lines 88-93) first coverage; total tests 3,442→3,457 | ENTERPRISE | SHIPPED | P2 | 2026-03-21 |
 | N-148 | `api/lib` + `api/plugins` hardening — `url-validator-ratelimit.test.ts` (new, 18 tests UV1–UV13+RT1–RT5); UV1–UV3: default `_fetcher` try/catch body (lines 20-30) via `vi.stubGlobal('fetch')` after `resetUrlFetcher()` — 200, 404, network-throw catch branch; UV4: `resetUrlFetcher()` internal body (lines 40-50) confirmed via custom→reset→stub sequence; UV5: 3xx redirect → `score += 30` branch (line 67), available=true, evidenceScore 30-49; UV6–UV8: `scoreSource()` title-keyword relevance, last-modified within 2 years (+20), last-modified >2 years (no bonus); UV9: status=0 unreachable; UV10–UV13: `buildEvidenceLinks()` no claims, no verification entry, empty sources, multiple claims; RT1–RT5: `resolveTier()` — env-admin shortcut, keystore-admin, keystore-pro, scan-only free default, unknown-keyId fallback; `url-validator.ts` 69%→~95% branch; `plugins/ratelimit.ts` 66%→100% branch; total tests 3,424→3,442 | FORENSIC | SHIPPED | P2 | 2026-03-21 |
@@ -898,6 +899,59 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-03-21 — CoS check-in — N-151 session close (Scan Store Hardening SS1–SS10; 3,475 tests; 151 initiatives SHIPPED)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests | Total |
+|--------|-----------|-------------|--------|-------|
+| `9e97f2a` | N-151 scan store hardening | `scan-store-hardening.test.ts` (10 tests SS1–SS10): `ScanStore.reset()` instance, `size` getter, overflow eviction (1001 records), `list()` without keyId, `/scans/timeline?limit=N`, NaN limit fallback, `/scans/search?limit=N`, `riskColour()` default, `list(keyId)` filter, `getScanStore()` singleton | +10 | 3,475 |
+
+**3,475 tests · 151 initiatives SHIPPED.** `store/scans.ts` branch 57%→~90%; `routes/scans.ts` branch 83%→100%.
+
+---
+
+### 2. What surprised you?
+
+**`riskColour()` default branch hit by passing `overallRisk='unusual'` — but it only fires if the view renders rows at all.** Line 112 is inside the `stats.map()` call at line 117. To hit it, `stats.length > 0` must be true AND the risk value must not be in `{Critical, High, Medium, Low}`. The test seeded a stale entry with `overallRisk: 'unusual'` and back-dated its timestamp by 40 days. The view renders exactly one row, the `riskColour()` call hits the `?? '#6b7280'` default, and the fallback colour appears in the HTML. This required understanding how `getScanUsageStats()` derives `latestRisk` from the recorded `overallRisk` field.
+
+**`store/scans.ts` has the same instance-method vs singleton pattern as `store/notifications.ts`.** `reset()` is defined as an instance method, `resetScanStore()` is the factory-level singleton swap. All existing tests call `resetScanStore()` in `beforeEach`, so `reset()` (line 37-39) was invisible. Three consecutive store modules (notifications, scans, jobs) all show this gap — it's now a confirmed anti-pattern in this codebase.
+
+**overflow eviction (MAX=1000) required inserting 1001 records in a test.** This is a moderately expensive operation but completes in <50ms since records are in-memory. The eviction branches (the `if` guard at line 24 and `shift()`) were simply never triggered because no test ever approached the MAX. The test asserts the first entry is gone and the 1001st is present — a proper non-empty assertion.
+
+---
+
+### 3. Cross-project signals
+
+**Instance-method reset blindspot is now confirmed across 3 consecutive modules.** The pattern: `class Foo { reset() {...} }` + `function resetFoo() { instance = new Foo(); }`. Tests call `resetFoo()`, never `foo.reset()`. This affects any ASIF project where stores have both forms. Should be added to the project's test checklist: "For every store with a `reset()` instance method, there must be a test that calls it directly."
+
+**Capacity/overflow branches require intentionally stressing the MAX.** Any store with a capacity cap (`if (arr.length > MAX) arr.shift()`) will have the overflow branch dead in normal tests. A targeted test that inserts `MAX + 1` items is the only way to cover it. This applies to Podcast-Pipeline's episode cache, FamilyMind's notification queue, and any bounded store.
+
+---
+
+### 4. What would I prioritize next?
+
+**P1 — v0.4.0 git tag + npm publish.** Twenty-fourth cycle. 3,475 tests. 8/8 CRUCIBLE gates PASS. Go/no-go?
+
+**P2 — `routes/orgs.ts` branch gaps** (53.26% branch — lowest remaining API route).
+
+**P3 — Fix `BulkJob.error` type cast tech debt.** One-liner.
+
+**P4 — `cli/config.ts` gaps** (70.12% branch) — CLI config module.
+
+---
+
+### 5. Blockers and questions for the CoS
+
+1. **v0.4.0 publish**: Twenty-fourth cycle. 3,475 real tests. Go/no-go?
+2. **`BulkJob.error` type fix**: Approve as one-liner?
+3. **Vitest worktree exclude**: Add now or track as future initiative?
+4. **Callback unification**: Twelfth consecutive cycle. Close or backlog?
+5. **VALID_PROVIDERS mutation resistance**: Ninth cycle open.
+6. **Historical NEXUS counts**: N-141–N-144 inflated. Correct or leave?
+
+---
 
 > **Reflection cycle**: 2026-03-21 — CoS check-in — N-150 session close (Job Scheduler Hardening JH1–JH8; 3,465 tests; 150 initiatives SHIPPED)
 
