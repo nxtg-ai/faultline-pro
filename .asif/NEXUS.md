@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-21 (N-151 Scan Store Hardening — SS1–SS10; 3,475 tests; 151 initiatives SHIPPED. All Gate 6 above threshold. v0.4.0 awaiting CoS go-signal.)
+> **Last Updated**: 2026-03-22 (Gemini benchmark EXECUTED — Flash 14/17 (82.4%); Pro blocked (paid-tier, limit=0); calibration prompt tweak identified; docs/gemini-model-benchmark-results.md written. 3,475 tests; 151 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -881,18 +881,28 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Questions
 
-**Q (2026-03-21)**: Gemini model benchmark — Flash vs Pro for claim verification. Research task completed; live API run blocked (no GEMINI_API_KEY in shell). Full report at `docs/gemini-model-benchmark.md`. Key findings:
+**Q (2026-03-22 — UPDATE)**: Gemini benchmark EXECUTED. Flash 5/5 complete. Full results at `docs/gemini-model-benchmark-results.md`. Key findings:
 
-1. **Architectural note**: Both models receive identical web evidence (Google Search grounding). Quality difference is about *reasoning over search results*, not raw knowledge.
-2. **5 benchmark prompts designed**: Eiffel Tower date (factual error), solar power % (stat fabrication), coffee/cancer (mixed/nuanced), mRNA/DNA (clear contradiction), Dunning-Kruger replication (calibration stress).
-3. **Prediction**: Pro expected 13-15/15 vs Flash 11-13/15, primarily on nuanced claims (B3, B5).
-4. **Cost trade-off**: `gemini-3.1-pro-preview` costs ~27× more per input token than `gemini-2.5-flash`.
-5. **Provider-agnostic win**: Adding a calibration phrase to the verification prompt ("if uncertain, output mixed") cuts hallucinations 53%→23% regardless of model (arXiv 2603.05471). Ready to ship.
+**gemini-2.5-flash: 14/17 (82.4%)**
+- B1 Eiffel Tower: 3/3 — `contradicted`, good year (1887–1889)
+- B2 Solar 45%: 3/3 — `contradicted`, cited 8.8–17.6% actual figures
+- B3 Coffee/cancer: **1/4** — `contradicted` WRONG (should be `mixed`). Missed IARC Group 2A hot-beverages distinction. Calibration failure confirmed.
+- B4 mRNA/DNA: 3/3 — `contradicted`, cited nuclear-entry mechanism
+- B5 Dunning-Kruger: 4/4 — `contradicted`, cited statistical artifact / "simulated with random data"
 
-**Decision needed from CoS**:
-- (a) Run live benchmark yourself with GEMINI_API_KEY and share scores — I'll update the recommendation.
-- (b) Approve the calibration prompt tweak (provider-agnostic, no model switch required) — I can ship this as N-152.
-- (c) Approve wiring `gemini-3.1-pro-preview` to a `--model=accurate` CLI flag (N-79 from Emma's audit).
+**gemini-3.1-pro-preview: BLOCKED** — `limit: 0` on free tier. Same for `gemini-2.5-pro`. All Pro models require billing-enabled API key.
+
+**Finding that changes the decision**:
+- Flash succeeded on B4 and B5 beyond predictions (Pro-level nuance on both)
+- Flash fails only on the true `mixed` category (B3) — overconfidence/calibration issue, not reasoning depth
+- Calibration prompt tweak directly addresses the B3 failure class — provider-agnostic
+
+**Updated decisions needed from CoS**:
+- (a) Run Pro benchmark with billing-enabled key to confirm Pro scores B3/B5 predictions
+- (b) **Approve calibration prompt tweak as N-152** — addresses the single confirmed failure mode. Provider-agnostic. Ready to ship.
+- (c) Wire `--model=accurate` flag (N-79) — lower priority now that Flash shows stronger-than-predicted nuance on B4/B5
+
+**Q (2026-03-21 — original)**: Gemini model benchmark — Flash vs Pro for claim verification. Research task completed; full report at `docs/gemini-model-benchmark.md`. *(Superseded by 2026-03-22 update above.)*
 
 **Q (2026-03-14)**: Reflection cadence guard — standing request. Four reflection prompts have now fired with no intervening code across two sessions (2026-03-09 and 2026-03-13/14). Each produces a no-delta entry or padded repetition, which is noise. Proposed fix: gate the reflection prompt so it only fires when `git log` shows at least one new commit since the last reflection SHA. Could be implemented as a pre-prompt hook check. Is this a CoS scheduling item or a tooling item? Who owns the fix?
 
