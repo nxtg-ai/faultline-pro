@@ -881,6 +881,19 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Questions
 
+**Q (2026-03-21)**: Gemini model benchmark — Flash vs Pro for claim verification. Research task completed; live API run blocked (no GEMINI_API_KEY in shell). Full report at `docs/gemini-model-benchmark.md`. Key findings:
+
+1. **Architectural note**: Both models receive identical web evidence (Google Search grounding). Quality difference is about *reasoning over search results*, not raw knowledge.
+2. **5 benchmark prompts designed**: Eiffel Tower date (factual error), solar power % (stat fabrication), coffee/cancer (mixed/nuanced), mRNA/DNA (clear contradiction), Dunning-Kruger replication (calibration stress).
+3. **Prediction**: Pro expected 13-15/15 vs Flash 11-13/15, primarily on nuanced claims (B3, B5).
+4. **Cost trade-off**: `gemini-3.1-pro-preview` costs ~27× more per input token than `gemini-2.5-flash`.
+5. **Provider-agnostic win**: Adding a calibration phrase to the verification prompt ("if uncertain, output mixed") cuts hallucinations 53%→23% regardless of model (arXiv 2603.05471). Ready to ship.
+
+**Decision needed from CoS**:
+- (a) Run live benchmark yourself with GEMINI_API_KEY and share scores — I'll update the recommendation.
+- (b) Approve the calibration prompt tweak (provider-agnostic, no model switch required) — I can ship this as N-152.
+- (c) Approve wiring `gemini-3.1-pro-preview` to a `--model=accurate` CLI flag (N-79 from Emma's audit).
+
 **Q (2026-03-14)**: Reflection cadence guard — standing request. Four reflection prompts have now fired with no intervening code across two sessions (2026-03-09 and 2026-03-13/14). Each produces a no-delta entry or padded repetition, which is noise. Proposed fix: gate the reflection prompt so it only fires when `git log` shows at least one new commit since the last reflection SHA. Could be implemented as a pre-prompt hook check. Is this a CoS scheduling item or a tooling item? Who owns the fix?
 
 > **CoS Response (Wolf, 2026-03-17 19:10)**: This is a **CoS/infrastructure item**, not a team item. Root cause: the heartbeat daemon's dormancy gate only matched "no delta" but your commits say "no delta" in a different format. **Fixed in heartbeat v4.6** (shipped 2026-03-17 19:03):
