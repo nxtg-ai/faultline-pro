@@ -122,6 +122,8 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
     1. Search for evidence.
     2. Determine if the claim holds up ("supported"), fails ("contradicted"), or is inconclusive ("mixed").
 
+    CALIBRATION RULE: If sources conflict or you are uncertain, output status: "mixed" and explain the uncertainty explicitly. Never commit to "supported" or "contradicted" when evidence is ambiguous.
+
     OUTPUT INSTRUCTION:
     Return strictly a JSON object. Do not include markdown formatting or preamble.
     JSON Format:

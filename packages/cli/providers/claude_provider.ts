@@ -65,6 +65,8 @@ Claim: "${claim.text}"
 
 Determine if the claim holds up ("supported"), fails ("contradicted"), or is inconclusive ("mixed").
 
+CALIBRATION RULE: If sources conflict or you are uncertain, output status: "mixed" and explain the uncertainty explicitly. Never commit to "supported" or "contradicted" when evidence is ambiguous.
+
 Return strictly a JSON object:
 {
   "status": "supported" | "contradicted" | "mixed" | "unverified",
