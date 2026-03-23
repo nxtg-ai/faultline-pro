@@ -60,13 +60,15 @@ function run(cmd: string, cwd: string): string {
 }
 
 function listTags(cwd: string): { tag: string; date: string; hash: string }[] {
-  // Use two calls to avoid shell-escaping issues with %(refname:short) parens
-  const names = run('git tag --sort=version:refname', cwd);
-  if (!names) return [];
-  return names.split('\n').filter(Boolean).map(tag => {
-    const date = run(`git log -1 --format=%ci "${tag}"`, cwd).slice(0, 10);
-    const hash = run(`git rev-parse --short "${tag}"`, cwd);
-    return { tag, date, hash };
+  // Single call: %(objectname:short) gives abbreviated hash; %09 is a tab literal
+  const raw = run(
+    "git for-each-ref --sort=version:refname '--format=%(refname:short)%09%(creatordate:short)%09%(objectname:short)' refs/tags/",
+    cwd,
+  );
+  if (!raw) return [];
+  return raw.split('\n').filter(Boolean).map(line => {
+    const parts = line.split('\t');
+    return { tag: parts[0] ?? '', date: (parts[1] ?? '').slice(0, 10), hash: parts[2] ?? '' };
   });
 }
 
