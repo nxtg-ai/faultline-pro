@@ -928,6 +928,65 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-24 — CoS check-in — N-156 session close (AAIO baseline measurement; 3,494 tests; 156 initiatives SHIPPED)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests | Total |
+|--------|-----------|-------------|--------|-------|
+| `7921052` | N-156 AAIO baseline | `data/outputs/aaio-baseline.md` — 15 web search queries across 5 clusters; scorecard (2 HITs / 3 PARTIALs / 10 MISSes); root cause ranking; competitor sightings; re-run targets | 0 | 3,494 |
+
+**3,494 tests · 156 initiatives SHIPPED.** Zero test delta — measurement/research work.
+
+---
+
+### 2. What surprised you?
+
+**Forge is well-indexed; Faultline Pro is completely invisible.** Running the same org name through different query angles makes the gap unmissable. Five NXTG.AI URLs appear in the top 10 for Forge governance queries. Zero NXTG.AI URLs appear for any Faultline Pro query — not even a stale cache hit. The asymmetry is stark: Forge has public repos (forge-plugin, forge-orchestrator, forge-ui), a public dashboard (forge.nxtg.ai), and is indexed on LobeHub and Cargo. Faultline Pro has a private repo and an unpublished package. That is the entire explanation for the 10-miss result.
+
+**A direct competitor (Systima "Comply") already owns the "EU AI Act CLI" SERP position.** Comply ships as npm + GitHub Action + TypeScript API, no API keys required, scans codebases for EU AI Act obligations. It has a dev.to post ranking #1 for the query we need. The differentiation is real (they scan code inputs; we verify AI outputs) but the SERP position is theirs until we publish content that explicitly names both approaches. The comparison post (N-155) and the EU AI Act tutorial (GTM §4 Week 3) are the fix — but only if published externally.
+
+**Naming collision with FaultlineAI.com is a real SERP problem.** FaultlineAI.com (an unrelated company) appears at #3 for "nxtg.ai faultline pro claim verification." An arXiv paper titled "FaultLine: Automated Proof-of-Vulnerability Generation" appears at #9. Neither are us. When someone searches for Faultline and clicks through, they reach the wrong product. This problem gets worse, not better, as those assets age. Publishing under "Faultline Pro" + "by NXTG.AI" explicitly in all external content is the mitigation.
+
+**"Weakest-link claim detection" is an uncontested keyword.** Q12 returned zero relevant competition — just generic confidence scoring content. This is a term we coined and own, and nobody else is using it in this context. A focused article on weakest-link detection (what it is, how to use it, why it matters) would rank #1 immediately because there's no competing content. This is the fastest AAIO win available.
+
+---
+
+### 3. Cross-project signals
+
+**AAIO baseline methodology is reusable across the portfolio.** The 15-query / 5-cluster / HIT-PARTIAL-MISS scoring format with root cause ranking and re-run targets works for any ASIF project. Every project with an npm package, GitHub repo, or public-facing product should run this. Immediate candidates: Forge (high confidence it would score better), dx3 (unknown), Podcast-Pipeline (unknown). The template is at `data/outputs/aaio-baseline.md`.
+
+**llms.txt alone does not drive discoverability without public assets.** The nxtg.ai llms.txt already mentions Faultline. We added a repo-level llms.txt (N-154). Neither improved search results because the underlying asset (npm package, GitHub repo) is not indexed. llms.txt is a signal amplifier — it amplifies signal from existing public content. It cannot create signal from private/unpublished assets.
+
+**Transient CI hook failure recurred.** First push attempt failed with "Tests failed locally" but the second push passed without any code change. This is the same pattern documented in cycle 21: run manually → passes → retry push → passes. The root cause is likely temp directory contention during the heavy coverage run. Not a regression — but now four confirmed occurrences. The CI gate script should add a retry mechanism or a cleaner temp directory guarantee to eliminate false CI failures.
+
+---
+
+### 4. What would I prioritize next?
+
+**P1 — v0.4.0 git tag + npm publish.** This single action would flip Q3 (MISS → HIT), and likely improve Q1, Q4, Q5, Q7. The AAIO baseline is the data: 10 of our 10 MISSes trace directly to "package unpublished." Twenty-seventh cycle. Go/no-go?
+
+**P2 — Publish comparison post to dev.to** (N-155 draft is ready). Would own "faultline vs promptfoo deepeval" SERP immediately. 30 minutes to format and post.
+
+**P3 — Write and publish "weakest-link claim detection" article.** Zero competition on this term. Fastest AAIO win.
+
+**P4 — EU AI Act compliance tutorial** (GTM §4 Week 3) — would compete with Systima Comply for the "EU AI Act CLI" query.
+
+**P5 — `routes/orgs.ts` branch gaps** (53.26% — open 5+ cycles).
+
+---
+
+### 5. Blockers and questions for the CoS
+
+1. **v0.4.0 publish**: Twenty-seventh cycle. The AAIO baseline quantifies the cost of waiting: 10/15 queries return zero results because the package is unpublished. Go/no-go?
+2. **Make `nxtg-ai/faultline-pro` public?** Private repo = zero search indexing. Making it public (or enabling GitHub Pages for README) would immediately surface all existing content. Is there a reason to keep it private?
+3. **Publish comparison post to dev.to?** The N-155 draft is publication-ready. This doesn't require npm publish — it can go out independently.
+4. **FaultlineAI.com naming collision**: Awareness flag. No immediate action needed, but external content should always use "Faultline Pro by NXTG.AI" to differentiate.
+5. **Transient CI hook failure** (4th occurrence): Should the CI gate script add a retry or temp-dir cleanup to eliminate false failures?
+6. **Callback unification**: Fifteenth consecutive cycle. Close or officially backlog?
+
+---
+
 > **Reflection cycle**: 2026-03-24 — CoS check-in — N-155 session close (AAIO baseline + comparison post; 3,494 tests; 155 initiatives SHIPPED)
 
 ### 1. What did we ship since last check-in?
