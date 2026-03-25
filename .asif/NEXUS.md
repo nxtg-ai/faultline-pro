@@ -927,6 +927,63 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-24 — CoS check-in — N-155 session close (AAIO baseline + comparison post; 3,494 tests; 155 initiatives SHIPPED)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests | Total |
+|--------|-----------|-------------|--------|-------|
+| `2c7ba4d` | N-154 AAIO baseline | `llms.txt` at repo root — llmstxt.org format; 4-phase pipeline, CLI reference, API endpoint summary, 8 use cases, provider table, competitive positioning diagram, packages, project status. Parallel to nxtg.ai N-63. | 0 | 3,494 |
+| `2c7ba4d` | N-155 comparison post | `docs/content/faultline-vs-promptfoo-deepeval.md` — GTM-PLAN §4 Week 2 piece; honest 3-tool comparison (Promptfoo/DeepEval/Faultline), 9-row decision matrix, "when you need all three" scenario, EU AI Act section, Gemini Flash benchmark callout with calibration fix; publication-ready markdown | 0 | 3,494 |
+
+**3,494 tests · 155 initiatives SHIPPED.** Zero test delta — pure content/distribution work.
+
+---
+
+### 2. What surprised you?
+
+**The GTM content pipeline had been designed in detail but never started.** GTM-PLAN §4 was written on 2026-03-05, specifying four content pieces with week-by-week timing. Seven weeks passed without any of them being drafted. The content wasn't blocked — there was no external dependency, no missing information. The comparison post requires only knowledge of the tool's own positioning, which is fully documented in the competitive brief. The barrier was that "write content" never appeared on the directive queue, so the loop between "plan" and "execute" never closed on the distribution side.
+
+**`llms.txt` adoption across the portfolio is uneven.** nxtg.ai has a comprehensive `llms.txt` that covers Faultline, but it's positioned as an nxtg.ai asset ("this is what NXTG.AI builds") rather than a Faultline-first asset ("this is what Faultline does"). A consumer searching for AI claim verification tooling in an AI-assisted search won't necessarily reach nxtg.ai — they may only reach the npm package page or the GitHub repo. `llms.txt` at the repo root is the right signal for repo-level AI crawling; a separate `llms.txt` section on the npm README or a dedicated product page on nxtg.ai/products/faultline would complete the surface coverage.
+
+**The comparison post naturally surfaced the strongest market positioning argument.** Writing "Faultline does not compete in prompt testing or RAG evaluation — it owns the claim forensics + compliance quadrant" forces clarity that no amount of feature-listing achieves. The act of writing the comparison was itself a positioning exercise that sharpened the "why Faultline, not the others" message in a way that the GTM-PLAN positioning statement didn't quite land.
+
+---
+
+### 3. Cross-project signals
+
+**`llms.txt` should be a portfolio standard, not a one-off.** nxtg.ai has it (N-63). Faultline Pro now has it. Every project in the ASIF portfolio that has a GitHub repo or npm package should have a `llms.txt` at root. It's a 30-minute investment that makes the project accurately describable by any AI tool that indexes it. Candidates: Forge (no `llms.txt` at the plugin root), Podcast-Pipeline, FamilyMind, dx3 (the product docs live on nxtg.ai but the repo has none). The format is minimal — roughly what nxtg.ai/public/llms.txt does per product, scoped to the repo.
+
+**The content pipeline delay pattern is systemic.** Faultline Pro had 7 weeks of planned content sitting unstarted. The nxtg-content-engine (P-14) was designed specifically to automate this, but P-14 itself hasn't been activated post-publish. The pattern: content is planned during product development, the plan says "coordinate with P-14", P-14 never gets the trigger. This is a handoff problem, not a content problem. Fix: P-14 agents should be triggered immediately on publish, with the 4 content requests from GTM-PLAN §4 as the first job queue.
+
+**Honest competitive comparisons are marketing.** The comparison post is genuinely honest — it acknowledges where Promptfoo wins (red-team depth) and where DeepEval wins (RAG metrics). This honesty is itself the marketing: developer audiences trust tools that acknowledge their own limits. Any ASIF product with a direct competitive landscape (Forge vs GitHub Copilot Workspace, Podcast-Pipeline vs Descript/Whisper) should have an equivalent honest comparison document. The format from this post is reusable — tool name / primary domain / what it tests / where it doesn't reach / decision matrix.
+
+---
+
+### 4. What would I prioritize next?
+
+**P1 — v0.4.0 git tag + npm publish.** Twenty-sixth cycle. 3,494 tests. 8/8 CRUCIBLE gates PASS. Go/no-go?
+
+**P2 — Ship the three remaining GTM content pieces** (EU AI Act compliance tutorial, CI/CD integration guide, "State of AI Trust" digest). Now that the comparison post is drafted, the content queue has momentum. Each piece is a self-contained markdown file; total effort ~2 hours. Could be done before publish or released as a Week 3–4 drip post-publish.
+
+**P3 — Trigger P-14 (nxtg-content-engine)** with the 4 content requests from GTM-PLAN §4. The comparison post draft in `docs/content/` is the brief for the Journalist agent. P-14 should polish and distribute.
+
+**P4 — `routes/orgs.ts` branch gaps** (53.26% — lowest remaining API route, now open 4+ cycles).
+
+**P5 — `release-prep.test.ts` timeout fix** — 4 tests fail without a live server. Structural issue, not a regression.
+
+---
+
+### 5. Blockers and questions for the CoS
+
+1. **v0.4.0 publish**: Twenty-sixth cycle. 3,494 real tests. Go/no-go?
+2. **P-14 activation**: The 4 GTM content pieces are drafted (comparison post) or outlined (EU AI Act guide, CI/CD tutorial, digest). Should P-14 agents be triggered now, or wait until post-publish?
+3. **nxtg.ai/products/faultline `llms.txt`**: Should the product page on nxtg.ai get its own `llms.txt` section (deeper than the current one-paragraph entry in nxtg.ai's root `llms.txt`)? This is an nxtg.ai directive, not a Faultline Pro one.
+4. **`BulkJob.error` type fix**: One-liner. Open 4+ cycles.
+5. **Callback unification**: Fourteenth consecutive cycle. Close or officially backlog?
+
+---
+
 > **Reflection cycle**: 2026-03-24 — CoS check-in — N-153 session close (rate-limits + wikipedia hardening RL1–RL8/WP1–WP3; 3,494 tests; 153 initiatives SHIPPED)
 
 ### 1. What did we ship since last check-in?
