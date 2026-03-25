@@ -1,0 +1,128 @@
+# Faultline — AI Claim Forensics
+# https://github.com/nxtg-ai/faultline-pro
+# npm: @nxtg/faultline | @nxtg/faultline-api
+# Last updated: 2026-03-24
+
+> Forensic verification for AI-generated text. Decomposes AI output into atomic claims, verifies each against live evidence, and maps findings to EU AI Act risk tiers.
+
+## What Faultline Does
+
+Faultline answers the question: **"Did the AI lie, and does that violate regulation?"**
+
+It operates as a 4-phase pipeline:
+1. **Extract** — Decompose AI output into atomic claims (fact / opinion / interpretation) with importance scoring and sentence-level guarantees (one claim per verifiable sentence)
+2. **Verify** — Per-claim verdict (supported / contradicted / mixed / unverified) with confidence score and source citations, grounded against live web evidence
+3. **Synthesize** — Risk scorecard: overallRisk (Low / Medium / High / Critical), weakest-link detection, EU AI Act risk tier mapping (Unacceptable / High / Limited / Minimal), triggered articles, required mitigations
+4. **Gate** — CI enforcement via `--fail-on high` (exit code 1) + SARIF output for GitHub Code Scanning
+
+## Install
+
+```bash
+npm install -g @nxtg/faultline
+faultline scan --input document.txt --provider mock
+```
+
+No API key required for the `mock` provider. Real verification uses:
+- Gemini (`GEMINI_API_KEY`) — live web grounding
+- Perplexity (`PERPLEXITY_API_KEY`) — search-native, real-time
+- OpenAI (`OPENAI_API_KEY`) — training-data verification
+- Claude / Anthropic (`ANTHROPIC_API_KEY`) — reasoning-heavy documents
+
+## Key Differentiators
+
+- **Claim-level, not prompt-level** — Faultline forensics output; Promptfoo tests input prompts
+- **EU AI Act compliance** — Automatic risk tier mapping to Unacceptable / High / Limited / Minimal, triggered articles (5, 6, 9, 13, 14, 15, 52, 69), required mitigations
+- **Weakest-link detection** — Finds the single claim that most undermines the argument's credibility
+- **Provider-agnostic** — 5 providers; runtime switching with `--provider`; auto-failover with circuit breaker
+- **SARIF output** — Native GitHub Code Scanning integration; claim violations appear as code annotations
+- **Enterprise API** — REST + GraphQL; API key management; multi-tenant; GDPR Article 15/17; audit trail; webhooks
+- **Mutation-tested** — CRUCIBLE Protocol Gate 6: claim forensics 75.31%; webhook store 91.45%; GDPR stores 80.94%–96.81%
+- **3,494 tests** across CLI, API, SDK, GDPR, mutation hardening, property-based, contract, integration
+
+## Use Cases
+
+1. **Compliance gating in CI/CD** — Block deployments when AI output contains High/Critical risk claims; SARIF annotations in GitHub
+2. **EU AI Act auditing** — Generate article-mapped compliance reports for conformity assessments
+3. **LLM output QA** — Spot-check AI-generated documentation, support responses, or marketing copy for factual accuracy
+4. **Red-team support** — Find which specific claim in a document is most likely to be challenged
+5. **Multi-tenant platforms** — Per-tenant scan history, cost tracking, GDPR data export/erasure
+6. **Enterprise monitoring** — Scheduled scans, webhook alerts on verdict changes, HTML mission control dashboard
+
+## CLI Reference
+
+```bash
+faultline scan --input <file>         # Full forensic scan (JSON output)
+faultline scan --input <file> --output-format markdown  # Human-readable report
+faultline scan --demo                 # No API key — shows full product experience
+faultline weakest --input <file>      # Find weakest claim only
+faultline compare --before a.txt --after b.txt  # Diff two scans
+faultline init                        # Setup wizard (auto-detects configured providers)
+faultline scan --fail-on high         # CI gate (exit 1 on High/Critical)
+```
+
+## API Reference
+
+Full integration guide: `docs/INTEGRATION.md`
+
+Key endpoints:
+- `POST /scan` — scan text, returns claims + verdicts + risk scorecard
+- `POST /scan/deep` — multi-provider chain with evidence linking
+- `POST /scan/stream` (SSE) — progressive per-claim streaming
+- `POST /scan/batch` — scan multiple texts
+- `POST /scan/diff` — compare two texts
+- `GET /scan/:id/report` — EU AI Act PDF compliance report
+- `GET /claims/trending` — claim frequency, emerging patterns, verdict alerts
+- `GET /compliance/deadlines` — EU AI Act, GDPR, NIST upcoming dates
+- `POST /keys` — API key management (create, rotate, expire, revoke)
+- `GET /tenants/:id/export` — GDPR Article 15 data export (ZIP)
+- `DELETE /tenants/:id/data` — GDPR Article 17 erasure
+
+## Packages
+
+| Package | npm | Description |
+|---------|-----|-------------|
+| `@nxtg/faultline` | CLI | Command-line forensics tool |
+| `@nxtg/faultline-api` | API server | Fastify REST + GraphQL |
+| `@nxtg/faultline-sdk` | SDK | TypeScript library for embedding |
+| `faultline-sdk` | PyPI | Python SDK |
+
+## Competitive Position
+
+```
+                PROMPT TESTING    CLAIM VERIFICATION    EU AI ACT
+Promptfoo       ████████████      ░░░░░░               ░░░░░░
+DeepEval        ███████           ░░░░░░               ░░░░░░
+Faultline       ███               ████████████         ████████████
+```
+
+Faultline is not a substitute for Promptfoo (red-teaming, adversarial inputs) or DeepEval (RAG metrics, retrieval quality). It is the specialist for **output forensics** — verifying what the AI said, whether it was accurate, and whether it meets regulatory requirements.
+
+## Repository Structure
+
+```
+packages/
+  cli/          — CLI tool (@nxtg/faultline), providers, scan pipeline
+  api/          — Fastify REST + GraphQL API (@nxtg/faultline-api)
+  sdk/          — TypeScript SDK (@nxtg/faultline-sdk)
+  web/          — Kaggle origin (P-08, frozen)
+docs/
+  INTEGRATION.md         — Full API integration guide (763 lines)
+  PROVIDERS.md           — Provider comparison + configuration
+  ARCHITECTURE.md        — System design, store architecture, data flow
+  GTM-PLAN.md            — Go-to-market strategy
+  mutation-testing.md    — Mutation hardening patterns
+  gemini-model-benchmark-results.md  — Live Gemini Flash vs Pro accuracy results
+```
+
+## Project Status
+
+- **153 initiatives SHIPPED** (N-01 through N-153)
+- **3,494 tests** (CLI + API + SDK + integration + property-based + contract + mutation)
+- **8/8 CRUCIBLE gates PASS** (example, property, contract, integration oracles)
+- **GDPR compliant** — Article 15 export + Article 17 erasure implemented
+- **Mutation-tested** — claim forensics critical path above 80% threshold
+- **Version**: 0.4.0 (pre-publish)
+
+## License
+
+Apache-2.0 — https://www.apache.org/licenses/LICENSE-2.0
