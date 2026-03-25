@@ -925,6 +925,71 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-24 — CoS check-in — N-153 session close (rate-limits + wikipedia hardening RL1–RL8/WP1–WP3; 3,494 tests; 153 initiatives SHIPPED)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests | Total |
+|--------|-----------|-------------|--------|-------|
+| `9bab19f` | Research | `docs/gemini-model-benchmark.md` — benchmark design for Flash vs Pro accuracy comparison | 0 | 3,475 |
+| `ac8ae17` | Research | Live Flash benchmark execution — 14/17 (82.4%); `docs/gemini-model-benchmark-results.md` with full rubric + analysis; Pro blocked (paid-tier only) | 0 | 3,475 |
+| `f434b4a` | Fix | Calibration rule added to all 3 provider verification prompts (`geminiService.ts`, `openai_provider.ts`, `claude_provider.ts`) — arXiv 2603.05471 phrasing that cuts hallucinations 53%→23% | 0 | 3,475 |
+| `675557d` | Perf | `changelog.ts` `listTags()` batched into single `git for-each-ref` call — `GET /changelog` test time 9271ms → 202ms; eliminates 2×N `execSync` subprocess overhead in WSL2 | 0 | 3,475 |
+| `a48fe49` | N-152 geminiService + registry hardening | `gemini-service-hardening.test.ts` (8 tests GS1–GS8): `cleanJson()` markdown code-block path, no-JSON fallback, `verifyClaim()` JSON parse failure, grounding chunks → sources, `extractClaims()` early-return guards; `loadCustomYamlRules()` loop, `_resetYamlState()` loop, `loadBuiltInYamlRules()` idempotency | +8 | 3,483 |
+| `015fa87` | N-153 rate-limits + wikipedia hardening | `rate-limits-wikipedia-hardening.test.ts` (11 tests RL1–RL8/WP1–WP3): `statusBadge()` all 4 threshold branches (THROTTLED/WARNING/ACTIVE/OK), `meterBar()` all 4 CSS-class branches; `matchRatio` mixed (0.5) and unverified-with-results (0.25), `?? 'Wikipedia'` no-title fallback | +11 | 3,494 |
+| `7c5aa58` | Docs | `docs/INTEGRATION.md` — 763-line API integration reference for FPW consumer teams (COMPASS): all scan endpoints, SSE streaming, auth tiers, rate limits, webhooks, GraphQL, TypeScript SDK types | 0 | 3,494 |
+
+**3,494 tests · 153 initiatives SHIPPED.** Notable: 4 release-prep tests time out without a live server — these are structural (server must be running for `/changelog.json` inject test) and not regressions.
+
+---
+
+### 2. What surprised you?
+
+**`rate-limits.ts` branch coverage was 14.28% — nearly invisible.** The four `statusBadge()` threshold branches and four `meterBar()` CSS-class branches were all untested despite being HTML-rendering logic. The module had no test file at all. The fix was straightforward: seed `setCustomLimit()` + `increment()` to hit each percentage threshold exactly. Result: 14.28%→100% in one test file. The lesson is that UI-rendering helpers in the API (HTML badge generators, meter bars) systematically fall through the cracks because they're not called by any integration path that runs in test mode.
+
+**The calibration prompt fix came directly from live benchmark data.** B3 (coffee/cancer) failed because Flash returned "contradicted" on a genuinely mixed claim — it missed the IARC Group 2A hot-beverages nuance. The arXiv 2603.05471 "CALIBRATION RULE" phrasing (3 lines added to each provider prompt) addresses exactly that failure class. This is the first time a live benchmark result directly drove a code fix within the same session. The loop closed: design benchmark → execute → observe failure → fix → commit.
+
+**WSL2 `git` subprocess overhead is severe enough to blow test timeouts at 5000ms.** The `listTags()` function was running 2×N `execSync` calls (one `git log` + one `git rev-parse` per tag). With 5 tags in the repo, that's 10 subprocesses. In WSL2 the overhead is ~900ms per call — total: ~9271ms, which blows the Vitest 5000ms default timeout. Batching into a single `git for-each-ref` call dropped this to 202ms. This is not a correctness issue but a reliability issue: the test would pass on native Linux and fail intermittently on WSL2. Important signal for any test that shells out in a loop.
+
+---
+
+### 3. Cross-project signals
+
+**`git` subprocess batching is critical in WSL2.** Any project that calls `execSync('git ...')` in a loop is likely to hit timeout flakiness on WSL2. The fix is always the same: batch into a single `git for-each-ref` or `git log --format` call with a delimiter. Podcast-Pipeline's tag listing and FamilyMind's release tooling are candidates to audit.
+
+**HTML-rendering helpers in API servers are a systematic coverage blind spot.** Modules that generate badge SVGs, meter bars, status pills, or HTML fragments are never exercised by JSON-focused integration tests. They require a dedicated unit test that seeds the right state and checks rendered output. Add "HTML/SVG rendering helpers" to the ASIF test checklist as a known gap category.
+
+**Calibration rule is now provider-agnostic and should be standard.** The 3-line CALIBRATION RULE block (express uncertainty as "mixed" when evidence conflicts) is now in all three Faultline Pro verification providers. Any ASIF project with an LLM verification step should adopt the same prompt addition — it directly reduces false "contradicted" verdicts on genuinely ambiguous claims.
+
+**`wikipedia.ts` `matchRatio` branches (0.25/0.5) are non-obvious.** The mixed path (0.5) fires when some results match; the unverified-with-results path (0.25) fires when the search returns results but none match. These semantics are subtle and the tests that cover them document the intended scoring behavior better than the code comments do. Any project with a search-backed verification step should check whether both "partial match" and "no match with results" paths are tested.
+
+---
+
+### 4. What would I prioritize next?
+
+**P1 — v0.4.0 git tag + npm publish.** Twenty-fifth cycle. 3,494 tests. 8/8 CRUCIBLE gates PASS. Go/no-go?
+
+**P2 — `routes/orgs.ts` branch gaps** (53.26% branch — lowest remaining API route, open since N-151 reflection).
+
+**P3 — Fix `BulkJob.error` type cast tech debt.** One-liner. Open 3+ cycles.
+
+**P4 — `release-prep.test.ts` timeout fix.** 4 tests fail without a live server. Either add a server fixture or mark them with `skip` + a comment. They create false noise in CI runs without a running server.
+
+**P5 — Gemini Pro benchmark when access available.** Flash is 82.4%. Pro is blocked on free tier. If CoS has paid-tier access, re-run B1–B5 with the calibration rule applied and compare.
+
+---
+
+### 5. Blockers and questions for the CoS
+
+1. **v0.4.0 publish**: Twenty-fifth cycle. 3,494 real tests. Go/no-go?
+2. **`BulkJob.error` type fix**: Approve as one-liner? Open 3+ cycles.
+3. **`release-prep.test.ts` 4 timeouts**: Fix (add server fixture) or skip + comment?
+4. **Gemini Pro access**: Flash benchmark complete (82.4%). Pro requires paid tier. Is paid access available to complete the comparison?
+5. **Callback unification**: Thirteenth consecutive cycle. Close or backlog?
+6. **VALID_PROVIDERS mutation resistance**: Tenth cycle open.
+
+---
+
 > **Reflection cycle**: 2026-03-21 — CoS check-in — N-151 session close (Scan Store Hardening SS1–SS10; 3,475 tests; 151 initiatives SHIPPED)
 
 ### 1. What did we ship since last check-in?
