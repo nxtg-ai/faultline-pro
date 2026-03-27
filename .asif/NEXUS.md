@@ -929,6 +929,69 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-26 — CoS check-in — N-157 session close (`faultline compliance-report` shipped; 3,526 tests; 157 initiatives SHIPPED)
+
+### 1. What did we ship since last check-in?
+
+| Commit | Initiative | Deliverable | +Tests | Total |
+|--------|-----------|-------------|--------|-------|
+| `4572cc5` | N-157 EU AI Act Compliance Report Generator | `faultline compliance-report` CLI command — `--input <scan.json>` or `--text + --provider`; `--format json\|pdf`; `--output`; `--project-name`; `packages/cli/cli/compliance-report.ts` with `buildEuComplianceReport()`, `renderComplianceReportJson()`, `renderComplianceReportPdf()`; 4-section PDFKit PDF; `pdfkit ^0.18.0` added to CLI deps | +32 | 3,526 |
+| `196e84a` | Session close | NEXUS reflection cycle 28 — directive status PENDING→DONE; CRUCIBLE Gates 1/2/4/7 PASS | 0 | 3,526 |
+
+**3,526 tests · 157 initiatives SHIPPED.** Breakdown: 1,363 CLI + 2,109 API + 15 SDK + 39 Web.
+
+---
+
+### 2. What surprised us?
+
+**The FP test-category → EU article mapping is genuinely novel.** Before implementing, I expected the mapping to be straightforward (fact/contradicted = risk finding). What emerged was more nuanced: `opinion` claims uniquely trigger Art. 50 GPAI disclosure (not Art. 13), `interpretation` claims split across Art. 9 *and* Art. 14 (human oversight — different obligation from risk management), and the `unverified` status maps to a *transparency gap* rather than a *risk finding* — a meaningful audit distinction. This two-tier gap/non-compliant split in Art. 13 was not obvious from the directive; it came from reading the article text.
+
+**PDFKit was already in the API (`^0.18.0`) but invisible to the CLI.** The workspace split (N-18) cleanly separated them. Adding the same version to CLI was one line, tests passed immediately. What this means: every time the API grows a new dependency that a CLI user might want (PDFKit, charting, crypto), there's a manual sync step that doesn't get flagged anywhere. A workspace `peerDependencies` audit or a shared-deps catalogue would catch these.
+
+**`includes('Article 5')` matching `'Article 50'` is a trap that vitest won't catch during development.** The first test run had one failure — the Article 5 conditional-trigger test was matching the Article 50 evidence entry. It's a substring collision that static types can't prevent and only shows up at test runtime. The fix (`includes('Article 5 –')` with the em-dash) is trivial, but the pattern — substring matching on structured string keys — is brittle. Article evidence should carry a `code` field (`'art5'`, `'art9'`, etc.) that tests can match exactly. Flagging for when this module gets extended.
+
+**OWASP Agentic AI 2026 is not well-known yet.** The framework exists (published early 2026) but integrating it into the compliance evidence output is a genuine differentiator — none of the competing tools in the AAIO sweep (Systima Comply, QWED-verification, EuConform) reference it. Tagging each article with A01/A02/A03 makes the report useful to security engineers, not just compliance officers. This dual audience (security + compliance) is under-served.
+
+---
+
+### 3. Cross-project signals
+
+**The `buildEuComplianceReport(ScanResult) → EuAiActComplianceReport` pattern is portfolio-portable.** Any ASIF project that produces structured test results (FamilyMind safety scores, Forge agent output quality scores) can implement the same Article 9/13/50 mapping pattern. The code lives in `packages/cli/cli/compliance-report.ts` and is ~230 lines. It can be extracted to a shared `@nxtg/eu-ai-act` utility if multiple projects need it. Signal for CoS: if FamilyMind or Forge ever need EU AI Act compliance docs, don't rebuild — reuse this.
+
+**PDF generation from a CLI is now proven.** Previous ASIF projects have avoided shipping CLI PDF generation, presumably because of the dependency cost (PDFKit is ~1.5MB). N-157 demonstrates it works cleanly in an ESM CLI — dynamic import of PDFKit, Buffer-based generation, no temp files. The pattern in `renderComplianceReportPdf()` is copy-paste ready for any other CLI that needs PDF output (Forge reports, Podcast-Pipeline episode summaries, etc.).
+
+**The `// Validates: N-NNN` Gate 7 convention is being followed** — the new test file has the spec ref at line 1. Since N-141 established 7/7 integration files at 100%, this is now habitual. Worth noting for other ASIF projects adopting CRUCIBLE: the lowest-friction enforcement is a top-of-file comment, not a per-test decorator.
+
+---
+
+### 4. What would I prioritize next?
+
+**P0 — npm publish v0.4.0.** N-157 is the strongest publish trigger yet. The EU AI Act compliance report feature is unique in the market (confirmed by 40-agent sweep), and it's now fully implemented and tested. Publishing moves us from "invisible" to "searchable" on the single most urgent regulatory topic in the AI market. Twenty-eighth cycle with this recommendation.
+
+**P1 — Publish the EU AI Act tutorial + comparison post** (both drafts ready). The tutorial can reference `faultline compliance-report` directly now that the command exists. This is the content that competes with Systima Comply for the "EU AI Act CLI" SERP position. Two posts, one afternoon.
+
+**P2 — Add `code` field to `EuArticleEvidence`** (`'art5'`, `'art9'`, `'art13'`, `'art14'`, `'art50'`) to prevent the `includes('Article 5')` substring trap. Small, safe, improves testability for future maintainers.
+
+**P3 — SARIF-to-compliance bridge**: the SARIF output already has `faultline/eu-ai-act/high` rule IDs. A `faultline compliance-report --sarif results.sarif` flag that reads SARIF as input (instead of scan JSON) would make the compliance report usable in CI pipelines where only the SARIF artifact is available. The SARIF parsing is trivial given the rule ID structure we own.
+
+**P4 — `routes/orgs.ts` branch gaps** (53.26% — open 6+ cycles).
+
+---
+
+### 5. Blockers and questions for the CoS
+
+1. **v0.4.0 npm publish**: Twenty-eighth cycle. The EU AI Act compliance report is now live and unique in the market. The AAIO baseline quantifies the cost of waiting: 10/15 queries return zero results. Go/no-go?
+
+2. **Make `nxtg-ai/faultline-pro` public?** The compliance report feature is the strongest public-facing feature yet. A public repo + published npm package would index all existing content overnight. Continuing to keep it private delays SERP position every day the Article 50 deadline approaches.
+
+3. **`EuArticleEvidence.code` field**: Minor technical debt — should `code: 'art5' | 'art9' | 'art13' | 'art14' | 'art50'` be added now before the first external consumer touches the JSON shape, or can it wait?
+
+4. **SARIF-as-input for `compliance-report`**: Is this a P0/P1 feature for the EU AI Act CLI story, or out of scope for now?
+
+5. **Dependabot vulnerabilities**: Now 4 moderate (was 2 moderate at N-157 push). These accumulate. Schedule a triage pass?
+
+---
+
 > **Reflection cycle**: 2026-03-24 — CoS check-in — N-156 session close (AAIO baseline measurement; 3,494 tests; 156 initiatives SHIPPED)
 
 ### 1. What did we ship since last check-in?
