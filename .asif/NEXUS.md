@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-24 (N-156 AAIO baseline measurement — 15 queries, 2 HITs/3 PARTIALs/10 MISSes; root cause: @nxtg/faultline unpublished. 3,494 tests; 156 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-26 (N-157 EU AI Act Compliance Report Generator — `faultline compliance-report` CLI command, Art. 9/13/50 evidence, PDF + JSON, OWASP Agentic AI refs, 32 new tests. 3,526 tests; 157 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -132,6 +132,7 @@
 | N-120 | GDPR export endpoint — `GET /tenants/:id/export` (admin-gated); returns ZIP archive via `adm-zip` containing `manifest.json` (tenant metadata + counts), `scan-history.json` (all tenant scans via `getRecent(10_000).filter(tenantId)`), `audit-log.ndjson` (NDJSON one entry per line), `notifications.json`, `webhooks.json`, `usage.json` (keyed by keyId); `Content-Disposition: attachment; filename=faultline-gdpr-export-{tenantId}-{date}.zip`; 404 for unknown tenant; 403 without admin; 15 tests (GE1–GE15): 200/content-type/disposition/zip structure/manifest counts/scan isolation/tenant isolation/empty-tenant zero-counts | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
 | N-121 | GDPR erasure endpoint — `DELETE /tenants/:id/data` (admin-gated, Article 17 right-to-erasure); adds `deleteTenantEntries(tenantId)` to `ScanHistoryStore` + `AuditLogger`, `deleteTenantHistory(tenantId)` to `NotificationStore`, `deleteTenant(tenantId)` to `WebhookStore`, `deleteKey(keyId)` to `UsageMeter`; returns `{ tenantId, deleted: { scanEntries, auditEntries, notifications, webhooks, usageKeys } }`; tenant record itself preserved (data only); idempotent (second call returns all zeros); 15 tests (ER1–ER15): counts, actual store erasure, tenant-not-deleted, idempotency, isolation (tenant B untouched), export-after-erasure returns empty ZIP | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
 | N-127 | v0.4.0 publish prep — CHANGELOG `[v0.4.0]` block cut (N-119–N-127 initiatives); `@nxtg/faultline` + `@nxtg/faultline-api` bumped 0.2.0→0.4.0; README `[Capability table]` gains GDPR compliance + mutation-tested core rows; Enterprise API section updated with GDPR export/erasure endpoints; README badge 4,286→4,301; `release-prep.test.ts` RP10 updated (Unreleased → full changelog scope); 15 tests (RP16–RP30): badge≥4286, GDPR mentions, erasure, mutation, `[v0.4.0]` block, date, GDPR+mutation content, empty Unreleased, cli 0.4.0, api 0.4.0, N-119–N-127 all present, v0.3.0 preserved, /changelog 200 | DISTRIBUTION | SHIPPED | P1 | 2026-03-21 |
+| N-157 | EU AI Act Compliance Report Generator — `faultline compliance-report --input <scan.json> [--format json|pdf] [--project-name "..."]`; `compliance-report.ts` with `buildEuComplianceReport()`, `renderComplianceReportJson()`, `renderComplianceReportPdf()`; maps FP test categories (fact/supported→Art.13, fact/contradicted→Art.9, opinion→Art.50, interpretation→Art.9+14, unverified→Art.13-gap) to EU article evidence; Article 5 triggered on prohibited-tier; OWASP Agentic AI 2026 refs (A01/A02/A03/A06); Art. 50(4) voice/audio placeholder; PDFKit added to CLI; 4-section PDF (cover, article evidence, test-category table, OWASP appendix); 32 tests (32/32 pass); total tests 3,494→3,526 | COMPLIANCE | SHIPPED | P0 | 2026-03-26 |
 | N-156 | AAIO baseline measurement — `data/outputs/aaio-baseline.md`; 15 web search queries across 5 clusters (brand, problem-space, technical, ecosystem); result: 2 HITs (Forge multi-agent orchestration, NXTG.AI forge governance), 3 PARTIALs (Faultline brand queries surface old Kaggle repo not Pro), 10 MISSes; root causes ranked: (1) `@nxtg/faultline` unpublished/not indexed — #1 gap; (2) `nxtg-ai/faultline-pro` is private — not indexed; (3) content in private repo, not externally published; (4) naming collisions (FaultlineAI.com, arXiv FaultLine paper); (5) wrong keyword framing; opportunities: publish npm, make repo public, publish comparison post to dev.to, write "weakest-link claim detection" article; competitor sightings: Systima Comply (EU AI Act CLI), QWED-verification (SARIF), EuConform, OpenFactCheck | DISTRIBUTION | SHIPPED | P1 | 2026-03-24 |
 | N-155 | Content pipeline — comparison post draft `docs/content/faultline-vs-promptfoo-deepeval.md` (GTM-PLAN §4 Week 2 piece): "Faultline vs Promptfoo vs DeepEval — An Honest Comparison" — honest feature matrix across 3 tools (Promptfoo=prompt hardening, DeepEval=RAG quality, Faultline=output forensics); decision matrix (9 use-case rows); "when you need all three" scenario; EU AI Act compliance section; Gemini Flash benchmark callout with accuracy data and calibration fix; competitive positioning diagram; publication-ready markdown for dev.to / Substack / LinkedIn | DISTRIBUTION | SHIPPED | P2 | 2026-03-24 |
 | N-154 | AAIO baseline — `llms.txt` at repo root: AI crawler-optimized project description following llmstxt.org format; covers install, 4-phase pipeline, key differentiators, 8 use cases, CLI reference, API endpoint summary, packages table, competitive positioning diagram (Promptfoo/DeepEval/Faultline), repository structure, and project status (153 initiatives, 3,494 tests, 8/8 CRUCIBLE gates); parallel to nxtg.ai N-63 AAIO Phase 1; enables AI tools to accurately surface Faultline Pro when users ask about AI claim verification, EU AI Act compliance tooling, or hallucination detection | DISTRIBUTION | SHIPPED | P2 | 2026-03-24 |
@@ -7314,3 +7315,49 @@ None. All three questions from the previous reflection are answered. Next sessio
 ### Batch 1 (archived 2026-02-28 — 36 directives)
 
 > See `NEXUS-archive.md` for full text.
+
+## CoS Directives
+
+### DIRECTIVE-CLX9-20260326-02 — EU AI Act Compliance Report Generator
+**From**: CLX9 CoS (Emma as CEO) | **Priority**: P0
+**Injected**: 2026-03-26 21:27 CDT | **Estimate**: M | **Status**: PENDING
+
+**Context**: 40-agent competitive sweep confirmed ZERO tools bridge AI test results to EU AI Act compliance documentation. This is the single biggest whitespace in the $2-5B AI governance market. FP N-14 Compliance Reports is the initiative. 128 days to Article 50 enforcement.
+
+**Action Items**:
+1. [ ] Ship `faultline compliance-report` CLI command that generates EU AI Act Article 9 (risk management) + Article 13 (transparency) evidence from test results
+2. [ ] Output format: PDF + JSON (auditor-friendly)
+3. [ ] Map each FP test category to specific EU AI Act article requirements
+4. [ ] Add Article 50 voice/audio disclosure section (placeholder — will be filled when voice testing ships)
+5. [ ] Tests: compliance report generation must be covered
+
+**Constraints**:
+- FIRST MOVER advantage — nobody else has this. Ship fast, iterate.
+- Use SARIF format as intermediate (already in FP)
+- Reference OWASP Top 10 for Agentic Applications 2026 where applicable
+
+**Response** (filled by project team):
+> **SHIPPED 2026-03-26 — N-157**
+>
+> All 5 action items complete:
+>
+> 1. **`faultline compliance-report` CLI command** — new command added to `cli/index.ts` switch. Accepts `--input <scan.json>` (existing scan) or `--text + --provider` (scan-then-report). Flags: `--format json|pdf`, `--output <file>`, `--project-name`. Core logic in `packages/cli/cli/compliance-report.ts`.
+>
+> 2. **PDF + JSON output** — `renderComplianceReportPdf()` produces a 4-section PDFKit PDF (cover with doc ref + risk badge, article evidence section, test-category mapping table, OWASP appendix). `renderComplianceReportJson()` outputs auditor-friendly pretty-printed JSON. PDFKit `^0.18.0` added to CLI `package.json` (matches API version).
+>
+> 3. **FP test category → EU article mapping**:
+>    - `fact` + `supported` → Art. 13 transparency compliance evidence
+>    - `fact` + `contradicted` → Art. 9 risk management finding
+>    - `fact` + `unverified/mixed` → Art. 13 transparency gap
+>    - `opinion` → Art. 50 GPAI disclosure obligation
+>    - `interpretation` → Art. 9 + Art. 14 human oversight
+>    - PII rule findings → Art. 9 + GDPR / OWASP A06
+>    - Bias rule findings → Art. 9 + Art. 10 (training data)
+>    - EU `unacceptable` tier → Art. 5 prohibited practices (non-compliant)
+>    - `overallRisk` high/critical → Annex III conformity assessment required
+>
+> 4. **Article 50 voice/audio placeholder** — `article50Disclosure` field always present with `status: 'placeholder'` and explicit `voiceAudioDisclosure` note: "PLACEHOLDER — Art. 50(4): AI-generated voice and audio content must be marked as machine-generated. Voice testing not yet implemented."
+>
+> 5. **Tests** — `packages/cli/tests/compliance-report.test.ts`: 32 tests, 32/32 passing. Covers JSON output shape, all article mappings, Art. 50 placeholder, PDF Buffer + magic bytes, CLI flags (`--input`, `--output`, `--format pdf`, `--text`, `--project-name`), OWASP refs, Art. 5 conditional trigger, `// Validates: N-157` spec ref present.
+>
+> SARIF used as evidence bridge: SARIF rule IDs (`faultline/eu-ai-act/high` etc.) fed the article mapping design. OWASP Agentic AI 2026 A01/A02/A03/A06/A10 cross-referenced throughout. Test total: 3,494 → 3,526.

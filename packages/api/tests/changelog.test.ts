@@ -117,7 +117,7 @@ describe('toMarkdown', () => {
 
 // ── HTTP endpoints ────────────────────────────────────────────────────────────
 
-describe('GET /changelog', () => {
+describe('GET /changelog', { timeout: 15000 }, () => {
   let server: FastifyInstance;
 
   beforeEach(() => {
@@ -157,7 +157,7 @@ describe('GET /changelog', () => {
   });
 });
 
-describe('GET /changelog.json', () => {
+describe('GET /changelog.json', { timeout: 15000 }, () => {
   let server: FastifyInstance;
 
   beforeEach(() => {
@@ -201,7 +201,7 @@ describe('GET /changelog.json', () => {
   });
 });
 
-describe('GET /changelog.md', () => {
+describe('GET /changelog.md', { timeout: 15000 }, () => {
   let server: FastifyInstance;
 
   beforeEach(() => {

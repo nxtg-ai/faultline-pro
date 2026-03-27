@@ -1,6 +1,6 @@
 import { buildServer } from './server.js';
 
-const PORT = parseInt(process.env.PORT ?? '3001', 10);
+const PORT = parseInt(process.env.PORT ?? '3010', 10);
 const HOST = process.env.HOST ?? '0.0.0.0';
 
 const server = buildServer();

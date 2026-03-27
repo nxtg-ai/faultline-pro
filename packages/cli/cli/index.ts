@@ -34,8 +34,9 @@ import { getDemoResult } from './demo.js';
 import { listKeys, getDormantKeys, getExpiringSoonKeys, rotateKey, getRotationStatus, getKeysPrunePreview, pruneKeys, formatKeyList, formatDormantList, formatExpiringSoonList, formatRotateResult, formatRotationStatus, formatPrunePreview, formatPruneResult } from './keys-client.js';
 import { getStaleScans, getScanUsage, getScansPrunePreview, pruneScans, formatStaleList, formatScanUsage, formatScansPrunePreview, formatScansPruneResult } from './scans-client.js';
 import { streamScan, formatStreamResult } from './stream-client.js';
+import { buildEuComplianceReport, renderComplianceReportJson, renderComplianceReportPdf } from './compliance-report.js';
 
-const VERSION = '0.2.0';
+const VERSION = '0.4.0';
 
 const API_KEY_MAP: Record<string, string> = {
   claude: 'ANTHROPIC_API_KEY',
@@ -114,6 +115,8 @@ Usage:
   faultline scans stale [--days 30] [--api-url URL] [--api-key KEY]  List stale scan groups
   faultline scans usage [--staleDays 30] [--api-url URL] [--api-key KEY]  Scan usage analytics
   faultline scans prune [--days 30] [--confirm] [--api-url URL] [--api-key KEY]  Delete stale scan groups
+  faultline compliance-report --input <scan.json> [--format json|pdf] [--output <file>] [--project-name "My AI"]  Generate EU AI Act Article 9/13/50 evidence report
+  faultline compliance-report --text <text> --provider mock [--format json|pdf] [--project-name "My AI"]  Scan then report
   faultline stream <text> [--provider mock] [--api-url URL] [--api-key KEY]  Stream scan via SSE
   faultline version                                                 Print version
 
@@ -1051,6 +1054,52 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
       const streamResult = await streamScan(apiUrl, apiKey, text, provider);
       if (streamResult.error) return { exitCode: 1, output: `Error: ${streamResult.error}` };
       return { exitCode: 0, output: formatStreamResult(streamResult) };
+    }
+
+    case 'compliance-report': {
+      // Resolve scan result: from --input file or by running a fresh scan
+      let crScanResult;
+      if (flags['input']) {
+        const inputPath = resolve(flags['input']);
+        if (!existsSync(inputPath)) {
+          return { exitCode: 1, output: `Error: file not found: ${flags['input']}` };
+        }
+        try {
+          crScanResult = JSON.parse(readFileSync(inputPath, 'utf-8'));
+        } catch {
+          return { exitCode: 1, output: `Error: could not parse scan result JSON from ${flags['input']}` };
+        }
+      } else if (flags['text']) {
+        const crProvider = flags['provider'] || autoDetectProvider();
+        const keyError = checkApiKey(crProvider);
+        if (keyError) return keyError;
+        crScanResult = await scan(flags['text'], crProvider);
+      } else {
+        return {
+          exitCode: 1,
+          output:
+            'Error: provide --input <scan-result.json> or --text <text>.\n\n' +
+            'Usage: faultline compliance-report --input scan.json [--format json|pdf] [--output eu-report.pdf]',
+        };
+      }
+
+      const crFormat = (flags['format'] || 'json') as 'json' | 'pdf';
+      const crProjectName = flags['project-name'];
+      const crReport = buildEuComplianceReport(crScanResult, { projectName: crProjectName });
+
+      if (crFormat === 'pdf') {
+        const pdfBuf = await renderComplianceReportPdf(crReport);
+        const outPath = flags['output'] || `eu-compliance-report-${crReport.documentRef}.pdf`;
+        writeFileSync(resolve(outPath), pdfBuf);
+        return { exitCode: 0, output: `EU AI Act compliance report written to ${outPath}` };
+      }
+
+      const jsonOut = renderComplianceReportJson(crReport);
+      if (flags['output']) {
+        writeFileSync(resolve(flags['output']), jsonOut, 'utf-8');
+        return { exitCode: 0, output: `EU AI Act compliance report written to ${flags['output']}` };
+      }
+      return { exitCode: 0, output: jsonOut };
     }
 
     default:
