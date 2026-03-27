@@ -97,3 +97,11 @@ Rules that apply to this project (Critical tier — claim forensics is safety-cr
 - **Oracle tier: CRITICAL** — all 4 oracle types required on claim forensics (example-based, property-based, contract, integration).
 
 Current oracle coverage: example-based (✅ 4,467 tests), property-based (✅ 19 properties — fast-check, N-76), contract (✅ 29 Zod schema tests — N-77), integration (✅ 12 E2E tests, N-81).
+
+## Dx3 Brain Integration
+On every session start, recall relevant context from Dx3 before starting work:
+- Use recall() to check for prior decisions, lessons, and patterns related to your current task
+- After shipping work, use remember() to store what you learned
+- The brain at dx3-cognitive MCP has context from ALL projects — use it
+
+This is how the portfolio compounds intelligence. Your work benefits from every other team's learning.
