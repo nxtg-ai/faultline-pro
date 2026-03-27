@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-03-26 (N-157 session close — DIRECTIVE-CLX9-20260326-02 DONE; `faultline compliance-report` CLI shipped, 3,526 tests; 157 initiatives SHIPPED.)
+> **Last Updated**: 2026-03-26 (N-158 session close — PRISM GTM Dashboard shipped; 3 widgets live at /gtm; 158 initiatives SHIPPED.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -132,6 +132,7 @@
 | N-120 | GDPR export endpoint — `GET /tenants/:id/export` (admin-gated); returns ZIP archive via `adm-zip` containing `manifest.json` (tenant metadata + counts), `scan-history.json` (all tenant scans via `getRecent(10_000).filter(tenantId)`), `audit-log.ndjson` (NDJSON one entry per line), `notifications.json`, `webhooks.json`, `usage.json` (keyed by keyId); `Content-Disposition: attachment; filename=faultline-gdpr-export-{tenantId}-{date}.zip`; 404 for unknown tenant; 403 without admin; 15 tests (GE1–GE15): 200/content-type/disposition/zip structure/manifest counts/scan isolation/tenant isolation/empty-tenant zero-counts | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
 | N-121 | GDPR erasure endpoint — `DELETE /tenants/:id/data` (admin-gated, Article 17 right-to-erasure); adds `deleteTenantEntries(tenantId)` to `ScanHistoryStore` + `AuditLogger`, `deleteTenantHistory(tenantId)` to `NotificationStore`, `deleteTenant(tenantId)` to `WebhookStore`, `deleteKey(keyId)` to `UsageMeter`; returns `{ tenantId, deleted: { scanEntries, auditEntries, notifications, webhooks, usageKeys } }`; tenant record itself preserved (data only); idempotent (second call returns all zeros); 15 tests (ER1–ER15): counts, actual store erasure, tenant-not-deleted, idempotency, isolation (tenant B untouched), export-after-erasure returns empty ZIP | COMPLIANCE | SHIPPED | P1 | 2026-03-21 |
 | N-127 | v0.4.0 publish prep — CHANGELOG `[v0.4.0]` block cut (N-119–N-127 initiatives); `@nxtg/faultline` + `@nxtg/faultline-api` bumped 0.2.0→0.4.0; README `[Capability table]` gains GDPR compliance + mutation-tested core rows; Enterprise API section updated with GDPR export/erasure endpoints; README badge 4,286→4,301; `release-prep.test.ts` RP10 updated (Unreleased → full changelog scope); 15 tests (RP16–RP30): badge≥4286, GDPR mentions, erasure, mutation, `[v0.4.0]` block, date, GDPR+mutation content, empty Unreleased, cli 0.4.0, api 0.4.0, N-119–N-127 all present, v0.3.0 preserved, /changelog 200 | DISTRIBUTION | SHIPPED | P1 | 2026-03-21 |
+| N-158 | PRISM GTM Intelligence Dashboard — 3 widgets in ASIF Dashboard (Hono SSR, port 5000): (1) Content Queue — walks `~/ASIF/enrichment/content-drafts/` JSONL logs, extracts last assistant message, infers platform from filename, filter bar + clipboard copy + status cycle; (2) GTM Timeline — SVG dual-lane (AI top, Human bottom), milestone nodes coloured by status, sequential dep arrows, cross-lane Bezier for DONE milestones, expandable PRISM drill-down; (3) Outreach Tracker — stats row + table + inline add-contact form + per-row status select; DX3 GTM API progressive enhancement via `GTM_API_URL` env var; `lib/gtm.ts` data layer + `routes/gtm.ts` Hono router + 4 view files; `layout.ts` extended with `'gtm'` tab + GTM nav section; `outreach.json` seeded | GTM | SHIPPED | P0 | 2026-03-26 |
 | N-157 | EU AI Act Compliance Report Generator — `faultline compliance-report --input <scan.json> [--format json|pdf] [--project-name "..."]`; `compliance-report.ts` with `buildEuComplianceReport()`, `renderComplianceReportJson()`, `renderComplianceReportPdf()`; maps FP test categories (fact/supported→Art.13, fact/contradicted→Art.9, opinion→Art.50, interpretation→Art.9+14, unverified→Art.13-gap) to EU article evidence; Article 5 triggered on prohibited-tier; OWASP Agentic AI 2026 refs (A01/A02/A03/A06); Art. 50(4) voice/audio placeholder; PDFKit added to CLI; 4-section PDF (cover, article evidence, test-category table, OWASP appendix); 32 tests (32/32 pass); total tests 3,494→3,526 | COMPLIANCE | SHIPPED | P0 | 2026-03-26 |
 | N-156 | AAIO baseline measurement — `data/outputs/aaio-baseline.md`; 15 web search queries across 5 clusters (brand, problem-space, technical, ecosystem); result: 2 HITs (Forge multi-agent orchestration, NXTG.AI forge governance), 3 PARTIALs (Faultline brand queries surface old Kaggle repo not Pro), 10 MISSes; root causes ranked: (1) `@nxtg/faultline` unpublished/not indexed — #1 gap; (2) `nxtg-ai/faultline-pro` is private — not indexed; (3) content in private repo, not externally published; (4) naming collisions (FaultlineAI.com, arXiv FaultLine paper); (5) wrong keyword framing; opportunities: publish npm, make repo public, publish comparison post to dev.to, write "weakest-link claim detection" article; competitor sightings: Systima Comply (EU AI Act CLI), QWED-verification (SARIF), EuConform, OpenFactCheck | DISTRIBUTION | SHIPPED | P1 | 2026-03-24 |
 | N-155 | Content pipeline — comparison post draft `docs/content/faultline-vs-promptfoo-deepeval.md` (GTM-PLAN §4 Week 2 piece): "Faultline vs Promptfoo vs DeepEval — An Honest Comparison" — honest feature matrix across 3 tools (Promptfoo=prompt hardening, DeepEval=RAG quality, Faultline=output forensics); decision matrix (9 use-case rows); "when you need all three" scenario; EU AI Act compliance section; Gemini Flash benchmark callout with accuracy data and calibration fix; competitive positioning diagram; publication-ready markdown for dev.to / Substack / LinkedIn | DISTRIBUTION | SHIPPED | P2 | 2026-03-24 |
@@ -7501,3 +7502,34 @@ None. All three questions from the previous reflection are answered. Next sessio
 > 5. **Tests** — `packages/cli/tests/compliance-report.test.ts`: 32 tests, 32/32 passing. Covers JSON output shape, all article mappings, Art. 50 placeholder, PDF Buffer + magic bytes, CLI flags (`--input`, `--output`, `--format pdf`, `--text`, `--project-name`), OWASP refs, Art. 5 conditional trigger, `// Validates: N-157` spec ref present.
 >
 > SARIF used as evidence bridge: SARIF rule IDs (`faultline/eu-ai-act/high` etc.) fed the article mapping design. OWASP Agentic AI 2026 A01/A02/A03/A06/A10 cross-referenced throughout. Test total: 3,494 → 3,526.
+
+---
+
+### DIRECTIVE-CLX9-20260326-03 — PRISM GTM Intelligence Dashboard
+**From**: CLX9 CoS (Emma) | **Priority**: P0
+**Injected**: 2026-03-26 | **Estimate**: L | **Status**: DONE
+
+**Context**: DX3 GTM Intelligence Layer just shipped (commit f0f7e5a). Build 3 widgets in the live ASIF Dashboard (Hono SSR, port 5000) to surface GTM state. Reference: `~/ASIF/dashboard/PRISM-dashboard-gtm-content.md`.
+
+**Action Items**:
+1. [x] Widget 1: Content Queue — surface `~/ASIF/enrichment/content-drafts/` with platform filter, clipboard copy, status tracking
+2. [x] Widget 2: GTM Initiative Timeline — SVG dual-lane (AI vs Human), milestone nodes, dependency lines, PRISM drill-down
+3. [x] Widget 3: Outreach Tracker — table with sent/opened/replied/meeting/bounced, add-contact form, inline status update
+4. [x] DX3 GTM API wired as progressive enhancement via `GTM_API_URL` env var
+5. [x] Nav entry added to dashboard sidebar under GTM section
+
+**Response** (filled by project team):
+> **SHIPPED 2026-03-26 — N-158**
+>
+> All 5 action items complete. Files created:
+> - `lib/gtm.ts` — data layer: `scanContentDrafts()` (JSONL parsing), `parseGtmInitiatives()`, `loadOutreach()`, `addOutreachContact()`, `updateOutreachStatus()`, DX3 API progressive enhancement (`fetchGtmEntities()`, `fetchGtmSearch()`)
+> - `views/content-queue-view.ts` — platform tabs, status chips, search box, card expand/collapse, clipboard copy, status cycle
+> - `views/gtm-timeline-view.ts` — SVG dual-lane timeline with `<marker>` arrowheads, Bezier cross-lane curves, milestone drill-down
+> - `views/outreach-tracker-view.ts` — stats grid, table with inline expand, add-contact form, per-row status select
+> - `views/gtm-hub-view.ts` — 3-up summary card grid
+> - `routes/gtm.ts` — 7 Hono routes: GET hub / content-queue / timeline / outreach, POST content status / outreach add / outreach status
+> - `layout.ts` extended: `'gtm'` added to activeTab union; GTM nav section + `rocketNavIcon`
+> - `server.ts`: `gtmRoutes` imported and mounted at `/gtm`
+> - `outreach.json` created with `[]`
+>
+> Smoke-tested: all 4 GET routes return 200 with correct page headings. DX3 API falls back silently when `GTM_API_URL` is unset.
