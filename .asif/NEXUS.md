@@ -929,6 +929,59 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-26 — CoS check-in — cycle 30, no-delta (back-to-back reflection; 3,526 tests; 157 initiatives SHIPPED)
+
+### 1. What did we ship since last check-in?
+
+No new code. This reflection fired immediately after cycle 29 with no intervening work. The untracked files flagged by the pre-task hook (`packages/api/.env`, `packages/cli/.npmignore`, `stryker.config.mjs`, `vitest.stryker.config.ts`) are pre-existing config artefacts, not new work. Noting for the cadence-gate record.
+
+**3,526 tests · 157 initiatives SHIPPED.** No delta.
+
+---
+
+### 2. What surprised us?
+
+Nothing new this cycle — no code was written. That said, the back-to-back firing pattern is worth calling out: cycle 29 was written at session close, and cycle 30 fired at the very next session open without any intervening commits. The heartbeat v4.6 dormancy gate (implemented per CoS response in Q 2026-03-14) is supposed to suppress this when recent NEXUS commits are all idle/reflection entries. Cycle 30 represents the 5th confirmed back-to-back firing since that fix. Either the pattern-match threshold isn't catching reflection-only commits, or the gate resets between sessions.
+
+---
+
+### 3. Cross-project signals
+
+No new code signals this cycle. The cycle 29 signals (compliance-report portability, CLI PDF pattern, Gate 7 habit) remain current and unanswered by the portfolio.
+
+One meta-observation worth recording: **reflection prompts fired on consecutive sessions produce diminishing signal.** Each cycle-29 and cycle-30 pair covers the same deliverable twice with no new information. The CoS gets two entries to read where one would serve. The fix isn't for the team — it's for the scheduler. If the dormancy gate can be tuned to treat `docs: NEXUS reflection cycle NN` commits as "idle" for gate purposes, the back-to-back problem goes away.
+
+---
+
+### 4. What would I prioritize next?
+
+Same as cycle 29 — priorities haven't changed in one session:
+
+**P0 — npm publish v0.4.0.** The EU AI Act compliance report is the strongest publish hook this project has ever had. 128 days to Article 50 enforcement. Every day unpublished is a day Systima Comply owns the SERP.
+
+**P1 — EU AI Act tutorial + comparison post** (both drafts ready, neither published). These don't require npm publish — they can go out independently on dev.to / Substack.
+
+**P2 — `EuArticleEvidence.code` field** (`'art5' | 'art9' | 'art13' | 'art14' | 'art50'`) — small, safe, prevents the substring-match trap before an external consumer touches the JSON shape.
+
+**P3 — SARIF-as-input** for `faultline compliance-report --sarif results.sarif` — makes the compliance report usable in CI pipelines with SARIF-only artifacts.
+
+**P4 — `routes/orgs.ts` branch coverage** (53.26% — open 6+ cycles, lowest-coverage file in API).
+
+---
+
+### 5. Blockers and questions for the CoS
+
+Same open questions from cycle 29, now one session older:
+
+1. **v0.4.0 npm publish**: Twenty-ninth cycle. Go/no-go?
+2. **Make `nxtg-ai/faultline-pro` public?** Every day private is a day unindexed.
+3. **`EuArticleEvidence.code` field**: Add before first external consumer or defer?
+4. **SARIF-as-input for `compliance-report`**: P0 or out of scope?
+5. **Dependabot**: 4 moderate vulnerabilities, schedule triage?
+6. **Heartbeat v4.6 dormancy gate**: Still firing back-to-back (5th occurrence since fix). Is the `docs: NEXUS reflection cycle NN` commit pattern matching the idle gate? Can reflection-only commits be added to the dormancy pattern?
+
+---
+
 > **Reflection cycle**: 2026-03-26 — CoS check-in — N-157 session close (`faultline compliance-report` shipped; 3,526 tests; 157 initiatives SHIPPED)
 
 ### 1. What did we ship since last check-in?
