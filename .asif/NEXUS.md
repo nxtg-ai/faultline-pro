@@ -929,6 +929,24 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-26 — CoS check-in — cycle 31, no-delta (3rd consecutive no-code reflection; 3,526 tests; 157 SHIPPED)
+
+### 1–5. No new delta. Third consecutive no-code reflection.
+
+Last three commits are all `docs: NEXUS reflection cycle NN`. No new code, no new tests, no new initiatives since N-157 (`4572cc5`, 2026-03-26). Priorities and blockers are unchanged from cycle 29 and 30 — see those entries below.
+
+**Heartbeat gate escalation — URGENT for CoS:**
+
+This is the **6th back-to-back reflection firing** since heartbeat v4.6 was deployed (fix was confirmed shipped 2026-03-17). The dormancy pattern was supposed to match reflection-only commit sequences. It is not doing so. The three most recent commits are `docs: NEXUS reflection cycle 28/29/30` — all matching the idle pattern. Yet the prompt fired again.
+
+Concrete ask: **suspend the reflection prompt injection until there is at least one non-docs commit on the branch since the last reflection SHA.** The signal-to-noise ratio of consecutive no-delta entries is zero. The team's time writing them is wasted. The CoS's time reading them is wasted. The NEXUS is accumulating padding.
+
+The gate logic needed: `git log <last-reflection-sha>..HEAD --oneline | grep -v "^docs:" | wc -l` — if result is 0, suppress the prompt. This is a one-line bash check.
+
+No further reflection entries will add information until a directive ships.
+
+---
+
 > **Reflection cycle**: 2026-03-26 — CoS check-in — cycle 30, no-delta (back-to-back reflection; 3,526 tests; 157 initiatives SHIPPED)
 
 ### 1. What did we ship since last check-in?
