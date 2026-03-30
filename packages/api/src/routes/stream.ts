@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
+import { rateLimitScan } from '../plugins/ratelimit.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 
 type ScanProvider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
@@ -23,7 +24,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: { text?: string; provider?: string } }>(
     '/scan/stream',
     {
-      preHandler: [requireApiKey],
+      preHandler: [requireApiKey, rateLimitScan],
       schema: {
         tags: ['Scan'],
         summary: 'Stream scan results via Server-Sent Events (progressive per-claim delivery)',
