@@ -336,6 +336,56 @@ describe('PATCH /orgs/:id', () => {
     });
     expect(res.statusCode).toBe(403);
   });
+
+  it('non-owner admin can update name and description', async () => {
+    // Org owned by 'other-owner', with 'admin' (env key) added as admin member
+    const org = getOrgStore().create({ name: 'OwnerTest' }, 'other-owner');
+    getOrgStore().addMember(org.id, 'admin', 'admin');
+    const res = await server.inject({
+      method: 'PATCH', url: '/orgs/' + org.id,
+      headers: { 'x-api-key': 'admin-key', 'content-type': 'application/json' },
+      payload: { name: 'Updated Name', description: 'New desc' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body).name).toBe('Updated Name');
+  });
+
+  it('non-owner admin cannot change plan (403)', async () => {
+    const org = getOrgStore().create({ name: 'PlanGuard' }, 'other-owner');
+    getOrgStore().addMember(org.id, 'admin', 'admin');
+    const res = await server.inject({
+      method: 'PATCH', url: '/orgs/' + org.id,
+      headers: { 'x-api-key': 'admin-key', 'content-type': 'application/json' },
+      payload: { plan: 'enterprise' },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body).error).toContain('owner');
+  });
+
+  it('non-owner admin cannot change status (403)', async () => {
+    const org = getOrgStore().create({ name: 'StatusGuard' }, 'other-owner');
+    getOrgStore().addMember(org.id, 'admin', 'admin');
+    const res = await server.inject({
+      method: 'PATCH', url: '/orgs/' + org.id,
+      headers: { 'x-api-key': 'admin-key', 'content-type': 'application/json' },
+      payload: { status: 'suspended' },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body).error).toContain('owner');
+  });
+
+  it('owner can change plan and status', async () => {
+    const org = getOrgStore().create({ name: 'OwnerOK' }, 'admin');
+    const res = await server.inject({
+      method: 'PATCH', url: '/orgs/' + org.id,
+      headers: { 'x-api-key': 'admin-key', 'content-type': 'application/json' },
+      payload: { plan: 'enterprise', status: 'suspended' },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.plan).toBe('enterprise');
+    expect(body.status).toBe('suspended');
+  });
 });
 
 describe('DELETE /orgs/:id', () => {

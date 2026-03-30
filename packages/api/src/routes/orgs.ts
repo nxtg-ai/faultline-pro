@@ -133,8 +133,14 @@ export async function orgRoutes(fastify: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const org = getOrgStore().get(request.params.id);
       if (!org) return reply.status(404).send({ error: 'Organization not found.' });
-      if (!isAdmin(org.id, request.keyId ?? 'unknown')) {
+      const callerKeyId = request.keyId ?? 'unknown';
+      if (!isAdmin(org.id, callerKeyId)) {
         return reply.status(403).send({ error: 'Admin role required.' });
+      }
+      // Plan and status changes are owner-only operations
+      if ((request.body.plan !== undefined || request.body.status !== undefined)
+          && org.ownerId !== callerKeyId) {
+        return reply.status(403).send({ error: 'Only the org owner can change plan or status.' });
       }
       const updated = getOrgStore().update(request.params.id, request.body);
       return reply.send(updated);
