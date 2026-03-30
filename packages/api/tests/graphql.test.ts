@@ -40,6 +40,7 @@ describe('GraphQL API', () => {
 
   afterEach(async () => {
     await server.close();
+    delete process.env.FAULTLINE_API_KEY;
   });
 
   // --- Query: scan ---
@@ -48,7 +49,7 @@ describe('GraphQL API', () => {
       const res = await server.inject({
         method: 'POST',
         url: '/graphql',
-        headers: { 'content-type': 'application/json', authorization: 'Bearer test-key' },
+        headers: { 'content-type': 'application/json', 'x-api-key': 'test-key', authorization: 'Bearer test-key' },
         payload: gqlBody('{ scan(text: "The sky is blue.") { id input provider overallRisk scannedAt claims { id text type importance } complianceReport { riskTier } } }'),
       });
       expect(res.statusCode).toBe(200);
@@ -68,7 +69,7 @@ describe('GraphQL API', () => {
       const res = await server.inject({
         method: 'POST',
         url: '/graphql',
-        headers: { 'content-type': 'application/json', authorization: 'Bearer test-key' },
+        headers: { 'content-type': 'application/json', 'x-api-key': 'test-key', authorization: 'Bearer test-key' },
         payload: gqlBody('{ scan(text: "Hello", provider: "gemini") { id provider } }'),
       });
       const body = JSON.parse(res.body);
@@ -79,14 +80,14 @@ describe('GraphQL API', () => {
       await server.inject({
         method: 'POST',
         url: '/graphql',
-        headers: { 'content-type': 'application/json', authorization: 'Bearer test-key' },
+        headers: { 'content-type': 'application/json', 'x-api-key': 'test-key', authorization: 'Bearer test-key' },
         payload: gqlBody('{ scan(text: "Test claim.") { id } }'),
       });
       // Second query to verify record exists
       const res2 = await server.inject({
         method: 'POST',
         url: '/graphql',
-        headers: { 'content-type': 'application/json', authorization: 'Bearer test-key' },
+        headers: { 'content-type': 'application/json', 'x-api-key': 'test-key', authorization: 'Bearer test-key' },
         payload: gqlBody('{ scans { id input } }'),
       });
       const body2 = JSON.parse(res2.body);
@@ -101,7 +102,7 @@ describe('GraphQL API', () => {
       const res = await server.inject({
         method: 'POST',
         url: '/graphql',
-        headers: { 'content-type': 'application/json', authorization: 'Bearer test-key' },
+        headers: { 'content-type': 'application/json', 'x-api-key': 'test-key', authorization: 'Bearer test-key' },
         payload: gqlBody('{ scans { id input } }'),
       });
       const body = JSON.parse(res.body);
@@ -113,13 +114,13 @@ describe('GraphQL API', () => {
       await server.inject({
         method: 'POST',
         url: '/graphql',
-        headers: { 'content-type': 'application/json', authorization: 'Bearer test-key' },
+        headers: { 'content-type': 'application/json', 'x-api-key': 'test-key', authorization: 'Bearer test-key' },
         payload: gqlBody('{ scan(text: "A claim.") { id } }'),
       });
       const res = await server.inject({
         method: 'POST',
         url: '/graphql',
-        headers: { 'content-type': 'application/json', authorization: 'Bearer test-key' },
+        headers: { 'content-type': 'application/json', 'x-api-key': 'test-key', authorization: 'Bearer test-key' },
         payload: gqlBody('{ scans { id input overallRisk } }'),
       });
       const body = JSON.parse(res.body);
@@ -133,14 +134,14 @@ describe('GraphQL API', () => {
         await server.inject({
           method: 'POST',
           url: '/graphql',
-          headers: { 'content-type': 'application/json', authorization: 'Bearer test-key' },
+          headers: { 'content-type': 'application/json', 'x-api-key': 'test-key', authorization: 'Bearer test-key' },
           payload: gqlBody(`{ scan(text: "Claim ${i}") { id } }`),
         });
       }
       const res = await server.inject({
         method: 'POST',
         url: '/graphql',
-        headers: { 'content-type': 'application/json', authorization: 'Bearer test-key' },
+        headers: { 'content-type': 'application/json', 'x-api-key': 'test-key', authorization: 'Bearer test-key' },
         payload: gqlBody('{ scans(limit: 2) { id } }'),
       });
       const body = JSON.parse(res.body);
@@ -154,7 +155,7 @@ describe('GraphQL API', () => {
       const res = await server.inject({
         method: 'POST',
         url: '/graphql',
-        headers: { 'content-type': 'application/json', authorization: 'Bearer test-key' },
+        headers: { 'content-type': 'application/json', 'x-api-key': 'test-key', authorization: 'Bearer test-key' },
         payload: gqlBody('{ keys { id name permissions createdAt } }'),
       });
       const body = JSON.parse(res.body);
@@ -166,13 +167,13 @@ describe('GraphQL API', () => {
       await server.inject({
         method: 'POST',
         url: '/graphql',
-        headers: { 'content-type': 'application/json', authorization: 'Bearer test-key' },
+        headers: { 'content-type': 'application/json', 'x-api-key': 'test-key', authorization: 'Bearer test-key' },
         payload: gqlBody('mutation { createKey(name: "test-key") { id name } }'),
       });
       const res = await server.inject({
         method: 'POST',
         url: '/graphql',
-        headers: { 'content-type': 'application/json', authorization: 'Bearer test-key' },
+        headers: { 'content-type': 'application/json', 'x-api-key': 'test-key', authorization: 'Bearer test-key' },
         payload: gqlBody('{ keys { id name permissions } }'),
       });
       const body = JSON.parse(res.body);
@@ -187,7 +188,7 @@ describe('GraphQL API', () => {
       const res = await server.inject({
         method: 'POST',
         url: '/graphql',
-        headers: { 'content-type': 'application/json', authorization: 'Bearer test-key' },
+        headers: { 'content-type': 'application/json', 'x-api-key': 'test-key', authorization: 'Bearer test-key' },
         payload: gqlBody('{ usage(keyId: "unknown-key") { date count } }'),
       });
       const body = JSON.parse(res.body);
@@ -201,7 +202,7 @@ describe('GraphQL API', () => {
       const res = await server.inject({
         method: 'POST',
         url: '/graphql',
-        headers: { 'content-type': 'application/json', authorization: 'Bearer test-key' },
+        headers: { 'content-type': 'application/json', 'x-api-key': 'test-key', authorization: 'Bearer test-key' },
         payload: gqlBody('{ audit { timestamp keyId endpoint method statusCode latencyMs } }'),
       });
       const body = JSON.parse(res.body);
@@ -216,7 +217,7 @@ describe('GraphQL API', () => {
       const res = await server.inject({
         method: 'POST',
         url: '/graphql',
-        headers: { 'content-type': 'application/json', authorization: 'Bearer test-key' },
+        headers: { 'content-type': 'application/json', 'x-api-key': 'test-key', authorization: 'Bearer test-key' },
         payload: gqlBody('{ audit(limit: 2) { timestamp } }'),
       });
       const body = JSON.parse(res.body);
@@ -230,7 +231,7 @@ describe('GraphQL API', () => {
       const res = await server.inject({
         method: 'POST',
         url: '/graphql',
-        headers: { 'content-type': 'application/json', authorization: 'Bearer test-key' },
+        headers: { 'content-type': 'application/json', 'x-api-key': 'test-key', authorization: 'Bearer test-key' },
         payload: gqlBody('mutation { createKey(name: "my-key") { id name permissions createdAt } }'),
       });
       const body = JSON.parse(res.body);
@@ -244,7 +245,7 @@ describe('GraphQL API', () => {
       const res = await server.inject({
         method: 'POST',
         url: '/graphql',
-        headers: { 'content-type': 'application/json', authorization: 'Bearer test-key' },
+        headers: { 'content-type': 'application/json', 'x-api-key': 'test-key', authorization: 'Bearer test-key' },
         payload: gqlBody('mutation { createKey(name: "admin-key", permissions: ["scan", "admin"]) { permissions } }'),
       });
       const body = JSON.parse(res.body);
@@ -259,7 +260,7 @@ describe('GraphQL API', () => {
       const createRes = await server.inject({
         method: 'POST',
         url: '/graphql',
-        headers: { 'content-type': 'application/json', authorization: 'Bearer test-key' },
+        headers: { 'content-type': 'application/json', 'x-api-key': 'test-key', authorization: 'Bearer test-key' },
         payload: gqlBody('mutation { createKey(name: "to-delete") { id } }'),
       });
       const createBody = JSON.parse(createRes.body);
@@ -268,7 +269,7 @@ describe('GraphQL API', () => {
       const deleteRes = await server.inject({
         method: 'POST',
         url: '/graphql',
-        headers: { 'content-type': 'application/json', authorization: 'Bearer test-key' },
+        headers: { 'content-type': 'application/json', 'x-api-key': 'test-key', authorization: 'Bearer test-key' },
         payload: gqlBody(`mutation { deleteKey(id: "${id}") }`),
       });
       const deleteBody = JSON.parse(deleteRes.body);
@@ -279,7 +280,7 @@ describe('GraphQL API', () => {
       const res = await server.inject({
         method: 'POST',
         url: '/graphql',
-        headers: { 'content-type': 'application/json', authorization: 'Bearer test-key' },
+        headers: { 'content-type': 'application/json', 'x-api-key': 'test-key', authorization: 'Bearer test-key' },
         payload: gqlBody('mutation { deleteKey(id: "does-not-exist") }'),
       });
       const body = JSON.parse(res.body);
@@ -293,7 +294,7 @@ describe('GraphQL API', () => {
       const res = await server.inject({
         method: 'POST',
         url: '/graphql',
-        headers: { 'content-type': 'application/json', authorization: 'Bearer test-key' },
+        headers: { 'content-type': 'application/json', 'x-api-key': 'test-key', authorization: 'Bearer test-key' },
         payload: gqlBody('mutation { scanBatch(texts: ["Claim A", "Claim B"]) { id input overallRisk } }'),
       });
       const body = JSON.parse(res.body);
@@ -306,13 +307,13 @@ describe('GraphQL API', () => {
       await server.inject({
         method: 'POST',
         url: '/graphql',
-        headers: { 'content-type': 'application/json', authorization: 'Bearer test-key' },
+        headers: { 'content-type': 'application/json', 'x-api-key': 'test-key', authorization: 'Bearer test-key' },
         payload: gqlBody('mutation { scanBatch(texts: ["A", "B", "C"]) { id } }'),
       });
       const res = await server.inject({
         method: 'POST',
         url: '/graphql',
-        headers: { 'content-type': 'application/json', authorization: 'Bearer test-key' },
+        headers: { 'content-type': 'application/json', 'x-api-key': 'test-key', authorization: 'Bearer test-key' },
         payload: gqlBody('{ scans { id } }'),
       });
       const body = JSON.parse(res.body);
@@ -323,7 +324,7 @@ describe('GraphQL API', () => {
       const res = await server.inject({
         method: 'POST',
         url: '/graphql',
-        headers: { 'content-type': 'application/json', authorization: 'Bearer test-key' },
+        headers: { 'content-type': 'application/json', 'x-api-key': 'test-key', authorization: 'Bearer test-key' },
         payload: gqlBody('mutation { scanBatch(texts: ["Test"], provider: "mock") { id } }'),
       });
       const body = JSON.parse(res.body);
@@ -337,7 +338,7 @@ describe('GraphQL API', () => {
       const res = await server.inject({
         method: 'POST',
         url: '/graphql',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', 'x-api-key': 'test-key' },
         payload: gqlBody('{ __schema { queryType { name } } }'),
       });
       const body = JSON.parse(res.body);
@@ -348,7 +349,7 @@ describe('GraphQL API', () => {
       const res = await server.inject({
         method: 'POST',
         url: '/graphql',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', 'x-api-key': 'test-key' },
         payload: gqlBody('{ __typename }'),
       });
       expect(res.statusCode).toBe(200);

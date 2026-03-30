@@ -83,7 +83,8 @@ export function buildServer() {
 
   fastify.register(cors, {
     origin: (origin, cb) => {
-      if (!origin) return cb(null, true); // server-to-server / curl
+      // Allow no-origin requests (server-to-server, curl) only outside production
+      if (!origin) return cb(null, process.env.NODE_ENV !== 'production');
       const allowed = /^https:\/\/([\w-]+\.)?nxtg\.ai$/.test(origin) || /^https?:\/\/localhost(:\d+)?$/.test(origin);
       cb(allowed ? null : new Error('CORS: origin not allowed'), allowed);
     },
@@ -171,6 +172,13 @@ export function buildServer() {
   fastify.register(auditLogRoutes);
   fastify.register(streamRoutes);
 
+  fastify.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (request.url === '/graphql' && request.method === 'POST') {
+      const { requireApiKey } = await import('./plugins/auth.js');
+      await requireApiKey(request, reply);
+    }
+  });
+
   fastify.register(mercurius, {
     schema: gqlSchema,
     resolvers: gqlResolvers,
@@ -251,8 +259,12 @@ export function buildServer() {
   fastify.setErrorHandler((error: { statusCode?: number; code?: string; message?: string }, _request, reply) => {
     const statusCode = error.statusCode ?? 500;
     const code = error.code ?? (statusCode === 404 ? 'NOT_FOUND' : statusCode === 400 ? 'VALIDATION_ERROR' : 'INTERNAL_ERROR');
+    // For 5xx errors, suppress internal details to prevent information leakage
+    const safeMessage = statusCode >= 500
+      ? 'An unexpected error occurred.'
+      : (error.message ?? 'An unexpected error occurred.');
     reply.status(statusCode).send({
-      error: error.message ?? 'An unexpected error occurred.',
+      error: safeMessage,
       code,
     });
   });
