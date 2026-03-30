@@ -67,7 +67,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /webhooks/test — HTML tester page (public)
   fastify.get(
     '/webhooks/test',
-    { schema: { tags: ['Webhooks'], summary: 'Webhook test tool (HTML)', security: [] } },
+    { preHandler: [requireAdmin], schema: { tags: ['Webhooks'], summary: 'Webhook test tool (HTML)' } },
     async (_request, reply) => {
       const registeredHooks = getWebhookStore().list();
       reply.header('Content-Type', 'text/html; charset=utf-8');

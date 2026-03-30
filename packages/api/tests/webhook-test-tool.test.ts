@@ -119,24 +119,24 @@ describe('GET /webhooks/test', () => {
   beforeEach(() => { setup(); server = buildServer(); });
   afterEach(async () => { await server.close(); delete process.env.FAULTLINE_API_KEY; });
 
-  it('returns 200 with text/html (public — no auth)', async () => {
-    const res = await server.inject({ method: 'GET', url: '/webhooks/test' });
+  it('returns 200 with text/html', async () => {
+    const res = await server.inject({ method: 'GET', url: '/webhooks/test', headers: { 'x-api-key': 'admin-secret' } });
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toContain('text/html');
   });
 
   it('HTML includes send button', async () => {
-    const res = await server.inject({ method: 'GET', url: '/webhooks/test' });
+    const res = await server.inject({ method: 'GET', url: '/webhooks/test', headers: { 'x-api-key': 'admin-secret' } });
     expect(res.body).toContain('Send Test Payload');
   });
 
   it('HTML lists /webhooks/test endpoint', async () => {
-    const res = await server.inject({ method: 'GET', url: '/webhooks/test' });
+    const res = await server.inject({ method: 'GET', url: '/webhooks/test', headers: { 'x-api-key': 'admin-secret' } });
     expect(res.body).toContain('/webhooks/test');
   });
 
   it('HTML includes event type options', async () => {
-    const res = await server.inject({ method: 'GET', url: '/webhooks/test' });
+    const res = await server.inject({ method: 'GET', url: '/webhooks/test', headers: { 'x-api-key': 'admin-secret' } });
     expect(res.body).toContain('scan.complete');
     expect(res.body).toContain('scan.failed');
   });

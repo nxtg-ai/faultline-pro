@@ -154,12 +154,12 @@ describe('GET /scans/timeline', () => {
   afterEach(async () => { await server.close(); delete process.env.FAULTLINE_API_KEY; });
 
   it('returns 400 without text_hash or text', async () => {
-    const res = await server.inject({ method: 'GET', url: '/scans/timeline' });
+    const res = await server.inject({ method: 'GET', url: '/scans/timeline', headers: { 'x-api-key': 'admin-secret' } });
     expect(res.statusCode).toBe(400);
   });
 
   it('returns 200 with empty timeline for unknown hash', async () => {
-    const res = await server.inject({ method: 'GET', url: '/scans/timeline?text_hash=abc123' });
+    const res = await server.inject({ method: 'GET', url: '/scans/timeline?text_hash=abc123', headers: { 'x-api-key': 'admin-secret' } });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.scanCount).toBe(0);
@@ -171,7 +171,7 @@ describe('GET /scans/timeline', () => {
     getScanHistory().record(makeEntry(text, { overallRisk: 'Low', claimCount: 2 }));
     getScanHistory().record(makeEntry(text, { overallRisk: 'High', claimCount: 5 }));
     const hash = hashText(text);
-    const res = await server.inject({ method: 'GET', url: `/scans/timeline?text_hash=${hash}` });
+    const res = await server.inject({ method: 'GET', url: `/scans/timeline?text_hash=${hash}`, headers: { 'x-api-key': 'admin-secret' } });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.scanCount).toBe(2);
@@ -182,7 +182,7 @@ describe('GET /scans/timeline', () => {
   it('accepts text param and computes hash server-side', async () => {
     const text = 'raw text doc';
     getScanHistory().record(makeEntry(text, { overallRisk: 'Medium' }));
-    const res = await server.inject({ method: 'GET', url: `/scans/timeline?text=${encodeURIComponent(text)}` });
+    const res = await server.inject({ method: 'GET', url: `/scans/timeline?text=${encodeURIComponent(text)}`, headers: { 'x-api-key': 'admin-secret' } });
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body).scanCount).toBe(1);
   });
@@ -191,7 +191,7 @@ describe('GET /scans/timeline', () => {
     const text = 'delta api doc';
     getScanHistory().record(makeEntry(text, { claimCount: 3 }));
     getScanHistory().record(makeEntry(text, { claimCount: 7 }));
-    const res = await server.inject({ method: 'GET', url: `/scans/timeline?text_hash=${hashText(text)}` });
+    const res = await server.inject({ method: 'GET', url: `/scans/timeline?text_hash=${hashText(text)}`, headers: { 'x-api-key': 'admin-secret' } });
     const body = JSON.parse(res.body);
     const second = body.timeline[1];
     expect(second).toHaveProperty('claimDelta');
@@ -209,13 +209,13 @@ describe('GET /scans/timeline/view', () => {
   afterEach(async () => { await server.close(); delete process.env.FAULTLINE_API_KEY; });
 
   it('returns 200 with text/html', async () => {
-    const res = await server.inject({ method: 'GET', url: '/scans/timeline/view' });
+    const res = await server.inject({ method: 'GET', url: '/scans/timeline/view', headers: { 'x-api-key': 'admin-secret' } });
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toContain('text/html');
   });
 
   it('HTML contains Scan Timeline heading', async () => {
-    const res = await server.inject({ method: 'GET', url: '/scans/timeline/view' });
+    const res = await server.inject({ method: 'GET', url: '/scans/timeline/view', headers: { 'x-api-key': 'admin-secret' } });
     expect(res.body).toContain('Scan Timeline');
   });
 });

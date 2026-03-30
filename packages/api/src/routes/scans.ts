@@ -8,6 +8,7 @@ export async function scansRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: { text_hash?: string; text?: string; limit?: string } }>(
     '/scans/timeline',
     {
+      preHandler: [requireApiKey],
       schema: {
         tags: ['Claims'],
         summary: 'Trust score timeline for a document scanned multiple times',
@@ -43,6 +44,7 @@ export async function scansRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: { text_hash?: string } }>(
     '/scans/timeline/view',
     {
+      preHandler: [requireApiKey],
       schema: {
         tags: ['Claims'],
         summary: 'HTML timeline dashboard for a document (pass ?text_hash=)',
@@ -237,6 +239,7 @@ export async function scansRoutes(fastify: FastifyInstance): Promise<void> {
   }>(
     '/scans/search',
     {
+      preHandler: [requireApiKey],
       schema: {
         tags: ['Claims'],
         summary: 'Full-text search across scan history with cursor pagination',

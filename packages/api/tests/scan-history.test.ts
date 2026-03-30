@@ -137,6 +137,7 @@ describe('ScanHistory — integration tests', () => {
     const res = await server.inject({
       method: 'GET',
       url: '/scans/search',
+      headers: { 'x-api-key': 'test-key' },
     });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
@@ -151,7 +152,7 @@ describe('ScanHistory — integration tests', () => {
     store.record({ textPreview: 'moon landing facts', textHash: 'hash-moon', provider: 'mock', overallRisk: 'low', claimCount: 1, latencyMs: 100, timestamp: new Date().toISOString(), keyId: 'k1' });
     store.record({ textPreview: 'weather forecast data', textHash: 'hash-weather', provider: 'mock', overallRisk: 'low', claimCount: 1, latencyMs: 100, timestamp: new Date().toISOString(), keyId: 'k2' });
 
-    const res = await server.inject({ method: 'GET', url: '/scans/search?q=moon' });
+    const res = await server.inject({ method: 'GET', url: '/scans/search?q=moon', headers: { 'x-api-key': 'test-key' } });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.scans.length).toBeGreaterThan(0);
@@ -164,7 +165,7 @@ describe('ScanHistory — integration tests', () => {
     store.record({ textPreview: 'gemini scan text', textHash: 'hash-gemini', provider: 'gemini', overallRisk: 'low', claimCount: 1, latencyMs: 100, timestamp: new Date().toISOString(), keyId: 'k1' });
     store.record({ textPreview: 'openai scan text', textHash: 'hash-openai', provider: 'openai', overallRisk: 'low', claimCount: 1, latencyMs: 100, timestamp: new Date().toISOString(), keyId: 'k2' });
 
-    const res = await server.inject({ method: 'GET', url: '/scans/search?provider=gemini' });
+    const res = await server.inject({ method: 'GET', url: '/scans/search?provider=gemini', headers: { 'x-api-key': 'test-key' } });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.scans.length).toBeGreaterThan(0);
@@ -177,7 +178,7 @@ describe('ScanHistory — integration tests', () => {
     store.record({ textPreview: 'high risk content', textHash: 'hash-high', provider: 'mock', overallRisk: 'high', claimCount: 2, latencyMs: 100, timestamp: new Date().toISOString(), keyId: 'k1' });
     store.record({ textPreview: 'low risk content', textHash: 'hash-low', provider: 'mock', overallRisk: 'low', claimCount: 1, latencyMs: 100, timestamp: new Date().toISOString(), keyId: 'k2' });
 
-    const res = await server.inject({ method: 'GET', url: '/scans/search?risk=high' });
+    const res = await server.inject({ method: 'GET', url: '/scans/search?risk=high', headers: { 'x-api-key': 'test-key' } });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.scans.length).toBeGreaterThan(0);
@@ -191,7 +192,7 @@ describe('ScanHistory — integration tests', () => {
       store.record({ textPreview: `entry ${i}`, textHash: `hash-entry-${i}`, provider: 'mock', overallRisk: 'low', claimCount: 1, latencyMs: 100, timestamp: new Date().toISOString(), keyId: 'k' });
     }
 
-    const res = await server.inject({ method: 'GET', url: '/scans/search?limit=2' });
+    const res = await server.inject({ method: 'GET', url: '/scans/search?limit=2', headers: { 'x-api-key': 'test-key' } });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.nextCursor).not.toBeNull();
@@ -205,11 +206,11 @@ describe('ScanHistory — integration tests', () => {
       store.record({ textPreview: `entry ${i}`, textHash: `hash-entry-${i}`, provider: 'mock', overallRisk: 'low', claimCount: 1, latencyMs: 100, timestamp: new Date().toISOString(), keyId: 'k' });
     }
 
-    const firstRes = await server.inject({ method: 'GET', url: '/scans/search?limit=2' });
+    const firstRes = await server.inject({ method: 'GET', url: '/scans/search?limit=2', headers: { 'x-api-key': 'test-key' } });
     const firstBody = JSON.parse(firstRes.body);
     expect(firstBody.nextCursor).not.toBeNull();
 
-    const secondRes = await server.inject({ method: 'GET', url: `/scans/search?limit=2&cursor=${firstBody.nextCursor}` });
+    const secondRes = await server.inject({ method: 'GET', url: `/scans/search?limit=2&cursor=${firstBody.nextCursor}`, headers: { 'x-api-key': 'test-key' } });
     expect(secondRes.statusCode).toBe(200);
     const secondBody = JSON.parse(secondRes.body);
     expect(Array.isArray(secondBody.scans)).toBe(true);
@@ -227,7 +228,7 @@ describe('ScanHistory — integration tests', () => {
       store.record({ textPreview: `entry ${i}`, textHash: `hash-entry-${i}`, provider: 'mock', overallRisk: 'low', claimCount: 1, latencyMs: 100, timestamp: new Date().toISOString(), keyId: 'k' });
     }
 
-    const res = await server.inject({ method: 'GET', url: '/scans/search?limit=2' });
+    const res = await server.inject({ method: 'GET', url: '/scans/search?limit=2', headers: { 'x-api-key': 'test-key' } });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.scans.length).toBeLessThanOrEqual(2);
@@ -236,7 +237,7 @@ describe('ScanHistory — integration tests', () => {
 
   // SH13: GET /scans/search empty when no scans
   it('SH13: GET /scans/search returns empty when no scans', async () => {
-    const res = await server.inject({ method: 'GET', url: '/scans/search' });
+    const res = await server.inject({ method: 'GET', url: '/scans/search', headers: { 'x-api-key': 'test-key' } });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.scans).toEqual([]);

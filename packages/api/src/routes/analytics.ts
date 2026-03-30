@@ -9,6 +9,7 @@ import type { FastifyInstance } from 'fastify';
 import { getScanHistory } from '../store/scan-history.js';
 import { getScanCache } from '../store/cache.js';
 import { getClaimIndex } from '../store/claims.js';
+import { requireApiKey } from '../plugins/auth.js';
 
 // ── Aggregation helpers ───────────────────────────────────────────────────────
 
@@ -436,6 +437,7 @@ export async function analyticsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/analytics/overview',
     {
+      preHandler: [requireApiKey],
       schema: {
         tags: ['Analytics'],
         summary: 'Aggregate analytics data for dashboard charts',
@@ -452,6 +454,7 @@ export async function analyticsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/analytics',
     {
+      preHandler: [requireApiKey],
       schema: {
         tags: ['Analytics'],
         summary: 'Usage analytics dashboard (HTML)',

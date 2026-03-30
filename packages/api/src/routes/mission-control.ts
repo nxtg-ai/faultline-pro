@@ -12,6 +12,7 @@ import { getScanQueue } from '../store/scan-queue.js';
 import { getKeyStore } from '../store/keys.js';
 import { getScanHistory } from '../store/scan-history.js';
 import { getAuditLogger } from '../store/audit.js';
+import { requireAdmin } from '../plugins/auth.js';
 
 // ── Data aggregation ──────────────────────────────────────────────────────────
 
@@ -417,6 +418,7 @@ export async function missionControlRoutes(fastify: FastifyInstance): Promise<vo
   fastify.get(
     '/mission-control/status',
     {
+      preHandler: [requireAdmin],
       schema: {
         tags: ['Monitoring'],
         summary: 'Mission Control status — all subsystem health in one JSON payload',
@@ -430,6 +432,7 @@ export async function missionControlRoutes(fastify: FastifyInstance): Promise<vo
   fastify.get(
     '/mission-control',
     {
+      preHandler: [requireAdmin],
       schema: {
         tags: ['Monitoring'],
         summary: 'Mission Control HTML dashboard — auto-refresh 10s',

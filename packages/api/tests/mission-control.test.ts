@@ -16,6 +16,7 @@ function setup() {
   resetScanHistory();
   resetCache();
   resetAuditLogger();
+  process.env.FAULTLINE_API_KEY = 'test-secret';
 }
 
 function seedHistory() {
@@ -41,20 +42,20 @@ function seedHistory() {
 describe('GET /mission-control/status', () => {
   let server: FastifyInstance;
   beforeEach(() => { setup(); server = buildServer(); });
-  afterEach(async () => { await server.close(); });
+  afterEach(async () => { await server.close(); delete process.env.FAULTLINE_API_KEY; });
 
   it('returns 200', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control/status' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control/status', headers: { 'x-api-key': 'test-secret' } });
     expect(res.statusCode).toBe(200);
   });
 
-  it('no auth required', async () => {
+  it('returns 403 without api key (admin-gated)', async () => {
     const res = await server.inject({ method: 'GET', url: '/mission-control/status' });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(403);
   });
 
   it('has correct top-level shape', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control/status' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control/status', headers: { 'x-api-key': 'test-secret' } });
     const body = JSON.parse(res.body);
     expect(typeof body.timestamp).toBe('string');
     expect(['healthy', 'warning', 'degraded']).toContain(body.system);
@@ -68,7 +69,7 @@ describe('GET /mission-control/status', () => {
   });
 
   it('latency has required fields', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control/status' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control/status', headers: { 'x-api-key': 'test-secret' } });
     const body = JSON.parse(res.body);
     expect(typeof body.latency.avg).toBe('number');
     expect(typeof body.latency.p50).toBe('number');
@@ -78,7 +79,7 @@ describe('GET /mission-control/status', () => {
   });
 
   it('cache has required fields', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control/status' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control/status', headers: { 'x-api-key': 'test-secret' } });
     const body = JSON.parse(res.body);
     expect(typeof body.cache.size).toBe('number');
     expect(typeof body.cache.hits).toBe('number');
@@ -87,13 +88,13 @@ describe('GET /mission-control/status', () => {
   });
 
   it('hitRate is 0 when no cache activity', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control/status' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control/status', headers: { 'x-api-key': 'test-secret' } });
     const body = JSON.parse(res.body);
     expect(body.cache.hitRate).toBe(0);
   });
 
   it('queue has required fields', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control/status' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control/status', headers: { 'x-api-key': 'test-secret' } });
     const body = JSON.parse(res.body);
     expect(typeof body.queue.pending).toBe('number');
     expect(typeof body.queue.processing).toBe('number');
@@ -102,20 +103,20 @@ describe('GET /mission-control/status', () => {
   });
 
   it('queue pending is 0 initially', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control/status' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control/status', headers: { 'x-api-key': 'test-secret' } });
     const body = JSON.parse(res.body);
     expect(body.queue.pending).toBe(0);
   });
 
   it('keys has active and total fields', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control/status' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control/status', headers: { 'x-api-key': 'test-secret' } });
     const body = JSON.parse(res.body);
     expect(typeof body.keys.active).toBe('number');
     expect(typeof body.keys.total).toBe('number');
   });
 
   it('scans has required fields', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control/status' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control/status', headers: { 'x-api-key': 'test-secret' } });
     const body = JSON.parse(res.body);
     expect(typeof body.scans.today).toBe('number');
     expect(typeof body.scans.last60s).toBe('number');
@@ -124,7 +125,7 @@ describe('GET /mission-control/status', () => {
   });
 
   it('scans.riskCounts has Low/Medium/High/Critical keys', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control/status' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control/status', headers: { 'x-api-key': 'test-secret' } });
     const body = JSON.parse(res.body);
     expect(typeof body.scans.riskCounts.Low).toBe('number');
     expect(typeof body.scans.riskCounts.Medium).toBe('number');
@@ -134,27 +135,27 @@ describe('GET /mission-control/status', () => {
 
   it('scans.today reflects seeded history', async () => {
     seedHistory();
-    const res = await server.inject({ method: 'GET', url: '/mission-control/status' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control/status', headers: { 'x-api-key': 'test-secret' } });
     const body = JSON.parse(res.body);
     expect(body.scans.today).toBe(5);
   });
 
   it('scans.last60s reflects seeded history', async () => {
     seedHistory();
-    const res = await server.inject({ method: 'GET', url: '/mission-control/status' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control/status', headers: { 'x-api-key': 'test-secret' } });
     const body = JSON.parse(res.body);
     expect(body.scans.last60s).toBe(5);
   });
 
   it('providerSummary has healthy and total fields', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control/status' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control/status', headers: { 'x-api-key': 'test-secret' } });
     const body = JSON.parse(res.body);
     expect(typeof body.providerSummary.healthy).toBe('number');
     expect(typeof body.providerSummary.total).toBe('number');
   });
 
   it('provider entries have name, status, healthScore, avgLatency, errorRate', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control/status' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control/status', headers: { 'x-api-key': 'test-secret' } });
     const body = JSON.parse(res.body);
     // providers may be empty or populated depending on registry init
     // if populated, check shape
@@ -171,13 +172,13 @@ describe('GET /mission-control/status', () => {
   });
 
   it('timestamp is ISO 8601', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control/status' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control/status', headers: { 'x-api-key': 'test-secret' } });
     const body = JSON.parse(res.body);
     expect(body.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
   });
 
   it('system is healthy when no issues', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control/status' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control/status', headers: { 'x-api-key': 'test-secret' } });
     const body = JSON.parse(res.body);
     // With empty queue and no providers, system should be healthy
     expect(body.system).toBe('healthy');
@@ -189,41 +190,41 @@ describe('GET /mission-control/status', () => {
 describe('GET /mission-control', () => {
   let server: FastifyInstance;
   beforeEach(() => { setup(); server = buildServer(); });
-  afterEach(async () => { await server.close(); });
+  afterEach(async () => { await server.close(); delete process.env.FAULTLINE_API_KEY; });
 
   it('returns 200', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control', headers: { 'x-api-key': 'test-secret' } });
     expect(res.statusCode).toBe(200);
   });
 
   it('returns text/html content-type', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control', headers: { 'x-api-key': 'test-secret' } });
     expect(res.headers['content-type']).toContain('text/html');
   });
 
-  it('no auth required', async () => {
+  it('returns 403 without api key (admin-gated)', async () => {
     const res = await server.inject({ method: 'GET', url: '/mission-control' });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(403);
   });
 
   it('contains Mission Control title', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control', headers: { 'x-api-key': 'test-secret' } });
     expect(res.body).toContain('Mission Control');
   });
 
   it('contains Faultline Pro branding', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control', headers: { 'x-api-key': 'test-secret' } });
     expect(res.body).toContain('Faultline Pro');
   });
 
   it('references auto-refresh 10s', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control', headers: { 'x-api-key': 'test-secret' } });
     expect(res.body).toContain('10');
     expect(res.body).toContain('refresh');
   });
 
   it('contains KPI cards', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control', headers: { 'x-api-key': 'test-secret' } });
     expect(res.body).toContain('Scans Today');
     expect(res.body).toContain('Active Keys');
     expect(res.body).toContain('Queue Depth');
@@ -233,52 +234,52 @@ describe('GET /mission-control', () => {
   });
 
   it('contains Provider Health section', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control', headers: { 'x-api-key': 'test-secret' } });
     expect(res.body).toContain('Provider Health');
     expect(res.body).toContain('prov-grid');
   });
 
   it('contains Cache subsystem panel', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control', headers: { 'x-api-key': 'test-secret' } });
     expect(res.body).toContain('cache-stats');
   });
 
   it('contains Queue subsystem panel', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control', headers: { 'x-api-key': 'test-secret' } });
     expect(res.body).toContain('queue-stats');
   });
 
   it('contains Risk Distribution panel', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control', headers: { 'x-api-key': 'test-secret' } });
     expect(res.body).toContain('Risk Distribution');
     expect(res.body).toContain('risk-dist');
   });
 
   it('contains API Latency section', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control', headers: { 'x-api-key': 'test-secret' } });
     expect(res.body).toContain('API Latency');
     expect(res.body).toContain('Response Time');
     expect(res.body).toContain('Throughput');
   });
 
   it('fetches /mission-control/status via JS', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control', headers: { 'x-api-key': 'test-secret' } });
     expect(res.body).toContain('/mission-control/status');
   });
 
   it('contains auto-refresh setInterval', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control', headers: { 'x-api-key': 'test-secret' } });
     expect(res.body).toContain('setInterval');
     expect(res.body).toContain('10_000');
   });
 
   it('contains system status pill element', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control', headers: { 'x-api-key': 'test-secret' } });
     expect(res.body).toContain('sys-pill');
   });
 
   it('contains progress bar for refresh indicator', async () => {
-    const res = await server.inject({ method: 'GET', url: '/mission-control' });
+    const res = await server.inject({ method: 'GET', url: '/mission-control', headers: { 'x-api-key': 'test-secret' } });
     expect(res.body).toContain('refresh-bar');
     expect(res.body).toContain('refresh-progress');
   });

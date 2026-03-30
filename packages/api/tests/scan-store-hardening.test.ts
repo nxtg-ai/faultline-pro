@@ -108,6 +108,7 @@ describe('GET /scans/timeline — limit param branches (routes/scans.ts line 32)
     const res = await server.inject({
       method: 'GET',
       url: '/scans/timeline?text_hash=aabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccdd&limit=3',
+      headers: { 'x-api-key': 'admin-key' },
     });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
@@ -119,6 +120,7 @@ describe('GET /scans/timeline — limit param branches (routes/scans.ts line 32)
     const res = await server.inject({
       method: 'GET',
       url: '/scans/timeline?text_hash=deadbeef00000000deadbeef00000000deadbeef00000000deadbeef00000000&limit=abc',
+      headers: { 'x-api-key': 'admin-key' },
     });
     // NaN || 50 gives 50 — request succeeds, empty timeline
     expect(res.statusCode).toBe(200);
@@ -144,6 +146,7 @@ describe('GET /scans/search — limit param branch (routes/scans.ts line 261)', 
     const res = await server.inject({
       method: 'GET',
       url: '/scans/search?limit=5',
+      headers: { 'x-api-key': 'admin-key' },
     });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);

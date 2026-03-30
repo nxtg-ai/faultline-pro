@@ -5,6 +5,7 @@
  */
 
 import type { FastifyInstance } from 'fastify';
+import { requireApiKey } from '../plugins/auth.js';
 import { escHtml } from '../lib/html.js';
 
 // ── Sample data ───────────────────────────────────────────────────────────────
@@ -484,6 +485,7 @@ export async function playgroundRoutes(fastify: FastifyInstance): Promise<void> 
   fastify.get(
     '/playground',
     {
+      preHandler: [requireApiKey],
       schema: {
         tags: ['Developer-X'],
         summary: 'Interactive API playground for live endpoint testing',

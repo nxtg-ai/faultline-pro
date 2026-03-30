@@ -598,14 +598,14 @@ describe('F9: Schedule trigger flow', () => {
 
 describe('F10: Analytics data flow', () => {
   it('F10.1 GET /analytics/overview totalScans > 0 after all prior scans (Gate 2)', async () => {
-    const res = await server.inject({ method: 'GET', url: '/analytics/overview' });
+    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: ah() });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.summary.totalScans).toBeGreaterThan(0); // Gate 2
   });
 
   it('F10.2 providerDistribution includes mock provider (Gate 2)', async () => {
-    const res = await server.inject({ method: 'GET', url: '/analytics/overview' });
+    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: ah() });
     const body = JSON.parse(res.body);
     const mockEntry = body.providerDistribution.find((p: { provider: string }) => p.provider === 'mock');
     expect(mockEntry).toBeDefined();              // Gate 2
@@ -614,7 +614,7 @@ describe('F10: Analytics data flow', () => {
 
   it('F10.3 Today\'s scan volume bucket is non-zero (Gate 2)', async () => {
     const today = new Date().toISOString().slice(0, 10);
-    const res = await server.inject({ method: 'GET', url: '/analytics/overview' });
+    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: ah() });
     const body = JSON.parse(res.body);
     const todayBucket = body.scanVolume.find((d: { date: string }) => d.date === today);
     expect(todayBucket).toBeDefined();
@@ -622,14 +622,14 @@ describe('F10: Analytics data flow', () => {
   });
 
   it('F10.4 cacheStats.hits > 0 after F2 cache-hit scenario (Gate 2)', async () => {
-    const res = await server.inject({ method: 'GET', url: '/analytics/overview' });
+    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: ah() });
     const body = JSON.parse(res.body);
     expect(body.cacheStats.hits).toBeGreaterThan(0);   // Gate 2
     expect(body.cacheStats.hitRate).toBeGreaterThan(0); // Gate 2
   });
 
   it('F10.5 claimCategories includes fact type after ingestion (Gate 2)', async () => {
-    const res = await server.inject({ method: 'GET', url: '/analytics/overview' });
+    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: ah() });
     const body = JSON.parse(res.body);
     const factEntry = body.claimCategories.find((c: { type: string }) => c.type === 'fact');
     expect(factEntry).toBeDefined();             // Gate 2
@@ -637,7 +637,7 @@ describe('F10: Analytics data flow', () => {
   });
 
   it('F10.6 GET /analytics HTML page is reachable and contains expected content', async () => {
-    const res = await server.inject({ method: 'GET', url: '/analytics' });
+    const res = await server.inject({ method: 'GET', url: '/analytics', headers: ah() });
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toContain('text/html');
     expect(res.body).toContain('Total Scans');
