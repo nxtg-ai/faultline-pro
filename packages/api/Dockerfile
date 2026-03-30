@@ -37,6 +37,9 @@ COPY packages/api/package.json ./packages/api/
 
 RUN npm ci --omit=dev --ignore-scripts
 
+# Run as non-root user for security
+RUN addgroup -S faultline && adduser -S faultline -G faultline && chown -R faultline:faultline /app
+
 # Copy CLI source (no src/ dir — source lives at package root)
 COPY packages/cli/cli ./packages/cli/cli
 COPY packages/cli/lib ./packages/cli/lib
@@ -57,5 +60,7 @@ EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -qO- http://localhost:3000/health || exit 1
+
+USER faultline
 
 CMD ["node", "--import", "tsx/esm", "packages/api/src/index.ts"]
