@@ -94,7 +94,14 @@ runs:
         INPUT_NODE_VERSION: ${{ inputs.node-version }}
         ACTION_PATH: ${{ github.action_path }}
       run: |
-        REPORT_PATH="${RUNNER_TEMP}/faultline-report.${{ inputs.output-format == 'sarif' && 'sarif.json' || inputs.output-format == 'html' && 'html' || inputs.output-format == 'markdown' && 'md' || 'json' }}"
+        # Derive file extension from output format (safe — only matches known literals)
+        case "$INPUT_OUTPUT_FORMAT" in
+          sarif)    EXT="sarif.json" ;;
+          html)     EXT="html" ;;
+          markdown) EXT="md" ;;
+          *)        EXT="json" ;;
+        esac
+        REPORT_PATH="${RUNNER_TEMP}/faultline-report.${EXT}"
 
         # Build command args
         ARGS=""
