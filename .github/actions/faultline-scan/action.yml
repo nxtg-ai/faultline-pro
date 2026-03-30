@@ -71,42 +71,54 @@ runs:
 
     - name: Install Faultline
       shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
       run: |
         npm install -g @nxtg/faultline || {
           echo "::notice::@nxtg/faultline not published yet, installing from source"
-          cd ${{ github.action_path }}/../../..
+          cd "$ACTION_PATH"/../../..
           npm ci
         }
 
     - name: Run Faultline Scan
       id: scan
       shell: bash
+      env:
+        INPUT_TEMPLATES: ${{ inputs.templates }}
+        INPUT_DIR: ${{ inputs.dir }}
+        INPUT_INPUT: ${{ inputs.input }}
+        INPUT_PROVIDER: ${{ inputs.provider }}
+        INPUT_OUTPUT_FORMAT: ${{ inputs.output-format }}
+        INPUT_MIN_CONFIDENCE: ${{ inputs.min-confidence }}
+        INPUT_RULES: ${{ inputs.rules }}
+        INPUT_NODE_VERSION: ${{ inputs.node-version }}
+        ACTION_PATH: ${{ github.action_path }}
       run: |
         REPORT_PATH="${RUNNER_TEMP}/faultline-report.${{ inputs.output-format == 'sarif' && 'sarif.json' || inputs.output-format == 'html' && 'html' || inputs.output-format == 'markdown' && 'md' || 'json' }}"
 
         # Build command args
         ARGS=""
 
-        if [ -n "${{ inputs.templates }}" ]; then
-          ARGS="scan --templates ${{ inputs.templates }}"
-        elif [ -n "${{ inputs.dir }}" ]; then
-          ARGS="scan --dir ${{ inputs.dir }}"
-        elif [ -n "${{ inputs.input }}" ]; then
-          ARGS="scan --input ${{ inputs.input }}"
+        if [ -n "$INPUT_TEMPLATES" ]; then
+          ARGS="scan --templates $INPUT_TEMPLATES"
+        elif [ -n "$INPUT_DIR" ]; then
+          ARGS="scan --dir $INPUT_DIR"
+        elif [ -n "$INPUT_INPUT" ]; then
+          ARGS="scan --input $INPUT_INPUT"
         else
           echo "::error::One of 'input', 'dir', or 'templates' must be specified"
           exit 1
         fi
 
-        ARGS="$ARGS --provider ${{ inputs.provider }}"
-        ARGS="$ARGS --output-format ${{ inputs.output-format }}"
+        ARGS="$ARGS --provider $INPUT_PROVIDER"
+        ARGS="$ARGS --output-format $INPUT_OUTPUT_FORMAT"
 
-        if [ "${{ inputs.min-confidence }}" != "0.0" ]; then
-          ARGS="$ARGS --min-confidence ${{ inputs.min-confidence }}"
+        if [ "$INPUT_MIN_CONFIDENCE" != "0.0" ]; then
+          ARGS="$ARGS --min-confidence $INPUT_MIN_CONFIDENCE"
         fi
 
-        if [ -n "${{ inputs.rules }}" ]; then
-          ARGS="$ARGS --rules ${{ inputs.rules }}"
+        if [ -n "$INPUT_RULES" ]; then
+          ARGS="$ARGS --rules $INPUT_RULES"
         fi
 
         echo "::group::Faultline scan"
@@ -116,14 +128,14 @@ runs:
         if command -v faultline &> /dev/null; then
           faultline $ARGS > "$REPORT_PATH" 2>&1 || true
         else
-          node ${{ github.action_path }}/../../../bin/faultline.js $ARGS > "$REPORT_PATH" 2>&1 || true
+          node "$ACTION_PATH"/../../../bin/faultline.js $ARGS > "$REPORT_PATH" 2>&1 || true
         fi
         echo "::endgroup::"
 
         echo "report_path=$REPORT_PATH" >> "$GITHUB_OUTPUT"
 
         # Parse counts from SARIF or JSON output
-        if [ "${{ inputs.output-format }}" = "sarif" ]; then
+        if [ "$INPUT_OUTPUT_FORMAT" = "sarif" ]; then
           FINDINGS_COUNT=$(node -e "
             const fs = require('fs');
             try {
@@ -184,11 +196,13 @@ runs:
     - name: Check Threshold
       id: threshold
       shell: bash
+      env:
+        INPUT_THRESHOLD: ${{ inputs.threshold }}
+        FINDINGS_COUNT: ${{ steps.scan.outputs.findings_count }}
+        CRITICAL_COUNT: ${{ steps.scan.outputs.critical_count }}
+        HIGH_COUNT: ${{ steps.scan.outputs.high_count }}
       run: |
-        THRESHOLD="${{ inputs.threshold }}"
-        FINDINGS_COUNT="${{ steps.scan.outputs.findings_count }}"
-        CRITICAL_COUNT="${{ steps.scan.outputs.critical_count }}"
-        HIGH_COUNT="${{ steps.scan.outputs.high_count }}"
+        THRESHOLD="$INPUT_THRESHOLD"
 
         # Threshold levels: critical > high > medium > low
         # "critical" = only fail if critical findings exist

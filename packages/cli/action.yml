@@ -65,22 +65,31 @@ runs:
     - name: Run Faultline scan
       id: scan
       shell: bash
-      run: |
-        ARGS="scan"
-        if [ -n "${{ inputs.input }}" ]; then ARGS="$ARGS --input ${{ inputs.input }}"; fi
-        if [ -n "${{ inputs.dir }}" ]; then ARGS="$ARGS --dir ${{ inputs.dir }}"; fi
-        if [ -z "${{ inputs.input }}" ] && [ -z "${{ inputs.dir }}" ] && [ -n "${{ inputs.path }}" ]; then ARGS="$ARGS --dir ${{ inputs.path }}"; fi
-        if [ -n "${{ inputs.templates }}" ]; then ARGS="$ARGS --templates ${{ inputs.templates }}"; fi
-        ARGS="$ARGS --provider ${{ inputs.provider }}"
-        ARGS="$ARGS --output-format ${{ inputs.output-format }}"
-        ARGS="$ARGS --fail-on ${{ inputs.fail-on }}"
-        if [ "${{ inputs.min-confidence }}" != "0.0" ]; then ARGS="$ARGS --min-confidence ${{ inputs.min-confidence }}"; fi
-        if [ -n "${{ inputs.rules }}" ]; then ARGS="$ARGS --rules ${{ inputs.rules }}"; fi
-        faultline $ARGS
       env:
+        INPUT_INPUT: ${{ inputs.input }}
+        INPUT_DIR: ${{ inputs.dir }}
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_TEMPLATES: ${{ inputs.templates }}
+        INPUT_PROVIDER: ${{ inputs.provider }}
+        INPUT_OUTPUT_FORMAT: ${{ inputs.output-format }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_MIN_CONFIDENCE: ${{ inputs.min-confidence }}
+        INPUT_RULES: ${{ inputs.rules }}
         GEMINI_API_KEY: ${{ inputs.api-key }}
         OPENAI_API_KEY: ${{ inputs.api-key }}
         ANTHROPIC_API_KEY: ${{ inputs.api-key }}
+      run: |
+        ARGS="scan"
+        if [ -n "$INPUT_INPUT" ]; then ARGS="$ARGS --input $INPUT_INPUT"; fi
+        if [ -n "$INPUT_DIR" ]; then ARGS="$ARGS --dir $INPUT_DIR"; fi
+        if [ -z "$INPUT_INPUT" ] && [ -z "$INPUT_DIR" ] && [ -n "$INPUT_PATH" ]; then ARGS="$ARGS --dir $INPUT_PATH"; fi
+        if [ -n "$INPUT_TEMPLATES" ]; then ARGS="$ARGS --templates $INPUT_TEMPLATES"; fi
+        ARGS="$ARGS --provider $INPUT_PROVIDER"
+        ARGS="$ARGS --output-format $INPUT_OUTPUT_FORMAT"
+        ARGS="$ARGS --fail-on $INPUT_FAIL_ON"
+        if [ "$INPUT_MIN_CONFIDENCE" != "0.0" ]; then ARGS="$ARGS --min-confidence $INPUT_MIN_CONFIDENCE"; fi
+        if [ -n "$INPUT_RULES" ]; then ARGS="$ARGS --rules $INPUT_RULES"; fi
+        faultline $ARGS
 
     - name: Upload SARIF to GitHub Code Scanning
       if: inputs.upload-sarif == 'true' && inputs.output-format == 'sarif'
