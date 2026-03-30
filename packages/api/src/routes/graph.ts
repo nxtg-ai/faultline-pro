@@ -9,6 +9,17 @@ interface ClaimNode {
 }
 
 /**
+ * Sanitize a string for use inside a Mermaid node label ("...").
+ * Strips characters that could break out of the label or inject HTML/scripts.
+ */
+function sanitizeMermaidLabel(text: string): string {
+  return text
+    .replace(/["\]<>`{}|#&;]/g, '')  // strip Mermaid-special and HTML-injection chars
+    .replace(/\n/g, ' ')             // collapse newlines
+    .trim();
+}
+
+/**
  * Build a Mermaid graph TD diagram from claims.
  * Edges are inferred from type hierarchy: fact → interpretation → opinion.
  * Within each tier, claims are ordered by importance (descending).
@@ -18,10 +29,11 @@ function buildMermaid(claims: ClaimNode[]): string {
 
   const lines: string[] = ['graph TD'];
 
-  // Define nodes — escape special chars in labels
+  // Define nodes — sanitize user-supplied text to prevent XSS in Mermaid labels
   for (const c of claims) {
-    const label = c.text.replace(/"/g, "'").slice(0, 60) + (c.text.length > 60 ? '...' : '');
-    lines.push(`  ${c.id}["${label} [${c.type}, ★${c.importance}]"]`);
+    const safe = sanitizeMermaidLabel(c.text);
+    const label = safe.slice(0, 60) + (safe.length > 60 ? '...' : '');
+    lines.push(`  ${c.id}["${label} (${c.type}, ${c.importance})"]`);
   }
 
   // Derive edges: facts → interpretations → opinions

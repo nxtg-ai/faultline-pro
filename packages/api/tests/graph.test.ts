@@ -170,7 +170,23 @@ describe('GET /scan/:id/graph', () => {
     const res = await server.inject({ method: 'GET', url: `/scan/${stored.id}/graph` });
     const body = JSON.parse(res.body);
     expect(body.mermaid).toContain('fact');
-    expect(body.mermaid).toContain('★5');
+    expect(body.mermaid).toContain('5');
+  });
+
+  it('sanitizes XSS in claim text for Mermaid labels', async () => {
+    const stored = getScanStore().record('test-key', 'XSS test', {
+      claims: [
+        { id: 'x1', text: '"><script>alert(1)</script>', type: 'fact', importance: 3 },
+        { id: 'x2', text: 'Normal claim ]-->|inject| other', type: 'fact', importance: 2 },
+      ],
+    });
+
+    const res = await server.inject({ method: 'GET', url: `/scan/${stored.id}/graph` });
+    const body = JSON.parse(res.body);
+    expect(body.mermaid).not.toContain('<script>');
+    expect(body.mermaid).not.toContain('</script>');
+    expect(body.mermaid).not.toContain(']-->');
+    expect(body.mermaid).not.toMatch(/<[a-z]/i);
   });
 
   it('getById returns undefined for unknown id', async () => {
