@@ -53,13 +53,18 @@ class FaultlineClient:
     ) -> None:
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
+        # Validate URL scheme to prevent SSRF via file:// or other protocols
+        from urllib.parse import urlparse
+        parsed = urlparse(self._base_url)
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError(f"base_url must use http or https scheme, got: {parsed.scheme!r}")
         self._http_fn = _http_fn or self._default_http
 
     # ── Transport ─────────────────────────────────────────────────────────────
 
     def _default_http(self, req: urllib.request.Request) -> Any:
         """Default transport: delegates to ``urllib.request.urlopen``."""
-        return urllib.request.urlopen(req)
+        return urllib.request.urlopen(req, timeout=30)
 
     def _request(self, method: str, path: str, body: dict[str, Any] | None = None) -> Any:
         """Execute an authenticated API request and return the parsed JSON body.
