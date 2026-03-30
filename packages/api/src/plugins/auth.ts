@@ -1,6 +1,13 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
+import { timingSafeEqual } from 'node:crypto';
 import { getKeyStore } from '../store/keys.js';
 import { getTenantStore } from '../store/tenants.js';
+
+/** Constant-time string comparison to prevent timing attacks on key validation. */
+function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -29,7 +36,7 @@ export async function requireApiKey(request: FastifyRequest, reply: FastifyReply
     return;
   }
 
-  if (configuredKey && providedKey === configuredKey) {
+  if (configuredKey && safeEqual(providedKey, configuredKey)) {
     request.keyId = 'admin';
     return;
   }
@@ -63,7 +70,7 @@ export async function requireAdmin(request: FastifyRequest, reply: FastifyReply)
     return;
   }
 
-  if (configuredKey && providedKey === configuredKey) {
+  if (configuredKey && safeEqual(providedKey, configuredKey)) {
     request.keyId = 'admin';
     return;
   }

@@ -1,5 +1,4 @@
-import { randomUUID } from 'node:crypto';
-import { randomBytes } from 'node:crypto';
+import { randomUUID, randomBytes, timingSafeEqual } from 'node:crypto';
 
 export type Permission = 'scan' | 'report' | 'upload' | 'admin' | 'pro';
 
@@ -128,14 +127,21 @@ class KeyStore {
    */
   validateKey(key: string): ApiKey | null {
     const now = new Date();
+    const keyBuf = Buffer.from(key);
     for (const entry of this.keys) {
       if (entry.disabled) continue;
       if (entry.expiresAt && new Date(entry.expiresAt) <= now) continue;
-      if (entry.key === key || (
-        entry.previousKey === key &&
-        entry.previousKeyExpiresAt &&
-        new Date(entry.previousKeyExpiresAt) > now
-      )) {
+
+      const currentBuf = Buffer.from(entry.key);
+      const currentMatch = keyBuf.length === currentBuf.length && timingSafeEqual(keyBuf, currentBuf);
+
+      let previousMatch = false;
+      if (entry.previousKey && entry.previousKeyExpiresAt && new Date(entry.previousKeyExpiresAt) > now) {
+        const prevBuf = Buffer.from(entry.previousKey);
+        previousMatch = keyBuf.length === prevBuf.length && timingSafeEqual(keyBuf, prevBuf);
+      }
+
+      if (currentMatch || previousMatch) {
         entry.lastUsedAt = now.toISOString();
         return entry;
       }
