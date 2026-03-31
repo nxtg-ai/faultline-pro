@@ -20,6 +20,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - N-170: Compliance config file — `.faultline-compliance.json` with projectName, threshold, strict, requiredArticles; auto-loaded in `--ci` mode; `--config` flag for explicit path
 - N-171: Python SDK compliance enhancements — `compliance_badge()`, `compliance_history()`, `compliance_trend()` methods; `threshold`/`strict` params on `compliance_gate()`
 - N-172: Compliance report Markdown renderer — `renderComplianceReportMarkdown()` GFM output for PR comments; `--format markdown` CLI flag with `--output` file support
+- N-173: Compliance report SARIF 2.1.0 — `renderComplianceReportSarif()` maps EU AI Act articles to SARIF rules/results; `--format sarif` CLI flag; integrates with GitHub Code Scanning, GitLab SAST, Azure DevOps
 
 ---
 
