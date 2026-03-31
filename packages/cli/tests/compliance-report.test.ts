@@ -83,11 +83,13 @@ describe('buildEuComplianceReport()', () => {
     expect(report.articleEvidence.length).toBeGreaterThan(0);
   });
 
-  it('always includes Article 9, 10, 13, 14, and 50', () => {
+  it('always includes Article 9, 10, 11, 12, 13, 14, and 50', () => {
     const report = buildEuComplianceReport(makeScan());
     const articles = report.articleEvidence.map(e => e.article);
     expect(articles.some(a => a.includes('Article 9'))).toBe(true);
     expect(articles.some(a => a.includes('Article 10'))).toBe(true);
+    expect(articles.some(a => a.includes('Article 11'))).toBe(true);
+    expect(articles.some(a => a.includes('Article 12'))).toBe(true);
     expect(articles.some(a => a.includes('Article 13'))).toBe(true);
     expect(articles.some(a => a.includes('Article 14'))).toBe(true);
     expect(articles.some(a => a.includes('Article 50'))).toBe(true);
@@ -195,6 +197,68 @@ describe('buildEuComplianceReport()', () => {
     const art10 = report.articleEvidence.find(e => e.article.includes('Article 10'));
     expect(art10?.status).toBe('partial');
     expect(art10?.findings.some(f => f.includes('PII'))).toBe(true);
+  });
+
+  // ── N-193: Article 11 & 12 evidence mapping ────────────────────────────
+  it('Article 11 is compliant when claims have explanations and sources', () => {
+    const scan = makeScan({
+      verifications: {
+        c1: { claimId: 'c1', status: 'supported', explanation: 'Confirmed.', sources: [{ uri: 'http://a.com', title: 'A' }] },
+        c2: { claimId: 'c2', status: 'supported', explanation: 'Confirmed.', sources: [{ uri: 'http://b.com', title: 'B' }] },
+      },
+    });
+    const report = buildEuComplianceReport(scan);
+    const art11 = report.articleEvidence.find(e => e.article.includes('Article 11'));
+    expect(art11).toBeDefined();
+    expect(art11?.status).toBe('compliant');
+    expect(art11?.findings.some(f => f.includes('explanations'))).toBe(true);
+    expect(art11?.findings.some(f => f.includes('sources'))).toBe(true);
+  });
+
+  it('Article 11 is partial when claims have explanations but no sources', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const art11 = report.articleEvidence.find(e => e.article.includes('Article 11'));
+    expect(art11?.status).toBe('partial');
+  });
+
+  it('Article 11 is gap when claims have no explanations or sources', () => {
+    const scan = makeScan({
+      verifications: {
+        c1: { claimId: 'c1', status: 'supported', explanation: '', sources: [] },
+        c2: { claimId: 'c2', status: 'supported', explanation: '', sources: [] },
+      },
+    });
+    const report = buildEuComplianceReport(scan);
+    const art11 = report.articleEvidence.find(e => e.article.includes('Article 11'));
+    expect(art11?.status).toBe('gap');
+  });
+
+  it('Article 12 is compliant when provider and claims are present', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const art12 = report.articleEvidence.find(e => e.article.includes('Article 12'));
+    expect(art12).toBeDefined();
+    expect(art12?.status).toBe('compliant');
+    expect(art12?.findings.some(f => f.includes('Provider recorded'))).toBe(true);
+    expect(art12?.findings.some(f => f.includes('claim(s) extracted'))).toBe(true);
+  });
+
+  it('Article 12 includes rule findings when present', () => {
+    const scan = makeScan({
+      ruleFindings: [
+        { ruleId: 'bias-detection', severity: 'high', message: 'Bias found.', match: 'bias', offset: 0 },
+      ],
+    });
+    const report = buildEuComplianceReport(scan);
+    const art12 = report.articleEvidence.find(e => e.article.includes('Article 12'));
+    expect(art12?.status).toBe('compliant');
+    expect(art12?.findings.some(f => f.includes('rule finding'))).toBe(true);
+  });
+
+  it('Article 11 and 12 appear in article evidence array', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const articles = report.articleEvidence.map(e => e.article);
+    expect(articles.some(a => a.includes('Article 11'))).toBe(true);
+    expect(articles.some(a => a.includes('Article 12'))).toBe(true);
   });
 
   it('Article 13 is compliant when all fact claims are supported', () => {
@@ -1198,6 +1262,18 @@ describe('getRemediations()', () => {
     expect(rems.length).toBeGreaterThan(0);
     expect(rems.some(r => r.includes('Art. 10'))).toBe(true);
   });
+
+  it('RR20: Article 11 with insufficient docs returns documentation remediation', () => {
+    const rems = getRemediations('Article 11', 'gap', ['documentation of system decision-making is insufficient']);
+    expect(rems.some(r => r.includes('Art. 11'))).toBe(true);
+    expect(rems.some(r => r.includes('technical documentation'))).toBe(true);
+  });
+
+  it('RR21: Article 12 without monitoring returns logging remediation', () => {
+    const rems = getRemediations('Article 12', 'partial', ['Provider recorded: "mock"']);
+    expect(rems.some(r => r.includes('Art. 12'))).toBe(true);
+    expect(rems.some(r => r.includes('monitoring'))).toBe(true);
+  });
 });
 
 describe('remediations in buildEuComplianceReport()', () => {
@@ -1312,9 +1388,15 @@ describe('evaluateComplianceGate() threshold/strict options', () => {
   });
 
   it('TH5: strict mode passes when all articles are compliant/not-applicable', () => {
-    const report = buildEuComplianceReport(makeScan());
+    // Provide sources so Art. 11 (Technical Documentation) reaches 'compliant' threshold
+    const scan = makeScan({
+      verifications: {
+        c1: { claimId: 'c1', status: 'supported', explanation: 'Confirmed.', sources: [{ uri: 'http://a.com', title: 'A' }] },
+        c2: { claimId: 'c2', status: 'supported', explanation: 'Confirmed.', sources: [{ uri: 'http://b.com', title: 'B' }] },
+      },
+    });
+    const report = buildEuComplianceReport(scan);
     const gate = evaluateComplianceGate(report, { strict: true });
-    // Default scan has all-supported facts → compliant + not-applicable
     expect(gate.pass).toBe(true);
   });
 
@@ -1360,12 +1442,12 @@ describe('evaluateComplianceGate() threshold/strict options', () => {
     expect(gate.pass).toBe(false);
   });
 
-  it('TH11: strict mode fails when Annex III has not-assessed items (high risk)', () => {
+  it('TH11: strict mode fails when Annex III has non-pass items (high risk)', () => {
     const report = buildEuComplianceReport(makeScan({ overallRisk: 'high' }));
-    // Art.11 and Art.12 are always 'not-assessed' — strict mode should fail
     expect(report.annexIIIChecklist.applicable).toBe(true);
-    const notAssessed = report.annexIIIChecklist.items.filter(i => i.status === 'not-assessed');
-    expect(notAssessed.length).toBeGreaterThan(0);
+    // Art.11 is partial (explanations but no sources) — strict gate should fail
+    const nonPass = report.annexIIIChecklist.items.filter(i => i.status !== 'pass');
+    expect(nonPass.length).toBeGreaterThan(0);
     const gate = evaluateComplianceGate(report, { strict: true });
     expect(gate.pass).toBe(false);
   });
@@ -1380,14 +1462,35 @@ describe('evaluateComplianceGate() threshold/strict options', () => {
   });
 
   it('TH13: strict mode with low risk ignores Annex III (not applicable)', () => {
-    const report = buildEuComplianceReport(makeScan());
+    // Provide sources so Art. 11 reaches 'compliant' — test is about Annex III, not Art.11
+    const scan = makeScan({
+      verifications: {
+        c1: { claimId: 'c1', status: 'supported', explanation: 'Confirmed.', sources: [{ uri: 'http://a.com', title: 'A' }] },
+        c2: { claimId: 'c2', status: 'supported', explanation: 'Confirmed.', sources: [{ uri: 'http://b.com', title: 'B' }] },
+      },
+    });
+    const report = buildEuComplianceReport(scan);
     expect(report.annexIIIChecklist.applicable).toBe(false);
     const gate = evaluateComplianceGate(report, { strict: true });
     expect(gate.pass).toBe(true);
   });
 
   it('TH14: CI gate output shows Annex III failure details for high-risk', () => {
-    const report = buildEuComplianceReport(makeScan({ overallRisk: 'high' }));
+    // Use a scan that produces Annex III fail items (many contradictions → Art.15 fail)
+    const scan = makeScan({
+      overallRisk: 'high',
+      claims: [
+        { id: 'c1', text: 'Wrong.', type: 'fact', importance: 4 },
+        { id: 'c2', text: 'Also wrong.', type: 'fact', importance: 4 },
+        { id: 'c3', text: 'Very wrong.', type: 'fact', importance: 4 },
+      ],
+      verifications: {
+        c1: { claimId: 'c1', status: 'contradicted', explanation: 'No.', sources: [] },
+        c2: { claimId: 'c2', status: 'contradicted', explanation: 'No.', sources: [] },
+        c3: { claimId: 'c3', status: 'contradicted', explanation: 'No.', sources: [] },
+      },
+    });
+    const report = buildEuComplianceReport(scan);
     const gate = evaluateComplianceGate(report, { strict: true });
     const output = renderCiGateOutput(gate, report);
     expect(output).toContain('Annex III');
@@ -1817,7 +1920,14 @@ describe('renderComplianceReportSarif()', () => {
   });
 
   it('SF7: no results when all articles compliant', () => {
-    const parsed = JSON.parse(renderComplianceReportSarif(makeReport(), makeGate()));
+    // Provide sources so Art. 11 reaches 'compliant' — avoids partial SARIF result
+    const report = buildEuComplianceReport(makeScan({
+      verifications: {
+        c1: { claimId: 'c1', status: 'supported', explanation: 'Confirmed.', sources: [{ uri: 'http://a.com', title: 'A' }] },
+        c2: { claimId: 'c2', status: 'supported', explanation: 'Confirmed.', sources: [{ uri: 'http://b.com', title: 'B' }] },
+      },
+    }), { projectName: 'TestProject' });
+    const parsed = JSON.parse(renderComplianceReportSarif(report, makeGate()));
     expect(parsed.runs[0].results.length).toBe(0);
   });
 

@@ -241,6 +241,22 @@ export function getRemediations(article: string, status: EvidenceStatus, finding
     if (rems.length === 0) {
       rems.push('Review data governance practices for Art. 10 compliance.');
     }
+  } else if (article.includes('Article 11')) {
+    if (findings.some(f => f.includes('insufficient'))) {
+      rems.push('Add verification explanations to all AI system outputs per Art. 11(1)(a).');
+    }
+    if (findings.some(f => f.includes('sources'))) {
+      rems.push('Include source citations and evidence provenance in system documentation.');
+    }
+    rems.push('Maintain technical documentation covering system design, intended purpose, and decision-making logic.');
+  } else if (article.includes('Article 12')) {
+    if (!findings.some(f => f.includes('Provider recorded'))) {
+      rems.push('Record AI system provider and model information for audit trail.');
+    }
+    if (!findings.some(f => f.includes('rule finding'))) {
+      rems.push('Implement monitoring rules to detect anomalies in AI system outputs.');
+    }
+    rems.push('Enable automatic event logging throughout the AI system lifecycle per Art. 12.');
   } else if (article.includes('Article 13')) {
     if (findings.some(f => f.includes('unverified') || f.includes('mixed'))) {
       rems.push('Add source attribution for unverified claims.');
@@ -389,6 +405,72 @@ export function buildEuComplianceReport(
     art10Findings.length === 0 ? 'compliant' :
     (biasFindings.length > 0 || contradictedClaims.length > 2) ? 'non-compliant' : 'partial';
 
+  // ── Article 11 – Technical Documentation ──────────────────────────────────
+  const art11Findings: string[] = [];
+  const claimsWithExplanation = claims.filter(c => {
+    const v = verifications[c.id];
+    return v && v.explanation && v.explanation.length > 0;
+  });
+  const claimsWithSources = claims.filter(c => {
+    const v = verifications[c.id];
+    return v && v.sources && v.sources.length > 0;
+  });
+
+  if (claimsWithExplanation.length > 0) {
+    art11Findings.push(
+      `${claimsWithExplanation.length}/${claims.length} claim(s) have verification explanations — ` +
+      `decision-making rationale is documented per Art. 11(1)(a).`,
+    );
+  }
+  if (claimsWithSources.length > 0) {
+    art11Findings.push(
+      `${claimsWithSources.length}/${claims.length} claim(s) cite verification sources — ` +
+      `evidence provenance documented per Art. 11(1)(b).`,
+    );
+  }
+  if (claims.length > 0 && claimsWithExplanation.length === 0 && claimsWithSources.length === 0) {
+    art11Findings.push(
+      'No verification explanations or sources present — technical documentation of system ' +
+      'decision-making is insufficient per Art. 11.',
+    );
+  }
+
+  const docCoverage = claims.length > 0
+    ? (claimsWithExplanation.length + claimsWithSources.length) / (claims.length * 2)
+    : 0;
+  const art11Status: EvidenceStatus =
+    claims.length === 0 ? 'not-applicable' :
+    docCoverage >= 0.7 ? 'compliant' :
+    docCoverage >= 0.3 ? 'partial' : 'gap';
+
+  // ── Article 12 – Record-Keeping ───────────────────────────────────────────
+  const art12Findings: string[] = [];
+
+  if (scan.provider) {
+    art12Findings.push(
+      `Provider recorded: "${provider}" — AI system provenance tracked per Art. 12(1).`,
+    );
+  }
+  if (claims.length > 0) {
+    art12Findings.push(
+      `${claims.length} claim(s) extracted with structured metadata (id, type, importance) — ` +
+      `automatic event logging per Art. 12(2).`,
+    );
+  }
+  if (ruleFindings.length > 0) {
+    art12Findings.push(
+      `${ruleFindings.length} rule finding(s) recorded — monitoring and anomaly detection active per Art. 12(3).`,
+    );
+  }
+
+  const hasProvider = !!scan.provider;
+  const hasStructuredClaims = claims.length > 0;
+  const hasMonitoring = ruleFindings.length > 0;
+  const art12Score = (hasProvider ? 1 : 0) + (hasStructuredClaims ? 1 : 0) + (hasMonitoring ? 1 : 0);
+  const art12Status: EvidenceStatus =
+    art12Score >= 2 ? 'compliant' :
+    art12Score === 1 ? 'partial' : 'gap';
+
   // ── Article 13 – Transparency and Provision of Information ─────────────────
   const art13Findings: string[] = [];
 
@@ -497,6 +579,36 @@ export function buildEuComplianceReport(
     remediations: getRemediations('Article 10', art10Status, art10FinalFindings),
     owaspRef: 'OWASP Agentic AI A05: Improper Output Handling',
     ...art10Strength,
+  });
+
+  const art11FinalFindings = art11Findings.length > 0
+    ? art11Findings
+    : ['Technical documentation assessment: no claims to evaluate.'];
+  const art11Strength = computeEvidenceStrength(claimsWithExplanation, verifications);
+  articleEvidence.push({
+    article: 'Article 11 – Technical Documentation',
+    requirement:
+      'Technical documentation shall be drawn up before the AI system is placed on the market, ' +
+      'covering system description, design specifications, and decision-making rationale.',
+    status: art11Status,
+    findings: art11FinalFindings,
+    remediations: getRemediations('Article 11', art11Status, art11FinalFindings),
+    ...art11Strength,
+  });
+
+  const art12FinalFindings = art12Findings.length > 0
+    ? art12Findings
+    : ['Record-keeping assessment: no logging evidence found.'];
+  const art12Strength = computeEvidenceStrength(claims, verifications);
+  articleEvidence.push({
+    article: 'Article 12 – Record-Keeping',
+    requirement:
+      'AI systems shall be designed with capabilities enabling automatic recording of events (logs) ' +
+      'throughout their lifecycle, ensuring traceability of system functioning.',
+    status: art12Status,
+    findings: art12FinalFindings,
+    remediations: getRemediations('Article 12', art12Status, art12FinalFindings),
+    ...art12Strength,
   });
 
   const art13FinalFindings = art13Findings.length > 0 ? art13Findings : ['No transparency gaps detected.'];
@@ -644,15 +756,15 @@ export function buildEuComplianceReport(
       id: 'annex-iii-3',
       article: 'Article 11',
       requirement: 'Technical documentation — sufficient for conformity assessment and post-market monitoring',
-      status: 'not-assessed',
-      evidence: 'Technical documentation assessment not yet automated — manual review required',
+      status: toAnnexStatus(artStatus('Article 11')),
+      evidence: `Article 11 status: ${artStatus('Article 11') ?? 'not assessed'}`,
     },
     {
       id: 'annex-iii-4',
       article: 'Article 12',
       requirement: 'Record-keeping — automatic logging of events during AI system operation',
-      status: 'not-assessed',
-      evidence: 'Record-keeping assessment not yet automated — manual review required',
+      status: toAnnexStatus(artStatus('Article 12')),
+      evidence: `Article 12 status: ${artStatus('Article 12') ?? 'not assessed'}`,
     },
     {
       id: 'annex-iii-5',
