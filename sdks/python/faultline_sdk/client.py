@@ -67,16 +67,17 @@ class FaultlineClient:
         """Default transport: delegates to ``urllib.request.urlopen``."""
         return urllib.request.urlopen(req, timeout=30)
 
-    def _request(self, method: str, path: str, body: dict[str, Any] | None = None) -> Any:
+    def _request(self, method: str, path: str, body: dict[str, Any] | None = None, *, raw: bool = False) -> Any:
         """Execute an authenticated API request and return the parsed JSON body.
 
         Args:
             method: HTTP verb (e.g. 'GET', 'POST', 'DELETE').
             path: API path starting with '/' (e.g. '/scan').
             body: Optional JSON-serialisable request body.
+            raw: If True, return the raw response text instead of parsed JSON.
 
         Returns:
-            Parsed JSON response, or ``None`` for empty responses (e.g. DELETE).
+            Parsed JSON response, raw text if ``raw=True``, or ``None`` for empty responses.
 
         Raises:
             FaultlineError: If the server returns a 4xx or 5xx status code.
@@ -95,8 +96,10 @@ class FaultlineClient:
         )
         try:
             resp = self._http_fn(req)
-            raw = resp.read()
-            return json.loads(raw) if raw else None
+            resp_bytes = resp.read()
+            if raw:
+                return resp_bytes.decode() if resp_bytes else ""
+            return json.loads(resp_bytes) if resp_bytes else None
         except urllib.error.HTTPError as exc:
             raw = exc.read()
             try:
@@ -192,6 +195,8 @@ class FaultlineClient:
         text: str,
         provider: str | None = None,
         project_name: str | None = None,
+        threshold: int | None = None,
+        strict: bool | None = None,
     ) -> ComplianceGateResponse:
         """Scan text and evaluate EU AI Act compliance in a single call.
 
@@ -224,6 +229,10 @@ class FaultlineClient:
             body["provider"] = provider
         if project_name is not None:
             body["projectName"] = project_name
+        if threshold is not None:
+            body["threshold"] = threshold
+        if strict is not None:
+            body["strict"] = strict
         try:
             data = self._request("POST", "/scan/compliance-gate", body)
         except FaultlineError as exc:
@@ -260,6 +269,64 @@ class FaultlineClient:
                 return ComplianceGateResponse.from_dict(exc.body)
             raise
         return ComplianceGateResponse.from_dict(data)
+
+    def compliance_badge(self, scan_id: str, label: str | None = None) -> str:
+        """Fetch SVG compliance badge for a scan result.
+
+        Args:
+            scan_id: ID of a previously stored scan.
+            label: Optional custom label for the badge (default: 'EU AI Act').
+
+        Returns:
+            SVG string.
+        """
+        path = f"/scan/{scan_id}/compliance/badge"
+        params: list[str] = []
+        if label is not None:
+            params.append(f"label={urllib.request.quote(label)}")
+        if params:
+            path += "?" + "&".join(params)
+        return self._request("GET", path, raw=True)
+
+    def compliance_history(
+        self,
+        project_name: str | None = None,
+        limit: int | None = None,
+        since: str | None = None,
+    ) -> dict[str, Any]:
+        """Query compliance gate evaluation history.
+
+        Args:
+            project_name: Filter by project name.
+            limit: Maximum number of entries to return.
+            since: ISO 8601 datetime to filter entries after.
+
+        Returns:
+            Dict with 'entries' list and 'count'.
+        """
+        params: list[str] = []
+        if project_name is not None:
+            params.append(f"projectName={urllib.request.quote(project_name)}")
+        if limit is not None:
+            params.append(f"limit={limit}")
+        if since is not None:
+            params.append(f"since={urllib.request.quote(since)}")
+        path = "/compliance/history"
+        if params:
+            path += "?" + "&".join(params)
+        return self._request("GET", path)
+
+    def compliance_trend(self, project_name: str) -> dict[str, Any]:
+        """Get compliance score trend for a project.
+
+        Args:
+            project_name: The project name to get trend for.
+
+        Returns:
+            Dict with 'current', 'previous', and 'direction' ('up'/'down'/'stable'/'none').
+        """
+        path = f"/compliance/trend?projectName={urllib.request.quote(project_name)}"
+        return self._request("GET", path)
 
     # ── Usage / Dashboard ─────────────────────────────────────────────────────
 

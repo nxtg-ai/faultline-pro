@@ -438,6 +438,90 @@ class TestComplianceGate:
         assert "projectName=TestProj" in captured[0].full_url
 
 
+class TestComplianceEnhancements:
+    """Tests for N-171: compliance threshold, badge, history, and trend."""
+
+    def test_compliance_gate_with_threshold(self):
+        """compliance_gate() sends threshold in request body."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.compliance_gate("Test.", provider="mock", threshold=80)
+        except Exception:
+            pass
+        body = json.loads(captured[0].data.decode()) if captured[0].data else {}
+        assert body.get("threshold") == 80
+
+    def test_compliance_gate_with_strict(self):
+        """compliance_gate() sends strict in request body."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.compliance_gate("Test.", provider="mock", strict=True)
+        except Exception:
+            pass
+        body = json.loads(captured[0].data.decode()) if captured[0].data else {}
+        assert body.get("strict") is True
+
+    def test_compliance_badge_url(self):
+        """compliance_badge() hits the correct endpoint."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        client.compliance_badge("scan-123")
+        assert "/scan/scan-123/compliance/badge" in captured[0].full_url
+
+    def test_compliance_badge_custom_label(self):
+        """compliance_badge() includes label in query string."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        client.compliance_badge("scan-123", label="MyProject")
+        assert "label=MyProject" in captured[0].full_url
+
+    def test_compliance_history_url(self):
+        """compliance_history() hits the correct endpoint."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.compliance_history(project_name="Alpha")
+        except Exception:
+            pass
+        assert "/compliance/history" in captured[0].full_url
+        assert "projectName=Alpha" in captured[0].full_url
+
+    def test_compliance_history_with_limit(self):
+        """compliance_history() passes limit parameter."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.compliance_history(limit=10)
+        except Exception:
+            pass
+        assert "limit=10" in captured[0].full_url
+
+    def test_compliance_trend_url(self):
+        """compliance_trend() hits the correct endpoint."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.compliance_trend("TestProject")
+        except Exception:
+            pass
+        assert "/compliance/trend" in captured[0].full_url
+        assert "projectName=TestProject" in captured[0].full_url
+
+    def test_compliance_gate_without_optional_params(self):
+        """compliance_gate() omits threshold/strict when not provided."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.compliance_gate("Test.", provider="mock")
+        except Exception:
+            pass
+        body = json.loads(captured[0].data.decode()) if captured[0].data else {}
+        assert "threshold" not in body
+        assert "strict" not in body
+
+
 class TestFaultlineError:
     def test_faultline_error_has_correct_status_code_and_body(self):
         """FaultlineError must expose status_code and body from the API response."""
