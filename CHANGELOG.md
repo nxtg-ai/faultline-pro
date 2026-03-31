@@ -31,6 +31,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - N-181: Python SDK security tests — SSRF protection (file://, ftp:// rejected), https:// accepted, trailing slash stripped, API key in header; 77 Python tests
 - N-182: CI workflow Python SDK job — parallel `python-sdk` job running pytest on `sdks/python` with Python 3.12
 - N-183: Python SDK `scan_deep()` — multi-provider chain with evidence links (POST /scan/deep); 80 Python tests
+- N-184: TypeScript SDK expanded API coverage — 14 new methods: `scanDiff()`, `scanDeep()`, `complianceGate()`, `getScanCompliance()`, `complianceDiff()`, `complianceBadge()`, `complianceHistory()`, `complianceTrend()`, `complianceDeadlines()`, `claimsTrending()`, `gdprExport()`, `gdprErase()`; 7 new type interfaces
 
 ---
 
