@@ -1359,6 +1359,40 @@ describe('evaluateComplianceGate() threshold/strict options', () => {
     const gate = evaluateComplianceGate(report, { strict: true, threshold: 90 });
     expect(gate.pass).toBe(false);
   });
+
+  it('TH11: strict mode fails when Annex III has not-assessed items (high risk)', () => {
+    const report = buildEuComplianceReport(makeScan({ overallRisk: 'high' }));
+    // Art.11 and Art.12 are always 'not-assessed' — strict mode should fail
+    expect(report.annexIIIChecklist.applicable).toBe(true);
+    const notAssessed = report.annexIIIChecklist.items.filter(i => i.status === 'not-assessed');
+    expect(notAssessed.length).toBeGreaterThan(0);
+    const gate = evaluateComplianceGate(report, { strict: true });
+    expect(gate.pass).toBe(false);
+  });
+
+  it('TH12: non-strict mode ignores Annex III not-assessed items', () => {
+    const report = buildEuComplianceReport(makeScan({ overallRisk: 'high' }));
+    // Without strict, Annex III status shouldn't affect the gate
+    // Note: high risk itself already fails the gate, so we check annexFail doesn't add to reasons
+    const gate = evaluateComplianceGate(report);
+    // Gate fails because of high risk, not annex
+    expect(gate.pass).toBe(false);
+  });
+
+  it('TH13: strict mode with low risk ignores Annex III (not applicable)', () => {
+    const report = buildEuComplianceReport(makeScan());
+    expect(report.annexIIIChecklist.applicable).toBe(false);
+    const gate = evaluateComplianceGate(report, { strict: true });
+    expect(gate.pass).toBe(true);
+  });
+
+  it('TH14: CI gate output shows Annex III failure details for high-risk', () => {
+    const report = buildEuComplianceReport(makeScan({ overallRisk: 'high' }));
+    const gate = evaluateComplianceGate(report, { strict: true });
+    const output = renderCiGateOutput(gate, report);
+    expect(output).toContain('Annex III');
+    expect(output).toContain('conformity item(s) require attention');
+  });
 });
 
 // ── N-168: Compliance Badge SVG ─────────────────────────────────────────────

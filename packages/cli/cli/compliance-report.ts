@@ -756,7 +756,9 @@ export function evaluateComplianceGate(
   const nonCompliantCount = articles.filter(a => !a.pass).length;
   const riskFail = report.overallRisk === 'high' || report.overallRisk === 'critical';
   const scoreFail = threshold > 0 && report.complianceScore < threshold;
-  const pass = nonCompliantCount === 0 && !riskFail && !scoreFail;
+  const annexFail = strict && report.annexIIIChecklist.applicable &&
+    report.annexIIIChecklist.items.some(i => i.status === 'fail' || i.status === 'not-assessed');
+  const pass = nonCompliantCount === 0 && !riskFail && !scoreFail && !annexFail;
 
   return {
     pass,
@@ -816,6 +818,12 @@ export function renderCiGateOutput(gate: CiGateResult, report: EuAiActCompliance
     }
     if (gate.threshold > 0 && report.complianceScore < gate.threshold) {
       lines.push(`Compliance score ${report.complianceScore} is below threshold ${gate.threshold}.`);
+    }
+    if (report.annexIIIChecklist.applicable) {
+      const failing = report.annexIIIChecklist.items.filter(i => i.status === 'fail' || i.status === 'not-assessed');
+      if (failing.length > 0) {
+        lines.push(`Annex III: ${failing.length} conformity item(s) require attention (${failing.map(f => f.article).join(', ')}).`);
+      }
     }
 
     // Show remediations for failing articles
