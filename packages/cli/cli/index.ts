@@ -34,7 +34,7 @@ import { getDemoResult } from './demo.js';
 import { listKeys, getDormantKeys, getExpiringSoonKeys, rotateKey, getRotationStatus, getKeysPrunePreview, pruneKeys, formatKeyList, formatDormantList, formatExpiringSoonList, formatRotateResult, formatRotationStatus, formatPrunePreview, formatPruneResult } from './keys-client.js';
 import { getStaleScans, getScanUsage, getScansPrunePreview, pruneScans, formatStaleList, formatScanUsage, formatScansPrunePreview, formatScansPruneResult } from './scans-client.js';
 import { streamScan, formatStreamResult } from './stream-client.js';
-import { buildEuComplianceReport, renderComplianceReportJson, renderComplianceReportPdf, renderComplianceReportMarkdown, renderComplianceReportSarif, evaluateComplianceGate, renderCiGateOutput, diffComplianceReports, renderComplianceDiffOutput, loadComplianceConfig } from './compliance-report.js';
+import { buildEuComplianceReport, renderComplianceReportJson, renderComplianceReportPdf, renderComplianceReportMarkdown, renderComplianceReportSarif, renderComplianceReportHtml, evaluateComplianceGate, renderCiGateOutput, diffComplianceReports, renderComplianceDiffOutput, loadComplianceConfig } from './compliance-report.js';
 
 const VERSION = '0.4.0';
 
@@ -115,8 +115,8 @@ Usage:
   faultline scans stale [--days 30] [--api-url URL] [--api-key KEY]  List stale scan groups
   faultline scans usage [--staleDays 30] [--api-url URL] [--api-key KEY]  Scan usage analytics
   faultline scans prune [--days 30] [--confirm] [--api-url URL] [--api-key KEY]  Delete stale scan groups
-  faultline compliance-report --input <scan.json> [--format json|pdf|markdown|sarif] [--output <file>] [--project-name "My AI"]  Generate EU AI Act Article 9/13/50 evidence report
-  faultline compliance-report --text <text> --provider mock [--format json|pdf|markdown|sarif] [--project-name "My AI"]  Scan then report
+  faultline compliance-report --input <scan.json> [--format json|pdf|markdown|sarif|html] [--output <file>] [--project-name "My AI"]  Generate EU AI Act Article 9/13/50 evidence report
+  faultline compliance-report --text <text> --provider mock [--format json|pdf|markdown|sarif|html] [--project-name "My AI"]  Scan then report
   faultline compliance-report --input <scan.json> --ci                 CI gate: exit 1 on non-compliant articles or high/critical risk
   faultline compliance-report --diff before.json,after.json            Compare two compliance reports — show improved/regressed articles
   faultline stream <text> [--provider mock] [--api-url URL] [--api-key KEY]  Stream scan via SSE
@@ -1105,11 +1105,11 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
           exitCode: 1,
           output:
             'Error: provide --input <scan-result.json> or --text <text>.\n\n' +
-            'Usage: faultline compliance-report --input scan.json [--format json|pdf|markdown|sarif] [--output eu-report.pdf]',
+            'Usage: faultline compliance-report --input scan.json [--format json|pdf|markdown|sarif|html] [--output eu-report.pdf]',
         };
       }
 
-      const crFormat = (flags['format'] || 'json') as 'json' | 'pdf' | 'markdown' | 'sarif';
+      const crFormat = (flags['format'] || 'json') as 'json' | 'pdf' | 'markdown' | 'sarif' | 'html';
 
       // Load config file (if present) — CLI flags override config values
       const config = loadComplianceConfig(flags['config']);
@@ -1160,6 +1160,17 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
           return { exitCode: 0, output: `EU AI Act compliance report (SARIF) written to ${flags['output']}` };
         }
         return { exitCode: 0, output: sarifOut };
+      }
+
+      if (crFormat === 'html') {
+        const gate = evaluateComplianceGate(crReport, {
+          threshold: flags['threshold'] ? parseInt(flags['threshold'], 10) : (config?.threshold ?? 0),
+          strict: flags['strict'] === 'true' || (config?.strict ?? false),
+        });
+        const htmlOut = renderComplianceReportHtml(crReport, gate);
+        const outPath = flags['output'] || `eu-compliance-report-${crReport.documentRef}.html`;
+        writeFileSync(resolve(outPath), htmlOut, 'utf-8');
+        return { exitCode: 0, output: `EU AI Act compliance report (HTML) written to ${outPath}` };
       }
 
       const jsonOut = renderComplianceReportJson(crReport);

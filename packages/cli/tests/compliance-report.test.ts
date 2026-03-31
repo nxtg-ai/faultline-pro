@@ -26,6 +26,7 @@ import {
   renderComplianceBadgeSvg,
   renderComplianceReportMarkdown,
   renderComplianceReportSarif,
+  renderComplianceReportHtml,
   loadComplianceConfig,
   type EuAiActComplianceReport,
   type CiGateResult,
@@ -1575,5 +1576,147 @@ describe('compliance-report --format sarif', () => {
     expect(exitCode).toBe(0);
     const parsed = JSON.parse(output);
     expect(parsed.runs[0].invocations[0].properties.threshold).toBe(90);
+  });
+});
+
+// ── HTML Compliance Renderer (N-175) ──────────────────────────────────────────
+
+describe('renderComplianceReportHtml()', () => {
+  function makeReport(overrides: Partial<EuAiActComplianceReport> = {}): EuAiActComplianceReport {
+    return buildEuComplianceReport(makeScan(), { projectName: 'HTMLProject', ...overrides });
+  }
+
+  function makeGate(overrides: Partial<CiGateResult> = {}): CiGateResult {
+    return {
+      pass: true, overallRisk: 'low',
+      articles: [
+        { article: 'Article 9', status: 'compliant' as const, pass: true },
+        { article: 'Article 50', status: 'compliant' as const, pass: true },
+      ],
+      nonCompliantCount: 0, totalArticles: 4, exitCode: 0, complianceScore: 100, threshold: 0,
+      ...overrides,
+    };
+  }
+
+  it('HT1: returns valid HTML document', () => {
+    const html = renderComplianceReportHtml(makeReport(), makeGate());
+    expect(html).toContain('<!DOCTYPE html>');
+    expect(html).toContain('</html>');
+  });
+
+  it('HT2: title contains project name', () => {
+    const html = renderComplianceReportHtml(makeReport(), makeGate());
+    expect(html).toContain('<title>EU AI Act Compliance');
+    expect(html).toContain('HTMLProject');
+  });
+
+  it('HT3: shows PASS status when gate passes', () => {
+    const html = renderComplianceReportHtml(makeReport(), makeGate());
+    expect(html).toContain('PASS');
+  });
+
+  it('HT4: shows FAIL status when gate fails', () => {
+    const html = renderComplianceReportHtml(makeReport(), makeGate({ pass: false, exitCode: 1 }));
+    expect(html).toContain('FAIL');
+  });
+
+  it('HT5: contains summary cards with score and risk', () => {
+    const report = makeReport();
+    const html = renderComplianceReportHtml(report, makeGate());
+    expect(html).toContain(`${report.complianceScore}/100`);
+    expect(html).toContain('Overall Risk');
+    expect(html).toContain('Claims');
+  });
+
+  it('HT6: contains article status table', () => {
+    const html = renderComplianceReportHtml(makeReport(), makeGate());
+    expect(html).toContain('Article Status');
+    expect(html).toContain('Article 9');
+    expect(html).toContain('Article 50');
+  });
+
+  it('HT7: escapes HTML in user content', () => {
+    const report = makeReport();
+    report.projectName = '<script>alert(1)</script>';
+    const html = renderComplianceReportHtml(report, makeGate());
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('&lt;script&gt;');
+  });
+
+  it('HT8: includes remediations when articles have them', () => {
+    const report = makeReport();
+    report.articleEvidence[0].remediations = ['Fix XSS', 'Add CSRF'];
+    const html = renderComplianceReportHtml(report, makeGate());
+    expect(html).toContain('Fix XSS');
+    expect(html).toContain('Add CSRF');
+  });
+
+  it('HT9: shows threshold card when non-zero', () => {
+    const html = renderComplianceReportHtml(makeReport(), makeGate({ threshold: 80 }));
+    expect(html).toContain('Threshold');
+    expect(html).toContain('80');
+  });
+
+  it('HT10: omits threshold card when zero', () => {
+    const html = renderComplianceReportHtml(makeReport(), makeGate({ threshold: 0 }));
+    expect(html).not.toContain('Threshold');
+  });
+
+  it('HT11: footer contains Faultline Pro and document ref', () => {
+    const report = makeReport();
+    const html = renderComplianceReportHtml(report, makeGate());
+    expect(html).toContain('Faultline Pro');
+    expect(html).toContain(report.documentRef);
+  });
+
+  it('HT12: status badges use colored spans', () => {
+    const html = renderComplianceReportHtml(makeReport(), makeGate());
+    expect(html).toContain('class="badge"');
+  });
+});
+
+// ── CLI --format html (N-175) ────────────────────────────────────────────────
+
+describe('compliance-report --format html', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'faultline-html-'));
+  });
+
+  it('HT-CLI1: writes HTML file by default', async () => {
+    const scanPath = join(tmpDir, 'scan.json');
+    writeFileSync(scanPath, JSON.stringify(makeScan()));
+    const { exitCode, output } = await main([
+      'compliance-report', '--input', scanPath, '--format', 'html',
+    ]);
+    expect(exitCode).toBe(0);
+    expect(output).toContain('HTML');
+    expect(output).toContain('.html');
+  });
+
+  it('HT-CLI2: writes HTML to custom output path', async () => {
+    const scanPath = join(tmpDir, 'scan.json');
+    writeFileSync(scanPath, JSON.stringify(makeScan()));
+    const outPath = join(tmpDir, 'report.html');
+    const { exitCode, output } = await main([
+      'compliance-report', '--input', scanPath, '--format', 'html', '--output', outPath,
+    ]);
+    expect(exitCode).toBe(0);
+    expect(existsSync(outPath)).toBe(true);
+  });
+
+  it('HT-CLI3: HTML contains project name', async () => {
+    const scanPath = join(tmpDir, 'scan.json');
+    writeFileSync(scanPath, JSON.stringify(makeScan()));
+    const outPath = join(tmpDir, 'report.html');
+    const { exitCode } = await main([
+      'compliance-report', '--input', scanPath, '--format', 'html',
+      '--output', outPath, '--project-name', 'TestHtmlProject',
+    ]);
+    expect(exitCode).toBe(0);
+    const { readFileSync: readFs } = await import('node:fs');
+    const content = readFs(outPath, 'utf-8');
+    expect(content).toContain('TestHtmlProject');
   });
 });
