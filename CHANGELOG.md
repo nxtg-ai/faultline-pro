@@ -11,6 +11,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - N-160: GitHub Action `compliance-gate` input — both `packages/cli/action.yml` and `.github/actions/faultline-scan/action.yml` now accept `compliance-gate: 'true'` to auto-enforce EU AI Act compliance in CI workflows. Outputs `compliance-status` (pass/fail)
 - N-161: API compliance gate endpoints — `POST /scan/compliance-gate` (scan + evaluate in one call, 200=pass, 422=fail) and `GET /scan/:id/compliance` (evaluate existing scan). Auth + rate-limited
 - N-162: Python SDK compliance gate — `compliance_gate()` and `get_scan_compliance()` methods with `CiGateResult`, `CiGateArticleResult`, `ComplianceGateResponse` models
+- N-164: Compliance report diff — `faultline compliance-report --diff before.json,after.json` and `POST /scan/compliance-diff` API endpoint; shows per-article trend (improved/regressed/unchanged), risk trend, summary counts
+- N-165: Compliance score (0–100) — numeric EU AI Act readiness score based on article status weights; shown in CI gate, JSON reports, and API responses
 
 ---
 
