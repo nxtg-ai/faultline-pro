@@ -1,7 +1,7 @@
 # Faultline — AI Claim Forensics
 # https://github.com/nxtg-ai/faultline-pro
 # npm: @nxtg/faultline | @nxtg/faultline-api
-# Last updated: 2026-03-24
+# Last updated: 2026-03-31
 
 > Forensic verification for AI-generated text. Decomposes AI output into atomic claims, verifies each against live evidence, and maps findings to EU AI Act risk tiers.
 
@@ -13,7 +13,7 @@ It operates as a 4-phase pipeline:
 1. **Extract** — Decompose AI output into atomic claims (fact / opinion / interpretation) with importance scoring and sentence-level guarantees (one claim per verifiable sentence)
 2. **Verify** — Per-claim verdict (supported / contradicted / mixed / unverified) with confidence score and source citations, grounded against live web evidence
 3. **Synthesize** — Risk scorecard: overallRisk (Low / Medium / High / Critical), weakest-link detection, EU AI Act risk tier mapping (Unacceptable / High / Limited / Minimal), triggered articles, required mitigations
-4. **Gate** — CI enforcement via `--fail-on high` (exit code 1) + SARIF output for GitHub Code Scanning
+4. **Gate** — CI enforcement via `--fail-on high` (exit code 1) + SARIF output for GitHub Code Scanning + EU AI Act compliance gate with configurable threshold/strict mode
 
 ## Install
 
@@ -31,13 +31,15 @@ No API key required for the `mock` provider. Real verification uses:
 ## Key Differentiators
 
 - **Claim-level, not prompt-level** — Faultline forensics output; Promptfoo tests input prompts
-- **EU AI Act compliance** — Automatic risk tier mapping to Unacceptable / High / Limited / Minimal, triggered articles (5, 6, 9, 13, 14, 15, 52, 69), required mitigations
+- **EU AI Act compliance engine** — Article 5/9/13/14/50 evidence mapping; compliance score (0-100); per-article remediations; pass/fail gate with configurable threshold and strict mode; trend tracking and history; badge SVG for READMEs
+- **5 compliance report formats** — JSON, PDF (EU-branded), Markdown (GFM for PR comments), SARIF 2.1.0 (GitHub Code Scanning), HTML (standalone viewable)
 - **Weakest-link detection** — Finds the single claim that most undermines the argument's credibility
 - **Provider-agnostic** — 5 providers; runtime switching with `--provider`; auto-failover with circuit breaker
-- **SARIF output** — Native GitHub Code Scanning integration; claim violations appear as code annotations
+- **SARIF output** — Native GitHub Code Scanning integration; both scan findings and compliance violations appear as code annotations
 - **Enterprise API** — REST + GraphQL; API key management; multi-tenant; GDPR Article 15/17; audit trail; webhooks
-- **Mutation-tested** — CRUCIBLE Protocol Gate 6: claim forensics 75.31%; webhook store 91.45%; GDPR stores 80.94%–96.81%
-- **3,494 tests** across CLI, API, SDK, GDPR, mutation hardening, property-based, contract, integration
+- **GitHub Actions** — `faultline-scan` composite action with compliance gate, SARIF upload, threshold/strict configuration
+- **Mutation-tested** — CRUCIBLE Protocol Gate 6: claim forensics 81.97%; GDPR stores 80.94%–96.81%
+- **3,730 tests** across CLI, API, Python SDK, GDPR, mutation hardening, property-based, contract, integration
 
 ## Use Cases
 
@@ -54,10 +56,15 @@ No API key required for the `mock` provider. Real verification uses:
 faultline scan --input <file>         # Full forensic scan (JSON output)
 faultline scan --input <file> --output-format markdown  # Human-readable report
 faultline scan --demo                 # No API key — shows full product experience
+faultline scan --fail-on high         # CI gate (exit 1 on High/Critical)
 faultline weakest --input <file>      # Find weakest claim only
 faultline compare --before a.txt --after b.txt  # Diff two scans
+faultline compliance-report --input scan.json --ci  # EU AI Act pass/fail gate
+faultline compliance-report --input scan.json --format sarif --output compliance.sarif  # SARIF for Code Scanning
+faultline compliance-report --input scan.json --format markdown  # GFM for PR comments
+faultline compliance-report --input scan.json --format html  # Standalone HTML report
+faultline compliance-report --input scan.json --ci --threshold 80 --strict  # Require score >= 80 + all articles compliant
 faultline init                        # Setup wizard (auto-detects configured providers)
-faultline scan --fail-on high         # CI gate (exit 1 on High/Critical)
 ```
 
 ## API Reference
@@ -70,9 +77,14 @@ Key endpoints:
 - `POST /scan/stream` (SSE) — progressive per-claim streaming
 - `POST /scan/batch` — scan multiple texts
 - `POST /scan/diff` — compare two texts
-- `GET /scan/:id/report` — EU AI Act PDF compliance report
-- `GET /claims/trending` — claim frequency, emerging patterns, verdict alerts
+- `POST /scan/compliance-gate` — scan text + evaluate EU AI Act compliance (200=pass, 422=fail)
+- `GET /scan/:id/compliance` — evaluate compliance for existing scan (supports threshold/strict)
+- `POST /scan/compliance-diff` — compare compliance between two scans
+- `GET /scan/:id/compliance/badge` — SVG compliance badge for README embedding
+- `GET /compliance/history` — time-series compliance gate history (filter by project/since/limit)
+- `GET /compliance/trend` — compliance score direction for a project (up/down/stable)
 - `GET /compliance/deadlines` — EU AI Act, GDPR, NIST upcoming dates
+- `GET /claims/trending` — claim frequency, emerging patterns, verdict alerts
 - `POST /keys` — API key management (create, rotate, expire, revoke)
 - `GET /tenants/:id/export` — GDPR Article 15 data export (ZIP)
 - `DELETE /tenants/:id/data` — GDPR Article 17 erasure
@@ -116,12 +128,13 @@ docs/
 
 ## Project Status
 
-- **153 initiatives SHIPPED** (N-01 through N-153)
-- **3,494 tests** (CLI + API + SDK + integration + property-based + contract + mutation)
+- **176 initiatives SHIPPED** (N-01 through N-176)
+- **3,730 tests** (CLI + API + Python SDK + integration + property-based + contract + mutation)
 - **8/8 CRUCIBLE gates PASS** (example, property, contract, integration oracles)
+- **EU AI Act Article 50 ready** — Full compliance reporting, gating, SARIF, 5 output formats
 - **GDPR compliant** — Article 15 export + Article 17 erasure implemented
 - **Mutation-tested** — claim forensics critical path above 80% threshold
-- **Version**: 0.4.0 (pre-publish)
+- **Version**: 0.4.1 (pre-publish)
 
 ## License
 
