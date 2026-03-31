@@ -914,6 +914,23 @@ describe('renderCiGateOutput()', () => {
     const output = renderCiGateOutput(gate, report);
     expect(output).toContain(`/${gate.totalArticles} passing`);
   });
+
+  it('shows Annex III checklist for high-risk scans', () => {
+    const report = buildEuComplianceReport(makeScan({ overallRisk: 'high' }));
+    const gate = evaluateComplianceGate(report);
+    const output = renderCiGateOutput(gate, report);
+    expect(output).toContain('Annex III Conformity Assessment');
+    expect(output).toContain('Pass rate:');
+    expect(output).toContain('Article 9');
+    expect(output).toContain('Article 15');
+  });
+
+  it('omits Annex III checklist for low-risk scans', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const gate = evaluateComplianceGate(report);
+    const output = renderCiGateOutput(gate, report);
+    expect(output).not.toContain('Annex III Conformity Assessment');
+  });
 });
 
 // ── Compliance Diff unit tests ───────────────────────────────────────────────
@@ -1625,6 +1642,20 @@ describe('renderComplianceReportMarkdown()', () => {
     const md = renderComplianceReportMarkdown(report, makeGate());
     expect(md).toContain(`| **High-Risk Findings** | ${report.summary.highRiskFindings} |`);
   });
+
+  it('MD13: shows Annex III table for high-risk reports', () => {
+    const report = buildEuComplianceReport(makeScan({ overallRisk: 'high' }), { projectName: 'TestProject' });
+    const gate = evaluateComplianceGate(report);
+    const md = renderComplianceReportMarkdown(report, gate);
+    expect(md).toContain('### Annex III Conformity Assessment');
+    expect(md).toContain('annex-iii-1');
+    expect(md).toContain('**Pass rate:**');
+  });
+
+  it('MD14: omits Annex III for low-risk reports', () => {
+    const md = renderComplianceReportMarkdown(makeReport(), makeGate());
+    expect(md).not.toContain('Annex III');
+  });
 });
 
 // ── CLI --format markdown (N-172) ─────────────────────────────────────────────
@@ -1802,6 +1833,31 @@ describe('renderComplianceReportSarif()', () => {
     expect(loc.artifactLocation.uri).toBe('input');
     expect(loc.artifactLocation.uriBaseId).toBe('%SRCROOT%');
   });
+
+  it('SF13: adds Annex III conformity gap results for high-risk reports', () => {
+    const report = buildEuComplianceReport(makeScan({ overallRisk: 'high' }), { projectName: 'TestProject' });
+    const gate = evaluateComplianceGate(report);
+    const parsed = JSON.parse(renderComplianceReportSarif(report, gate));
+    const rules = parsed.runs[0].tool.driver.rules;
+    const annexRules = rules.filter((r: { id: string }) => r.id.includes('annex-iii'));
+    // Not-assessed items (Art.11, Art.12) should appear as conformity gaps
+    expect(annexRules.length).toBeGreaterThan(0);
+    expect(annexRules[0].properties.tags).toContain('annex-iii');
+  });
+
+  it('SF14: Annex III passRate in invocation properties for high-risk', () => {
+    const report = buildEuComplianceReport(makeScan({ overallRisk: 'high' }), { projectName: 'TestProject' });
+    const gate = evaluateComplianceGate(report);
+    const parsed = JSON.parse(renderComplianceReportSarif(report, gate));
+    expect(parsed.runs[0].invocations[0].properties.annexIIIPassRate).toBeDefined();
+  });
+
+  it('SF15: no Annex III rules for low-risk reports', () => {
+    const parsed = JSON.parse(renderComplianceReportSarif(makeReport(), makeGate()));
+    const rules = parsed.runs[0].tool.driver.rules;
+    const annexRules = rules.filter((r: { id: string }) => r.id.includes('annex-iii'));
+    expect(annexRules.length).toBe(0);
+  });
 });
 
 // ── CLI --format sarif (N-173) ────────────────────────────────────────────────
@@ -1954,6 +2010,20 @@ describe('renderComplianceReportHtml()', () => {
   it('HT12: status badges use colored spans', () => {
     const html = renderComplianceReportHtml(makeReport(), makeGate());
     expect(html).toContain('class="badge"');
+  });
+
+  it('HT13: shows Annex III section for high-risk reports', () => {
+    const report = buildEuComplianceReport(makeScan({ overallRisk: 'high' }), { projectName: 'HTMLProject' });
+    const gate = evaluateComplianceGate(report);
+    const html = renderComplianceReportHtml(report, gate);
+    expect(html).toContain('Annex III Conformity Assessment');
+    expect(html).toContain('Pass Rate');
+    expect(html).toContain('annex-iii-1');
+  });
+
+  it('HT14: omits Annex III section for low-risk reports', () => {
+    const html = renderComplianceReportHtml(makeReport(), makeGate());
+    expect(html).not.toContain('Annex III Conformity Assessment');
   });
 });
 
