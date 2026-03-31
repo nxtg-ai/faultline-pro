@@ -13,6 +13,7 @@ from .exceptions import FaultlineError
 from .models import (
     ApiKey,
     BatchScanResponse,
+    ComplianceDiffResult,
     ComplianceGateResponse,
     DashboardResponse,
     ScanResult,
@@ -246,12 +247,16 @@ class FaultlineClient:
         self,
         scan_id: str,
         project_name: str | None = None,
+        threshold: int | None = None,
+        strict: bool | None = None,
     ) -> ComplianceGateResponse:
         """Evaluate EU AI Act compliance for an existing scan result.
 
         Args:
             scan_id: ID of a previously stored scan.
             project_name: Optional project name for the compliance report.
+            threshold: Minimum compliance score (0-100) to pass.
+            strict: When True, all articles must be compliant or N/A.
 
         Returns:
             A :class:`~faultline_sdk.models.ComplianceGateResponse`.
@@ -259,9 +264,16 @@ class FaultlineClient:
         Raises:
             FaultlineError: On non-2xx/422 responses (including 404 for unknown scan IDs).
         """
-        path = f"/scan/{scan_id}/compliance"
+        params: list[str] = []
         if project_name is not None:
-            path += f"?projectName={urllib.request.quote(project_name)}"
+            params.append(f"projectName={urllib.request.quote(project_name)}")
+        if threshold is not None:
+            params.append(f"threshold={threshold}")
+        if strict is not None:
+            params.append(f"strict={'true' if strict else 'false'}")
+        path = f"/scan/{scan_id}/compliance"
+        if params:
+            path += "?" + "&".join(params)
         try:
             data = self._request("GET", path)
         except FaultlineError as exc:
@@ -269,6 +281,30 @@ class FaultlineClient:
                 return ComplianceGateResponse.from_dict(exc.body)
             raise
         return ComplianceGateResponse.from_dict(data)
+
+    def compliance_diff(
+        self,
+        before_id: str,
+        after_id: str,
+        project_name: str | None = None,
+    ) -> ComplianceDiffResult:
+        """Compare EU AI Act compliance between two scans.
+
+        Args:
+            before_id: ID of the baseline scan.
+            after_id: ID of the comparison scan.
+            project_name: Optional project name for the reports.
+
+        Returns:
+            A :class:`~faultline_sdk.models.ComplianceDiffResult` with per-article trends.
+
+        Raises:
+            FaultlineError: On non-2xx responses (including 404 for unknown scan IDs).
+        """
+        body: dict[str, Any] = {"beforeId": before_id, "afterId": after_id}
+        if project_name is not None:
+            body["projectName"] = project_name
+        return ComplianceDiffResult.from_dict(self._request("POST", "/scan/compliance-diff", body))
 
     def compliance_badge(self, scan_id: str, label: str | None = None) -> str:
         """Fetch SVG compliance badge for a scan result.

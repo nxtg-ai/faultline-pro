@@ -305,6 +305,29 @@ class ComplianceGateResponse:
 
 
 @dataclass
+class ComplianceDiffResult:
+    """Result from POST /scan/compliance-diff.
+
+    Attributes:
+        articles: Per-article diff entries.
+        summary: Summary counts of improved/regressed/unchanged.
+        risk_trend: Overall risk trend direction.
+    """
+
+    articles: list[dict[str, Any]]
+    summary: dict[str, int]
+    risk_trend: str
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ComplianceDiffResult:
+        return cls(
+            articles=data.get("articles", []),
+            summary=data.get("summary", {}),
+            risk_trend=data.get("riskTrend", "unchanged"),
+        )
+
+
+@dataclass
 class Webhook:
     """A registered webhook endpoint.
 

@@ -15,6 +15,7 @@ from faultline_sdk import FaultlineClient, FaultlineError
 from faultline_sdk.models import (
     ApiKey,
     BatchScanResponse,
+    ComplianceDiffResult,
     ComplianceGateResponse,
     DashboardResponse,
     ScanResult,
@@ -520,6 +521,92 @@ class TestComplianceEnhancements:
         body = json.loads(captured[0].data.decode()) if captured[0].data else {}
         assert "threshold" not in body
         assert "strict" not in body
+
+
+class TestComplianceN176:
+    """Tests for N-176: compliance diff + enhanced get_scan_compliance."""
+
+    def test_get_scan_compliance_with_threshold(self):
+        """get_scan_compliance() sends threshold query param."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.get_scan_compliance("scan-1", threshold=80)
+        except Exception:
+            pass
+        assert "threshold=80" in captured[0].full_url
+
+    def test_get_scan_compliance_with_strict(self):
+        """get_scan_compliance() sends strict query param."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.get_scan_compliance("scan-1", strict=True)
+        except Exception:
+            pass
+        assert "strict=true" in captured[0].full_url
+
+    def test_get_scan_compliance_combined_params(self):
+        """get_scan_compliance() combines all query params."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.get_scan_compliance("scan-1", project_name="Proj", threshold=90, strict=True)
+        except Exception:
+            pass
+        url = captured[0].full_url
+        assert "projectName=Proj" in url
+        assert "threshold=90" in url
+        assert "strict=true" in url
+
+    def test_compliance_diff_url(self):
+        """compliance_diff() hits POST /scan/compliance-diff."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.compliance_diff("before-1", "after-2")
+        except Exception:
+            pass
+        assert "/scan/compliance-diff" in captured[0].full_url
+        assert captured[0].method == "POST"
+
+    def test_compliance_diff_body(self):
+        """compliance_diff() sends beforeId and afterId."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.compliance_diff("b1", "a2", project_name="Proj")
+        except Exception:
+            pass
+        body = json.loads(captured[0].data.decode())
+        assert body["beforeId"] == "b1"
+        assert body["afterId"] == "a2"
+        assert body["projectName"] == "Proj"
+
+    def test_compliance_diff_result_parsing(self):
+        """compliance_diff() returns a ComplianceDiffResult."""
+        diff_body = {
+            "articles": [{"article": "Article 9", "trend": "improved"}],
+            "summary": {"improved": 1, "regressed": 0, "unchanged": 3},
+            "riskTrend": "improved",
+        }
+        client = FaultlineClient(api_key="k", _http_fn=make_mock_http(200, diff_body))
+        result = client.compliance_diff("b1", "a2")
+        assert isinstance(result, ComplianceDiffResult)
+        assert result.risk_trend == "improved"
+        assert len(result.articles) == 1
+        assert result.summary["improved"] == 1
+
+    def test_compliance_diff_without_project_name(self):
+        """compliance_diff() omits projectName when not provided."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.compliance_diff("b1", "a2")
+        except Exception:
+            pass
+        body = json.loads(captured[0].data.decode())
+        assert "projectName" not in body
 
 
 class TestFaultlineError:
