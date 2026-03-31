@@ -59,6 +59,7 @@ import { analyticsRoutes } from './routes/analytics.js';
 import { playgroundRoutes } from './routes/playground.js';
 import { missionControlRoutes } from './routes/mission-control.js';
 import { auditLogRoutes } from './routes/audit-log.js';
+import { complianceGateRoutes } from './routes/compliance-gate.js';
 import { streamRoutes } from './routes/stream.js';
 import { getNotificationStore } from './store/notifications.js';
 import { getKeyExpiryNotifier } from './store/key-expiry-notifier.js';
@@ -149,6 +150,7 @@ export function buildServer() {
   fastify.register(euReportRoutes);
   fastify.register(complianceRoutes);
   fastify.register(complianceCalendarRoutes);
+  fastify.register(complianceGateRoutes);
   fastify.register(tenantsRoutes);
   fastify.register(costsRoutes);
   fastify.register(scansRoutes);
