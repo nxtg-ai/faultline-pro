@@ -22,6 +22,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - N-172: Compliance report Markdown renderer — `renderComplianceReportMarkdown()` GFM output for PR comments; `--format markdown` CLI flag with `--output` file support
 - N-173: Compliance report SARIF 2.1.0 — `renderComplianceReportSarif()` maps EU AI Act articles to SARIF rules/results; `--format sarif` CLI flag; integrates with GitHub Code Scanning, GitLab SAST, Azure DevOps
 - N-174: GitHub Action compliance SARIF upload — `compliance-sarif`, `compliance-threshold`, `compliance-strict` inputs; auto-uploads compliance findings to GitHub Code Scanning Security tab
+- N-175: Compliance report HTML renderer — `renderComplianceReportHtml()` standalone viewable report; `--format html` CLI flag
 
 ---
 
