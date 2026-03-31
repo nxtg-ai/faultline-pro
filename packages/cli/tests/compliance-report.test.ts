@@ -83,10 +83,11 @@ describe('buildEuComplianceReport()', () => {
     expect(report.articleEvidence.length).toBeGreaterThan(0);
   });
 
-  it('always includes Article 9, 13, 14, and 50', () => {
+  it('always includes Article 9, 10, 13, 14, and 50', () => {
     const report = buildEuComplianceReport(makeScan());
     const articles = report.articleEvidence.map(e => e.article);
     expect(articles.some(a => a.includes('Article 9'))).toBe(true);
+    expect(articles.some(a => a.includes('Article 10'))).toBe(true);
     expect(articles.some(a => a.includes('Article 13'))).toBe(true);
     expect(articles.some(a => a.includes('Article 14'))).toBe(true);
     expect(articles.some(a => a.includes('Article 50'))).toBe(true);
@@ -129,6 +130,71 @@ describe('buildEuComplianceReport()', () => {
     const report = buildEuComplianceReport(scan);
     const art9 = report.articleEvidence.find(e => e.article.includes('Article 9'));
     expect(art9?.findings.some(f => f.includes('contradicted'))).toBe(true);
+  });
+
+  it('Article 10 is compliant when no bias, PII, or contradicted claims exist', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const art10 = report.articleEvidence.find(e => e.article.includes('Article 10'));
+    expect(art10).toBeDefined();
+    expect(art10?.status).toBe('compliant');
+    expect(art10?.requirement).toContain('Training');
+  });
+
+  it('Article 10 is non-compliant when bias findings exist', () => {
+    const scan = makeScan({
+      ruleFindings: [
+        { ruleId: 'bias-detection', severity: 'high', message: 'Gender bias detected.', claimId: 'c1' },
+      ],
+    });
+    const report = buildEuComplianceReport(scan);
+    const art10 = report.articleEvidence.find(e => e.article.includes('Article 10'));
+    expect(art10?.status).toBe('non-compliant');
+    expect(art10?.findings.some(f => f.includes('bias'))).toBe(true);
+  });
+
+  it('Article 10 flags contradicted claims as data quality issue', () => {
+    const scan = makeScan({
+      claims: [
+        { id: 'c1', text: 'False claim.', type: 'fact', importance: 4 },
+      ],
+      verifications: {
+        c1: { claimId: 'c1', status: 'contradicted', explanation: 'Wrong.', sources: [] },
+      },
+      overallRisk: 'high',
+    });
+    const report = buildEuComplianceReport(scan);
+    const art10 = report.articleEvidence.find(e => e.article.includes('Article 10'));
+    expect(art10?.status).toBe('partial');
+    expect(art10?.findings.some(f => f.includes('contradicted'))).toBe(true);
+    expect(art10?.findings.some(f => f.includes('data quality'))).toBe(true);
+  });
+
+  it('Article 10 flags high-importance unverified claims as data completeness issue', () => {
+    const scan = makeScan({
+      claims: [
+        { id: 'c1', text: 'Important claim.', type: 'fact', importance: 5 },
+      ],
+      verifications: {
+        c1: { claimId: 'c1', status: 'unverified', explanation: 'No source.', sources: [] },
+      },
+      overallRisk: 'medium',
+    });
+    const report = buildEuComplianceReport(scan);
+    const art10 = report.articleEvidence.find(e => e.article.includes('Article 10'));
+    expect(art10?.status).toBe('partial');
+    expect(art10?.findings.some(f => f.includes('high-importance'))).toBe(true);
+  });
+
+  it('Article 10 includes PII findings for special category data', () => {
+    const scan = makeScan({
+      ruleFindings: [
+        { ruleId: 'pii-detection', severity: 'high', message: 'Email found.', claimId: 'c1' },
+      ],
+    });
+    const report = buildEuComplianceReport(scan);
+    const art10 = report.articleEvidence.find(e => e.article.includes('Article 10'));
+    expect(art10?.status).toBe('partial');
+    expect(art10?.findings.some(f => f.includes('PII'))).toBe(true);
   });
 
   it('Article 13 is compliant when all fact claims are supported', () => {
@@ -898,6 +964,34 @@ describe('getRemediations()', () => {
   it('RR14: Article 9 with generic findings returns fallback remediation', () => {
     const rems = getRemediations('Article 9', 'partial', ['Some other finding']);
     expect(rems.length).toBeGreaterThan(0);
+  });
+
+  it('RR15: Article 10 with bias returns audit remediation', () => {
+    const rems = getRemediations('Article 10', 'non-compliant', ['1 bias finding(s) detected']);
+    expect(rems.some(r => r.includes('bias audit'))).toBe(true);
+    expect(rems.some(r => r.includes('Art. 10(2)'))).toBe(true);
+  });
+
+  it('RR16: Article 10 with PII returns GDPR remediation', () => {
+    const rems = getRemediations('Article 10', 'partial', ['1 PII finding(s)']);
+    expect(rems.some(r => r.includes('special category'))).toBe(true);
+    expect(rems.some(r => r.includes('GDPR'))).toBe(true);
+  });
+
+  it('RR17: Article 10 with contradicted returns data quality remediation', () => {
+    const rems = getRemediations('Article 10', 'partial', ['2 contradicted claim(s)']);
+    expect(rems.some(r => r.includes('training data quality'))).toBe(true);
+  });
+
+  it('RR18: Article 10 with unverified returns data completeness remediation', () => {
+    const rems = getRemediations('Article 10', 'partial', ['3 high-importance claim(s) remain unverified']);
+    expect(rems.some(r => r.includes('data completeness'))).toBe(true);
+  });
+
+  it('RR19: Article 10 with generic findings returns fallback remediation', () => {
+    const rems = getRemediations('Article 10', 'partial', ['Some other data issue']);
+    expect(rems.length).toBeGreaterThan(0);
+    expect(rems.some(r => r.includes('Art. 10'))).toBe(true);
   });
 });
 

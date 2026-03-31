@@ -193,6 +193,23 @@ export function getRemediations(article: string, status: EvidenceStatus, finding
     if (rems.length === 0) {
       rems.push('Review risk management findings and implement appropriate mitigations.');
     }
+  } else if (article.includes('Article 10')) {
+    if (findings.some(f => f.includes('bias'))) {
+      rems.push('Conduct bias audit on training data sets per Art. 10(2)(f).');
+      rems.push('Document bias detection methodology and mitigation measures.');
+    }
+    if (findings.some(f => f.includes('PII'))) {
+      rems.push('Review special category data processing under Art. 10(5) and ensure GDPR compliance.');
+    }
+    if (findings.some(f => f.includes('contradicted'))) {
+      rems.push('Audit training data quality — contradicted outputs indicate potential errors in training data per Art. 10(3).');
+    }
+    if (findings.some(f => f.includes('unverified'))) {
+      rems.push('Review data completeness — unverified high-importance claims suggest gaps in training data coverage.');
+    }
+    if (rems.length === 0) {
+      rems.push('Review data governance practices for Art. 10 compliance.');
+    }
   } else if (article.includes('Article 13')) {
     if (findings.some(f => f.includes('unverified') || f.includes('mixed'))) {
       rems.push('Add source attribution for unverified claims.');
@@ -263,6 +280,41 @@ export function buildEuComplianceReport(
   const art9Status: EvidenceStatus =
     art9Findings.length === 0 ? 'compliant' :
     (overallRisk === 'critical' || contradictedClaims.length > 2) ? 'non-compliant' : 'partial';
+
+  // ── Article 10 – Data and Data Governance ──────────────────────────────────
+  const art10Findings: string[] = [];
+
+  if (biasFindings.length > 0) {
+    art10Findings.push(
+      `${biasFindings.length} bias finding(s) detected — training data governance review required ` +
+      `per Art. 10(2) examination for bias. (OWASP Agentic AI A05: Improper Output Handling)`,
+    );
+  }
+  if (piiFindings.length > 0) {
+    art10Findings.push(
+      `${piiFindings.length} PII finding(s) — data processing must comply with Art. 10(5) ` +
+      `requirements for special category data and GDPR obligations.`,
+    );
+  }
+  if (contradictedClaims.length > 0) {
+    art10Findings.push(
+      `${contradictedClaims.length} contradicted claim(s) — possible data quality issue per ` +
+      `Art. 10(3) requirement for relevant, representative, and error-free training data.`,
+    );
+  }
+  const highImportanceUnverified = claims.filter(
+    c => (c.importance ?? 0) >= 4 && ['unverified', 'mixed'].includes(verifications[c.id]?.status ?? ''),
+  );
+  if (highImportanceUnverified.length > 0) {
+    art10Findings.push(
+      `${highImportanceUnverified.length} high-importance claim(s) remain unverified — ` +
+      `data completeness review recommended per Art. 10(3).`,
+    );
+  }
+
+  const art10Status: EvidenceStatus =
+    art10Findings.length === 0 ? 'compliant' :
+    (biasFindings.length > 0 || contradictedClaims.length > 2) ? 'non-compliant' : 'partial';
 
   // ── Article 13 – Transparency and Provision of Information ─────────────────
   const art13Findings: string[] = [];
@@ -349,6 +401,21 @@ export function buildEuComplianceReport(
     findings: art9FinalFindings,
     remediations: getRemediations('Article 9', art9Status, art9FinalFindings),
     owaspRef: 'OWASP Agentic AI A01: Prompt Injection, A06: Sensitive Information Disclosure',
+  });
+
+  const art10FinalFindings = art10Findings.length > 0
+    ? art10Findings
+    : ['No data governance findings. Training data quality indicators within acceptable thresholds.'];
+  articleEvidence.push({
+    article: 'Article 10 – Data and Data Governance',
+    requirement:
+      'Training, validation, and testing data sets shall be relevant, representative, free of errors, ' +
+      'and complete. Data governance measures must address bias detection, data quality, and ' +
+      'special category data processing in accordance with GDPR.',
+    status: art10Status,
+    findings: art10FinalFindings,
+    remediations: getRemediations('Article 10', art10Status, art10FinalFindings),
+    owaspRef: 'OWASP Agentic AI A05: Improper Output Handling',
   });
 
   const art13FinalFindings = art13Findings.length > 0 ? art13Findings : ['No transparency gaps detected.'];
