@@ -25,6 +25,7 @@ import {
   getRemediations,
   renderComplianceBadgeSvg,
   renderComplianceReportMarkdown,
+  renderComplianceReportSarif,
   loadComplianceConfig,
   type EuAiActComplianceReport,
   type CiGateResult,
@@ -1397,5 +1398,182 @@ describe('compliance-report --format markdown', () => {
     expect(exitCode).toBe(0);
     expect(output).toContain('**Threshold**');
     expect(output).toContain('80');
+  });
+});
+
+// ── SARIF Compliance Renderer (N-173) ─────────────────────────────────────────
+
+describe('renderComplianceReportSarif()', () => {
+  function makeReport(overrides: Partial<EuAiActComplianceReport> = {}): EuAiActComplianceReport {
+    return buildEuComplianceReport(makeScan(), { projectName: 'TestProject', ...overrides });
+  }
+
+  function makeGate(overrides: Partial<CiGateResult> = {}): CiGateResult {
+    return {
+      pass: true,
+      overallRisk: 'low',
+      articles: [
+        { article: 'Article 9', status: 'compliant' as const, pass: true },
+        { article: 'Article 13', status: 'compliant' as const, pass: true },
+        { article: 'Article 14', status: 'compliant' as const, pass: true },
+        { article: 'Article 50', status: 'compliant' as const, pass: true },
+      ],
+      nonCompliantCount: 0,
+      totalArticles: 4,
+      exitCode: 0,
+      complianceScore: 100,
+      threshold: 0,
+      ...overrides,
+    };
+  }
+
+  it('SF1: returns valid JSON', () => {
+    const sarif = renderComplianceReportSarif(makeReport(), makeGate());
+    const parsed = JSON.parse(sarif);
+    expect(parsed).toBeDefined();
+  });
+
+  it('SF2: contains SARIF 2.1.0 schema and version', () => {
+    const parsed = JSON.parse(renderComplianceReportSarif(makeReport(), makeGate()));
+    expect(parsed.$schema).toContain('sarif-schema-2.1.0');
+    expect(parsed.version).toBe('2.1.0');
+  });
+
+  it('SF3: has runs array with one run', () => {
+    const parsed = JSON.parse(renderComplianceReportSarif(makeReport(), makeGate()));
+    expect(Array.isArray(parsed.runs)).toBe(true);
+    expect(parsed.runs.length).toBe(1);
+  });
+
+  it('SF4: tool driver is Faultline Pro', () => {
+    const parsed = JSON.parse(renderComplianceReportSarif(makeReport(), makeGate()));
+    const driver = parsed.runs[0].tool.driver;
+    expect(driver.name).toBe('Faultline Pro');
+    expect(driver.informationUri).toContain('faultline-pro');
+  });
+
+  it('SF5: rules array has one entry per article', () => {
+    const report = makeReport();
+    const parsed = JSON.parse(renderComplianceReportSarif(report, makeGate()));
+    const rules = parsed.runs[0].tool.driver.rules;
+    expect(rules.length).toBe(report.articleEvidence.length);
+  });
+
+  it('SF6: rule IDs use slugified article names', () => {
+    const parsed = JSON.parse(renderComplianceReportSarif(makeReport(), makeGate()));
+    const rules = parsed.runs[0].tool.driver.rules;
+    for (const rule of rules) {
+      expect(rule.id).toMatch(/^faultline\/eu-ai-act\//);
+      expect(rule.properties.tags).toContain('eu-ai-act');
+    }
+  });
+
+  it('SF7: no results when all articles compliant', () => {
+    const parsed = JSON.parse(renderComplianceReportSarif(makeReport(), makeGate()));
+    expect(parsed.runs[0].results.length).toBe(0);
+  });
+
+  it('SF8: partial article produces warning result', () => {
+    const report = makeReport();
+    report.articleEvidence[0].status = 'partial';
+    report.articleEvidence[0].findings = ['Some gap detected'];
+    const parsed = JSON.parse(renderComplianceReportSarif(report, makeGate({ pass: false })));
+    const results = parsed.runs[0].results;
+    expect(results.length).toBeGreaterThan(0);
+    expect(results[0].level).toBe('warning');
+    expect(results[0].message.text).toContain('partial');
+  });
+
+  it('SF9: non-compliant article produces error result', () => {
+    const report = makeReport();
+    report.articleEvidence[0].status = 'non-compliant';
+    report.articleEvidence[0].findings = ['Critical gap'];
+    const parsed = JSON.parse(renderComplianceReportSarif(report, makeGate({ pass: false })));
+    const results = parsed.runs[0].results;
+    expect(results.length).toBeGreaterThan(0);
+    expect(results[0].level).toBe('error');
+  });
+
+  it('SF10: invocations include compliance metadata', () => {
+    const parsed = JSON.parse(renderComplianceReportSarif(makeReport(), makeGate()));
+    const inv = parsed.runs[0].invocations[0];
+    expect(inv.executionSuccessful).toBe(true);
+    expect(inv.properties.complianceScore).toBeDefined();
+    expect(inv.properties.projectName).toBe('TestProject');
+  });
+
+  it('SF11: remediations included in result properties', () => {
+    const report = makeReport();
+    report.articleEvidence[0].status = 'gap';
+    report.articleEvidence[0].remediations = ['Fix this', 'Fix that'];
+    const parsed = JSON.parse(renderComplianceReportSarif(report, makeGate({ pass: false })));
+    const result = parsed.runs[0].results[0];
+    expect(result.properties.remediations).toEqual(['Fix this', 'Fix that']);
+  });
+
+  it('SF12: results have physicalLocation with artifactLocation', () => {
+    const report = makeReport();
+    report.articleEvidence[0].status = 'non-compliant';
+    const parsed = JSON.parse(renderComplianceReportSarif(report, makeGate({ pass: false })));
+    const loc = parsed.runs[0].results[0].locations[0].physicalLocation;
+    expect(loc.artifactLocation.uri).toBe('input');
+    expect(loc.artifactLocation.uriBaseId).toBe('%SRCROOT%');
+  });
+});
+
+// ── CLI --format sarif (N-173) ────────────────────────────────────────────────
+
+describe('compliance-report --format sarif', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'faultline-sarif-'));
+  });
+
+  it('SF-CLI1: outputs valid SARIF JSON to stdout', async () => {
+    const scanPath = join(tmpDir, 'scan.json');
+    writeFileSync(scanPath, JSON.stringify(makeScan()));
+    const { exitCode, output } = await main([
+      'compliance-report', '--input', scanPath, '--format', 'sarif',
+    ]);
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(output);
+    expect(parsed.version).toBe('2.1.0');
+    expect(parsed.runs[0].tool.driver.name).toBe('Faultline Pro');
+  });
+
+  it('SF-CLI2: writes SARIF to file with --output', async () => {
+    const scanPath = join(tmpDir, 'scan.json');
+    writeFileSync(scanPath, JSON.stringify(makeScan()));
+    const outPath = join(tmpDir, 'report.sarif');
+    const { exitCode, output } = await main([
+      'compliance-report', '--input', scanPath, '--format', 'sarif', '--output', outPath,
+    ]);
+    expect(exitCode).toBe(0);
+    expect(output).toContain('SARIF');
+    expect(existsSync(outPath)).toBe(true);
+  });
+
+  it('SF-CLI3: SARIF includes project name from --project-name', async () => {
+    const scanPath = join(tmpDir, 'scan.json');
+    writeFileSync(scanPath, JSON.stringify(makeScan()));
+    const { exitCode, output } = await main([
+      'compliance-report', '--input', scanPath, '--format', 'sarif',
+      '--project-name', 'SarifProject',
+    ]);
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(output);
+    expect(parsed.runs[0].invocations[0].properties.projectName).toBe('SarifProject');
+  });
+
+  it('SF-CLI4: SARIF respects --threshold', async () => {
+    const scanPath = join(tmpDir, 'scan.json');
+    writeFileSync(scanPath, JSON.stringify(makeScan()));
+    const { exitCode, output } = await main([
+      'compliance-report', '--input', scanPath, '--format', 'sarif', '--threshold', '90',
+    ]);
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(output);
+    expect(parsed.runs[0].invocations[0].properties.threshold).toBe(90);
   });
 });

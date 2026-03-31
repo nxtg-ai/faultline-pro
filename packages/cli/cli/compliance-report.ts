@@ -763,6 +763,113 @@ export function renderComplianceReportMarkdown(
   return lines.join('\n');
 }
 
+// ── SARIF 2.1.0 Compliance Renderer ─────────────────────────────────────────
+
+type SarifLevel = 'error' | 'warning' | 'note' | 'none';
+
+function complianceStatusToSarifLevel(status: EvidenceStatus): SarifLevel {
+  switch (status) {
+    case 'non-compliant': return 'error';
+    case 'gap': return 'error';
+    case 'partial': return 'warning';
+    case 'compliant': return 'none';
+    case 'not-applicable': return 'none';
+    default: return 'warning';
+  }
+}
+
+/**
+ * Render an EU AI Act compliance report as a SARIF 2.1.0 JSON string.
+ *
+ * Each EU AI Act article maps to a SARIF rule; non-compliant, gap, and partial
+ * articles produce SARIF results for integration with GitHub Code Scanning,
+ * GitLab SAST, Azure DevOps, and other security tooling.
+ */
+export function renderComplianceReportSarif(
+  report: EuAiActComplianceReport,
+  gate: CiGateResult,
+): string {
+  // Build rule definitions — one per article
+  const ruleDefinitions = report.articleEvidence.map((ev) => {
+    const articleSlug = ev.article.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    return {
+      id: `faultline/eu-ai-act/${articleSlug}`,
+      name: ev.article.replace(/\s+/g, ''),
+      shortDescription: { text: `EU AI Act: ${ev.article}` },
+      fullDescription: { text: ev.requirement },
+      defaultConfiguration: { level: complianceStatusToSarifLevel(ev.status) },
+      properties: { tags: ['eu-ai-act', 'compliance', articleSlug] },
+    };
+  });
+
+  const ruleIndexMap = new Map<string, number>();
+  ruleDefinitions.forEach((r, i) => ruleIndexMap.set(r.id, i));
+
+  // Build results — only for non-passing articles
+  const results: Array<Record<string, unknown>> = [];
+  for (const ev of report.articleEvidence) {
+    if (ev.status === 'compliant' || ev.status === 'not-applicable') continue;
+
+    const articleSlug = ev.article.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const ruleId = `faultline/eu-ai-act/${articleSlug}`;
+
+    const message = ev.findings.length > 0
+      ? `${ev.article}: ${ev.status} — ${ev.findings[0]}`
+      : `${ev.article}: ${ev.status}`;
+
+    const result: Record<string, unknown> = {
+      ruleId,
+      ruleIndex: ruleIndexMap.get(ruleId) ?? -1,
+      level: complianceStatusToSarifLevel(ev.status),
+      message: { text: message },
+      locations: [{
+        physicalLocation: {
+          artifactLocation: { uri: 'input', uriBaseId: '%SRCROOT%' },
+          region: { startLine: 1 },
+        },
+      }],
+      properties: {
+        article: ev.article,
+        status: ev.status,
+        ...(ev.remediations.length > 0 && { remediations: ev.remediations }),
+      },
+    };
+
+    results.push(result);
+  }
+
+  const sarif = {
+    $schema: 'https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json',
+    version: '2.1.0' as const,
+    runs: [{
+      tool: {
+        driver: {
+          name: 'Faultline Pro',
+          version: '0.4.1',
+          informationUri: 'https://github.com/nxtg-ai/faultline-pro',
+          rules: ruleDefinitions,
+        },
+      },
+      originalUriBaseIds: {
+        '%SRCROOT%': { uri: '' },
+      },
+      results,
+      invocations: [{
+        executionSuccessful: gate.pass,
+        properties: {
+          overallRisk: report.overallRisk,
+          complianceScore: report.complianceScore,
+          threshold: gate.threshold,
+          projectName: report.projectName,
+          documentRef: report.documentRef,
+        },
+      }],
+    }],
+  };
+
+  return JSON.stringify(sarif, null, 2);
+}
+
 // ── Badge SVG Renderer ──────────────────────────────────────────────────────
 
 /**
