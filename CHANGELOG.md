@@ -23,6 +23,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - N-173: Compliance report SARIF 2.1.0 — `renderComplianceReportSarif()` maps EU AI Act articles to SARIF rules/results; `--format sarif` CLI flag; integrates with GitHub Code Scanning, GitLab SAST, Azure DevOps
 - N-174: GitHub Action compliance SARIF upload — `compliance-sarif`, `compliance-threshold`, `compliance-strict` inputs; auto-uploads compliance findings to GitHub Code Scanning Security tab
 - N-175: Compliance report HTML renderer — `renderComplianceReportHtml()` standalone viewable report; `--format html` CLI flag
+- N-176: Python SDK compliance diff — `compliance_diff()` with `ComplianceDiffResult`; `get_scan_compliance()` threshold/strict params
 
 ---
 
