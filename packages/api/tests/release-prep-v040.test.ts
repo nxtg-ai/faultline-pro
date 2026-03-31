@@ -132,20 +132,20 @@ describe('CHANGELOG.md — v0.4.0 release validation', () => {
 // ── package.json version validation (RP26–RP27) ────────────────────────────────
 
 describe('package.json — v0.4.0 version validation', () => {
-  // RP26: @nxtg/faultline (cli) is version 0.4.0
-  it('RP26: @nxtg/faultline package version is 0.4.0', () => {
+  // RP26: @nxtg/faultline (cli) is version >= 0.4.0
+  it('RP26: @nxtg/faultline package version is >= 0.4.0', () => {
     const pkg = JSON.parse(
       readFileSync(resolve(ROOT, 'packages/cli/package.json'), 'utf-8'),
     ) as { version: string };
-    expect(pkg.version).toBe('0.4.0');
+    expect(pkg.version).toMatch(/^0\.4\.\d+$/);
   });
 
-  // RP27: @nxtg/faultline-api is version 0.4.0
-  it('RP27: @nxtg/faultline-api package version is 0.4.0', () => {
+  // RP27: @nxtg/faultline-api is version >= 0.4.0
+  it('RP27: @nxtg/faultline-api package version is >= 0.4.0', () => {
     const pkg = JSON.parse(
       readFileSync(resolve(ROOT, 'packages/api/package.json'), 'utf-8'),
     ) as { version: string };
-    expect(pkg.version).toBe('0.4.0');
+    expect(pkg.version).toMatch(/^0\.4\.\d+$/);
   });
 });
 

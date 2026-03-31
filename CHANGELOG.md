@@ -5,6 +5,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [v0.4.1] — 2026-03-30
+
+### Security
+
+- 13-commit security hardening sweep (semgrep 35 → 24 findings, remaining are false positives)
+- npm audit fix — patched picomatch ReDoS (high), fastify host spoofing, brace-expansion DoS, yaml stack overflow (0 vulns remaining)
+- F-03: Mermaid XSS — `sanitizeMermaidLabel()` strips injection chars from claim dependency graph
+- F-04: Rate limiting added to `GET /scan/stream` (was unthrottled)
+- F-06: Timing-safe API key comparison via `crypto.timingSafeEqual` in auth + keystore
+- F-09: PATCH `/orgs/:id` — plan/status changes restricted to org owner (was any admin)
+- Auth gates added to 8 previously-unauthenticated routes (analytics, mission-control, scans/timeline, webhooks/test, playground)
+- GraphQL endpoint gated behind `requireApiKey`
+- CORS: null-origin requests blocked in production
+- Error handler: 5xx responses no longer leak internal `error.message`
+- GitHub Actions shell injection fixed in both `action.yml` files (env vars instead of `${{ inputs }}`)
+- Dockerfile: non-root `USER faultline` in runtime stage
+- docker-compose: `no-new-privileges` + `read_only` filesystem
+- Python SDK: URL scheme validation (http/https only) + 30s timeout on urllib
+- `.gitignore`: `.env` files excluded from version control
+
+### Changed
+
 - N-140 CRUCIBLE self-audit + CLAUDE.md process hardening — Gate 1/2/3/4/5/8 PASS; Gate 7 PARTIAL (48/108 test files, 44%, not P0); Gate 6 all 5 modules above 80% threshold; CLAUDE.md: Idle Time Protocol gains pattern-documentation-at-first-discovery rule + pattern documentation note; CRUCIBLE section updated: Gate 6 changed from "(future)/60%" to "active/80%" with config references and current scores; Gate 7 "(future)" removed; oracle coverage count updated 3,586→4,467 with N-81 integration oracle noted
 - N-139 `docs/mutation-testing.md` — permanent reference for mutation hardening sessions; 9 killable patterns (exact-count 3-mutant guard, two-entry exact-sum accumulator, ObjectLiteral field assertion, catch-block injection via missing API key, exact-string assertion, asymmetric normalization input, synthetic claim ID ordinals, EU tier accumulation via real compliance pipeline, riskOrder StringLiteral); 3 untestable patterns documented with root-cause analysis (symmetric normalization, VALID_PROVIDERS mock-only, riskOrder 'low'→'' fallback masking); config reference (coverageAnalysis 'off', testFiles explicit manifest, vitest.dir); threshold table with current scores for all 5 hardened modules
 - N-138 `cli/scan.ts` mutation hardening round 3 — `stryker-cli.config.mjs` updated; baseline 75.41% → 81.97% (200 killed, 38 survived, 6 no-cov, 244 total); 15 tests (HN1–HN15) in `scan-mutation-hardening-3.test.ts`; killed: `guaranteeClaimPerSentence` idx arithmetic (`result.length+1`→`result.length-1`, HN1) and update (`idx++`→`idx--`, HN2) via synthetic ID ordinal assertions; `aggregateResults` euTierCounts.high/unacceptable/limited/minimal `+=`→`-=` (HN3–HN6) via batchScan 2-file EU tier accumulation using employment/social-scoring/contradicted/supported claims; euTierCounts `={}` ObjectLiteral (HN7) by asserting all tier counts are defined numbers; totalClaims/totalVerifications `+=`→`-=` (HN8–HN9) by 2-file batchScan exact count; batchScan `glob` field BooleanLiteral+LogicalOperator mutations (HN10–HN11) by `r.glob === '*.txt'` and `r.glob === null` assertions; `collectFiles` ArrayDeclaration phantom-path (HN12) via `filesSkipped === 0`; `normalizeSentence` `' '`→`"Stryker was here!"` StringLiteral + `/\s+/g`→`/\s/g` Regex (HN13) via triple-space sentence vs single-space claim fingerprint mismatch; riskOrder `'critical'`→`""` and `'high'`→`""` StringLiterals (HN14–HN15) by batchScan with 3×contradicted ('critical') and 1×contradicted ('high') scenarios; surviving: 6 no-cov + normalizeSentence `' '`→`""` + `.trim()` (symmetric normalization makes them untestable) + riskOrder `'low'`→`""` (|| 'low' fallback masks it) + `|| ""` fallback
