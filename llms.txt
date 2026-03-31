@@ -1,7 +1,7 @@
 # Faultline — AI Claim Forensics
 # https://github.com/nxtg-ai/faultline-pro
 # npm: @nxtg/faultline | @nxtg/faultline-api
-# Last updated: 2026-03-31
+# Last updated: 2026-03-31 (N-187)
 
 > Forensic verification for AI-generated text. Decomposes AI output into atomic claims, verifies each against live evidence, and maps findings to EU AI Act risk tiers.
 
@@ -31,7 +31,7 @@ No API key required for the `mock` provider. Real verification uses:
 ## Key Differentiators
 
 - **Claim-level, not prompt-level** — Faultline forensics output; Promptfoo tests input prompts
-- **EU AI Act compliance engine** — Article 5/9/13/14/50 evidence mapping; compliance score (0-100); per-article remediations; pass/fail gate with configurable threshold and strict mode; trend tracking and history; badge SVG for READMEs
+- **EU AI Act compliance engine** — Article 5/9/10/13/14/50 evidence mapping; per-article evidence strength scoring (evidenceCount, sourceCount, strengthScore); evidence-weighted compliance score (0-100); per-article remediations; pass/fail gate with configurable threshold and strict mode; trend tracking and history; badge SVG for READMEs
 - **5 compliance report formats** — JSON, PDF (EU-branded), Markdown (GFM for PR comments), SARIF 2.1.0 (GitHub Code Scanning), HTML (standalone viewable)
 - **Weakest-link detection** — Finds the single claim that most undermines the argument's credibility
 - **Provider-agnostic** — 5 providers; runtime switching with `--provider`; auto-failover with circuit breaker
@@ -39,7 +39,8 @@ No API key required for the `mock` provider. Real verification uses:
 - **Enterprise API** — REST + GraphQL; API key management; multi-tenant; GDPR Article 15/17; audit trail; webhooks
 - **GitHub Actions** — `faultline-scan` composite action with compliance gate, SARIF upload, threshold/strict configuration
 - **Mutation-tested** — CRUCIBLE Protocol Gate 6: claim forensics 81.97%; GDPR stores 80.94%–96.81%
-- **3,781 tests** across CLI, API, Python SDK, GDPR, mutation hardening, property-based, contract, integration
+- **3,816 tests** across CLI, API, Python SDK, GDPR, mutation hardening, property-based, contract, integration
+- **npm adoption metrics** — npmjs.org download tracking, Prometheus export, weekly trend analysis
 
 ## Use Cases
 
@@ -85,6 +86,10 @@ Key endpoints:
 - `GET /compliance/trend` — compliance score direction for a project (up/down/stable)
 - `GET /compliance/deadlines` — EU AI Act, GDPR, NIST upcoming dates
 - `GET /claims/trending` — claim frequency, emerging patterns, verdict alerts
+- `GET /npm/downloads` — npm download overview across all tracked packages
+- `GET /npm/downloads/:package` — daily download counts for a package
+- `GET /npm/trend/:package` — weekly download trend
+- `POST /npm/poll` — trigger npm download poll (admin)
 - `POST /keys` — API key management (create, rotate, expire, revoke)
 - `GET /tenants/:id/export` — GDPR Article 15 data export (ZIP)
 - `DELETE /tenants/:id/data` — GDPR Article 17 erasure
@@ -128,10 +133,10 @@ docs/
 
 ## Project Status
 
-- **184 initiatives SHIPPED** (N-01 through N-184)
-- **3,781 tests** (CLI + API + Python SDK + integration + property-based + contract + mutation)
+- **187 initiatives SHIPPED** (N-01 through N-187)
+- **3,816 tests** (CLI + API + Python SDK + integration + property-based + contract + mutation)
 - **8/8 CRUCIBLE gates PASS** (example, property, contract, integration oracles)
-- **EU AI Act Article 50 ready** — Full compliance reporting, gating, SARIF, 5 output formats
+- **EU AI Act Article 50 ready** — Full compliance reporting (Art. 5/9/10/13/14/50), evidence strength scoring, gating, SARIF, 5 output formats
 - **GDPR compliant** — Article 15 export + Article 17 erasure implemented
 - **Mutation-tested** — claim forensics critical path above 80% threshold
 - **Version**: 0.4.1 (pre-publish)
