@@ -143,7 +143,7 @@ describe('buildEuComplianceReport()', () => {
   it('Article 10 is non-compliant when bias findings exist', () => {
     const scan = makeScan({
       ruleFindings: [
-        { ruleId: 'bias-detection', severity: 'high', message: 'Gender bias detected.', claimId: 'c1' },
+        { ruleId: 'bias-detection', severity: 'high', message: 'Gender bias detected.', match: 'bias', offset: 0 },
       ],
     });
     const report = buildEuComplianceReport(scan);
@@ -188,7 +188,7 @@ describe('buildEuComplianceReport()', () => {
   it('Article 10 includes PII findings for special category data', () => {
     const scan = makeScan({
       ruleFindings: [
-        { ruleId: 'pii-detection', severity: 'high', message: 'Email found.', claimId: 'c1' },
+        { ruleId: 'pii-detection', severity: 'high', message: 'Email found.', match: 'user@test.com', offset: 0 },
       ],
     });
     const report = buildEuComplianceReport(scan);
@@ -403,8 +403,8 @@ describe('buildEuComplianceReport()', () => {
         { id: 'c5', text: 'V.', type: 'fact', importance: 4 },
       ],
       verifications: {
-        c1: { claimId: 'c1', status: 'contradicted', explanation: 'No.', sources: [{ title: 'S1', url: 'http://s1.com' }] },
-        c2: { claimId: 'c2', status: 'contradicted', explanation: 'No.', sources: [{ title: 'S2', url: 'http://s2.com' }] },
+        c1: { claimId: 'c1', status: 'contradicted', explanation: 'No.', sources: [{ title: 'S1', uri: 'http://s1.com' }] },
+        c2: { claimId: 'c2', status: 'contradicted', explanation: 'No.', sources: [{ title: 'S2', uri: 'http://s2.com' }] },
         c3: { claimId: 'c3', status: 'contradicted', explanation: 'No.', sources: [] },
         c4: { claimId: 'c4', status: 'contradicted', explanation: 'No.', sources: [] },
         c5: { claimId: 'c5', status: 'contradicted', explanation: 'No.', sources: [] },
@@ -440,9 +440,9 @@ describe('buildEuComplianceReport()', () => {
         c1: {
           claimId: 'c1', status: 'supported', explanation: 'Yes.',
           sources: [
-            { title: 'Wikipedia', url: 'http://wiki.com' },
-            { title: 'Nature', url: 'http://nature.com' },
-            { title: 'Science', url: 'http://science.com' },
+            { title: 'Wikipedia', uri: 'http://wiki.com' },
+            { title: 'Nature', uri: 'http://nature.com' },
+            { title: 'Science', uri: 'http://science.com' },
           ],
         },
       },
