@@ -118,6 +118,126 @@ for wh in client.list_webhooks():
 client.delete_webhook("wh-abc123")
 ```
 
+### Scan Diff
+
+#### `scan_diff(before, after, provider=None) -> ScanDiffResult`
+
+Compare two texts at the claim level — find new, removed, and changed claims.
+
+```python
+diff = client.scan_diff("old text", "new text", provider="mock")
+print(diff.summary)           # 'Risk improved' | 'Risk worsened' | 'No change'
+print(diff.trust_score_delta) # negative = improved
+print(diff.new_claims)        # claims added in 'after'
+print(diff.removed_claims)    # claims removed from 'before'
+print(diff.inline_diff)       # per-claim added/removed/changed/unchanged
+```
+
+### EU AI Act Compliance
+
+#### `compliance_gate(text, provider=None, project_name=None, threshold=None, strict=None) -> ComplianceGateResponse`
+
+Scan text and evaluate EU AI Act compliance in a single call.
+
+```python
+response = client.compliance_gate("AI-generated text.", provider="mock", threshold=80, strict=True)
+if not response.gate.passed:
+    print(f"FAIL: {response.gate.non_compliant_count} non-compliant articles")
+    for article in response.gate.articles:
+        if not article.passed:
+            print(f"  {article.article}: {article.status}")
+```
+
+#### `get_scan_compliance(scan_id, project_name=None, threshold=None, strict=None) -> ComplianceGateResponse`
+
+Evaluate compliance for an existing scan result.
+
+```python
+resp = client.get_scan_compliance("scan-abc-123", threshold=80, strict=True)
+print(resp.gate.passed, resp.gate.exit_code)
+```
+
+#### `compliance_diff(before_id, after_id, project_name=None) -> ComplianceDiffResult`
+
+Compare compliance between two scans.
+
+```python
+diff = client.compliance_diff("scan-before", "scan-after")
+print(diff.risk_trend)  # 'improved' | 'regressed' | 'unchanged'
+print(diff.summary)     # {'improved': 2, 'regressed': 0, 'unchanged': 3}
+```
+
+#### `compliance_badge(scan_id, label=None) -> str`
+
+Fetch an SVG compliance badge for embedding in READMEs.
+
+```python
+svg = client.compliance_badge("scan-abc-123")
+with open("badge.svg", "w") as f:
+    f.write(svg)
+```
+
+#### `compliance_history(project_name=None, limit=None, since=None) -> dict`
+
+Query compliance gate evaluation history.
+
+```python
+history = client.compliance_history(project_name="my-app", limit=10)
+for entry in history["entries"]:
+    print(entry["passed"], entry["complianceScore"])
+```
+
+#### `compliance_trend(project_name) -> dict`
+
+Get compliance score trend direction for a project.
+
+```python
+trend = client.compliance_trend("my-app")
+print(trend["direction"])  # 'up' | 'down' | 'stable' | 'none'
+```
+
+#### `compliance_deadlines(days=None) -> list[ComplianceDeadline]`
+
+List upcoming regulatory compliance deadlines.
+
+```python
+for d in client.compliance_deadlines(days=90):
+    print(f"{d.name}: {d.days_until} days ({d.severity})")
+```
+
+### Claims
+
+#### `claims_trending() -> dict`
+
+Fetch trending claims, emerging patterns, and verdict changes.
+
+```python
+data = client.claims_trending()
+for claim in data["trending"]:
+    print(f"{claim['text']} (freq: {claim['frequency']})")
+```
+
+### GDPR
+
+#### `gdpr_export(tenant_id) -> bytes`
+
+Download a GDPR Article 15 data export ZIP for a tenant.
+
+```python
+zip_data = client.gdpr_export("tenant-abc")
+with open("export.zip", "wb") as f:
+    f.write(zip_data)
+```
+
+#### `gdpr_erase(tenant_id) -> GdprErasureResult`
+
+Delete all data held for a tenant (Article 17 — Right to Erasure).
+
+```python
+result = client.gdpr_erase("tenant-abc")
+print(result.deleted)  # {'scanEntries': 15, 'auditEntries': 42, ...}
+```
+
 ### Usage and Dashboard
 
 #### `get_usage() -> UsageResponse`
@@ -156,10 +276,16 @@ except FaultlineError as exc:
 | Class | Key fields |
 |-------|-----------|
 | `ScanResult` | `input`, `provider`, `overall_risk`, `claims`, `verifications`, `compliance_report` |
+| `ScanDiffResult` | `before`, `after`, `new_claims`, `removed_claims`, `changed_verdicts`, `trust_score_delta`, `summary`, `inline_diff` |
 | `Claim` | `id`, `text`, `type`, `importance` |
 | `VerificationResult` | `claim_id`, `status`, `explanation`, `sources` |
 | `Source` | `title`, `url` |
 | `ComplianceReport` | `risk_tier`, `findings` |
+| `ComplianceGateResponse` | `gate`, `report`, `scan_id` |
+| `CiGateResult` | `passed`, `overall_risk`, `articles`, `non_compliant_count`, `exit_code` |
+| `ComplianceDiffResult` | `articles`, `summary`, `risk_trend` |
+| `ComplianceDeadline` | `id`, `name`, `regulation`, `deadline`, `days_until`, `severity` |
+| `GdprErasureResult` | `tenant_id`, `deleted` |
 | `BatchScanResponse` | `total`, `succeeded`, `failed`, `results`, `errors` |
 | `BatchScanError` | `index`, `error` |
 | `ApiKey` | `id`, `name`, `permissions`, `created_at`, `key` |
