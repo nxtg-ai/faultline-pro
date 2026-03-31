@@ -561,3 +561,47 @@ class FaultlineClient:
             webhook_id: ID of the webhook to delete.
         """
         self._request("DELETE", f"/webhooks/{webhook_id}")
+
+    # ── npm Download Metrics ─────────────────────────────────────────────────
+
+    def npm_downloads(self) -> dict:
+        """Get npm download overview across all tracked packages.
+
+        Returns:
+            Dict with ``packages``, ``grandTotal``, ``period``, ``fetchedAt``.
+        """
+        return self._request("GET", "/npm/downloads")
+
+    def npm_package_downloads(self, package: str) -> dict:
+        """Get daily download counts for a specific npm package.
+
+        Args:
+            package: Scoped or unscoped package name (e.g. ``@nxtg/faultline``).
+
+        Returns:
+            Dict with ``package``, ``downloads``, ``totalDownloads``, ``lastFetched``.
+        """
+        from urllib.parse import quote
+        return self._request("GET", f"/npm/downloads/{quote(package, safe='')}")
+
+    def npm_trend(self, package: str, weeks: int | None = None) -> dict:
+        """Get weekly download trend for a specific npm package.
+
+        Args:
+            package: Package name.
+            weeks: Number of weeks to include (default 12).
+
+        Returns:
+            Dict with ``package``, ``weeks``, ``trend`` array.
+        """
+        from urllib.parse import quote
+        params = f"?weeks={weeks}" if weeks is not None else ""
+        return self._request("GET", f"/npm/trend/{quote(package, safe='')}{params}")
+
+    def npm_poll(self) -> dict:
+        """Trigger an immediate npm download poll (admin only).
+
+        Returns:
+            Dict with ``status`` and ``fetchedAt``.
+        """
+        return self._request("POST", "/npm/poll")

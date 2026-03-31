@@ -936,6 +936,101 @@ class TestClientSecurity:
         assert captured[0].get_header("X-api-key") == "secret-key-123"
 
 
+NPM_DOWNLOADS_RESPONSE = {
+    "packages": [
+        {"package": "@nxtg/faultline", "downloads": [{"day": "2026-03-30", "downloads": 42}], "totalDownloads": 42, "lastFetched": "2026-03-30T12:00:00Z"},
+    ],
+    "grandTotal": 42,
+    "period": {"start": "2026-03-30", "end": "2026-03-30"},
+    "fetchedAt": "2026-03-30T12:00:00Z",
+}
+
+NPM_PACKAGE_RESPONSE = {
+    "package": "@nxtg/faultline",
+    "downloads": [{"day": "2026-03-30", "downloads": 42}],
+    "totalDownloads": 42,
+    "lastFetched": "2026-03-30T12:00:00Z",
+}
+
+NPM_TREND_RESPONSE = {
+    "package": "@nxtg/faultline",
+    "weeks": 12,
+    "trend": [{"week": "2026-03-23", "downloads": 100}, {"week": "2026-03-30", "downloads": 120}],
+}
+
+
+class TestNpmMetrics:
+    """Tests for N-189: npm download metrics SDK methods."""
+
+    def test_npm_downloads_url(self):
+        """npm_downloads() hits GET /npm/downloads."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.npm_downloads()
+        except Exception:
+            pass
+        assert "/npm/downloads" in captured[0].full_url
+        assert captured[0].method == "GET"
+
+    def test_npm_downloads_returns_dict(self):
+        """npm_downloads() returns parsed overview dict."""
+        client = FaultlineClient(api_key="k", _http_fn=make_mock_http(200, NPM_DOWNLOADS_RESPONSE))
+        result = client.npm_downloads()
+        assert result["grandTotal"] == 42
+        assert len(result["packages"]) == 1
+
+    def test_npm_package_downloads_url_encodes_scoped_name(self):
+        """npm_package_downloads() URL-encodes scoped package names."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.npm_package_downloads("@nxtg/faultline")
+        except Exception:
+            pass
+        assert "%40nxtg%2Ffaultline" in captured[0].full_url
+
+    def test_npm_package_downloads_returns_data(self):
+        """npm_package_downloads() returns parsed package data."""
+        client = FaultlineClient(api_key="k", _http_fn=make_mock_http(200, NPM_PACKAGE_RESPONSE))
+        result = client.npm_package_downloads("@nxtg/faultline")
+        assert result["totalDownloads"] == 42
+
+    def test_npm_trend_url_with_weeks(self):
+        """npm_trend() passes weeks as query parameter."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.npm_trend("@nxtg/faultline", weeks=4)
+        except Exception:
+            pass
+        assert "weeks=4" in captured[0].full_url
+
+    def test_npm_trend_returns_data(self):
+        """npm_trend() returns parsed trend data."""
+        client = FaultlineClient(api_key="k", _http_fn=make_mock_http(200, NPM_TREND_RESPONSE))
+        result = client.npm_trend("@nxtg/faultline")
+        assert result["weeks"] == 12
+        assert len(result["trend"]) == 2
+
+    def test_npm_poll_url_and_method(self):
+        """npm_poll() hits POST /npm/poll."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.npm_poll()
+        except Exception:
+            pass
+        assert "/npm/poll" in captured[0].full_url
+        assert captured[0].method == "POST"
+
+    def test_npm_poll_returns_result(self):
+        """npm_poll() returns parsed result dict."""
+        client = FaultlineClient(api_key="k", _http_fn=make_mock_http(200, {"status": "polled", "fetchedAt": "2026-03-30T12:00:00Z"}))
+        result = client.npm_poll()
+        assert result["status"] == "polled"
+
+
 class TestFaultlineError:
     def test_faultline_error_has_correct_status_code_and_body(self):
         """FaultlineError must expose status_code and body from the API response."""
