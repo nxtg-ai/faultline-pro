@@ -3,6 +3,7 @@ import { requireApiKey } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { getScanStore } from '../store/scans.js';
+import { getComplianceHistoryStore } from '../store/compliance-history.js';
 import {
   buildEuComplianceReport,
   evaluateComplianceGate,
@@ -66,6 +67,18 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
       const stored = getScanStore().record(keyId, text, result as unknown as Record<string, unknown>);
       const report = buildEuComplianceReport(result, { projectName });
       const gate = evaluateComplianceGate(report, { threshold, strict });
+
+      // Record to compliance history for trend tracking
+      getComplianceHistoryStore().record({
+        projectName: report.projectName,
+        scanId: stored.id,
+        complianceScore: report.complianceScore,
+        pass: gate.pass,
+        overallRisk: report.overallRisk,
+        nonCompliantCount: gate.nonCompliantCount,
+        totalArticles: gate.totalArticles,
+        threshold: gate.threshold,
+      });
 
       const response: ComplianceGateResponse = { gate, report, scanId: stored.id };
       return reply.status(gate.pass ? 200 : 422).send(response);
@@ -187,6 +200,58 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
         .header('Content-Type', 'image/svg+xml')
         .header('Cache-Control', 'no-cache, no-store, must-revalidate')
         .send(svg);
+    },
+  );
+
+  // GET /compliance/history — query compliance history with optional filters
+  fastify.get<{ Querystring: { projectName?: string; limit?: string; since?: string } }>(
+    '/compliance/history',
+    {
+      preHandler: [requireApiKey],
+      schema: {
+        tags: ['Compliance'],
+        summary: 'Query compliance gate history (time-series)',
+        querystring: {
+          type: 'object',
+          properties: {
+            projectName: { type: 'string', maxLength: 200 },
+            limit: { type: 'string' },
+            since: { type: 'string' },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const limit = request.query.limit ? parseInt(request.query.limit, 10) : undefined;
+      const entries = getComplianceHistoryStore().query({
+        projectName: request.query.projectName,
+        limit,
+        since: request.query.since,
+      });
+      return reply.send({ entries, count: entries.length });
+    },
+  );
+
+  // GET /compliance/trend — compliance score trend for a project
+  fastify.get<{ Querystring: { projectName: string } }>(
+    '/compliance/trend',
+    {
+      preHandler: [requireApiKey],
+      schema: {
+        tags: ['Compliance'],
+        summary: 'Get compliance score trend for a project',
+        querystring: {
+          type: 'object',
+          required: ['projectName'],
+          properties: {
+            projectName: { type: 'string', maxLength: 200 },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const trend = getComplianceHistoryStore().trend(request.query.projectName);
+      return reply.send(trend);
     },
   );
 }

@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { buildServer } from '../src/server.js';
 import { getScanStore, resetScanStore } from '../src/store/scans.js';
+import { resetComplianceHistoryStore, getComplianceHistoryStore } from '../src/store/compliance-history.js';
 import type { FastifyInstance } from 'fastify';
 
 let server: FastifyInstance;
@@ -9,6 +10,7 @@ let server: FastifyInstance;
 beforeEach(() => {
   process.env.FAULTLINE_API_KEY = 'test-secret';
   resetScanStore();
+  resetComplianceHistoryStore();
   server = buildServer();
 });
 
@@ -479,5 +481,205 @@ describe('GET /scan/:id/compliance/badge', () => {
       headers: { 'x-api-key': 'test-secret' },
     });
     expect(res.headers['cache-control']).toContain('no-cache');
+  });
+});
+
+// ── N-169: Compliance History & Trend ───────────────────────────────────────
+
+describe('GET /compliance/history', () => {
+  it('CH1: returns empty entries initially', async () => {
+    const res = await server.inject({
+      method: 'GET',
+      url: '/compliance/history',
+      headers: { 'x-api-key': 'test-secret' },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.entries).toEqual([]);
+    expect(body.count).toBe(0);
+  });
+
+  it('CH2: POST /scan/compliance-gate records history entry', async () => {
+    await server.inject({
+      method: 'POST',
+      url: '/scan/compliance-gate',
+      headers: AUTH,
+      payload: { text: 'The sky is blue.', provider: 'mock' },
+    });
+
+    const res = await server.inject({
+      method: 'GET',
+      url: '/compliance/history',
+      headers: { 'x-api-key': 'test-secret' },
+    });
+    const body = JSON.parse(res.body);
+    expect(body.count).toBe(1);
+    expect(body.entries[0].scanId).toBeDefined();
+    expect(typeof body.entries[0].complianceScore).toBe('number');
+    expect(typeof body.entries[0].pass).toBe('boolean');
+  });
+
+  it('CH3: filters by projectName', async () => {
+    await server.inject({
+      method: 'POST',
+      url: '/scan/compliance-gate',
+      headers: AUTH,
+      payload: { text: 'Claim A.', provider: 'mock', projectName: 'Alpha' },
+    });
+    await server.inject({
+      method: 'POST',
+      url: '/scan/compliance-gate',
+      headers: AUTH,
+      payload: { text: 'Claim B.', provider: 'mock', projectName: 'Beta' },
+    });
+
+    const res = await server.inject({
+      method: 'GET',
+      url: '/compliance/history?projectName=Alpha',
+      headers: { 'x-api-key': 'test-secret' },
+    });
+    const body = JSON.parse(res.body);
+    expect(body.count).toBe(1);
+    expect(body.entries[0].projectName).toBe('Alpha');
+  });
+
+  it('CH4: respects limit parameter', async () => {
+    for (let i = 0; i < 3; i++) {
+      await server.inject({
+        method: 'POST',
+        url: '/scan/compliance-gate',
+        headers: AUTH,
+        payload: { text: `Claim ${i}.`, provider: 'mock' },
+      });
+    }
+
+    const res = await server.inject({
+      method: 'GET',
+      url: '/compliance/history?limit=2',
+      headers: { 'x-api-key': 'test-secret' },
+    });
+    const body = JSON.parse(res.body);
+    expect(body.count).toBe(2);
+  });
+
+  it('CH5: returns 401 without API key', async () => {
+    const res = await server.inject({
+      method: 'GET',
+      url: '/compliance/history',
+    });
+    expect(res.statusCode).toBe(401);
+  });
+});
+
+describe('GET /compliance/trend', () => {
+  it('CT1: returns "none" direction for unknown project', async () => {
+    const res = await server.inject({
+      method: 'GET',
+      url: '/compliance/trend?projectName=Unknown',
+      headers: { 'x-api-key': 'test-secret' },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.direction).toBe('none');
+    expect(body.current).toBeNull();
+  });
+
+  it('CT2: returns trend after multiple scans', async () => {
+    await server.inject({
+      method: 'POST',
+      url: '/scan/compliance-gate',
+      headers: AUTH,
+      payload: { text: 'First claim.', provider: 'mock', projectName: 'TrendTest' },
+    });
+    await server.inject({
+      method: 'POST',
+      url: '/scan/compliance-gate',
+      headers: AUTH,
+      payload: { text: 'Second claim.', provider: 'mock', projectName: 'TrendTest' },
+    });
+
+    const res = await server.inject({
+      method: 'GET',
+      url: '/compliance/trend?projectName=TrendTest',
+      headers: { 'x-api-key': 'test-secret' },
+    });
+    const body = JSON.parse(res.body);
+    expect(typeof body.current).toBe('number');
+    expect(typeof body.previous).toBe('number');
+    expect(['up', 'down', 'stable']).toContain(body.direction);
+  });
+
+  it('CT3: returns 401 without API key', async () => {
+    const res = await server.inject({
+      method: 'GET',
+      url: '/compliance/trend?projectName=Test',
+    });
+    expect(res.statusCode).toBe(401);
+  });
+});
+
+describe('ComplianceHistoryStore unit tests', () => {
+  it('CH6: record() returns entry with id and recordedAt', () => {
+    const entry = getComplianceHistoryStore().record({
+      projectName: 'Test',
+      scanId: 's1',
+      complianceScore: 80,
+      pass: true,
+      overallRisk: 'low',
+      nonCompliantCount: 0,
+      totalArticles: 4,
+      threshold: 0,
+    });
+    expect(entry.id).toBeDefined();
+    expect(entry.recordedAt).toBeDefined();
+    expect(entry.complianceScore).toBe(80);
+  });
+
+  it('CH7: size reflects entry count', () => {
+    expect(getComplianceHistoryStore().size).toBe(0);
+    getComplianceHistoryStore().record({
+      projectName: 'A', scanId: 's1', complianceScore: 90,
+      pass: true, overallRisk: 'low', nonCompliantCount: 0, totalArticles: 4, threshold: 0,
+    });
+    expect(getComplianceHistoryStore().size).toBe(1);
+  });
+
+  it('CH8: trend() with single entry returns "none" direction', () => {
+    getComplianceHistoryStore().record({
+      projectName: 'Solo', scanId: 's1', complianceScore: 75,
+      pass: true, overallRisk: 'low', nonCompliantCount: 0, totalArticles: 4, threshold: 0,
+    });
+    const trend = getComplianceHistoryStore().trend('Solo');
+    expect(trend.current).toBe(75);
+    expect(trend.previous).toBeNull();
+    expect(trend.direction).toBe('none');
+  });
+
+  it('CH9: trend() detects score increase as "up"', () => {
+    getComplianceHistoryStore().record({
+      projectName: 'Up', scanId: 's1', complianceScore: 50,
+      pass: true, overallRisk: 'medium', nonCompliantCount: 0, totalArticles: 4, threshold: 0,
+    });
+    getComplianceHistoryStore().record({
+      projectName: 'Up', scanId: 's2', complianceScore: 80,
+      pass: true, overallRisk: 'low', nonCompliantCount: 0, totalArticles: 4, threshold: 0,
+    });
+    const trend = getComplianceHistoryStore().trend('Up');
+    expect(trend.direction).toBe('up');
+    expect(trend.current).toBe(80);
+    expect(trend.previous).toBe(50);
+  });
+
+  it('CH10: trend() detects score decrease as "down"', () => {
+    getComplianceHistoryStore().record({
+      projectName: 'Down', scanId: 's1', complianceScore: 90,
+      pass: true, overallRisk: 'low', nonCompliantCount: 0, totalArticles: 4, threshold: 0,
+    });
+    getComplianceHistoryStore().record({
+      projectName: 'Down', scanId: 's2', complianceScore: 60,
+      pass: false, overallRisk: 'medium', nonCompliantCount: 1, totalArticles: 4, threshold: 0,
+    });
+    const trend = getComplianceHistoryStore().trend('Down');
+    expect(trend.direction).toBe('down');
   });
 });
