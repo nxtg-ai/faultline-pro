@@ -15,6 +15,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - N-165: Compliance score (0–100) — numeric EU AI Act readiness score based on article status weights; shown in CI gate, JSON reports, and API responses
 - N-166: Remediation recommendations — each article evidence entry now includes actionable `remediations[]` array; context-specific guidance per article (Art. 5 legal review, Art. 9 risk mitigations, Art. 13 transparency, Art. 14 oversight, Art. 50 disclosure); shown in CI gate output and PDF reports when gate fails
 - N-167: Compliance threshold configuration — `--threshold N` (0–100 minimum score) and `--strict` (all articles must be compliant/N-A) flags for CLI `--ci` mode; `threshold` and `strict` parameters on `POST /scan/compliance-gate` and `GET /scan/:id/compliance` API endpoints
+- N-168: Compliance badge SVG — `renderComplianceBadgeSvg()` generates shields.io-style badge with score + PASS/FAIL; `GET /scan/:id/compliance/badge` returns SVG for README embedding
+- N-169: Compliance history tracking — `ComplianceHistoryStore` records every gate evaluation; `GET /compliance/history` (time-series), `GET /compliance/trend` (score direction per project)
+- N-170: Compliance config file — `.faultline-compliance.json` with projectName, threshold, strict, requiredArticles; auto-loaded in `--ci` mode; `--config` flag for explicit path
 
 ---
 
