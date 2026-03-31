@@ -884,6 +884,13 @@ The Kaggle version remains at  (tagged  at commit ).
 - **Provider architecture**: 5 providers (Gemini/OpenAI/Claude/Perplexity/Mock) is a competitive differentiator. Perplexity adds real-time search grounding.
 - **Orphan repo**: `awaliuddin/Faultline-Pro` still exists on GitHub (cannot delete without `delete_repo` scope). Ignore it.
 
+> **PI Update (2026-03-30, Wolf enrichment cycle)**:
+> - **EU AI Act Article 50 deadline: 124 days.** Compliance reports are revenue-critical — the report feature shipped (N-157) is the core differentiator.
+> - **npm publish is the ONLY remaining blocker** for the revenue chain: FP npm → FW build → CE Fact Checker → PP pipeline. v0.4.1 shipped with security hardening. Team is technically ready.
+> - **Promptfoo acquired by OpenAI** (March 2026). This validates the market but may limit Promptfoo's independence. FP's positioning as provider-agnostic is now a stronger differentiator.
+> - **Temperature policy codified** at `~/ASIF/standards/llm-temperature-policy.md`: nano=1.0, standard=0.7 for recommendation endpoints. If FP adds any LLM recommendation features, use this standard.
+> - **FW main branch is BROKEN** (P0 DIRECTIVE-NXTG-20260330-01 issued). FW depends on FP's API — the proxy works, but FW can't build/deploy until its build is fixed. Not FP's problem, but context for the revenue chain.
+
 ---
 
 ## Team Questions
