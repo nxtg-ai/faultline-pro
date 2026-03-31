@@ -24,6 +24,7 @@ import {
   renderComplianceDiffOutput,
   getRemediations,
   renderComplianceBadgeSvg,
+  renderComplianceReportMarkdown,
   loadComplianceConfig,
   type EuAiActComplianceReport,
   type CiGateResult,
@@ -1224,5 +1225,177 @@ describe('CLI --ci with config file', () => {
     // Opinion makes Art. 50 partial → score < 100 → fails threshold
     expect(exitCode).toBe(1);
     expect(output).toContain('FAIL');
+  });
+});
+
+// ── Markdown Renderer (N-172) ─────────────────────────────────────────────────
+
+describe('renderComplianceReportMarkdown()', () => {
+  function makeReport(overrides: Partial<EuAiActComplianceReport> = {}): EuAiActComplianceReport {
+    return buildEuComplianceReport(makeScan(), { projectName: 'TestProject', ...overrides });
+  }
+
+  function makeGate(overrides: Partial<CiGateResult> = {}): CiGateResult {
+    return {
+      pass: true,
+      overallRisk: 'low',
+      articles: [
+        { article: 'Article 9', status: 'compliant' as const, pass: true },
+        { article: 'Article 13', status: 'compliant' as const, pass: true },
+        { article: 'Article 14', status: 'compliant' as const, pass: true },
+        { article: 'Article 50', status: 'compliant' as const, pass: true },
+      ],
+      nonCompliantCount: 0,
+      totalArticles: 4,
+      exitCode: 0,
+      complianceScore: 100,
+      threshold: 0,
+      ...overrides,
+    };
+  }
+
+  it('MD1: returns a non-empty string', () => {
+    const md = renderComplianceReportMarkdown(makeReport(), makeGate());
+    expect(md.length).toBeGreaterThan(0);
+  });
+
+  it('MD2: contains H2 heading with PASS status', () => {
+    const md = renderComplianceReportMarkdown(makeReport(), makeGate());
+    expect(md).toContain('## ');
+    expect(md).toContain('PASS');
+    expect(md).toContain(':white_check_mark:');
+  });
+
+  it('MD3: contains H2 heading with FAIL status when gate fails', () => {
+    const md = renderComplianceReportMarkdown(makeReport(), makeGate({ pass: false, exitCode: 1 }));
+    expect(md).toContain('FAIL');
+    expect(md).toContain(':x:');
+  });
+
+  it('MD4: contains metrics table with score and risk', () => {
+    const report = makeReport();
+    const gate = makeGate();
+    const md = renderComplianceReportMarkdown(report, gate);
+    expect(md).toContain(`| **Score** | ${report.complianceScore}/100 |`);
+    expect(md).toContain('| **Overall Risk** |');
+    expect(md).toContain('| **Project** | TestProject |');
+  });
+
+  it('MD5: contains article status table with all articles', () => {
+    const md = renderComplianceReportMarkdown(makeReport(), makeGate());
+    expect(md).toContain('### Article Status');
+    expect(md).toContain('| Article | Status | Result |');
+    expect(md).toContain('Article 9');
+    expect(md).toContain('Article 13');
+    expect(md).toContain('Article 50');
+  });
+
+  it('MD6: shows threshold in metrics table when non-zero', () => {
+    const md = renderComplianceReportMarkdown(makeReport(), makeGate({ threshold: 80 }));
+    expect(md).toContain('| **Threshold** | 80 |');
+  });
+
+  it('MD7: omits threshold row when threshold is 0', () => {
+    const md = renderComplianceReportMarkdown(makeReport(), makeGate({ threshold: 0 }));
+    expect(md).not.toContain('**Threshold**');
+  });
+
+  it('MD8: includes collapsible remediations when articles have them', () => {
+    const report = makeReport();
+    // Inject remediations into an article
+    report.articleEvidence[0].remediations = ['Fix issue A', 'Fix issue B'];
+    const md = renderComplianceReportMarkdown(report, makeGate({ pass: false, exitCode: 1 }));
+    expect(md).toContain('<details>');
+    expect(md).toContain('Recommended Remediations');
+    expect(md).toContain('- Fix issue A');
+    expect(md).toContain('- Fix issue B');
+    expect(md).toContain('</details>');
+  });
+
+  it('MD9: omits remediations section when no articles have them', () => {
+    const report = makeReport();
+    // Ensure no remediations on any article
+    for (const ev of report.articleEvidence) {
+      ev.remediations = [];
+    }
+    const md = renderComplianceReportMarkdown(report, makeGate());
+    expect(md).not.toContain('<details>');
+    expect(md).not.toContain('Recommended Remediations');
+  });
+
+  it('MD10: contains Faultline Pro attribution footer', () => {
+    const report = makeReport();
+    const md = renderComplianceReportMarkdown(report, makeGate());
+    expect(md).toContain('Faultline Pro');
+    expect(md).toContain(report.documentRef);
+  });
+
+  it('MD11: claims analysed count matches report summary', () => {
+    const report = makeReport();
+    const md = renderComplianceReportMarkdown(report, makeGate());
+    expect(md).toContain(`| **Claims Analysed** | ${report.summary.totalClaimsAnalyzed} |`);
+  });
+
+  it('MD12: high-risk findings shown in metrics table', () => {
+    const report = makeReport();
+    const md = renderComplianceReportMarkdown(report, makeGate());
+    expect(md).toContain(`| **High-Risk Findings** | ${report.summary.highRiskFindings} |`);
+  });
+});
+
+// ── CLI --format markdown (N-172) ─────────────────────────────────────────────
+
+describe('compliance-report --format markdown', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'faultline-md-'));
+  });
+
+  it('MD-CLI1: outputs markdown to stdout', async () => {
+    const scanPath = join(tmpDir, 'scan.json');
+    writeFileSync(scanPath, JSON.stringify(makeScan()));
+    const { exitCode, output } = await main([
+      'compliance-report', '--input', scanPath, '--format', 'markdown',
+    ]);
+    expect(exitCode).toBe(0);
+    expect(output).toContain('## ');
+    expect(output).toContain('EU AI Act Compliance');
+    expect(output).toContain('Article Status');
+    expect(output).toContain('Faultline Pro');
+  });
+
+  it('MD-CLI2: writes markdown to file with --output', async () => {
+    const scanPath = join(tmpDir, 'scan.json');
+    writeFileSync(scanPath, JSON.stringify(makeScan()));
+    const outPath = join(tmpDir, 'report.md');
+    const { exitCode, output } = await main([
+      'compliance-report', '--input', scanPath, '--format', 'markdown', '--output', outPath,
+    ]);
+    expect(exitCode).toBe(0);
+    expect(output).toContain('Markdown');
+    expect(existsSync(outPath)).toBe(true);
+  });
+
+  it('MD-CLI3: markdown includes project name from --project-name', async () => {
+    const scanPath = join(tmpDir, 'scan.json');
+    writeFileSync(scanPath, JSON.stringify(makeScan()));
+    const { exitCode, output } = await main([
+      'compliance-report', '--input', scanPath, '--format', 'markdown',
+      '--project-name', 'MyAISystem',
+    ]);
+    expect(exitCode).toBe(0);
+    expect(output).toContain('MyAISystem');
+  });
+
+  it('MD-CLI4: markdown respects --threshold flag', async () => {
+    const scanPath = join(tmpDir, 'scan.json');
+    writeFileSync(scanPath, JSON.stringify(makeScan()));
+    const { exitCode, output } = await main([
+      'compliance-report', '--input', scanPath, '--format', 'markdown', '--threshold', '80',
+    ]);
+    expect(exitCode).toBe(0);
+    expect(output).toContain('**Threshold**');
+    expect(output).toContain('80');
   });
 });

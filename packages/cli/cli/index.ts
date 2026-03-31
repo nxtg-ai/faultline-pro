@@ -34,7 +34,7 @@ import { getDemoResult } from './demo.js';
 import { listKeys, getDormantKeys, getExpiringSoonKeys, rotateKey, getRotationStatus, getKeysPrunePreview, pruneKeys, formatKeyList, formatDormantList, formatExpiringSoonList, formatRotateResult, formatRotationStatus, formatPrunePreview, formatPruneResult } from './keys-client.js';
 import { getStaleScans, getScanUsage, getScansPrunePreview, pruneScans, formatStaleList, formatScanUsage, formatScansPrunePreview, formatScansPruneResult } from './scans-client.js';
 import { streamScan, formatStreamResult } from './stream-client.js';
-import { buildEuComplianceReport, renderComplianceReportJson, renderComplianceReportPdf, evaluateComplianceGate, renderCiGateOutput, diffComplianceReports, renderComplianceDiffOutput, loadComplianceConfig } from './compliance-report.js';
+import { buildEuComplianceReport, renderComplianceReportJson, renderComplianceReportPdf, renderComplianceReportMarkdown, evaluateComplianceGate, renderCiGateOutput, diffComplianceReports, renderComplianceDiffOutput, loadComplianceConfig } from './compliance-report.js';
 
 const VERSION = '0.4.0';
 
@@ -1109,7 +1109,7 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
         };
       }
 
-      const crFormat = (flags['format'] || 'json') as 'json' | 'pdf';
+      const crFormat = (flags['format'] || 'json') as 'json' | 'pdf' | 'markdown';
 
       // Load config file (if present) — CLI flags override config values
       const config = loadComplianceConfig(flags['config']);
@@ -1134,6 +1134,19 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
         const outPath = flags['output'] || `eu-compliance-report-${crReport.documentRef}.pdf`;
         writeFileSync(resolve(outPath), pdfBuf);
         return { exitCode: 0, output: `EU AI Act compliance report written to ${outPath}` };
+      }
+
+      if (crFormat === 'markdown') {
+        const gate = evaluateComplianceGate(crReport, {
+          threshold: flags['threshold'] ? parseInt(flags['threshold'], 10) : (config?.threshold ?? 0),
+          strict: flags['strict'] === 'true' || (config?.strict ?? false),
+        });
+        const mdOut = renderComplianceReportMarkdown(crReport, gate);
+        if (flags['output']) {
+          writeFileSync(resolve(flags['output']), mdOut, 'utf-8');
+          return { exitCode: 0, output: `EU AI Act compliance report (Markdown) written to ${flags['output']}` };
+        }
+        return { exitCode: 0, output: mdOut };
       }
 
       const jsonOut = renderComplianceReportJson(crReport);
