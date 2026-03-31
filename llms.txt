@@ -31,7 +31,7 @@ No API key required for the `mock` provider. Real verification uses:
 ## Key Differentiators
 
 - **Claim-level, not prompt-level** — Faultline forensics output; Promptfoo tests input prompts
-- **EU AI Act compliance engine** — Article 5/9/10/13/14/50 evidence mapping; per-article evidence strength scoring (evidenceCount, sourceCount, strengthScore); evidence-weighted compliance score (0-100); per-article remediations; pass/fail gate with configurable threshold and strict mode; trend tracking and history; badge SVG for READMEs
+- **EU AI Act compliance engine** — Article 5/9/10/11/12/13/14/50 evidence mapping; per-article evidence strength scoring (evidenceCount, sourceCount, strengthScore); evidence-weighted compliance score (0-100); per-article remediations; Annex III conformity checklist (7 items, high-risk gate); pass/fail gate with configurable threshold and strict mode; trend tracking and history; badge SVG for READMEs
 - **5 compliance report formats** — JSON, PDF (EU-branded), Markdown (GFM for PR comments), SARIF 2.1.0 (GitHub Code Scanning), HTML (standalone viewable)
 - **Weakest-link detection** — Finds the single claim that most undermines the argument's credibility
 - **Provider-agnostic** — 5 providers; runtime switching with `--provider`; auto-failover with circuit breaker
@@ -133,8 +133,8 @@ docs/
 
 ## Project Status
 
-- **192 initiatives SHIPPED** (N-01 through N-192)
-- **3,855 tests** (CLI + API + Python SDK + integration + property-based + contract + mutation)
+- **193 initiatives SHIPPED** (N-01 through N-193)
+- **3,873 tests** (CLI + API + Python SDK + integration + property-based + contract + mutation)
 - **8/8 CRUCIBLE gates PASS** (example, property, contract, integration oracles)
 - **EU AI Act Article 50 ready** — Full compliance reporting (Art. 5/9/10/13/14/50), evidence strength scoring, Annex III conformity checklist, gating, SARIF, 5 output formats
 - **GDPR compliant** — Article 15 export + Article 17 erasure implemented
