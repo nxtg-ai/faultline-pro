@@ -34,7 +34,7 @@ import { getDemoResult } from './demo.js';
 import { listKeys, getDormantKeys, getExpiringSoonKeys, rotateKey, getRotationStatus, getKeysPrunePreview, pruneKeys, formatKeyList, formatDormantList, formatExpiringSoonList, formatRotateResult, formatRotationStatus, formatPrunePreview, formatPruneResult } from './keys-client.js';
 import { getStaleScans, getScanUsage, getScansPrunePreview, pruneScans, formatStaleList, formatScanUsage, formatScansPrunePreview, formatScansPruneResult } from './scans-client.js';
 import { streamScan, formatStreamResult } from './stream-client.js';
-import { buildEuComplianceReport, renderComplianceReportJson, renderComplianceReportPdf, evaluateComplianceGate, renderCiGateOutput, diffComplianceReports, renderComplianceDiffOutput } from './compliance-report.js';
+import { buildEuComplianceReport, renderComplianceReportJson, renderComplianceReportPdf, evaluateComplianceGate, renderCiGateOutput, diffComplianceReports, renderComplianceDiffOutput, loadComplianceConfig } from './compliance-report.js';
 
 const VERSION = '0.4.0';
 
@@ -1110,13 +1110,16 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
       }
 
       const crFormat = (flags['format'] || 'json') as 'json' | 'pdf';
-      const crProjectName = flags['project-name'];
+
+      // Load config file (if present) — CLI flags override config values
+      const config = loadComplianceConfig(flags['config']);
+      const crProjectName = flags['project-name'] || config?.projectName;
       const crReport = buildEuComplianceReport(crScanResult, { projectName: crProjectName });
 
       // CI gate mode: evaluate and exit with pass/fail
       if (flags['ci'] === 'true') {
-        const threshold = flags['threshold'] ? parseInt(flags['threshold'], 10) : 0;
-        const strict = flags['strict'] === 'true';
+        const threshold = flags['threshold'] ? parseInt(flags['threshold'], 10) : (config?.threshold ?? 0);
+        const strict = flags['strict'] === 'true' || (config?.strict ?? false);
         const gate = evaluateComplianceGate(crReport, { threshold, strict });
         const ciOutput = renderCiGateOutput(gate, crReport);
         // If --output specified, also write the full JSON report alongside

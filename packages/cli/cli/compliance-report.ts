@@ -1,3 +1,5 @@
+import { readFileSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { ScanResult } from './scan.js';
 import type { Claim, VerificationResult } from '../types.js';
 import type { Finding } from '../rules/base_rule.js';
@@ -119,6 +121,37 @@ function buildTestCategoryMappings(
   }
 
   return mappings;
+}
+
+// ── Compliance Config File ───────────────────────────────────────────────────
+
+export interface ComplianceConfig {
+  projectName?: string;
+  threshold?: number;
+  strict?: boolean;
+  requiredArticles?: string[];
+}
+
+const CONFIG_FILENAMES = ['.faultline-compliance.json', 'faultline-compliance.json'];
+
+/**
+ * Load compliance config from the current directory or a specified path.
+ * Returns null if no config file is found.
+ */
+export function loadComplianceConfig(configPath?: string): ComplianceConfig | null {
+  if (configPath) {
+    const p = resolve(configPath);
+    if (!existsSync(p)) return null;
+    try { return JSON.parse(readFileSync(p, 'utf-8')); } catch { return null; }
+  }
+
+  for (const name of CONFIG_FILENAMES) {
+    const p = resolve(name);
+    if (existsSync(p)) {
+      try { return JSON.parse(readFileSync(p, 'utf-8')); } catch { return null; }
+    }
+  }
+  return null;
 }
 
 // ── Remediation Recommendations ─────────────────────────────────────────────

@@ -24,10 +24,12 @@ import {
   renderComplianceDiffOutput,
   getRemediations,
   renderComplianceBadgeSvg,
+  loadComplianceConfig,
   type EuAiActComplianceReport,
   type CiGateResult,
   type ComplianceDiffResult,
   type GateOptions,
+  type ComplianceConfig,
 } from '../cli/compliance-report.js';
 import type { ScanResult } from '../cli/scan.js';
 import type { ComplianceReport } from '../compliance/report_generator.js';
@@ -1111,5 +1113,116 @@ describe('renderComplianceBadgeSvg()', () => {
   it('BG10: includes title element', () => {
     const svg = renderComplianceBadgeSvg(90, true);
     expect(svg).toContain('<title>');
+  });
+});
+
+// ── N-170: Compliance Config File ───────────────────────────────────────────
+
+describe('loadComplianceConfig()', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'faultline-cfg-'));
+  });
+
+  it('CF1: returns null when no config file exists', () => {
+    const result = loadComplianceConfig(join(tmpDir, 'nonexistent.json'));
+    expect(result).toBeNull();
+  });
+
+  it('CF2: loads config from explicit path', () => {
+    const cfgPath = join(tmpDir, 'custom-compliance.json');
+    writeFileSync(cfgPath, JSON.stringify({ projectName: 'MyProject', threshold: 80, strict: true }));
+    const config = loadComplianceConfig(cfgPath);
+    expect(config).not.toBeNull();
+    expect(config!.projectName).toBe('MyProject');
+    expect(config!.threshold).toBe(80);
+    expect(config!.strict).toBe(true);
+  });
+
+  it('CF3: returns null for invalid JSON', () => {
+    const cfgPath = join(tmpDir, 'bad.json');
+    writeFileSync(cfgPath, 'not json {{{');
+    const result = loadComplianceConfig(cfgPath);
+    expect(result).toBeNull();
+  });
+
+  it('CF4: loads threshold as number', () => {
+    const cfgPath = join(tmpDir, 'threshold.json');
+    writeFileSync(cfgPath, JSON.stringify({ threshold: 75 }));
+    const config = loadComplianceConfig(cfgPath);
+    expect(config!.threshold).toBe(75);
+  });
+
+  it('CF5: loads requiredArticles array', () => {
+    const cfgPath = join(tmpDir, 'articles.json');
+    writeFileSync(cfgPath, JSON.stringify({ requiredArticles: ['Article 9', 'Article 13'] }));
+    const config = loadComplianceConfig(cfgPath);
+    expect(config!.requiredArticles).toEqual(['Article 9', 'Article 13']);
+  });
+
+  it('CF6: config with no fields returns empty object', () => {
+    const cfgPath = join(tmpDir, 'empty.json');
+    writeFileSync(cfgPath, '{}');
+    const config = loadComplianceConfig(cfgPath);
+    expect(config).toEqual({});
+  });
+
+  it('CF7: returns null when path does not exist and no auto-discovery', () => {
+    // loadComplianceConfig with no args checks CWD �� should be null in test env
+    const result = loadComplianceConfig(join(tmpDir, 'nope.json'));
+    expect(result).toBeNull();
+  });
+});
+
+describe('CLI --ci with config file', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'faultline-ci-cfg-'));
+  });
+
+  it('CF8: --config loads project name from config file', async () => {
+    const scanPath = join(tmpDir, 'scan.json');
+    writeFileSync(scanPath, JSON.stringify(makeScan()));
+    const cfgPath = join(tmpDir, '.faultline-compliance.json');
+    writeFileSync(cfgPath, JSON.stringify({ projectName: 'ConfigProject' }));
+
+    const { exitCode, output } = await main([
+      'compliance-report', '--input', scanPath, '--ci', '--config', cfgPath,
+    ]);
+    expect(exitCode).toBe(0);
+    expect(output).toContain('ConfigProject');
+  });
+
+  it('CF9: CLI --project-name overrides config projectName', async () => {
+    const scanPath = join(tmpDir, 'scan.json');
+    writeFileSync(scanPath, JSON.stringify(makeScan()));
+    const cfgPath = join(tmpDir, '.faultline-compliance.json');
+    writeFileSync(cfgPath, JSON.stringify({ projectName: 'FromConfig' }));
+
+    const { exitCode, output } = await main([
+      'compliance-report', '--input', scanPath, '--ci',
+      '--config', cfgPath, '--project-name', 'FromCLI',
+    ]);
+    expect(exitCode).toBe(0);
+    expect(output).toContain('FromCLI');
+  });
+
+  it('CF10: config threshold applied in --ci mode', async () => {
+    const scanPath = join(tmpDir, 'scan.json');
+    writeFileSync(scanPath, JSON.stringify(makeScan({
+      claims: [{ id: 'c1', text: 'Opinion.', type: 'opinion', importance: 3 }],
+      verifications: { c1: { claimId: 'c1', status: 'supported', explanation: 'OK.', sources: [] } },
+    })));
+    const cfgPath = join(tmpDir, '.faultline-compliance.json');
+    writeFileSync(cfgPath, JSON.stringify({ threshold: 100 }));
+
+    const { exitCode, output } = await main([
+      'compliance-report', '--input', scanPath, '--ci', '--config', cfgPath,
+    ]);
+    // Opinion makes Art. 50 partial → score < 100 → fails threshold
+    expect(exitCode).toBe(1);
+    expect(output).toContain('FAIL');
   });
 });
