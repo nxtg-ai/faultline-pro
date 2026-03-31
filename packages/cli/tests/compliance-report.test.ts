@@ -23,6 +23,7 @@ import {
   diffComplianceReports,
   renderComplianceDiffOutput,
   getRemediations,
+  renderComplianceBadgeSvg,
   type EuAiActComplianceReport,
   type CiGateResult,
   type ComplianceDiffResult,
@@ -1053,5 +1054,62 @@ describe('evaluateComplianceGate() threshold/strict options', () => {
     const report = buildEuComplianceReport(scan);
     const gate = evaluateComplianceGate(report, { strict: true, threshold: 90 });
     expect(gate.pass).toBe(false);
+  });
+});
+
+// ── N-168: Compliance Badge SVG ─────────────────────────────────────────────
+
+describe('renderComplianceBadgeSvg()', () => {
+  it('BG1: returns valid SVG with xmlns', () => {
+    const svg = renderComplianceBadgeSvg(100, true);
+    expect(svg).toContain('xmlns="http://www.w3.org/2000/svg"');
+  });
+
+  it('BG2: passing badge shows PASS and green color', () => {
+    const svg = renderComplianceBadgeSvg(95, true);
+    expect(svg).toContain('PASS');
+    expect(svg).toContain('#4c1'); // bright green for score >= 80
+  });
+
+  it('BG3: failing badge shows FAIL and red color', () => {
+    const svg = renderComplianceBadgeSvg(25, false);
+    expect(svg).toContain('FAIL');
+    expect(svg).toContain('#e05d44'); // red for score < 50
+  });
+
+  it('BG4: default label is "EU AI Act"', () => {
+    const svg = renderComplianceBadgeSvg(80, true);
+    expect(svg).toContain('EU AI Act');
+  });
+
+  it('BG5: custom label overrides default', () => {
+    const svg = renderComplianceBadgeSvg(80, true, { label: 'Compliance' });
+    expect(svg).toContain('Compliance');
+    expect(svg).not.toContain('EU AI Act');
+  });
+
+  it('BG6: score is displayed in badge', () => {
+    const svg = renderComplianceBadgeSvg(73, true);
+    expect(svg).toContain('73');
+  });
+
+  it('BG7: yellow color for failing but score >= 50', () => {
+    const svg = renderComplianceBadgeSvg(65, false);
+    expect(svg).toContain('#dfb317');
+  });
+
+  it('BG8: light green for passing but score < 80', () => {
+    const svg = renderComplianceBadgeSvg(70, true);
+    expect(svg).toContain('#a3c51c');
+  });
+
+  it('BG9: includes aria-label for accessibility', () => {
+    const svg = renderComplianceBadgeSvg(90, true);
+    expect(svg).toContain('aria-label');
+  });
+
+  it('BG10: includes title element', () => {
+    const svg = renderComplianceBadgeSvg(90, true);
+    expect(svg).toContain('<title>');
   });
 });

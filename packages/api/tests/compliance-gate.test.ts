@@ -400,3 +400,84 @@ describe('POST /scan/compliance-gate — remediations and threshold', () => {
     expect(body.gate).toBeDefined();
   });
 });
+
+// ── N-168: Compliance Badge SVG ─────────────────────────────────────────────
+
+describe('GET /scan/:id/compliance/badge', () => {
+  const makeScanData = () => ({
+    input: 'Text.',
+    provider: 'mock',
+    claims: [{ id: 'c1', text: 'Text.', type: 'fact', importance: 3 }],
+    verifications: { c1: { claimId: 'c1', status: 'supported', explanation: 'OK.', sources: [] } },
+    overallRisk: 'low',
+    complianceReport: {
+      generatedAt: new Date().toISOString(),
+      overallRiskLevel: 'low',
+      euRiskSummary: { unacceptable: 0, high: 0, limited: 0, minimal: 1, totalClaims: 1, highestTier: 'minimal' },
+      claimMappings: [],
+      triggeredArticles: [],
+      mitigations: [],
+      confidenceDistribution: { high: 1, medium: 0, low: 0 },
+    },
+    ruleFindings: [],
+  });
+
+  it('BG11: returns SVG content-type', async () => {
+    const stored = getScanStore().record('test-key', 'Text.', makeScanData());
+    const res = await server.inject({
+      method: 'GET',
+      url: `/scan/${stored.id}/compliance/badge`,
+      headers: { 'x-api-key': 'test-secret' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toContain('image/svg+xml');
+  });
+
+  it('BG12: returns valid SVG with xmlns', async () => {
+    const stored = getScanStore().record('test-key', 'Text.', makeScanData());
+    const res = await server.inject({
+      method: 'GET',
+      url: `/scan/${stored.id}/compliance/badge`,
+      headers: { 'x-api-key': 'test-secret' },
+    });
+    expect(res.body).toContain('xmlns="http://www.w3.org/2000/svg"');
+    expect(res.body).toContain('EU AI Act');
+  });
+
+  it('BG13: accepts custom label query param', async () => {
+    const stored = getScanStore().record('test-key', 'Text.', makeScanData());
+    const res = await server.inject({
+      method: 'GET',
+      url: `/scan/${stored.id}/compliance/badge?label=MyProject`,
+      headers: { 'x-api-key': 'test-secret' },
+    });
+    expect(res.body).toContain('MyProject');
+  });
+
+  it('BG14: returns 404 for unknown scan ID', async () => {
+    const res = await server.inject({
+      method: 'GET',
+      url: '/scan/nonexistent/compliance/badge',
+      headers: { 'x-api-key': 'test-secret' },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('BG15: returns 401 without API key', async () => {
+    const res = await server.inject({
+      method: 'GET',
+      url: '/scan/some-id/compliance/badge',
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('BG16: includes no-cache header', async () => {
+    const stored = getScanStore().record('test-key', 'Text.', makeScanData());
+    const res = await server.inject({
+      method: 'GET',
+      url: `/scan/${stored.id}/compliance/badge`,
+      headers: { 'x-api-key': 'test-secret' },
+    });
+    expect(res.headers['cache-control']).toContain('no-cache');
+  });
+});

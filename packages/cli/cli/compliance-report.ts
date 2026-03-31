@@ -670,6 +670,48 @@ export function renderComplianceReportJson(report: EuAiActComplianceReport): str
   return JSON.stringify(report, null, 2);
 }
 
+// ── Badge SVG Renderer ──────────────────────────────────────────────────────
+
+/**
+ * Generate a shields.io-style SVG badge showing EU AI Act compliance status.
+ */
+export function renderComplianceBadgeSvg(
+  score: number,
+  pass: boolean,
+  opts: { label?: string } = {},
+): string {
+  const label = opts.label ?? 'EU AI Act';
+  const value = pass ? `${score}%20PASS` : `${score}%20FAIL`;
+  const displayValue = pass ? `${score} PASS` : `${score} FAIL`;
+  const color = pass
+    ? (score >= 80 ? '#4c1' : '#a3c51c')
+    : (score >= 50 ? '#dfb317' : '#e05d44');
+
+  const labelWidth = Math.max(label.length * 6.5 + 10, 60);
+  const valueWidth = Math.max(displayValue.length * 6.8 + 10, 60);
+  const totalWidth = labelWidth + valueWidth;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="20" role="img" aria-label="${label}: ${displayValue}">
+  <title>${label}: ${displayValue}</title>
+  <linearGradient id="s" x2="0" y2="100%">
+    <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
+    <stop offset="1" stop-opacity=".1"/>
+  </linearGradient>
+  <clipPath id="r"><rect width="${totalWidth}" height="20" rx="3" fill="#fff"/></clipPath>
+  <g clip-path="url(#r)">
+    <rect width="${labelWidth}" height="20" fill="#555"/>
+    <rect x="${labelWidth}" width="${valueWidth}" height="20" fill="${color}"/>
+    <rect width="${totalWidth}" height="20" fill="url(#s)"/>
+  </g>
+  <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="11">
+    <text aria-hidden="true" x="${labelWidth / 2}" y="15" fill="#010101" fill-opacity=".3">${label}</text>
+    <text x="${labelWidth / 2}" y="14">${label}</text>
+    <text aria-hidden="true" x="${labelWidth + valueWidth / 2}" y="15" fill="#010101" fill-opacity=".3">${displayValue}</text>
+    <text x="${labelWidth + valueWidth / 2}" y="14">${displayValue}</text>
+  </g>
+</svg>`;
+}
+
 // ── PDF Renderer ──────────────────────────────────────────────────────────────
 
 const EU_BLUE = '#003399';

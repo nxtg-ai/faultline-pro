@@ -7,6 +7,7 @@ import {
   buildEuComplianceReport,
   evaluateComplianceGate,
   diffComplianceReports,
+  renderComplianceBadgeSvg,
   type EuAiActComplianceReport,
   type CiGateResult,
 } from '@nxtg/faultline/cli/compliance-report.js';
@@ -144,6 +145,48 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
       const diff = diffComplianceReports(beforeReport, afterReport);
 
       return reply.send(diff);
+    },
+  );
+
+  // GET /scan/:id/compliance/badge — SVG compliance badge for embedding in READMEs
+  fastify.get<{ Params: { id: string }; Querystring: { label?: string; projectName?: string } }>(
+    '/scan/:id/compliance/badge',
+    {
+      preHandler: [requireApiKey],
+      schema: {
+        tags: ['Compliance'],
+        summary: 'Generate an SVG compliance badge for a scan result',
+        params: {
+          type: 'object',
+          properties: { id: { type: 'string' } },
+          required: ['id'],
+        },
+        querystring: {
+          type: 'object',
+          properties: {
+            label: { type: 'string', maxLength: 50 },
+            projectName: { type: 'string', maxLength: 200 },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const stored = getScanStore().getById(request.params.id);
+      if (!stored) {
+        return reply.status(404).send({ error: 'Scan not found.' });
+      }
+
+      const result = stored.result as unknown as Parameters<typeof buildEuComplianceReport>[0];
+      const report = buildEuComplianceReport(result, { projectName: request.query.projectName });
+      const gate = evaluateComplianceGate(report);
+      const svg = renderComplianceBadgeSvg(report.complianceScore, gate.pass, {
+        label: request.query.label,
+      });
+
+      return reply
+        .header('Content-Type', 'image/svg+xml')
+        .header('Cache-Control', 'no-cache, no-store, must-revalidate')
+        .send(svg);
     },
   );
 }
