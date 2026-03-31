@@ -28,6 +28,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - N-178: Python SDK expanded API coverage — `scan_diff()`, `compliance_deadlines()`, `claims_trending()`, `gdpr_export()`, `gdpr_erase()` with `ScanDiffResult`, `ComplianceDeadline`, `GdprErasureResult` models; 61 Python tests
 - N-179: Python SDK README — full API reference documenting all 20 client methods (compliance, GDPR, diff, claims, deadlines); updated models table with 6 new types
 - N-180: Model `from_dict` test coverage — 11 new tests for ScanDiffResult, ComplianceDeadline, ComplianceDiffResult, GdprErasureResult, CiGateResult, ComplianceGateResponse; 72 Python tests total
+- N-181: Python SDK security tests — SSRF protection (file://, ftp:// rejected), https:// accepted, trailing slash stripped, API key in header; 77 Python tests
+- N-182: CI workflow Python SDK job — parallel `python-sdk` job running pytest on `sdks/python` with Python 3.12
 
 ---
 
