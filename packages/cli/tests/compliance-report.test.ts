@@ -18,7 +18,10 @@ import {
   buildEuComplianceReport,
   renderComplianceReportJson,
   renderComplianceReportPdf,
+  evaluateComplianceGate,
+  renderCiGateOutput,
   type EuAiActComplianceReport,
+  type CiGateResult,
 } from '../cli/compliance-report.js';
 import type { ScanResult } from '../cli/scan.js';
 import type { ComplianceReport } from '../compliance/report_generator.js';
@@ -426,5 +429,180 @@ describe('CLI: compliance-report command', () => {
   it('compliance-report appears in help output', async () => {
     const { output } = await main(['help']);
     expect(output).toContain('compliance-report');
+  });
+
+  it('--ci flag: exits 0 for compliant low-risk scan', async () => {
+    const scanFile = join(tmpDir, 'scan.json');
+    writeFileSync(scanFile, JSON.stringify(makeScan()));
+
+    const { exitCode, output } = await main([
+      'compliance-report', '--input', scanFile, '--ci',
+    ]);
+    expect(exitCode).toBe(0);
+    expect(output).toContain('PASS');
+    expect(output).toContain('Exit code: 0');
+  });
+
+  it('--ci flag: exits 1 for non-compliant scan', async () => {
+    const scan = makeScan({
+      claims: [
+        { id: 'c1', text: 'Wrong claim.', type: 'fact', importance: 4 },
+        { id: 'c2', text: 'Also wrong.', type: 'fact', importance: 4 },
+        { id: 'c3', text: 'Very wrong.', type: 'fact', importance: 4 },
+      ],
+      verifications: {
+        c1: { claimId: 'c1', status: 'contradicted', explanation: 'No.', sources: [] },
+        c2: { claimId: 'c2', status: 'contradicted', explanation: 'No.', sources: [] },
+        c3: { claimId: 'c3', status: 'contradicted', explanation: 'No.', sources: [] },
+      },
+      overallRisk: 'critical',
+    });
+    const scanFile = join(tmpDir, 'scan.json');
+    writeFileSync(scanFile, JSON.stringify(scan));
+
+    const { exitCode, output } = await main([
+      'compliance-report', '--input', scanFile, '--ci',
+    ]);
+    expect(exitCode).toBe(1);
+    expect(output).toContain('FAIL');
+    expect(output).toContain('Exit code: 1');
+  });
+
+  it('--ci + --output writes JSON report alongside gate output', async () => {
+    const scanFile = join(tmpDir, 'scan.json');
+    const outFile = join(tmpDir, 'ci-report.json');
+    writeFileSync(scanFile, JSON.stringify(makeScan()));
+
+    const { exitCode } = await main([
+      'compliance-report', '--input', scanFile, '--ci', '--output', outFile,
+    ]);
+    expect(exitCode).toBe(0);
+    expect(existsSync(outFile)).toBe(true);
+    const parsed = JSON.parse(require('fs').readFileSync(outFile, 'utf-8'));
+    expect(parsed.articleEvidence).toBeDefined();
+  });
+
+  it('--ci shows article-by-article results', async () => {
+    const scanFile = join(tmpDir, 'scan.json');
+    writeFileSync(scanFile, JSON.stringify(makeScan()));
+
+    const { output } = await main([
+      'compliance-report', '--input', scanFile, '--ci',
+    ]);
+    expect(output).toContain('Article 9');
+    expect(output).toContain('Article 13');
+    expect(output).toContain('[PASS]');
+  });
+
+  it('--ci help text visible in usage', async () => {
+    const { output } = await main(['help']);
+    expect(output).toContain('--ci');
+  });
+});
+
+// ── CI Gate unit tests ───────────────────────────────────────────────────────
+
+describe('evaluateComplianceGate()', () => {
+  it('returns pass=true for all-compliant low-risk report', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const gate = evaluateComplianceGate(report);
+    expect(gate.pass).toBe(true);
+    expect(gate.exitCode).toBe(0);
+    expect(gate.nonCompliantCount).toBe(0);
+  });
+
+  it('returns pass=false when articles are non-compliant', () => {
+    const scan = makeScan({
+      claims: [
+        { id: 'c1', text: 'X.', type: 'fact', importance: 4 },
+        { id: 'c2', text: 'Y.', type: 'fact', importance: 4 },
+        { id: 'c3', text: 'Z.', type: 'fact', importance: 4 },
+      ],
+      verifications: {
+        c1: { claimId: 'c1', status: 'contradicted', explanation: 'No.', sources: [] },
+        c2: { claimId: 'c2', status: 'contradicted', explanation: 'No.', sources: [] },
+        c3: { claimId: 'c3', status: 'contradicted', explanation: 'No.', sources: [] },
+      },
+      overallRisk: 'critical',
+    });
+    const report = buildEuComplianceReport(scan);
+    const gate = evaluateComplianceGate(report);
+    expect(gate.pass).toBe(false);
+    expect(gate.exitCode).toBe(1);
+    expect(gate.nonCompliantCount).toBeGreaterThan(0);
+  });
+
+  it('fails on high overall risk even if no non-compliant articles', () => {
+    const scan = makeScan({ overallRisk: 'high' });
+    const report = buildEuComplianceReport(scan);
+    const gate = evaluateComplianceGate(report);
+    expect(gate.pass).toBe(false);
+    expect(gate.exitCode).toBe(1);
+    expect(gate.overallRisk).toBe('high');
+  });
+
+  it('totalArticles matches articleEvidence length', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const gate = evaluateComplianceGate(report);
+    expect(gate.totalArticles).toBe(report.articleEvidence.length);
+  });
+
+  it('each article result has pass boolean and status', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const gate = evaluateComplianceGate(report);
+    for (const a of gate.articles) {
+      expect(typeof a.pass).toBe('boolean');
+      expect(typeof a.status).toBe('string');
+      expect(typeof a.article).toBe('string');
+    }
+  });
+});
+
+describe('renderCiGateOutput()', () => {
+  it('includes PASS for passing gate', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const gate = evaluateComplianceGate(report);
+    const output = renderCiGateOutput(gate, report);
+    expect(output).toContain('PASS');
+    expect(output).toContain('Exit code: 0');
+  });
+
+  it('includes FAIL for failing gate', () => {
+    const scan = makeScan({
+      claims: [
+        { id: 'c1', text: 'X.', type: 'fact', importance: 4 },
+        { id: 'c2', text: 'Y.', type: 'fact', importance: 4 },
+        { id: 'c3', text: 'Z.', type: 'fact', importance: 4 },
+      ],
+      verifications: {
+        c1: { claimId: 'c1', status: 'contradicted', explanation: 'No.', sources: [] },
+        c2: { claimId: 'c2', status: 'contradicted', explanation: 'No.', sources: [] },
+        c3: { claimId: 'c3', status: 'contradicted', explanation: 'No.', sources: [] },
+      },
+      overallRisk: 'critical',
+    });
+    const report = buildEuComplianceReport(scan);
+    const gate = evaluateComplianceGate(report);
+    const output = renderCiGateOutput(gate, report);
+    expect(output).toContain('FAIL');
+    expect(output).toContain('Exit code: 1');
+    expect(output).toContain('non-compliant');
+  });
+
+  it('lists all articles with [PASS] or [FAIL] prefix', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const gate = evaluateComplianceGate(report);
+    const output = renderCiGateOutput(gate, report);
+    for (const a of gate.articles) {
+      expect(output).toContain(a.article);
+    }
+    expect(output).toContain('[PASS]');
+  });
+
+  it('shows article pass ratio', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const gate = evaluateComplianceGate(report);
+    const output = renderCiGateOutput(gate, report);
+    expect(output).toContain(`/${gate.totalArticles} passing`);
   });
 });

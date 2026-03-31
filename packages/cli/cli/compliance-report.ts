@@ -348,6 +348,88 @@ export function buildEuComplianceReport(
   };
 }
 
+// ── CI Gate Evaluation ───────────────────────────────────────────────────────
+
+export interface CiGateArticleResult {
+  article: string;
+  status: EvidenceStatus;
+  pass: boolean;
+}
+
+export interface CiGateResult {
+  pass: boolean;
+  overallRisk: string;
+  articles: CiGateArticleResult[];
+  nonCompliantCount: number;
+  totalArticles: number;
+  exitCode: 0 | 1;
+}
+
+/**
+ * Evaluate a compliance report against a CI gate.
+ * Fails if any article is non-compliant OR overall risk is high/critical.
+ */
+export function evaluateComplianceGate(report: EuAiActComplianceReport): CiGateResult {
+  const articles: CiGateArticleResult[] = report.articleEvidence.map(ev => ({
+    article: ev.article,
+    status: ev.status,
+    pass: ev.status !== 'non-compliant',
+  }));
+
+  const nonCompliantCount = articles.filter(a => !a.pass).length;
+  const riskFail = report.overallRisk === 'high' || report.overallRisk === 'critical';
+  const pass = nonCompliantCount === 0 && !riskFail;
+
+  return {
+    pass,
+    overallRisk: report.overallRisk,
+    articles,
+    nonCompliantCount,
+    totalArticles: articles.length,
+    exitCode: pass ? 0 : 1,
+  };
+}
+
+/**
+ * Render CI gate output as a human-readable summary for terminal/CI logs.
+ */
+export function renderCiGateOutput(gate: CiGateResult, report: EuAiActComplianceReport): string {
+  const lines: string[] = [];
+  lines.push('');
+  lines.push(`EU AI Act Compliance Gate — ${gate.pass ? 'PASS' : 'FAIL'}`);
+  lines.push('='.repeat(50));
+  lines.push(`Overall Risk: ${report.overallRisk.toUpperCase()}`);
+  lines.push(`Project:      ${report.projectName}`);
+  lines.push(`Document:     ${report.documentRef}`);
+  lines.push('');
+
+  for (const a of gate.articles) {
+    const icon = a.pass ? '[PASS]' : '[FAIL]';
+    lines.push(`  ${icon} ${a.article} — ${a.status.toUpperCase()}`);
+  }
+
+  lines.push('');
+  lines.push(`Articles: ${gate.totalArticles - gate.nonCompliantCount}/${gate.totalArticles} passing`);
+
+  if (!gate.pass) {
+    lines.push('');
+    if (gate.nonCompliantCount > 0) {
+      lines.push(`${gate.nonCompliantCount} non-compliant article(s) found.`);
+    }
+    if (report.overallRisk === 'high' || report.overallRisk === 'critical') {
+      lines.push(`Overall risk is ${report.overallRisk.toUpperCase()} — gate fails on high/critical risk.`);
+    }
+    lines.push('');
+    lines.push('Exit code: 1');
+  } else {
+    lines.push('');
+    lines.push('All articles compliant. Risk within threshold.');
+    lines.push('Exit code: 0');
+  }
+
+  return lines.join('\n');
+}
+
 // ── JSON Renderer ─────────────────────────────────────────────────────────────
 
 export function renderComplianceReportJson(report: EuAiActComplianceReport): string {
