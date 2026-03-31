@@ -4,7 +4,7 @@ Forensic verification for AI-generated text. Faultline decomposes output into at
 
 [![CI](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@nxtg/faultline.svg)](https://www.npmjs.com/package/@nxtg/faultline)
-[![Tests](https://img.shields.io/badge/tests-4467%20passing-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-4557%20passing-brightgreen)](tests/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 
@@ -18,6 +18,7 @@ Forensic verification for AI-generated text. Faultline decomposes output into at
 | Per-claim verification | Verdict: supported / contradicted / mixed / unverified + confidence score |
 | Scan comparison | `POST /scan/compare` + `faultline compare` — new/removed claims, verdict changes, trust score delta |
 | EU AI Act compliance | Risk tier mapping (Unacceptable / High / Limited / Minimal), triggered articles, mitigations |
+| Compliance CI gate | `--ci` flag exits non-zero on non-compliant articles or high/critical risk — enforce EU AI Act in CI/CD |
 | Weakest-link detection | Per-claim fragility scoring — finds the claim that most undermines the argument |
 | Claim dependency graph | Mermaid and Graphviz DOT visualizations grouping claims by risk tier |
 | Rules engine | YAML-defined rules; built-in PII, bias, toxicity rulesets |
