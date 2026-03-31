@@ -50,6 +50,17 @@ inputs:
     description: 'Run EU AI Act compliance gate after scan (true/false). Fails workflow if non-compliant.'
     required: false
     default: 'false'
+  compliance-sarif:
+    description: 'Generate and upload compliance SARIF to GitHub Code Scanning (true/false). Requires compliance-gate: true.'
+    required: false
+    default: 'true'
+  compliance-threshold:
+    description: 'Minimum compliance score (0–100) to pass. Default: 0 (only non-compliant articles fail).'
+    required: false
+  compliance-strict:
+    description: 'Require all articles to be compliant or not-applicable (true/false)'
+    required: false
+    default: 'false'
   project-name:
     description: 'Project name for the compliance report (used when compliance-gate is true)'
     required: false
@@ -115,6 +126,9 @@ runs:
       env:
         INPUT_PROJECT_NAME: ${{ inputs.project-name }}
         INPUT_PROVIDER: ${{ inputs.provider }}
+        INPUT_THRESHOLD: ${{ inputs.compliance-threshold }}
+        INPUT_STRICT: ${{ inputs.compliance-strict }}
+        INPUT_COMPLIANCE_SARIF: ${{ inputs.compliance-sarif }}
         GEMINI_API_KEY: ${{ inputs.api-key }}
         OPENAI_API_KEY: ${{ inputs.api-key }}
         ANTHROPIC_API_KEY: ${{ inputs.api-key }}
@@ -123,13 +137,31 @@ runs:
         faultline scan --dir . --provider "$INPUT_PROVIDER" --output-format json > "$SCAN_FILE" 2>/dev/null || true
         CR_ARGS="compliance-report --input $SCAN_FILE --ci"
         if [ -n "$INPUT_PROJECT_NAME" ]; then CR_ARGS="$CR_ARGS --project-name $INPUT_PROJECT_NAME"; fi
+        if [ -n "$INPUT_THRESHOLD" ]; then CR_ARGS="$CR_ARGS --threshold $INPUT_THRESHOLD"; fi
+        if [ "$INPUT_STRICT" = "true" ]; then CR_ARGS="$CR_ARGS --strict"; fi
         CR_ARGS="$CR_ARGS --output eu-compliance-report.json"
         OUTPUT=$(faultline $CR_ARGS)
         EXIT_CODE=$?
         echo "$OUTPUT"
+        # Generate SARIF for Code Scanning upload
+        if [ "$INPUT_COMPLIANCE_SARIF" = "true" ]; then
+          SARIF_ARGS="compliance-report --input $SCAN_FILE --format sarif"
+          if [ -n "$INPUT_PROJECT_NAME" ]; then SARIF_ARGS="$SARIF_ARGS --project-name $INPUT_PROJECT_NAME"; fi
+          if [ -n "$INPUT_THRESHOLD" ]; then SARIF_ARGS="$SARIF_ARGS --threshold $INPUT_THRESHOLD"; fi
+          if [ "$INPUT_STRICT" = "true" ]; then SARIF_ARGS="$SARIF_ARGS --strict"; fi
+          faultline $SARIF_ARGS --output compliance.sarif || true
+        fi
         if [ $EXIT_CODE -eq 0 ]; then
           echo "compliance-status=pass" >> "$GITHUB_OUTPUT"
         else
           echo "compliance-status=fail" >> "$GITHUB_OUTPUT"
           exit 1
         fi
+
+    - name: Upload Compliance SARIF to GitHub Code Scanning
+      if: inputs.compliance-gate == 'true' && inputs.compliance-sarif == 'true'
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: compliance.sarif
+        category: eu-ai-act-compliance
+      continue-on-error: true

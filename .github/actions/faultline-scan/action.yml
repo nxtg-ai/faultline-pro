@@ -47,6 +47,17 @@ inputs:
     description: 'Run EU AI Act compliance gate after scan (true/false). Fails workflow if non-compliant or high/critical risk.'
     required: false
     default: 'false'
+  compliance-sarif:
+    description: 'Generate and upload compliance SARIF to GitHub Code Scanning (true/false). Requires compliance-gate: true.'
+    required: false
+    default: 'true'
+  compliance-threshold:
+    description: 'Minimum compliance score (0–100) to pass. Default: 0 (only non-compliant articles fail).'
+    required: false
+  compliance-strict:
+    description: 'Require all articles to be compliant or not-applicable (true/false)'
+    required: false
+    default: 'false'
   project-name:
     description: 'Project name for the EU AI Act compliance report'
     required: false
@@ -274,22 +285,37 @@ runs:
       shell: bash
       env:
         INPUT_PROJECT_NAME: ${{ inputs.project-name }}
+        INPUT_THRESHOLD: ${{ inputs.compliance-threshold }}
+        INPUT_STRICT: ${{ inputs.compliance-strict }}
+        INPUT_COMPLIANCE_SARIF: ${{ inputs.compliance-sarif }}
         REPORT_PATH: ${{ steps.scan.outputs.report_path }}
       run: |
         echo "::group::EU AI Act Compliance Gate"
-        CR_ARGS="compliance-report --ci"
+        # Determine scan input file
         if [ -f "$REPORT_PATH" ]; then
-          CR_ARGS="$CR_ARGS --input $REPORT_PATH"
+          SCAN_INPUT="$REPORT_PATH"
         else
           echo "::warning::No scan result found. Running fresh scan for compliance check."
-          faultline scan --dir . --provider mock --output-format json > /tmp/fp-compliance-scan.json 2>/dev/null || true
-          CR_ARGS="$CR_ARGS --input /tmp/fp-compliance-scan.json"
+          SCAN_INPUT="/tmp/fp-compliance-scan.json"
+          faultline scan --dir . --provider mock --output-format json > "$SCAN_INPUT" 2>/dev/null || true
         fi
+        # Build gate args
+        CR_ARGS="compliance-report --input $SCAN_INPUT --ci"
         if [ -n "$INPUT_PROJECT_NAME" ]; then CR_ARGS="$CR_ARGS --project-name $INPUT_PROJECT_NAME"; fi
+        if [ -n "$INPUT_THRESHOLD" ]; then CR_ARGS="$CR_ARGS --threshold $INPUT_THRESHOLD"; fi
+        if [ "$INPUT_STRICT" = "true" ]; then CR_ARGS="$CR_ARGS --strict"; fi
         CR_ARGS="$CR_ARGS --output ${RUNNER_TEMP}/eu-compliance-report.json"
         OUTPUT=$(faultline $CR_ARGS) || EXIT_CODE=$?
         EXIT_CODE=${EXIT_CODE:-0}
         echo "$OUTPUT"
+        # Generate compliance SARIF for Code Scanning
+        if [ "$INPUT_COMPLIANCE_SARIF" = "true" ]; then
+          SARIF_ARGS="compliance-report --input $SCAN_INPUT --format sarif"
+          if [ -n "$INPUT_PROJECT_NAME" ]; then SARIF_ARGS="$SARIF_ARGS --project-name $INPUT_PROJECT_NAME"; fi
+          if [ -n "$INPUT_THRESHOLD" ]; then SARIF_ARGS="$SARIF_ARGS --threshold $INPUT_THRESHOLD"; fi
+          if [ "$INPUT_STRICT" = "true" ]; then SARIF_ARGS="$SARIF_ARGS --strict"; fi
+          faultline $SARIF_ARGS --output "${RUNNER_TEMP}/compliance.sarif" || true
+        fi
         echo "::endgroup::"
         if [ "$EXIT_CODE" -eq 0 ]; then
           echo "compliance-status=pass" >> "$GITHUB_OUTPUT"
@@ -299,3 +325,11 @@ runs:
           echo "::error::EU AI Act Compliance Gate: FAIL — non-compliant articles or high/critical risk detected"
           exit 1
         fi
+
+    - name: Upload Compliance SARIF to GitHub Code Scanning
+      if: inputs.compliance-gate == 'true' && inputs.compliance-sarif == 'true' && always()
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ runner.temp }}/compliance.sarif
+        category: eu-ai-act-compliance
+      continue-on-error: true
