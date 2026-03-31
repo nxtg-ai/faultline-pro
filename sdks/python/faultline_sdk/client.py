@@ -13,6 +13,7 @@ from .exceptions import FaultlineError
 from .models import (
     ApiKey,
     BatchScanResponse,
+    ComplianceGateResponse,
     DashboardResponse,
     ScanResult,
     UsageResponse,
@@ -183,6 +184,82 @@ class FaultlineClient:
         if provider is not None:
             body["provider"] = provider
         return BatchScanResponse.from_dict(self._request("POST", "/scan/batch", body))
+
+    # ── Compliance Gate ───────────────────────────────────────────────────────
+
+    def compliance_gate(
+        self,
+        text: str,
+        provider: str | None = None,
+        project_name: str | None = None,
+    ) -> ComplianceGateResponse:
+        """Scan text and evaluate EU AI Act compliance in a single call.
+
+        Returns a :class:`~faultline_sdk.models.ComplianceGateResponse` containing
+        the pass/fail gate result, full compliance report, and the stored scan ID.
+
+        The API returns HTTP 200 on pass and HTTP 422 on fail.  This method
+        normalises both into a ``ComplianceGateResponse`` — check ``response.gate.passed``
+        to determine the outcome.
+
+        Args:
+            text: The AI-generated text to analyse.
+            provider: Optional AI provider override (e.g. ``'mock'``).
+            project_name: Optional project name for the compliance report.
+
+        Returns:
+            A :class:`~faultline_sdk.models.ComplianceGateResponse`.
+
+        Raises:
+            FaultlineError: On non-2xx/422 responses.
+
+        Example::
+
+            response = client.compliance_gate("AI will cure cancer by 2025.", provider="mock")
+            if not response.gate.passed:
+                print(f"FAIL: {response.gate.non_compliant_count} non-compliant articles")
+        """
+        body: dict[str, Any] = {"text": text}
+        if provider is not None:
+            body["provider"] = provider
+        if project_name is not None:
+            body["projectName"] = project_name
+        try:
+            data = self._request("POST", "/scan/compliance-gate", body)
+        except FaultlineError as exc:
+            # 422 is the expected "gate failed" response — parse it normally
+            if exc.status_code == 422 and exc.body:
+                return ComplianceGateResponse.from_dict(exc.body)
+            raise
+        return ComplianceGateResponse.from_dict(data)
+
+    def get_scan_compliance(
+        self,
+        scan_id: str,
+        project_name: str | None = None,
+    ) -> ComplianceGateResponse:
+        """Evaluate EU AI Act compliance for an existing scan result.
+
+        Args:
+            scan_id: ID of a previously stored scan.
+            project_name: Optional project name for the compliance report.
+
+        Returns:
+            A :class:`~faultline_sdk.models.ComplianceGateResponse`.
+
+        Raises:
+            FaultlineError: On non-2xx/422 responses (including 404 for unknown scan IDs).
+        """
+        path = f"/scan/{scan_id}/compliance"
+        if project_name is not None:
+            path += f"?projectName={urllib.request.quote(project_name)}"
+        try:
+            data = self._request("GET", path)
+        except FaultlineError as exc:
+            if exc.status_code == 422 and exc.body:
+                return ComplianceGateResponse.from_dict(exc.body)
+            raise
+        return ComplianceGateResponse.from_dict(data)
 
     # ── Usage / Dashboard ─────────────────────────────────────────────────────
 

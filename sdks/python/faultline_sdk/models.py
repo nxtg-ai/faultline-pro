@@ -227,6 +227,84 @@ class BatchScanResponse:
 
 
 @dataclass
+class CiGateArticleResult:
+    """Per-article pass/fail result from the compliance gate.
+
+    Attributes:
+        article: EU AI Act article name.
+        status: Compliance status (compliant, non-compliant, partial, gap, not-applicable).
+        passed: Whether this article passed the gate.
+    """
+
+    article: str
+    status: str
+    passed: bool
+
+
+@dataclass
+class CiGateResult:
+    """Result of evaluating the EU AI Act compliance gate.
+
+    Attributes:
+        passed: Whether the gate passed overall.
+        overall_risk: Risk level of the scan.
+        articles: Per-article pass/fail results.
+        non_compliant_count: Number of non-compliant articles.
+        total_articles: Total number of articles evaluated.
+        exit_code: 0 for pass, 1 for fail.
+    """
+
+    passed: bool
+    overall_risk: str
+    articles: list[CiGateArticleResult]
+    non_compliant_count: int
+    total_articles: int
+    exit_code: int
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> CiGateResult:
+        articles = [
+            CiGateArticleResult(
+                article=a["article"],
+                status=a["status"],
+                passed=a["pass"],
+            )
+            for a in data.get("articles", [])
+        ]
+        return cls(
+            passed=data.get("pass", False),
+            overall_risk=data.get("overallRisk", ""),
+            articles=articles,
+            non_compliant_count=data.get("nonCompliantCount", 0),
+            total_articles=data.get("totalArticles", 0),
+            exit_code=data.get("exitCode", 1),
+        )
+
+
+@dataclass
+class ComplianceGateResponse:
+    """Response from POST /scan/compliance-gate.
+
+    Attributes:
+        gate: The pass/fail gate result.
+        report: Raw compliance report dict (full EU AI Act evidence).
+        scan_id: ID of the stored scan.
+    """
+
+    gate: CiGateResult
+    report: dict[str, Any]
+    scan_id: str
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ComplianceGateResponse:
+        return cls(
+            gate=CiGateResult.from_dict(data.get("gate", {})),
+            report=data.get("report", {}),
+            scan_id=data.get("scanId", ""),
+        )
+
+
+@dataclass
 class Webhook:
     """A registered webhook endpoint.
 

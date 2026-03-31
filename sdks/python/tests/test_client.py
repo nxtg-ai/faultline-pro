@@ -15,6 +15,7 @@ from faultline_sdk import FaultlineClient, FaultlineError
 from faultline_sdk.models import (
     ApiKey,
     BatchScanResponse,
+    ComplianceGateResponse,
     DashboardResponse,
     ScanResult,
     UsageResponse,
@@ -324,6 +325,117 @@ class TestUsageAndDashboard:
         assert "today" in dash.scans
         assert "low" in dash.risk_distribution
         assert isinstance(dash.key_usage, list)
+
+
+COMPLIANCE_GATE_RESPONSE: dict = {
+    "gate": {
+        "pass": True,
+        "overallRisk": "low",
+        "articles": [
+            {"article": "Article 9 – Risk Management System", "status": "compliant", "pass": True},
+            {"article": "Article 13 – Transparency", "status": "compliant", "pass": True},
+        ],
+        "nonCompliantCount": 0,
+        "totalArticles": 2,
+        "exitCode": 0,
+    },
+    "report": {
+        "articleEvidence": [{"article": "Article 9", "status": "compliant", "findings": []}],
+        "summary": {"compliantArticles": 2, "nonCompliantArticles": 0},
+    },
+    "scanId": "scan-abc-123",
+}
+
+COMPLIANCE_GATE_FAIL_RESPONSE: dict = {
+    "gate": {
+        "pass": False,
+        "overallRisk": "critical",
+        "articles": [
+            {"article": "Article 9 – Risk Management System", "status": "non-compliant", "pass": False},
+        ],
+        "nonCompliantCount": 1,
+        "totalArticles": 1,
+        "exitCode": 1,
+    },
+    "report": {"articleEvidence": [], "summary": {"nonCompliantArticles": 1}},
+    "scanId": "scan-fail-456",
+}
+
+
+class TestComplianceGate:
+    def test_compliance_gate_pass(self):
+        """compliance_gate() returns ComplianceGateResponse with pass=True on 200."""
+        client = FaultlineClient(api_key="k", _http_fn=make_mock_http(200, COMPLIANCE_GATE_RESPONSE))
+        resp = client.compliance_gate("Safe text.", provider="mock")
+        assert isinstance(resp, ComplianceGateResponse)
+        assert resp.gate.passed is True
+        assert resp.gate.exit_code == 0
+        assert resp.gate.non_compliant_count == 0
+        assert resp.scan_id == "scan-abc-123"
+
+    def test_compliance_gate_fail_422(self):
+        """compliance_gate() handles 422 (gate failed) without raising."""
+        client = FaultlineClient(api_key="k", _http_fn=make_mock_http(422, COMPLIANCE_GATE_FAIL_RESPONSE))
+        resp = client.compliance_gate("Bad text.", provider="mock")
+        assert isinstance(resp, ComplianceGateResponse)
+        assert resp.gate.passed is False
+        assert resp.gate.exit_code == 1
+        assert resp.gate.non_compliant_count == 1
+
+    def test_compliance_gate_articles_parsed(self):
+        """compliance_gate() response contains per-article results."""
+        client = FaultlineClient(api_key="k", _http_fn=make_mock_http(200, COMPLIANCE_GATE_RESPONSE))
+        resp = client.compliance_gate("Text.")
+        assert len(resp.gate.articles) == 2
+        assert resp.gate.articles[0].article == "Article 9 – Risk Management System"
+        assert resp.gate.articles[0].passed is True
+
+    def test_compliance_gate_project_name(self):
+        """compliance_gate() sends projectName in request body."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.compliance_gate("Text.", project_name="MyProject")
+        except Exception:
+            pass
+        assert len(captured) == 1
+        body = json.loads(captured[0].data)
+        assert body["projectName"] == "MyProject"
+
+    def test_compliance_gate_sends_provider(self):
+        """compliance_gate() sends provider in request body."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.compliance_gate("Text.", provider="mock")
+        except Exception:
+            pass
+        body = json.loads(captured[0].data)
+        assert body["provider"] == "mock"
+
+    def test_get_scan_compliance_pass(self):
+        """get_scan_compliance() returns ComplianceGateResponse for existing scan."""
+        client = FaultlineClient(api_key="k", _http_fn=make_mock_http(200, COMPLIANCE_GATE_RESPONSE))
+        resp = client.get_scan_compliance("scan-abc-123")
+        assert isinstance(resp, ComplianceGateResponse)
+        assert resp.gate.passed is True
+
+    def test_get_scan_compliance_404(self):
+        """get_scan_compliance() raises FaultlineError on 404."""
+        client = FaultlineClient(api_key="k", _http_fn=make_mock_http(404, {"error": "Scan not found."}))
+        with pytest.raises(FaultlineError) as exc_info:
+            client.get_scan_compliance("nonexistent")
+        assert exc_info.value.status_code == 404
+
+    def test_get_scan_compliance_project_name_in_url(self):
+        """get_scan_compliance() includes projectName in query string."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.get_scan_compliance("scan-123", project_name="TestProj")
+        except Exception:
+            pass
+        assert "projectName=TestProj" in captured[0].full_url
 
 
 class TestFaultlineError:
