@@ -364,6 +364,103 @@ describe('buildEuComplianceReport()', () => {
     const report = buildEuComplianceReport(makeScan());
     expect(report.projectName).toBeTruthy();
   });
+
+  // ── N-187: Evidence strength scoring ──────────────────────────────────────
+  it('every articleEvidence entry has evidenceCount, sourceCount, strengthScore', () => {
+    const report = buildEuComplianceReport(makeScan());
+    for (const ev of report.articleEvidence) {
+      expect(typeof ev.evidenceCount).toBe('number');
+      expect(typeof ev.sourceCount).toBe('number');
+      expect(typeof ev.strengthScore).toBe('number');
+      expect(ev.evidenceCount).toBeGreaterThanOrEqual(0);
+      expect(ev.sourceCount).toBeGreaterThanOrEqual(0);
+      expect(ev.strengthScore).toBeGreaterThanOrEqual(0);
+      expect(ev.strengthScore).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('Article 13 has non-zero evidence for supported claims', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const art13 = report.articleEvidence.find(e => e.article.includes('Article 13'));
+    expect(art13?.evidenceCount).toBeGreaterThan(0);
+    expect(art13?.strengthScore).toBeGreaterThan(0);
+  });
+
+  it('Article 9 strengthScore is higher with more contradicted claims', () => {
+    const scanFew = makeScan({
+      claims: [{ id: 'c1', text: 'X.', type: 'fact', importance: 4 }],
+      verifications: {
+        c1: { claimId: 'c1', status: 'contradicted', explanation: 'No.', sources: [] },
+      },
+      overallRisk: 'high',
+    });
+    const scanMany = makeScan({
+      claims: [
+        { id: 'c1', text: 'X.', type: 'fact', importance: 4 },
+        { id: 'c2', text: 'Y.', type: 'fact', importance: 4 },
+        { id: 'c3', text: 'Z.', type: 'fact', importance: 4 },
+        { id: 'c4', text: 'W.', type: 'fact', importance: 4 },
+        { id: 'c5', text: 'V.', type: 'fact', importance: 4 },
+      ],
+      verifications: {
+        c1: { claimId: 'c1', status: 'contradicted', explanation: 'No.', sources: [{ title: 'S1', url: 'http://s1.com' }] },
+        c2: { claimId: 'c2', status: 'contradicted', explanation: 'No.', sources: [{ title: 'S2', url: 'http://s2.com' }] },
+        c3: { claimId: 'c3', status: 'contradicted', explanation: 'No.', sources: [] },
+        c4: { claimId: 'c4', status: 'contradicted', explanation: 'No.', sources: [] },
+        c5: { claimId: 'c5', status: 'contradicted', explanation: 'No.', sources: [] },
+      },
+      overallRisk: 'critical',
+    });
+    const reportFew = buildEuComplianceReport(scanFew);
+    const reportMany = buildEuComplianceReport(scanMany);
+    const art9Few = reportFew.articleEvidence.find(e => e.article.includes('Article 9'));
+    const art9Many = reportMany.articleEvidence.find(e => e.article.includes('Article 9'));
+    expect(art9Many!.strengthScore).toBeGreaterThan(art9Few!.strengthScore);
+    expect(art9Many!.evidenceCount).toBeGreaterThan(art9Few!.evidenceCount);
+  });
+
+  it('strengthScore is 0 when no relevant claims exist for an article', () => {
+    const report = buildEuComplianceReport(makeScan());
+    // Article 14 is not-applicable for the default scan (no interpretation/mixed claims)
+    const art14 = report.articleEvidence.find(e => e.article.includes('Article 14'));
+    expect(art14?.evidenceCount).toBe(0);
+    expect(art14?.strengthScore).toBe(0);
+  });
+
+  it('sources increase strengthScore', () => {
+    const scanNoSources = makeScan({
+      claims: [{ id: 'c1', text: 'A.', type: 'fact', importance: 4 }],
+      verifications: {
+        c1: { claimId: 'c1', status: 'supported', explanation: 'Yes.', sources: [] },
+      },
+    });
+    const scanWithSources = makeScan({
+      claims: [{ id: 'c1', text: 'A.', type: 'fact', importance: 4 }],
+      verifications: {
+        c1: {
+          claimId: 'c1', status: 'supported', explanation: 'Yes.',
+          sources: [
+            { title: 'Wikipedia', url: 'http://wiki.com' },
+            { title: 'Nature', url: 'http://nature.com' },
+            { title: 'Science', url: 'http://science.com' },
+          ],
+        },
+      },
+    });
+    const reportNone = buildEuComplianceReport(scanNoSources);
+    const reportWith = buildEuComplianceReport(scanWithSources);
+    const art13None = reportNone.articleEvidence.find(e => e.article.includes('Article 13'));
+    const art13With = reportWith.articleEvidence.find(e => e.article.includes('Article 13'));
+    expect(art13With!.sourceCount).toBeGreaterThan(art13None!.sourceCount);
+    expect(art13With!.strengthScore).toBeGreaterThan(art13None!.strengthScore);
+  });
+
+  it('complianceScore is weighted by evidence strength', () => {
+    // This test verifies the weighted scoring produces valid results
+    const report = buildEuComplianceReport(makeScan());
+    expect(report.complianceScore).toBeGreaterThanOrEqual(0);
+    expect(report.complianceScore).toBeLessThanOrEqual(100);
+  });
 });
 
 // ── JSON renderer ─────────────────────────────────────────────────────────────

@@ -15,6 +15,12 @@ export interface EuArticleEvidence {
   findings: string[];
   remediations: string[];
   owaspRef?: string;
+  /** Number of claims that contributed evidence for this article assessment. */
+  evidenceCount: number;
+  /** Number of verification sources backing the evidence. */
+  sourceCount: number;
+  /** Confidence strength of the article assessment (0.0–1.0). Higher = more evidence. */
+  strengthScore: number;
 }
 
 export interface TestCategoryMapping {
@@ -227,6 +233,48 @@ export function getRemediations(article: string, status: EvidenceStatus, finding
   return rems;
 }
 
+// ── Evidence Strength Scoring ────────────────────────────────────────────────
+
+/**
+ * Compute evidence strength for an article assessment.
+ * @param relevantClaims - claims that contributed to this article's evidence
+ * @param verifications  - verification results keyed by claim ID
+ * @returns { evidenceCount, sourceCount, strengthScore }
+ */
+function computeEvidenceStrength(
+  relevantClaims: Claim[],
+  verifications: Record<string, VerificationResult>,
+): { evidenceCount: number; sourceCount: number; strengthScore: number } {
+  const evidenceCount = relevantClaims.length;
+  let sourceCount = 0;
+  for (const c of relevantClaims) {
+    const v = verifications[c.id];
+    if (v?.sources) sourceCount += v.sources.length;
+  }
+
+  // Strength is a function of evidence quantity and verification quality
+  // Base: 0.2 for having any findings at all
+  // +0.3 scaled by claim count (caps at 10 claims)
+  // +0.3 scaled by source count (caps at 20 sources)
+  // +0.2 for high verification rate (supported or contradicted = definitive)
+  if (evidenceCount === 0) return { evidenceCount: 0, sourceCount: 0, strengthScore: 0.0 };
+
+  const claimScale = Math.min(evidenceCount / 10, 1.0);
+  const sourceScale = Math.min(sourceCount / 20, 1.0);
+  const definitiveCount = relevantClaims.filter(c => {
+    const status = verifications[c.id]?.status;
+    return status === 'supported' || status === 'contradicted';
+  }).length;
+  const definitiveRate = definitiveCount / evidenceCount;
+
+  const strength = 0.2 + (0.3 * claimScale) + (0.3 * sourceScale) + (0.2 * definitiveRate);
+  return {
+    evidenceCount,
+    sourceCount,
+    strengthScore: Math.round(strength * 100) / 100,
+  };
+}
+
 // ── Core Report Builder ───────────────────────────────────────────────────────
 
 export function buildEuComplianceReport(
@@ -378,6 +426,7 @@ export function buildEuComplianceReport(
       `${unacceptableCount} claim(s) flagged for prohibited AI practice patterns — ` +
       `immediate legal review required before deployment.`,
     ];
+    const art5Strength = computeEvidenceStrength(claims, verifications);
     articleEvidence.push({
       article: 'Article 5 – Prohibited AI Practices',
       requirement:
@@ -386,12 +435,15 @@ export function buildEuComplianceReport(
       status: 'non-compliant',
       findings: art5Findings,
       remediations: getRemediations('Article 5', 'non-compliant', art5Findings),
+      ...art5Strength,
     });
   }
 
   const art9FinalFindings = art9Findings.length > 0
     ? art9Findings
     : ['No risk management findings. All claims verified within acceptable thresholds.'];
+  const art9Claims = [...new Set([...contradictedClaims, ...interpretationClaims])];
+  const art9Strength = computeEvidenceStrength(art9Claims, verifications);
   articleEvidence.push({
     article: 'Article 9 – Risk Management System',
     requirement:
@@ -401,11 +453,14 @@ export function buildEuComplianceReport(
     findings: art9FinalFindings,
     remediations: getRemediations('Article 9', art9Status, art9FinalFindings),
     owaspRef: 'OWASP Agentic AI A01: Prompt Injection, A06: Sensitive Information Disclosure',
+    ...art9Strength,
   });
 
   const art10FinalFindings = art10Findings.length > 0
     ? art10Findings
     : ['No data governance findings. Training data quality indicators within acceptable thresholds.'];
+  const art10Claims = [...new Set([...contradictedClaims, ...highImportanceUnverified])];
+  const art10Strength = computeEvidenceStrength(art10Claims, verifications);
   articleEvidence.push({
     article: 'Article 10 – Data and Data Governance',
     requirement:
@@ -416,9 +471,12 @@ export function buildEuComplianceReport(
     findings: art10FinalFindings,
     remediations: getRemediations('Article 10', art10Status, art10FinalFindings),
     owaspRef: 'OWASP Agentic AI A05: Improper Output Handling',
+    ...art10Strength,
   });
 
   const art13FinalFindings = art13Findings.length > 0 ? art13Findings : ['No transparency gaps detected.'];
+  const art13Claims = [...new Set([...supportedClaims, ...unverifiedClaims])];
+  const art13Strength = computeEvidenceStrength(art13Claims, verifications);
   articleEvidence.push({
     article: 'Article 13 – Transparency and Provision of Information',
     requirement:
@@ -428,11 +486,14 @@ export function buildEuComplianceReport(
     findings: art13FinalFindings,
     remediations: getRemediations('Article 13', art13Status, art13FinalFindings),
     owaspRef: 'OWASP Agentic AI A02: Insecure Output Handling',
+    ...art13Strength,
   });
 
   const art14FinalFindings = art14Findings.length > 0
     ? art14Findings
     : ['No human oversight requirements triggered by this scan.'];
+  const art14Claims = [...new Set([...interpretationClaims, ...mixedClaims])];
+  const art14Strength = computeEvidenceStrength(art14Claims, verifications);
   articleEvidence.push({
     article: 'Article 14 – Human Oversight',
     requirement:
@@ -442,6 +503,7 @@ export function buildEuComplianceReport(
     findings: art14FinalFindings,
     remediations: getRemediations('Article 14', art14Status, art14FinalFindings),
     owaspRef: 'OWASP Agentic AI A03: Excessive Agency',
+    ...art14Strength,
   });
 
   // Article 50 — GPAI transparency (always included; opinion claims drive severity)
@@ -458,6 +520,7 @@ export function buildEuComplianceReport(
   }
   const art50Status: EvidenceStatus = opinionClaims.length > 0 ? 'partial' : 'not-applicable';
 
+  const art50Strength = computeEvidenceStrength(opinionClaims, verifications);
   articleEvidence.push({
     article: 'Article 50 – Transparency Obligations for GPAI Models',
     requirement:
@@ -466,6 +529,7 @@ export function buildEuComplianceReport(
     status: art50Status,
     findings: art50Findings,
     remediations: getRemediations('Article 50', art50Status, art50Findings),
+    ...art50Strength,
   });
 
   // ── Test Category Mappings ─────────────────────────────────────────────────
@@ -493,7 +557,7 @@ export function buildEuComplianceReport(
   const ts = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
   const documentRef = `FP-EUACT-${ts}`;
 
-  // ── Compliance Score (0–100) ─────────────────────────────────────────────
+  // ── Compliance Score (0–100) — evidence-weighted ────────────────────────
   const scoreMap: Record<string, number> = {
     'compliant': 100,
     'not-applicable': 100,
@@ -502,9 +566,21 @@ export function buildEuComplianceReport(
     'non-compliant': 0,
   };
   const scoredArticles = articleEvidence.filter(a => a.status !== 'not-applicable');
-  const complianceScore = scoredArticles.length > 0
-    ? Math.round(scoredArticles.reduce((sum, a) => sum + (scoreMap[a.status] ?? 50), 0) / scoredArticles.length)
-    : 100;
+  // Weight each article's score by its evidence strength (minimum weight 0.5 so
+  // low-evidence articles still count, but high-evidence articles count more)
+  let complianceScore: number;
+  if (scoredArticles.length > 0) {
+    let weightedSum = 0;
+    let totalWeight = 0;
+    for (const a of scoredArticles) {
+      const weight = 0.5 + (a.strengthScore * 0.5); // range: 0.5–1.0
+      weightedSum += (scoreMap[a.status] ?? 50) * weight;
+      totalWeight += weight;
+    }
+    complianceScore = Math.round(weightedSum / totalWeight);
+  } else {
+    complianceScore = 100;
+  }
 
   return {
     generatedAt: new Date().toISOString(),
