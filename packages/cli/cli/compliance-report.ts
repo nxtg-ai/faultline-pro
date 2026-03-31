@@ -31,6 +31,30 @@ export interface TestCategoryMapping {
   owaspRef?: string;
 }
 
+export type AnnexCheckStatus = 'pass' | 'fail' | 'partial' | 'not-assessed';
+
+export interface AnnexIIICheckItem {
+  /** Requirement ID (e.g. 'annex-iii-1'). */
+  id: string;
+  /** EU AI Act article reference. */
+  article: string;
+  /** Requirement description. */
+  requirement: string;
+  /** Assessment result. */
+  status: AnnexCheckStatus;
+  /** Evidence source (article evidence status or specific finding). */
+  evidence: string;
+}
+
+export interface AnnexIIIChecklist {
+  /** Whether the checklist was triggered (only for high/critical risk). */
+  applicable: boolean;
+  /** Overall pass rate (0.0–1.0). */
+  passRate: number;
+  /** Individual check items. */
+  items: AnnexIIICheckItem[];
+}
+
 export interface EuAiActComplianceReport {
   generatedAt: string;
   documentRef: string;
@@ -45,6 +69,7 @@ export interface EuAiActComplianceReport {
   };
   testCategoryMappings: TestCategoryMapping[];
   complianceScore: number;
+  annexIIIChecklist: AnnexIIIChecklist;
   summary: {
     compliantArticles: number;
     nonCompliantArticles: number;
@@ -582,6 +607,84 @@ export function buildEuComplianceReport(
     complianceScore = 100;
   }
 
+  // ── Annex III Conformity Assessment Checklist ────────────────────────────
+  const annexApplicable = overallRisk === 'high' || overallRisk === 'critical';
+  const articleStatusMap = new Map(articleEvidence.map(a => [a.article, a.status]));
+
+  function artStatus(needle: string): EvidenceStatus | undefined {
+    for (const [k, v] of articleStatusMap) {
+      if (k.includes(needle)) return v;
+    }
+    return undefined;
+  }
+
+  function toAnnexStatus(s: EvidenceStatus | undefined): AnnexCheckStatus {
+    if (!s) return 'not-assessed';
+    if (s === 'compliant' || s === 'not-applicable') return 'pass';
+    if (s === 'non-compliant') return 'fail';
+    return 'partial';
+  }
+
+  const annexItems: AnnexIIICheckItem[] = [
+    {
+      id: 'annex-iii-1',
+      article: 'Article 9',
+      requirement: 'Risk management system — continuous identification, analysis, evaluation, and treatment of risks',
+      status: toAnnexStatus(artStatus('Article 9')),
+      evidence: `Article 9 status: ${artStatus('Article 9') ?? 'not assessed'}`,
+    },
+    {
+      id: 'annex-iii-2',
+      article: 'Article 10',
+      requirement: 'Data and data governance — training data quality, completeness, bias examination',
+      status: toAnnexStatus(artStatus('Article 10')),
+      evidence: `Article 10 status: ${artStatus('Article 10') ?? 'not assessed'}`,
+    },
+    {
+      id: 'annex-iii-3',
+      article: 'Article 11',
+      requirement: 'Technical documentation — sufficient for conformity assessment and post-market monitoring',
+      status: 'not-assessed',
+      evidence: 'Technical documentation assessment not yet automated — manual review required',
+    },
+    {
+      id: 'annex-iii-4',
+      article: 'Article 12',
+      requirement: 'Record-keeping — automatic logging of events during AI system operation',
+      status: 'not-assessed',
+      evidence: 'Record-keeping assessment not yet automated — manual review required',
+    },
+    {
+      id: 'annex-iii-5',
+      article: 'Article 13',
+      requirement: 'Transparency — users can interpret and use AI output appropriately',
+      status: toAnnexStatus(artStatus('Article 13')),
+      evidence: `Article 13 status: ${artStatus('Article 13') ?? 'not assessed'}`,
+    },
+    {
+      id: 'annex-iii-6',
+      article: 'Article 14',
+      requirement: 'Human oversight — effective oversight by natural persons during operation',
+      status: toAnnexStatus(artStatus('Article 14')),
+      evidence: `Article 14 status: ${artStatus('Article 14') ?? 'not assessed'}`,
+    },
+    {
+      id: 'annex-iii-7',
+      article: 'Article 15',
+      requirement: 'Accuracy, robustness, and cybersecurity — appropriate to intended purpose',
+      status: contradictedClaims.length === 0 && claims.length > 0 ? 'pass' :
+        contradictedClaims.length > claims.length * 0.3 ? 'fail' : 'partial',
+      evidence: `${contradictedClaims.length}/${claims.length} claims contradicted (accuracy proxy)`,
+    },
+  ];
+
+  const passCount = annexItems.filter(i => i.status === 'pass').length;
+  const annexIIIChecklist: AnnexIIIChecklist = {
+    applicable: annexApplicable,
+    passRate: annexItems.length > 0 ? Math.round((passCount / annexItems.length) * 100) / 100 : 0,
+    items: annexApplicable ? annexItems : [],
+  };
+
   return {
     generatedAt: new Date().toISOString(),
     documentRef,
@@ -592,6 +695,7 @@ export function buildEuComplianceReport(
     article50Disclosure,
     testCategoryMappings,
     complianceScore,
+    annexIIIChecklist,
     summary: {
       compliantArticles: compliantCount,
       nonCompliantArticles: nonCompliantCount,

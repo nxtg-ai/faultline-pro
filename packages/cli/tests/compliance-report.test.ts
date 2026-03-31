@@ -461,6 +461,97 @@ describe('buildEuComplianceReport()', () => {
     expect(report.complianceScore).toBeGreaterThanOrEqual(0);
     expect(report.complianceScore).toBeLessThanOrEqual(100);
   });
+
+  // ── N-190: Annex III Conformity Assessment Checklist ────────────────────
+  it('annexIIIChecklist is not applicable for low risk', () => {
+    const report = buildEuComplianceReport(makeScan());
+    expect(report.annexIIIChecklist).toBeDefined();
+    expect(report.annexIIIChecklist.applicable).toBe(false);
+    expect(report.annexIIIChecklist.items).toHaveLength(0);
+  });
+
+  it('annexIIIChecklist is applicable for high risk', () => {
+    const scan = makeScan({
+      claims: [
+        { id: 'c1', text: 'X.', type: 'fact', importance: 4 },
+        { id: 'c2', text: 'Y.', type: 'fact', importance: 4 },
+        { id: 'c3', text: 'Z.', type: 'fact', importance: 4 },
+      ],
+      verifications: {
+        c1: { claimId: 'c1', status: 'contradicted', explanation: 'No.', sources: [] },
+        c2: { claimId: 'c2', status: 'contradicted', explanation: 'No.', sources: [] },
+        c3: { claimId: 'c3', status: 'contradicted', explanation: 'No.', sources: [] },
+      },
+      overallRisk: 'high',
+    });
+    const report = buildEuComplianceReport(scan);
+    expect(report.annexIIIChecklist.applicable).toBe(true);
+    expect(report.annexIIIChecklist.items.length).toBe(7);
+  });
+
+  it('annexIIIChecklist is applicable for critical risk', () => {
+    const scan = makeScan({ overallRisk: 'critical' });
+    const report = buildEuComplianceReport(scan);
+    expect(report.annexIIIChecklist.applicable).toBe(true);
+    expect(report.annexIIIChecklist.items.length).toBe(7);
+  });
+
+  it('annexIIIChecklist items cover all 7 Annex III requirements', () => {
+    const scan = makeScan({ overallRisk: 'high' });
+    const report = buildEuComplianceReport(scan);
+    const articles = report.annexIIIChecklist.items.map(i => i.article);
+    expect(articles).toContain('Article 9');
+    expect(articles).toContain('Article 10');
+    expect(articles).toContain('Article 11');
+    expect(articles).toContain('Article 12');
+    expect(articles).toContain('Article 13');
+    expect(articles).toContain('Article 14');
+    expect(articles).toContain('Article 15');
+  });
+
+  it('annexIIIChecklist passRate is between 0 and 1', () => {
+    const scan = makeScan({ overallRisk: 'high' });
+    const report = buildEuComplianceReport(scan);
+    expect(report.annexIIIChecklist.passRate).toBeGreaterThanOrEqual(0);
+    expect(report.annexIIIChecklist.passRate).toBeLessThanOrEqual(1);
+  });
+
+  it('annexIIIChecklist Art.15 fails when many claims contradicted', () => {
+    const scan = makeScan({
+      claims: [
+        { id: 'c1', text: 'A.', type: 'fact', importance: 4 },
+        { id: 'c2', text: 'B.', type: 'fact', importance: 4 },
+        { id: 'c3', text: 'C.', type: 'fact', importance: 4 },
+      ],
+      verifications: {
+        c1: { claimId: 'c1', status: 'contradicted', explanation: 'No.', sources: [] },
+        c2: { claimId: 'c2', status: 'contradicted', explanation: 'No.', sources: [] },
+        c3: { claimId: 'c3', status: 'supported', explanation: 'Yes.', sources: [] },
+      },
+      overallRisk: 'high',
+    });
+    const report = buildEuComplianceReport(scan);
+    const art15 = report.annexIIIChecklist.items.find(i => i.article === 'Article 15');
+    // 2/3 contradicted = 66% > 30% threshold → fail
+    expect(art15?.status).toBe('fail');
+  });
+
+  it('annexIIIChecklist Art.15 passes when no claims contradicted', () => {
+    const scan = makeScan({ overallRisk: 'high' });
+    const report = buildEuComplianceReport(scan);
+    const art15 = report.annexIIIChecklist.items.find(i => i.article === 'Article 15');
+    expect(art15?.status).toBe('pass');
+  });
+
+  it('annexIIIChecklist JSON appears in rendered output', () => {
+    const scan = makeScan({ overallRisk: 'high' });
+    const report = buildEuComplianceReport(scan);
+    const json = renderComplianceReportJson(report);
+    const parsed = JSON.parse(json);
+    expect(parsed.annexIIIChecklist).toBeDefined();
+    expect(parsed.annexIIIChecklist.applicable).toBe(true);
+    expect(parsed.annexIIIChecklist.items.length).toBe(7);
+  });
 });
 
 // ── JSON renderer ─────────────────────────────────────────────────────────────
