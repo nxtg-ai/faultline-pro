@@ -242,6 +242,50 @@ describe('buildEuComplianceReport()', () => {
     expect(report.projectName).toBe('MySystem v2');
   });
 
+  it('complianceScore is 0-100 number', () => {
+    const report = buildEuComplianceReport(makeScan());
+    expect(typeof report.complianceScore).toBe('number');
+    expect(report.complianceScore).toBeGreaterThanOrEqual(0);
+    expect(report.complianceScore).toBeLessThanOrEqual(100);
+  });
+
+  it('complianceScore is high for compliant low-risk scan', () => {
+    const report = buildEuComplianceReport(makeScan());
+    expect(report.complianceScore).toBeGreaterThanOrEqual(50);
+  });
+
+  it('complianceScore is low for non-compliant critical scan', () => {
+    const scan = makeScan({
+      claims: [
+        { id: 'c1', text: 'X.', type: 'fact', importance: 4 },
+        { id: 'c2', text: 'Y.', type: 'fact', importance: 4 },
+        { id: 'c3', text: 'Z.', type: 'fact', importance: 4 },
+      ],
+      verifications: {
+        c1: { claimId: 'c1', status: 'contradicted', explanation: 'No.', sources: [] },
+        c2: { claimId: 'c2', status: 'contradicted', explanation: 'No.', sources: [] },
+        c3: { claimId: 'c3', status: 'contradicted', explanation: 'No.', sources: [] },
+      },
+      overallRisk: 'critical',
+    });
+    const report = buildEuComplianceReport(scan);
+    expect(report.complianceScore).toBeLessThan(80);
+  });
+
+  it('complianceScore appears in JSON output', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const json = renderComplianceReportJson(report);
+    const parsed = JSON.parse(json);
+    expect(typeof parsed.complianceScore).toBe('number');
+  });
+
+  it('complianceScore appears in CI gate output', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const gate = evaluateComplianceGate(report);
+    const output = renderCiGateOutput(gate, report);
+    expect(output).toContain('/100');
+  });
+
   it('defaults projectName when not provided', () => {
     const report = buildEuComplianceReport(makeScan());
     expect(report.projectName).toBeTruthy();

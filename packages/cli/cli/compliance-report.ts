@@ -35,6 +35,7 @@ export interface EuAiActComplianceReport {
     voiceAudioDisclosure: string;
   };
   testCategoryMappings: TestCategoryMapping[];
+  complianceScore: number;
   summary: {
     compliantArticles: number;
     nonCompliantArticles: number;
@@ -328,6 +329,19 @@ export function buildEuComplianceReport(
   const ts = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
   const documentRef = `FP-EUACT-${ts}`;
 
+  // ── Compliance Score (0–100) ─────────────────────────────────────────────
+  const scoreMap: Record<string, number> = {
+    'compliant': 100,
+    'not-applicable': 100,
+    'partial': 50,
+    'gap': 25,
+    'non-compliant': 0,
+  };
+  const scoredArticles = articleEvidence.filter(a => a.status !== 'not-applicable');
+  const complianceScore = scoredArticles.length > 0
+    ? Math.round(scoredArticles.reduce((sum, a) => sum + (scoreMap[a.status] ?? 50), 0) / scoredArticles.length)
+    : 100;
+
   return {
     generatedAt: new Date().toISOString(),
     documentRef,
@@ -337,6 +351,7 @@ export function buildEuComplianceReport(
     articleEvidence,
     article50Disclosure,
     testCategoryMappings,
+    complianceScore,
     summary: {
       compliantArticles: compliantCount,
       nonCompliantArticles: nonCompliantCount,
@@ -399,6 +414,7 @@ export function renderCiGateOutput(gate: CiGateResult, report: EuAiActCompliance
   lines.push(`EU AI Act Compliance Gate — ${gate.pass ? 'PASS' : 'FAIL'}`);
   lines.push('='.repeat(50));
   lines.push(`Overall Risk: ${report.overallRisk.toUpperCase()}`);
+  lines.push(`Score:        ${report.complianceScore}/100`);
   lines.push(`Project:      ${report.projectName}`);
   lines.push(`Document:     ${report.documentRef}`);
   lines.push('');
