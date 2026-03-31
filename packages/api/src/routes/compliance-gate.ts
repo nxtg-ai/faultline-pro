@@ -20,6 +20,8 @@ const POST_BODY_SCHEMA = {
     text: { type: 'string', minLength: 1, maxLength: 50_000 },
     provider: { type: 'string', enum: ['gemini', 'openai', 'claude', 'perplexity', 'mock'] },
     projectName: { type: 'string', maxLength: 200 },
+    threshold: { type: 'number', minimum: 0, maximum: 100 },
+    strict: { type: 'boolean' },
   },
   additionalProperties: false,
 } as const;
@@ -28,6 +30,8 @@ interface ComplianceGateBody {
   text: string;
   provider?: 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
   projectName?: string;
+  threshold?: number;
+  strict?: boolean;
 }
 
 interface ComplianceGateResponse {
@@ -54,13 +58,13 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
       },
     },
     async (request, reply) => {
-      const { text, provider, projectName } = request.body;
+      const { text, provider, projectName, threshold, strict } = request.body;
       const keyId = request.keyId ?? 'unknown';
 
       const result = await scan(text, provider);
       const stored = getScanStore().record(keyId, text, result as unknown as Record<string, unknown>);
       const report = buildEuComplianceReport(result, { projectName });
-      const gate = evaluateComplianceGate(report);
+      const gate = evaluateComplianceGate(report, { threshold, strict });
 
       const response: ComplianceGateResponse = { gate, report, scanId: stored.id };
       return reply.status(gate.pass ? 200 : 422).send(response);
@@ -68,7 +72,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
   );
 
   // GET /scan/:id/compliance — evaluate compliance for an existing scan
-  fastify.get<{ Params: { id: string }; Querystring: { projectName?: string } }>(
+  fastify.get<{ Params: { id: string }; Querystring: { projectName?: string; threshold?: string; strict?: string } }>(
     '/scan/:id/compliance',
     {
       preHandler: [requireApiKey],
@@ -82,7 +86,11 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
         },
         querystring: {
           type: 'object',
-          properties: { projectName: { type: 'string', maxLength: 200 } },
+          properties: {
+            projectName: { type: 'string', maxLength: 200 },
+            threshold: { type: 'string' },
+            strict: { type: 'string' },
+          },
         },
       },
     },
@@ -94,7 +102,9 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
 
       const result = stored.result as unknown as Parameters<typeof buildEuComplianceReport>[0];
       const report = buildEuComplianceReport(result, { projectName: request.query.projectName });
-      const gate = evaluateComplianceGate(report);
+      const threshold = request.query.threshold ? parseInt(request.query.threshold, 10) : undefined;
+      const strict = request.query.strict === 'true';
+      const gate = evaluateComplianceGate(report, { threshold, strict });
 
       return reply.status(gate.pass ? 200 : 422).send({ gate, report, scanId: stored.id });
     },

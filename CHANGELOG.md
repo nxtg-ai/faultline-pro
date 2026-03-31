@@ -13,6 +13,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - N-162: Python SDK compliance gate — `compliance_gate()` and `get_scan_compliance()` methods with `CiGateResult`, `CiGateArticleResult`, `ComplianceGateResponse` models
 - N-164: Compliance report diff — `faultline compliance-report --diff before.json,after.json` and `POST /scan/compliance-diff` API endpoint; shows per-article trend (improved/regressed/unchanged), risk trend, summary counts
 - N-165: Compliance score (0–100) — numeric EU AI Act readiness score based on article status weights; shown in CI gate, JSON reports, and API responses
+- N-166: Remediation recommendations — each article evidence entry now includes actionable `remediations[]` array; context-specific guidance per article (Art. 5 legal review, Art. 9 risk mitigations, Art. 13 transparency, Art. 14 oversight, Art. 50 disclosure); shown in CI gate output and PDF reports when gate fails
+- N-167: Compliance threshold configuration — `--threshold N` (0–100 minimum score) and `--strict` (all articles must be compliant/N-A) flags for CLI `--ci` mode; `threshold` and `strict` parameters on `POST /scan/compliance-gate` and `GET /scan/:id/compliance` API endpoints
 
 ---
 

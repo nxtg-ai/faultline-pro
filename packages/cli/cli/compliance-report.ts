@@ -11,6 +11,7 @@ export interface EuArticleEvidence {
   requirement: string;
   status: EvidenceStatus;
   findings: string[];
+  remediations: string[];
   owaspRef?: string;
 }
 
@@ -118,6 +119,62 @@ function buildTestCategoryMappings(
   }
 
   return mappings;
+}
+
+// ── Remediation Recommendations ─────────────────────────────────────────────
+
+export function getRemediations(article: string, status: EvidenceStatus, findings: string[]): string[] {
+  if (status === 'compliant' || status === 'not-applicable') return [];
+
+  const rems: string[] = [];
+
+  if (article.includes('Article 5') && !article.includes('Article 50')) {
+    rems.push('Remove or reclassify claims flagged as prohibited AI practices.');
+    rems.push('Conduct Art. 5(1) legal review before deployment.');
+    rems.push('Document justification if flagged claims are false positives.');
+  } else if (article.includes('Article 50')) {
+    rems.push('Add AI-generated content labelling to all outputs.');
+    if (findings.some(f => f.includes('opinion'))) {
+      rems.push('Implement disclosure mechanisms for AI-generated opinion content.');
+    }
+    rems.push('Prepare Art. 50(4) voice/audio disclosure when applicable.');
+  } else if (article.includes('Article 9')) {
+    if (findings.some(f => f.includes('contradicted'))) {
+      rems.push('Review and correct contradicted claims with accurate source data.');
+    }
+    if (findings.some(f => f.includes('injection'))) {
+      rems.push('Implement prompt guardrails and input sanitization to prevent injection.');
+    }
+    if (findings.some(f => f.includes('PII'))) {
+      rems.push('Add PII filtering/redaction to the AI output pipeline.');
+    }
+    if (findings.some(f => f.includes('bias'))) {
+      rems.push('Conduct bias audit on training data per Art. 10 Data Governance.');
+    }
+    if (findings.some(f => f.includes('critical') || f.includes('high') || f.includes('Annex III'))) {
+      rems.push('Complete Annex III conformity assessment for high-risk classification.');
+    }
+    if (findings.some(f => f.includes('interpretation'))) {
+      rems.push('Add human oversight review for interpretation claims per Art. 14.');
+    }
+    if (rems.length === 0) {
+      rems.push('Review risk management findings and implement appropriate mitigations.');
+    }
+  } else if (article.includes('Article 13')) {
+    if (findings.some(f => f.includes('unverified') || f.includes('mixed'))) {
+      rems.push('Add source attribution for unverified claims.');
+      rems.push('Implement confidence scoring to flag uncertain outputs.');
+    }
+    if (findings.some(f => f.includes('No claims extracted'))) {
+      rems.push('Ensure AI outputs include verifiable factual statements.');
+    }
+    rems.push('Document AI system capabilities, limitations, and intended purpose.');
+  } else if (article.includes('Article 14')) {
+    rems.push('Implement human-in-the-loop review for interpretation and mixed-evidence claims.');
+    rems.push('Document oversight procedures and escalation paths.');
+  }
+
+  return rems;
 }
 
 // ── Core Report Builder ───────────────────────────────────────────────────────
@@ -232,52 +289,58 @@ export function buildEuComplianceReport(
   // Article 5 (prohibited) — only if triggered
   const unacceptableCount = complianceReport.euRiskSummary.unacceptable;
   if (unacceptableCount > 0) {
+    const art5Findings = [
+      `${unacceptableCount} claim(s) flagged for prohibited AI practice patterns — ` +
+      `immediate legal review required before deployment.`,
+    ];
     articleEvidence.push({
       article: 'Article 5 – Prohibited AI Practices',
       requirement:
         'AI systems engaging in prohibited practices (subliminal manipulation, social scoring, ' +
         'mass surveillance, emotion recognition in workplace) are forbidden under EU AI Act.',
       status: 'non-compliant',
-      findings: [
-        `${unacceptableCount} claim(s) flagged for prohibited AI practice patterns — ` +
-        `immediate legal review required before deployment.`,
-      ],
+      findings: art5Findings,
+      remediations: getRemediations('Article 5', 'non-compliant', art5Findings),
     });
   }
 
+  const art9FinalFindings = art9Findings.length > 0
+    ? art9Findings
+    : ['No risk management findings. All claims verified within acceptable thresholds.'];
   articleEvidence.push({
     article: 'Article 9 – Risk Management System',
     requirement:
       'Establish and maintain a continuous risk management system throughout the AI system lifecycle, ' +
       'including identification, analysis, estimation, evaluation, and treatment of risks.',
     status: art9Status,
-    findings:
-      art9Findings.length > 0
-        ? art9Findings
-        : ['No risk management findings. All claims verified within acceptable thresholds.'],
+    findings: art9FinalFindings,
+    remediations: getRemediations('Article 9', art9Status, art9FinalFindings),
     owaspRef: 'OWASP Agentic AI A01: Prompt Injection, A06: Sensitive Information Disclosure',
   });
 
+  const art13FinalFindings = art13Findings.length > 0 ? art13Findings : ['No transparency gaps detected.'];
   articleEvidence.push({
     article: 'Article 13 – Transparency and Provision of Information',
     requirement:
       'AI system must be sufficiently transparent to enable users to understand its capabilities, ' +
       'limitations, purpose, and the logic behind significant outputs.',
     status: art13Status,
-    findings: art13Findings.length > 0 ? art13Findings : ['No transparency gaps detected.'],
+    findings: art13FinalFindings,
+    remediations: getRemediations('Article 13', art13Status, art13FinalFindings),
     owaspRef: 'OWASP Agentic AI A02: Insecure Output Handling',
   });
 
+  const art14FinalFindings = art14Findings.length > 0
+    ? art14Findings
+    : ['No human oversight requirements triggered by this scan.'];
   articleEvidence.push({
     article: 'Article 14 – Human Oversight',
     requirement:
       'AI system design must enable natural persons to effectively oversee and intervene during ' +
       'operation to prevent or minimise risks to health, safety, or fundamental rights.',
     status: art14Status,
-    findings:
-      art14Findings.length > 0
-        ? art14Findings
-        : ['No human oversight requirements triggered by this scan.'],
+    findings: art14FinalFindings,
+    remediations: getRemediations('Article 14', art14Status, art14FinalFindings),
     owaspRef: 'OWASP Agentic AI A03: Excessive Agency',
   });
 
@@ -302,6 +365,7 @@ export function buildEuComplianceReport(
       'content requires explicit machine-generated labelling.',
     status: art50Status,
     findings: art50Findings,
+    remediations: getRemediations('Article 50', art50Status, art50Findings),
   });
 
   // ── Test Category Mappings ─────────────────────────────────────────────────
@@ -378,22 +442,41 @@ export interface CiGateResult {
   nonCompliantCount: number;
   totalArticles: number;
   exitCode: 0 | 1;
+  complianceScore: number;
+  threshold: number;
+}
+
+export interface GateOptions {
+  /** Minimum compliance score (0–100) to pass. Default: 0 (only non-compliant articles fail). */
+  threshold?: number;
+  /** When true, every article must be 'compliant' or 'not-applicable' to pass. */
+  strict?: boolean;
 }
 
 /**
  * Evaluate a compliance report against a CI gate.
- * Fails if any article is non-compliant OR overall risk is high/critical.
+ * Default: fails if any article is non-compliant OR overall risk is high/critical.
+ * With threshold: also fails if complianceScore < threshold.
+ * With strict: every article must be 'compliant' or 'not-applicable'.
  */
-export function evaluateComplianceGate(report: EuAiActComplianceReport): CiGateResult {
-  const articles: CiGateArticleResult[] = report.articleEvidence.map(ev => ({
-    article: ev.article,
-    status: ev.status,
-    pass: ev.status !== 'non-compliant',
-  }));
+export function evaluateComplianceGate(
+  report: EuAiActComplianceReport,
+  opts: GateOptions = {},
+): CiGateResult {
+  const threshold = opts.threshold ?? 0;
+  const strict = opts.strict ?? false;
+
+  const articles: CiGateArticleResult[] = report.articleEvidence.map(ev => {
+    const articlePass = strict
+      ? (ev.status === 'compliant' || ev.status === 'not-applicable')
+      : ev.status !== 'non-compliant';
+    return { article: ev.article, status: ev.status, pass: articlePass };
+  });
 
   const nonCompliantCount = articles.filter(a => !a.pass).length;
   const riskFail = report.overallRisk === 'high' || report.overallRisk === 'critical';
-  const pass = nonCompliantCount === 0 && !riskFail;
+  const scoreFail = threshold > 0 && report.complianceScore < threshold;
+  const pass = nonCompliantCount === 0 && !riskFail && !scoreFail;
 
   return {
     pass,
@@ -402,6 +485,8 @@ export function evaluateComplianceGate(report: EuAiActComplianceReport): CiGateR
     nonCompliantCount,
     totalArticles: articles.length,
     exitCode: pass ? 0 : 1,
+    complianceScore: report.complianceScore,
+    threshold,
   };
 }
 
@@ -414,7 +499,8 @@ export function renderCiGateOutput(gate: CiGateResult, report: EuAiActCompliance
   lines.push(`EU AI Act Compliance Gate — ${gate.pass ? 'PASS' : 'FAIL'}`);
   lines.push('='.repeat(50));
   lines.push(`Overall Risk: ${report.overallRisk.toUpperCase()}`);
-  lines.push(`Score:        ${report.complianceScore}/100`);
+  const thresholdLabel = gate.threshold > 0 ? ` (threshold: ${gate.threshold})` : '';
+  lines.push(`Score:        ${report.complianceScore}/100${thresholdLabel}`);
   lines.push(`Project:      ${report.projectName}`);
   lines.push(`Document:     ${report.documentRef}`);
   lines.push('');
@@ -435,6 +521,23 @@ export function renderCiGateOutput(gate: CiGateResult, report: EuAiActCompliance
     if (report.overallRisk === 'high' || report.overallRisk === 'critical') {
       lines.push(`Overall risk is ${report.overallRisk.toUpperCase()} — gate fails on high/critical risk.`);
     }
+    if (gate.threshold > 0 && report.complianceScore < gate.threshold) {
+      lines.push(`Compliance score ${report.complianceScore} is below threshold ${gate.threshold}.`);
+    }
+
+    // Show remediations for failing articles
+    const failingArticles = report.articleEvidence.filter(ev => ev.remediations.length > 0);
+    if (failingArticles.length > 0) {
+      lines.push('');
+      lines.push('Recommended Remediations:');
+      for (const ev of failingArticles) {
+        lines.push(`  ${ev.article}:`);
+        for (const rem of ev.remediations) {
+          lines.push(`    - ${rem}`);
+        }
+      }
+    }
+
     lines.push('');
     lines.push('Exit code: 1');
   } else {
@@ -734,6 +837,27 @@ export async function renderComplianceReportPdf(
         }
         doc.font('Helvetica').fontSize(9).fillColor(DARK)
           .text(`• ${finding}`, 60, doc.y, { width: pageWidth - 120 });
+        doc.moveDown(0.2);
+      }
+      if (ev.remediations.length > 0) {
+        if (doc.y > doc.page.height - 80) {
+          doc.addPage();
+          addPageHeader();
+          doc.moveDown(1);
+        }
+        doc.font('Helvetica-Bold').fontSize(8.5).fillColor(AMBER)
+          .text('Remediations:', 60, doc.y);
+        doc.moveDown(0.15);
+        for (const rem of ev.remediations) {
+          if (doc.y > doc.page.height - 60) {
+            doc.addPage();
+            addPageHeader();
+            doc.moveDown(1);
+          }
+          doc.font('Helvetica').fontSize(8.5).fillColor(DARK)
+            .text(`→ ${rem}`, 70, doc.y, { width: pageWidth - 130 });
+          doc.moveDown(0.15);
+        }
         doc.moveDown(0.2);
       }
       if (ev.owaspRef) {

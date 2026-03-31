@@ -22,9 +22,11 @@ import {
   renderCiGateOutput,
   diffComplianceReports,
   renderComplianceDiffOutput,
+  getRemediations,
   type EuAiActComplianceReport,
   type CiGateResult,
   type ComplianceDiffResult,
+  type GateOptions,
 } from '../cli/compliance-report.js';
 import type { ScanResult } from '../cli/scan.js';
 import type { ComplianceReport } from '../compliance/report_generator.js';
@@ -812,5 +814,244 @@ describe('CLI: compliance-report --diff', () => {
   it('--diff appears in help output', async () => {
     const { output } = await main(['help']);
     expect(output).toContain('--diff');
+  });
+});
+
+// ── N-166: Remediation Recommendations ──────────────────────────────────────
+
+describe('getRemediations()', () => {
+  it('RR1: returns empty array for compliant status', () => {
+    const rems = getRemediations('Article 9', 'compliant', ['All good.']);
+    expect(rems).toEqual([]);
+  });
+
+  it('RR2: returns empty array for not-applicable status', () => {
+    const rems = getRemediations('Article 14', 'not-applicable', []);
+    expect(rems).toEqual([]);
+  });
+
+  it('RR3: Article 5 non-compliant returns legal review remediation', () => {
+    const rems = getRemediations('Article 5', 'non-compliant', ['1 claim(s) flagged for prohibited']);
+    expect(rems.length).toBeGreaterThan(0);
+    expect(rems.some(r => r.includes('legal review'))).toBe(true);
+  });
+
+  it('RR4: Article 9 with contradicted claims returns correction remediation', () => {
+    const rems = getRemediations('Article 9', 'non-compliant', ['2 contradicted claim(s) detected']);
+    expect(rems.some(r => r.includes('contradicted'))).toBe(true);
+  });
+
+  it('RR5: Article 9 with PII returns filtering remediation', () => {
+    const rems = getRemediations('Article 9', 'partial', ['1 PII finding(s)']);
+    expect(rems.some(r => r.includes('PII'))).toBe(true);
+  });
+
+  it('RR6: Article 9 with bias returns audit remediation', () => {
+    const rems = getRemediations('Article 9', 'partial', ['1 bias finding(s)']);
+    expect(rems.some(r => r.includes('bias'))).toBe(true);
+  });
+
+  it('RR7: Article 9 with injection returns guardrails remediation', () => {
+    const rems = getRemediations('Article 9', 'partial', ['Prompt injection pattern detected']);
+    expect(rems.some(r => r.includes('guardrails') || r.includes('injection'))).toBe(true);
+  });
+
+  it('RR8: Article 9 with high risk returns Annex III remediation', () => {
+    const rems = getRemediations('Article 9', 'non-compliant', ['Overall risk assessed as CRITICAL — Annex III']);
+    expect(rems.some(r => r.includes('Annex III'))).toBe(true);
+  });
+
+  it('RR9: Article 13 gap returns transparency remediation', () => {
+    const rems = getRemediations('Article 13', 'gap', ['No claims extracted']);
+    expect(rems.some(r => r.includes('verifiable'))).toBe(true);
+    expect(rems.some(r => r.includes('capabilities'))).toBe(true);
+  });
+
+  it('RR10: Article 13 partial with unverified returns source attribution', () => {
+    const rems = getRemediations('Article 13', 'partial', ['2 unverified/mixed claim(s)']);
+    expect(rems.some(r => r.includes('source attribution'))).toBe(true);
+  });
+
+  it('RR11: Article 14 partial returns human oversight remediation', () => {
+    const rems = getRemediations('Article 14', 'partial', ['3 interpretation claims']);
+    expect(rems.some(r => r.includes('human-in-the-loop'))).toBe(true);
+    expect(rems.some(r => r.includes('oversight'))).toBe(true);
+  });
+
+  it('RR12: Article 50 partial with opinions returns labelling remediation', () => {
+    const rems = getRemediations('Article 50', 'partial', ['2 opinion claim(s) detected']);
+    expect(rems.some(r => r.includes('labelling'))).toBe(true);
+    expect(rems.some(r => r.includes('opinion'))).toBe(true);
+  });
+
+  it('RR13: Article 9 with interpretation returns Art 14 reference', () => {
+    const rems = getRemediations('Article 9', 'partial', ['2 interpretation claim(s) require human oversight']);
+    expect(rems.some(r => r.includes('Art. 14'))).toBe(true);
+  });
+
+  it('RR14: Article 9 with generic findings returns fallback remediation', () => {
+    const rems = getRemediations('Article 9', 'partial', ['Some other finding']);
+    expect(rems.length).toBeGreaterThan(0);
+  });
+});
+
+describe('remediations in buildEuComplianceReport()', () => {
+  it('RR15: every articleEvidence entry has a remediations array', () => {
+    const report = buildEuComplianceReport(makeScan());
+    for (const ev of report.articleEvidence) {
+      expect(Array.isArray(ev.remediations)).toBe(true);
+    }
+  });
+
+  it('RR16: compliant articles have empty remediations', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const compliant = report.articleEvidence.filter(ev => ev.status === 'compliant');
+    expect(compliant.length).toBeGreaterThan(0);
+    for (const ev of compliant) {
+      expect(ev.remediations).toEqual([]);
+    }
+  });
+
+  it('RR17: non-compliant scan has non-empty remediations', () => {
+    const scan = makeScan({
+      claims: [
+        { id: 'c1', text: 'False claim.', type: 'fact', importance: 5 },
+        { id: 'c2', text: 'Another false.', type: 'fact', importance: 4 },
+        { id: 'c3', text: 'Also wrong.', type: 'fact', importance: 3 },
+      ],
+      verifications: {
+        c1: { claimId: 'c1', status: 'contradicted', explanation: 'Wrong.', sources: [] },
+        c2: { claimId: 'c2', status: 'contradicted', explanation: 'Wrong.', sources: [] },
+        c3: { claimId: 'c3', status: 'contradicted', explanation: 'Wrong.', sources: [] },
+      },
+      overallRisk: 'critical',
+    });
+    const report = buildEuComplianceReport(scan);
+    const art9 = report.articleEvidence.find(e => e.article.includes('Article 9'));
+    expect(art9!.status).toBe('non-compliant');
+    expect(art9!.remediations.length).toBeGreaterThan(0);
+  });
+
+  it('RR18: CI gate output includes remediations when failing', () => {
+    const scan = makeScan({
+      claims: [
+        { id: 'c1', text: 'Wrong.', type: 'fact', importance: 5 },
+        { id: 'c2', text: 'Also wrong.', type: 'fact', importance: 4 },
+        { id: 'c3', text: 'Still wrong.', type: 'fact', importance: 3 },
+      ],
+      verifications: {
+        c1: { claimId: 'c1', status: 'contradicted', explanation: 'No.', sources: [] },
+        c2: { claimId: 'c2', status: 'contradicted', explanation: 'No.', sources: [] },
+        c3: { claimId: 'c3', status: 'contradicted', explanation: 'No.', sources: [] },
+      },
+      overallRisk: 'critical',
+    });
+    const report = buildEuComplianceReport(scan);
+    const gate = evaluateComplianceGate(report);
+    const output = renderCiGateOutput(gate, report);
+    expect(output).toContain('Recommended Remediations');
+    expect(output).toContain('Article 9');
+  });
+});
+
+// ── N-167: Compliance Threshold Configuration ───────────────────────────────
+
+describe('evaluateComplianceGate() threshold/strict options', () => {
+  it('TH1: default gate passes for compliant scan', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const gate = evaluateComplianceGate(report);
+    expect(gate.pass).toBe(true);
+    expect(gate.threshold).toBe(0);
+  });
+
+  it('TH2: threshold=100 fails when score is below 100', () => {
+    const scan = makeScan({
+      claims: [
+        { id: 'c1', text: 'Claim.', type: 'opinion', importance: 3 },
+      ],
+      verifications: {
+        c1: { claimId: 'c1', status: 'supported', explanation: 'OK.', sources: [] },
+      },
+    });
+    const report = buildEuComplianceReport(scan);
+    // Opinion claims → Art. 50 partial → score < 100
+    expect(report.complianceScore).toBeLessThan(100);
+    const gate = evaluateComplianceGate(report, { threshold: 100 });
+    expect(gate.pass).toBe(false);
+    expect(gate.exitCode).toBe(1);
+  });
+
+  it('TH3: threshold=0 (default) passes even with partial score', () => {
+    const scan = makeScan({
+      claims: [{ id: 'c1', text: 'Opinion.', type: 'opinion', importance: 3 }],
+      verifications: { c1: { claimId: 'c1', status: 'supported', explanation: 'OK.', sources: [] } },
+    });
+    const report = buildEuComplianceReport(scan);
+    const gate = evaluateComplianceGate(report, { threshold: 0 });
+    expect(gate.pass).toBe(true);
+  });
+
+  it('TH4: strict mode fails on partial articles', () => {
+    const scan = makeScan({
+      claims: [
+        { id: 'c1', text: 'Interpretation.', type: 'interpretation', importance: 3 },
+      ],
+      verifications: { c1: { claimId: 'c1', status: 'supported', explanation: 'OK.', sources: [] } },
+    });
+    const report = buildEuComplianceReport(scan);
+    // Art. 14 will be partial (interpretation triggers it)
+    const gate = evaluateComplianceGate(report, { strict: true });
+    expect(gate.pass).toBe(false);
+    const art14 = gate.articles.find(a => a.article.includes('Article 14'));
+    expect(art14!.pass).toBe(false);
+  });
+
+  it('TH5: strict mode passes when all articles are compliant/not-applicable', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const gate = evaluateComplianceGate(report, { strict: true });
+    // Default scan has all-supported facts → compliant + not-applicable
+    expect(gate.pass).toBe(true);
+  });
+
+  it('TH6: gate result includes complianceScore and threshold', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const gate = evaluateComplianceGate(report, { threshold: 80 });
+    expect(typeof gate.complianceScore).toBe('number');
+    expect(gate.threshold).toBe(80);
+  });
+
+  it('TH7: threshold below score passes', () => {
+    const report = buildEuComplianceReport(makeScan());
+    expect(report.complianceScore).toBeGreaterThanOrEqual(80);
+    const gate = evaluateComplianceGate(report, { threshold: 50 });
+    expect(gate.pass).toBe(true);
+  });
+
+  it('TH8: CI gate output shows threshold when set', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const gate = evaluateComplianceGate(report, { threshold: 80 });
+    const output = renderCiGateOutput(gate, report);
+    expect(output).toContain('threshold: 80');
+  });
+
+  it('TH9: CI gate output shows score below threshold message', () => {
+    const scan = makeScan({
+      claims: [{ id: 'c1', text: 'Opinion.', type: 'opinion', importance: 3 }],
+      verifications: { c1: { claimId: 'c1', status: 'supported', explanation: 'OK.', sources: [] } },
+    });
+    const report = buildEuComplianceReport(scan);
+    const gate = evaluateComplianceGate(report, { threshold: 100 });
+    const output = renderCiGateOutput(gate, report);
+    expect(output).toContain('below threshold');
+  });
+
+  it('TH10: strict + threshold can be combined', () => {
+    const scan = makeScan({
+      claims: [{ id: 'c1', text: 'Interp.', type: 'interpretation', importance: 3 }],
+      verifications: { c1: { claimId: 'c1', status: 'supported', explanation: 'OK.', sources: [] } },
+    });
+    const report = buildEuComplianceReport(scan);
+    const gate = evaluateComplianceGate(report, { strict: true, threshold: 90 });
+    expect(gate.pass).toBe(false);
   });
 });

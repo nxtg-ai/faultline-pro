@@ -285,3 +285,118 @@ describe('POST /scan/compliance-diff', () => {
     expect(res.statusCode).toBe(401);
   });
 });
+
+// ── N-166 + N-167: Remediations & Threshold ─────────────────────────────────
+
+describe('POST /scan/compliance-gate — remediations and threshold', () => {
+  it('CG13: response includes remediations array on each article', async () => {
+    const res = await server.inject({
+      method: 'POST',
+      url: '/scan/compliance-gate',
+      headers: AUTH,
+      payload: { text: 'AI is safe.', provider: 'mock' },
+    });
+    const body = JSON.parse(res.body);
+    for (const ev of body.report.articleEvidence) {
+      expect(Array.isArray(ev.remediations)).toBe(true);
+    }
+  });
+
+  it('CG14: gate result includes complianceScore and threshold', async () => {
+    const res = await server.inject({
+      method: 'POST',
+      url: '/scan/compliance-gate',
+      headers: AUTH,
+      payload: { text: 'Water boils at 100C.', provider: 'mock' },
+    });
+    const body = JSON.parse(res.body);
+    expect(typeof body.gate.complianceScore).toBe('number');
+    expect(typeof body.gate.threshold).toBe('number');
+  });
+
+  it('CG15: threshold parameter enforces minimum score', async () => {
+    const res = await server.inject({
+      method: 'POST',
+      url: '/scan/compliance-gate',
+      headers: AUTH,
+      payload: { text: 'Test claim.', provider: 'mock', threshold: 100 },
+    });
+    const body = JSON.parse(res.body);
+    expect(body.gate.threshold).toBe(100);
+    // If score < 100 → gate fails
+    if (body.gate.complianceScore < 100) {
+      expect(body.gate.pass).toBe(false);
+    }
+  });
+
+  it('CG16: strict parameter requires all articles compliant', async () => {
+    const res = await server.inject({
+      method: 'POST',
+      url: '/scan/compliance-gate',
+      headers: AUTH,
+      payload: { text: 'AI is safe and good.', provider: 'mock', strict: true },
+    });
+    const body = JSON.parse(res.body);
+    // In strict mode, partial articles also fail
+    const hasPartial = body.gate.articles.some((a: { pass: boolean; status: string }) => !a.pass);
+    if (hasPartial) {
+      expect(body.gate.pass).toBe(false);
+    }
+  });
+
+  it('CG17: GET /scan/:id/compliance accepts threshold query param', async () => {
+    const stored = getScanStore().record('test-key', 'Text.', {
+      input: 'Text.',
+      provider: 'mock',
+      claims: [{ id: 'c1', text: 'Text.', type: 'fact', importance: 3 }],
+      verifications: { c1: { claimId: 'c1', status: 'supported', explanation: 'OK.', sources: [] } },
+      overallRisk: 'low',
+      complianceReport: {
+        generatedAt: new Date().toISOString(),
+        overallRiskLevel: 'low',
+        euRiskSummary: { unacceptable: 0, high: 0, limited: 0, minimal: 1, totalClaims: 1, highestTier: 'minimal' },
+        claimMappings: [],
+        triggeredArticles: [],
+        mitigations: [],
+        confidenceDistribution: { high: 1, medium: 0, low: 0 },
+      },
+      ruleFindings: [],
+    });
+
+    const res = await server.inject({
+      method: 'GET',
+      url: `/scan/${stored.id}/compliance?threshold=80`,
+      headers: { 'x-api-key': 'test-secret' },
+    });
+    const body = JSON.parse(res.body);
+    expect(body.gate.threshold).toBe(80);
+  });
+
+  it('CG18: GET /scan/:id/compliance accepts strict query param', async () => {
+    const stored = getScanStore().record('test-key', 'Text.', {
+      input: 'Text.',
+      provider: 'mock',
+      claims: [{ id: 'c1', text: 'Text.', type: 'fact', importance: 3 }],
+      verifications: { c1: { claimId: 'c1', status: 'supported', explanation: 'OK.', sources: [] } },
+      overallRisk: 'low',
+      complianceReport: {
+        generatedAt: new Date().toISOString(),
+        overallRiskLevel: 'low',
+        euRiskSummary: { unacceptable: 0, high: 0, limited: 0, minimal: 1, totalClaims: 1, highestTier: 'minimal' },
+        claimMappings: [],
+        triggeredArticles: [],
+        mitigations: [],
+        confidenceDistribution: { high: 1, medium: 0, low: 0 },
+      },
+      ruleFindings: [],
+    });
+
+    const res = await server.inject({
+      method: 'GET',
+      url: `/scan/${stored.id}/compliance?strict=true`,
+      headers: { 'x-api-key': 'test-secret' },
+    });
+    const body = JSON.parse(res.body);
+    expect(body.gate).toBeDefined();
+  });
+});

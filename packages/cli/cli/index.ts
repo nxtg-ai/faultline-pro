@@ -136,7 +136,7 @@ For CI/testing without an API key, use --provider mock (returns synthetic result
 }
 
 // Boolean flags that take no value argument
-const BOOLEAN_FLAGS = new Set(['sarif', 'all', 'demo', 'confirm', 'ci']);
+const BOOLEAN_FLAGS = new Set(['sarif', 'all', 'demo', 'confirm', 'ci', 'strict']);
 
 function parseArgs(args: string[]): { command: string; flags: Record<string, string> } {
   const command = args[0] || '';
@@ -1115,7 +1115,9 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
 
       // CI gate mode: evaluate and exit with pass/fail
       if (flags['ci'] === 'true') {
-        const gate = evaluateComplianceGate(crReport);
+        const threshold = flags['threshold'] ? parseInt(flags['threshold'], 10) : 0;
+        const strict = flags['strict'] === 'true';
+        const gate = evaluateComplianceGate(crReport, { threshold, strict });
         const ciOutput = renderCiGateOutput(gate, crReport);
         // If --output specified, also write the full JSON report alongside
         if (flags['output']) {
