@@ -35,6 +35,10 @@ dist-ssr
 reports/
 coverage/
 
+# Python
+__pycache__/
+*.pyc
+
 # Environment files (never commit secrets)
 **/.env
 **/.env.local
