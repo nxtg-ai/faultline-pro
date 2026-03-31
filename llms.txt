@@ -133,8 +133,8 @@ docs/
 
 ## Project Status
 
-- **191 initiatives SHIPPED** (N-01 through N-191)
-- **3,851 tests** (CLI + API + Python SDK + integration + property-based + contract + mutation)
+- **192 initiatives SHIPPED** (N-01 through N-192)
+- **3,855 tests** (CLI + API + Python SDK + integration + property-based + contract + mutation)
 - **8/8 CRUCIBLE gates PASS** (example, property, contract, integration oracles)
 - **EU AI Act Article 50 ready** — Full compliance reporting (Art. 5/9/10/13/14/50), evidence strength scoring, Annex III conformity checklist, gating, SARIF, 5 output formats
 - **GDPR compliant** — Article 15 export + Article 17 erasure implemented
