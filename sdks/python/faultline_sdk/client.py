@@ -192,6 +192,24 @@ class FaultlineClient:
             body["provider"] = provider
         return BatchScanResponse.from_dict(self._request("POST", "/scan/batch", body))
 
+    def scan_deep(self, text: str, provider: str | None = None) -> dict[str, Any]:
+        """Submit text for deep scan with multi-provider chain and evidence linking.
+
+        Uses the circuit breaker to try providers in order. Returns the scan
+        result enriched with ``evidenceLinks`` containing validated source URLs.
+
+        Args:
+            text: The AI-generated text to analyse.
+            provider: Optional preferred provider (falls back through chain on failure).
+
+        Returns:
+            Dict with standard scan fields plus ``evidenceLinks``.
+        """
+        body: dict[str, Any] = {"text": text}
+        if provider is not None:
+            body["provider"] = provider
+        return self._request("POST", "/scan/deep", body)
+
     def scan_diff(
         self,
         before: str,

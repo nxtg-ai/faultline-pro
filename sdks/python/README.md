@@ -118,6 +118,17 @@ for wh in client.list_webhooks():
 client.delete_webhook("wh-abc123")
 ```
 
+#### `scan_deep(text, provider=None) -> dict`
+
+Deep scan with multi-provider chain and evidence linking. Falls back through healthy providers via the circuit breaker.
+
+```python
+result = client.scan_deep("GPT-4 achieved 86.4% on MMLU.", provider="gemini")
+print(result["overallRisk"])
+for link in result["evidenceLinks"]:
+    print(f"  {link['url']} (score: {link['score']})")
+```
+
 ### Scan Diff
 
 #### `scan_diff(before, after, provider=None) -> ScanDiffResult`

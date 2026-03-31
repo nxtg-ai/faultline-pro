@@ -612,6 +612,48 @@ class TestComplianceN176:
         assert "projectName" not in body
 
 
+DEEP_SCAN_RESPONSE: dict = {
+    **SCAN_RESPONSE,
+    "evidenceLinks": [
+        {"claimId": "c1", "url": "https://en.wikipedia.org/wiki/Eiffel_Tower", "status": "valid", "score": 0.95},
+    ],
+}
+
+
+class TestScanDeep:
+    """Tests for scan_deep() method."""
+
+    def test_scan_deep_url_and_method(self):
+        """scan_deep() hits POST /scan/deep."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.scan_deep("test text")
+        except Exception:
+            pass
+        assert "/scan/deep" in captured[0].full_url
+        assert captured[0].method == "POST"
+
+    def test_scan_deep_sends_provider(self):
+        """scan_deep() includes provider in body."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.scan_deep("test", provider="mock")
+        except Exception:
+            pass
+        body = json.loads(captured[0].data.decode())
+        assert body["provider"] == "mock"
+
+    def test_scan_deep_result_has_evidence_links(self):
+        """scan_deep() returns dict with evidenceLinks."""
+        client = FaultlineClient(api_key="k", _http_fn=make_mock_http(200, DEEP_SCAN_RESPONSE))
+        result = client.scan_deep("text")
+        assert "evidenceLinks" in result
+        assert len(result["evidenceLinks"]) == 1
+        assert result["evidenceLinks"][0]["score"] == 0.95
+
+
 SCAN_DIFF_RESPONSE: dict = {
     "before": {"input": "old text", "overallRisk": "high"},
     "after": {"input": "new text", "overallRisk": "low"},
