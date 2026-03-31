@@ -860,6 +860,40 @@ class TestGdpr:
         assert exc_info.value.status_code == 404
 
 
+class TestClientSecurity:
+    """Security-related client tests."""
+
+    def test_rejects_file_protocol_base_url(self):
+        """FaultlineClient must reject file:// URLs to prevent SSRF."""
+        with pytest.raises(ValueError, match="http or https"):
+            FaultlineClient(api_key="k", base_url="file:///etc/passwd")
+
+    def test_rejects_ftp_protocol_base_url(self):
+        """FaultlineClient must reject ftp:// URLs."""
+        with pytest.raises(ValueError, match="http or https"):
+            FaultlineClient(api_key="k", base_url="ftp://evil.com")
+
+    def test_accepts_https_base_url(self):
+        """FaultlineClient must accept https:// URLs."""
+        client = FaultlineClient(api_key="k", base_url="https://api.faultline.io")
+        assert client._base_url == "https://api.faultline.io"
+
+    def test_strips_trailing_slash(self):
+        """FaultlineClient must strip trailing slash from base_url."""
+        client = FaultlineClient(api_key="k", base_url="http://localhost:3000/")
+        assert client._base_url == "http://localhost:3000"
+
+    def test_api_key_sent_in_header(self):
+        """Every request must include x-api-key header."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="secret-key-123", _http_fn=mock_http)
+        try:
+            client.claims_trending()
+        except Exception:
+            pass
+        assert captured[0].get_header("X-api-key") == "secret-key-123"
+
+
 class TestFaultlineError:
     def test_faultline_error_has_correct_status_code_and_body(self):
         """FaultlineError must expose status_code and body from the API response."""
