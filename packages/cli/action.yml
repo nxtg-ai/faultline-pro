@@ -46,6 +46,13 @@ inputs:
   api-key:
     description: 'AI provider API key (for Gemini: GEMINI_API_KEY, OpenAI: OPENAI_API_KEY, etc.)'
     required: false
+  compliance-gate:
+    description: 'Run EU AI Act compliance gate after scan (true/false). Fails workflow if non-compliant.'
+    required: false
+    default: 'false'
+  project-name:
+    description: 'Project name for the compliance report (used when compliance-gate is true)'
+    required: false
 
 outputs:
   risk-level:
@@ -54,6 +61,9 @@ outputs:
   findings-count:
     description: 'Number of claims flagged at or above the fail-on threshold'
     value: ${{ steps.scan.outputs.findings-count }}
+  compliance-status:
+    description: 'EU AI Act compliance gate result: pass or fail (only set when compliance-gate is true)'
+    value: ${{ steps.compliance.outputs.compliance-status }}
 
 runs:
   using: 'composite'
@@ -97,3 +107,29 @@ runs:
       with:
         sarif_file: results.sarif
       continue-on-error: true
+
+    - name: EU AI Act Compliance Gate
+      id: compliance
+      if: inputs.compliance-gate == 'true'
+      shell: bash
+      env:
+        INPUT_PROJECT_NAME: ${{ inputs.project-name }}
+        INPUT_PROVIDER: ${{ inputs.provider }}
+        GEMINI_API_KEY: ${{ inputs.api-key }}
+        OPENAI_API_KEY: ${{ inputs.api-key }}
+        ANTHROPIC_API_KEY: ${{ inputs.api-key }}
+      run: |
+        SCAN_FILE="scan-result.json"
+        faultline scan --dir . --provider "$INPUT_PROVIDER" --output-format json > "$SCAN_FILE" 2>/dev/null || true
+        CR_ARGS="compliance-report --input $SCAN_FILE --ci"
+        if [ -n "$INPUT_PROJECT_NAME" ]; then CR_ARGS="$CR_ARGS --project-name $INPUT_PROJECT_NAME"; fi
+        CR_ARGS="$CR_ARGS --output eu-compliance-report.json"
+        OUTPUT=$(faultline $CR_ARGS)
+        EXIT_CODE=$?
+        echo "$OUTPUT"
+        if [ $EXIT_CODE -eq 0 ]; then
+          echo "compliance-status=pass" >> "$GITHUB_OUTPUT"
+        else
+          echo "compliance-status=fail" >> "$GITHUB_OUTPUT"
+          exit 1
+        fi

@@ -43,6 +43,13 @@ inputs:
     description: 'Node.js version to use'
     required: false
     default: '20'
+  compliance-gate:
+    description: 'Run EU AI Act compliance gate after scan (true/false). Fails workflow if non-compliant or high/critical risk.'
+    required: false
+    default: 'false'
+  project-name:
+    description: 'Project name for the EU AI Act compliance report'
+    required: false
 
 outputs:
   findings_count:
@@ -60,6 +67,9 @@ outputs:
   report:
     description: 'Path to the generated report file'
     value: ${{ steps.scan.outputs.report_path }}
+  compliance-status:
+    description: 'EU AI Act compliance gate result: pass or fail (only set when compliance-gate is true)'
+    value: ${{ steps.compliance.outputs.compliance-status }}
 
 runs:
   using: 'composite'
@@ -257,3 +267,35 @@ runs:
       with:
         sarif_file: ${{ steps.scan.outputs.report_path }}
       continue-on-error: true
+
+    - name: EU AI Act Compliance Gate
+      id: compliance
+      if: inputs.compliance-gate == 'true'
+      shell: bash
+      env:
+        INPUT_PROJECT_NAME: ${{ inputs.project-name }}
+        REPORT_PATH: ${{ steps.scan.outputs.report_path }}
+      run: |
+        echo "::group::EU AI Act Compliance Gate"
+        CR_ARGS="compliance-report --ci"
+        if [ -f "$REPORT_PATH" ]; then
+          CR_ARGS="$CR_ARGS --input $REPORT_PATH"
+        else
+          echo "::warning::No scan result found. Running fresh scan for compliance check."
+          faultline scan --dir . --provider mock --output-format json > /tmp/fp-compliance-scan.json 2>/dev/null || true
+          CR_ARGS="$CR_ARGS --input /tmp/fp-compliance-scan.json"
+        fi
+        if [ -n "$INPUT_PROJECT_NAME" ]; then CR_ARGS="$CR_ARGS --project-name $INPUT_PROJECT_NAME"; fi
+        CR_ARGS="$CR_ARGS --output ${RUNNER_TEMP}/eu-compliance-report.json"
+        OUTPUT=$(faultline $CR_ARGS) || EXIT_CODE=$?
+        EXIT_CODE=${EXIT_CODE:-0}
+        echo "$OUTPUT"
+        echo "::endgroup::"
+        if [ "$EXIT_CODE" -eq 0 ]; then
+          echo "compliance-status=pass" >> "$GITHUB_OUTPUT"
+          echo "::notice::EU AI Act Compliance Gate: PASS"
+        else
+          echo "compliance-status=fail" >> "$GITHUB_OUTPUT"
+          echo "::error::EU AI Act Compliance Gate: FAIL — non-compliant articles or high/critical risk detected"
+          exit 1
+        fi
