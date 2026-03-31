@@ -15,9 +15,12 @@ from faultline_sdk import FaultlineClient, FaultlineError
 from faultline_sdk.models import (
     ApiKey,
     BatchScanResponse,
+    ComplianceDeadline,
     ComplianceDiffResult,
     ComplianceGateResponse,
     DashboardResponse,
+    GdprErasureResult,
+    ScanDiffResult,
     ScanResult,
     UsageResponse,
     Webhook,
@@ -607,6 +610,254 @@ class TestComplianceN176:
             pass
         body = json.loads(captured[0].data.decode())
         assert "projectName" not in body
+
+
+SCAN_DIFF_RESPONSE: dict = {
+    "before": {"input": "old text", "overallRisk": "high"},
+    "after": {"input": "new text", "overallRisk": "low"},
+    "newClaims": [{"id": "c2", "text": "New claim", "type": "factual", "importance": 5}],
+    "removedClaims": [{"id": "c1", "text": "Old claim", "type": "factual", "importance": 3}],
+    "changedVerdicts": [{"claim": {"id": "c3", "text": "Changed"}, "before": "refuted", "after": "supported"}],
+    "trustScoreDelta": -2,
+    "summary": "Risk improved",
+    "inlineDiff": [
+        {"type": "added", "claim": "New claim"},
+        {"type": "removed", "claim": "Old claim"},
+        {"type": "changed", "claim": "Changed", "before": "refuted", "after": "supported"},
+    ],
+}
+
+DEADLINES_RESPONSE: dict = {
+    "deadlines": [
+        {
+            "id": "eu-ai-act-art50",
+            "name": "EU AI Act Article 50",
+            "regulation": "EU AI Act",
+            "description": "Transparency obligations for AI systems",
+            "deadline": "2026-08-02",
+            "daysUntil": 124,
+            "severity": "critical",
+            "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32024R1689",
+        }
+    ]
+}
+
+TRENDING_RESPONSE: dict = {
+    "trending": [{"text": "AI is transformative", "frequency": 42, "lastVerdict": "supported"}],
+    "emerging": [{"text": "New claim", "frequency": 1, "firstSeen": "2026-03-30T00:00:00Z"}],
+    "verdictChanged": [{"text": "Flipped", "before": "supported", "after": "refuted"}],
+}
+
+GDPR_ERASURE_RESPONSE: dict = {
+    "tenantId": "tenant-abc",
+    "deleted": {
+        "scanEntries": 15,
+        "auditEntries": 42,
+        "notifications": 3,
+        "notificationPrefs": 1,
+        "webhooks": 2,
+        "costs": 8,
+        "schedules": 1,
+        "usageKeys": 2,
+    },
+}
+
+
+class TestScanDiff:
+    """Tests for N-178: scan_diff() method."""
+
+    def test_scan_diff_url_and_method(self):
+        """scan_diff() hits POST /scan/diff."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.scan_diff("old text", "new text")
+        except Exception:
+            pass
+        assert "/scan/diff" in captured[0].full_url
+        assert captured[0].method == "POST"
+
+    def test_scan_diff_body(self):
+        """scan_diff() sends before, after, and optional provider."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.scan_diff("old", "new", provider="mock")
+        except Exception:
+            pass
+        body = json.loads(captured[0].data.decode())
+        assert body["before"] == "old"
+        assert body["after"] == "new"
+        assert body["provider"] == "mock"
+
+    def test_scan_diff_omits_provider_when_none(self):
+        """scan_diff() omits provider when not specified."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.scan_diff("a", "b")
+        except Exception:
+            pass
+        body = json.loads(captured[0].data.decode())
+        assert "provider" not in body
+
+    def test_scan_diff_result_parsing(self):
+        """scan_diff() returns a ScanDiffResult with all fields."""
+        client = FaultlineClient(api_key="k", _http_fn=make_mock_http(200, SCAN_DIFF_RESPONSE))
+        result = client.scan_diff("old text", "new text")
+        assert isinstance(result, ScanDiffResult)
+        assert result.summary == "Risk improved"
+        assert result.trust_score_delta == -2
+        assert len(result.new_claims) == 1
+        assert len(result.removed_claims) == 1
+        assert len(result.changed_verdicts) == 1
+        assert len(result.inline_diff) == 3
+
+
+class TestComplianceDeadlines:
+    """Tests for N-178: compliance_deadlines() method."""
+
+    def test_compliance_deadlines_url(self):
+        """compliance_deadlines() hits GET /compliance/deadlines."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.compliance_deadlines()
+        except Exception:
+            pass
+        assert "/compliance/deadlines" in captured[0].full_url
+        assert captured[0].method == "GET"
+
+    def test_compliance_deadlines_with_days(self):
+        """compliance_deadlines() passes days query param."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.compliance_deadlines(days=90)
+        except Exception:
+            pass
+        assert "days=90" in captured[0].full_url
+
+    def test_compliance_deadlines_result_parsing(self):
+        """compliance_deadlines() returns list of ComplianceDeadline."""
+        client = FaultlineClient(api_key="k", _http_fn=make_mock_http(200, DEADLINES_RESPONSE))
+        result = client.compliance_deadlines()
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert isinstance(result[0], ComplianceDeadline)
+        assert result[0].regulation == "EU AI Act"
+        assert result[0].days_until == 124
+        assert result[0].severity == "critical"
+
+    def test_compliance_deadlines_without_days(self):
+        """compliance_deadlines() omits days param when not specified."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.compliance_deadlines()
+        except Exception:
+            pass
+        assert "?" not in captured[0].full_url
+
+
+class TestClaimsTrending:
+    """Tests for N-178: claims_trending() method."""
+
+    def test_claims_trending_url(self):
+        """claims_trending() hits GET /claims/trending."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.claims_trending()
+        except Exception:
+            pass
+        assert "/claims/trending" in captured[0].full_url
+        assert captured[0].method == "GET"
+
+    def test_claims_trending_result(self):
+        """claims_trending() returns dict with trending/emerging/verdictChanged."""
+        client = FaultlineClient(api_key="k", _http_fn=make_mock_http(200, TRENDING_RESPONSE))
+        result = client.claims_trending()
+        assert "trending" in result
+        assert "emerging" in result
+        assert "verdictChanged" in result
+        assert len(result["trending"]) == 1
+        assert result["trending"][0]["frequency"] == 42
+
+
+class TestGdpr:
+    """Tests for N-178: GDPR export and erasure methods."""
+
+    def test_gdpr_export_url(self):
+        """gdpr_export() hits GET /tenants/:id/export."""
+        captured: list[urllib.request.Request] = []
+
+        class FakeResp:
+            def read(self) -> bytes:
+                return b"PK\x03\x04fake-zip-data"
+
+        def mock_http(req: urllib.request.Request):
+            captured.append(req)
+            return FakeResp()
+
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        result = client.gdpr_export("tenant-abc")
+        assert "/tenants/tenant-abc/export" in captured[0].full_url
+        assert captured[0].method == "GET"
+        assert result == b"PK\x03\x04fake-zip-data"
+
+    def test_gdpr_export_returns_bytes(self):
+        """gdpr_export() returns raw bytes (ZIP content)."""
+        zip_bytes = b"PK\x03\x04\x00\x00zipdata"
+
+        class FakeResp:
+            def read(self) -> bytes:
+                return zip_bytes
+
+        client = FaultlineClient(api_key="k", _http_fn=lambda _: FakeResp())
+        result = client.gdpr_export("t1")
+        assert isinstance(result, bytes)
+        assert result == zip_bytes
+
+    def test_gdpr_export_404(self):
+        """gdpr_export() raises FaultlineError on 404."""
+        def error_http(req: urllib.request.Request):
+            raise urllib.error.HTTPError(
+                req.full_url, 404, "Not Found", {},
+                io.BytesIO(json.dumps({"error": "Tenant not found"}).encode()),
+            )
+
+        client = FaultlineClient(api_key="k", _http_fn=error_http)
+        with pytest.raises(FaultlineError) as exc_info:
+            client.gdpr_export("nonexistent")
+        assert exc_info.value.status_code == 404
+
+    def test_gdpr_erase_url_and_method(self):
+        """gdpr_erase() hits DELETE /tenants/:id/data."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.gdpr_erase("tenant-abc")
+        except Exception:
+            pass
+        assert "/tenants/tenant-abc/data" in captured[0].full_url
+        assert captured[0].method == "DELETE"
+
+    def test_gdpr_erase_result_parsing(self):
+        """gdpr_erase() returns GdprErasureResult with deletion counts."""
+        client = FaultlineClient(api_key="k", _http_fn=make_mock_http(200, GDPR_ERASURE_RESPONSE))
+        result = client.gdpr_erase("tenant-abc")
+        assert isinstance(result, GdprErasureResult)
+        assert result.tenant_id == "tenant-abc"
+        assert result.deleted["scanEntries"] == 15
+        assert result.deleted["webhooks"] == 2
+
+    def test_gdpr_erase_404(self):
+        """gdpr_erase() raises FaultlineError on 404."""
+        client = FaultlineClient(api_key="k", _http_fn=make_mock_http(404, {"error": "Tenant not found"}))
+        with pytest.raises(FaultlineError) as exc_info:
+            client.gdpr_erase("nonexistent")
+        assert exc_info.value.status_code == 404
 
 
 class TestFaultlineError:

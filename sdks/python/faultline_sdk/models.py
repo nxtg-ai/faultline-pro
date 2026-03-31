@@ -328,6 +328,102 @@ class ComplianceDiffResult:
 
 
 @dataclass
+class ScanDiffResult:
+    """Result from POST /scan/diff — compares two texts at the claim level.
+
+    Attributes:
+        before: Full scan result for the 'before' text.
+        after: Full scan result for the 'after' text.
+        new_claims: Claims present in 'after' but not 'before'.
+        removed_claims: Claims present in 'before' but not 'after'.
+        changed_verdicts: Claims whose verification verdict changed.
+        trust_score_delta: Numeric risk-score change (negative = improved).
+        summary: Human-readable summary ('Risk improved' / 'Risk worsened' / 'No change').
+        inline_diff: Per-claim inline diff entries with type (added/removed/changed/unchanged).
+    """
+
+    before: dict[str, Any]
+    after: dict[str, Any]
+    new_claims: list[dict[str, Any]]
+    removed_claims: list[dict[str, Any]]
+    changed_verdicts: list[dict[str, Any]]
+    trust_score_delta: int
+    summary: str
+    inline_diff: list[dict[str, Any]]
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ScanDiffResult:
+        return cls(
+            before=data.get("before", {}),
+            after=data.get("after", {}),
+            new_claims=data.get("newClaims", []),
+            removed_claims=data.get("removedClaims", []),
+            changed_verdicts=data.get("changedVerdicts", []),
+            trust_score_delta=data.get("trustScoreDelta", 0),
+            summary=data.get("summary", ""),
+            inline_diff=data.get("inlineDiff", []),
+        )
+
+
+@dataclass
+class ComplianceDeadline:
+    """A regulatory deadline from GET /compliance/deadlines.
+
+    Attributes:
+        id: Unique deadline identifier.
+        name: Deadline name.
+        regulation: Regulation name (e.g. 'EU AI Act', 'GDPR').
+        description: Human-readable description.
+        deadline: ISO-8601 date string.
+        days_until: Days remaining until the deadline.
+        severity: Severity level ('critical', 'high', 'medium', 'low').
+        url: Reference URL for the regulation.
+    """
+
+    id: str
+    name: str
+    regulation: str
+    description: str
+    deadline: str
+    days_until: int
+    severity: str
+    url: str
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ComplianceDeadline:
+        return cls(
+            id=data.get("id", ""),
+            name=data.get("name", ""),
+            regulation=data.get("regulation", ""),
+            description=data.get("description", ""),
+            deadline=data.get("deadline", ""),
+            days_until=data.get("daysUntil", 0),
+            severity=data.get("severity", ""),
+            url=data.get("url", ""),
+        )
+
+
+@dataclass
+class GdprErasureResult:
+    """Result from DELETE /tenants/:id/data — GDPR Article 17 erasure.
+
+    Attributes:
+        tenant_id: ID of the erased tenant.
+        deleted: Per-category deletion counts.
+    """
+
+    tenant_id: str
+    deleted: dict[str, int]
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> GdprErasureResult:
+        return cls(
+            tenant_id=data.get("tenantId", ""),
+            deleted=data.get("deleted", {}),
+        )
+
+
+@dataclass
 class Webhook:
     """A registered webhook endpoint.
 

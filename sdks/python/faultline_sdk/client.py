@@ -13,9 +13,12 @@ from .exceptions import FaultlineError
 from .models import (
     ApiKey,
     BatchScanResponse,
+    ComplianceDeadline,
     ComplianceDiffResult,
     ComplianceGateResponse,
     DashboardResponse,
+    GdprErasureResult,
+    ScanDiffResult,
     ScanResult,
     UsageResponse,
     Webhook,
@@ -188,6 +191,27 @@ class FaultlineClient:
         if provider is not None:
             body["provider"] = provider
         return BatchScanResponse.from_dict(self._request("POST", "/scan/batch", body))
+
+    def scan_diff(
+        self,
+        before: str,
+        after: str,
+        provider: str | None = None,
+    ) -> ScanDiffResult:
+        """Compare two texts by scanning both and diffing at the claim level.
+
+        Args:
+            before: The baseline text.
+            after: The comparison text.
+            provider: Optional AI provider override.
+
+        Returns:
+            A :class:`~faultline_sdk.models.ScanDiffResult` with new/removed/changed claims.
+        """
+        body: dict[str, Any] = {"before": before, "after": after}
+        if provider is not None:
+            body["provider"] = provider
+        return ScanDiffResult.from_dict(self._request("POST", "/scan/diff", body))
 
     # ── Compliance Gate ───────────────────────────────────────────────────────
 
@@ -363,6 +387,81 @@ class FaultlineClient:
         """
         path = f"/compliance/trend?projectName={urllib.request.quote(project_name)}"
         return self._request("GET", path)
+
+    def compliance_deadlines(self, days: int | None = None) -> list[ComplianceDeadline]:
+        """List upcoming regulatory compliance deadlines.
+
+        Args:
+            days: Look-ahead window in days (default: 365).
+
+        Returns:
+            List of :class:`~faultline_sdk.models.ComplianceDeadline` objects.
+        """
+        path = "/compliance/deadlines"
+        if days is not None:
+            path += f"?days={days}"
+        data = self._request("GET", path)
+        return [ComplianceDeadline.from_dict(d) for d in data.get("deadlines", [])]
+
+    # ── Claims ───────────────────────────────────────────────────────────────
+
+    def claims_trending(self) -> dict[str, Any]:
+        """Fetch trending claims, emerging patterns, and verdict changes.
+
+        Returns:
+            Dict with 'trending', 'emerging', and 'verdictChanged' lists.
+        """
+        return self._request("GET", "/claims/trending")
+
+    # ── GDPR ─────────────────────────────────────────────────────────────────
+
+    def gdpr_export(self, tenant_id: str) -> bytes:
+        """Download a GDPR Article 15 data export ZIP for a tenant.
+
+        Args:
+            tenant_id: ID of the tenant to export.
+
+        Returns:
+            Raw ZIP bytes. Write to a file with mode ``'wb'``.
+
+        Raises:
+            FaultlineError: On non-2xx responses (including 404 for unknown tenants).
+        """
+        url = f"{self._base_url}/tenants/{tenant_id}/export"
+        req = urllib.request.Request(
+            url,
+            method="GET",
+            headers={
+                "x-api-key": self._api_key,
+                "Accept": "application/zip",
+            },
+        )
+        try:
+            resp = self._http_fn(req)
+            return resp.read()
+        except urllib.error.HTTPError as exc:
+            raw = exc.read()
+            try:
+                body_dict: dict[str, Any] = json.loads(raw)
+            except Exception:
+                body_dict = {"raw": raw.decode(errors="replace")}
+            msg = body_dict.get("error", f"HTTP {exc.code}")
+            raise FaultlineError(msg, status_code=exc.code, body=body_dict) from exc
+
+    def gdpr_erase(self, tenant_id: str) -> GdprErasureResult:
+        """Delete all data held for a tenant (GDPR Article 17 — Right to Erasure).
+
+        Args:
+            tenant_id: ID of the tenant whose data should be erased.
+
+        Returns:
+            A :class:`~faultline_sdk.models.GdprErasureResult` with per-category deletion counts.
+
+        Raises:
+            FaultlineError: On non-2xx responses (including 404 for unknown tenants).
+        """
+        data = self._request("DELETE", f"/tenants/{tenant_id}/data")
+        return GdprErasureResult.from_dict(data)
 
     # ── Usage / Dashboard ─────────────────────────────────────────────────────
 
