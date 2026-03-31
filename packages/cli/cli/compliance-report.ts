@@ -430,6 +430,121 @@ export function renderCiGateOutput(gate: CiGateResult, report: EuAiActCompliance
   return lines.join('\n');
 }
 
+// ── Compliance Diff ──────────────────────────────────────────────────────────
+
+export type ArticleTrend = 'improved' | 'regressed' | 'unchanged' | 'new' | 'removed';
+
+export interface ArticleDiff {
+  article: string;
+  before: EvidenceStatus | null;
+  after: EvidenceStatus | null;
+  trend: ArticleTrend;
+}
+
+export interface ComplianceDiffResult {
+  before: { documentRef: string; overallRisk: string; generatedAt: string };
+  after: { documentRef: string; overallRisk: string; generatedAt: string };
+  riskTrend: 'improved' | 'regressed' | 'unchanged';
+  articles: ArticleDiff[];
+  improved: number;
+  regressed: number;
+  unchanged: number;
+}
+
+const STATUS_RANK: Record<string, number> = {
+  'compliant': 0,
+  'not-applicable': 1,
+  'partial': 2,
+  'gap': 3,
+  'non-compliant': 4,
+};
+
+const RISK_RANK: Record<string, number> = {
+  'low': 0,
+  'medium': 1,
+  'high': 2,
+  'critical': 3,
+};
+
+/**
+ * Compare two compliance reports and produce a structured diff.
+ */
+export function diffComplianceReports(
+  before: EuAiActComplianceReport,
+  after: EuAiActComplianceReport,
+): ComplianceDiffResult {
+  const beforeMap = new Map(before.articleEvidence.map(a => [a.article, a.status]));
+  const afterMap = new Map(after.articleEvidence.map(a => [a.article, a.status]));
+
+  const allArticles = new Set([...beforeMap.keys(), ...afterMap.keys()]);
+  const articles: ArticleDiff[] = [];
+  let improved = 0;
+  let regressed = 0;
+  let unchanged = 0;
+
+  for (const article of allArticles) {
+    const b = beforeMap.get(article) ?? null;
+    const a = afterMap.get(article) ?? null;
+
+    let trend: ArticleTrend;
+    if (b === null) {
+      trend = 'new';
+    } else if (a === null) {
+      trend = 'removed';
+    } else {
+      const bRank = STATUS_RANK[b] ?? 2;
+      const aRank = STATUS_RANK[a] ?? 2;
+      if (aRank < bRank) { trend = 'improved'; improved++; }
+      else if (aRank > bRank) { trend = 'regressed'; regressed++; }
+      else { trend = 'unchanged'; unchanged++; }
+    }
+
+    articles.push({ article, before: b, after: a, trend });
+  }
+
+  const bRisk = RISK_RANK[before.overallRisk] ?? 1;
+  const aRisk = RISK_RANK[after.overallRisk] ?? 1;
+  const riskTrend = aRisk < bRisk ? 'improved' : aRisk > bRisk ? 'regressed' : 'unchanged';
+
+  return {
+    before: { documentRef: before.documentRef, overallRisk: before.overallRisk, generatedAt: before.generatedAt },
+    after: { documentRef: after.documentRef, overallRisk: after.overallRisk, generatedAt: after.generatedAt },
+    riskTrend,
+    articles,
+    improved,
+    regressed,
+    unchanged,
+  };
+}
+
+/**
+ * Render a compliance diff as human-readable text for terminal output.
+ */
+export function renderComplianceDiffOutput(diff: ComplianceDiffResult): string {
+  const lines: string[] = [];
+  lines.push('');
+  lines.push(`EU AI Act Compliance Diff`);
+  lines.push('='.repeat(50));
+  lines.push(`Before: ${diff.before.documentRef} (risk: ${diff.before.overallRisk})`);
+  lines.push(`After:  ${diff.after.documentRef} (risk: ${diff.after.overallRisk})`);
+  lines.push(`Risk trend: ${diff.riskTrend.toUpperCase()}`);
+  lines.push('');
+
+  for (const a of diff.articles) {
+    const icon = a.trend === 'improved' ? '[+]' :
+                 a.trend === 'regressed' ? '[-]' :
+                 a.trend === 'new' ? '[N]' :
+                 a.trend === 'removed' ? '[R]' : '[ ]';
+    const bLabel = a.before?.toUpperCase() ?? 'N/A';
+    const aLabel = a.after?.toUpperCase() ?? 'N/A';
+    lines.push(`  ${icon} ${a.article}: ${bLabel} -> ${aLabel}`);
+  }
+
+  lines.push('');
+  lines.push(`Summary: ${diff.improved} improved, ${diff.regressed} regressed, ${diff.unchanged} unchanged`);
+  return lines.join('\n');
+}
+
 // ── JSON Renderer ─────────────────────────────────────────────────────────────
 
 export function renderComplianceReportJson(report: EuAiActComplianceReport): string {

@@ -199,3 +199,89 @@ describe('GET /scan/:id/compliance', () => {
     expect(res.statusCode).toBe(401);
   });
 });
+
+// ── POST /scan/compliance-diff ───────────────────────────────────────────────
+
+const makeScanData = (risk: string, status: string) => ({
+  input: 'Test.',
+  provider: 'mock',
+  claims: [{ id: 'c1', text: 'Test.', type: 'fact', importance: 3 }],
+  verifications: { c1: { claimId: 'c1', status, explanation: 'X.', sources: [] } },
+  overallRisk: risk,
+  complianceReport: {
+    generatedAt: new Date().toISOString(),
+    overallRiskLevel: risk,
+    euRiskSummary: { unacceptable: 0, high: 0, limited: 0, minimal: 1, totalClaims: 1, highestTier: 'minimal' },
+    claimMappings: [],
+    triggeredArticles: [],
+    mitigations: [],
+    confidenceDistribution: { high: 1, medium: 0, low: 0 },
+  },
+  ruleFindings: [],
+});
+
+describe('POST /scan/compliance-diff', () => {
+  it('CD1: returns diff with riskTrend', async () => {
+    const before = getScanStore().record('k', 'a', makeScanData('low', 'supported'));
+    const after = getScanStore().record('k', 'b', makeScanData('high', 'contradicted'));
+
+    const res = await server.inject({
+      method: 'POST',
+      url: '/scan/compliance-diff',
+      headers: AUTH,
+      payload: { beforeId: before.id, afterId: after.id },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.riskTrend).toBe('regressed');
+    expect(Array.isArray(body.articles)).toBe(true);
+  });
+
+  it('CD2: returns 404 for unknown beforeId', async () => {
+    const after = getScanStore().record('k', 'b', makeScanData('low', 'supported'));
+    const res = await server.inject({
+      method: 'POST',
+      url: '/scan/compliance-diff',
+      headers: AUTH,
+      payload: { beforeId: 'nonexistent', afterId: after.id },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('CD3: returns 404 for unknown afterId', async () => {
+    const before = getScanStore().record('k', 'a', makeScanData('low', 'supported'));
+    const res = await server.inject({
+      method: 'POST',
+      url: '/scan/compliance-diff',
+      headers: AUTH,
+      payload: { beforeId: before.id, afterId: 'nonexistent' },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('CD4: includes improved/regressed/unchanged counts', async () => {
+    const before = getScanStore().record('k', 'a', makeScanData('low', 'supported'));
+    const after = getScanStore().record('k', 'b', makeScanData('low', 'supported'));
+
+    const res = await server.inject({
+      method: 'POST',
+      url: '/scan/compliance-diff',
+      headers: AUTH,
+      payload: { beforeId: before.id, afterId: after.id },
+    });
+    const body = JSON.parse(res.body);
+    expect(typeof body.improved).toBe('number');
+    expect(typeof body.regressed).toBe('number');
+    expect(typeof body.unchanged).toBe('number');
+  });
+
+  it('CD5: returns 401 without API key', async () => {
+    const res = await server.inject({
+      method: 'POST',
+      url: '/scan/compliance-diff',
+      headers: { 'content-type': 'application/json' },
+      payload: { beforeId: 'a', afterId: 'b' },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+});

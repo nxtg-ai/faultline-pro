@@ -34,7 +34,7 @@ import { getDemoResult } from './demo.js';
 import { listKeys, getDormantKeys, getExpiringSoonKeys, rotateKey, getRotationStatus, getKeysPrunePreview, pruneKeys, formatKeyList, formatDormantList, formatExpiringSoonList, formatRotateResult, formatRotationStatus, formatPrunePreview, formatPruneResult } from './keys-client.js';
 import { getStaleScans, getScanUsage, getScansPrunePreview, pruneScans, formatStaleList, formatScanUsage, formatScansPrunePreview, formatScansPruneResult } from './scans-client.js';
 import { streamScan, formatStreamResult } from './stream-client.js';
-import { buildEuComplianceReport, renderComplianceReportJson, renderComplianceReportPdf, evaluateComplianceGate, renderCiGateOutput } from './compliance-report.js';
+import { buildEuComplianceReport, renderComplianceReportJson, renderComplianceReportPdf, evaluateComplianceGate, renderCiGateOutput, diffComplianceReports, renderComplianceDiffOutput } from './compliance-report.js';
 
 const VERSION = '0.4.0';
 
@@ -118,6 +118,7 @@ Usage:
   faultline compliance-report --input <scan.json> [--format json|pdf] [--output <file>] [--project-name "My AI"]  Generate EU AI Act Article 9/13/50 evidence report
   faultline compliance-report --text <text> --provider mock [--format json|pdf] [--project-name "My AI"]  Scan then report
   faultline compliance-report --input <scan.json> --ci                 CI gate: exit 1 on non-compliant articles or high/critical risk
+  faultline compliance-report --diff before.json,after.json            Compare two compliance reports — show improved/regressed articles
   faultline stream <text> [--provider mock] [--api-url URL] [--api-key KEY]  Stream scan via SSE
   faultline version                                                 Print version
 
@@ -1058,6 +1059,30 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
     }
 
     case 'compliance-report': {
+      // Diff mode: compare two compliance reports
+      if (flags['diff']) {
+        const diffParts = flags['diff'].split(',');
+        if (diffParts.length !== 2) {
+          return { exitCode: 1, output: 'Error: --diff requires two comma-separated scan JSON paths.\n\nUsage: faultline compliance-report --diff before.json,after.json' };
+        }
+        const [beforePath, afterPath] = diffParts.map(p => resolve(p.trim()));
+        for (const p of [beforePath, afterPath]) {
+          if (!existsSync(p)) return { exitCode: 1, output: `Error: file not found: ${p}` };
+        }
+        let beforeScan, afterScan;
+        try { beforeScan = JSON.parse(readFileSync(beforePath, 'utf-8')); } catch { return { exitCode: 1, output: `Error: could not parse ${beforePath}` }; }
+        try { afterScan = JSON.parse(readFileSync(afterPath, 'utf-8')); } catch { return { exitCode: 1, output: `Error: could not parse ${afterPath}` }; }
+        const beforeReport = buildEuComplianceReport(beforeScan, { projectName: flags['project-name'] });
+        const afterReport = buildEuComplianceReport(afterScan, { projectName: flags['project-name'] });
+        const diff = diffComplianceReports(beforeReport, afterReport);
+        if (flags['format'] === 'json') {
+          const jsonOut = JSON.stringify(diff, null, 2);
+          if (flags['output']) { writeFileSync(resolve(flags['output']), jsonOut, 'utf-8'); return { exitCode: 0, output: `Compliance diff written to ${flags['output']}` }; }
+          return { exitCode: 0, output: jsonOut };
+        }
+        return { exitCode: diff.regressed > 0 ? 1 : 0, output: renderComplianceDiffOutput(diff) };
+      }
+
       // Resolve scan result: from --input file or by running a fresh scan
       let crScanResult;
       if (flags['input']) {

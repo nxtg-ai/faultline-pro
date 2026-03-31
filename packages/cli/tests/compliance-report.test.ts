@@ -20,8 +20,11 @@ import {
   renderComplianceReportPdf,
   evaluateComplianceGate,
   renderCiGateOutput,
+  diffComplianceReports,
+  renderComplianceDiffOutput,
   type EuAiActComplianceReport,
   type CiGateResult,
+  type ComplianceDiffResult,
 } from '../cli/compliance-report.js';
 import type { ScanResult } from '../cli/scan.js';
 import type { ComplianceReport } from '../compliance/report_generator.js';
@@ -604,5 +607,166 @@ describe('renderCiGateOutput()', () => {
     const gate = evaluateComplianceGate(report);
     const output = renderCiGateOutput(gate, report);
     expect(output).toContain(`/${gate.totalArticles} passing`);
+  });
+});
+
+// ── Compliance Diff unit tests ───────────────────────────────────────────────
+
+describe('diffComplianceReports()', () => {
+  const lowRiskScan = makeScan();
+  const highRiskScan = makeScan({
+    claims: [
+      { id: 'c1', text: 'Wrong.', type: 'fact', importance: 4 },
+      { id: 'c2', text: 'Also wrong.', type: 'fact', importance: 4 },
+      { id: 'c3', text: 'Very wrong.', type: 'fact', importance: 4 },
+    ],
+    verifications: {
+      c1: { claimId: 'c1', status: 'contradicted', explanation: 'No.', sources: [] },
+      c2: { claimId: 'c2', status: 'contradicted', explanation: 'No.', sources: [] },
+      c3: { claimId: 'c3', status: 'contradicted', explanation: 'No.', sources: [] },
+    },
+    overallRisk: 'critical',
+  });
+
+  it('detects improvement when risk decreases', () => {
+    const before = buildEuComplianceReport(highRiskScan);
+    const after = buildEuComplianceReport(lowRiskScan);
+    const diff = diffComplianceReports(before, after);
+    expect(diff.riskTrend).toBe('improved');
+  });
+
+  it('detects regression when risk increases', () => {
+    const before = buildEuComplianceReport(lowRiskScan);
+    const after = buildEuComplianceReport(highRiskScan);
+    const diff = diffComplianceReports(before, after);
+    expect(diff.riskTrend).toBe('regressed');
+  });
+
+  it('shows unchanged when same risk', () => {
+    const before = buildEuComplianceReport(lowRiskScan);
+    const after = buildEuComplianceReport(lowRiskScan);
+    const diff = diffComplianceReports(before, after);
+    expect(diff.riskTrend).toBe('unchanged');
+  });
+
+  it('returns article-level diffs', () => {
+    const before = buildEuComplianceReport(highRiskScan);
+    const after = buildEuComplianceReport(lowRiskScan);
+    const diff = diffComplianceReports(before, after);
+    expect(diff.articles.length).toBeGreaterThan(0);
+    for (const a of diff.articles) {
+      expect(typeof a.article).toBe('string');
+      expect(['improved', 'regressed', 'unchanged', 'new', 'removed']).toContain(a.trend);
+    }
+  });
+
+  it('counts improved/regressed/unchanged correctly', () => {
+    const before = buildEuComplianceReport(highRiskScan);
+    const after = buildEuComplianceReport(lowRiskScan);
+    const diff = diffComplianceReports(before, after);
+    expect(diff.improved + diff.regressed + diff.unchanged).toBeGreaterThan(0);
+    expect(diff.improved).toBeGreaterThanOrEqual(0);
+  });
+
+  it('includes before/after metadata', () => {
+    const before = buildEuComplianceReport(lowRiskScan);
+    const after = buildEuComplianceReport(highRiskScan);
+    const diff = diffComplianceReports(before, after);
+    expect(diff.before.documentRef).toBeTruthy();
+    expect(diff.after.documentRef).toBeTruthy();
+    expect(diff.before.overallRisk).toBe('low');
+    expect(diff.after.overallRisk).toBe('critical');
+  });
+});
+
+describe('renderComplianceDiffOutput()', () => {
+  it('includes risk trend', () => {
+    const before = buildEuComplianceReport(makeScan());
+    const after = buildEuComplianceReport(makeScan({ overallRisk: 'high' }));
+    const diff = diffComplianceReports(before, after);
+    const output = renderComplianceDiffOutput(diff);
+    expect(output).toContain('REGRESSED');
+  });
+
+  it('shows article transitions', () => {
+    const before = buildEuComplianceReport(makeScan());
+    const after = buildEuComplianceReport(makeScan());
+    const diff = diffComplianceReports(before, after);
+    const output = renderComplianceDiffOutput(diff);
+    expect(output).toContain('Article');
+    expect(output).toContain('->');
+  });
+
+  it('shows summary counts', () => {
+    const before = buildEuComplianceReport(makeScan());
+    const after = buildEuComplianceReport(makeScan());
+    const diff = diffComplianceReports(before, after);
+    const output = renderComplianceDiffOutput(diff);
+    expect(output).toContain('improved');
+    expect(output).toContain('regressed');
+    expect(output).toContain('unchanged');
+  });
+});
+
+describe('CLI: compliance-report --diff', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'faultline-diff-test-'));
+  });
+
+  it('compares two scan files and shows diff', async () => {
+    const beforeFile = join(tmpDir, 'before.json');
+    const afterFile = join(tmpDir, 'after.json');
+    writeFileSync(beforeFile, JSON.stringify(makeScan()));
+    writeFileSync(afterFile, JSON.stringify(makeScan({ overallRisk: 'high' })));
+
+    const { exitCode, output } = await main([
+      'compliance-report', '--diff', `${beforeFile},${afterFile}`,
+    ]);
+    expect(output).toContain('Compliance Diff');
+    expect(output).toContain('->');
+    // Regressed = exit 1
+    expect(exitCode).toBe(1);
+  });
+
+  it('exits 0 when no regressions', async () => {
+    const beforeFile = join(tmpDir, 'before.json');
+    const afterFile = join(tmpDir, 'after.json');
+    writeFileSync(beforeFile, JSON.stringify(makeScan()));
+    writeFileSync(afterFile, JSON.stringify(makeScan()));
+
+    const { exitCode } = await main([
+      'compliance-report', '--diff', `${beforeFile},${afterFile}`,
+    ]);
+    expect(exitCode).toBe(0);
+  });
+
+  it('--diff with --format json outputs JSON', async () => {
+    const beforeFile = join(tmpDir, 'before.json');
+    const afterFile = join(tmpDir, 'after.json');
+    writeFileSync(beforeFile, JSON.stringify(makeScan()));
+    writeFileSync(afterFile, JSON.stringify(makeScan()));
+
+    const { exitCode, output } = await main([
+      'compliance-report', '--diff', `${beforeFile},${afterFile}`, '--format', 'json',
+    ]);
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(output) as ComplianceDiffResult;
+    expect(parsed.riskTrend).toBe('unchanged');
+    expect(Array.isArray(parsed.articles)).toBe(true);
+  });
+
+  it('returns error for invalid --diff format', async () => {
+    const { exitCode, output } = await main([
+      'compliance-report', '--diff', 'only-one-file.json',
+    ]);
+    expect(exitCode).toBe(1);
+    expect(output).toContain('two');
+  });
+
+  it('--diff appears in help output', async () => {
+    const { output } = await main(['help']);
+    expect(output).toContain('--diff');
   });
 });

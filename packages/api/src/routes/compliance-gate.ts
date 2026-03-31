@@ -6,6 +6,7 @@ import { getScanStore } from '../store/scans.js';
 import {
   buildEuComplianceReport,
   evaluateComplianceGate,
+  diffComplianceReports,
   type EuAiActComplianceReport,
   type CiGateResult,
 } from '@nxtg/faultline/cli/compliance-report.js';
@@ -96,6 +97,43 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
       const gate = evaluateComplianceGate(report);
 
       return reply.status(gate.pass ? 200 : 422).send({ gate, report, scanId: stored.id });
+    },
+  );
+
+  // POST /scan/compliance-diff — compare compliance of two scan IDs
+  fastify.post<{ Body: { beforeId: string; afterId: string; projectName?: string } }>(
+    '/scan/compliance-diff',
+    {
+      preHandler: [requireApiKey],
+      schema: {
+        tags: ['Compliance'],
+        summary: 'Compare EU AI Act compliance between two scans',
+        body: {
+          type: 'object',
+          required: ['beforeId', 'afterId'],
+          properties: {
+            beforeId: { type: 'string' },
+            afterId: { type: 'string' },
+            projectName: { type: 'string', maxLength: 200 },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { beforeId, afterId, projectName } = request.body;
+      const beforeScan = getScanStore().getById(beforeId);
+      if (!beforeScan) return reply.status(404).send({ error: `Scan not found: ${beforeId}` });
+      const afterScan = getScanStore().getById(afterId);
+      if (!afterScan) return reply.status(404).send({ error: `Scan not found: ${afterId}` });
+
+      const beforeResult = beforeScan.result as unknown as Parameters<typeof buildEuComplianceReport>[0];
+      const afterResult = afterScan.result as unknown as Parameters<typeof buildEuComplianceReport>[0];
+      const beforeReport = buildEuComplianceReport(beforeResult, { projectName });
+      const afterReport = buildEuComplianceReport(afterResult, { projectName });
+      const diff = diffComplianceReports(beforeReport, afterReport);
+
+      return reply.send(diff);
     },
   );
 }
