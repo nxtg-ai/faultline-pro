@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { getAnalyticsStore } from '../store/analytics.js';
 import { getKeyStore } from '../store/keys.js';
 import { getAuditLogger } from '../store/audit.js';
+import { getNpmMetricsStore } from '../store/npm-metrics.js';
 
 export async function metricsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get('/metrics', { schema: { tags: ['Monitoring'], summary: 'Prometheus-format metrics: scan counts, active keys, risk distribution' } }, async (_request, reply) => {
@@ -28,7 +29,14 @@ export async function metricsRoutes(fastify: FastifyInstance): Promise<void> {
       `faultline_risk_distribution{level="medium"} ${riskDistribution.medium}`,
       `faultline_risk_distribution{level="high"} ${riskDistribution.high}`,
       `faultline_risk_distribution{level="critical"} ${riskDistribution.critical}`,
+      '# HELP faultline_npm_downloads_total Total npm downloads per package',
+      '# TYPE faultline_npm_downloads_total gauge',
     ];
+
+    const npmOverview = getNpmMetricsStore().getOverview();
+    for (const pkg of npmOverview.packages) {
+      lines.push(`faultline_npm_downloads_total{package="${pkg.package}"} ${pkg.totalDownloads}`);
+    }
 
     reply.header('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
     return lines.join('\n') + '\n';

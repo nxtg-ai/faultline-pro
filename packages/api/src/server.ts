@@ -61,6 +61,7 @@ import { missionControlRoutes } from './routes/mission-control.js';
 import { auditLogRoutes } from './routes/audit-log.js';
 import { complianceGateRoutes } from './routes/compliance-gate.js';
 import { streamRoutes } from './routes/stream.js';
+import { npmMetricsRoutes } from './routes/npm-metrics.js';
 import { getNotificationStore } from './store/notifications.js';
 import { getKeyExpiryNotifier } from './store/key-expiry-notifier.js';
 import { getKeyRotationNotifier } from './store/key-rotation-notifier.js';
@@ -68,6 +69,7 @@ import { getKeyStore } from './store/keys.js';
 import { getScanQueue, resetScanQueue } from './store/scan-queue.js';
 import { getScheduleRunner, resetScheduleRunner } from './store/schedules.js';
 import { getJobScheduler, resetJobScheduler } from './store/jobs.js';
+import { getNpmMetricsStore, resetNpmMetricsStore } from './store/npm-metrics.js';
 import { getAuditLogger, hashInput } from './store/audit.js';
 import { getUsageMeter } from './store/usage.js';
 
@@ -173,6 +175,7 @@ export function buildServer() {
   fastify.register(missionControlRoutes);
   fastify.register(auditLogRoutes);
   fastify.register(streamRoutes);
+  fastify.register(npmMetricsRoutes);
 
   fastify.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
     if (request.url === '/graphql' && request.method === 'POST') {
@@ -195,6 +198,8 @@ export function buildServer() {
     getJobScheduler().start();
     getScanQueue().start();
     getScheduleRunner().start();
+    // Poll npm download metrics every hour (best-effort, no-op if network unavailable)
+    getNpmMetricsStore().startPolling(3_600_000);
 
     // Weekly summary notification — fires every Sunday 09:00 UTC
     setInterval(() => {
@@ -228,6 +233,8 @@ export function buildServer() {
     resetScanQueue();
     getScheduleRunner().stop();
     resetScheduleRunner();
+    getNpmMetricsStore().stopPolling();
+    resetNpmMetricsStore();
   });
 
   fastify.addHook('onRequest', async (request: FastifyRequest) => {
