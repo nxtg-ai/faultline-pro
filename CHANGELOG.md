@@ -24,6 +24,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - N-174: GitHub Action compliance SARIF upload — `compliance-sarif`, `compliance-threshold`, `compliance-strict` inputs; auto-uploads compliance findings to GitHub Code Scanning Security tab
 - N-175: Compliance report HTML renderer — `renderComplianceReportHtml()` standalone viewable report; `--format html` CLI flag
 - N-176: Python SDK compliance diff — `compliance_diff()` with `ComplianceDiffResult`; `get_scan_compliance()` threshold/strict params
+- N-177: Updated `llms.txt` — AI crawler-optimized project description with full compliance surface, 5 output formats, 176 SHIPPED, 3,730 tests
+- N-178: Python SDK expanded API coverage — `scan_diff()`, `compliance_deadlines()`, `claims_trending()`, `gdpr_export()`, `gdpr_erase()` with `ScanDiffResult`, `ComplianceDeadline`, `GdprErasureResult` models; 61 Python tests
 
 ---
 
