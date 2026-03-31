@@ -18,6 +18,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - N-168: Compliance badge SVG — `renderComplianceBadgeSvg()` generates shields.io-style badge with score + PASS/FAIL; `GET /scan/:id/compliance/badge` returns SVG for README embedding
 - N-169: Compliance history tracking — `ComplianceHistoryStore` records every gate evaluation; `GET /compliance/history` (time-series), `GET /compliance/trend` (score direction per project)
 - N-170: Compliance config file — `.faultline-compliance.json` with projectName, threshold, strict, requiredArticles; auto-loaded in `--ci` mode; `--config` flag for explicit path
+- N-171: Python SDK compliance enhancements — `compliance_badge()`, `compliance_history()`, `compliance_trend()` methods; `threshold`/`strict` params on `compliance_gate()`
+- N-172: Compliance report Markdown renderer — `renderComplianceReportMarkdown()` GFM output for PR comments; `--format markdown` CLI flag with `--output` file support
 
 ---
 
