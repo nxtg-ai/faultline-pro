@@ -35,6 +35,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - N-185: npm download metrics pipeline — `NpmMetricsStore` (time-series daily download counts from npmjs.org API), 4 REST endpoints (`GET /npm/downloads`, `/npm/downloads/:pkg`, `/npm/trend/:pkg`, `POST /npm/poll`), Prometheus `faultline_npm_downloads_total` gauge, hourly auto-polling; 19 tests
 - N-186: Article 10 (Data and Data Governance) evidence mapping — critical gap: the only core EU AI Act article without dedicated evidence was now mapped: bias→Art.10(2), PII→Art.10(5), contradicted→Art.10(3), high-importance unverified→Art.10(3); 5 remediation rules; Articles 5/9/10/13/14/50 all mapped; 10 tests
 - N-187: Per-article evidence strength scoring — `evidenceCount`, `sourceCount`, `strengthScore` (0.0–1.0) on every `EuArticleEvidence` entry; evidence-weighted compliance score replaces flat average; 6 tests
+- N-188: TypeScript SDK npm download metrics — `getNpmDownloads()`, `getNpmPackageDownloads()`, `getNpmTrend()`, `triggerNpmPoll()`; 5 new types
+- N-189: Python SDK npm download metrics — `npm_downloads()`, `npm_package_downloads()`, `npm_trend()`, `npm_poll()`; URL-encodes scoped package names; 9 tests
 
 ---
 
