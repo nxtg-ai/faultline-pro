@@ -38,6 +38,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - N-188: TypeScript SDK npm download metrics — `getNpmDownloads()`, `getNpmPackageDownloads()`, `getNpmTrend()`, `triggerNpmPoll()`; 5 new types
 - N-189: Python SDK npm download metrics — `npm_downloads()`, `npm_package_downloads()`, `npm_trend()`, `npm_poll()`; URL-encodes scoped package names; 9 tests
 - N-190: Annex III conformity assessment checklist — `AnnexIIIChecklist` with 7 conformity items (Art. 9–15) auto-derived from article evidence; applicable for high/critical risk tiers; Art. 15 accuracy proxy via 30% contradiction threshold; `passRate` percentage; included in JSON compliance output; 8 tests
+- N-191: Annex III in all compliance renderers — CI gate output shows checklist with [PASS]/[FAIL]/[PART] per item + pass rate; Markdown GFM table for PR comments; SARIF conformity gap rules/results for Code Scanning; HTML styled table with badges; 9 tests
 
 ---
 
