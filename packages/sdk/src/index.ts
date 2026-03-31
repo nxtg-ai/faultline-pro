@@ -305,6 +305,32 @@ export interface GdprErasureResult {
   deleted: Record<string, number>;
 }
 
+// ── npm Metrics types ───────────────────────────────────────────────────────
+
+export interface DailyDownload {
+  day: string;
+  downloads: number;
+}
+
+export interface PackageDownloads {
+  package: string;
+  downloads: DailyDownload[];
+  totalDownloads: number;
+  lastFetched: string;
+}
+
+export interface NpmOverview {
+  packages: PackageDownloads[];
+  grandTotal: number;
+  period: { start: string; end: string };
+  fetchedAt: string;
+}
+
+export interface NpmWeeklyTrend {
+  week: string;
+  downloads: number;
+}
+
 // ── Usage / Dashboard types ───────────────────────────────────────────────────
 
 /**
@@ -939,5 +965,52 @@ export class FaultlineClient {
       }
       throw new FaultlineError(response.status, errorBody);
     }
+  }
+
+  // ── npm Download Metrics ─────────────────────────────────────────────────
+
+  /**
+   * Get npm download overview across all tracked packages.
+   *
+   * Returns total downloads, per-package breakdowns, and time period.
+   */
+  async getNpmDownloads(): Promise<NpmOverview> {
+    return this.request<NpmOverview>('GET', '/npm/downloads');
+  }
+
+  /**
+   * Get daily download counts for a specific npm package.
+   *
+   * @param pkg - Scoped or unscoped package name (e.g. '@nxtg/faultline').
+   */
+  async getNpmPackageDownloads(pkg: string): Promise<PackageDownloads> {
+    return this.request<PackageDownloads>(
+      'GET',
+      `/npm/downloads/${encodeURIComponent(pkg)}`,
+    );
+  }
+
+  /**
+   * Get weekly download trend for a specific npm package.
+   *
+   * @param pkg - Package name.
+   * @param weeks - Number of weeks to include (default 12).
+   */
+  async getNpmTrend(
+    pkg: string,
+    weeks?: number,
+  ): Promise<{ package: string; weeks: number; trend: NpmWeeklyTrend[] }> {
+    const params = weeks !== undefined ? `?weeks=${weeks}` : '';
+    return this.request<{ package: string; weeks: number; trend: NpmWeeklyTrend[] }>(
+      'GET',
+      `/npm/trend/${encodeURIComponent(pkg)}${params}`,
+    );
+  }
+
+  /**
+   * Trigger an immediate npm download poll (admin only).
+   */
+  async triggerNpmPoll(): Promise<{ status: string; fetchedAt: string | null }> {
+    return this.request<{ status: string; fetchedAt: string | null }>('POST', '/npm/poll');
   }
 }
