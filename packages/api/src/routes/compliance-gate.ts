@@ -5,6 +5,7 @@ import { esc } from '../lib/html.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { getScanStore } from '../store/scans.js';
 import { getComplianceHistoryStore } from '../store/compliance-history.js';
+import { fireWebhookEvent } from '../store/webhooks.js';
 import {
   buildEuComplianceReport,
   evaluateComplianceGate,
@@ -227,6 +228,21 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
         totalArticles: gate.totalArticles,
         threshold: gate.threshold,
       });
+
+      // Fire webhook alert on compliance gate failure
+      if (!gate.pass) {
+        const failedArticles = gate.articles
+          .filter(a => a.status !== 'compliant' && a.status !== 'not-applicable')
+          .map(a => a.article);
+        fireWebhookEvent('compliance.gate_failed', {
+          scanId: stored.id,
+          projectName: report.projectName,
+          complianceScore: report.complianceScore,
+          overallRisk: report.overallRisk,
+          nonCompliantCount: gate.nonCompliantCount,
+          failedArticles,
+        });
+      }
 
       const response: ComplianceGateResponse = { gate, report, scanId: stored.id };
       return reply.status(gate.pass ? 200 : 422).send(response);

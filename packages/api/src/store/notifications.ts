@@ -35,7 +35,8 @@ export type NotificationEventType =
   | 'subscription.changed'
   | 'rate_limit.warning'
   | 'key.expiring_soon'
-  | 'key.rotation_due';
+  | 'key.rotation_due'
+  | 'compliance.gate_failed';
 
 export const ALL_EVENT_TYPES: NotificationEventType[] = [
   'scan.completed',
@@ -47,6 +48,7 @@ export const ALL_EVENT_TYPES: NotificationEventType[] = [
   'rate_limit.warning',
   'key.expiring_soon',
   'key.rotation_due',
+  'compliance.gate_failed',
 ];
 
 /** Human-readable metadata for each event type. Authoritative single source of truth. */
@@ -60,6 +62,7 @@ export const EVENT_CATALOGUE: Record<NotificationEventType, { description: strin
   'rate_limit.warning':   { description: 'Fired when an API key reaches 80% of its per-minute rate limit.',                       example: { used: 8, limit: 10, pct: 80 } },
   'key.expiring_soon':    { description: "Fired when a key's expiresAt is within 7 days (threshold=7d) or 1 day (threshold=1d).", example: { keyId: 'abc', keyName: 'My Key', hoursRemaining: 24, threshold: '1d' } },
   'key.rotation_due':     { description: "Fired when a key has not been rotated in 90 days (threshold=90d) or 180 days (threshold=180d). Uses lastRotatedAt if available, otherwise createdAt.", example: { keyId: 'abc', keyName: 'My Key', daysSinceRotation: 95, threshold: '90d' } },
+  'compliance.gate_failed': { description: 'Fired when a compliance gate evaluation fails (non-compliant articles or high risk).', example: { scanId: 'scan-1', projectName: 'my-project', complianceScore: 45, overallRisk: 'High', nonCompliantCount: 3, failedArticles: ['Article 9', 'Article 13'] } },
 };
 
 export interface NotificationPrefs {
