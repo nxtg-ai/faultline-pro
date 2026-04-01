@@ -34,7 +34,7 @@ export type FindingSeverity = 'critical' | 'high' | 'medium' | 'low' | 'info';
 export type ConfidenceQualitative = 'high' | 'medium' | 'low';
 
 /** Webhook event types. */
-export type WebhookEvent = 'scan.complete' | 'scan.failed';
+export type WebhookEvent = 'scan.complete' | 'scan.failed' | 'compliance.gate_failed';
 
 // ── Domain objects ────────────────────────────────────────────────────────────
 
@@ -166,6 +166,10 @@ export interface ScanResult {
   complianceReport: ComplianceReport;
   /** Rule engine findings (PII, bias, toxicity, security patterns). */
   ruleFindings: Finding[];
+  /** EU AI Act compliance score (0–100). Present on all scan responses. */
+  complianceScore?: number;
+  /** Whether the scan passes the EU AI Act compliance gate. */
+  compliancePass?: boolean;
 }
 
 // ── API key types ─────────────────────────────────────────────────────────────
@@ -273,6 +277,27 @@ export interface ComplianceDiffResult {
   articles: Array<Record<string, unknown>>;
   summary: Record<string, number>;
   riskTrend: string;
+}
+
+/** A compliance history entry from GET /compliance/export. */
+export interface ComplianceHistoryEntry {
+  id: string;
+  projectName: string;
+  scanId: string;
+  complianceScore: number;
+  pass: boolean;
+  overallRisk: string;
+  nonCompliantCount: number;
+  totalArticles: number;
+  threshold: number;
+  recordedAt: string;
+}
+
+/** Response from GET /compliance/export (JSON format). */
+export interface ComplianceExportResponse {
+  entries: ComplianceHistoryEntry[];
+  count: number;
+  exportedAt: string;
 }
 
 /** A regulatory deadline from GET /compliance/deadlines. */
@@ -847,6 +872,22 @@ export class FaultlineClient {
   async complianceDeadlines(days?: number): Promise<{ deadlines: ComplianceDeadline[] }> {
     const path = days !== undefined ? `/compliance/deadlines?days=${days}` : '/compliance/deadlines';
     return this.request<{ deadlines: ComplianceDeadline[] }>('GET', path);
+  }
+
+  /**
+   * Export compliance history as JSON for audit trail (EU AI Act conformity).
+   *
+   * @param options - Optional filters: projectName, since (ISO date string).
+   */
+  async complianceExport(options?: {
+    projectName?: string;
+    since?: string;
+  }): Promise<ComplianceExportResponse> {
+    const params = new URLSearchParams();
+    if (options?.projectName) params.set('projectName', options.projectName);
+    if (options?.since) params.set('since', options.since);
+    const qs = params.toString();
+    return this.request<ComplianceExportResponse>('GET', `/compliance/export${qs ? `?${qs}` : ''}`);
   }
 
   // ── Claims ───────────────────────────────────────────────────────────────

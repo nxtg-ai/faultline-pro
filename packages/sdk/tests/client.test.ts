@@ -4,6 +4,7 @@ import {
   FaultlineError,
   type ApiKey,
   type BatchScanResponse,
+  type ComplianceExportResponse,
   type DashboardResponse,
   type ScanResult,
   type UsageResponse,
@@ -404,5 +405,62 @@ describe('getDashboard()', () => {
     expect(result.riskDistribution.critical).toBe(2);
     expect(result.keyUsage[0]?.keyId).toBe('key-uuid-1');
     expect(result.keyUsage[0]?.today).toBe(8);
+  });
+});
+
+// ── Compliance Export (N-201) ────────────────────────────────────────────────
+
+describe('complianceExport()', () => {
+  it('SDK-CE1: fetches JSON compliance export', async () => {
+    const body: ComplianceExportResponse = {
+      entries: [{
+        id: 'ch-1', projectName: 'proj', scanId: 's1',
+        complianceScore: 85, pass: true, overallRisk: 'Low',
+        nonCompliantCount: 0, totalArticles: 8, threshold: 70,
+        recordedAt: '2026-03-31T12:00:00Z',
+      }],
+      count: 1,
+      exportedAt: '2026-03-31T12:01:00Z',
+    };
+    const mockFetch = vi.fn().mockResolvedValue(makeJsonResponse(body));
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await client.complianceExport();
+
+    const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://localhost:3000/compliance/export');
+    expect(init.method).toBe('GET');
+    expect(result.count).toBe(1);
+    expect(result.entries[0].complianceScore).toBe(85);
+  });
+
+  it('SDK-CE2: passes projectName filter', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(makeJsonResponse({ entries: [], count: 0, exportedAt: '' }));
+    vi.stubGlobal('fetch', mockFetch);
+
+    await client.complianceExport({ projectName: 'my-project' });
+
+    const [url] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain('projectName=my-project');
+  });
+
+  it('SDK-CE3: passes since filter', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(makeJsonResponse({ entries: [], count: 0, exportedAt: '' }));
+    vi.stubGlobal('fetch', mockFetch);
+
+    await client.complianceExport({ since: '2026-03-01' });
+
+    const [url] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain('since=2026-03-01');
+  });
+});
+
+describe('ScanResult inline compliance fields', () => {
+  it('SDK-CS1: ScanResult type accepts complianceScore and compliancePass', () => {
+    const result = makeScanResult();
+    result.complianceScore = 72;
+    result.compliancePass = true;
+    expect(result.complianceScore).toBe(72);
+    expect(result.compliancePass).toBe(true);
   });
 });
