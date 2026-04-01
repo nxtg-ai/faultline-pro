@@ -15,6 +15,7 @@ from .models import (
     BatchScanResponse,
     ComplianceDeadline,
     ComplianceDiffResult,
+    ComplianceExportResponse,
     ComplianceGateResponse,
     DashboardResponse,
     GdprErasureResult,
@@ -405,6 +406,37 @@ class FaultlineClient:
         """
         path = f"/compliance/trend?projectName={urllib.request.quote(project_name)}"
         return self._request("GET", path)
+
+    def compliance_export(
+        self,
+        project_name: str | None = None,
+        since: str | None = None,
+        fmt: str = "json",
+    ) -> ComplianceExportResponse | str:
+        """Export compliance gate history.
+
+        Args:
+            project_name: Filter by project name.
+            since: ISO 8601 datetime to filter entries after.
+            fmt: Export format — ``'json'`` (default) or ``'csv'``.
+
+        Returns:
+            A :class:`~faultline_sdk.models.ComplianceExportResponse` for JSON format,
+            or a raw CSV string for CSV format.
+        """
+        params: list[str] = []
+        if project_name is not None:
+            params.append(f"projectName={urllib.request.quote(project_name)}")
+        if since is not None:
+            params.append(f"since={urllib.request.quote(since)}")
+        if fmt == "csv":
+            params.append("format=csv")
+        path = "/compliance/export"
+        if params:
+            path += "?" + "&".join(params)
+        if fmt == "csv":
+            return self._request("GET", path, raw=True)
+        return ComplianceExportResponse.from_dict(self._request("GET", path))
 
     def compliance_deadlines(self, days: int | None = None) -> list[ComplianceDeadline]:
         """List upcoming regulatory compliance deadlines.

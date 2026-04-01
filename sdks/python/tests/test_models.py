@@ -7,7 +7,9 @@ from faultline_sdk.models import (
     Claim,
     ComplianceDeadline,
     ComplianceDiffResult,
+    ComplianceExportResponse,
     ComplianceGateResponse,
+    ComplianceHistoryEntry,
     ComplianceReport,
     GdprErasureResult,
     ScanDiffResult,
@@ -237,3 +239,84 @@ class TestComplianceGateResponseFromDict:
         assert isinstance(result, ComplianceGateResponse)
         assert result.gate.passed is False
         assert result.scan_id == "scan-123"
+
+
+class TestScanResultInlineCompliance:
+    def test_from_dict_parses_compliance_score(self):
+        """ScanResult.from_dict must parse inline complianceScore/compliancePass."""
+        data = {**SCAN_DICT, "complianceScore": 85.5, "compliancePass": True}
+        result = ScanResult.from_dict(data)
+        assert result.compliance_score == 85.5
+        assert result.compliance_pass is True
+
+    def test_from_dict_compliance_fields_default_none(self):
+        """Inline compliance fields default to None when absent."""
+        result = ScanResult.from_dict(SCAN_DICT)
+        assert result.compliance_score is None
+        assert result.compliance_pass is None
+
+
+class TestComplianceHistoryEntryFromDict:
+    def test_from_dict_returns_instance(self):
+        data = {
+            "id": "ch-1",
+            "projectName": "my-project",
+            "scanId": "scan-abc",
+            "complianceScore": 92.5,
+            "pass": True,
+            "overallRisk": "low",
+            "nonCompliantCount": 0,
+            "totalArticles": 8,
+            "threshold": 70,
+            "recordedAt": "2026-03-30T12:00:00Z",
+        }
+        entry = ComplianceHistoryEntry.from_dict(data)
+        assert isinstance(entry, ComplianceHistoryEntry)
+        assert entry.id == "ch-1"
+        assert entry.project_name == "my-project"
+        assert entry.compliance_score == 92.5
+        assert entry.passed is True
+        assert entry.total_articles == 8
+        assert entry.threshold == 70
+
+    def test_from_dict_defaults_on_empty(self):
+        entry = ComplianceHistoryEntry.from_dict({})
+        assert entry.id == ""
+        assert entry.passed is False
+        assert entry.compliance_score == 0
+        assert entry.threshold == 0
+
+
+class TestComplianceExportResponseFromDict:
+    def test_from_dict_returns_instance(self):
+        data = {
+            "entries": [
+                {
+                    "id": "ch-1",
+                    "projectName": "proj",
+                    "scanId": "s1",
+                    "complianceScore": 80,
+                    "pass": True,
+                    "overallRisk": "low",
+                    "nonCompliantCount": 0,
+                    "totalArticles": 8,
+                    "threshold": 70,
+                    "recordedAt": "2026-03-30T12:00:00Z",
+                },
+            ],
+            "count": 1,
+            "exportedAt": "2026-03-31T00:00:00Z",
+        }
+        resp = ComplianceExportResponse.from_dict(data)
+        assert isinstance(resp, ComplianceExportResponse)
+        assert resp.count == 1
+        assert len(resp.entries) == 1
+        assert isinstance(resp.entries[0], ComplianceHistoryEntry)
+        assert resp.entries[0].project_name == "proj"
+        assert resp.exported_at == "2026-03-31T00:00:00Z"
+
+    def test_from_dict_defaults_on_empty(self):
+        resp = ComplianceExportResponse.from_dict({})
+        assert resp.count == 0
+        assert resp.entries == []
+        assert resp.exported_at == ""

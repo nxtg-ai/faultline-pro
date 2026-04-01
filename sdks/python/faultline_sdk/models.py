@@ -113,6 +113,8 @@ class ScanResult:
     verifications: dict[str, VerificationResult]
     compliance_report: ComplianceReport
     rule_findings: list[dict[str, Any]] = field(default_factory=list)
+    compliance_score: float | None = None
+    compliance_pass: bool | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ScanResult:
@@ -162,6 +164,8 @@ class ScanResult:
             verifications=verifications,
             compliance_report=compliance_report,
             rule_findings=data.get("ruleFindings", []),
+            compliance_score=data.get("complianceScore"),
+            compliance_pass=data.get("compliancePass"),
         )
 
 
@@ -400,6 +404,74 @@ class ComplianceDeadline:
             days_until=data.get("daysUntil", 0),
             severity=data.get("severity", ""),
             url=data.get("url", ""),
+        )
+
+
+@dataclass
+class ComplianceHistoryEntry:
+    """A compliance history entry from GET /compliance/export.
+
+    Attributes:
+        id: Unique entry identifier.
+        project_name: Project name at evaluation time.
+        scan_id: Scan ID that was evaluated.
+        compliance_score: Compliance score (0–100).
+        passed: Whether the gate passed.
+        overall_risk: Risk level at evaluation time.
+        non_compliant_count: Number of non-compliant articles.
+        total_articles: Total articles evaluated.
+        threshold: Threshold used for the gate.
+        recorded_at: ISO-8601 timestamp of the evaluation.
+    """
+
+    id: str
+    project_name: str
+    scan_id: str
+    compliance_score: float
+    passed: bool
+    overall_risk: str
+    non_compliant_count: int
+    total_articles: int
+    threshold: float
+    recorded_at: str
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ComplianceHistoryEntry:
+        return cls(
+            id=data.get("id", ""),
+            project_name=data.get("projectName", ""),
+            scan_id=data.get("scanId", ""),
+            compliance_score=data.get("complianceScore", 0),
+            passed=data.get("pass", False),
+            overall_risk=data.get("overallRisk", ""),
+            non_compliant_count=data.get("nonCompliantCount", 0),
+            total_articles=data.get("totalArticles", 0),
+            threshold=data.get("threshold", 0),
+            recorded_at=data.get("recordedAt", ""),
+        )
+
+
+@dataclass
+class ComplianceExportResponse:
+    """Response from GET /compliance/export (JSON format).
+
+    Attributes:
+        entries: List of compliance history entries.
+        count: Number of entries in this export.
+        exported_at: ISO-8601 timestamp of the export.
+    """
+
+    entries: list[ComplianceHistoryEntry]
+    count: int
+    exported_at: str
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ComplianceExportResponse:
+        entries = [ComplianceHistoryEntry.from_dict(e) for e in data.get("entries", [])]
+        return cls(
+            entries=entries,
+            count=data.get("count", 0),
+            exported_at=data.get("exportedAt", ""),
         )
 
 

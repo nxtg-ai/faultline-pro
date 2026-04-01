@@ -17,7 +17,9 @@ from faultline_sdk.models import (
     BatchScanResponse,
     ComplianceDeadline,
     ComplianceDiffResult,
+    ComplianceExportResponse,
     ComplianceGateResponse,
+    ComplianceHistoryEntry,
     DashboardResponse,
     GdprErasureResult,
     ScanDiffResult,
@@ -1029,6 +1031,108 @@ class TestNpmMetrics:
         client = FaultlineClient(api_key="k", _http_fn=make_mock_http(200, {"status": "polled", "fetchedAt": "2026-03-30T12:00:00Z"}))
         result = client.npm_poll()
         assert result["status"] == "polled"
+
+
+COMPLIANCE_EXPORT_RESPONSE: dict = {
+    "entries": [
+        {
+            "id": "ch-1",
+            "projectName": "my-project",
+            "scanId": "scan-abc",
+            "complianceScore": 92.5,
+            "pass": True,
+            "overallRisk": "low",
+            "nonCompliantCount": 0,
+            "totalArticles": 8,
+            "threshold": 70,
+            "recordedAt": "2026-03-30T12:00:00Z",
+        },
+        {
+            "id": "ch-2",
+            "projectName": "my-project",
+            "scanId": "scan-def",
+            "complianceScore": 65.0,
+            "pass": False,
+            "overallRisk": "high",
+            "nonCompliantCount": 3,
+            "totalArticles": 8,
+            "threshold": 70,
+            "recordedAt": "2026-03-29T12:00:00Z",
+        },
+    ],
+    "count": 2,
+    "exportedAt": "2026-03-31T00:00:00Z",
+}
+
+
+class TestComplianceExport:
+    """Tests for N-202: compliance_export() method."""
+
+    def test_compliance_export_url(self):
+        """compliance_export() hits GET /compliance/export."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.compliance_export()
+        except Exception:
+            pass
+        assert "/compliance/export" in captured[0].full_url
+        assert captured[0].method == "GET"
+
+    def test_compliance_export_with_project_name(self):
+        """compliance_export() passes projectName query param."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.compliance_export(project_name="Alpha")
+        except Exception:
+            pass
+        assert "projectName=Alpha" in captured[0].full_url
+
+    def test_compliance_export_with_since(self):
+        """compliance_export() passes since query param."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        try:
+            client.compliance_export(since="2026-03-01T00:00:00Z")
+        except Exception:
+            pass
+        assert "since=" in captured[0].full_url
+
+    def test_compliance_export_json_returns_typed_response(self):
+        """compliance_export() returns ComplianceExportResponse for JSON format."""
+        client = FaultlineClient(api_key="k", _http_fn=make_mock_http(200, COMPLIANCE_EXPORT_RESPONSE))
+        result = client.compliance_export()
+        assert isinstance(result, ComplianceExportResponse)
+        assert result.count == 2
+        assert len(result.entries) == 2
+        assert isinstance(result.entries[0], ComplianceHistoryEntry)
+        assert result.entries[0].project_name == "my-project"
+        assert result.entries[0].compliance_score == 92.5
+        assert result.entries[0].passed is True
+        assert result.entries[1].passed is False
+        assert result.exported_at == "2026-03-31T00:00:00Z"
+
+    def test_compliance_export_csv_returns_string(self):
+        """compliance_export(fmt='csv') returns raw CSV string."""
+        csv_content = "id,projectName,scanId,complianceScore\nch-1,my-project,scan-abc,92.5\n"
+
+        class FakeResp:
+            def read(self) -> bytes:
+                return csv_content.encode()
+
+        client = FaultlineClient(api_key="k", _http_fn=lambda _: FakeResp())
+        result = client.compliance_export(fmt="csv")
+        assert isinstance(result, str)
+        assert "ch-1" in result
+        assert "my-project" in result
+
+    def test_compliance_export_csv_sends_format_param(self):
+        """compliance_export(fmt='csv') includes format=csv in query string."""
+        captured, mock_http = _captured_request()
+        client = FaultlineClient(api_key="k", _http_fn=mock_http)
+        client.compliance_export(fmt="csv")
+        assert "format=csv" in captured[0].full_url
 
 
 class TestFaultlineError:

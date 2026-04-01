@@ -49,6 +49,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - N-199: Compliance gate failure webhook alerts — `compliance.gate_failed` event fires on `POST /scan/compliance-gate` failure; payload includes scanId, projectName, complianceScore, failedArticles; registered in NotificationEventType, ALL_EVENT_TYPES, EVENT_CATALOGUE, WebhookEvent; 6 tests
 - N-200: Inline compliance score in `POST /scan` — every scan response now includes `complianceScore` (0–100) and `compliancePass` (boolean); works for fresh scans and cache hits; zero-friction EU AI Act readiness; 3 tests
 - N-201: TypeScript SDK compliance enhancements — `complianceExport()` method with filters; `ComplianceHistoryEntry` + `ComplianceExportResponse` types; `WebhookEvent` union updated with `compliance.gate_failed`; `ScanResult` extended with optional `complianceScore`/`compliancePass`; 4 tests
+- N-202: Python SDK compliance enhancements — `compliance_export()` method (JSON + CSV formats); `ComplianceHistoryEntry` + `ComplianceExportResponse` dataclass models with `from_dict()`; inline `compliance_score`/`compliance_pass` on `ScanResult`; 14 new tests (100 Python SDK total)
 
 ---
 
