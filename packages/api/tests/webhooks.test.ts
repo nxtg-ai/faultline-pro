@@ -197,7 +197,8 @@ describe('Webhook dispatch', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
     server = buildServer();
     await server.ready();
-    // Clear any calls from server startup (e.g. npm metrics auto-poll)
+    // Allow npm metrics auto-poll fetch to settle before clearing
+    await new Promise(r => setTimeout(r, 10));
     vi.mocked(fetch).mockClear();
   });
 
