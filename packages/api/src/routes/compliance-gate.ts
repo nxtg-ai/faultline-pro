@@ -60,6 +60,8 @@ function buildComplianceDashboardHtml(
   total: number,
   passCount: number,
   daysUntilArt50: number,
+  articleStatuses: Array<{ article: string; status: string; score: number }>,
+  recentScores: number[],
 ): string {
   const scoreColor = (s: number) => s >= 80 ? '#22c55e' : s >= 50 ? '#eab308' : '#ef4444';
   const riskColor = (r: string) => {
@@ -139,6 +141,28 @@ function buildComplianceDashboardHtml(
     </div>
   </div>
 
+  <h2 class="section-title" style="margin-top:32px">Score Trend</h2>
+  <div style="display:flex;align-items:flex-end;gap:4px;height:60px;margin-bottom:32px;background:#1e293b;border-radius:12px;padding:16px">
+    ${recentScores.length > 0 ? recentScores.map(s => {
+      const h = Math.max(4, (s / 100) * 40);
+      return `<div style="width:24px;height:${h}px;background:${scoreColor(s)};border-radius:4px" title="${s}"></div>`;
+    }).join('') : '<span style="color:#64748b">No data</span>'}
+  </div>
+
+  ${articleStatuses.length > 0 ? `
+  <h2 class="section-title">Article Compliance (Latest Scan)</h2>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:32px">
+    ${articleStatuses.map(a => {
+      const color = a.status === 'compliant' ? '#22c55e' : a.status === 'partial' ? '#eab308' : a.status === 'gap' ? '#ef4444' : '#6b7280';
+      const label = a.status === 'compliant' ? 'COMPLIANT' : a.status === 'partial' ? 'PARTIAL' : a.status === 'gap' ? 'GAP' : a.status.toUpperCase();
+      return `<div style="background:#1e293b;border-radius:8px;padding:16px;border-left:4px solid ${color}">
+        <div style="font-size:13px;color:#94a3b8;margin-bottom:4px">${esc(a.article)}</div>
+        <div style="font-size:16px;font-weight:600;color:${color}">${label}</div>
+        <div style="font-size:12px;color:#64748b;margin-top:4px">Strength: ${(a.score * 100).toFixed(0)}%</div>
+      </div>`;
+    }).join('')}
+  </div>` : ''}
+
   <h2 class="section-title">Recent Evaluations</h2>
   ${history.length > 0 ? `<table>
     <thead>
@@ -154,6 +178,16 @@ function buildComplianceDashboardHtml(
   </table>` : '<div class="empty">No compliance evaluations recorded yet. Use POST /scan/compliance-gate to evaluate.</div>'}
 </body>
 </html>`;
+}
+
+// ── CSV Helper ───────────────────────────────────────────────────────────────
+
+/** Escape a value for CSV — wrap in quotes if it contains comma, quote, or newline */
+function csvEscape(value: string): string {
+  if (/[",\n\r]/.test(value)) {
+    return '"' + value.replace(/"/g, '""') + '"';
+  }
+  return value;
 }
 
 // ── Route Registration ──────────────────────────────────────────────────────
@@ -369,6 +403,50 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
     },
   );
 
+  // GET /compliance/export — export compliance history as CSV or JSON for audit trail
+  fastify.get<{ Querystring: { format?: string; projectName?: string; since?: string } }>(
+    '/compliance/export',
+    {
+      preHandler: [requireApiKey],
+      schema: {
+        tags: ['Compliance'],
+        summary: 'Export compliance history for audit trail (CSV or JSON)',
+        querystring: {
+          type: 'object',
+          properties: {
+            format: { type: 'string', enum: ['csv', 'json'], default: 'json' },
+            projectName: { type: 'string', maxLength: 200 },
+            since: { type: 'string' },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const entries = getComplianceHistoryStore().query({
+        projectName: request.query.projectName,
+        since: request.query.since,
+        limit: 5000,  // Export up to full store capacity
+      });
+
+      if (request.query.format === 'csv') {
+        const header = 'id,projectName,scanId,complianceScore,pass,overallRisk,nonCompliantCount,totalArticles,threshold,recordedAt';
+        const rows = entries.map(e =>
+          [e.id, csvEscape(e.projectName), e.scanId, e.complianceScore, e.pass, e.overallRisk, e.nonCompliantCount, e.totalArticles, e.threshold, e.recordedAt].join(',')
+        );
+        const csv = [header, ...rows].join('\n');
+        return reply
+          .header('Content-Type', 'text/csv; charset=utf-8')
+          .header('Content-Disposition', `attachment; filename=compliance-history-${new Date().toISOString().slice(0, 10)}.csv`)
+          .send(csv);
+      }
+
+      // Default: JSON
+      return reply
+        .header('Content-Disposition', `attachment; filename=compliance-history-${new Date().toISOString().slice(0, 10)}.json`)
+        .send({ entries, count: entries.length, exportedAt: new Date().toISOString() });
+    },
+  );
+
   // GET /compliance/dashboard — HTML compliance overview
   fastify.get(
     '/compliance/dashboard',
@@ -409,7 +487,24 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
           }
         : null;
 
-      const html = buildComplianceDashboardHtml(dashboardHistory, latestEntry, total, passCount, daysUntilArt50);
+      // Fetch per-article breakdown from the latest scan (if available)
+      let articleStatuses: Array<{ article: string; status: string; score: number }> = [];
+      if (latest) {
+        const scan = getScanStore().getById(latest.scanId);
+        if (scan) {
+          const result = scan.result as unknown as Parameters<typeof buildEuComplianceReport>[0];
+          const report = buildEuComplianceReport(result, { projectName: latest.projectName });
+          articleStatuses = report.articleEvidence.map(a => ({
+            article: a.article,
+            status: a.status,
+            score: a.strengthScore ?? 0,
+          }));
+        }
+      }
+
+      const recentScores = all.slice(-10).map(e => e.complianceScore);
+
+      const html = buildComplianceDashboardHtml(dashboardHistory, latestEntry, total, passCount, daysUntilArt50, articleStatuses, recentScores);
       return reply.header('Content-Type', 'text/html; charset=utf-8').send(html);
     },
   );

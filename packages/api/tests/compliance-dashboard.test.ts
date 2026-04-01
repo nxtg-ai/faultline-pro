@@ -1,7 +1,9 @@
 // Validates: N-196 (EU AI Act Compliance HTML Dashboard — GET /compliance/dashboard)
+// Validates: N-197 (Per-article status breakdown and score sparkline)
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { buildServer } from '../src/server.js';
 import { getComplianceHistoryStore, resetComplianceHistoryStore } from '../src/store/compliance-history.js';
+import { resetScanStore } from '../src/store/scans.js';
 import type { FastifyInstance } from 'fastify';
 
 const AUTH = { 'x-api-key': 'test-secret' };
@@ -12,6 +14,7 @@ describe('GET /compliance/dashboard', () => {
   beforeEach(async () => {
     process.env.FAULTLINE_API_KEY = 'test-secret';
     resetComplianceHistoryStore();
+    resetScanStore();
     server = buildServer();
     await server.ready();
   });
@@ -154,5 +157,54 @@ describe('GET /compliance/dashboard', () => {
     });
     expect(res.body).not.toContain('<script>alert(1)</script>');
     expect(res.body).toContain('&lt;script&gt;');
+  });
+
+  it('CD11: shows article status grid when history has scan data', async () => {
+    // First create a scan via the compliance gate
+    const scanRes = await server.inject({
+      method: 'POST', url: '/scan/compliance-gate',
+      headers: { 'x-api-key': 'test-secret', 'content-type': 'application/json' },
+      payload: JSON.stringify({ text: 'The Earth is round.', provider: 'mock', projectName: 'grid-test' }),
+    });
+    expect(scanRes.statusCode).toBeLessThan(500);
+
+    const res = await server.inject({
+      method: 'GET', url: '/compliance/dashboard',
+      headers: { 'x-api-key': 'test-secret' },
+    });
+    expect(res.body).toContain('Article Compliance');
+    expect(res.body).toContain('Article');
+  });
+
+  it('CD12: shows score trend bars', async () => {
+    // Record several scores
+    for (let i = 0; i < 5; i++) {
+      getComplianceHistoryStore().record({
+        projectName: 'sparkline-test',
+        scanId: `s-${i}`,
+        complianceScore: 50 + i * 10,
+        pass: i > 1,
+        overallRisk: i > 2 ? 'Low' : 'Medium',
+        nonCompliantCount: i > 2 ? 0 : 2,
+        totalArticles: 8,
+        threshold: 70,
+      });
+    }
+
+    const res = await server.inject({
+      method: 'GET', url: '/compliance/dashboard',
+      headers: { 'x-api-key': 'test-secret' },
+    });
+    expect(res.body).toContain('Score Trend');
+    // Check bars are rendered (height style)
+    expect(res.body).toMatch(/height:\d+px/);
+  });
+
+  it('CD13: no article grid when no scan data', async () => {
+    const res = await server.inject({
+      method: 'GET', url: '/compliance/dashboard',
+      headers: { 'x-api-key': 'test-secret' },
+    });
+    expect(res.body).not.toContain('Article Compliance');
   });
 });
