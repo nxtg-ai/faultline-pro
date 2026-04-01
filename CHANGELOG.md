@@ -46,6 +46,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - N-196: EU AI Act Compliance HTML Dashboard — `GET /compliance/dashboard` with score gauge, pass rate, Article 50 enforcement countdown, recent evaluations table; XSS-safe, 30s auto-refresh; 10 tests
 - N-197: Compliance dashboard article grid + sparkline — per-article compliance status (8 articles) from latest scan with colour-coded chips and strength %; score trend bar chart (last 10 evaluations); 3 tests
 - N-198: Compliance export endpoint — `GET /compliance/export?format=csv|json` for EU AI Act audit trail; RFC 4180 CSV escaping; projectName/since filters; Content-Disposition headers; 10 tests
+- N-199: Compliance gate failure webhook alerts — `compliance.gate_failed` event fires on `POST /scan/compliance-gate` failure; payload includes scanId, projectName, complianceScore, failedArticles; registered in NotificationEventType, ALL_EVENT_TYPES, EVENT_CATALOGUE, WebhookEvent; 6 tests
+- N-200: Inline compliance score in `POST /scan` — every scan response now includes `complianceScore` (0–100) and `compliancePass` (boolean); works for fresh scans and cache hits; zero-friction EU AI Act readiness; 3 tests
 
 ---
 

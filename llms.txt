@@ -39,7 +39,7 @@ No API key required for the `mock` provider. Real verification uses:
 - **Enterprise API** — REST + GraphQL; API key management; multi-tenant; GDPR Article 15/17; audit trail; webhooks
 - **GitHub Actions** — `faultline-scan` composite action with compliance gate, SARIF upload, threshold/strict configuration
 - **Mutation-tested** — CRUCIBLE Protocol Gate 6: claim forensics 81.97%; GDPR stores 80.94%–96.81%
-- **3,908 tests** across CLI, API, Python SDK, GDPR, mutation hardening, property-based, contract, integration
+- **3,917 tests** across CLI, API, Python SDK, GDPR, mutation hardening, property-based, contract, integration
 - **npm adoption metrics** — npmjs.org download tracking, Prometheus export, weekly trend analysis
 
 ## Use Cases
@@ -73,7 +73,7 @@ faultline init                        # Setup wizard (auto-detects configured pr
 Full integration guide: `docs/INTEGRATION.md`
 
 Key endpoints:
-- `POST /scan` — scan text, returns claims + verdicts + risk scorecard
+- `POST /scan` — scan text, returns claims + verdicts + risk scorecard + inline complianceScore/compliancePass
 - `POST /scan/deep` — multi-provider chain with evidence linking
 - `POST /scan/stream` (SSE) — progressive per-claim streaming
 - `POST /scan/batch` — scan multiple texts
@@ -133,8 +133,8 @@ docs/
 
 ## Project Status
 
-- **198 initiatives SHIPPED** (N-01 through N-198)
-- **3,908 tests** (CLI + API + Python SDK + integration + property-based + contract + mutation)
+- **200 initiatives SHIPPED** (N-01 through N-200)
+- **3,917 tests** (CLI + API + Python SDK + integration + property-based + contract + mutation)
 - **8/8 CRUCIBLE gates PASS** (example, property, contract, integration oracles)
 - **EU AI Act Article 50 ready** — Full compliance reporting (Art. 5/9/10/13/14/50), evidence strength scoring, Annex III conformity checklist, gating, SARIF, 5 output formats
 - **GDPR compliant** — Article 15 export + Article 17 erasure implemented
