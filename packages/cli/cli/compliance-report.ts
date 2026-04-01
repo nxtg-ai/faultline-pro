@@ -1549,7 +1549,7 @@ export async function renderComplianceReportPdf(
     doc.font('Helvetica-Bold').fontSize(20).fillColor(DARK)
       .text('Compliance Evidence Report', { align: 'center' });
     doc.font('Helvetica').fontSize(11).fillColor(GRAY)
-      .text('Article 9 (Risk Management) · Article 13 (Transparency) · Article 50 (GPAI)', { align: 'center' });
+      .text('Articles 5/9/10/11/12/13/14/50 · Annex III Conformity Assessment', { align: 'center' });
 
     doc.moveDown(1.5);
 
@@ -1695,12 +1695,64 @@ export async function renderComplianceReportPdf(
       addPageFooter(report.documentRef);
     }
 
+    // ── ANNEX III CONFORMITY ASSESSMENT ────────────────────────────────────
+    if (report.annexIIIChecklist.applicable && report.annexIIIChecklist.items.length > 0) {
+      doc.addPage();
+      addPageHeader();
+      doc.moveDown(1.5);
+
+      sectionHeader('3. Annex III Conformity Assessment');
+
+      doc.font('Helvetica').fontSize(9.5).fillColor(GRAY)
+        .text('High-risk AI systems require a conformity assessment under Annex III of the EU AI Act (Reg. 2024/1689).', 50, doc.y, { width: pageWidth - 100 });
+      doc.moveDown(0.5);
+
+      // Pass rate badge
+      const passRate = Math.round(report.annexIIIChecklist.passRate * 100);
+      const prColor = passRate >= 80 ? GREEN : passRate >= 50 ? AMBER : RED;
+      doc.roundedRect(50, doc.y, 180, 20, 3).fill(prColor);
+      doc.font('Helvetica-Bold').fontSize(9).fillColor('#ffffff')
+        .text(`PASS RATE: ${passRate}%`, 52, doc.y - 14, { width: 176, align: 'center' });
+      doc.moveDown(1);
+
+      // Table header
+      const annexColX = { id: 50, article: 120, req: 200, status: 430 };
+      const annexHeaderY = doc.y;
+      doc.rect(50, annexHeaderY, pageWidth - 100, 18).fill('#f0f4ff');
+      doc.font('Helvetica-Bold').fontSize(8.5).fillColor(EU_BLUE);
+      doc.text('#', annexColX.id + 2, annexHeaderY + 4);
+      doc.text('ARTICLE', annexColX.article + 2, annexHeaderY + 4);
+      doc.text('REQUIREMENT', annexColX.req + 2, annexHeaderY + 4);
+      doc.text('STATUS', annexColX.status + 2, annexHeaderY + 4);
+
+      let annexRowY = annexHeaderY + 22;
+      for (const item of report.annexIIIChecklist.items) {
+        if (annexRowY > doc.page.height - 80) {
+          doc.addPage();
+          addPageHeader();
+          annexRowY = 60;
+        }
+        doc.moveTo(50, annexRowY - 1).lineTo(pageWidth - 50, annexRowY - 1).strokeColor('#f3f4f6').stroke();
+        doc.font('Helvetica').fontSize(8.5).fillColor(GRAY).text(item.id, annexColX.id + 2, annexRowY, { width: 65 });
+        doc.font('Helvetica').fontSize(8.5).fillColor(DARK).text(item.article, annexColX.article + 2, annexRowY, { width: 75 });
+        doc.font('Helvetica').fontSize(8).fillColor(DARK).text(item.requirement, annexColX.req + 2, annexRowY, { width: 225 });
+        const sColor = item.status === 'pass' ? GREEN : item.status === 'fail' ? RED : item.status === 'partial' ? AMBER : GRAY;
+        doc.font('Helvetica-Bold').fontSize(8.5).fillColor(sColor)
+          .text(item.status.toUpperCase(), annexColX.status + 2, annexRowY);
+        annexRowY += 22;
+      }
+
+      doc.moveDown(2);
+      addPageFooter(report.documentRef);
+    }
+
     // ── APPENDIX ─────────────────────────────────────────────────────────────
     doc.addPage();
     addPageHeader();
     doc.moveDown(1.5);
 
-    sectionHeader('3. Appendix — OWASP Agentic AI 2026 Cross-References');
+    const appendixNum = report.annexIIIChecklist.applicable ? '4' : '3';
+    sectionHeader(`${appendixNum}. Appendix — OWASP Agentic AI 2026 Cross-References`);
 
     const owaspRefs = [
       { id: 'A01', name: 'Prompt Injection', euArticle: 'Art. 9 – Risk Management', note: 'Adversarial prompts that cause unintended AI behaviour require risk controls.' },

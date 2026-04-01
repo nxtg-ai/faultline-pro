@@ -691,6 +691,24 @@ describe('renderComplianceReportPdf()', () => {
     const report = buildEuComplianceReport(scan);
     await expect(renderComplianceReportPdf(report)).resolves.toBeInstanceOf(Buffer);
   });
+
+  it('generates PDF with Annex III for high-risk scan', async () => {
+    const scan = makeScan({ overallRisk: 'high' });
+    const report = buildEuComplianceReport(scan);
+    expect(report.annexIIIChecklist.applicable).toBe(true);
+    const buf = await renderComplianceReportPdf(report);
+    expect(buf).toBeInstanceOf(Buffer);
+    // PDF is larger with Annex III section
+    expect(buf.length).toBeGreaterThan(5000);
+  });
+
+  it('low-risk PDF omits Annex III section but still succeeds', async () => {
+    const report = buildEuComplianceReport(makeScan());
+    expect(report.annexIIIChecklist.applicable).toBe(false);
+    const buf = await renderComplianceReportPdf(report);
+    expect(buf).toBeInstanceOf(Buffer);
+    expect(buf.slice(0, 5).toString()).toBe('%PDF-');
+  });
 });
 
 // ── CLI integration ───────────────────────────────────────────────────────────
