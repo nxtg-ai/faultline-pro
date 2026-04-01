@@ -45,6 +45,10 @@ const SCAN_RESULT_SECOND = {
 const { scan: mockScan } = vi.hoisted(() => ({ scan: vi.fn() }));
 
 vi.mock('@nxtg/faultline/cli/scan.js', () => ({ scan: mockScan }));
+vi.mock('@nxtg/faultline/cli/compliance-report.js', () => ({
+  buildEuComplianceReport: vi.fn().mockReturnValue({ complianceScore: 72 }),
+  evaluateComplianceGate: vi.fn().mockReturnValue({ pass: true }),
+}));
 
 describe('GET /claims (search)', () => {
   let server: FastifyInstance;

@@ -16,6 +16,10 @@ vi.mock('@nxtg/faultline/cli/scan.js', () => ({
     ruleFindings: [],
   }),
 }));
+vi.mock('@nxtg/faultline/cli/compliance-report.js', () => ({
+  buildEuComplianceReport: vi.fn().mockReturnValue({ complianceScore: 72 }),
+  evaluateComplianceGate: vi.fn().mockReturnValue({ pass: true }),
+}));
 
 function percentile(sorted: number[], p: number): number {
   const idx = Math.ceil((p / 100) * sorted.length) - 1;

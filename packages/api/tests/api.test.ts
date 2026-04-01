@@ -20,6 +20,12 @@ vi.mock('@nxtg/faultline/cli/scan.js', () => ({
   }),
 }));
 
+// Mock compliance-report utilities — scan handler calls these after scan() resolves
+vi.mock('@nxtg/faultline/cli/compliance-report.js', () => ({
+  buildEuComplianceReport: vi.fn().mockReturnValue({ complianceScore: 72 }),
+  evaluateComplianceGate: vi.fn().mockReturnValue({ pass: true }),
+}));
+
 describe('GET /health', () => {
   let server: FastifyInstance;
 
@@ -424,5 +430,35 @@ describe('POST /scan — additional coverage', () => {
     const body = JSON.parse(res.body);
     expect(body.complianceReport).toBeDefined();
     expect(body.complianceReport.riskTier).toBeDefined();
+  });
+
+  // CS1: POST /scan response includes complianceScore as a number 0–100
+  // Validates: N-200 (inline compliance score on scan response)
+  it('CS1: POST /scan response includes complianceScore as a number 0–100', async () => {
+    const res = await server.inject({
+      method: 'POST',
+      url: '/scan',
+      headers: { 'x-api-key': 'test-secret-key', 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'GPT-4 is 92% accurate on medical diagnoses.' }),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(typeof body.complianceScore).toBe('number');
+    expect(body.complianceScore).toBeGreaterThanOrEqual(0);
+    expect(body.complianceScore).toBeLessThanOrEqual(100);
+  });
+
+  // CS2: POST /scan response includes compliancePass as boolean
+  // Validates: N-200 (inline compliance score on scan response)
+  it('CS2: POST /scan response includes compliancePass as boolean', async () => {
+    const res = await server.inject({
+      method: 'POST',
+      url: '/scan',
+      headers: { 'x-api-key': 'test-secret-key', 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'GPT-4 is 92% accurate on medical diagnoses.' }),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(typeof body.compliancePass).toBe('boolean');
   });
 });

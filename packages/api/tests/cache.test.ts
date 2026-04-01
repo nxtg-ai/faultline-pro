@@ -13,6 +13,11 @@ import type { FastifyInstance } from 'fastify';
 const { mockScan } = vi.hoisted(() => ({ mockScan: vi.fn() }));
 vi.mock('@nxtg/faultline/cli/scan.js', () => ({ scan: mockScan }));
 vi.mock('@nxtg/faultline/cli/extract.js', () => ({ extractTextFromBuffer: vi.fn().mockResolvedValue('x') }));
+// Mock compliance-report utilities — scan handler calls these after scan() resolves
+vi.mock('@nxtg/faultline/cli/compliance-report.js', () => ({
+  buildEuComplianceReport: vi.fn().mockReturnValue({ complianceScore: 72 }),
+  evaluateComplianceGate: vi.fn().mockReturnValue({ pass: true }),
+}));
 
 const SCAN_RESULT = {
   input: 'test', provider: 'gemini',
@@ -115,6 +120,31 @@ describe('Cache — scan integration', () => {
     });
     const body = JSON.parse(res.payload);
     expect(body.overallRisk).toBe(SCAN_RESULT.overallRisk);
+  });
+
+  // CS3: Cached scan also returns complianceScore and compliancePass
+  // Validates: N-200 (inline compliance score on scan response — cache-hit path)
+  it('CS3: cached scan response includes complianceScore and compliancePass', async () => {
+    // First request — populates cache (MISS)
+    await server.inject({
+      method: 'POST',
+      url: '/scan',
+      headers: adminHeaders(),
+      payload: { text: 'hello world', provider: 'gemini' },
+    });
+    // Second request — served from cache (HIT)
+    const res = await server.inject({
+      method: 'POST',
+      url: '/scan',
+      headers: adminHeaders(),
+      payload: { text: 'hello world', provider: 'gemini' },
+    });
+    expect(res.headers['x-cache']).toBe('HIT');
+    const body = JSON.parse(res.payload);
+    expect(typeof body.complianceScore).toBe('number');
+    expect(body.complianceScore).toBeGreaterThanOrEqual(0);
+    expect(body.complianceScore).toBeLessThanOrEqual(100);
+    expect(typeof body.compliancePass).toBe('boolean');
   });
 
   it('different provider is a cache miss — mockScan called again', async () => {

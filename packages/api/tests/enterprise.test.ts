@@ -19,6 +19,10 @@ vi.mock('@nxtg/faultline/cli/scan.js', () => ({
     ruleFindings: [],
   }),
 }));
+vi.mock('@nxtg/faultline/cli/compliance-report.js', () => ({
+  buildEuComplianceReport: vi.fn().mockReturnValue({ complianceScore: 72 }),
+  evaluateComplianceGate: vi.fn().mockReturnValue({ pass: true }),
+}));
 
 // Reset cache before every test so cached results from prior tests don't interfere
 beforeEach(() => { resetCache(); });

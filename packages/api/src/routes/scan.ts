@@ -15,6 +15,7 @@ import { getCostStore } from '../store/costs.js';
 import { getScanHistory, hashText } from '../store/scan-history.js';
 import { recordScanTelemetry } from '../store/telemetry.js';
 import { notifyScanFailed } from '../store/notifications.js';
+import { buildEuComplianceReport, evaluateComplianceGate } from '@nxtg/faultline/cli/compliance-report.js';
 
 const BODY_SCHEMA = {
   type: 'object',
@@ -78,8 +79,16 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
           inputLength: text.length,
           cacheHit:    true,
         });
-        fireWebhookEvent('scan.complete', cached);
-        return reply.status(200).send(cached);
+        // Compute compliance for cached result too
+        const cachedCompReport = buildEuComplianceReport(cached as unknown as Parameters<typeof buildEuComplianceReport>[0], {});
+        const cachedCompGate = evaluateComplianceGate(cachedCompReport);
+        const cachedEnriched = {
+          ...cached,
+          complianceScore: cachedCompReport.complianceScore,
+          compliancePass: cachedCompGate.pass,
+        };
+        fireWebhookEvent('scan.complete', cachedEnriched);
+        return reply.status(200).send(cachedEnriched);
       }
       reply.header('X-Cache', 'MISS');
 
@@ -146,8 +155,16 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
             inputLength: text.length,
             cacheHit:    false,
           });
-          fireWebhookEvent('scan.complete', result);
-          return reply.status(200).send(result);
+          // Inline compliance score — EU AI Act readiness without separate API call
+          const compReport = buildEuComplianceReport(result, {});
+          const compGate = evaluateComplianceGate(compReport);
+          const enriched = {
+            ...result,
+            complianceScore: compReport.complianceScore,
+            compliancePass: compGate.pass,
+          };
+          fireWebhookEvent('scan.complete', enriched);
+          return reply.status(200).send(enriched);
         } catch (err) {
           cb.recordFailure(p);
           attempted.push(p);

@@ -13,6 +13,10 @@ import type { FastifyInstance } from 'fastify';
 
 const { mockScan } = vi.hoisted(() => ({ mockScan: vi.fn() }));
 vi.mock('@nxtg/faultline/cli/scan.js', () => ({ scan: mockScan }));
+vi.mock('@nxtg/faultline/cli/compliance-report.js', () => ({
+  buildEuComplianceReport: vi.fn().mockReturnValue({ complianceScore: 72 }),
+  evaluateComplianceGate: vi.fn().mockReturnValue({ pass: true }),
+}));
 vi.mock('@nxtg/faultline/cli/extract.js', () => ({ extractTextFromBuffer: vi.fn().mockResolvedValue('x') }));
 
 const GOOD_RESULT = {

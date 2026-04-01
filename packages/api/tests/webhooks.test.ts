@@ -37,6 +37,10 @@ vi.mock('@nxtg/faultline/cli/scan.js', () => ({
     ruleFindings: [],
   }),
 }));
+vi.mock('@nxtg/faultline/cli/compliance-report.js', () => ({
+  buildEuComplianceReport: vi.fn().mockReturnValue({ complianceScore: 72 }),
+  evaluateComplianceGate: vi.fn().mockReturnValue({ pass: true }),
+}));
 
 function resetAll() {
   process.env.FAULTLINE_API_KEY = 'admin-secret';
