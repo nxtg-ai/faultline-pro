@@ -199,7 +199,10 @@ export function buildServer() {
     getScanQueue().start();
     getScheduleRunner().start();
     // Poll npm download metrics every hour (best-effort, no-op if network unavailable)
-    getNpmMetricsStore().startPolling(3_600_000);
+    // Skip during tests to avoid fetch mock contamination
+    if (process.env.NODE_ENV !== 'test') {
+      getNpmMetricsStore().startPolling(3_600_000);
+    }
 
     // Weekly summary notification — fires every Sunday 09:00 UTC
     setInterval(() => {

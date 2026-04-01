@@ -252,8 +252,6 @@ describe('E2E smoke — full API surface', () => {
   it('S13. POST /scan fires webhook → fetch called with correct event', async () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal('fetch', mockFetch);
-    // Clear any calls from npm metrics auto-poll that fired during server.ready()
-    mockFetch.mockClear();
 
     await server.inject({
       method: 'POST', url: '/scan',
