@@ -44,6 +44,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - N-194: Annex III in PDF renderer — conformity assessment table with pass rate badge, colored status labels, dynamic section numbering; cover page updated to show all 8 mapped articles + Annex III; 2 tests
 - N-195: Security headers + GraphQL query bounds — `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `X-XSS-Protection` on all responses; `Content-Security-Policy` on API responses; GraphQL `scans` capped at 200, `audit` at 500, `scanBatch` at 20; 10 tests
 - N-196: EU AI Act Compliance HTML Dashboard — `GET /compliance/dashboard` with score gauge, pass rate, Article 50 enforcement countdown, recent evaluations table; XSS-safe, 30s auto-refresh; 10 tests
+- N-197: Compliance dashboard article grid + sparkline — per-article compliance status (8 articles) from latest scan with colour-coded chips and strength %; score trend bar chart (last 10 evaluations); 3 tests
+- N-198: Compliance export endpoint — `GET /compliance/export?format=csv|json` for EU AI Act audit trail; RFC 4180 CSV escaping; projectName/since filters; Content-Disposition headers; 10 tests
 
 ---
 
