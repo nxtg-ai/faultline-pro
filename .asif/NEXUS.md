@@ -979,6 +979,55 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-03-31 — CoS check-in — cycle 33 (MAJOR DELTA — 200 SHIPPED; 3,917 tests)
+
+### 1. What shipped since last check-in
+
+**43 initiatives shipped since cycle 32** (N-158 through N-200). This session alone shipped 7:
+
+| Initiative | Deliverable | Tests |
+|-----------|-------------|-------|
+| N-195 | Security headers (CSP, X-Frame-Options, nosniff, Referrer-Policy) + GraphQL query bounds (scans/200, audit/500, batch/20) | 10 |
+| N-196 | EU AI Act Compliance HTML Dashboard — `GET /compliance/dashboard` with score gauge, pass rate, Art. 50 countdown | 10 |
+| N-197 | Dashboard article grid (8 EU AI Act articles, colour-coded) + score trend sparkline | 3 |
+| N-198 | Compliance export — `GET /compliance/export` CSV/JSON for audit trail | 10 |
+| N-199 | Compliance webhook alerts — `compliance.gate_failed` event on gate failure | 6 |
+| N-200 | Inline compliance in `POST /scan` — every response now includes complianceScore + compliancePass | 3 |
+| fix | Root-cause fix: npm metrics auto-poll disabled in test env (NODE_ENV=test guard) | 0 |
+
+**Test count**: 3,526 → 3,917 (+391 tests). **Commits this session**: 13 (7 features, 5 docs, 1 fix).
+
+### 2. What surprised me
+
+- **npm metrics auto-poll contaminating fetch mocks was a 3-file cascade.** Each push attempt failed on a different test file because the pre-push hook runs the full suite and the timing race manifests non-deterministically. The per-file workaround (delay + mockClear) was treating symptoms. The root-cause fix (skip `startPolling()` when `NODE_ENV=test`) was a 3-line change that eliminated the entire class of failures. **Pattern**: any `onReady` hook that fires background I/O will contaminate test mocks. Guard all background I/O with `NODE_ENV !== 'test'`.
+
+- **Adding `complianceScore` to POST /scan required mocking `compliance-report.js` in 10 existing test files.** Every test that exercises POST /scan now needs the compliance module mocked, because `buildEuComplianceReport()` expects a full scan result shape. This is the first cross-cutting concern since i18n (N-31). If another inline enrichment gets added to the scan response, the mock surface will grow further. Worth watching.
+
+- **The GraphQL schema is shallow (max 2 levels) but unbounded.** The `scans` and `audit` queries had no default or max limit — a valid API key could dump the entire store. Now capped. No depth limiter was needed because the schema doesn't have recursive types.
+
+### 3. Cross-project signals
+
+- **`NODE_ENV=test` guard pattern for background I/O** — any Fastify/Express project that starts timers, pollers, or cron in `onReady` hooks should guard them. The ASIF Dashboard (Hono) and any future API projects should adopt this pattern.
+- **Inline compliance scoring** — the pattern of computing a lightweight compliance check inside the main endpoint (rather than requiring a separate API call) reduces friction for adoption. PRISM or any project with a "quality gate" concept could reuse this: compute the gate result inline and include it in the primary response.
+- **CSV export with RFC 4180 escaping** — the `csvEscape()` utility is 4 lines. Any project needing audit trail exports can copy it. It handles commas, quotes, and newlines correctly.
+
+### 4. Next priorities (if fresh directives arrive)
+
+1. **v0.5.0 publish prep** — 200 initiatives, but still on 0.4.1. Cut a release, update README badges, push to npm.
+2. **TypeScript SDK compliance methods** — the SDK has `complianceGate()` and friends, but not `complianceDashboard()` or `complianceExport()`. Should mirror the 4 new API endpoints.
+3. **Python SDK compliance export** — same gap: `compliance_export()` method needed.
+4. **Compliance report Article 15 evidence** — currently a proxy (contradiction threshold). Could derive from model accuracy/robustness metrics if we had them.
+5. **CRUCIBLE Gate 6 re-run** — mutation scores may have shifted after 43 initiatives. Stryker run on `compliance-report.ts` would establish the baseline for the compliance critical path.
+6. **Performance: compliance computation caching** — `buildEuComplianceReport()` is now called on every `POST /scan`. If it becomes a bottleneck, cache the result alongside the scan result.
+
+### 5. Blockers / Questions for CoS
+
+- **No blockers.** Push pipeline is clean, all tests pass, CI gate green.
+- **Question**: With 200 initiatives shipped and Article 50 enforcement 124 days away, is the priority now (a) depth — hardening existing compliance features, mutation testing, edge cases — or (b) breadth — new features like real-time monitoring, alerting dashboards, or SDK coverage? The overnight sprint biased toward breadth. Would appreciate a signal.
+- **Heartbeat gate**: The reflection-only commit suppression requested in cycle 31 appears to be working (this is the first reflection with actual delta since cycle 28). Closing the escalation.
+
+---
+
 > **Reflection cycle**: 2026-03-26 — CoS check-in — cycle 32, no-delta (4th consecutive; gate fix requested in cycle 31; 3,526 tests; 157 SHIPPED)
 
 No new code. No new information. Gate fix requested in cycle 31 — see escalation above. Not writing a full entry.
