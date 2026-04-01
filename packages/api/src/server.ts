@@ -98,6 +98,20 @@ export function buildServer() {
 
   fastify.register(multipart, { limits: { fileSize: MAX_FILE_SIZE }, throwFileSizeLimit: false });
 
+  // Security headers — applied to all responses
+  fastify.addHook('onSend', async (_request, reply, payload) => {
+    reply.header('X-Content-Type-Options', 'nosniff');
+    reply.header('X-Frame-Options', 'DENY');
+    reply.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+    reply.header('X-XSS-Protection', '0');
+    // CSP for API responses only — HTML dashboards need inline styles/scripts
+    const ct = reply.getHeader('content-type') as string | undefined;
+    if (!ct || (!ct.includes('text/html') && !ct.includes('image/svg'))) {
+      reply.header('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
+    }
+    return payload;
+  });
+
   fastify.register(swagger, {
     openapi: {
       info: {

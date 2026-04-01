@@ -39,7 +39,8 @@ export const resolvers = {
     },
 
     scans: (_: unknown, args: { keyId?: string; limit?: number }) => {
-      const items = getScanStore().list(args.keyId, args.limit ?? 50);
+      const limit = Math.min(args.limit ?? 50, 200);
+      const items = getScanStore().list(args.keyId, limit);
       return items.map((s) => toScanResult(s.id, s.result, s.scannedAt));
     },
 
@@ -59,7 +60,8 @@ export const resolvers = {
 
     audit: (_: unknown, args: { limit?: number }) => {
       const entries = getAuditLogger().getEntries();
-      const limited = args.limit ? entries.slice(-args.limit) : entries;
+      const max = Math.min(args.limit ?? 100, 500);
+      const limited = entries.slice(-max);
       return limited.map((e) => ({
         timestamp: e.timestamp,
         keyId: e.keyId,
@@ -83,8 +85,9 @@ export const resolvers = {
 
     scanBatch: async (_: unknown, args: { texts: string[]; provider?: string }, ctx: GqlContext) => {
       const provider = (args.provider ?? 'mock') as Provider;
+      const texts = args.texts.slice(0, 20);
       const results = await Promise.all(
-        args.texts.map(async (text) => {
+        texts.map(async (text) => {
           const result = await scan(text, provider);
           const stored = getScanStore().record(ctx.keyId, text, result as unknown as Record<string, unknown>);
           return toScanResult(stored.id, result as unknown as Record<string, unknown>, stored.scannedAt);

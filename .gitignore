@@ -28,6 +28,9 @@ dist-ssr
 
 # Generated SARIF output
 *.sarif
+
+# Generated compliance report artifacts
+eu-compliance-report-*.html
 .claude/worktrees/
 
 # Stryker mutation testing
