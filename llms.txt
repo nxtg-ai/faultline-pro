@@ -1,7 +1,7 @@
 # Faultline — AI Claim Forensics
 # https://github.com/nxtg-ai/faultline-pro
 # npm: @nxtg/faultline | @nxtg/faultline-api
-# Last updated: 2026-03-31 (N-190)
+# Last updated: 2026-03-31 (N-196)
 
 > Forensic verification for AI-generated text. Decomposes AI output into atomic claims, verifies each against live evidence, and maps findings to EU AI Act risk tiers.
 
@@ -39,7 +39,7 @@ No API key required for the `mock` provider. Real verification uses:
 - **Enterprise API** — REST + GraphQL; API key management; multi-tenant; GDPR Article 15/17; audit trail; webhooks
 - **GitHub Actions** — `faultline-scan` composite action with compliance gate, SARIF upload, threshold/strict configuration
 - **Mutation-tested** — CRUCIBLE Protocol Gate 6: claim forensics 81.97%; GDPR stores 80.94%–96.81%
-- **3,816 tests** across CLI, API, Python SDK, GDPR, mutation hardening, property-based, contract, integration
+- **3,895 tests** across CLI, API, Python SDK, GDPR, mutation hardening, property-based, contract, integration
 - **npm adoption metrics** — npmjs.org download tracking, Prometheus export, weekly trend analysis
 
 ## Use Cases
@@ -133,12 +133,13 @@ docs/
 
 ## Project Status
 
-- **194 initiatives SHIPPED** (N-01 through N-194)
-- **3,875 tests** (CLI + API + Python SDK + integration + property-based + contract + mutation)
+- **196 initiatives SHIPPED** (N-01 through N-196)
+- **3,895 tests** (CLI + API + Python SDK + integration + property-based + contract + mutation)
 - **8/8 CRUCIBLE gates PASS** (example, property, contract, integration oracles)
 - **EU AI Act Article 50 ready** — Full compliance reporting (Art. 5/9/10/13/14/50), evidence strength scoring, Annex III conformity checklist, gating, SARIF, 5 output formats
 - **GDPR compliant** — Article 15 export + Article 17 erasure implemented
 - **Mutation-tested** — claim forensics critical path above 80% threshold
+- **Security hardened** — security headers (CSP, X-Frame-Options, nosniff), timing-safe auth, GraphQL query bounds, Mermaid XSS sanitization
 - **Version**: 0.4.1 (pre-publish)
 
 ## License

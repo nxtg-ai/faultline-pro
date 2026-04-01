@@ -42,6 +42,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - N-192: Annex III conformity gate in strict mode — `--strict` now fails the CI gate when any Annex III conformity item is `fail` or `not-assessed` (applies to high/critical risk only); CI output shows which articles need attention; 4 tests
 - N-193: Article 11 & 12 evidence mapping — Art. 11 (Technical Documentation) derives evidence from verification explanations/source citations; Art. 12 (Record-Keeping) from provider recording/structured claims/monitoring; remediations RR20-RR21; all 7 core articles (9-14, 50) now fully automated; Annex III no longer has `not-assessed` items; 8 tests
 - N-194: Annex III in PDF renderer — conformity assessment table with pass rate badge, colored status labels, dynamic section numbering; cover page updated to show all 8 mapped articles + Annex III; 2 tests
+- N-195: Security headers + GraphQL query bounds — `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `X-XSS-Protection` on all responses; `Content-Security-Policy` on API responses; GraphQL `scans` capped at 200, `audit` at 500, `scanBatch` at 20; 10 tests
+- N-196: EU AI Act Compliance HTML Dashboard — `GET /compliance/dashboard` with score gauge, pass rate, Article 50 enforcement countdown, recent evaluations table; XSS-safe, 30s auto-refresh; 10 tests
 
 ---
 
