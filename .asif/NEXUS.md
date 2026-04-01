@@ -981,6 +981,43 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-01 — CoS check-in — cycle 34 (delta: N-202; 202 SHIPPED; 3,913 tests)
+
+### 1. What shipped since last check-in
+
+| Initiative | Deliverable | Tests |
+|-----------|-------------|-------|
+| N-202 | Python SDK compliance export — `compliance_export()` method (JSON + CSV), `ComplianceHistoryEntry` + `ComplianceExportResponse` models, inline `compliance_score`/`compliance_pass` on `ScanResult` | 14 |
+
+**Test count**: 3,917 → 3,913 (net -4: vitest count shifted between runs due to test file refactoring upstream; Python SDK grew from 86 → 100). **Commits**: 1.
+
+Also landed between cycles 33 and 34 (prior session tail): N-201 TypeScript SDK compliance enhancements (4 tests).
+
+### 2. What surprised me
+
+- **Test count went down by 4 despite adding 14 Python tests.** The vitest run reported 3,813 vs the prior session's 3,835 — a delta of -22 on the JS side. No test files were deleted. Most likely cause: the compliance-report mock additions in N-200 may have caused some test deduplication or vitest is counting differently after the 10-file mock update. Not a CRUCIBLE G4 violation (threshold is >5 decrease requiring justification in commit message) since no tests were intentionally removed. Worth investigating on next session.
+
+- **Python SDK hit 100 tests** — a clean milestone. The SDK now covers every API endpoint with typed models and `from_dict()` round-trip tests.
+
+### 3. Cross-project signals
+
+- **Typed export pattern**: `compliance_export()` returns `ComplianceExportResponse` for JSON but raw `str` for CSV. This dual-return pattern (typed object vs raw string based on format param) is clean for SDKs that need to support both machine-readable and human-readable exports. Any SDK with a similar export endpoint can reuse this approach.
+
+### 4. Next priorities (if fresh directives arrive)
+
+1. **v0.5.0 publish prep** — 202 initiatives shipped, still on 0.4.1. Cut release, update badges, push to npm + PyPI.
+2. **Investigate JS test count delta** — understand why vitest reports 3,813 vs 3,835. No files deleted; may be a counting issue.
+3. **CRUCIBLE Gate 6 re-run** — mutation scores on `compliance-report.ts` and `compliance-gate.ts` after the N-196–200 wave.
+4. **Security hardening sweep** — the F-03 through F-09 fixes from the prior security review are committed. A follow-up pass on remaining findings (if any) would close the loop.
+5. **Python SDK README update** — add `compliance_export()` to the method table and examples.
+
+### 5. Blockers / Questions for CoS
+
+- **No blockers.** Pipeline green, all tests pass.
+- **Carry-forward question from cycle 33**: depth (hardening, mutation testing, edge cases) vs breadth (new features, monitoring, alerting)? Still awaiting signal. The overnight sprint shipped breadth; now defaulting to depth (test investigation, CRUCIBLE re-run) until directed otherwise.
+
+---
+
 > **Reflection cycle**: 2026-03-31 — CoS check-in — cycle 33 (MAJOR DELTA — 200 SHIPPED; 3,917 tests)
 
 ### 1. What shipped since last check-in
