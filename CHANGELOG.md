@@ -41,6 +41,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - N-191: Annex III in all compliance renderers — CI gate output shows checklist with [PASS]/[FAIL]/[PART] per item + pass rate; Markdown GFM table for PR comments; SARIF conformity gap rules/results for Code Scanning; HTML styled table with badges; 9 tests
 - N-192: Annex III conformity gate in strict mode — `--strict` now fails the CI gate when any Annex III conformity item is `fail` or `not-assessed` (applies to high/critical risk only); CI output shows which articles need attention; 4 tests
 - N-193: Article 11 & 12 evidence mapping — Art. 11 (Technical Documentation) derives evidence from verification explanations/source citations; Art. 12 (Record-Keeping) from provider recording/structured claims/monitoring; remediations RR20-RR21; all 7 core articles (9-14, 50) now fully automated; Annex III no longer has `not-assessed` items; 8 tests
+- N-194: Annex III in PDF renderer — conformity assessment table with pass rate badge, colored status labels, dynamic section numbering; cover page updated to show all 8 mapped articles + Annex III; 2 tests
 
 ---
 
