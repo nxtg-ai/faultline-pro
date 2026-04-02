@@ -982,6 +982,48 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-01 — CoS check-in — cycle 35 (delta: N-203; 203 SHIPPED; 3,904 tests)
+
+### 1. What shipped since last check-in
+
+| Initiative | Deliverable | Tests |
+|-----------|-------------|-------|
+| N-203 | Shell injection detection rules — YAML (12 regex patterns) + TypeScript (Unicode/control char/homoglyph detection) | 31 |
+
+**Test count**: 3,913 → 3,904 (net -9: +31 new shell injection tests, but accurate recount of JS suite shows 3,785 JS + 19 SDK + 100 Python = 3,904). **Commits**: 1 feature + 1 docs.
+
+### 2. What surprised me
+
+- **The Claude Code source (`~/projects/claude-code-source/`) doesn't exist on this machine.** The enrichment doc referenced it, but the directory was never cloned. I worked from the enrichment analysis + my knowledge of the patterns. For future cross-project enrichments, the CoS should verify source availability or include key code snippets in the enrichment doc itself.
+
+- **The YAML engine test had a hardcoded count (`toHaveLength(3)`)** that broke when adding the 4th YAML rule file. This is a CRUCIBLE Gate 2 anti-pattern — testing exact counts without accounting for growth. Changed to `4` and added the new rule assertion. Worth noting: future YAML rule additions will hit this same wall unless the test is refactored to use `toBeGreaterThanOrEqual`.
+
+- **Coverage on `shell_injection_rule.ts` is 93.93% out of the gate** — the uncovered lines (176–183) are the surrogate pair handling for code points > 0xFFFF in the homoglyph branch. Would need astral-plane test fixtures to cover; low priority since those homoglyphs are in the BMP.
+
+### 3. Cross-project signals
+
+- **Shell injection YAML patterns are portable.** Any project that generates or evaluates shell commands from AI output can drop `shell-injection.yaml` into their rule directory. The patterns are provider-agnostic and don't depend on Faultline internals.
+
+- **Unicode obfuscation detection is a reusable module.** The `ZERO_WIDTH`, `BIDI_OVERRIDES`, `UNICODE_WHITESPACE`, and `HOMOGLYPHS` lookup tables in `shell_injection_rule.ts` could be extracted into a shared `@nxtg/unicode-safety` package. The ASIF Dashboard, Forge plugins, and any tool that renders user/AI text should check for these.
+
+- **Enrichment-driven feature development works.** The RESEARCH-001 → directive → implementation pipeline took one cycle. The enrichment doc's "What We Should Adopt" section with P0/P1/P2 priorities directly mapped to actionable work. Recommend this pattern for future cross-pollination.
+
+### 4. Next priorities (if fresh directives arrive)
+
+1. **v0.5.0 publish prep** — 203 initiatives, still on 0.4.1.
+2. **CRUCIBLE Gate 6 re-run** — mutation scores on the new `shell_injection_rule.ts` and existing compliance paths.
+3. **RESEARCH-001 Phase 2 remaining P1s** — `buildTool()` composition for Forge, prompt cache sharing optimization.
+4. **Shell injection integration into scan pipeline** — currently rules run independently; could add `--rules shell-injection` flag to `faultline scan` for targeted security scanning.
+5. **Enrichment doc for shell injection patterns** — write `docs/shell-injection-patterns.md` documenting the attack vectors and detection rationale.
+
+### 5. Blockers / Questions for CoS
+
+- **No blockers.** CI green, push clean.
+- **Observation**: The enrichment doc referenced source code that wasn't available locally. Future enrichment docs should either (a) ensure the source is cloned first, or (b) inline the relevant code snippets. This didn't block work but limited the depth of the evaluation.
+- **Carry-forward question**: depth vs breadth signal still awaited from cycle 33.
+
+---
+
 > **Reflection cycle**: 2026-04-01 — CoS check-in — cycle 34 (delta: N-202; 202 SHIPPED; 3,913 tests)
 
 ### 1. What shipped since last check-in
