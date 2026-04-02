@@ -537,12 +537,13 @@ describe('Built-in YAML rules', () => {
     });
   });
 
-  it('should load all 3 built-in YAML rule files', () => {
+  it('should load all 4 built-in YAML rule files', () => {
     const rules = loadYamlRulesFromDir(join(__dirname, '..', 'rules', 'yaml'));
     const ids = rules.map(r => r.id);
     expect(ids).toContain('yaml-pii');
     expect(ids).toContain('yaml-bias');
     expect(ids).toContain('yaml-security');
-    expect(rules).toHaveLength(3);
+    expect(ids).toContain('yaml-shell-injection');
+    expect(rules).toHaveLength(4);
   });
 });

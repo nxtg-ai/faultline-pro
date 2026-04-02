@@ -1,0 +1,85 @@
+name: Shell Injection Detection
+description: >
+  Detects shell injection patterns in AI-generated text — command substitution,
+  IFS manipulation, eval/exec, curl-pipe-shell, base64 decode pipes, dangerous
+  removal commands, and env-var overrides.  These are the top prompt-injection
+  vectors for AI-assisted development tools.
+severity: critical
+category: security
+remediation: >
+  AI-generated text should never contain executable shell constructs that could
+  be copy-pasted or piped into a terminal.  Flag the content for manual review
+  and consider sandboxed execution if shell commands are expected output.
+
+patterns:
+  - name: command-substitution-dollar
+    regex: "\\$\\([^)]+\\)"
+    severity: high
+    message: "Shell command substitution detected: $(...)"
+    flags: "g"
+
+  - name: command-substitution-backtick
+    regex: "`[^`]+`"
+    severity: high
+    message: "Shell command substitution detected: backtick execution"
+    flags: "g"
+
+  - name: ifs-injection
+    regex: "\\bIFS\\s*="
+    severity: critical
+    message: "IFS variable manipulation — can alter field splitting to bypass security checks"
+    flags: "g"
+
+  - name: eval-exec
+    regex: "\\b(?:eval|exec)\\s+[\"'$]"
+    severity: critical
+    message: "eval/exec with dynamic argument — arbitrary code execution risk"
+    flags: "g"
+
+  - name: base64-decode-pipe
+    regex: "base64\\s+(?:-d|--decode)\\s*\\|\\s*(?:ba)?sh"
+    severity: critical
+    message: "Base64 decode piped to shell — obfuscated command execution"
+    flags: "gi"
+
+  - name: curl-pipe-shell
+    regex: "\\b(?:curl|wget)\\s+[^|]+\\|\\s*(?:sudo\\s+)?(?:ba)?sh"
+    severity: critical
+    message: "Remote script piped to shell — arbitrary code execution from URL"
+    flags: "gi"
+
+  - name: dangerous-rm-root
+    regex: "\\brm\\s+(?:-[rfRF]+\\s+)?(?:/\\s*$|/\\*|~/?\\*?(?:\\s|$))"
+    severity: critical
+    message: "Dangerous recursive removal targeting root, home, or wildcard path"
+    flags: "gm"
+
+  - name: env-var-override-path
+    regex: "\\b(?:PATH|LD_PRELOAD|LD_LIBRARY_PATH)\\s*="
+    severity: high
+    message: "Critical environment variable override — can hijack command resolution or library loading"
+    flags: "g"
+
+  - name: process-substitution
+    regex: "[<>]\\([^)]+\\)"
+    severity: medium
+    message: "Bash process substitution detected — can execute commands via file descriptor redirection"
+    flags: "g"
+
+  - name: hidden-semicolon-chain
+    regex: ";\\s*(?:curl|wget|rm|chmod|chown|eval|exec|python|node|ruby|perl)\\b"
+    severity: high
+    message: "Command chained after semicolon — may hide malicious command after benign one"
+    flags: "gi"
+
+  - name: dd-overwrite
+    regex: "\\bdd\\s+.*of\\s*=\\s*/dev/[a-z]"
+    severity: critical
+    message: "dd writing to raw device — can overwrite disk data"
+    flags: "gi"
+
+  - name: mkfifo-pipe-exec
+    regex: "\\bmkfifo\\b.*(?:sh|bash|nc|ncat)\\b"
+    severity: critical
+    message: "Named pipe with shell/netcat — reverse shell pattern"
+    flags: "gi"

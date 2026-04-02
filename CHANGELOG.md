@@ -50,6 +50,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - N-200: Inline compliance score in `POST /scan` — every scan response now includes `complianceScore` (0–100) and `compliancePass` (boolean); works for fresh scans and cache hits; zero-friction EU AI Act readiness; 3 tests
 - N-201: TypeScript SDK compliance enhancements — `complianceExport()` method with filters; `ComplianceHistoryEntry` + `ComplianceExportResponse` types; `WebhookEvent` union updated with `compliance.gate_failed`; `ScanResult` extended with optional `complianceScore`/`compliancePass`; 4 tests
 - N-202: Python SDK compliance enhancements — `compliance_export()` method (JSON + CSV formats); `ComplianceHistoryEntry` + `ComplianceExportResponse` dataclass models with `from_dict()`; inline `compliance_score`/`compliance_pass` on `ScanResult`; 14 new tests (100 Python SDK total)
+- N-203: Shell injection detection rules — YAML rule with 12 regex patterns (command substitution, IFS injection, eval/exec, base64-decode-pipe, curl-pipe-shell, dangerous rm, PATH/LD_PRELOAD override, process substitution, semicolon chains, dd overwrite, mkfifo reverse shell) + TypeScript rule for Unicode obfuscation (zero-width chars, bidi overrides, non-ASCII whitespace, control characters, Cyrillic/Greek homoglyphs); 31 new tests. Inspired by Claude Code's 21-check bash security layer (RESEARCH-001 Phase 2)
 
 ---
 

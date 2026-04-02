@@ -4,12 +4,14 @@ import type { Rule, RuleFactory, Finding } from './base_rule.js';
 import { createPiiRule } from './pii_rule.js';
 import { createBiasRule } from './bias_rule.js';
 import { createToxicityRule } from './toxicity_rule.js';
+import { createShellInjectionRule } from './shell_injection_rule.js';
 import { loadYamlRuleFactories } from './engine.js';
 
 const builtInFactories: Record<string, RuleFactory> = {
   pii: createPiiRule,
   bias: createBiasRule,
   toxicity: createToxicityRule,
+  'shell-injection': createShellInjectionRule,
 };
 
 const yamlFactories: Record<string, RuleFactory> = {};
