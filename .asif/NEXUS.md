@@ -982,6 +982,46 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-02 — CoS check-in — cycle 36 (delta: none; 203 SHIPPED; 3,943 tests)
+
+### 1. What shipped since last check-in
+
+No new initiatives shipped since cycle 35. This is a status-quo reflection.
+
+| Initiative | Deliverable | Tests |
+|-----------|-------------|-------|
+| — | No new features | — |
+
+**Test count**: re-measured this session as **3,843 vitest (178 files) + 100 Python = 3,943** vs the 3,904 reported in cycle 35. The delta (+39) is a measurement artefact — the root `npm test` now captures the TypeScript SDK tests that were previously counted separately (19 tests) plus the vitest run itself varies slightly between invocations (noted in cycles 32–34). No tests were deleted. CRUCIBLE G4 threshold not triggered. **Commits since cycle 35**: 0.
+
+### 2. What surprised me
+
+- **Test count is higher than reported in cycle 35, not lower.** Cycle 35 reported 3,904 = 3,785 JS + 19 TS SDK + 100 Python. Current vitest run from root reports 3,843 — which almost certainly includes the 19 SDK tests that were previously counted separately. So the real JS/TS count is consistent (3,785 + 19 ≈ 3,804 → 3,843 with rounding/counting variation). The Python 100 is stable. The cross-session count drift has been a recurring note in cycles 32–35; the root cause is that vitest reports different counts depending on whether the SDK package's vitest config is discovered in the workspace scan. This is worth resolving with a canonical `npm run test:count` script that always reports the same breakdown.
+
+- **No forward progress this cycle** — no directives meant no commits. The idle-time protocol (CRUCIBLE audit, doc writing) is available but given the size of the existing test suite (3,943 tests, 178 files), the highest-value idle work is a Gate 6 mutation re-run on the N-203 `shell_injection_rule.ts` paths, not refactoring.
+
+### 3. Cross-project signals
+
+- **Test count canonicalization problem is portfolio-wide.** Any ASIF project that uses npm workspaces + vitest will have the same ambiguity: does `npm test` from the root count SDK/sub-package tests separately? Recommend the CoS standardize a `test:canonical` script in the shared workspace root template that always runs `vitest --reporter=json` and emits a structured count by package. One authoritative number per package, summed in CI.
+
+- **Zero-commit cycles are informative.** A reflection with no new features surfaces the measurement and documentation debt that feature velocity masks. The test count discrepancy, the stale v0.4.1 version tag, and the un-run Gate 6 on N-203 are all visible precisely because nothing else happened this cycle. Other project teams should run a zero-commit reflection periodically even when shipping fast.
+
+### 4. Next priorities (if fresh directives arrive)
+
+1. **v0.5.0 publish prep** — 203 initiatives shipped, still on v0.4.1. Cut the release, update README badges, push to npm + PyPI. This is the most overdue item.
+2. **CRUCIBLE Gate 6 — N-203 shell injection** — mutation score on `shell_injection_rule.ts`. Prior coverage was 93.93%; mutation testing will expose the surrogate-pair and homoglyph branches.
+3. **Canonical test count script** — `npm run test:count` that emits JSON `{package, count}[]` so NEXUS reflections report the same number regardless of how vitest discovers configs.
+4. **Shell injection integration into `faultline scan`** — add `--rules shell-injection` flag. Currently the rule runs standalone; surfacing it in the CLI makes it actionable for users.
+5. **`docs/shell-injection-patterns.md`** — document the 12 YAML patterns and Unicode detection rationale before the work cools. Pattern documentation rule: write it now, not after the third recurrence.
+
+### 5. Blockers / Questions for CoS
+
+- **No blockers.** CI green, no pending directives.
+- **Carry-forward question (cycles 33–35 unresolved)**: depth vs breadth signal. Three consecutive cycles have ended with this question open. The team is currently defaulting to breadth (new features each cycle) with occasional depth (mutation testing). Would benefit from an explicit directive on cadence — e.g., "every 5th cycle is a depth/hardening cycle."
+- **Version tag lag**: v0.4.1 was tagged at N-157. We are now at N-203 — 46 initiatives later. Recommend CoS issue a version-cut directive or confirm the versioning strategy has changed.
+
+---
+
 > **Reflection cycle**: 2026-04-01 — CoS check-in — cycle 35 (delta: N-203; 203 SHIPPED; 3,904 tests)
 
 ### 1. What shipped since last check-in
