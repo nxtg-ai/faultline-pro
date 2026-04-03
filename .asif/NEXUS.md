@@ -982,6 +982,49 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-02 — CoS check-in — cycle 38 (delta: none; 203 SHIPPED; 3,943 tests)
+
+### 1. What shipped since last check-in
+
+No new initiatives. Third consecutive zero-commit cycle on features. All 4 commits in April are docs/reflection only.
+
+| Initiative | Deliverable | Tests |
+|-----------|-------------|-------|
+| — | No new features | — |
+
+**Test count**: 3,843 vitest + 100 Python = **3,943**. Flat. **Commits since cycle 37**: 0. The 3 untracked files (`packages/cli/.npmignore`, `stryker.config.mjs`, `vitest.stryker.config.ts`) remain uncommitted — now flagged for a third consecutive cycle.
+
+### 2. What surprised me
+
+- **The VS Code extension is the lowest-coverage package in the repo and there is no active initiative to fix it.** CI coverage output (visible on every push) shows `extension.ts` at **26.82% statements / 5.55% branches** and `scanner.ts` at **30% statements / 0% branches**. N-43 shipped the extension, but no follow-up initiative targets its coverage. Meanwhile, this has been noted internally (NEXUS line ~4758: "VS Code extension files with low coverage are hidden behind the package average") — but the observation never became a directive. This is a documented known gap that is aging without action.
+
+- **The SDK (`packages/sdk/src/index.ts`) is at 37% coverage.** It's a 1,057-line file with the broadest integration surface in the project — every TypeScript consumer touches it. 37% means roughly 650 lines are unexercised by tests. Lines 800–920 and 1,002–1,055 are explicitly uncovered per CI output. This file hasn't had a coverage initiative since the SDK was created.
+
+- **636 commits landed in March; only 4 in April (all docs).** Velocity dropped to zero on feature work. This isn't a problem for a Kaggle competition entry, but it does mean the gap between the shipping record (N-203) and the version tag (v0.4.1, set at N-157) continues to widen. The release artefact on npm is 46 initiatives behind the codebase.
+
+### 3. Cross-project signals
+
+- **Coverage aggregate gates hide per-file rot.** The VS Code extension problem (26% on `extension.ts`) is masked because the package aggregate stays above the threshold. Any ASIF project using vitest coverage with per-package thresholds should add **per-file minimums** for critical paths, not just aggregate gates. The `coverage.thresholds` in vitest.config supports `{ 'src/critical-file.ts': { statements: 80 } }` syntax — this would have caught the extension drift at creation.
+
+- **Large monolithic SDK files are a test coverage anti-pattern.** `packages/sdk/src/index.ts` at 1,057 lines with 37% coverage is a case study. A file that large makes targeted test writing hard and mutation testing impractical. Splitting it into domain modules (`scan.ts`, `compliance.ts`, `webhooks.ts`) would allow coverage gates per concern. Other ASIF projects building SDK clients should enforce a file-size limit (e.g., 300 lines) from the start.
+
+### 4. Next priorities (if fresh directives arrive)
+
+1. **Commit the 3 untracked Gate 6 files** — `packages/cli/.npmignore`, `stryker.config.mjs`, `vitest.stryker.config.ts`. One commit, zero risk, three cycles overdue.
+2. **Write `docs/shell-injection-patterns.md`** — CLAUDE.md pattern doc rule triggered at cycle 35; now 3 cycles overdue.
+3. **VS Code extension coverage initiative** — `extension.ts` at 26% branches is the largest uncovered critical-path gap in the codebase. A targeted test suite for the `activate()` lifecycle and `faultline.scan` command would move this materially.
+4. **SDK file decomposition or per-file coverage gate** — `packages/sdk/src/index.ts` at 1,057 lines / 37% coverage. Either split the file or add a per-file coverage minimum of ≥70% to prevent further drift.
+5. **v0.5.0 publish prep** — the npm artefact is 46 initiatives behind the codebase.
+
+### 5. Blockers / Questions for CoS
+
+- **Three-cycle untracked files**: `packages/cli/.npmignore`, `stryker.config.mjs`, `vitest.stryker.config.ts` remain outside git. Requesting CoS approval to commit these as housekeeping (no feature change, pure infra tracking).
+- **Coverage debt signal**: The VS Code extension and SDK coverage gaps are now documented here. Are these acceptable given the competition scope, or should they become NEXUS initiatives?
+- **Carry-forward (6 cycles unresolved)**: depth vs breadth cadence.
+- **Carry-forward (3 cycles unresolved)**: v0.5.0 version cut directive or confirmation strategy has changed.
+
+---
+
 > **Reflection cycle**: 2026-04-02 — CoS check-in — cycle 37 (delta: none; 203 SHIPPED; 3,943 tests)
 
 ### 1. What shipped since last check-in
