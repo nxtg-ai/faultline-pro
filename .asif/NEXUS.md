@@ -982,6 +982,59 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-02 — CoS check-in — cycle 40 (delta: none; 203 SHIPPED; 3,943 tests)
+
+### 1. What shipped since last check-in
+
+No new initiatives. Fifth consecutive zero-commit feature cycle.
+
+| Initiative | Deliverable | Tests |
+|-----------|-------------|-------|
+| — | Executed idle-time CRUCIBLE Gates 2 / 7 self-audit | — |
+
+**Test count**: 3,843 vitest + 100 Python = **3,943**. Stable. **Commits since cycle 39**: 0.
+
+### 2. What surprised me
+
+Rather than structural observations, this cycle ran the idle-time CRUCIBLE self-audit (Gates 2 and 7) and found real findings:
+
+**Gate 2 (non-empty assertions) — PASS, with nuance.**
+Scanned all `toHaveLength(0)` and `toEqual([])` assertions in the test suite. Found 18 instances across `compliance-report.test.ts`, `mock-provider.test.ts`, `weakest-link.test.ts`, `compare.test.ts`, and `vscode-extension.test.ts`. Inspected each in context. All 18 are legitimate boundary tests (e.g., "annexIIIChecklist is not applicable for low risk" — the empty result *is* the correct behaviour). Zero genuine Gate 2 violations. The test suite is clean here.
+
+**Gate 7 (spec-test traceability) — PASS at 6/6 (100%).**
+All 6 integration/E2E test files carry `// Validates:` or `// NEXUS:` spec references:
+- `packages/api/tests/e2e.test.ts` ✓
+- `packages/api/tests/integration-flow.test.ts` ✓
+- `packages/cli/tests/integration.test.ts` ✓
+- `packages/cli/tests/integration/full-pipeline.test.ts` ✓
+- `packages/cli/tests/integration/multi-provider.test.ts` ✓
+- `packages/cli/tests/integration/pipeline-providers.test.ts` ✓
+
+**`llms.txt` has a stale header and wrong test count.** The file declares `# Last updated: 2026-03-31 (N-196)` but the body's status section correctly says "203 initiatives SHIPPED." The header and body were updated independently. Additionally, the test count in the status section reads `3,913 tests` — the current count is **3,943** (+30). This is the publicly visible machine-readable project descriptor. It is what LLM crawlers index. Having the header claim N-196 when the project is at N-203 is a credibility gap.
+
+### 3. Cross-project signals
+
+- **Gate 2 false-positive rate is high.** Of 18 empty-assertion lines scanned, 0 were true violations — all were valid boundary tests asserting an expected empty state. This suggests the Gate 2 pattern needs a sharper definition: the violation is specifically "a test that exercises a data-producing code path and then asserts the result is empty without also asserting the non-empty case exists separately." Raw `toHaveLength(0)` count is a noisy proxy. Other ASIF projects running Gate 2 audits should check context, not just grep.
+
+- **`llms.txt` is a first-class artefact that decays independently.** Unlike README and CHANGELOG (updated as part of release prep), `llms.txt` was updated ad-hoc with each initiative wave and is now 7 initiatives stale on the header. Any ASIF project with an `llms.txt` should hook its update into the same CI step that updates the test count badge — not as a separate manual step.
+
+### 4. Next priorities (if fresh directives arrive)
+
+1. **Fix `llms.txt`** — update header to N-203 / 2026-04-01, test count to 3,943. Two-line change, zero risk. Can be done as idle housekeeping.
+2. **Commit the 3 untracked Gate 6 files** — five cycles overdue.
+3. **Write `docs/shell-injection-patterns.md`** — five cycles overdue, CLAUDE.md pattern doc rule violated.
+4. **v0.5.0 publish prep** — 46 features since v0.4.1, npm artefact stale.
+5. **VS Code extension coverage** — `extension.ts` at 5.55% branch coverage remains the largest uncovered gap.
+
+### 5. Blockers / Questions for CoS
+
+- **`llms.txt` fix**: this is a two-line doc update with no architectural implications. Proposing to self-initiate alongside the Gate 6 file commit on next session.
+- **Gate 2 definition sharpening**: the current heuristic (grep for `toHaveLength(0)`) produces 100% false positives in this codebase. Recommend refining the gate rule in `~/ASIF/standards/crucible-protocol.md` to require context-checking, not raw empty-assertion count.
+- **Carry-forward (8 cycles unresolved)**: depth vs breadth cadence.
+- **Carry-forward (5 cycles unresolved)**: v0.5.0 version cut.
+
+---
+
 > **Reflection cycle**: 2026-04-02 — CoS check-in — cycle 39 (delta: none; 203 SHIPPED; 3,943 tests)
 
 ### 1. What shipped since last check-in
