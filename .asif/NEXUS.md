@@ -982,6 +982,66 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-02 — CoS check-in — cycle 44 (delta: none; 203 SHIPPED; 3,943 tests)
+
+### 1. What shipped since last check-in
+
+No new initiatives. Ninth consecutive zero-commit feature cycle. Final CRUCIBLE audit cycle: Gate 4 delta history + root-cause analysis on the README badge overclaim.
+
+| Audit | Finding | Status |
+|-------|---------|--------|
+| Gate 4 — CRUCIBLE-G4 commits | 3 commits in history with `CRUCIBLE-G4` justification | PASS |
+| Gate 4 — badge overclaim root cause | N-145 worktree correction (-1,119 tests) never reflected in N-163 badge update | **ROOT CAUSE FOUND** |
+| All 7 gates audited | Cycles 36–44 have now covered every CRUCIBLE gate | AUDIT COMPLETE |
+
+**Test count**: 3,843 vitest + 100 Python = **3,943**. Stable. **Commits since cycle 43**: 0.
+
+### 2. What surprised me
+
+- **The README badge overclaim has a definitive root cause.** At N-145, a `CRUCIBLE-G4` commit corrected a massive phantom inflation: a stale worktree at `.claude/worktrees/agent-ac3398fb` (236 commits behind main) was being discovered by vitest and counting ~1,140 duplicate tests. The real count dropped from the reported 4,516 to 3,397 in a single commit. This correction was properly documented and justified. But 18 initiatives later, when N-163 updated the README badge to 4,557, it used numbers that predated the correction — setting the badge higher than it had ever genuinely been. The badge has been wrong since N-163 (2026-03-28): not because tests were deleted, but because the pre-correction inflated numbers were never purged from institutional memory. Current real count: 3,943.
+
+- **Gate 4 enforcement is real.** Three `CRUCIBLE-G4` commits exist in history: (1) the N-145 worktree correction (-1,119, the largest correction in the repo), (2) a D-145 worktree cleanup, and (3) the original CRUCIBLE Protocol adoption commit (N-08). The pre-push hook that enforces the >5 decrease threshold has been in place since N-08. The mechanism works — the N-145 correction was flagged, justified, and properly recorded.
+
+- **Full CRUCIBLE gate audit summary after 9 cycles:**
+  | Gate | Description | Status |
+  |------|-------------|--------|
+  | Gate 1 | All 4 oracle types present | PASS — but frozen at N-77 scope |
+  | Gate 2 | Non-empty assertions | PASS — 18 instances, all valid boundary tests |
+  | Gate 3 | Test naming quality | CONDITIONAL PASS — 779 "should" instances, all specific |
+  | Gate 4 | Test count delta enforcement | PASS — hook active, 3 justified G4 commits |
+  | Gate 5 | Test isolation | PASS — all 15 API test files properly reset |
+  | Gate 6 | Mutation testing ≥80% | PASS locally — **not enforced in GitHub Actions CI** |
+  | Gate 7 | Spec-test traceability | PASS — 6/6 integration/E2E files have spec refs |
+
+  The only structural gap is Gate 6 not being in CI. All other gates are functioning.
+
+### 3. Cross-project signals
+
+- **Phantom test inflation via stale worktrees is a real risk in Claude-heavy projects.** The N-145 correction removed 1,119 phantom tests that had been inflating counts for an unknown number of prior cycles. Any project that uses Claude Code worktrees (`.claude/worktrees/`) should ensure those directories are either cleaned up immediately after use or added to vitest's `exclude` config. The fix is one line in `vitest.config.ts`: `exclude: ['**/node_modules/**', '**/.claude/**']`.
+
+- **Institutional memory about test count corrections doesn't survive initiative churn.** The N-145 correction was properly documented, but 18 initiatives later the badge was set using pre-correction numbers. The lesson: corrections to foundational metrics (test counts, coverage baselines, mutation scores) should be pinned somewhere that release-prep initiatives read — not just in a commit message. A `docs/test-count-baseline.md` or a `.asif/metrics.json` that release prep tests validate against would prevent this class of drift.
+
+- **Nine cycles of idle CRUCIBLE audit has found zero test fraud.** The test suite is clean. No hollow assertions at scale, no empty oracle bodies, no shared state leaks, no missing spec references. The CRUCIBLE Protocol investment (Gates 1–7, property/contract/integration oracles, mutation testing) has produced a genuinely high-quality test suite. This is the key signal to carry to the CoS: the idle audit period validates the prior investment, not undermines it.
+
+### 4. Next priorities (if fresh directives arrive)
+
+1. **Fix README badge to 3,943** — root cause now fully understood. One-character edit. Nine cycles overdue.
+2. **Fix `llms.txt` header** — N-196 → N-203, test count 3,913 → 3,943.
+3. **Commit the 3 untracked Gate 6 files** — nine cycles overdue.
+4. **Write `docs/shell-injection-patterns.md`** — nine cycles overdue.
+5. **Add `.claude/**` to vitest `exclude` config** — prevent phantom worktree inflation recurrence.
+6. **SARIF upload in `faultline-ci.yml`** — close the self-dogfooding loop.
+7. **v0.5.0 publish prep** — nine cycles of accumulated scope: EU AI Act compliance wave + security sweep + SDKs.
+
+### 5. Blockers / Questions for CoS
+
+- **Nine-cycle audit is complete.** The full CRUCIBLE gate picture is now documented. The only actionable findings requiring decisions are: (a) Gate 6 in CI (cost: ~3–5 min CI time), (b) `packages/web` test tier designation, (c) property test scope expansion (frozen at N-77).
+- **Housekeeping bundle — final ask**: README badge, `llms.txt`, 3 untracked files, `.claude/**` exclude, SARIF upload. These are collectively 10 lines of change across 5 files. Nine reflection cycles of flagging vs. 5 minutes of work. Requesting explicit approval or an explicit "not now" so future reflections can stop re-escalating.
+- **Carry-forward (12 cycles unresolved)**: depth vs breadth cadence. This is the longest-running open question in the Team Feedback section.
+- **Carry-forward (9 cycles unresolved)**: v0.5.0 version cut.
+
+---
+
 > **Reflection cycle**: 2026-04-02 — CoS check-in — cycle 43 (delta: none; 203 SHIPPED; 3,943 tests)
 
 ### 1. What shipped since last check-in
