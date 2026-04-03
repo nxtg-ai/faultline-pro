@@ -982,6 +982,56 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-02 — CoS check-in — cycle 42 (delta: none; 203 SHIPPED; 3,943 tests)
+
+### 1. What shipped since last check-in
+
+No new initiatives. Seventh consecutive zero-commit feature cycle. Continued CRUCIBLE self-audit: Gate 5 (test isolation) + CI workflow review.
+
+| Audit | Finding | Status |
+|-------|---------|--------|
+| Gate 5 — test isolation | `let server` file-scoped but reset in every `beforeEach` across all 15 API test files | PASS |
+| Gate 5 — stateful integration flow | `integration-flow.test.ts` holds `scanKey`/`orgId`/`orgKey` across tests — intentional by design | PASS (by design) |
+| CI actions versions | `checkout@v4`, `setup-node@v4`, `setup-python@v5` — all current | PASS |
+| Gate 6 in CI | Stryker not in GitHub Actions — mutation gate only enforced by pre-push hook | **GAP** |
+| SARIF upload | `faultline-ci.yml` generates SARIF but never uploads to GitHub Security tab | **GAP** |
+
+**Test count**: 3,843 vitest + 100 Python = **3,943**. Stable. **Commits since cycle 41**: 0.
+
+### 2. What surprised me
+
+- **Gate 5 is clean across all 15 API test files.** Every file using `let server: FastifyInstance` at file scope properly resets it in `beforeEach` (fresh `buildServer()` + `server.ready()`) and tears it down in `afterEach` (`server.close()` + `vi.unstubAllGlobals()`). `jobs.test.ts` calls 10 separate `reset*()` store functions in its `beforeEach` — the most thorough isolation in the suite. The one intentionally stateful file (`integration-flow.test.ts`) holds state across describe-block tests for the multi-step integration flow — this is the correct pattern for E2E sequential flows, not a Gate 5 violation.
+
+- **Gate 6 mutation testing is not enforced in GitHub Actions.** Stryker runs only via the `.asif-ci` pre-push hook locally. Any commit merged via GitHub's web UI (squash merge, rebase merge via PR), a `git push --no-verify`, or a direct CI merge would bypass the mutation gate entirely. The 81.97% mutation score on `cli/scan.ts` is only as reliable as local hook compliance. For a project claiming "mutation-tested" as a badge, this is a structural gap: the gate needs to be in CI to be authoritative.
+
+- **The project dogfoods itself in CI but discards the SARIF output.** `faultline-ci.yml` runs the Faultline GitHub Action on itself, generating SARIF — but there is no `github/codeql-action/upload-sarif@v3` step to push findings to the GitHub Security tab. This means the self-scan runs every push, produces findings, and silently discards them. Adding the upload step would close the loop: Faultline would report its own AI safety findings in the repository's Security Alerts panel, which is a compelling product demo for any GitHub visitor.
+
+- **The GitHub Action is Marketplace-ready** — `action.yml` has full input schema (8 inputs), branding (`icon: shield, color: red`), all required metadata. It references `.github/actions/faultline-scan`. This is a publishable asset that has not been submitted to the GitHub Marketplace. Given the competition scope, this may be intentional — but it represents unrealized distribution.
+
+### 3. Cross-project signals
+
+- **Pre-push hooks are not CI.** The pattern of enforcing a quality gate (mutation score, lint, test) only via a local pre-push hook creates a class of bypasses: web UI merges, `--no-verify`, CI-direct pushes. Any ASIF project using pre-push hooks as the sole enforcement mechanism for a critical gate (mutation score, security scan) should mirror the gate in GitHub Actions. The cost is one workflow step; the reliability improvement is significant.
+
+- **Self-dogfooding in CI without closing the feedback loop is wasted signal.** If `faultline-ci.yml` generates SARIF but doesn't upload it, the output has no audience. Other ASIF projects running their own tools in CI (e.g., running Faultline as a safety check on generated text) should ensure the output goes somewhere actionable — Security tab, artifact store, or a step that fails the CI if findings exceed threshold.
+
+### 4. Next priorities (if fresh directives arrive)
+
+1. **Add SARIF upload step to `faultline-ci.yml`** — `github/codeql-action/upload-sarif@v3` after the scan steps. Closes the self-dogfooding loop. Zero-dependency change.
+2. **Add Stryker mutation step to `ci.yml`** — move Gate 6 from local hook to CI. This makes the "mutation-tested" claim authoritative. Requires `runs-on` environment with Node 20, same as existing CI.
+3. **Fix README badge + `llms.txt`** — 614-test overclaim and stale header. Seven cycles of flagging.
+4. **Commit the 3 untracked Gate 6 files** — seven cycles overdue.
+5. **Write `docs/shell-injection-patterns.md`** — seven cycles overdue.
+
+### 5. Blockers / Questions for CoS
+
+- **SARIF upload gap**: this is a one-step CI addition that makes the competition demo more compelling — the repo's own Security tab would show Faultline findings about Faultline's text. No API key required (uses mock provider). Proposing self-initiation as housekeeping if CoS approves.
+- **Gate 6 in CI**: moving Stryker to GitHub Actions requires a budget for longer CI runs (~3–5 min for mutation testing). Is that acceptable for this project's CI cadence?
+- **Carry-forward (10 cycles unresolved)**: depth vs breadth cadence.
+- **Carry-forward (7 cycles unresolved)**: v0.5.0 version cut.
+- **Housekeeping bundle**: README badge, `llms.txt`, 3 untracked files, SARIF upload — proposing a single "housekeeping" commit to clear all four simultaneously if CoS issues approval.
+
+---
+
 > **Reflection cycle**: 2026-04-02 — CoS check-in — cycle 41 (delta: none; 203 SHIPPED; 3,943 tests)
 
 ### 1. What shipped since last check-in
