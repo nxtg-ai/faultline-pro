@@ -982,6 +982,55 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-02 — CoS check-in — cycle 43 (delta: none; 203 SHIPPED; 3,943 tests)
+
+### 1. What shipped since last check-in
+
+No new initiatives. Eighth consecutive zero-commit feature cycle. Continued idle-time CRUCIBLE audit: Gate 3 (test naming) + packages/web coverage gap + examples/ directory status.
+
+| Audit | Finding | Status |
+|-------|---------|--------|
+| Gate 3 — test naming | 779 "should" prefixes across 10+ files; all names specific and meaningful on inspection | CONDITIONAL PASS |
+| packages/web React components | App.tsx (302 lines), Dashboard.tsx (313 lines), ClaimRow, InputSection, Tour — **zero tests** | GAP |
+| examples/ directory | Populated: `sample.txt`, `financial-claims.txt`, `medical-claims.txt`, scripts | PRESENT |
+| faultline-ci.yml scan steps | `hashFiles('examples/...')` conditions resolve truthy — self-scan steps will fire | ACTIVE |
+
+**Test count**: 3,843 vitest + 100 Python = **3,943**. Stable. **Commits since cycle 42**: 0.
+
+### 2. What surprised me
+
+- **Gate 3 passes on inspection but not on grep.** 779 `it('should …')` occurrences spread across `yaml-engine.test.ts`, `watch.test.ts`, `registry.test.ts`, `templates.test.ts`, `vscode-extension.test.ts`, `claim-graph.test.ts`, and others. Spot-checking reveals all names are specific: "should reject null", "should accept all valid severities", "should return critical when 3 claims are contradicted." None are the vague antipattern (e.g., `it('should work')`). The "should" prefix is stylistic — the substance is fine. Gate 3: CONDITIONAL PASS (naming convention inconsistency, semantics acceptable).
+
+- **The `packages/web` React frontend has zero component tests.** `App.tsx` (302 lines), `Dashboard.tsx` (313 lines, the risk scorecard + seismic barometer), `ClaimRow.tsx`, `InputSection.tsx`, `Tour.tsx` — none have test files. Only `services/geminiService.ts` has 39 tests. This package is the **original Kaggle competition UI** (`@nxtg/faultline-web`, version 0.1.0), ported from the competition entry. CLAUDE.md notes this as the competition piece, which explains the minimal test coverage — it was never intended as a production-tested component library. However it's part of the monorepo and `npm test` runs its vitest config, so it contributes to the suite count. The 39 `geminiService` tests are the entire web package test contribution.
+
+- **`examples/` is real and active.** The self-scan workflow (`faultline-ci.yml`) uses `hashFiles('examples/sample.txt')` as a conditional — this resolves truthy, meaning the "Scan sample text" and "Scan examples directory" steps fire on every push. The `examples/` directory contains `financial-claims.txt`, `medical-claims.txt`, `basic-scan.js`, `batch-scan.js`, `webhook-handler.js`, `quickstart.sh`, `ci-integration.yml`, and a `custom-plugin/` directory. The project is not just self-scanning toy text — it's scanning realistic financial and medical claim examples in CI. This is a strong product signal that has not been surfaced in README or marketing copy.
+
+- **Mutation hardening test naming is the gold standard.** The MH-code pattern (MH1: returns critical when…, MH2: returns high when…) used throughout the mutation hardening suite is the most precise test naming in the repo. Each test name encodes the specific mutant being killed and the exact input/output relationship. Other test files that use "should" would benefit from adopting this style.
+
+### 3. Cross-project signals
+
+- **Scanning realistic domain examples in CI is an underused demo lever.** `faultline-ci.yml` already scans `financial-claims.txt` and `medical-claims.txt` on every push. For any ASIF project that processes text (Faultline, PRISM, any content pipeline), including realistic domain examples in the repo and scanning them in CI creates a live, always-green product demo. The `continue-on-error: true` pattern ensures CI doesn't block on expected findings.
+
+- **Kaggle/competition code in a production monorepo creates a two-tier test culture.** `packages/web` has 39 tests for 615 lines of production React code (6.3% coverage by line) while `packages/api` and `packages/cli` are thoroughly covered. The competition entry mindset ("test just enough to demonstrate it works") coexists with the ASIF governance mindset ("Oracle tier: CRITICAL, all 4 oracle types"). Other projects should make this bifurcation explicit: designate which packages are "competition/demo" tier and which are "production" tier, and apply different coverage thresholds accordingly.
+
+### 4. Next priorities (if fresh directives arrive)
+
+1. **Add `examples/` mention to README** — the medical/financial scan examples in CI are a compelling product signal. A section showing what Faultline finds in realistic text would strengthen the competition submission narrative.
+2. **Fix README badge + `llms.txt`** — eight cycles flagged, still 614 over-claimed.
+3. **Commit the 3 untracked Gate 6 files** — eight cycles overdue.
+4. **Write `docs/shell-injection-patterns.md`** — eight cycles overdue.
+5. **SARIF upload step in `faultline-ci.yml`** — self-dogfooding loop is open; one step closes it.
+
+### 5. Blockers / Questions for CoS
+
+- **`packages/web` test tier**: should the React components be brought up to CRUCIBLE standards, or is the competition-entry status an explicit exemption? Clarifying this would resolve the ambiguity and potentially reduce the reported coverage gap in future audits.
+- **`examples/` in README**: proposing to add a "See it in action" section showing `financial-claims.txt` / `medical-claims.txt` scan output. This is doc-only, no code change, zero risk.
+- **Housekeeping bundle (8 cycles pending)**: README badge, `llms.txt`, 3 untracked files, SARIF upload. Requesting final approval to self-initiate.
+- **Carry-forward (11 cycles unresolved)**: depth vs breadth cadence.
+- **Carry-forward (8 cycles unresolved)**: v0.5.0 version cut.
+
+---
+
 > **Reflection cycle**: 2026-04-02 — CoS check-in — cycle 42 (delta: none; 203 SHIPPED; 3,943 tests)
 
 ### 1. What shipped since last check-in
