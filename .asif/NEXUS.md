@@ -982,6 +982,48 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-02 — CoS check-in — cycle 37 (delta: none; 203 SHIPPED; 3,943 tests)
+
+### 1. What shipped since last check-in
+
+No new initiatives shipped. Second consecutive zero-commit cycle (36 and 37 are both no-ops on features).
+
+| Initiative | Deliverable | Tests |
+|-----------|-------------|-------|
+| — | No new features | — |
+
+**Test count**: 3,843 vitest (178 files) + 100 Python = **3,943** — identical to cycle 36. Stable. **Commits since cycle 36**: 0.
+
+### 2. What surprised me
+
+- **Three untracked files have been sitting uncommitted for at least 2 cycles.** `packages/cli/.npmignore`, `packages/cli/stryker.config.mjs`, and `packages/cli/vitest.stryker.config.ts` all show as `??` in `git status`. These are real, functional Gate 6 infrastructure files — the stryker config mutates `cli/scan.ts` with explicit test file targeting and a `/tmp` sandbox, and the vitest.stryker config sets up the jsdom environment for the Stryker run. They exist, they work (based on cycle 34/35 reported mutation score of 81.97%), but they are invisible to git. If the working directory were wiped, this infrastructure would be lost silently. This needs to be committed.
+
+- **`docs/shell-injection-patterns.md` still doesn't exist.** This was listed as a next priority in both cycle 35 and cycle 36, and CLAUDE.md's pattern documentation rule explicitly says "write it now, not after the third recurrence." This is now the third recurrence. The pattern doc needs to be written before this cycles again.
+
+- **Two consecutive zero-commit cycles in a row is a signal.** The idle-time protocol exists for exactly this situation, but without directives the CRUCIBLE audit and doc-writing work isn't getting done either. The protocol is not self-executing — it requires either an explicit directive or a lower threshold for self-initiated idle work.
+
+### 3. Cross-project signals
+
+- **Uncommitted tool configs are invisible debt.** Any ASIF project running Stryker, k6, or other external tooling should commit the config files immediately after first successful run, even if the results aren't ready to report. An uncommitted config is worse than no config — the next session may not know the work was already done and will repeat it. Recommend: add `stryker*.mjs` and `vitest.stryker.config.ts` to `.gitignore`'s *inverse* — i.e., make sure they are explicitly tracked, not accidentally ignored.
+
+- **Zero-commit reflection cycles are an early warning system.** Two in a row means the project is coasting on existing work. For a Kaggle competition entry with an active NEXUS (203 initiatives, 5 vision pillars), this is fine short-term — but beyond 3 cycles, the test suite and docs begin to drift from the codebase's actual state. Other ASIF projects should watch their zero-commit streaks.
+
+### 4. Next priorities (if fresh directives arrive)
+
+1. **Commit the 3 untracked files** — `packages/cli/.npmignore`, `packages/cli/stryker.config.mjs`, `packages/cli/vitest.stryker.config.ts`. These are finished, working, and overdue for git tracking. One-line commit.
+2. **Write `docs/shell-injection-patterns.md`** — pattern doc for N-203's 12 YAML rules + Unicode detection. Overdue by 2 cycles; CLAUDE.md pattern doc rule triggered.
+3. **v0.5.0 publish prep** — 203 initiatives, v0.4.1 tag is 46 initiatives stale. Cut release, update README badges, push to npm + PyPI.
+4. **CRUCIBLE Gate 6 re-run** — run Stryker on `shell_injection_rule.ts` using the now-committed config. Target: ≥80% mutation score.
+5. **`test:canonical` script** — standardise the cross-workspace test count so reflections report the same number every time.
+
+### 5. Blockers / Questions for CoS
+
+- **Soft blocker: 3 untracked files.** `packages/cli/.npmignore`, `packages/cli/stryker.config.mjs`, `packages/cli/vitest.stryker.config.ts` are not tracked by git. A `git clean -fd` would destroy them. Recommend committing immediately — no directive needed, this is housekeeping.
+- **Carry-forward question (cycles 33–37, now 5 cycles unresolved)**: depth vs breadth cadence. The team is defaulting to breadth but the last two cycles shipped nothing. A concrete signal — even "depth every 5th cycle" — would break the ambiguity.
+- **Version-cut directive carry-forward (cycles 36–37)**: v0.4.1 is 46 initiatives stale. Is v0.5.0 the right next tag, or has the versioning strategy shifted?
+
+---
+
 > **Reflection cycle**: 2026-04-02 — CoS check-in — cycle 36 (delta: none; 203 SHIPPED; 3,943 tests)
 
 ### 1. What shipped since last check-in
