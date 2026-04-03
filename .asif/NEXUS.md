@@ -982,6 +982,51 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-02 — CoS check-in — cycle 41 (delta: none; 203 SHIPPED; 3,943 tests)
+
+### 1. What shipped since last check-in
+
+No new initiatives. Sixth consecutive zero-commit feature cycle. Continued idle-time CRUCIBLE self-audit.
+
+| Audit | Finding | Status |
+|-------|---------|--------|
+| Gate 1 — property-based oracle | 19 `fc.assert` properties in `property-based.test.ts` | PASS |
+| Gate 1 — contract oracle | 65 `safeParse`/`z.` assertions in `contract.test.ts` | PASS |
+| README badge | Claims 4,557 tests; actual count 3,943 | **FAIL** |
+
+**Test count**: 3,843 vitest + 100 Python = **3,943**. Stable. **Commits since cycle 40**: 0.
+
+### 2. What surprised me
+
+- **The README test badge over-claims by 614 tests and has done so since N-163 (2026-03-28).** The badge reads `tests-4557%20passing`. The actual count measured this session is 3,943. The NEXUS initiative table for N-163 confirms the badge was deliberately set to 4,557 at that point — but the test count at N-163 (circa 2026-03-28) was approximately 3,526, based on cycle 33's "+391 to reach 3,917" report at N-200. The badge was overclaimed by ~1,031 at creation and has never been corrected. Tests have grown by 417 since then, closing the gap to 614 — but the README still overstates by 614. This is the publicly visible npm and GitHub face of the project. For a Kaggle competition entry where test coverage is a judging criterion, an incorrect badge is a credibility risk.
+
+- **The oracle coverage is genuinely healthy.** Gate 1 audit: property-based oracle has 19 `fc.assert` runs covering confidence bounds, dedup invariants, cost aggregation, and sort stability. Contract oracle has 65 Zod `safeParse`/`z.` assertions in `contract.test.ts`. Both are substantive, not hollow. The 4 oracle types (example-based, property-based, contract, integration) are real and maintained. CLAUDE.md's "Oracle tier: CRITICAL — all 4 oracle types required" is satisfied.
+
+- **The oracle and property tests have not been touched since N-76/N-77.** `property-based.test.ts` and `contract.test.ts` were written at N-76 and N-77 (2026-03-19). The 19 properties and 65 contract assertions cover the types and invariants that existed then. Since then, 127 more initiatives shipped — new APIs, EU AI Act compliance scoring, shell injection detection, Python SDK, TypeScript SDK extensions. None of these received property or contract test coverage. The oracle types are present but frozen at N-77 scope.
+
+### 3. Cross-project signals
+
+- **Test count badges in README are high-drift artefacts.** They are set manually, not generated from CI output. Any static badge claiming a test count will drift. The correct pattern: use a CI-generated dynamic badge via `shields.io/endpoint` pointing to a CI-produced JSON artefact, or just link the CI badge (which reflects the actual run). Hardcoded test count badges are a false precision anti-pattern. Remove or automate them.
+
+- **Property and contract tests freeze at the initiative that created them unless explicitly re-scoped.** N-76 and N-77 created 19 properties and 65 contracts. 127 initiatives later, nothing new was added. This is a structural problem: property and contract tests need to be updated with each new domain model, not just at "oracle establishment" time. ASIF projects should include property test scope review as part of the Gate 1 checklist.
+
+### 4. Next priorities (if fresh directives arrive)
+
+1. **Fix the README badge** — change `4557` to `3943`. One character edit. Already flagged to CoS; proposing self-initiation as housekeeping alongside the `llms.txt` fix.
+2. **Fix `llms.txt`** — header N-196 → N-203, test count 3,913 → 3,943. Two-line fix.
+3. **Commit the 3 untracked Gate 6 files** — six cycles overdue.
+4. **Write `docs/shell-injection-patterns.md`** — six cycles overdue.
+5. **Property test scope expansion** — add `fc.assert` properties for EU AI Act compliance scoring, shell injection detection, and webhook dispatch. The oracle is frozen at N-77 scope; it needs to reflect N-203 reality.
+
+### 5. Blockers / Questions for CoS
+
+- **README badge + llms.txt are both wrong in the same direction (overclaim/stale).** Both are two-line fixes. Requesting blanket approval to self-initiate doc housekeeping (badge, llms.txt, Gate 6 file commit) without a formal directive. These have now been flagged for 5–6 cycles — the friction of waiting for directives to fix one-line errors is itself a governance inefficiency.
+- **Property test freeze**: the 19 properties and 65 contracts cover only N-01 through N-77 scope. Is expanding them to cover N-78 through N-203 domain models a priority, or is the oracle coverage acceptable as-is for a competition entry?
+- **Carry-forward (9 cycles unresolved)**: depth vs breadth cadence.
+- **Carry-forward (6 cycles unresolved)**: v0.5.0 version cut.
+
+---
+
 > **Reflection cycle**: 2026-04-02 — CoS check-in — cycle 40 (delta: none; 203 SHIPPED; 3,943 tests)
 
 ### 1. What shipped since last check-in
