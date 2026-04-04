@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-04 (Cycle 75 — docs sync: README badge/llms.txt/CHANGELOG updated post-N-210; 210 initiatives SHIPPED; 4,263 tests.)
+> **Last Updated**: 2026-04-04 (Cycle 76 — SARIF CI permissions gap fixed; 210 initiatives SHIPPED; 4,263 tests.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -953,7 +953,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 **Q (2026-04-04)**: CHANGELOG `[Unreleased]` vs `[v0.5.0]` pre-publish coherence. `packages/cli/package.json` is at version `0.5.0` (set in release-prep commit 93883e8 on 2026-04-02). After that prep, N-204–N-209 shipped (12 EU AI Act articles, full compliance engine, 39 new tests) plus a bug fix. These appear in `[Unreleased]` but NOT in the `[v0.5.0]` CHANGELOG entry. When npm publishes v0.5.0, consumers will get code that includes N-204–N-209 but the published CHANGELOG for v0.5.0 won't describe them. Three options: **(A)** Bump `package.json` to `0.5.1`, rename `[Unreleased]` → `[v0.5.1]`, publish 0.5.1 (clean semver story — 0.5.0 was never published). **(B)** Merge `[Unreleased]` items into `[v0.5.0]` and clear `[Unreleased]` before publishing (simplest — v0.5.0 was never published so no consumers to break). **(C)** Publish v0.5.0 as-is, accept CHANGELOG mismatch, cut v0.5.1 immediately after. **Decision needed from CoS: which option?**
 
-**Q (2026-04-04)**: `.github/workflows/faultline-ci.yml` SARIF upload missing. The demo workflow generates SARIF output (`output-format: 'sarif'`) but never uploads it to GitHub Code Scanning. The action has full SARIF support (`compliance-sarif` input, `actions/upload-sarif` step inside the action) but the demo CI file doesn't exercise it. Fix requires: (1) add `id:` to the red-team scan step, (2) add `permissions: security-events: write` to the job, (3) add `uses: github/codeql-action/upload-sarif@v3` step referencing `${{ steps.{id}.outputs.report }}`. Estimated scope: XS (2–3 lines). Flagged in Cycle 36–44 audit, still open. **Approve as N-210?**
+~~**Q (2026-04-04)**: `.github/workflows/faultline-ci.yml` SARIF upload missing.~~ **RESOLVED (Cycle 76, 2026-04-04)** — Action already had the upload-sarif step built-in (line 276–280). Only missing piece was `permissions: security-events: write` on the job. Added 2-line permissions block to `faultline-ci.yml`. SARIF upload now unblocked.
 
 **Q (2026-03-22 — UPDATE)**: Gemini benchmark EXECUTED. Flash 5/5 complete. Full results at `docs/gemini-model-benchmark-results.md`. Key findings:
 
@@ -1010,6 +1010,7 @@ The Kaggle version remains at  (tagged  at commit ).
 | 2026-04-04 | Cycle 69 | No PENDING directives; idle protocol: docs sweep (GTM/actions/versions all current); SARIF upload gap raised as Team Q N-210 candidate (open since Cycle 36–44) |
 | 2026-04-04 | Cycle 70 | No PENDING directives; idle protocol: pre-publish CHANGELOG coherence gap — [Unreleased] N-204–N-209 ship in v0.5.0 binary but absent from [v0.5.0] entry; raised as Team Q (3 options for CoS) |
 | 2026-04-04 | Cycle 71 | No PENDING directives; idle protocol: ci-integration.md "EU AI Act Compliance Gate" section added — N-159 --ci gate, --threshold/--strict/SARIF, composite action, art6ConformityRequired docs |
+| 2026-04-04 | Cycle 76 | No PENDING directives; idle protocol: SARIF CI gap closed — added `permissions: security-events: write` to faultline-ci.yml job; closed stale SARIF Team Question |
 | 2026-04-04 | Cycle 75 | No PENDING directives; idle protocol: README badge 3886→4263; llms.txt 209→210/3886→4263/compliance-report 80.81% mutation score added; CHANGELOG N-210 Added entry; working tree clean |
 | 2026-04-04 | Cycle 74 | No PENDING directives; idle protocol: N-210 TypeScript fix — resolved EURiskCategory missing articles/requiredActions, EuArticleEvidence missing strength fields in hardening-4/5 test files; tsc --noEmit clean; pushed |
 | 2026-04-04 | Cycle 73 | No PENDING directives; idle protocol: N-210 CRUCIBLE Gate 6 hardening sprint — compliance-report.ts 50.44%→80.81%; 7 batches (292 tests); break threshold enforced at 80; 4,263 tests total |
