@@ -682,6 +682,34 @@ These are available if your UI needs them.
 | `POST /templates` | API key | Create a scan template |
 | `GET /templates/compliance` | None | Built-in compliance templates (HIPAA, SOX, FERPA, Gov) |
 
+**EU AI Act compliance endpoints** (N-159–N-175):
+
+| Endpoint | Auth | Returns |
+|----------|------|---------|
+| `POST /scan/compliance-gate` | API key | Scan + evaluate EU AI Act compliance in one call; `200`=pass, `422`=fail |
+| `GET /scan/:id/compliance` | API key | Evaluate compliance for an existing scan (supports `?threshold=N&strict=true`) |
+| `POST /scan/compliance-diff` | API key | Compare compliance between two scans; per-article trend (improved/regressed/unchanged) |
+| `GET /scan/:id/compliance/badge` | None | SVG compliance badge for README embedding |
+| `GET /compliance/history` | API key | Time-series compliance gate history (filter by `?project=&since=&limit=`) |
+| `GET /compliance/trend` | API key | Compliance score direction (`up`/`down`/`stable`) for a project |
+| `GET /compliance/deadlines` | None | Upcoming EU AI Act, GDPR, NIST enforcement dates |
+
+**GDPR endpoints** (N-178):
+
+| Endpoint | Auth | Returns |
+|----------|------|---------|
+| `GET /tenants/:id/export` | Admin | GDPR Art. 15 data export (ZIP) |
+| `DELETE /tenants/:id/data` | Admin | GDPR Art. 17 erasure confirmation |
+
+**npm download metrics** (N-185):
+
+| Endpoint | Auth | Returns |
+|----------|------|---------|
+| `GET /npm/downloads` | None | Download overview across all tracked packages |
+| `GET /npm/downloads/:package` | None | Daily download counts for a specific package |
+| `GET /npm/trend/:package` | None | Weekly download trend (up/down/stable) |
+| `POST /npm/poll` | Admin | Trigger an immediate npm download poll |
+
 ---
 
 ## 12. CORS & Security
