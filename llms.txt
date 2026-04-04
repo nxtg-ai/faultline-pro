@@ -39,7 +39,7 @@ No API key required for the `mock` provider. Real verification uses:
 - **Enterprise API** — REST + GraphQL; API key management; multi-tenant; GDPR Article 15/17; audit trail; webhooks
 - **GitHub Actions** — `faultline-scan` composite action with compliance gate, SARIF upload, threshold/strict configuration
 - **Mutation-tested** — CRUCIBLE Protocol Gate 6: claim forensics 81.97%; GDPR stores 80.94%–96.81%
-- **3,880 tests** across CLI, API, Python SDK, GDPR, mutation hardening, property-based, contract, integration
+- **3,886 tests** across CLI, API, Python SDK, GDPR, mutation hardening, property-based, contract, integration
 - **npm adoption metrics** — npmjs.org download tracking, Prometheus export, weekly trend analysis
 
 ## Use Cases
