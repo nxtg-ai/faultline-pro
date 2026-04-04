@@ -74,6 +74,7 @@ vi.mock('@nxtg/faultline/cli/scan.js', () => ({
     complianceReport: {
       riskTier: 'minimal',
       findings: [],
+      claimMappings: [],
       euRiskSummary: { totalClaims: 2, highestTier: 'minimal', unacceptable: 0, high: 0, limited: 0, minimal: 2 },
     },
     ruleFindings: [],

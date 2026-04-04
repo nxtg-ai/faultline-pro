@@ -63,7 +63,7 @@ export interface EuAiActComplianceReport {
   overallRisk: string;
   articleEvidence: EuArticleEvidence[];
   article50Disclosure: {
-    status: 'placeholder';
+    status: 'not-applicable';
     note: string;
     voiceAudioDisclosure: string;
   };
@@ -269,6 +269,30 @@ export function getRemediations(article: string, status: EvidenceStatus, finding
   } else if (article.includes('Article 14')) {
     rems.push('Implement human-in-the-loop review for interpretation and mixed-evidence claims.');
     rems.push('Document oversight procedures and escalation paths.');
+  } else if (article.includes('Article 6')) {
+    if (findings.some(f => f.includes('Annex III'))) {
+      rems.push('Complete an EU AI Act conformity assessment per Article 6 + Annex III.');
+      rems.push('Register the high-risk AI system in the EU database per Article 49 before market placement.');
+      rems.push('Ensure all Chapter 3 obligations (Articles 9–15) are met for high-risk AI systems.');
+    }
+    if (rems.length === 0) {
+      rems.push('Review Annex III classification criteria against your AI system\'s intended use cases.');
+    }
+  } else if (article.includes('Article 15')) {
+    if (findings.some(f => f.includes('contradicted'))) {
+      rems.push('Investigate contradicted claims — accuracy failures may indicate training data or inference issues per Art. 15(1).');
+      rems.push('Implement accuracy benchmarking against representative test sets per Art. 15(1).');
+    }
+    if (findings.some(f => f.includes('robustness') || f.includes('unverified'))) {
+      rems.push('Conduct robustness testing against distributional shift and edge cases per Art. 15(2).');
+    }
+    if (findings.some(f => f.includes('injection') || f.includes('cybersecurity'))) {
+      rems.push('Implement prompt injection defenses and input sanitization per Art. 15(3).');
+      rems.push('Conduct cybersecurity assessment addressing AI-specific attack vectors (OWASP Agentic AI A01).');
+    }
+    if (rems.length === 0) {
+      rems.push('Document accuracy metrics, robustness test results, and cybersecurity measures per Art. 15.');
+    }
   }
 
   return rems;
@@ -546,6 +570,41 @@ export function buildEuComplianceReport(
     });
   }
 
+  // ── Article 6 – Classification Rules for High-Risk AI Systems ─────────────
+  const highRiskMappings = complianceReport.claimMappings.filter(
+    m => m.riskLevel === 'high' || m.riskLevel === 'unacceptable',
+  );
+  const highRiskClaimIds = new Set(highRiskMappings.map(m => m.claimId));
+  const highRiskClaims = claims.filter(c => highRiskClaimIds.has(c.id));
+  const art6Findings: string[] = [];
+  if (highRiskMappings.length > 0) {
+    const annexRefs = [...new Set(highRiskMappings.flatMap(m => m.matchedPatterns))];
+    art6Findings.push(
+      `${highRiskMappings.length} claim(s) reference Annex III high-risk domain(s): ` +
+      `${annexRefs.slice(0, 3).join('; ')}${annexRefs.length > 3 ? ' (and more)' : ''}.`,
+    );
+    art6Findings.push(
+      'Content touches a high-risk AI application domain per Article 6 + Annex III. ' +
+      'Conformity assessment and EU database registration (Art. 49) may be required.',
+    );
+  }
+  const art6Status: EvidenceStatus = highRiskMappings.length > 0 ? 'partial' : 'not-applicable';
+  const art6FinalFindings = art6Findings.length > 0
+    ? art6Findings
+    : ['No Annex III high-risk domain matches detected. Article 6 classification not triggered.'];
+  const art6Strength = computeEvidenceStrength(highRiskClaims, verifications);
+  articleEvidence.push({
+    article: 'Article 6 – Classification Rules for High-Risk AI Systems',
+    requirement:
+      'AI systems listed in Annex III are classified as high-risk if they pose significant risk to ' +
+      'health, safety, or fundamental rights. Article 6 determines whether conformity assessment ' +
+      'obligations (Articles 9–15) apply.',
+    status: art6Status,
+    findings: art6FinalFindings,
+    remediations: getRemediations('Article 6', art6Status, art6FinalFindings),
+    ...art6Strength,
+  });
+
   const art9FinalFindings = art9Findings.length > 0
     ? art9Findings
     : ['No risk management findings. All claims verified within acceptable thresholds.'];
@@ -643,18 +702,70 @@ export function buildEuComplianceReport(
     ...art14Strength,
   });
 
+  // ── Article 15 – Accuracy, Robustness, and Cybersecurity ──────────────────
+  const art15Findings: string[] = [];
+  const contradictionRate = claims.length > 0 ? contradictedClaims.length / claims.length : 0;
+
+  if (contradictionRate > 0.3) {
+    art15Findings.push(
+      `${(contradictionRate * 100).toFixed(0)}% of claims contradicted — accuracy requirements ` +
+      `not met per Art. 15(1) (${contradictedClaims.length}/${claims.length} claims).`,
+    );
+  } else if (contradictedClaims.length > 0) {
+    art15Findings.push(
+      `${contradictedClaims.length} contradicted claim(s) detected — minor accuracy concern ` +
+      `per Art. 15(1). Review before deployment.`,
+    );
+  }
+  if (highImportanceUnverified.length > 0) {
+    art15Findings.push(
+      `${highImportanceUnverified.length} high-importance claim(s) unverified — ` +
+      `robustness assessment incomplete per Art. 15(2).`,
+    );
+  }
+  if (injectionFindings.length > 0) {
+    art15Findings.push(
+      `${injectionFindings.length} injection/attack pattern(s) detected — cybersecurity ` +
+      `measures required per Art. 15(3). (OWASP Agentic AI A01: Prompt Injection)`,
+    );
+  }
+
+  const art15Status: EvidenceStatus =
+    injectionFindings.length > 0 || contradictionRate > 0.3 ? 'non-compliant' :
+    (contradictedClaims.length > 0 || highImportanceUnverified.length > 0) ? 'partial' :
+    (claims.length === 0 ? 'gap' : 'compliant');
+
+  const art15FinalFindings = art15Findings.length > 0
+    ? art15Findings
+    : ['No accuracy, robustness, or cybersecurity issues detected.'];
+  const art15Claims = [...new Set([...contradictedClaims, ...highImportanceUnverified])];
+  const art15Strength = computeEvidenceStrength(art15Claims, verifications);
+  articleEvidence.push({
+    article: 'Article 15 – Accuracy, Robustness, and Cybersecurity',
+    requirement:
+      'High-risk AI systems shall achieve appropriate levels of accuracy and be resilient against ' +
+      'errors, faults, and cybersecurity attacks that could cause the system to behave in an ' +
+      'unintended way.',
+    status: art15Status,
+    findings: art15FinalFindings,
+    remediations: getRemediations('Article 15', art15Status, art15FinalFindings),
+    owaspRef: 'OWASP Agentic AI A01: Prompt Injection, A07: System Prompt Leakage',
+    ...art15Strength,
+  });
+
   // Article 50 — GPAI transparency (always included; opinion claims drive severity)
   const opinionClaims = claims.filter(c => c.type === 'opinion');
-  const art50Findings: string[] = [
-    'Article 50(4) voice/audio AI disclosure obligations: PLACEHOLDER — ' +
-    'will be populated when voice testing ships.',
-  ];
+  const art50Findings: string[] = [];
   if (opinionClaims.length > 0) {
-    art50Findings.unshift(
+    art50Findings.push(
       `${opinionClaims.length} opinion claim(s) detected — AI-generated opinion content ` +
       `requires transparency labelling per Art. 50 GPAI obligations.`,
     );
   }
+  art50Findings.push(
+    'Art. 50(4) voice/audio disclosure: not applicable — Faultline scans text only; ' +
+    'voice/audio AI outputs are outside this assessment scope.',
+  );
   const art50Status: EvidenceStatus = opinionClaims.length > 0 ? 'partial' : 'not-applicable';
 
   const art50Strength = computeEvidenceStrength(opinionClaims, verifications);
@@ -674,13 +785,13 @@ export function buildEuComplianceReport(
 
   // ── Article 50 Disclosure Object ──────────────────────────────────────────
   const article50Disclosure = {
-    status: 'placeholder' as const,
+    status: 'not-applicable' as const,
     note:
-      'Article 50 GPAI transparency obligations are partially tracked via claim-type analysis. ' +
-      'Art. 50(4) voice/audio disclosure obligations will be populated when voice testing ships.',
+      'Article 50 GPAI transparency obligations are tracked via claim-type analysis. ' +
+      'Art. 50(4) voice/audio disclosure is not applicable for text-only scanning.',
     voiceAudioDisclosure:
-      'PLACEHOLDER — Art. 50(4): AI-generated voice and audio content must be marked as ' +
-      'machine-generated. Voice testing not yet implemented in this release.',
+      'Not applicable — Art. 50(4) applies to AI systems generating voice/audio outputs. ' +
+      'Faultline scans text; voice/audio AI outputs are outside this assessment scope.',
   };
 
   // ── Summary ───────────────────────────────────────────────────────────────
@@ -784,9 +895,8 @@ export function buildEuComplianceReport(
       id: 'annex-iii-7',
       article: 'Article 15',
       requirement: 'Accuracy, robustness, and cybersecurity — appropriate to intended purpose',
-      status: contradictedClaims.length === 0 && claims.length > 0 ? 'pass' :
-        contradictedClaims.length > claims.length * 0.3 ? 'fail' : 'partial',
-      evidence: `${contradictedClaims.length}/${claims.length} claims contradicted (accuracy proxy)`,
+      status: toAnnexStatus(artStatus('Article 15')),
+      evidence: `Article 15 status: ${artStatus('Article 15') ?? 'not assessed'}`,
     },
   ];
 

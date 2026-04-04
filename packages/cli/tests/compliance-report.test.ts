@@ -95,11 +95,11 @@ describe('buildEuComplianceReport()', () => {
     expect(articles.some(a => a.includes('Article 50'))).toBe(true);
   });
 
-  it('Article 50 disclosure section is always present with placeholder status', () => {
+  it('Article 50 disclosure section is always present with not-applicable status', () => {
     const report = buildEuComplianceReport(makeScan());
     expect(report.article50Disclosure).toBeDefined();
-    expect(report.article50Disclosure.status).toBe('placeholder');
-    expect(report.article50Disclosure.voiceAudioDisclosure).toContain('PLACEHOLDER');
+    expect(report.article50Disclosure.status).toBe('not-applicable');
+    expect(report.article50Disclosure.voiceAudioDisclosure.toLowerCase()).toContain('not applicable');
   });
 
   it('Article 9 is non-compliant when many contradicted claims exist', () => {
@@ -336,6 +336,181 @@ describe('buildEuComplianceReport()', () => {
     const report = buildEuComplianceReport(scan);
     const art9 = report.articleEvidence.find(e => e.article.includes('Article 9'));
     expect(art9?.findings.some(f => f.includes('PII') && f.includes('A06'))).toBe(true);
+  });
+
+  // ── Article 6 — Classification Rules for High-Risk AI Systems ───────────────
+
+  it('Article 6 is always in articleEvidence', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const art6 = report.articleEvidence.find(a => a.article.includes('Article 6'));
+    expect(art6).toBeDefined();
+    expect(art6?.article).toBe('Article 6 – Classification Rules for High-Risk AI Systems');
+  });
+
+  it('Article 6 is not-applicable when no high-risk domain claims present', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const art6 = report.articleEvidence.find(a => a.article.includes('Article 6'));
+    expect(art6?.status).toBe('not-applicable');
+  });
+
+  it('Article 6 is partial when claims touch Annex III high-risk domains', () => {
+    const scan = makeScan({
+      claims: [
+        { id: 'c1', text: 'The system uses biometric facial recognition to identify individuals.', type: 'fact', importance: 5 },
+      ],
+      verifications: {
+        c1: { claimId: 'c1', status: 'supported', explanation: 'Confirmed.', sources: [] },
+      },
+      complianceReport: makeComplianceReport({
+        claimMappings: [
+          {
+            claimId: 'c1',
+            claimText: 'The system uses biometric facial recognition to identify individuals.',
+            verificationStatus: 'supported',
+            riskLevel: 'high',
+            category: { level: 'high', title: 'High Risk', description: '', articles: [], requiredActions: [] },
+            matchedPatterns: ['Annex III §1'],
+            confidence: 'high',
+            confidenceScore: 0.9,
+          },
+        ],
+        euRiskSummary: { unacceptable: 0, high: 1, limited: 0, minimal: 0, totalClaims: 1, highestTier: 'high' },
+      }),
+    });
+    const report = buildEuComplianceReport(scan);
+    const art6 = report.articleEvidence.find(a => a.article.includes('Article 6'));
+    expect(art6?.status).toBe('partial');
+    expect(art6?.findings.some(f => f.includes('Annex III'))).toBe(true);
+  });
+
+  it('Article 6 remediations include conformity assessment guidance when high-risk', () => {
+    const scan = makeScan({
+      claims: [
+        { id: 'c1', text: 'The system uses biometric identification.', type: 'fact', importance: 5 },
+      ],
+      verifications: {
+        c1: { claimId: 'c1', status: 'supported', explanation: 'OK.', sources: [] },
+      },
+      complianceReport: makeComplianceReport({
+        claimMappings: [
+          {
+            claimId: 'c1',
+            claimText: 'The system uses biometric identification.',
+            verificationStatus: 'supported',
+            riskLevel: 'high',
+            category: { level: 'high', title: 'High Risk', description: '', articles: [], requiredActions: [] },
+            matchedPatterns: ['Annex III §1'],
+            confidence: 'high',
+            confidenceScore: 0.9,
+          },
+        ],
+        euRiskSummary: { unacceptable: 0, high: 1, limited: 0, minimal: 0, totalClaims: 1, highestTier: 'high' },
+      }),
+    });
+    const report = buildEuComplianceReport(scan);
+    const art6 = report.articleEvidence.find(a => a.article.includes('Article 6'));
+    expect(art6?.remediations.length).toBeGreaterThan(0);
+    expect(art6?.remediations.some(r => r.includes('conformity assessment'))).toBe(true);
+  });
+
+  // ── Article 15 — Accuracy, Robustness, and Cybersecurity ───────────────────
+
+  it('Article 15 is always in articleEvidence', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const art15 = report.articleEvidence.find(a => a.article.includes('Article 15'));
+    expect(art15).toBeDefined();
+    expect(art15?.article).toBe('Article 15 – Accuracy, Robustness, and Cybersecurity');
+  });
+
+  it('Article 15 is compliant when no accuracy/robustness/cybersecurity issues', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const art15 = report.articleEvidence.find(a => a.article.includes('Article 15'));
+    expect(art15?.status).toBe('compliant');
+  });
+
+  it('Article 15 is non-compliant when contradiction rate exceeds 30%', () => {
+    const scan = makeScan({
+      claims: [
+        { id: 'c1', text: 'Claim 1.', type: 'fact', importance: 4 },
+        { id: 'c2', text: 'Claim 2.', type: 'fact', importance: 4 },
+        { id: 'c3', text: 'Claim 3.', type: 'fact', importance: 4 },
+        { id: 'c4', text: 'Claim 4.', type: 'fact', importance: 3 },
+      ],
+      verifications: {
+        c1: { claimId: 'c1', status: 'contradicted', explanation: 'Wrong.', sources: [] },
+        c2: { claimId: 'c2', status: 'contradicted', explanation: 'Wrong.', sources: [] },
+        c3: { claimId: 'c3', status: 'supported', explanation: 'OK.', sources: [] },
+        c4: { claimId: 'c4', status: 'supported', explanation: 'OK.', sources: [] },
+      },
+    });
+    const report = buildEuComplianceReport(scan);
+    const art15 = report.articleEvidence.find(a => a.article.includes('Article 15'));
+    expect(art15?.status).toBe('non-compliant');
+    expect(art15?.findings.some(f => f.includes('contradicted'))).toBe(true);
+  });
+
+  it('Article 15 is partial when some claims contradicted but below 30% threshold', () => {
+    const scan = makeScan({
+      claims: [
+        { id: 'c1', text: 'Claim 1.', type: 'fact', importance: 4 },
+        { id: 'c2', text: 'Claim 2.', type: 'fact', importance: 4 },
+        { id: 'c3', text: 'Claim 3.', type: 'fact', importance: 4 },
+        { id: 'c4', text: 'Claim 4.', type: 'fact', importance: 3 },
+        { id: 'c5', text: 'Claim 5.', type: 'fact', importance: 3 },
+      ],
+      verifications: {
+        c1: { claimId: 'c1', status: 'contradicted', explanation: 'Wrong.', sources: [] },
+        c2: { claimId: 'c2', status: 'supported', explanation: 'OK.', sources: [] },
+        c3: { claimId: 'c3', status: 'supported', explanation: 'OK.', sources: [] },
+        c4: { claimId: 'c4', status: 'supported', explanation: 'OK.', sources: [] },
+        c5: { claimId: 'c5', status: 'supported', explanation: 'OK.', sources: [] },
+      },
+    });
+    const report = buildEuComplianceReport(scan);
+    const art15 = report.articleEvidence.find(a => a.article.includes('Article 15'));
+    expect(art15?.status).toBe('partial');
+  });
+
+  it('Article 15 is non-compliant when injection findings present', () => {
+    const scan = makeScan({
+      ruleFindings: [
+        { ruleId: 'injection-detection', severity: 'critical', message: 'Prompt injection pattern detected', match: '$(cmd)', offset: 0 },
+      ],
+    });
+    const report = buildEuComplianceReport(scan);
+    const art15 = report.articleEvidence.find(a => a.article.includes('Article 15'));
+    expect(art15?.status).toBe('non-compliant');
+    expect(art15?.findings.some(f => f.includes('injection'))).toBe(true);
+  });
+
+  it('Article 15 remediations include accuracy guidance for contradicted claims', () => {
+    const scan = makeScan({
+      claims: [
+        { id: 'c1', text: 'C1.', type: 'fact', importance: 4 },
+        { id: 'c2', text: 'C2.', type: 'fact', importance: 4 },
+        { id: 'c3', text: 'C3.', type: 'fact', importance: 4 },
+        { id: 'c4', text: 'C4.', type: 'fact', importance: 4 },
+      ],
+      verifications: {
+        c1: { claimId: 'c1', status: 'contradicted', explanation: 'X.', sources: [] },
+        c2: { claimId: 'c2', status: 'contradicted', explanation: 'X.', sources: [] },
+        c3: { claimId: 'c3', status: 'supported', explanation: 'OK.', sources: [] },
+        c4: { claimId: 'c4', status: 'supported', explanation: 'OK.', sources: [] },
+      },
+    });
+    const report = buildEuComplianceReport(scan);
+    const art15 = report.articleEvidence.find(a => a.article.includes('Article 15'));
+    expect(art15?.remediations.length).toBeGreaterThan(0);
+    expect(art15?.remediations.some(r => r.includes('accuracy') || r.includes('contradicted'))).toBe(true);
+  });
+
+  it('Article 15 is included in articleEvidence before Article 50', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const art15Idx = report.articleEvidence.findIndex(a => a.article.includes('Article 15'));
+    const art50Idx = report.articleEvidence.findIndex(a => a.article.includes('Article 50'));
+    expect(art15Idx).toBeGreaterThanOrEqual(0);
+    expect(art50Idx).toBeGreaterThanOrEqual(0);
+    expect(art15Idx).toBeLessThan(art50Idx);
   });
 
   it('testCategoryMappings reflects claim types correctly', () => {
@@ -634,10 +809,10 @@ describe('renderComplianceReportJson()', () => {
     expect(parsed.articleEvidence.length).toBeGreaterThan(0);
   });
 
-  it('serialized JSON contains article50Disclosure with placeholder status', () => {
+  it('serialized JSON contains article50Disclosure with not-applicable status', () => {
     const report = buildEuComplianceReport(makeScan());
     const parsed = JSON.parse(renderComplianceReportJson(report)) as EuAiActComplianceReport;
-    expect(parsed.article50Disclosure.status).toBe('placeholder');
+    expect(parsed.article50Disclosure.status).toBe('not-applicable');
   });
 
   it('serialized JSON contains testCategoryMappings', () => {
@@ -741,7 +916,7 @@ describe('CLI: compliance-report command', () => {
     expect(exitCode).toBe(0);
     const parsed = JSON.parse(output) as EuAiActComplianceReport;
     expect(Array.isArray(parsed.articleEvidence)).toBe(true);
-    expect(parsed.article50Disclosure.status).toBe('placeholder');
+    expect(parsed.article50Disclosure.status).toBe('not-applicable');
   });
 
   it('--output flag writes JSON to file', async () => {

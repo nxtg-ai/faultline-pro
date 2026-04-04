@@ -40,7 +40,7 @@ vi.mock('@nxtg/faultline/cli/scan.js', () => ({
       c1: { claimId: 'c1', status: 'supported', explanation: 'Confirmed.', sources: [{ title: 'Source A', url: 'https://example.com' }] },
     },
     overallRisk: 'low',
-    complianceReport: { riskTier: 'minimal', findings: [], euRiskSummary: { totalClaims: 1, highestTier: 'minimal', unacceptable: 0, high: 0, limited: 0, minimal: 1 } },
+    complianceReport: { riskTier: 'minimal', findings: [], claimMappings: [], euRiskSummary: { totalClaims: 1, highestTier: 'minimal', unacceptable: 0, high: 0, limited: 0, minimal: 1 } },
     ruleFindings: [],
   }),
 }));
