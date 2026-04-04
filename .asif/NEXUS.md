@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-04 (Cycle 72 — Gate 6 FAIL: compliance-report.ts 50.44% < 80%; stryker-compliance.config.mjs created; hardening sprint raised as P0 N-210 candidate; 209 initiatives SHIPPED; 3,886 tests.)
+> **Last Updated**: 2026-04-04 (Cycle 73 — N-210 SHIPPED: compliance-report.ts Gate 6 50.44%→80.81% via 7 hardening batches (292 tests); 210 initiatives SHIPPED; 4,263 tests.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -179,6 +179,7 @@
 | N-201 | TypeScript SDK compliance enhancements — complianceExport() method, ComplianceHistoryEntry/ComplianceExportResponse types, WebhookEvent updated, ScanResult complianceScore/Pass; 4 tests | DISTRIBUTION | SHIPPED | P1 | 2026-04-01 |
 | N-202 | Python SDK compliance enhancements — compliance_export() method (JSON+CSV), ComplianceHistoryEntry/ComplianceExportResponse models, inline complianceScore/compliancePass in ScanResult; 14 tests | DISTRIBUTION | SHIPPED | P1 | 2026-04-01 |
 | N-203 | Shell injection detection rules — YAML rule (12 regex patterns: cmd substitution, IFS, eval, curl-pipe-sh, base64, dangerous rm, env override, mkfifo) + TypeScript rule (Unicode zero-width, bidi override, control chars, homoglyphs); 31 tests | FORENSIC | SHIPPED | P0 | 2026-04-01 |
+| N-210 | CRUCIBLE Gate 6 — compliance-report.ts mutation hardening sprint; 50.44%→80.81% via 7 hardening batches (292 new tests); stryker-compliance.config.mjs break threshold set to 80; all 7 test files cover: getRemediations Art.5–53, buildTestCategoryMappings filters, annexIIIChecklist, evaluateComplianceGate, renderCiGateOutput, renderComplianceReportMarkdown, renderComplianceReportSarif, renderComplianceReportHtml, diffComplianceReports | DEVELOPER-X | SHIPPED | P0 | 2026-04-04 |
 | N-209 | Art. 53 (Obligations for providers of GPAI models) added to articleEvidence — partial when real GPAI provider detected (Google Gemini/OpenAI/Anthropic Claude/Perplexity), not-applicable for mock; getRemediations branch (5 items); 3 new tests (A53-1–A53-3) | COMPLIANCE | SHIPPED | P0 | 2026-04-03 |
 | N-208 | Art. 52 (Transparency for specific AI system types — chatbot §1, emotion recognition/biometric §2, deep fakes §3) added to articleEvidence; Art. 6 entry added to buildTestCategoryMappings via claimMappings param; Art. 52 getRemediations branch; 8 new tests (TCA1–TCA2, A52-1–A52-6) | COMPLIANCE | SHIPPED | P0 | 2026-04-03 |
 | N-207 | CI gate blind to Art. 6 Annex III trigger — art6ConformityRequired flag added to CiGateResult; gate fails in default mode when Art. 6 detected domain content but riskFail not already firing; renderCiGateOutput surfaces conformity assessment message; 5 new tests (CG1–CG5) | COMPLIANCE | SHIPPED | P0 | 2026-04-03 |
@@ -1009,6 +1010,7 @@ The Kaggle version remains at  (tagged  at commit ).
 | 2026-04-04 | Cycle 69 | No PENDING directives; idle protocol: docs sweep (GTM/actions/versions all current); SARIF upload gap raised as Team Q N-210 candidate (open since Cycle 36–44) |
 | 2026-04-04 | Cycle 70 | No PENDING directives; idle protocol: pre-publish CHANGELOG coherence gap — [Unreleased] N-204–N-209 ship in v0.5.0 binary but absent from [v0.5.0] entry; raised as Team Q (3 options for CoS) |
 | 2026-04-04 | Cycle 71 | No PENDING directives; idle protocol: ci-integration.md "EU AI Act Compliance Gate" section added — N-159 --ci gate, --threshold/--strict/SARIF, composite action, art6ConformityRequired docs |
+| 2026-04-04 | Cycle 73 | No PENDING directives; idle protocol: N-210 CRUCIBLE Gate 6 hardening sprint — compliance-report.ts 50.44%→80.81%; 7 batches (292 tests); break threshold enforced at 80; 4,263 tests total |
 | 2026-04-04 | Cycle 72 | No PENDING directives; idle protocol: Gate 6 self-audit — compliance-report.ts FAIL (50.44% focused / 44.56% raw < 80%); stryker-compliance.config.mjs created; P0 hardening directive raised as N-210 candidate |
 
 ---

@@ -359,36 +359,34 @@ vitest: {
 | `api/src/stores/notifications.ts` | 92.45% | ✅ Gate 6 cleared |
 | `api/src/stores/schedules.ts` | 80.94% | ✅ Gate 6 cleared |
 
-**First-run scores** (`stryker-compliance.config.mjs` created Cycle 72, 2026-04-04):
+**Score history** (`stryker-compliance.config.mjs`):
 
-| Module | Raw score | Score (renderers excluded) | Status | Notes |
-|--------|-----------|---------------------------|--------|-------|
-| `cli/compliance-report.ts` | 44.56% | **50.44%** | ❌ Gate 6 FAIL | Threshold: 80%. Renderers excluded = HTML (lines 1662–1822) + PDF (1823–2115). See survivor analysis below. |
+| Date | Score | Status | Notes |
+|------|-------|--------|-------|
+| 2026-04-04 (Cycle 72) | **50.44%** | ❌ Gate 6 FAIL | Baseline; logic lines 1–1661 only |
+| 2026-04-04 (Cycle 73) | **80.81%** | ✅ Gate 6 PASS | N-210: 7 hardening batches, 292 new tests; break=80 enforced |
 
-**Survivor analysis** (2,518 total mutants, renderers-included run):
+**N-210 hardening strategy** (2026-04-04, Cycle 73):
 
-| Type | Count | Action |
-|------|-------|--------|
-| StringLiteral | 470 | ~400 in HTML/PDF renderers (excluded in focused run) — legitimately untestable string templates |
-| ConditionalExpression | 308 | **Real gap** — article evidence status conditions not fully branch-covered |
-| EqualityOperator | 170 | **Real gap** — `===` comparisons in evidence logic |
-| ArithmeticOperator | 97 | Score/count calculations; some testable |
-| MethodExpression | 64 | `.push()`, `.filter()`, `.some()` calls |
-| LogicalOperator | 48 | AND/OR logic in status derivation |
-| Other | 172 | Object/array/block mutations |
+7 batches targeting the highest-survivor bands:
+- **Batches 1–2**: `getRemediations` Art.9/10/11/12/13/14/15 substring checks + multi-element arrays for some()→every() trap
+- **Batch 3**: boundary scans — did NOT kill (single-element array trap, missing negative assertions)
+- **Batch 4**: multi-element arrays + negative assertions → killed 145 (63.66%→70.69%)
+- **Batch 5**: Art.52 unique text (fallback contains keywords → assert unique strings not in fallback); evaluateComplianceGate; SARIF/HTML/Markdown renderers → killed 91 (70.69%→75.10%)
+- **Batch 6**: art9-14 fallback texts (ArrayDeclaration→[] trap) + annex requirement strings + renderCiGateOutput header strings/arithmetic → killed 67 (75.10%→78.34%)
+- **Batch 7**: buildTestCategoryMappings filter precision (OptionalChaining via missing-verification, type/status filters, documentation filter); getRemediations Art.5/Art.50; SARIF deep structure; diffComplianceReports STATUS_RANK/RISK_RANK → killed 51 (78.34%→80.81%)
 
-**Root cause of FAIL**: `buildEuComplianceReport()` has 12 article blocks, each with multi-branch status logic (`non-compliant` / `partial` / `gap` / `compliant` / `not-applicable`). The 250 existing tests exercise the happy path and the article-present/absent cases, but many intermediate branches (e.g., exactly 1 vs 0 signals, >30% contradiction rate threshold, mixed vs contradicted paths) are not explicitly covered. `getRemediations()` condition branches (findings substring checks) are partially covered by RR22–RR27 but many article/status combinations are not.
+**Key mutation killing patterns** (see `docs/mutation-testing.md` §patterns for details):
+- **Fallback text trap**: `['fallback']→[]` + `condition→true` both need assertion that fallback text appears AND active finding text appears
+- **Single-element array trap**: `some(x)` ≡ `every(x)` for 1 element → use arrays with 2+ elements
+- **Keyword-in-fallback trap**: Art.52 fallback contains 'emotion'/'biometric'/'synthetic' → assert UNIQUE text not in fallback (e.g., 'OWASP Agentic AI A06')
+- **OptionalChaining kill**: include a claim with missing verification entry → `.status` mutation crashes, `?.status` gracefully returns undefined
+- **ObjectLiteral→{}**: diffComplianceReports STATUS_RANK/RISK_RANK — test that `trend='improved'/'regressed'` is detected
 
-**Required hardening work** (P0 directive candidate):
-1. Add per-article boundary tests for each status transition (e.g., Art. 9: contradicted→non-compliant, mixed→partial, no signals→compliant)
-2. Add `getRemediations()` tests for each article × finding-signal combination
-3. Add score calculation boundary tests (exactly 30% contradiction threshold, exactly 0 vs 1 sources)
-4. Estimated: +80–120 new tests, expected score after hardening: 75–85%
+**Remaining survivors** (~371, Cycle 73): OptionalChaining in buildEuComplianceReport main loop (equivalent — no undefined verifications in normal use), `not-applicable` color case (returns same value as default), CONFIG_FILENAMES file-loader (untestable without FS mocking), `length>0` explanation/sources checks (equivalent — empty string is falsy), SARIF `properties: {}` ObjectLiteral and location sub-objects.
 
 **Known gaps** (modules not yet in any stryker config — added after N-138):
 
 | Module | Added | Size | Priority | Notes |
 |--------|-------|------|----------|-------|
 | `cli/compliance/eu_ai_act.ts` | N-157 | ~200 LOC | P2 | Risk mapping regexes and `mapClaimToRiskCategory()` — exercised indirectly via `cli/scan.ts` Stryker run, not directly targeted. |
-
-**Next hardening session**: `stryker-compliance.config.mjs` exists — run with `npx stryker run stryker-compliance.config.mjs`. Test manifest: `packages/cli/tests/compliance-report.test.ts` (250 tests). Gate 6 threshold: 80%.
