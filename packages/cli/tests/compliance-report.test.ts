@@ -54,6 +54,18 @@ function makeComplianceReport(overrides: Partial<ComplianceReport> = {}): Compli
   };
 }
 
+/** Build a type-safe ClaimRiskMapping with required fields defaulted. */
+function makeClaimMapping(overrides: Partial<import('../compliance/eu_ai_act.js').ClaimRiskMapping> & Pick<import('../compliance/eu_ai_act.js').ClaimRiskMapping, 'claimId' | 'riskLevel' | 'matchedPatterns'>): import('../compliance/eu_ai_act.js').ClaimRiskMapping {
+  return {
+    claimText: 'Test claim.',
+    verificationStatus: 'supported',
+    category: { level: overrides.riskLevel ?? 'high', title: 'High Risk', description: '', articles: [], requiredActions: [] },
+    confidence: 'high',
+    confidenceScore: 0.9,
+    ...overrides,
+  } as import('../compliance/eu_ai_act.js').ClaimRiskMapping;
+}
+
 function makeScan(overrides: Partial<ScanResult> = {}): ScanResult {
   return {
     input: 'Water boils at 100 degrees Celsius.',
@@ -536,7 +548,7 @@ describe('buildEuComplianceReport()', () => {
   // ── TC1–TC8: Articles 10/11/12 test-category mappings ─────────────────────
   it('TC1: Art. 10 mapping appears for bias rule findings', () => {
     const scan = makeScan({
-      ruleFindings: [{ ruleId: 'bias-detection', severity: 'high', message: 'Bias detected', claimId: 'c1' }],
+      ruleFindings: [{ ruleId: 'bias-detection', severity: 'high', message: 'Bias detected', match: '', offset: 0 }],
     });
     const report = buildEuComplianceReport(scan);
     const articles = report.testCategoryMappings.map(m => m.euArticle);
@@ -576,7 +588,7 @@ describe('buildEuComplianceReport()', () => {
   it('TC4: Art. 11 mapping appears when claims have explanation or sources', () => {
     const scan = makeScan({
       verifications: {
-        c1: { claimId: 'c1', status: 'supported', explanation: 'Confirmed by source.', sources: ['http://example.com'] },
+        c1: { claimId: 'c1', status: 'supported', explanation: 'Confirmed by source.', sources: [{ title: 'Src', uri: 'http://example.com' }] },
         c2: { claimId: 'c2', status: 'supported', explanation: 'Confirmed.', sources: [] },
       },
     });
@@ -623,9 +635,9 @@ describe('buildEuComplianceReport()', () => {
       ],
       verifications: {
         c1: { claimId: 'c1', status: 'unverified', explanation: 'No evidence.', sources: [] },
-        c2: { claimId: 'c2', status: 'supported', explanation: 'Confirmed.', sources: ['http://src.com'] },
+        c2: { claimId: 'c2', status: 'supported', explanation: 'Confirmed.', sources: [{ title: 'Src', uri: 'http://src.com' }] },
       },
-      ruleFindings: [{ ruleId: 'bias-detection', severity: 'high', message: 'Bias', claimId: 'c1' }],
+      ruleFindings: [{ ruleId: 'bias-detection', severity: 'high', message: 'Bias', match: '', offset: 0 }],
     });
     const report = buildEuComplianceReport(scan);
     const articles = report.testCategoryMappings.map(m => m.euArticle);
@@ -639,12 +651,7 @@ describe('buildEuComplianceReport()', () => {
     const scan = makeScan({
       complianceReport: makeComplianceReport({
         claimMappings: [
-          {
-            claimId: 'c1',
-            riskLevel: 'high',
-            matchedPatterns: ['Annex III §4 – employment screening'],
-            euArticles: ['Article 6'],
-          },
+          makeClaimMapping({ claimId: 'c1', riskLevel: 'high', matchedPatterns: ['Annex III §4 – employment screening'] }),
         ],
       }),
     });
@@ -693,7 +700,7 @@ describe('buildEuComplianceReport()', () => {
 
   it('A52-4: Article 52 is partial when emotion ruleFindings present (§2)', () => {
     const scan = makeScan({
-      ruleFindings: [{ ruleId: 'emotion-detection', severity: 'high', message: 'Emotion detected', claimId: 'c1' }],
+      ruleFindings: [{ ruleId: 'emotion-detection', severity: 'high', message: 'Emotion detected', match: '', offset: 0 }],
     });
     const report = buildEuComplianceReport(scan);
     const art52 = report.articleEvidence.find(a => a.article.includes('Article 52'));
@@ -705,12 +712,7 @@ describe('buildEuComplianceReport()', () => {
     const scan = makeScan({
       complianceReport: makeComplianceReport({
         claimMappings: [
-          {
-            claimId: 'c1',
-            riskLevel: 'high',
-            matchedPatterns: ['Annex III §1 – biometric identification'],
-            euArticles: ['Article 6'],
-          },
+          makeClaimMapping({ claimId: 'c1', riskLevel: 'high', matchedPatterns: ['Annex III §1 – biometric identification'] }),
         ],
       }),
     });
@@ -722,7 +724,7 @@ describe('buildEuComplianceReport()', () => {
 
   it('A52-6: Article 52 is partial when synthetic ruleFindings present (§3)', () => {
     const scan = makeScan({
-      ruleFindings: [{ ruleId: 'synthetic-media-detection', severity: 'high', message: 'Synthetic content', claimId: 'c1' }],
+      ruleFindings: [{ ruleId: 'synthetic-media-detection', severity: 'high', message: 'Synthetic content', match: '', offset: 0 }],
     });
     const report = buildEuComplianceReport(scan);
     const art52 = report.articleEvidence.find(a => a.article.includes('Article 52'));
@@ -937,12 +939,7 @@ describe('buildEuComplianceReport()', () => {
       overallRisk: 'medium',
       complianceReport: makeComplianceReport({
         claimMappings: [
-          {
-            claimId: 'c1',
-            riskLevel: 'high',
-            matchedPatterns: ['Annex III §1 – biometric identification'],
-            euArticles: ['Article 6'],
-          },
+          makeClaimMapping({ claimId: 'c1', riskLevel: 'high', matchedPatterns: ['Annex III §1 – biometric identification'] }),
         ],
       }),
     });
@@ -1357,7 +1354,7 @@ describe('evaluateComplianceGate()', () => {
       overallRisk: 'medium',
       complianceReport: makeComplianceReport({
         claimMappings: [
-          { claimId: 'c1', riskLevel: 'high', matchedPatterns: ['Annex III §1'], euArticles: ['Article 6'] },
+          makeClaimMapping({ claimId: 'c1', riskLevel: 'high', matchedPatterns: ['Annex III §1'] }),
         ],
       }),
     });
@@ -1380,7 +1377,7 @@ describe('evaluateComplianceGate()', () => {
       overallRisk: 'high',
       complianceReport: makeComplianceReport({
         claimMappings: [
-          { claimId: 'c1', riskLevel: 'high', matchedPatterns: ['Annex III §3'], euArticles: ['Article 6'] },
+          makeClaimMapping({ claimId: 'c1', riskLevel: 'high', matchedPatterns: ['Annex III §3'] }),
         ],
       }),
     });
@@ -1402,7 +1399,7 @@ describe('evaluateComplianceGate()', () => {
       overallRisk: 'medium',
       complianceReport: makeComplianceReport({
         claimMappings: [
-          { claimId: 'c1', riskLevel: 'high', matchedPatterns: ['Annex III §4'], euArticles: ['Article 6'] },
+          makeClaimMapping({ claimId: 'c1', riskLevel: 'high', matchedPatterns: ['Annex III §4'] }),
         ],
       }),
     });
@@ -2171,6 +2168,7 @@ describe('renderComplianceReportMarkdown()', () => {
       exitCode: 0,
       complianceScore: 100,
       threshold: 0,
+      art6ConformityRequired: false,
       ...overrides,
     };
   }
@@ -2357,6 +2355,7 @@ describe('renderComplianceReportSarif()', () => {
       exitCode: 0,
       complianceScore: 100,
       threshold: 0,
+      art6ConformityRequired: false,
       ...overrides,
     };
   }
@@ -2559,6 +2558,7 @@ describe('renderComplianceReportHtml()', () => {
         { article: 'Article 50', status: 'compliant' as const, pass: true },
       ],
       nonCompliantCount: 0, totalArticles: 4, exitCode: 0, complianceScore: 100, threshold: 0,
+      art6ConformityRequired: false,
       ...overrides,
     };
   }

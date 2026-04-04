@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import type { ScanResult } from './scan.js';
 import type { Claim, VerificationResult } from '../types.js';
 import type { Finding } from '../rules/base_rule.js';
-import type { ClaimRiskMapping } from '../compliance/report_generator.js';
+import type { ClaimRiskMapping } from '../compliance/eu_ai_act.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
