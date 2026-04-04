@@ -2,8 +2,9 @@
 
 Reference document for `packages/cli/cli/compliance-report.ts` — `buildEuComplianceReport()`.
 
-Last updated: 2026-04-03 (N-209). Sprint N-204–N-209 closed all enforcement-deadline articles
-automatically derivable from a text scan.
+Last updated: 2026-04-04 (N-210). Sprint N-204–N-209 closed all enforcement-deadline articles
+automatically derivable from a text scan. N-210 raised `compliance-report.ts` Gate 6 mutation
+score from 50.44% → 80.81% (292 hardening tests; threshold 80% enforced).
 
 ---
 

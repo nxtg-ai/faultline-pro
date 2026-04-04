@@ -18,6 +18,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Fixed
 
 - `getRemediations()` Art. 5 branch condition matched `'Article 52'` and `'Article 53'` due to substring overlap (`'Article 52'.includes('Article 5')` is `true`). Added explicit exclusion guards for Art. 52 and Art. 53 so their `else if` branches are reachable. 6 remediation tests added (RR22–RR27); 5 were previously failing silently. Total: 3,886 tests.
+- `.github/workflows/faultline-ci.yml` missing `permissions: security-events: write` — the composite action already contained `github/codeql-action/upload-sarif` but the calling workflow lacked the required permission, causing SARIF upload to silently fail on every CI run. Added `permissions:` block to the `faultline-scan` job.
+- CRUCIBLE Gate 2: two hollow assertions in N-210 hardening tests (H4g-1, H5d-6) asserted only `toBeDefined()` without content verification. Strengthened with `euArticle` and `tags` content assertions respectively.
 
 ---
 
