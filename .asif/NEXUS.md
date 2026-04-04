@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-03 (Cycle 51 — EU AI Act sprint N-205–N-208; 208 initiatives SHIPPED; 3,877 tests.)
+> **Last Updated**: 2026-04-03 (Cycle 52 — No PENDING directives; N-208 type-error fix committed; 208 initiatives SHIPPED; 3,877 tests.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -8357,6 +8357,26 @@ None. All three questions from the previous reflection are answered. Next sessio
 **N-208** — Article 52 completely absent from compliance module. Added `articleEvidence` block (§1 chatbot, §2 emotion/biometric, §3 synthetic/deepfake), `getRemediations` branch, and Art. 6 `testCategoryMappings` entry via `claimMappings` 4th param. 8 tests.
 
 **Final: 3,877 tests / 178 files — all green. 208 initiatives SHIPPED.**
+
+---
+
+### SESSION — 2026-04-03 Cycle 52 — No Pending Directives; N-208 Type-Error Fix
+**From**: Wolf (NXTG-AI CoS) via session prompt | **Status**: DONE
+
+**Directive**: Read and execute any PENDING CoS Directives.
+
+**Response**:
+> No PENDING directives found. All directives in NEXUS marked DONE (Cycle 51 response complete).
+>
+> **Uncommitted fix discovered and resolved**: N-208 type-error fixes from Cycle 51 were in the working tree but not committed. The Cycle 51 push succeeded because the ASIF CI gate (`tsc --noEmit && vitest run --coverage`) runs against the working tree — so the gate passed locally even though commit `652873b` contained 16 type errors. Committed and pushed as `9439a1f`:
+> - `ClaimRiskMapping` import: `report_generator.js` → `eu_ai_act.js`
+> - `makeClaimMapping()` helper added to test file for type-safe construction
+> - `Finding` test objects: removed non-existent `claimId`, added required `match`/`offset` fields
+> - `sources`: `string[]` → `Array<{title, uri}>` in TC4/TC8
+> - `ClaimRiskMapping` inline objects in TCA1/A52-5/CG1/CG3/CG5/annex tests: replaced with `makeClaimMapping()`, dropped non-existent `euArticles` field
+> - `makeGate()` helpers in MD/SARIF/HTML renderer tests: added `art6ConformityRequired: false`
+>
+> **CI gate post-fix**: `tsc --noEmit` clean, 3,877 tests / 241 compliance tests — all GREEN. Pushed `9439a1f`.
 
 ---
 
