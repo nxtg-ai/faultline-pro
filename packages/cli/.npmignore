@@ -1,0 +1,4 @@
+tests/
+vitest.config.ts
+stryker*.mjs
+tsconfig.json

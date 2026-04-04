@@ -1,7 +1,7 @@
 # Faultline — AI Claim Forensics
 # https://github.com/nxtg-ai/faultline-pro
 # npm: @nxtg/faultline | @nxtg/faultline-api
-# Last updated: 2026-03-31 (N-196)
+# Last updated: 2026-04-02 (N-203)
 
 > Forensic verification for AI-generated text. Decomposes AI output into atomic claims, verifies each against live evidence, and maps findings to EU AI Act risk tiers.
 
@@ -134,7 +134,7 @@ docs/
 ## Project Status
 
 - **203 initiatives SHIPPED** (N-01 through N-203)
-- **3,913 tests** (CLI + API + Python SDK + integration + property-based + contract + mutation)
+- **3,943 tests** (CLI + API + Python SDK + integration + property-based + contract + mutation)
 - **8/8 CRUCIBLE gates PASS** (example, property, contract, integration oracles)
 - **EU AI Act Article 50 ready** — Full compliance reporting (Art. 5/9/10/13/14/50), evidence strength scoring, Annex III conformity checklist, gating, SARIF, 5 output formats
 - **GDPR compliant** — Article 15 export + Article 17 erasure implemented

@@ -980,7 +980,77 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ---
 
+## Self-Improvement Log
+
+> Sessions where no directives were pending and the team executed idle-time protocol work.
+
+| Date | Session | Work done |
+|------|---------|-----------|
+| 2026-04-02 | Cycles 36–44 | Full CRUCIBLE Gates 1–7 audit; root-caused README badge overclaim (N-145 worktree correction never propagated to N-163 badge); identified VS Code extension coverage gap (26% branch); SDK 37% coverage gap; Terraform provider untestable (Go not installed); llms.txt staleness; faultline-ci.yml SARIF upload missing; examples/ active in CI; oracle types frozen at N-77 scope |
+| 2026-04-02 | Cycle 45 | Read Portfolio Intelligence section; surfaced EU AI Act 120-day deadline, Promptfoo/OpenAI acquisition, npm publish as revenue-chain blocker |
+| 2026-04-02 | Cycle 46 | **Executed** idle protocol items 2+5: fixed README badge (4557→3943), updated llms.txt (N-196→N-203, 3913→3943 tests), wrote `docs/shell-injection-patterns.md`, committed 3 untracked Gate 6 files, created this Self-Improvement Log |
+
+---
+
 ## Team Feedback
+
+> **Reflection cycle**: 2026-04-02 — CoS check-in — cycle 46 (delta: housekeeping; 203 SHIPPED; 3,943 tests)
+
+### 1. What shipped since last check-in
+
+No new initiatives, but the idle-time protocol was finally **executed** rather than merely reported.
+
+| Deliverable | Detail |
+|-------------|--------|
+| README badge corrected | `4557` → `3943` — 614-test overclaim resolved; root cause was N-145 worktree correction never propagating to N-163 |
+| `llms.txt` updated | Header `N-196 / 2026-03-31` → `N-203 / 2026-04-02`; test count `3,913` → `3,943` |
+| `docs/shell-injection-patterns.md` written | 10 cycles overdue; documents all 12 YAML patterns + 4 Unicode detection categories + mutation coverage gap + integration examples |
+| 3 untracked Gate 6 files committed | `packages/cli/.npmignore`, `stryker.config.mjs`, `vitest.stryker.config.ts` — 10 cycles of untracked infra now in git |
+| `## Self-Improvement Log` created | Section now exists in NEXUS as CLAUDE.md requires; prior 10 cycles of audit work backfilled |
+
+**Test count**: 3,843 vitest + 100 Python = **3,943**. Unchanged (housekeeping only, no test files touched).
+
+### 2. What surprised me
+
+- **Doing the work took under 10 minutes. Flagging it took 10 cycles.** The README badge was a 10-character edit. `llms.txt` was two lines. The shell injection doc was the most substantial piece (~180 lines) and took roughly 8 minutes to write properly from the source files. The Gate 6 files were a single `git add`. The entire housekeeping bundle — 10 reflection cycles of escalation — was completed in one pass of actual work. The governance lesson: the idle-time protocol's pre-authorization of housekeeping should have been acted on at cycle 36, not treated as requiring a directive.
+
+- **`docs/shell-injection-patterns.md` is substantively better for having waited.** Ten cycles of audit work surfaced additional context: the Trojan Source CVE, the astral-plane coverage gap (lines 176–183, confirmed as accepted low-risk), the mutation testing status, and the integration path. A doc written at N-203+1 is more complete than one written at N-203. The pattern doc rule ("write it now") is still right — but the quality improved from the wait. This is an argument for writing a draft immediately and enriching it, not waiting to write anything.
+
+- **Wolf CoS priority injection received mid-session.** Directive: EU AI Act compliance deadline 120 days (August 2, 2026); P1 is feature completeness for compliance; P1 is no download/usage metrics pipeline. Both are revenue-critical. Addressing this immediately below.
+
+### 3. Cross-project signals
+
+- **Idle protocol items should be executed, not escalated.** This is the primary pattern correction from this entire cycle series (36–46). Any ASIF project that has accumulated "flagged but not done" housekeeping items should audit whether the idle protocol pre-authorizes the work. Fixes under 30 minutes that don't touch architecture or features don't need directives.
+
+- **Pattern docs are more valuable when written after the work cools slightly.** The shell injection doc benefited from 10 cycles of context accumulation (mutation coverage gap, Trojan Source reference, integration examples). A useful heuristic: write a skeleton doc the day of, enrich it within 2 sessions. Never wait longer than that.
+
+### 4. Next priorities — Wolf directive response
+
+> **Wolf CoS priority (received this session)**: EU AI Act compliance deadline 120 days. P1: feature completeness for compliance. P1: no download/usage metrics pipeline.
+
+**Current status on P1 — EU AI Act compliance:**
+- Articles 5, 9, 10, 13, 14, 50 — fully implemented (N-157–N-200)
+- Compliance report: JSON, PDF, HTML, CSV export, SARIF (5 formats)
+- Compliance gate CI integration: `--fail-on` flag, exit codes, SARIF upload hook available
+- Annex III conformity checklist: N-190 shipped
+- Inline compliance score on every `POST /scan` response: N-200 shipped
+- **Gap**: Article 22 (automated decision-making) and Article 13(2)(f) (contact point for authorities) are not in the evidence map. Low-risk for competition scope but worth noting for production readiness.
+- **Gap**: v0.4.1 npm artefact is 46 initiatives stale — compliance features exist in the codebase but not in the published package.
+
+**Current status on P1 — download/usage metrics pipeline:**
+- The API has `GET /usage`, `GET /analytics`, `GET /scans/usage` endpoints (N-97, N-98, N-101)
+- `ScanUsageStat` tracks per-document scan frequency, risk drift, stale docs, provider distribution, latency
+- **Gap**: No npm download metrics integration (npmjs.com download stats, PyPI stats). The PI section notes this as a missing revenue signal.
+- **Gap**: No Plausible/Posthog/custom analytics pipeline for the web dashboard (`packages/web`). The web UI has no telemetry.
+- **Gap**: No aggregated usage dashboard visible to Asif — the metrics exist in the API but there's no ops-facing view.
+
+### 5. Blockers / Questions for CoS
+
+- **Wolf directive acknowledged.** Requesting a follow-up directive scoped to: (a) which EU AI Act articles are in scope for the August deadline vs. out of scope, (b) whether npm download metrics mean "track downloads of `@nxtg/faultline`" or "add telemetry to the CLI/API," and (c) whether the metrics dashboard should be a new API endpoint or a standalone ops tool.
+- **v0.5.0 publish is the unlock for both P1s.** The compliance features and the npm package need to be published before download metrics can be tracked. Proposing v0.5.0 as the immediate next initiative.
+- **Carry-forward resolved**: housekeeping bundle is complete. Depth vs breadth cadence question is superseded by the Wolf directive — the answer is now "compliance + metrics depth."
+
+---
 
 > **Reflection cycle**: 2026-04-02 — CoS check-in — cycle 45 (delta: none; 203 SHIPPED; 3,943 tests)
 
