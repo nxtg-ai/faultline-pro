@@ -57,6 +57,8 @@ describe('SH-B: control char boundary mutations', () => {
     const findings = rule.check('prefix\x0fsuffix');
     const match = findings.find(f => f.ruleId === 'shell-injection-control-char');
     expect(match).toBeDefined();
+    expect(match!.severity).toBe('critical');
+    expect(match!.message).toContain('shift in');
   });
 });
 
@@ -155,6 +157,7 @@ describe('SH-R: ruleId StringLiteral mutations', () => {
     const findings = rule.check('\u202d');  // left-to-right override
     const match = findings.find(f => f.ruleId === 'shell-injection-bidi-override');
     expect(match).toBeDefined();
+    expect(match!.severity).toBe('critical');
   });
 
   it('SH-R3: whitespace ruleId is "shell-injection-unicode-whitespace" — kills ruleId literal', () => {
