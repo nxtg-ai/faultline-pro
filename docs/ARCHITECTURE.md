@@ -60,11 +60,32 @@ Pattern matching uses domain-specific regexes against claim text. Contradicted h
 
 ### 5. Compliance Report
 
-Aggregates all mappings into a structured report:
+`buildEuComplianceReport()` in `packages/cli/cli/compliance-report.ts` aggregates scan output into a full EU AI Act evidence report (N-157–N-209). The engine covers 12 enforcement-deadline articles:
 
-- Per-tier claim counts and highest tier
-- Triggered EU AI Act articles with associated claim IDs
-- Tier-appropriate mitigation recommendations
+| Article | Evidence Source | Status Logic |
+|---------|----------------|--------------|
+| Art. 5 — Prohibited Practices | `claimMappings` unacceptable tier | `non-compliant` if any; else absent |
+| Art. 6 — High-Risk Classification | `claimMappings` high/unacceptable | `partial` if high-risk domains; else `not-applicable` |
+| Art. 9 — Risk Management | `verifications` contradicted/mixed; PII/bias findings | `non-compliant`/`partial`/`compliant` |
+| Art. 10 — Data Governance | `ruleFindings` bias/PII; `verifications` contradicted | `non-compliant` for bias; `partial` otherwise |
+| Art. 11 — Technical Documentation | `verifications` explanation length + source citations | `compliant` if ≥1 explained claim; else absent |
+| Art. 12 — Record-Keeping | `claims` presence + metadata | `compliant` if claims exist; else absent |
+| Art. 13 — Transparency | `verifications` supported/contradicted/mixed split | `compliant`/`partial`/`gap` |
+| Art. 14 — Human Oversight | `claims` interpretation-type | `partial` if interpretation claims; else `compliant` |
+| Art. 15 — Accuracy & Robustness | Contradiction rate >30%; injection/shell `ruleFindings` | `partial` if signals; else `compliant` |
+| Art. 50 — GPAI Transparency | `claims` opinion-type | `partial` if opinion claims; else `not-applicable` |
+| Art. 52 — Specific AI System Types | Emotion/biometric/synthetic `ruleFindings`; opinion claims | `partial` if any signal; else `not-applicable` |
+| Art. 53 — GPAI Provider Obligations | `scan.provider` (real vs mock) | `partial` if real GPAI; else `not-applicable` |
+
+Each article entry carries: `status`, `findings[]`, `remediations[]`, `evidenceCount`, `sourceCount`, `strengthScore` (0–1), `owaspRef`.
+
+**Evidence status states**: `compliant` → `partial` → `gap` → `non-compliant` → `not-applicable` (excluded from score)
+
+**Annex III conformity checklist**: 8-item checklist triggered when `overallRisk` is high/critical or Art. 6 is partial/non-compliant. Covers Arts. 6/9/10/11/12/13/14/15.
+
+**Output formats** (5): JSON, PDF (EU-branded PDFKit), Markdown (GFM for PR comments), SARIF 2.1.0 (GitHub Code Scanning), HTML (standalone).
+
+**CI gate** (`--ci`): exits non-zero on compliance failure. Configurable via `--threshold N` (0–100 score) and `--strict` (all articles must be compliant). `art6ConformityRequired` flag in `CiGateResult` surfaces Annex III obligation explicitly.
 
 ## Provider Abstraction
 

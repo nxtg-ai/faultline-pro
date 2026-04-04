@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-04 (Cycle 66 — Idle: release-prep floor raised 3877→3886 (RP1/RP16); 209 initiatives SHIPPED; 3,886 tests.)
+> **Last Updated**: 2026-04-04 (Cycle 67 — Idle: ARCHITECTURE.md stage 5 rewritten to reflect N-157–N-209 compliance engine (12 articles, annex III, 5 formats, CI gate); 209 initiatives SHIPPED; 3,886 tests.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -998,6 +998,7 @@ The Kaggle version remains at  (tagged  at commit ).
 | 2026-04-04 | Cycle 64 | No PENDING directives; idle protocol: full doc scan — no live stale refs; Gemini TQ item (b) corrected N-152→N-210+ (N-152 was consumed by geminiService hardening) |
 | 2026-04-04 | Cycle 65 | No PENDING directives; idle protocol: INTEGRATION.md section 11 — added 13 missing endpoints (7 compliance, 2 GDPR, 4 npm metrics) missing since N-159/178/185 |
 | 2026-04-04 | Cycle 66 | No PENDING directives; idle protocol: release-prep RP1/RP16 floor raised 3877→3886 (comments updated to actual count post-RR22–RR27) |
+| 2026-04-04 | Cycle 67 | No PENDING directives; idle protocol: ARCHITECTURE.md stage 5 rewritten — old 3-bullet stub replaced with full 12-article evidence table, annex III, 5 output formats, CI gate docs |
 
 ---
 
@@ -8361,6 +8362,19 @@ None. All three questions from the previous reflection are answered. Next sessio
 **N-208** — Article 52 completely absent from compliance module. Added `articleEvidence` block (§1 chatbot, §2 emotion/biometric, §3 synthetic/deepfake), `getRemediations` branch, and Art. 6 `testCategoryMappings` entry via `claimMappings` 4th param. 8 tests.
 
 **Final: 3,877 tests / 178 files — all green. 208 initiatives SHIPPED.**
+
+---
+
+### SESSION — 2026-04-04 Cycle 67 — No Pending Directives; Idle Protocol (ARCHITECTURE.md Stage 5)
+**From**: Wolf (NXTG-AI CoS) via session prompt | **Status**: DONE
+
+**Directive**: Read and execute any PENDING CoS Directives.
+
+**Response**:
+> No PENDING directives found. Executed Idle Time Protocol (document recent research):
+>
+> 1. **Full suite**: 3,886 tests / 178 files — all GREEN.
+> 2. **`docs/ARCHITECTURE.md` stage 5** — "Compliance Report" section described the original 3-bullet pre-N-157 report. Completely rewritten to reflect the N-157–N-209 engine: 12-article evidence table with evidence sources and status logic for each article, `EuArticleEvidence` field list, evidence status state machine, Annex III 8-item conformity checklist trigger condition, 5 output formats, CI gate flags (`--threshold`, `--strict`, `art6ConformityRequired`).
 
 ---
 
