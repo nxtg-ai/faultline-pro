@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-04 (Cycle 81 — N-211 SHIPPED: eu_ai_act.ts Gate 6 100% function-level; ESM static limitation documented; 211 initiatives SHIPPED; 4,300 tests.)
+> **Last Updated**: 2026-04-04 (Cycle 82 — CLAUDE.md Gate 6/oracle sync post-N-211; 211 initiatives SHIPPED; 4,300 tests.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -1011,6 +1011,7 @@ The Kaggle version remains at  (tagged  at commit ).
 | 2026-04-04 | Cycle 69 | No PENDING directives; idle protocol: docs sweep (GTM/actions/versions all current); SARIF upload gap raised as Team Q N-210 candidate (open since Cycle 36–44) |
 | 2026-04-04 | Cycle 70 | No PENDING directives; idle protocol: pre-publish CHANGELOG coherence gap — [Unreleased] N-204–N-209 ship in v0.5.0 binary but absent from [v0.5.0] entry; raised as Team Q (3 options for CoS) |
 | 2026-04-04 | Cycle 71 | No PENDING directives; idle protocol: ci-integration.md "EU AI Act Compliance Gate" section added — N-159 --ci gate, --threshold/--strict/SARIF, composite action, art6ConformityRequired docs |
+| 2026-04-04 | Cycle 82 | No PENDING directives; idle protocol: CLAUDE.md stale Gate 6 configs + oracle count updated — added stryker-compliance/eu-ai-act configs, scores synced, example-based 4467→4300 |
 | 2026-04-04 | Cycle 81 | No PENDING directives; idle protocol: N-211 eu_ai_act.ts Gate 6 — 37 hardening tests; function-level 100% (59/59); ESM static mutation limitation documented; stryker-eu-ai-act.config.mjs; 4,300 tests |
 | 2026-04-04 | Cycle 80 | No PENDING directives; idle protocol: Gate 6 baseline for eu_ai_act.ts — 38.85% (P2 gap; 85 survived, mainly articleRef StringLiterals + regex mutations); documented in mutation-testing.md |
 | 2026-04-04 | Cycle 79 | No PENDING directives; idle protocol: CHANGELOG Fixed entries added (SARIF permissions + Gate 2 hollow assertions); eu-ai-act-coverage.md Last Updated bumped to N-210 with Gate 6 score |
