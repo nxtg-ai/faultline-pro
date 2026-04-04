@@ -15,6 +15,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - N-209: Article 53 (Obligations for Providers of GPAI Models) added to `articleEvidence` — `partial` when real GPAI provider detected (`scan.provider`), `not-applicable` for mock; 5-item `getRemediations` branch (documentation/training-data/copyright/AUP/procurement); 3 tests (A53-1–A53-3)
 - N-210: CRUCIBLE Gate 6 hardening sprint for `compliance-report.ts` — mutation score raised from 50.44% to 80.81% (threshold 80%); 292 new tests across 7 hardening files; `break: 80` enforced in `stryker-compliance.config.mjs`
 - N-211: CRUCIBLE Gate 6 for `eu_ai_act.ts` — `mapClaimToRiskCategory()` function-level score 100% (59/59 mutants killed); 37 hardening tests covering all articleRef/annexRef values, confidenceScore literals, and isEscalated branch; `stryker-eu-ai-act.config.mjs` created; ESM static mutation limitation documented in `docs/mutation-testing.md`
+- N-212: CRUCIBLE contract oracle for EU AI Act types — Zod schema tests for `EuArticleEvidence` (with `evidenceCount`/`sourceCount`/`strengthScore`), `AnnexIIICheckItem` (with `id`/`evidence`), `EuAiActComplianceReport`, and `CiGateResult` (with `art6ConformityRequired`, `exitCode: 0|1`); 14 new contract tests in `contract.test.ts`; 4,314 tests total
 
 ### Fixed
 

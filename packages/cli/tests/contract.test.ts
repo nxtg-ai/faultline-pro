@@ -24,6 +24,7 @@ import { scan } from '../cli/scan.js';
 import { getDemoResult } from '../cli/demo.js';
 import { generateComplianceReport } from '../compliance/report_generator.js';
 import { mapClaimToRiskCategory } from '../compliance/eu_ai_act.js';
+import { buildEuComplianceReport, evaluateComplianceGate } from '../cli/compliance-report.js';
 import type { Claim, VerificationResult } from '../types.js';
 
 // ── Zod schemas (mirror the TypeScript types) ─────────────────────────────────
@@ -331,5 +332,190 @@ describe('Contract: getDemoResult() conforms to ScanResultSchema', () => {
   it('demo complianceReport passes ComplianceReportSchema', () => {
     const result = getDemoResult();
     expect(() => assertValid(ComplianceReportSchema, result.complianceReport, 'DemoComplianceReport')).not.toThrow();
+  });
+});
+
+// ── EU AI Act compliance module contract schemas (N-204–N-211) ────────────────
+// Validates shapes produced by buildEuComplianceReport() and evaluateComplianceGate()
+
+const EvidenceStatusSchema = z.enum(['compliant', 'non-compliant', 'partial', 'gap', 'not-applicable']);
+const AnnexCheckStatusSchema = z.enum(['pass', 'fail', 'partial', 'not-assessed']);
+
+const EuArticleEvidenceSchema = z.object({
+  article: z.string().min(1),
+  requirement: z.string().min(1),
+  status: EvidenceStatusSchema,
+  findings: z.array(z.string()),
+  remediations: z.array(z.string()),
+  owaspRef: z.string().optional(),
+  evidenceCount: z.number().int().min(0),
+  sourceCount: z.number().int().min(0),
+  strengthScore: z.number().min(0).max(1),
+});
+
+const AnnexIIICheckItemSchema = z.object({
+  id: z.string().min(1),
+  article: z.string().min(1),
+  requirement: z.string().min(1),
+  status: AnnexCheckStatusSchema,
+  evidence: z.string(),
+});
+
+const AnnexIIIChecklistSchema = z.object({
+  applicable: z.boolean(),
+  passRate: z.number().min(0).max(1),
+  items: z.array(AnnexIIICheckItemSchema),
+});
+
+const TestCategoryMappingSchema = z.object({
+  category: z.string().min(1),
+  claimCount: z.number().int().min(0),
+  euArticle: z.string().min(1),
+  status: EvidenceStatusSchema,
+  owaspRef: z.string().optional(),
+});
+
+const EuAiActComplianceReportSchema = z.object({
+  generatedAt: z.string().min(1),
+  documentRef: z.string().min(1),
+  projectName: z.string(),
+  provider: z.string(),
+  overallRisk: z.string(),
+  articleEvidence: z.array(EuArticleEvidenceSchema),
+  article50Disclosure: z.object({
+    status: z.literal('not-applicable'),
+    note: z.string(),
+    voiceAudioDisclosure: z.string(),
+  }),
+  testCategoryMappings: z.array(TestCategoryMappingSchema),
+  complianceScore: z.number().min(0).max(100),
+  annexIIIChecklist: AnnexIIIChecklistSchema,
+  summary: z.object({
+    compliantArticles: z.number().int().min(0),
+    nonCompliantArticles: z.number().int().min(0),
+    partialArticles: z.number().int().min(0),
+    gapArticles: z.number().int().min(0),
+    totalClaimsAnalyzed: z.number().int().min(0),
+    highRiskFindings: z.number().int().min(0),
+  }),
+});
+
+const CiGateArticleResultSchema = z.object({
+  article: z.string().min(1),
+  status: EvidenceStatusSchema,
+  pass: z.boolean(),
+});
+
+const CiGateResultSchema = z.object({
+  pass: z.boolean(),
+  overallRisk: z.string(),
+  articles: z.array(CiGateArticleResultSchema),
+  nonCompliantCount: z.number().int().min(0),
+  totalArticles: z.number().int().min(0),
+  exitCode: z.union([z.literal(0), z.literal(1)]),
+  complianceScore: z.number().min(0).max(100),
+  threshold: z.number().min(0).max(100),
+  art6ConformityRequired: z.boolean(),
+});
+
+// Helper: make a minimal scan for contract tests
+function makeContractScan(overrides: Partial<{ text: string; provider: string }> = {}) {
+  return scan(overrides.text ?? 'The AI system monitors worker performance.', overrides.provider ?? 'mock');
+}
+
+describe('Contract: EuArticleEvidenceSchema (N-204–N-209)', () => {
+  it('all articleEvidence items conform to schema on a default scan', async () => {
+    const scanResult = await makeContractScan();
+    const report = buildEuComplianceReport(scanResult);
+    for (const evidence of report.articleEvidence) {
+      expect(() => assertValid(EuArticleEvidenceSchema, evidence, `EuArticleEvidence[${evidence.article}]`)).not.toThrow();
+    }
+  });
+
+  it('rejects EuArticleEvidence missing strengthScore', () => {
+    const bad = { article: 'Article 9', requirement: 'R', status: 'partial', findings: [], remediations: [], evidenceCount: 0, sourceCount: 0 };
+    expect(EuArticleEvidenceSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects EuArticleEvidence with invalid status enum', () => {
+    const bad = { article: 'Article 9', requirement: 'R', status: 'unknown', findings: [], remediations: [], evidenceCount: 0, sourceCount: 0, strengthScore: 0 };
+    expect(EuArticleEvidenceSchema.safeParse(bad).success).toBe(false);
+  });
+});
+
+describe('Contract: AnnexIIICheckItemSchema (N-206)', () => {
+  it('all annexIIIChecklist items conform to schema on high-risk scan', async () => {
+    const scanResult = await makeContractScan({ text: 'This AI system performs biometric identification of employees.' });
+    const report = buildEuComplianceReport(scanResult);
+    if (report.annexIIIChecklist.applicable) {
+      for (const item of report.annexIIIChecklist.items) {
+        expect(() => assertValid(AnnexIIICheckItemSchema, item, `AnnexIIICheckItem[${item.id}]`)).not.toThrow();
+      }
+    }
+  });
+
+  it('rejects AnnexIIICheckItem missing id', () => {
+    const bad = { article: 'Art. 9', requirement: 'Risk management', status: 'pass', evidence: 'E' };
+    expect(AnnexIIICheckItemSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects AnnexIIICheckItem with invalid status', () => {
+    const bad = { id: 'annex-iii-1', article: 'Art. 9', requirement: 'R', status: 'unknown', evidence: 'E' };
+    expect(AnnexIIICheckItemSchema.safeParse(bad).success).toBe(false);
+  });
+});
+
+describe('Contract: EuAiActComplianceReportSchema (buildEuComplianceReport output)', () => {
+  it('full compliance report conforms to schema on default scan', async () => {
+    const scanResult = await makeContractScan();
+    const report = buildEuComplianceReport(scanResult);
+    expect(() => assertValid(EuAiActComplianceReportSchema, report, 'EuAiActComplianceReport')).not.toThrow();
+  });
+
+  it('compliance report conforms to schema on high-risk biometric scan', async () => {
+    const scanResult = await makeContractScan({ text: 'This facial recognition system identifies suspects in real time.' });
+    const report = buildEuComplianceReport(scanResult);
+    expect(() => assertValid(EuAiActComplianceReportSchema, report, 'EuAiActComplianceReport[biometric]')).not.toThrow();
+  });
+
+  it('complianceScore is bounded 0–100', async () => {
+    const scanResult = await makeContractScan();
+    const report = buildEuComplianceReport(scanResult);
+    expect(report.complianceScore).toBeGreaterThanOrEqual(0);
+    expect(report.complianceScore).toBeLessThanOrEqual(100);
+  });
+
+  it('articleEvidence is non-empty (12 enforcement-deadline articles always present)', async () => {
+    const scanResult = await makeContractScan();
+    const report = buildEuComplianceReport(scanResult);
+    expect(report.articleEvidence.length).toBeGreaterThan(0);
+  });
+});
+
+describe('Contract: CiGateResultSchema (evaluateComplianceGate output)', () => {
+  it('CI gate result conforms to schema on default scan', async () => {
+    const scanResult = await makeContractScan();
+    const report = buildEuComplianceReport(scanResult);
+    const gate = evaluateComplianceGate(report);
+    expect(() => assertValid(CiGateResultSchema, gate, 'CiGateResult')).not.toThrow();
+  });
+
+  it('exitCode is 0 or 1 — never another value', async () => {
+    const scanResult = await makeContractScan();
+    const report = buildEuComplianceReport(scanResult);
+    const gate = evaluateComplianceGate(report);
+    expect([0, 1]).toContain(gate.exitCode);
+  });
+
+  it('art6ConformityRequired is boolean', async () => {
+    const scanResult = await makeContractScan();
+    const report = buildEuComplianceReport(scanResult);
+    const gate = evaluateComplianceGate(report);
+    expect(typeof gate.art6ConformityRequired).toBe('boolean');
+  });
+
+  it('rejects CiGateResult with exitCode 2', () => {
+    const bad = { pass: true, overallRisk: 'low', articles: [], nonCompliantCount: 0, totalArticles: 0, exitCode: 2, complianceScore: 100, threshold: 0, art6ConformityRequired: false };
+    expect(CiGateResultSchema.safeParse(bad).success).toBe(false);
   });
 });
