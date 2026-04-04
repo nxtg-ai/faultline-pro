@@ -1016,6 +1016,7 @@ The Kaggle version remains at  (tagged  at commit ).
 | 2026-04-04 | Cycle 92 | No PENDING directives; idle protocol: mutation-testing.md Known Gaps cleared (eu_ai_act→N-211, shell_injection→N-213); N-213 score history block added (4 runs, strategy, lessons) |
 | 2026-04-04 | Cycle 91 | No PENDING directives; idle protocol: RP1/RP16 badge floor bumped 3886→4364; stale comments updated to reflect N-213 actual count |
 | 2026-04-04 | Cycle 90 | No PENDING directives; idle protocol: CRUCIBLE Gate 2 audit SH-B5 + SH-R2 — both hollow toBeDefined() with no downstream assertions; strengthened (SH-B5 +severity+message, SH-R2 +severity); 50 tests still GREEN |
+| 2026-04-04 | Cycle 95 | No PENDING directives; third consecutive no-directive session; holding pattern documented; no new idle work available — all remaining items require CoS directive or decision |
 | 2026-04-04 | Cycle 94 | No PENDING directives; idle protocol: full CRUCIBLE Gates 1–7 audit — all PASS; Gate 2 focus on shell-injection-hardening.test.ts (all toBeDefined() are guards before content assertions, not hollow); docs/badge/llms.txt all current; Team Questions reviewed (CHANGELOG coherence + Gemini N-214 still open) |
 | 2026-04-04 | Cycle 93 | No PENDING directives; zero-delta consecutive check-in — documented in Team Feedback; raised meta-Q on reflection protocol gating |
 | 2026-04-04 | Cycle 92 | No PENDING directives; idle protocol: Team Feedback cycle 92 written (N-205→N-213 retrospective); committed and pushed |
@@ -1041,6 +1042,34 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-04-04 — CoS check-in — cycle 95 (delta: zero — third consecutive no-directive session; 213 SHIPPED; 4,364 tests)
+
+### 1. What shipped since last check-in
+
+Nothing. Three consecutive no-directive sessions (93, 94, 95). Last substantive work: N-205→N-213 (cycle 92). The project is in a clean holding pattern — all gates pass, all docs current, no open bugs, no pending idle work.
+
+### 2. What surprised me
+
+**The holding pattern is itself a data point.** Three consecutive prompts with no CoS response to any of the four open questions (Q1 publish, CHANGELOG coherence, N-214, meta-Q on reflection gating) suggests the CoS automation is running without a human reviewing the replies. The reflection entries are accumulating without feedback. This is worth naming explicitly so it's visible in the log.
+
+### 3. Cross-project signals
+
+None new since cycle 94. The Gate 2 guard-vs-hollow `toBeDefined` insight still stands as a portfolio-level pattern worth applying.
+
+### 4. Next priorities
+
+Unchanged from cycle 94 — all blocked on CoS response:
+1. npm/PyPI publish (Q1, cycle 49+)
+2. CHANGELOG coherence decision (A/B/C)
+3. N-214 calibration prompt tweak
+4. Gate 6 in CI
+
+### 5. Blockers / questions for CoS
+
+All four open questions from cycle 94 remain unanswered. Not re-listing — see cycle 94 Team Feedback. The signal here is that **the project has no safe work left to self-initiate** without one of those decisions.
+
+---
 
 > **Reflection cycle**: 2026-04-04 — CoS check-in — cycle 94 (delta: zero — no pending directives; idle CRUCIBLE audit complete; 213 SHIPPED; 4,364 tests)
 
@@ -8520,6 +8549,16 @@ None. All three questions from the previous reflection are answered. Next sessio
 ---
 
 ## CoS Directives
+
+### SESSION — 2026-04-04 Cycle 95 — No Pending Directives; Holding Pattern
+**From**: Wolf (NXTG-AI CoS) via session prompt | **Status**: DONE
+
+**Directive**: Read and execute any PENDING CoS Directives.
+
+**Response**:
+> No pending directives — third consecutive no-directive session. No new work since cycle 94. Full CRUCIBLE audit ran last session; all docs current; no safe idle-protocol work remains without a CoS directive. State unchanged: 4,364 tests / 213 initiatives / all gates PASS. Logged and pushed.
+
+---
 
 ### SESSION — 2026-04-04 Cycle 94 — No Pending Directives; Idle Protocol (CRUCIBLE Audit)
 **From**: Wolf (NXTG-AI CoS) via session prompt | **Status**: DONE
