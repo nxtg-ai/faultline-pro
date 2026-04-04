@@ -826,20 +826,44 @@ describe('buildEuComplianceReport()', () => {
     });
     const report = buildEuComplianceReport(scan);
     expect(report.annexIIIChecklist.applicable).toBe(true);
-    expect(report.annexIIIChecklist.items.length).toBe(7);
+    expect(report.annexIIIChecklist.items.length).toBe(8);
   });
 
   it('annexIIIChecklist is applicable for critical risk', () => {
     const scan = makeScan({ overallRisk: 'critical' });
     const report = buildEuComplianceReport(scan);
     expect(report.annexIIIChecklist.applicable).toBe(true);
-    expect(report.annexIIIChecklist.items.length).toBe(7);
+    expect(report.annexIIIChecklist.items.length).toBe(8);
   });
 
-  it('annexIIIChecklist items cover all 7 Annex III requirements', () => {
+  it('annexIIIChecklist is applicable when Art. 6 detects Annex III domain content (medium risk)', () => {
+    const scan = makeScan({
+      overallRisk: 'medium',
+      complianceReport: makeComplianceReport({
+        claimMappings: [
+          {
+            claimId: 'c1',
+            riskLevel: 'high',
+            matchedPatterns: ['Annex III §1 – biometric identification'],
+            euArticles: ['Article 6'],
+          },
+        ],
+      }),
+    });
+    const report = buildEuComplianceReport(scan);
+    expect(report.annexIIIChecklist.applicable).toBe(true);
+    expect(report.annexIIIChecklist.items.length).toBe(8);
+    const art6Item = report.annexIIIChecklist.items.find(i => i.id === 'annex-iii-0');
+    expect(art6Item).toBeDefined();
+    expect(art6Item!.article).toBe('Article 6');
+    expect(art6Item!.status).toBe('partial');
+  });
+
+  it('annexIIIChecklist items cover all 8 requirements including Art. 6', () => {
     const scan = makeScan({ overallRisk: 'high' });
     const report = buildEuComplianceReport(scan);
     const articles = report.annexIIIChecklist.items.map(i => i.article);
+    expect(articles).toContain('Article 6');
     expect(articles).toContain('Article 9');
     expect(articles).toContain('Article 10');
     expect(articles).toContain('Article 11');
@@ -847,6 +871,13 @@ describe('buildEuComplianceReport()', () => {
     expect(articles).toContain('Article 13');
     expect(articles).toContain('Article 14');
     expect(articles).toContain('Article 15');
+  });
+
+  it('annexIIIChecklist annex-iii-0 is first item and maps to Article 6', () => {
+    const scan = makeScan({ overallRisk: 'high' });
+    const report = buildEuComplianceReport(scan);
+    expect(report.annexIIIChecklist.items[0].id).toBe('annex-iii-0');
+    expect(report.annexIIIChecklist.items[0].article).toBe('Article 6');
   });
 
   it('annexIIIChecklist passRate is between 0 and 1', () => {
@@ -890,7 +921,7 @@ describe('buildEuComplianceReport()', () => {
     const parsed = JSON.parse(json);
     expect(parsed.annexIIIChecklist).toBeDefined();
     expect(parsed.annexIIIChecklist.applicable).toBe(true);
-    expect(parsed.annexIIIChecklist.items.length).toBe(7);
+    expect(parsed.annexIIIChecklist.items.length).toBe(8);
   });
 });
 

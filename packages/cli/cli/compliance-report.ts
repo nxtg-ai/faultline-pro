@@ -881,7 +881,6 @@ export function buildEuComplianceReport(
   }
 
   // ── Annex III Conformity Assessment Checklist ────────────────────────────
-  const annexApplicable = overallRisk === 'high' || overallRisk === 'critical';
   const articleStatusMap = new Map(articleEvidence.map(a => [a.article, a.status]));
 
   function artStatus(needle: string): EvidenceStatus | undefined {
@@ -891,6 +890,14 @@ export function buildEuComplianceReport(
     return undefined;
   }
 
+  // Annex III applies when overall risk is high/critical OR when Art. 6 detects
+  // Annex III high-risk domain content — a medium-risk scan touching biometrics or
+  // employment AI must still undergo conformity assessment.
+  const art6StatusVal = artStatus('Article 6');
+  const annexApplicable =
+    overallRisk === 'high' || overallRisk === 'critical' ||
+    art6StatusVal === 'partial' || art6StatusVal === 'non-compliant';
+
   function toAnnexStatus(s: EvidenceStatus | undefined): AnnexCheckStatus {
     if (!s) return 'not-assessed';
     if (s === 'compliant' || s === 'not-applicable') return 'pass';
@@ -899,6 +906,13 @@ export function buildEuComplianceReport(
   }
 
   const annexItems: AnnexIIICheckItem[] = [
+    {
+      id: 'annex-iii-0',
+      article: 'Article 6',
+      requirement: 'High-risk classification — Annex III domain match assessed; conformity assessment obligation determined',
+      status: toAnnexStatus(art6StatusVal),
+      evidence: `Article 6 status: ${art6StatusVal ?? 'not assessed'}`,
+    },
     {
       id: 'annex-iii-1',
       article: 'Article 9',
