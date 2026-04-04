@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-04 (Cycle 83 — N-212 contract oracle coverage for EU AI Act types; 212 initiatives SHIPPED; 4,314 tests.)
+> **Last Updated**: 2026-04-04 (Cycle 84 — idle audit: llms.txt Key Differentiators count synced 4300→4314; Gate 7 7/7 verified; calibration TQ item (b) N-211→N-213.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -975,7 +975,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 **Updated decisions needed from CoS**:
 - (a) Run Pro benchmark with billing-enabled key to confirm Pro scores B3/B5 predictions
-- (b) **Approve calibration prompt tweak as N-211** — addresses the single confirmed failure mode. Provider-agnostic. Ready to ship. *(N-210 was consumed by compliance-report.ts Gate 6 hardening sprint — next available initiative is N-211)*
+- (b) **Approve calibration prompt tweak as N-213** — addresses the single confirmed failure mode. Provider-agnostic. Ready to ship. *(N-211 consumed by eu_ai_act.ts Gate 6 sprint; N-212 consumed by contract oracle — next available initiative is N-213)*
 - (c) Wire `--model=accurate` flag (N-79) — lower priority now that Flash shows stronger-than-predicted nuance on B4/B5
 
 **Q (2026-03-21 — original)**: Gemini model benchmark — Flash vs Pro for claim verification. Research task completed; full report at `docs/gemini-model-benchmark.md`. *(Superseded by 2026-03-22 update above.)*
@@ -1012,6 +1012,7 @@ The Kaggle version remains at  (tagged  at commit ).
 | 2026-04-04 | Cycle 69 | No PENDING directives; idle protocol: docs sweep (GTM/actions/versions all current); SARIF upload gap raised as Team Q N-210 candidate (open since Cycle 36–44) |
 | 2026-04-04 | Cycle 70 | No PENDING directives; idle protocol: pre-publish CHANGELOG coherence gap — [Unreleased] N-204–N-209 ship in v0.5.0 binary but absent from [v0.5.0] entry; raised as Team Q (3 options for CoS) |
 | 2026-04-04 | Cycle 71 | No PENDING directives; idle protocol: ci-integration.md "EU AI Act Compliance Gate" section added — N-159 --ci gate, --threshold/--strict/SARIF, composite action, art6ConformityRequired docs |
+| 2026-04-04 | Cycle 84 | No PENDING directives; idle protocol: Gate 2 audit N-212 PASS; Gate 7 7/7 verified; llms.txt Key Differentiators count 4300→4314; calibration TQ item (b) slot corrected N-211→N-213 |
 | 2026-04-04 | Cycle 83 | No PENDING directives; idle protocol: N-212 contract oracle — 14 Zod schema tests for EU AI Act types (EuArticleEvidence/AnnexIIICheckItem/EuAiActComplianceReport/CiGateResult); 4,314 tests GREEN |
 | 2026-04-04 | Cycle 82 | No PENDING directives; idle protocol: CLAUDE.md stale Gate 6 configs + oracle count updated — added stryker-compliance/eu-ai-act configs, scores synced, example-based 4467→4300 |
 | 2026-04-04 | Cycle 81 | No PENDING directives; idle protocol: N-211 eu_ai_act.ts Gate 6 — 37 hardening tests; function-level 100% (59/59); ESM static mutation limitation documented; stryker-eu-ai-act.config.mjs; 4,300 tests |
