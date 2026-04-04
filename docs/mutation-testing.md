@@ -379,6 +379,7 @@ vitest: {
 | `api/src/stores/schedules.ts` | 80.94% | ✅ Gate 6 cleared | `stryker-gdpr.config.mjs` | N-138, 2026-03-21 |
 | `cli/cli/compliance-report.ts` | 80.81% | ✅ Gate 6 cleared | `stryker-compliance.config.mjs` | N-210, 2026-04-04 |
 | `cli/compliance/eu_ai_act.ts` (fn) | 100.00% | ✅ Gate 6 cleared | `stryker-eu-ai-act.config.mjs` | N-211, 2026-04-04 |
+| `cli/rules/shell_injection_rule.ts` | 80.29% | ✅ Gate 6 cleared | `stryker-shell-injection.config.mjs` | N-213, 2026-04-04 |
 
 **Score history** (`stryker-compliance.config.mjs`):
 

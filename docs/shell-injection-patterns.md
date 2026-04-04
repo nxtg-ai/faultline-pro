@@ -89,9 +89,12 @@ Both rule layers are invoked together when `shell-injection` is in the `--rules`
 
 ## Mutation Testing Status (Gate 6)
 
-- `shell_injection_rule.ts`: 93.93% statement coverage, **mutation score not yet run** (Stryker config at `packages/cli/stryker.config.mjs` — not yet committed to git as of N-203)
+- `shell_injection_rule.ts`: **80.29% mutation score** ✅ Gate 6 cleared — `stryker-shell-injection.config.mjs` (N-213, 2026-04-04)
+  - Targets lines 100–208 (check() function body only; lines 1–99 are module-level static constants — ESM cache limitation, see `docs/mutation-testing.md` §Cannot kill)
+  - 108 killed, 2 timeout, 26 survived, 1 no-coverage out of 137 effective mutants
+  - 50 hardening tests: `packages/cli/tests/shell-injection-hardening.test.ts`
 - The YAML pattern tests cover all 12 patterns with positive and negative fixtures
-- Astral-plane surrogate-pair paths (lines 176–183) are the one uncovered branch; would require Unicode code points > U+FFFF in test fixtures
+- Surviving mutants: ASCII skip logic (L112–L117), surrogate-pair conditionals (L197/202), some `toUpperCase` paths — structurally masked or equivalent in mock environment
 
 ---
 
