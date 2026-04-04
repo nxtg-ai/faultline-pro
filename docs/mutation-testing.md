@@ -387,6 +387,6 @@ vitest: {
 
 **Known gaps** (modules not yet in any stryker config — added after N-138):
 
-| Module | Added | Size | Priority | Notes |
-|--------|-------|------|----------|-------|
-| `cli/compliance/eu_ai_act.ts` | N-157 | ~200 LOC | P2 | Risk mapping regexes and `mapClaimToRiskCategory()` — exercised indirectly via `cli/scan.ts` Stryker run, not directly targeted. |
+| Module | Added | Size | Priority | Baseline | Notes |
+|--------|-------|------|----------|----------|-------|
+| `cli/compliance/eu_ai_act.ts` | N-157 | ~200 LOC | P2 | **38.85%** (Cycle 79, 2026-04-04) | 85 survived / 54 killed. Survivors: `articleRef` StringLiterals in UNACCEPTABLE_PATTERNS/HIGH_RISK_DOMAINS arrays, Regex pattern mutations, ObjectLiteral→{} on pattern entries. Tests assert `riskLevel` output but not which specific `matchedPatterns`/`articleRef` values are returned. Kill strategy: assert `result.matchedPatterns[0]` contains specific articleRef string. |
