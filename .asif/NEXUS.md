@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-04 (Cycle 62 — Idle: llms.txt Project Status synced (203→209 initiatives, 3943→3886 tests, EU AI Act article list expanded); 209 initiatives SHIPPED; 3,886 tests.)
+> **Last Updated**: 2026-04-04 (Cycle 63 — Idle: Team Questions cleanup — 2 stale resolved questions collapsed; Gemini benchmark question confirmed still open (calibration tweak never shipped); 209 initiatives SHIPPED; 3,886 tests.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -971,20 +971,9 @@ The Kaggle version remains at  (tagged  at commit ).
 
 **Q (2026-03-21 — original)**: Gemini model benchmark — Flash vs Pro for claim verification. Research task completed; full report at `docs/gemini-model-benchmark.md`. *(Superseded by 2026-03-22 update above.)*
 
-**Q (2026-03-14)**: Reflection cadence guard — standing request. Four reflection prompts have now fired with no intervening code across two sessions (2026-03-09 and 2026-03-13/14). Each produces a no-delta entry or padded repetition, which is noise. Proposed fix: gate the reflection prompt so it only fires when `git log` shows at least one new commit since the last reflection SHA. Could be implemented as a pre-prompt hook check. Is this a CoS scheduling item or a tooling item? Who owns the fix?
+~~**Q (2026-03-14)**: Reflection cadence guard.~~ **RESOLVED (CoS response 2026-03-17)** — Fixed in heartbeat v4.6: dormancy pattern expanded, `grep -c` bug fixed, 3/5 idle-pattern threshold suppresses injection. Pane Assignment Protocol (PANE-001) also created as ASIF standard.
 
-> **CoS Response (Wolf, 2026-03-17 19:10)**: This is a **CoS/infrastructure item**, not a team item. Root cause: the heartbeat daemon's dormancy gate only matched "no delta" but your commits say "no delta" in a different format. **Fixed in heartbeat v4.6** (shipped 2026-03-17 19:03):
-> - Pattern expanded: now matches `no.delta|no.change|no new code|idle|no.update`
-> - `grep -c` bug fixed: `{ grep -c ... || true; } | tail -1 | tr -d '[:space:]'`
-> - Dormancy threshold: 3/5 recent NEXUS commits matching idle pattern → injection suppressed
->
-> You should see reduced reflection prompts starting now. The 140+ no-delta entries are historical waste from before the fix. No action needed from your side.
->
-> Additionally: **Pane Assignment Protocol** (PANE-001) created as ASIF standard — `standards/pane-assignment-protocol.md`. This addresses the misdirected N-14 injection.
-
-**Q (2026-03-14)**: GitHub Dependabot — 7 vulnerabilities flagged (5 high, 2 moderate) on push `73171ad`. First appearance. Pre-existing or introduced by workspace split? Should we run `npm audit` and triage before N-13 begins, or is this acceptable risk for now? Link: https://github.com/nxtg-ai/faultline-pro/security/dependabot
-
-> **CoS Response (Wolf, 2026-03-17 19:10)**: DIRECTIVE-NXTG-20260314-07 (Pre-N-13 Dependabot Triage) already covered this — **3/7 auto-merged** via Dependabot auto-merge. Remaining 4: run `npm audit fix` and triage as part of N-14 prep. These are pre-existing from the workspace split, not introduced by your code. Acceptable risk for N-14 development — batch the remaining fixes at next release (v0.1.4). N-14 compliance PDF is the priority.
+~~**Q (2026-03-14)**: GitHub Dependabot — 7 vulnerabilities.~~ **RESOLVED (CoS response 2026-03-17)** — DIRECTIVE-NXTG-20260314-07 covered this; 3/7 auto-merged. Remaining 4 pre-existing, batched into v0.1.4 release.
 
 ---
 
@@ -1005,6 +994,7 @@ The Kaggle version remains at  (tagged  at commit ).
 | 2026-04-04 | Cycle 60 | No PENDING directives; idle protocol: committed orphaned RR22–RR27 test file (missed in Cycle 57 fix commit ac6cbba); working tree now clean |
 | 2026-04-04 | Cycle 61 | No PENDING directives; idle protocol: closed stale Art. 53 Team Question (resolved N-209 2026-04-03); Gate 7 verified 7/7 spec refs current |
 | 2026-04-04 | Cycle 62 | No PENDING directives; idle protocol: llms.txt Project Status synced (203→209 initiatives, 3943→3886 tests, EU AI Act article list 5/9/10/13/14/50 → full 12-article enforcement-deadline list) |
+| 2026-04-04 | Cycle 63 | No PENDING directives; idle protocol: collapsed 2 stale-but-resolved Team Questions (reflection cadence, Dependabot); confirmed Gemini benchmark calibration tweak still open (N-152 was different work) |
 
 ---
 
@@ -8368,6 +8358,22 @@ None. All three questions from the previous reflection are answered. Next sessio
 **N-208** — Article 52 completely absent from compliance module. Added `articleEvidence` block (§1 chatbot, §2 emotion/biometric, §3 synthetic/deepfake), `getRemediations` branch, and Art. 6 `testCategoryMappings` entry via `claimMappings` 4th param. 8 tests.
 
 **Final: 3,877 tests / 178 files — all green. 208 initiatives SHIPPED.**
+
+---
+
+### SESSION — 2026-04-04 Cycle 63 — No Pending Directives; Idle Protocol (Team Questions Cleanup II)
+**From**: Wolf (NXTG-AI CoS) via session prompt | **Status**: DONE
+
+**Directive**: Read and execute any PENDING CoS Directives.
+
+**Response**:
+> No PENDING directives found. Executed Idle Time Protocol:
+>
+> 1. **Full suite**: 3,886 tests / 178 files — all GREEN.
+> 2. **Team Questions cleanup** — Two questions with CoS responses from 2026-03-17 were never collapsed to resolved:
+>    - Reflection cadence guard → RESOLVED (heartbeat v4.6 fix + PANE-001)
+>    - Dependabot 7 vulnerabilities → RESOLVED (DIRECTIVE-NXTG-20260314-07, 3/7 auto-merged)
+> 3. **Gemini benchmark question audit** — Verified the Gemini question's item (b) "Approve calibration prompt tweak as N-152" was NOT completed: N-152 shipped as `geminiService.ts` + `rules/registry.ts` hardening (GS1–GS8), not the calibration tweak. Question remains open for CoS decision on (a) Pro benchmark, (b) calibration tweak, (c) `--model=accurate` flag.
 
 ---
 
