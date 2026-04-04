@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-04 (Cycle 67 — Idle: ARCHITECTURE.md stage 5 rewritten to reflect N-157–N-209 compliance engine (12 articles, annex III, 5 formats, CI gate); 209 initiatives SHIPPED; 3,886 tests.)
+> **Last Updated**: 2026-04-04 (Cycle 68 — Idle: mutation-testing.md gap table added — compliance-report.ts not in stryker scope, P1 hardening session recommended; 209 initiatives SHIPPED; 3,886 tests.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -999,6 +999,7 @@ The Kaggle version remains at  (tagged  at commit ).
 | 2026-04-04 | Cycle 65 | No PENDING directives; idle protocol: INTEGRATION.md section 11 — added 13 missing endpoints (7 compliance, 2 GDPR, 4 npm metrics) missing since N-159/178/185 |
 | 2026-04-04 | Cycle 66 | No PENDING directives; idle protocol: release-prep RP1/RP16 floor raised 3877→3886 (comments updated to actual count post-RR22–RR27) |
 | 2026-04-04 | Cycle 67 | No PENDING directives; idle protocol: ARCHITECTURE.md stage 5 rewritten — old 3-bullet stub replaced with full 12-article evidence table, annex III, 5 output formats, CI gate docs |
+| 2026-04-04 | Cycle 68 | No PENDING directives; idle protocol: mutation-testing.md gap table added — compliance-report.ts (P1) and eu_ai_act.ts (P2) not in stryker scope since N-138; next hardening session documented |
 
 ---
 
@@ -8362,6 +8363,22 @@ None. All three questions from the previous reflection are answered. Next sessio
 **N-208** — Article 52 completely absent from compliance module. Added `articleEvidence` block (§1 chatbot, §2 emotion/biometric, §3 synthetic/deepfake), `getRemediations` branch, and Art. 6 `testCategoryMappings` entry via `claimMappings` 4th param. 8 tests.
 
 **Final: 3,877 tests / 178 files — all green. 208 initiatives SHIPPED.**
+
+---
+
+### SESSION — 2026-04-04 Cycle 68 — No Pending Directives; Idle Protocol (mutation-testing.md Gap Table)
+**From**: Wolf (NXTG-AI CoS) via session prompt | **Status**: DONE
+
+**Directive**: Read and execute any PENDING CoS Directives.
+
+**Response**:
+> No PENDING directives found. Executed Idle Time Protocol (document recent research):
+>
+> 1. **Full suite**: 3,886 tests / 178 files — all GREEN.
+> 2. **`docs/mutation-testing.md` gap table** — the doc's "Current scores" section covered the 5 modules in the 3 stryker configs (last run N-138, 2026-03-21) but had no record of modules added since. Added:
+>    - "Known gaps" table: `cli/compliance-report.ts` (P1 — ~500 LOC, 12-article branching, EU AI Act critical-tier) and `cli/compliance/eu_ai_act.ts` (P2 — risk mapping regexes, indirectly exercised)
+>    - "Next hardening session" recommendation: `stryker-compliance.config.mjs` targeting `compliance-report.ts` with `compliance-report.test.ts` (250 tests)
+>    - "Last run" note added to scores header to clarify scores haven't changed since N-138
 
 ---
 

@@ -349,7 +349,7 @@ vitest: {
 | Standard business logic | 40% | 60%+ | |
 | Schema/doc-only code | N/A | N/A | Exclude from mutate paths |
 
-**Current scores** (as of N-138, 2026-03-21):
+**Current scores** (last run N-138, 2026-03-21 — scores unchanged since; see gap table below):
 
 | Module | Score | Status |
 |--------|-------|--------|
@@ -358,3 +358,12 @@ vitest: {
 | `api/src/stores/costs.ts` | 96.81% | ✅ Gate 6 cleared |
 | `api/src/stores/notifications.ts` | 92.45% | ✅ Gate 6 cleared |
 | `api/src/stores/schedules.ts` | 80.94% | ✅ Gate 6 cleared |
+
+**Known gaps** (modules not yet in any stryker config — added after N-138):
+
+| Module | Added | Size | Priority | Notes |
+|--------|-------|------|----------|-------|
+| `cli/compliance-report.ts` | N-157–N-209 | ~500 LOC | **P1** | EU AI Act evidence engine — `buildEuComplianceReport()`, `getRemediations()`, `buildTestCategoryMappings()`. High-complexity branching on 12 articles. Critical-tier candidate. |
+| `cli/compliance/eu_ai_act.ts` | N-157 | ~200 LOC | P2 | Risk mapping regexes and `mapClaimToRiskCategory()` — already exercised indirectly via `cli/scan.ts` Stryker run, but not directly targeted. |
+
+**Next hardening session recommendation**: Create `stryker-compliance.config.mjs` targeting `cli/compliance-report.ts`. Test manifest should include `packages/cli/tests/compliance-report.test.ts` (250 tests). Expected score: unknown — first run. Gate 6 threshold: 80%.
