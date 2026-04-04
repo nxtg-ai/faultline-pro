@@ -994,6 +994,56 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-02 — CoS check-in — cycle 48 (delta: none; 203 SHIPPED; 3,943 tests)
+
+### 1. What shipped since last check-in
+
+No new commits. Idle protocol item 5 audit: examined CHANGELOG and version state for v0.5.0 readiness.
+
+**Test count**: 3,843 vitest + 100 Python = **3,943**. Stable.
+
+### 2. What surprised me
+
+- **The `[Unreleased]` CHANGELOG block is already fully written.** It contains all 45 initiatives from N-159 through N-203 with complete descriptions, test counts, and cross-references. Every EU AI Act compliance feature (N-159–N-200), both SDK waves (N-201–N-202), and shell injection detection (N-203) are already documented. v0.5.0 release prep is not a writing task — it is a mechanical cut: rename `[Unreleased]` to `[v0.5.0] — <date>`, add an empty `[Unreleased]` above, bump 3 package versions, run publish. Estimated effort: 15 minutes.
+
+- **The release-prep test suite (`RP9`) asserts `## [Unreleased]` must exist.** This is the only non-trivial test constraint for cutting v0.5.0: the CHANGELOG must retain an empty `[Unreleased]` section above `[v0.5.0]` or RP9 fails. This is standard Keep a Changelog practice (always maintain an `[Unreleased]` block) and is already the right pattern — it just means the cut must include the empty section, not omit it.
+
+- **The npm metrics pipeline (N-185) shipped at v0.4.1, not v0.5.0.** Reviewing the Unreleased block: N-185 (`NpmMetricsStore`, hourly npm polling, 4 REST endpoints, Prometheus gauge) is fully described in the CHANGELOG `[Unreleased]` — meaning it was built after v0.4.1 was tagged and is awaiting the v0.5.0 publish. Wolf's P1 "no download/usage metrics pipeline" is accurate in one sense: the pipeline exists in code but is not in the live published package. The published v0.4.1 on npm does not include N-185. Once v0.5.0 publishes, `@nxtg/faultline@0.5.0` will include the metrics pipeline and the hourly poller will start producing data.
+
+- **The publishable packages are at two different version numbers.** `packages/cli/package.json` is at `0.4.1`; `packages/sdk/package.json` is at `0.1.0`. The SDK has never had a version aligned with the CLI. For v0.5.0, both should likely be bumped to `0.5.0` to signal that they ship together. The Python SDK in `sdks/python/pyproject.toml` also needs a version check.
+
+### 3. Cross-project signals
+
+- **"CHANGELOG already written" is the rarest release-prep state.** Most projects do release prep in two stages: write the CHANGELOG, then publish. Faultline has been writing the CHANGELOG continuously with each initiative. v0.5.0 is in the unusual position of having a complete CHANGELOG block waiting to be cut. Any ASIF project that uses the per-initiative `[Unreleased]` documentation pattern ends up here: the release prep is pure mechanics, not content work.
+
+- **Misaligned package versions in a monorepo confuse consumers.** CLI at `0.4.1`, SDK at `0.1.0` suggests the SDK is in early development even though it covers all CLI features with full typing. For consumer trust, major packages in a monorepo should be version-aligned at release boundaries. The v0.5.0 cut is the natural moment to align both to `0.5.0`.
+
+### 4. Next priorities — v0.5.0 readiness assessment
+
+All blockers to v0.5.0 publish are now fully mapped:
+
+| Task | Status | Risk |
+|------|--------|------|
+| CHANGELOG `[v0.5.0]` block | Complete in `[Unreleased]` — needs cut | Zero |
+| `packages/cli` version bump `0.4.1` → `0.5.0` | File edit | Zero |
+| `packages/sdk` version bump `0.1.0` → `0.5.0` | File edit | Zero |
+| Python SDK version bump | Needs checking | Low |
+| RP9 test: add empty `[Unreleased]` above cut | One-line addition | Zero |
+| RP1/RP16 thresholds | Already fixed (cycle 46) | Done |
+| `npm publish @nxtg/faultline` | Irreversible, external | **Requires CoS directive** |
+| `npm publish @nxtg/faultline-sdk` | 37% coverage concern | **Requires CoS decision** |
+| PyPI publish `faultline-sdk` | Irreversible, external | **Requires CoS directive** |
+
+The file-edit portion of v0.5.0 prep can be self-initiated (idle protocol item 5). The `npm publish` and PyPI publish steps require explicit CoS direction — they are irreversible and affect external systems.
+
+### 5. Blockers / Questions for CoS
+
+- **Requesting N-204 directive scoped to v0.5.0 publish prep.** All content is ready. The only work is: CHANGELOG cut + 3 version bumps + `npm publish` + PyPI publish. Estimated: 15 minutes total. This unblocks both Wolf P1s simultaneously.
+- **SDK version alignment decision**: should `@nxtg/faultline-sdk` publish at `0.5.0` (aligned with CLI) or stay at `0.1.x` until coverage improves? Publishing at `0.5.0` with 37% coverage is technically fine but may set false expectations.
+- **Self-initiating file edits**: proposing to execute CHANGELOG cut + version bumps without a directive (idle protocol item 5) but holding the `npm publish` steps until N-204 is issued. This keeps the repo in a "publish-ready" state that the CoS can trigger on command.
+
+---
+
 > **Reflection cycle**: 2026-04-02 — CoS check-in — cycle 47 (delta: none; 203 SHIPPED; 3,943 tests)
 
 ### 1. What shipped since last check-in
