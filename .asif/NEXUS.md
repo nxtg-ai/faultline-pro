@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-04 (Cycle 69 — Idle: SARIF upload gap raised as Team Q (N-210 candidate); all live docs confirmed current; 209 initiatives SHIPPED; 3,886 tests.)
+> **Last Updated**: 2026-04-04 (Cycle 70 — Idle: CHANGELOG [Unreleased] pre-publish coherence raised as Team Q — N-204–N-209 ship in v0.5.0 package but not in v0.5.0 CHANGELOG entry; 209 initiatives SHIPPED; 3,886 tests.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -948,6 +948,8 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ~~**Q (2026-04-03)**: EU AI Act sprint — Article 53 gap.~~ **RESOLVED — shipped as N-209 (2026-04-03)**. Art. 53 articleEvidence added; `partial` when real GPAI provider detected, `not-applicable` for mock. 3 tests (A53-1–A53-3). All 12 enforcement-deadline articles now covered (5/6/9/10/11/12/13/14/15/50/52/53).
 
+**Q (2026-04-04)**: CHANGELOG `[Unreleased]` vs `[v0.5.0]` pre-publish coherence. `packages/cli/package.json` is at version `0.5.0` (set in release-prep commit 93883e8 on 2026-04-02). After that prep, N-204–N-209 shipped (12 EU AI Act articles, full compliance engine, 39 new tests) plus a bug fix. These appear in `[Unreleased]` but NOT in the `[v0.5.0]` CHANGELOG entry. When npm publishes v0.5.0, consumers will get code that includes N-204–N-209 but the published CHANGELOG for v0.5.0 won't describe them. Three options: **(A)** Bump `package.json` to `0.5.1`, rename `[Unreleased]` → `[v0.5.1]`, publish 0.5.1 (clean semver story — 0.5.0 was never published). **(B)** Merge `[Unreleased]` items into `[v0.5.0]` and clear `[Unreleased]` before publishing (simplest — v0.5.0 was never published so no consumers to break). **(C)** Publish v0.5.0 as-is, accept CHANGELOG mismatch, cut v0.5.1 immediately after. **Decision needed from CoS: which option?**
+
 **Q (2026-04-04)**: `.github/workflows/faultline-ci.yml` SARIF upload missing. The demo workflow generates SARIF output (`output-format: 'sarif'`) but never uploads it to GitHub Code Scanning. The action has full SARIF support (`compliance-sarif` input, `actions/upload-sarif` step inside the action) but the demo CI file doesn't exercise it. Fix requires: (1) add `id:` to the red-team scan step, (2) add `permissions: security-events: write` to the job, (3) add `uses: github/codeql-action/upload-sarif@v3` step referencing `${{ steps.{id}.outputs.report }}`. Estimated scope: XS (2–3 lines). Flagged in Cycle 36–44 audit, still open. **Approve as N-210?**
 
 **Q (2026-03-22 — UPDATE)**: Gemini benchmark EXECUTED. Flash 5/5 complete. Full results at `docs/gemini-model-benchmark-results.md`. Key findings:
@@ -1003,6 +1005,7 @@ The Kaggle version remains at  (tagged  at commit ).
 | 2026-04-04 | Cycle 67 | No PENDING directives; idle protocol: ARCHITECTURE.md stage 5 rewritten — old 3-bullet stub replaced with full 12-article evidence table, annex III, 5 output formats, CI gate docs |
 | 2026-04-04 | Cycle 68 | No PENDING directives; idle protocol: mutation-testing.md gap table added — compliance-report.ts (P1) and eu_ai_act.ts (P2) not in stryker scope since N-138; next hardening session documented |
 | 2026-04-04 | Cycle 69 | No PENDING directives; idle protocol: docs sweep (GTM/actions/versions all current); SARIF upload gap raised as Team Q N-210 candidate (open since Cycle 36–44) |
+| 2026-04-04 | Cycle 70 | No PENDING directives; idle protocol: pre-publish CHANGELOG coherence gap — [Unreleased] N-204–N-209 ship in v0.5.0 binary but absent from [v0.5.0] entry; raised as Team Q (3 options for CoS) |
 
 ---
 
@@ -8366,6 +8369,19 @@ None. All three questions from the previous reflection are answered. Next sessio
 **N-208** — Article 52 completely absent from compliance module. Added `articleEvidence` block (§1 chatbot, §2 emotion/biometric, §3 synthetic/deepfake), `getRemediations` branch, and Art. 6 `testCategoryMappings` entry via `claimMappings` 4th param. 8 tests.
 
 **Final: 3,877 tests / 178 files — all green. 208 initiatives SHIPPED.**
+
+---
+
+### SESSION — 2026-04-04 Cycle 70 — No Pending Directives; Idle Protocol (CHANGELOG Pre-Publish Coherence)
+**From**: Wolf (NXTG-AI CoS) via session prompt | **Status**: DONE
+
+**Directive**: Read and execute any PENDING CoS Directives.
+
+**Response**:
+> No PENDING directives found. Executed Idle Time Protocol:
+>
+> 1. **Full suite**: 3,886 tests / 178 files — all GREEN.
+> 2. **Pre-publish CHANGELOG gap identified** — `package.json` is at version `0.5.0` (set in release-prep commit 93883e8, 2026-04-02). N-204–N-209 were shipped after that prep and appear in `[Unreleased]`, not in `[v0.5.0]`. Publishing v0.5.0 now would deliver the N-204–N-209 code without documenting it in the v0.5.0 CHANGELOG entry. Three resolution options raised as Team Question: bump to 0.5.1, merge [Unreleased] into [v0.5.0], or accept the mismatch. CoS decision needed before npm push.
 
 ---
 
