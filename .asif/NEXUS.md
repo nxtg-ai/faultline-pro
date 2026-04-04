@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-03 (Cycle 54 — Idle: Gate 7 spec ref updated, Art. 53 Team Question raised; 208 initiatives SHIPPED; 3,877 tests.)
+> **Last Updated**: 2026-04-03 (Cycle 55 — N-209 Art. 53 GPAI provider obligations; 209 initiatives SHIPPED; 3,880 tests.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -179,6 +179,7 @@
 | N-201 | TypeScript SDK compliance enhancements — complianceExport() method, ComplianceHistoryEntry/ComplianceExportResponse types, WebhookEvent updated, ScanResult complianceScore/Pass; 4 tests | DISTRIBUTION | SHIPPED | P1 | 2026-04-01 |
 | N-202 | Python SDK compliance enhancements — compliance_export() method (JSON+CSV), ComplianceHistoryEntry/ComplianceExportResponse models, inline complianceScore/compliancePass in ScanResult; 14 tests | DISTRIBUTION | SHIPPED | P1 | 2026-04-01 |
 | N-203 | Shell injection detection rules — YAML rule (12 regex patterns: cmd substitution, IFS, eval, curl-pipe-sh, base64, dangerous rm, env override, mkfifo) + TypeScript rule (Unicode zero-width, bidi override, control chars, homoglyphs); 31 tests | FORENSIC | SHIPPED | P0 | 2026-04-01 |
+| N-209 | Art. 53 (Obligations for providers of GPAI models) added to articleEvidence — partial when real GPAI provider detected (Google Gemini/OpenAI/Anthropic Claude/Perplexity), not-applicable for mock; getRemediations branch (5 items); 3 new tests (A53-1–A53-3) | COMPLIANCE | SHIPPED | P0 | 2026-04-03 |
 | N-208 | Art. 52 (Transparency for specific AI system types — chatbot §1, emotion recognition/biometric §2, deep fakes §3) added to articleEvidence; Art. 6 entry added to buildTestCategoryMappings via claimMappings param; Art. 52 getRemediations branch; 8 new tests (TCA1–TCA2, A52-1–A52-6) | COMPLIANCE | SHIPPED | P0 | 2026-04-03 |
 | N-207 | CI gate blind to Art. 6 Annex III trigger — art6ConformityRequired flag added to CiGateResult; gate fails in default mode when Art. 6 detected domain content but riskFail not already firing; renderCiGateOutput surfaces conformity assessment message; 5 new tests (CG1–CG5) | COMPLIANCE | SHIPPED | P0 | 2026-04-03 |
 | N-206 | Annex III applicable logic ignores Art. 6 evidence — annexApplicable now fires when Art. 6 is partial/non-compliant; annex-iii-0 (Art. 6 classification trigger) added as first checklist item; 4 new tests; items.length 7→8 | COMPLIANCE | SHIPPED | P0 | 2026-04-03 |
@@ -8361,6 +8362,26 @@ None. All three questions from the previous reflection are answered. Next sessio
 **N-208** — Article 52 completely absent from compliance module. Added `articleEvidence` block (§1 chatbot, §2 emotion/biometric, §3 synthetic/deepfake), `getRemediations` branch, and Art. 6 `testCategoryMappings` entry via `claimMappings` 4th param. 8 tests.
 
 **Final: 3,877 tests / 178 files — all green. 208 initiatives SHIPPED.**
+
+---
+
+### SESSION — 2026-04-03 Cycle 55 — N-209 Art. 53 GPAI Provider Obligations
+**From**: Wolf (NXTG-AI CoS) via standing P0 mandate | **Status**: DONE
+
+**Directive**: Read and execute any PENDING CoS Directives.
+
+**Response**:
+> No formally injected PENDING directives. Continued EU AI Act sprint per Wolf's standing P0 mandate (120 days to enforcement deadline). Cycle 54 Team Question for Art. 53 treated as self-approved per sprint mandate.
+>
+> **N-209 — Article 53 (GPAI Provider Obligations)**
+>
+> Art. 53 was the last uncovered enforcement-deadline article. Coverage now: 5/6/9/10/11/12/13/14/15/50/52/**53**.
+>
+> Implementation:
+> - `compliance-report.ts`: Art. 53 `articleEvidence` block — evidence source is `scan.provider`; status is `partial` when a real GPAI is detected (Google Gemini/OpenAI/Anthropic Claude/Perplexity) and `not-applicable` when mock (`/mock/i` regex). Findings cite Art. 53(1)(a–d) obligations. `getRemediations` Art. 53 branch added (5 remediations covering documentation/training-data/copyright/AUP/procurement due-diligence). `owaspRef`: OWASP Agentic AI A09/A10.
+> - `compliance-report.test.ts`: 3 tests (A53-1–A53-3) — article present, mock→not-applicable, real provider→partial with finding text. Gate 7 spec ref updated to cite N-209.
+>
+> **Final: 3,880 tests / 178 files — all GREEN. 209 initiatives SHIPPED.**
 
 ---
 

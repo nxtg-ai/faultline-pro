@@ -4,6 +4,7 @@
 // Validates: N-206 (annexApplicable Art. 6 trigger, annex-iii-0 — items 7→8)
 // Validates: N-207 (art6ConformityRequired CI gate flag — CG1–CG5)
 // Validates: N-208 (Art. 52 articleEvidence + Art. 6 testCategoryMappings — TCA1–TCA2, A52-1–A52-6)
+// Validates: N-209 (Art. 53 GPAI provider obligations articleEvidence — A53-1–A53-3)
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { writeFileSync, mkdtempSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -735,6 +736,30 @@ describe('buildEuComplianceReport()', () => {
     const art52 = report.articleEvidence.find(a => a.article.includes('Article 52'));
     expect(art52!.status).toBe('partial');
     expect(art52!.findings.some(f => f.includes('synthetic'))).toBe(true);
+  });
+
+  // ── A53-1–A53-3: Article 53 articleEvidence ───────────────────────────────
+  it('A53-1: Article 53 is always present in articleEvidence', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const art53 = report.articleEvidence.find(a => a.article.includes('Article 53'));
+    expect(art53).toBeDefined();
+    expect(art53!.article).toBe('Article 53 – Obligations for Providers of GPAI Models');
+  });
+
+  it('A53-2: Article 53 is not-applicable when provider is mock', () => {
+    const report = buildEuComplianceReport(makeScan({ provider: 'Mock Provider' }));
+    const art53 = report.articleEvidence.find(a => a.article.includes('Article 53'));
+    expect(art53!.status).toBe('not-applicable');
+    expect(art53!.findings.some(f => f.includes('mock') || f.includes('Mock'))).toBe(true);
+  });
+
+  it('A53-3: Article 53 is partial when a real GPAI provider is used', () => {
+    const report = buildEuComplianceReport(makeScan({ provider: 'Google Gemini' }));
+    const art53 = report.articleEvidence.find(a => a.article.includes('Article 53'));
+    expect(art53!.status).toBe('partial');
+    expect(art53!.findings.some(f => f.includes('Google Gemini'))).toBe(true);
+    expect(art53!.findings.some(f => f.includes('Art. 53(1)'))).toBe(true);
+    expect(art53!.remediations.length).toBeGreaterThan(0);
   });
 
   it('summary counts are correct', () => {

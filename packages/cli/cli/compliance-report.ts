@@ -372,6 +372,12 @@ export function getRemediations(article: string, status: EvidenceStatus, finding
     if (rems.length === 0) {
       rems.push('Review Art. 52 transparency obligations for your specific AI system type (chatbot, emotion recognition, deep fakes).');
     }
+  } else if (article.includes('Article 53')) {
+    rems.push('Confirm the GPAI model provider has published technical documentation per Art. 53(1)(a).');
+    rems.push('Verify the provider has published a summary of training data content per Art. 53(1)(b).');
+    rems.push('Confirm the provider has a copyright compliance policy per Art. 53(1)(c).');
+    rems.push('Confirm the provider has published an acceptable use policy per Art. 53(1)(d).');
+    rems.push('Include GPAI provider Art. 53 compliance confirmation in your procurement due-diligence checklist.');
   }
 
   return rems;
@@ -896,6 +902,42 @@ export function buildEuComplianceReport(
     remediations: getRemediations('Article 52', art52Status, art52FinalFindings),
     owaspRef: 'OWASP Agentic AI A06: Sensitive Information Disclosure',
     ...art52Strength,
+  });
+
+  // Article 53 — Obligations for providers of GPAI models
+  // Evidence: provider name from scan identifies which GPAI is in use.
+  // FP cannot auto-verify the provider's own documentation compliance, so status is
+  // 'partial' (evidence the obligation applies) when a real provider is in use.
+  const gpaiProvider = scan.provider && !/mock/i.test(scan.provider) ? scan.provider : null;
+  const art53Findings: string[] = [];
+  if (gpaiProvider) {
+    art53Findings.push(
+      `GPAI provider '${gpaiProvider}' detected — confirm Art. 53(1) obligations are met by the ` +
+      `provider: technical documentation (§1a), training-data content summary (§1b), ` +
+      `copyright compliance policy (§1c), and acceptable use policy (§1d).`,
+    );
+    art53Findings.push(
+      'Art. 53 obligations rest with the GPAI model provider, not the deployer. ' +
+      'Include provider compliance confirmation in your procurement due-diligence checklist.',
+    );
+  } else {
+    art53Findings.push('No GPAI provider in use (mock/none) — Art. 53 obligations do not apply.');
+  }
+  const art53Status: EvidenceStatus = gpaiProvider ? 'partial' : 'not-applicable';
+  articleEvidence.push({
+    article: 'Article 53 – Obligations for Providers of GPAI Models',
+    requirement:
+      'Providers of general-purpose AI models must maintain technical documentation (§1a), ' +
+      'publish training data content summaries (§1b), implement copyright compliance (§1c), ' +
+      'and publish an acceptable use policy (§1d). Models with systemic risk have additional ' +
+      'obligations under Art. 55.',
+    status: art53Status,
+    findings: art53Findings,
+    remediations: getRemediations('Article 53', art53Status, art53Findings),
+    owaspRef: 'OWASP Agentic AI A09: Misinformation / A10: Unbounded Consumption',
+    evidenceCount: gpaiProvider ? 1 : 0,
+    sourceCount: 0,
+    strengthScore: gpaiProvider ? 0.4 : 0,
   });
 
   // Article 50 — GPAI transparency (always included; opinion claims drive severity)

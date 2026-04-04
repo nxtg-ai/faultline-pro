@@ -1,7 +1,7 @@
 # Faultline — AI Claim Forensics
 # https://github.com/nxtg-ai/faultline-pro
 # npm: @nxtg/faultline | @nxtg/faultline-api
-# Last updated: 2026-04-03 (N-208)
+# Last updated: 2026-04-03 (N-209)
 
 > Forensic verification for AI-generated text. Decomposes AI output into atomic claims, verifies each against live evidence, and maps findings to EU AI Act risk tiers.
 
@@ -31,7 +31,7 @@ No API key required for the `mock` provider. Real verification uses:
 ## Key Differentiators
 
 - **Claim-level, not prompt-level** — Faultline forensics output; Promptfoo tests input prompts
-- **EU AI Act compliance engine** — Article 5/6/9/10/11/12/13/14/15/50/52 evidence mapping; per-article evidence strength scoring (evidenceCount, sourceCount, strengthScore); evidence-weighted compliance score (0-100); per-article remediations; Annex III conformity checklist (8 items, Art. 6 trigger + high-risk gate); `art6ConformityRequired` CI gate flag; pass/fail gate with configurable threshold and strict mode; trend tracking and history; badge SVG for READMEs
+- **EU AI Act compliance engine** — Article 5/6/9/10/11/12/13/14/15/50/52/53 evidence mapping; per-article evidence strength scoring (evidenceCount, sourceCount, strengthScore); evidence-weighted compliance score (0-100); per-article remediations; Annex III conformity checklist (8 items, Art. 6 trigger + high-risk gate); `art6ConformityRequired` CI gate flag; pass/fail gate with configurable threshold and strict mode; trend tracking and history; badge SVG for READMEs
 - **5 compliance report formats** — JSON, PDF (EU-branded), Markdown (GFM for PR comments), SARIF 2.1.0 (GitHub Code Scanning), HTML (standalone viewable)
 - **Weakest-link detection** — Finds the single claim that most undermines the argument's credibility
 - **Provider-agnostic** — 5 providers; runtime switching with `--provider`; auto-failover with circuit breaker
@@ -39,7 +39,7 @@ No API key required for the `mock` provider. Real verification uses:
 - **Enterprise API** — REST + GraphQL; API key management; multi-tenant; GDPR Article 15/17; audit trail; webhooks
 - **GitHub Actions** — `faultline-scan` composite action with compliance gate, SARIF upload, threshold/strict configuration
 - **Mutation-tested** — CRUCIBLE Protocol Gate 6: claim forensics 81.97%; GDPR stores 80.94%–96.81%
-- **3,877 tests** across CLI, API, Python SDK, GDPR, mutation hardening, property-based, contract, integration
+- **3,880 tests** across CLI, API, Python SDK, GDPR, mutation hardening, property-based, contract, integration
 - **npm adoption metrics** — npmjs.org download tracking, Prometheus export, weekly trend analysis
 
 ## Use Cases
