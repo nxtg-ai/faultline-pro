@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-04 (Cycle 60 — Idle: committed RR22–RR27 test file (missed in Cycle 57 fix commit); 250/250 compliance tests; 209 initiatives SHIPPED; 3,886 tests.)
+> **Last Updated**: 2026-04-04 (Cycle 61 — Idle: Art. 53 Team Question closed (resolved N-209); Gate 7 verified current; 209 initiatives SHIPPED; 3,886 tests.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -946,7 +946,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Questions
 
-**Q (2026-04-03)**: EU AI Act sprint — Article 53 gap. Sprint N-204–N-208 closed Articles 5/6/9/10/11/12/13/14/15/50/52. The next uncovered enforcement-deadline article is **Article 53 — Obligations for providers of GPAI models**. FP works exclusively with GPAI providers (Gemini, OpenAI, Claude, Perplexity) — every scan names the provider in `ScanResult`. Art. 53 §1 requires GPAI providers to: (a) maintain technical documentation, (b) publish training content summaries, (c) comply with EU copyright law, (d) publish acceptable use policies. For FP, evidence would derive from: provider name captured in scan (`result.provider`), model used (`result.model`), and whether training-data cutoff + copyright policy is known. Art. 53 `articleEvidence` status would be `partial` whenever a GPAI provider is detected (coverage evidence exists but full documentation compliance can't be auto-verified). Estimated scope: S (1 new `articleEvidence` block + 3 tests). **Decision needed**: Approve as N-209 P0 to complete EU AI Act GPAI provider coverage before the Aug 2 deadline?
+~~**Q (2026-04-03)**: EU AI Act sprint — Article 53 gap.~~ **RESOLVED — shipped as N-209 (2026-04-03)**. Art. 53 articleEvidence added; `partial` when real GPAI provider detected, `not-applicable` for mock. 3 tests (A53-1–A53-3). All 12 enforcement-deadline articles now covered (5/6/9/10/11/12/13/14/15/50/52/53).
 
 **Q (2026-03-22 — UPDATE)**: Gemini benchmark EXECUTED. Flash 5/5 complete. Full results at `docs/gemini-model-benchmark-results.md`. Key findings:
 
@@ -1003,6 +1003,7 @@ The Kaggle version remains at  (tagged  at commit ).
 | 2026-04-04 | Cycle 58 | No PENDING directives; idle protocol: full suite GREEN 3,886 (RR22–RR27 +6 net from Cycle 57 fix); synced README badge and llms.txt 3880→3886 |
 | 2026-04-04 | Cycle 59 | No PENDING directives; idle protocol: CHANGELOG Fixed entry added for Cycle 57 Art. 5 substring bug; Gate 2 audit RR22–RR27 PASS (all 6 have specific article-code assertions) |
 | 2026-04-04 | Cycle 60 | No PENDING directives; idle protocol: committed orphaned RR22–RR27 test file (missed in Cycle 57 fix commit ac6cbba); working tree now clean |
+| 2026-04-04 | Cycle 61 | No PENDING directives; idle protocol: closed stale Art. 53 Team Question (resolved N-209 2026-04-03); Gate 7 verified 7/7 spec refs current |
 
 ---
 
@@ -8366,6 +8367,20 @@ None. All three questions from the previous reflection are answered. Next sessio
 **N-208** — Article 52 completely absent from compliance module. Added `articleEvidence` block (§1 chatbot, §2 emotion/biometric, §3 synthetic/deepfake), `getRemediations` branch, and Art. 6 `testCategoryMappings` entry via `claimMappings` 4th param. 8 tests.
 
 **Final: 3,877 tests / 178 files — all green. 208 initiatives SHIPPED.**
+
+---
+
+### SESSION — 2026-04-04 Cycle 61 — No Pending Directives; Idle Protocol (Team Questions Cleanup)
+**From**: Wolf (NXTG-AI CoS) via session prompt | **Status**: DONE
+
+**Directive**: Read and execute any PENDING CoS Directives.
+
+**Response**:
+> No PENDING directives found. Executed Idle Time Protocol:
+>
+> 1. **Full suite**: 3,886 tests / 178 files — all GREEN.
+> 2. **Team Questions cleanup** — Art. 53 question (raised 2026-04-03) was stale; marked RESOLVED with pointer to N-209. `## Team Questions` section is now clean.
+> 3. **Gate 7 verified** — `compliance-report.test.ts` lines 1–7 cite N-157 + N-204 through N-209 (7 initiatives). Still 100%.
 
 ---
 
