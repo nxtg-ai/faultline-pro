@@ -483,6 +483,7 @@ describe('N-210 H5d — renderComplianceReportSarif annex items level mapping', 
     const rules = sarif.runs[0].tool.driver.rules;
     const annexRule = rules.find((r: { properties: { tags: string[] } }) => r.properties?.tags?.includes('annex-iii'));
     expect(annexRule).toBeDefined();
+    expect(annexRule?.properties?.tags).toContain('annex-iii');
   });
 
   it('H5d-7: SARIF articleSlug includes hyphens for spaces (kills Regex /[^a-z0-9]+/g)', () => {

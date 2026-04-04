@@ -454,6 +454,7 @@ describe('N-210 H4g — buildTestCategoryMappings unacceptable riskLevel + Art.6
       m => m.euArticle && m.euArticle.includes('Article 6'),
     );
     expect(art6Mapping).toBeDefined();
+    expect(art6Mapping?.euArticle).toContain('Article 6');
   });
 
   it('H4g-2: claimMappings riskLevel medium → no Art.6 testCategoryMapping (kills riskLevel→true)', () => {

@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-04 (Cycle 76 — SARIF CI permissions gap fixed; 210 initiatives SHIPPED; 4,263 tests.)
+> **Last Updated**: 2026-04-04 (Cycle 77 — Gate 2 audit: 2 hollow N-210 assertions strengthened; 210 initiatives SHIPPED; 4,263 tests.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -1010,6 +1010,7 @@ The Kaggle version remains at  (tagged  at commit ).
 | 2026-04-04 | Cycle 69 | No PENDING directives; idle protocol: docs sweep (GTM/actions/versions all current); SARIF upload gap raised as Team Q N-210 candidate (open since Cycle 36–44) |
 | 2026-04-04 | Cycle 70 | No PENDING directives; idle protocol: pre-publish CHANGELOG coherence gap — [Unreleased] N-204–N-209 ship in v0.5.0 binary but absent from [v0.5.0] entry; raised as Team Q (3 options for CoS) |
 | 2026-04-04 | Cycle 71 | No PENDING directives; idle protocol: ci-integration.md "EU AI Act Compliance Gate" section added — N-159 --ci gate, --threshold/--strict/SARIF, composite action, art6ConformityRequired docs |
+| 2026-04-04 | Cycle 77 | No PENDING directives; idle protocol: CRUCIBLE Gate 2 audit of N-210 hardening tests — 2 hollow assertions found (H4g-1, H5d-6); strengthened with content assertions; 4,263 tests GREEN |
 | 2026-04-04 | Cycle 76 | No PENDING directives; idle protocol: SARIF CI gap closed — added `permissions: security-events: write` to faultline-ci.yml job; closed stale SARIF Team Question |
 | 2026-04-04 | Cycle 75 | No PENDING directives; idle protocol: README badge 3886→4263; llms.txt 209→210/3886→4263/compliance-report 80.81% mutation score added; CHANGELOG N-210 Added entry; working tree clean |
 | 2026-04-04 | Cycle 74 | No PENDING directives; idle protocol: N-210 TypeScript fix — resolved EURiskCategory missing articles/requiredActions, EuArticleEvidence missing strength fields in hardening-4/5 test files; tsc --noEmit clean; pushed |
