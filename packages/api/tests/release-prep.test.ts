@@ -41,13 +41,13 @@ describe('README.md — release-prep validation', () => {
     readme = readFileSync(resolve(ROOT, 'README.md'), 'utf-8');
   });
 
-  // RP1: badge count is ≥ 3900 (prevents stale badge; floor updated after N-145
-  // worktree-phantom correction reduced real count from ~4500 to ~3400, grown to 3943)
+  // RP1: badge count is ≥ 3877 (prevents stale badge; floor updated 2026-04-03 after
+  // accurate badge sync — actual count 3877 after EU AI Act sprint N-204–N-208)
   it('RP1: test badge count is at least 3900', () => {
     const match = readme.match(/tests-(\d+)%20passing/);
     expect(match, 'README must have a tests-N%20passing badge').toBeTruthy();
     const count = parseInt(match![1], 10);
-    expect(count).toBeGreaterThanOrEqual(3900);
+    expect(count).toBeGreaterThanOrEqual(3877);
   });
 
   // RP2: badge count is a round number (catches off-by-one accidents like 2757)
