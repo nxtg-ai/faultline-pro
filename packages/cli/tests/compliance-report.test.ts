@@ -634,6 +634,102 @@ describe('buildEuComplianceReport()', () => {
     expect(articles.some(a => a.includes('Article 12'))).toBe(true);
   });
 
+  // ── TCA1–TCA2: Art. 6 testCategoryMappings ───────────────────────────────
+  it('TCA1: Art. 6 entry appears in testCategoryMappings when claimMappings has high-risk domain claim', () => {
+    const scan = makeScan({
+      complianceReport: makeComplianceReport({
+        claimMappings: [
+          {
+            claimId: 'c1',
+            riskLevel: 'high',
+            matchedPatterns: ['Annex III §4 – employment screening'],
+            euArticles: ['Article 6'],
+          },
+        ],
+      }),
+    });
+    const report = buildEuComplianceReport(scan);
+    const art6 = report.testCategoryMappings.find(m => m.euArticle.includes('Article 6'));
+    expect(art6).toBeDefined();
+    expect(art6!.category).toBe('high-risk domain claim(s)');
+    expect(art6!.claimCount).toBe(1);
+    expect(art6!.status).toBe('partial');
+  });
+
+  it('TCA2: Art. 6 entry absent from testCategoryMappings when no high-risk claimMappings', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const art6 = report.testCategoryMappings.find(m => m.euArticle.includes('Article 6'));
+    expect(art6).toBeUndefined();
+  });
+
+  // ── A52-1–A52-6: Article 52 articleEvidence ───────────────────────────────
+  it('A52-1: Article 52 is always present in articleEvidence', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const art52 = report.articleEvidence.find(a => a.article.includes('Article 52'));
+    expect(art52).toBeDefined();
+    expect(art52!.article).toBe('Article 52 – Transparency Obligations for Specific AI System Types');
+  });
+
+  it('A52-2: Article 52 is not-applicable for clean scan with no AI system type signals', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const art52 = report.articleEvidence.find(a => a.article.includes('Article 52'));
+    expect(art52!.status).toBe('not-applicable');
+  });
+
+  it('A52-3: Article 52 is partial when opinion claims present (chatbot §1)', () => {
+    const scan = makeScan({
+      claims: [
+        { id: 'c1', text: 'I think AI will transform healthcare.', type: 'opinion', importance: 3 },
+      ],
+      verifications: {
+        c1: { claimId: 'c1', status: 'unverified', explanation: 'Opinion.', sources: [] },
+      },
+    });
+    const report = buildEuComplianceReport(scan);
+    const art52 = report.articleEvidence.find(a => a.article.includes('Article 52'));
+    expect(art52!.status).toBe('partial');
+    expect(art52!.findings.some(f => f.includes('opinion'))).toBe(true);
+  });
+
+  it('A52-4: Article 52 is partial when emotion ruleFindings present (§2)', () => {
+    const scan = makeScan({
+      ruleFindings: [{ ruleId: 'emotion-detection', severity: 'high', message: 'Emotion detected', claimId: 'c1' }],
+    });
+    const report = buildEuComplianceReport(scan);
+    const art52 = report.articleEvidence.find(a => a.article.includes('Article 52'));
+    expect(art52!.status).toBe('partial');
+    expect(art52!.findings.some(f => f.includes('emotion'))).toBe(true);
+  });
+
+  it('A52-5: Article 52 is partial when biometric claimMappings present (§2)', () => {
+    const scan = makeScan({
+      complianceReport: makeComplianceReport({
+        claimMappings: [
+          {
+            claimId: 'c1',
+            riskLevel: 'high',
+            matchedPatterns: ['Annex III §1 – biometric identification'],
+            euArticles: ['Article 6'],
+          },
+        ],
+      }),
+    });
+    const report = buildEuComplianceReport(scan);
+    const art52 = report.articleEvidence.find(a => a.article.includes('Article 52'));
+    expect(art52!.status).toBe('partial');
+    expect(art52!.findings.some(f => f.includes('biometric'))).toBe(true);
+  });
+
+  it('A52-6: Article 52 is partial when synthetic ruleFindings present (§3)', () => {
+    const scan = makeScan({
+      ruleFindings: [{ ruleId: 'synthetic-media-detection', severity: 'high', message: 'Synthetic content', claimId: 'c1' }],
+    });
+    const report = buildEuComplianceReport(scan);
+    const art52 = report.articleEvidence.find(a => a.article.includes('Article 52'));
+    expect(art52!.status).toBe('partial');
+    expect(art52!.findings.some(f => f.includes('synthetic'))).toBe(true);
+  });
+
   it('summary counts are correct', () => {
     const report = buildEuComplianceReport(makeScan());
     const total =

@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import type { ScanResult } from './scan.js';
 import type { Claim, VerificationResult } from '../types.js';
 import type { Finding } from '../rules/base_rule.js';
+import type { ClaimRiskMapping } from '../compliance/report_generator.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -86,6 +87,7 @@ function buildTestCategoryMappings(
   claims: Claim[],
   verifications: Record<string, VerificationResult>,
   ruleFindings: Finding[] = [],
+  claimMappings: ClaimRiskMapping[] = [],
 ): TestCategoryMapping[] {
   const mappings: TestCategoryMapping[] = [];
 
@@ -198,6 +200,19 @@ function buildTestCategoryMappings(
       claimCount: claims.length,
       euArticle: 'Article 12 – Record-Keeping',
       status: 'compliant',
+    });
+  }
+
+  // high-risk domain claims → Art. 6 Classification Rules
+  const highRiskMappings = claimMappings.filter(
+    m => m.riskLevel === 'high' || m.riskLevel === 'unacceptable',
+  );
+  if (highRiskMappings.length > 0) {
+    mappings.push({
+      category: 'high-risk domain claim(s)',
+      claimCount: highRiskMappings.length,
+      euArticle: 'Article 6 – Classification Rules for High-Risk AI Systems',
+      status: 'partial',
     });
   }
 
@@ -342,6 +357,20 @@ export function getRemediations(article: string, status: EvidenceStatus, finding
     }
     if (rems.length === 0) {
       rems.push('Document accuracy metrics, robustness test results, and cybersecurity measures per Art. 15.');
+    }
+  } else if (article.includes('Article 52')) {
+    if (findings.some(f => f.includes('chatbot') || f.includes('opinion'))) {
+      rems.push('Add explicit disclosure that users are interacting with an AI system at the start of every interaction per Art. 52(1).');
+    }
+    if (findings.some(f => f.includes('emotion') || f.includes('biometric'))) {
+      rems.push('Notify persons subject to emotion recognition or biometric categorisation per Art. 52(2).');
+      rems.push('Implement consent mechanisms and provide meaningful disclosure for sensitive biometric processing.');
+    }
+    if (findings.some(f => f.includes('synthetic') || f.includes('deep-fake') || f.includes('deepfake'))) {
+      rems.push('Label all AI-generated deep-fake or synthetic audio, image, and video content as machine-generated per Art. 52(3).');
+    }
+    if (rems.length === 0) {
+      rems.push('Review Art. 52 transparency obligations for your specific AI system type (chatbot, emotion recognition, deep fakes).');
     }
   }
 
@@ -803,6 +832,72 @@ export function buildEuComplianceReport(
     ...art15Strength,
   });
 
+  // ── Article 52 – Transparency Obligations for Specific AI System Types ───────
+  // §1: chatbot/AI-human interaction disclosure; §2: emotion recognition + biometric
+  // categorisation disclosure; §3: deep-fake / synthetic media labelling.
+  const emotionFindings = ruleFindings.filter(f => /emotion|sentiment/i.test(f.ruleId));
+  const syntheticFindings = ruleFindings.filter(f =>
+    /synthetic|deepfake|deep.fake|generated/i.test(f.ruleId),
+  );
+  const biometricMappings = complianceReport.claimMappings.filter(m =>
+    m.matchedPatterns.some(p => /biometric/i.test(p)),
+  );
+
+  // Reuse opinionClaims computed below for Art. 50; define here so Art. 52 can reference it.
+  const opinionClaimsForArt52 = claims.filter(c => c.type === 'opinion');
+
+  const art52Findings: string[] = [];
+  if (opinionClaimsForArt52.length > 0) {
+    art52Findings.push(
+      `${opinionClaimsForArt52.length} AI-generated opinion claim(s) detected — if this system ` +
+      `interacts directly with users, disclosure that they are communicating with an AI is ` +
+      `required per Art. 52(1).`,
+    );
+  }
+  if (emotionFindings.length > 0) {
+    art52Findings.push(
+      `${emotionFindings.length} emotion/sentiment finding(s) — persons subject to emotion ` +
+      `recognition must be informed per Art. 52(2). ` +
+      `(OWASP Agentic AI A06: Sensitive Information Disclosure)`,
+    );
+  }
+  if (biometricMappings.length > 0) {
+    art52Findings.push(
+      `${biometricMappings.length} biometric categorisation mapping(s) — persons must be ` +
+      `informed when biometric data is used to categorise them per Art. 52(2).`,
+    );
+  }
+  if (syntheticFindings.length > 0) {
+    art52Findings.push(
+      `${syntheticFindings.length} synthetic/deep-fake content finding(s) — machine-generated ` +
+      `labelling required for deep-fake audio, image, or video content per Art. 52(3).`,
+    );
+  }
+
+  const art52Status: EvidenceStatus =
+    (emotionFindings.length > 0 || syntheticFindings.length > 0 ||
+     biometricMappings.length > 0 || opinionClaimsForArt52.length > 0)
+      ? 'partial' : 'not-applicable';
+
+  const art52FinalFindings = art52Findings.length > 0
+    ? art52Findings
+    : ['No Art. 52 transparency triggers detected (no chatbot interaction, emotion recognition, biometric categorisation, or synthetic media signals).'];
+
+  const art52RelevantClaims = opinionClaimsForArt52;
+  const art52Strength = computeEvidenceStrength(art52RelevantClaims, verifications);
+  articleEvidence.push({
+    article: 'Article 52 – Transparency Obligations for Specific AI System Types',
+    requirement:
+      'AI systems interacting with humans must disclose they are AI (§1). Systems performing ' +
+      'emotion recognition or biometric categorisation must inform the persons concerned (§2). ' +
+      'Deep-fake and synthetic media must be labelled as machine-generated (§3).',
+    status: art52Status,
+    findings: art52FinalFindings,
+    remediations: getRemediations('Article 52', art52Status, art52FinalFindings),
+    owaspRef: 'OWASP Agentic AI A06: Sensitive Information Disclosure',
+    ...art52Strength,
+  });
+
   // Article 50 — GPAI transparency (always included; opinion claims drive severity)
   const opinionClaims = claims.filter(c => c.type === 'opinion');
   const art50Findings: string[] = [];
@@ -831,7 +926,7 @@ export function buildEuComplianceReport(
   });
 
   // ── Test Category Mappings ─────────────────────────────────────────────────
-  const testCategoryMappings = buildTestCategoryMappings(claims, verifications, ruleFindings);
+  const testCategoryMappings = buildTestCategoryMappings(claims, verifications, ruleFindings, complianceReport.claimMappings);
 
   // ── Article 50 Disclosure Object ──────────────────────────────────────────
   const article50Disclosure = {

@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-02 (Cycle 50 — N-204 EU AI Act compliance sprint; 204 initiatives SHIPPED; 3,954 tests.)
+> **Last Updated**: 2026-04-03 (Cycle 51 — EU AI Act sprint N-205–N-208; 208 initiatives SHIPPED; 3,877 tests.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -179,6 +179,10 @@
 | N-201 | TypeScript SDK compliance enhancements — complianceExport() method, ComplianceHistoryEntry/ComplianceExportResponse types, WebhookEvent updated, ScanResult complianceScore/Pass; 4 tests | DISTRIBUTION | SHIPPED | P1 | 2026-04-01 |
 | N-202 | Python SDK compliance enhancements — compliance_export() method (JSON+CSV), ComplianceHistoryEntry/ComplianceExportResponse models, inline complianceScore/compliancePass in ScanResult; 14 tests | DISTRIBUTION | SHIPPED | P1 | 2026-04-01 |
 | N-203 | Shell injection detection rules — YAML rule (12 regex patterns: cmd substitution, IFS, eval, curl-pipe-sh, base64, dangerous rm, env override, mkfifo) + TypeScript rule (Unicode zero-width, bidi override, control chars, homoglyphs); 31 tests | FORENSIC | SHIPPED | P0 | 2026-04-01 |
+| N-208 | Art. 52 (Transparency for specific AI system types — chatbot §1, emotion recognition/biometric §2, deep fakes §3) added to articleEvidence; Art. 6 entry added to buildTestCategoryMappings via claimMappings param; Art. 52 getRemediations branch; 8 new tests (TCA1–TCA2, A52-1–A52-6) | COMPLIANCE | SHIPPED | P0 | 2026-04-03 |
+| N-207 | CI gate blind to Art. 6 Annex III trigger — art6ConformityRequired flag added to CiGateResult; gate fails in default mode when Art. 6 detected domain content but riskFail not already firing; renderCiGateOutput surfaces conformity assessment message; 5 new tests (CG1–CG5) | COMPLIANCE | SHIPPED | P0 | 2026-04-03 |
+| N-206 | Annex III applicable logic ignores Art. 6 evidence — annexApplicable now fires when Art. 6 is partial/non-compliant; annex-iii-0 (Art. 6 classification trigger) added as first checklist item; 4 new tests; items.length 7→8 | COMPLIANCE | SHIPPED | P0 | 2026-04-03 |
+| N-205 | Art. 10/11/12 testCategoryMappings gap — buildTestCategoryMappings gains bias→Art.10, high-importance-unverified→Art.10, documented claims→Art.11, structured metadata→Art.12; ruleFindings param added; 8 new tests (TC1–TC8) | COMPLIANCE | SHIPPED | P0 | 2026-04-03 |
 | N-204 | EU AI Act compliance sprint — Art. 6 (Classification/Annex III), Art. 15 (Accuracy/Robustness/Cybersecurity), Art. 50(4) PLACEHOLDER resolved; 10 articles in articleEvidence (was 7); 3 test mock fixes; 11 new tests | COMPLIANCE | SHIPPED | P0 | 2026-04-02 |
 | N-156 | AAIO baseline measurement — `data/outputs/aaio-baseline.md`; 15 web search queries across 5 clusters (brand, problem-space, technical, ecosystem); result: 2 HITs (Forge multi-agent orchestration, NXTG.AI forge governance), 3 PARTIALs (Faultline brand queries surface old Kaggle repo not Pro), 10 MISSes; root causes ranked: (1) `@nxtg/faultline` unpublished/not indexed — #1 gap; (2) `nxtg-ai/faultline-pro` is private — not indexed; (3) content in private repo, not externally published; (4) naming collisions (FaultlineAI.com, arXiv FaultLine paper); (5) wrong keyword framing; opportunities: publish npm, make repo public, publish comparison post to dev.to, write "weakest-link claim detection" article; competitor sightings: Systima Comply (EU AI Act CLI), QWED-verification (SARIF), EuConform, OpenFactCheck | DISTRIBUTION | SHIPPED | P1 | 2026-03-24 |
 | N-155 | Content pipeline — comparison post draft `docs/content/faultline-vs-promptfoo-deepeval.md` (GTM-PLAN §4 Week 2 piece): "Faultline vs Promptfoo vs DeepEval — An Honest Comparison" — honest feature matrix across 3 tools (Promptfoo=prompt hardening, DeepEval=RAG quality, Faultline=output forensics); decision matrix (9 use-case rows); "when you need all three" scenario; EU AI Act compliance section; Gemini Flash benchmark callout with accuracy data and calibration fix; competitive positioning diagram; publication-ready markdown for dev.to / Substack / LinkedIn | DISTRIBUTION | SHIPPED | P2 | 2026-03-24 |
@@ -8339,6 +8343,22 @@ None. All three questions from the previous reflection are answered. Next sessio
 
 ## CoS Directives
 
+### SESSION — 2026-04-03 EU AI Act Compliance Sprint (Cycle 51)
+**From**: Wolf (NXTG-AI CoS) via verbal P0 mandate | **Status**: DONE
+
+**Directive**: No formally injected PENDING directives found in NEXUS. Active sprint mandate (EU AI Act, 120 days to deadline) self-directed per Wolf P0 instruction. Four gaps identified and closed:
+
+**N-205** — `testCategoryMappings` missing Art. 10/11/12 entries. `buildTestCategoryMappings()` gained `ruleFindings` param; bias→Art.10, high-importance-unverified→Art.10, documented claims→Art.11, structured metadata→Art.12. 8 tests.
+
+**N-206** — `annexApplicable` ignored Art. 6 evidence. Medium-risk scans touching biometric/employment AI (Art. 6 = partial) skipped the Annex III conformity checklist entirely. Fixed: `annexApplicable` now fires when Art. 6 is partial/non-compliant. `annex-iii-0` (Art. 6 classification trigger) added as first checklist item. 4 tests; items.length 7→8.
+
+**N-207** — CI gate default mode blind to Art. 6 conformity obligation. `art6ConformityRequired` flag added to `CiGateResult`; gate fails in non-strict mode when Annex III triggered by Art. 6 domain content. `renderCiGateOutput` surfaces the reason. 5 tests.
+
+**N-208** — Article 52 completely absent from compliance module. Added `articleEvidence` block (§1 chatbot, §2 emotion/biometric, §3 synthetic/deepfake), `getRemediations` branch, and Art. 6 `testCategoryMappings` entry via `claimMappings` 4th param. 8 tests.
+
+**Final: 3,877 tests / 178 files — all green. 208 initiatives SHIPPED.**
+
+---
 
 ## CoS Archive
 
