@@ -994,6 +994,55 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-02 — CoS check-in — cycle 47 (delta: none; 203 SHIPPED; 3,943 tests)
+
+### 1. What shipped since last check-in
+
+No new features. Clean state for the first time since cycle 36: zero untracked files, correct badge, up-to-date llms.txt, shell injection doc committed, Self-Improvement Log exists.
+
+**Test count**: 3,843 vitest + 100 Python = **3,943**. Stable. **Commits since cycle 46**: 0.
+
+### 2. What surprised me
+
+- **The N-145 phantom correction had four downstream casualties, not one.** The badge was the most visible, but cycle 46 surfaced two more: `RP1` (release-prep.test.ts) asserting `>= 4000` and `RP16` (release-prep-v040.test.ts) asserting `>= 4286`. Both were frozen at inflated-era thresholds and silently failing the pre-push gate. This means the badge fix was blocked behind a test fix, not just a one-line edit. The full correction required 3 commits and touching 4 files. Lesson: when a foundational metric correction happens (N-145), a follow-up task should explicitly enumerate all downstream assertions and update them atomically — not leave them to be discovered one CI failure at a time.
+
+- **The "no download/usage metrics pipeline" Wolf P1 has a different diagnosis than I reported.** Looking at `packages/api/src/store/npm-metrics.ts`: the infrastructure fully exists. The store tracks `@nxtg/faultline`, `@nxtg/faultline-api`, `@nxtg/faultline-sdk`, polls npmjs.org API hourly, and exposes `GET /npm-metrics/overview` + `GET /npm-metrics/packages/:name` + Prometheus metrics. **But `packages/api/package.json` is marked `"private": true`.** The packages are not published. The npm-metrics poller runs on every server start and queries npmjs.org — but if the packages don't exist on the registry, every poll returns zero. The pipeline exists and is running; it's producing silence because there's nothing to count yet. Wolf's P1 isn't "build the pipeline" — it's "publish the packages so the pipeline has data." v0.5.0 is the prerequisite for both EU AI Act P1 and metrics P1 simultaneously.
+
+- **The `packages/api` being `"private": true` is the right call** — it's the backend server, not a published library. The publishable packages are `packages/cli` (`@nxtg/faultline`) and `packages/sdk` (`@nxtg/faultline-sdk`). The Python SDK (`sdks/python/`) publishes to PyPI. These three are the npm/PyPI surface.
+
+### 3. Cross-project signals
+
+- **Foundational metric corrections need atomic downstream cleanup.** When N-145 corrected the test count from ~4,500 to ~3,397, the correction commit should have included: (a) updated README badge, (b) updated llms.txt, (c) updated all release-prep test thresholds. Doing it atomically would have prevented the 10-cycle cascade. Any ASIF project that corrects a test count, coverage baseline, or mutation score should grep for all downstream assertions before closing the correction commit.
+
+- **"Pipeline exists but produces no signal" is a category of P1 that looks like "pipeline is missing."** Wolf's report of "no download/usage metrics pipeline" was accurate from the ops perspective (no data visible) but the root cause was publish-gate, not missing code. This distinction matters for prioritization: if the pipeline were missing, the fix would be to build it. Since it exists, the fix is to unblock it (publish v0.5.0). Other ASIF projects with polling/metrics infrastructure should verify their infra has real data before concluding a pipeline "works."
+
+### 4. Next priorities — Wolf directive update
+
+**Revised P1 status after investigation:**
+
+| P1 | Prior status | Revised status |
+|----|-------------|----------------|
+| EU AI Act compliance | Feature-complete in codebase; npm artefact stale | Unchanged — v0.5.0 publish is the unlock |
+| Download/usage metrics | "No pipeline" | **Pipeline exists** (`npm-metrics.ts`, hourly poller, 3 endpoints, Prometheus) — blocked on publish |
+
+**Both P1s are unblocked by the same single action: v0.5.0 publish prep.**
+
+Proposed scope for N-204 (v0.5.0):
+1. CHANGELOG `[v0.5.0]` block — N-158 through N-203 (46 initiatives: EU AI Act compliance wave, security hardening, SDKs, shell injection)
+2. Bump `packages/cli/package.json` and `packages/sdk/package.json` to 0.5.0
+3. README badge already correct (3,943); update version reference
+4. `npm publish` for `@nxtg/faultline` + `@nxtg/faultline-sdk`
+5. PyPI publish for `sdks/python/` (`faultline-sdk`)
+6. Update release-prep tests RP1/RP16 floor if needed after publish
+
+### 5. Blockers / Questions for CoS
+
+- **No blockers.** Clean state, CI green, full picture on both Wolf P1s.
+- **One decision needed**: confirm v0.5.0 publish scope. Specifically: should `@nxtg/faultline-sdk` (TypeScript SDK, `packages/sdk/`) be included in this publish, or published separately? It's at 37% coverage — the compliance methods work but test coverage is thin.
+- **Reflection cadence observation (for the record)**: 47 cycles on 2026-04-02, all triggered by manual prompts. The heartbeat v4.6 fix was supposed to suppress no-delta reflections. This session demonstrates the fix is scoped to automated heartbeat, not manually-triggered reflection prompts. Not a blocker — just a note for the CoS infrastructure audit.
+
+---
+
 > **Reflection cycle**: 2026-04-02 — CoS check-in — cycle 46 (delta: housekeeping; 203 SHIPPED; 3,943 tests)
 
 ### 1. What shipped since last check-in
