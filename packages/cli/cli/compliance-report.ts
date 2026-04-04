@@ -1010,6 +1010,9 @@ export interface CiGateResult {
   exitCode: 0 | 1;
   complianceScore: number;
   threshold: number;
+  /** True when Art. 6 triggered the Annex III checklist (domain content detected) but
+   *  overall risk is not yet high/critical — conformity assessment obligation is active. */
+  art6ConformityRequired: boolean;
 }
 
 export interface GateOptions {
@@ -1044,7 +1047,13 @@ export function evaluateComplianceGate(
   const scoreFail = threshold > 0 && report.complianceScore < threshold;
   const annexFail = strict && report.annexIIIChecklist.applicable &&
     report.annexIIIChecklist.items.some(i => i.status === 'fail' || i.status === 'not-assessed');
-  const pass = nonCompliantCount === 0 && !riskFail && !scoreFail && !annexFail;
+  // Art. 6 domain detection triggers mandatory conformity assessment even when
+  // overall risk is not yet high/critical. Block CI in default mode too.
+  const art6ConformityRequired =
+    report.annexIIIChecklist.applicable &&
+    !riskFail &&
+    report.annexIIIChecklist.items.some(i => i.id === 'annex-iii-0' && i.status !== 'pass');
+  const pass = nonCompliantCount === 0 && !riskFail && !scoreFail && !annexFail && !art6ConformityRequired;
 
   return {
     pass,
@@ -1055,6 +1064,7 @@ export function evaluateComplianceGate(
     exitCode: pass ? 0 : 1,
     complianceScore: report.complianceScore,
     threshold,
+    art6ConformityRequired,
   };
 }
 
@@ -1104,6 +1114,9 @@ export function renderCiGateOutput(gate: CiGateResult, report: EuAiActCompliance
     }
     if (gate.threshold > 0 && report.complianceScore < gate.threshold) {
       lines.push(`Compliance score ${report.complianceScore} is below threshold ${gate.threshold}.`);
+    }
+    if (gate.art6ConformityRequired) {
+      lines.push('Article 6: Annex III high-risk domain content detected — conformity assessment required before deployment.');
     }
     if (report.annexIIIChecklist.applicable) {
       const failing = report.annexIIIChecklist.items.filter(i => i.status === 'fail' || i.status === 'not-assessed');

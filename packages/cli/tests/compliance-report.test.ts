@@ -1254,6 +1254,68 @@ describe('evaluateComplianceGate()', () => {
       expect(typeof a.article).toBe('string');
     }
   });
+
+  // ── CG1–CG5: Art. 6 conformity trigger in default-mode CI gate ────────────
+  it('CG1: gate fails in default mode when Art. 6 detects Annex III domain (medium risk)', () => {
+    const scan = makeScan({
+      overallRisk: 'medium',
+      complianceReport: makeComplianceReport({
+        claimMappings: [
+          { claimId: 'c1', riskLevel: 'high', matchedPatterns: ['Annex III §1'], euArticles: ['Article 6'] },
+        ],
+      }),
+    });
+    const report = buildEuComplianceReport(scan);
+    const gate = evaluateComplianceGate(report);
+    expect(gate.pass).toBe(false);
+    expect(gate.exitCode).toBe(1);
+    expect(gate.art6ConformityRequired).toBe(true);
+  });
+
+  it('CG2: gate passes in default mode when Art. 6 is not-applicable (no domain content)', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const gate = evaluateComplianceGate(report);
+    expect(gate.pass).toBe(true);
+    expect(gate.art6ConformityRequired).toBe(false);
+  });
+
+  it('CG3: art6ConformityRequired is false when riskFail already fires (high risk)', () => {
+    const scan = makeScan({
+      overallRisk: 'high',
+      complianceReport: makeComplianceReport({
+        claimMappings: [
+          { claimId: 'c1', riskLevel: 'high', matchedPatterns: ['Annex III §3'], euArticles: ['Article 6'] },
+        ],
+      }),
+    });
+    const report = buildEuComplianceReport(scan);
+    const gate = evaluateComplianceGate(report);
+    expect(gate.pass).toBe(false);
+    // riskFail handles this — art6ConformityRequired is false to avoid double-counting
+    expect(gate.art6ConformityRequired).toBe(false);
+  });
+
+  it('CG4: gate result always includes art6ConformityRequired boolean', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const gate = evaluateComplianceGate(report);
+    expect(typeof gate.art6ConformityRequired).toBe('boolean');
+  });
+
+  it('CG5: renderCiGateOutput mentions conformity assessment when Art. 6 triggers gate fail', () => {
+    const scan = makeScan({
+      overallRisk: 'medium',
+      complianceReport: makeComplianceReport({
+        claimMappings: [
+          { claimId: 'c1', riskLevel: 'high', matchedPatterns: ['Annex III §4'], euArticles: ['Article 6'] },
+        ],
+      }),
+    });
+    const report = buildEuComplianceReport(scan);
+    const gate = evaluateComplianceGate(report);
+    const output = renderCiGateOutput(gate, report);
+    expect(output).toContain('conformity assessment required');
+    expect(output).toContain('FAIL');
+  });
 });
 
 describe('renderCiGateOutput()', () => {
