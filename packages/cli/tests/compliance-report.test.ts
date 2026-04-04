@@ -1784,6 +1784,43 @@ describe('getRemediations()', () => {
     expect(rems.some(r => r.includes('Art. 12'))).toBe(true);
     expect(rems.some(r => r.includes('monitoring'))).toBe(true);
   });
+
+  it('RR22: Article 15 with contradicted claims returns accuracy remediation', () => {
+    const rems = getRemediations('Article 15', 'partial', ['3 contradicted claim(s) — accuracy concern']);
+    expect(rems.some(r => r.includes('accuracy') || r.includes('contradicted'))).toBe(true);
+    expect(rems.some(r => r.includes('Art. 15'))).toBe(true);
+  });
+
+  it('RR23: Article 52 with opinion signal returns AI disclosure remediation', () => {
+    const rems = getRemediations('Article 52', 'partial', ['2 opinion claim(s) detected — chatbot disclosure required']);
+    expect(rems.some(r => r.includes('disclosure') && r.includes('Art. 52(1)'))).toBe(true);
+  });
+
+  it('RR24: Article 52 with biometric signal returns notification + consent remediations', () => {
+    const rems = getRemediations('Article 52', 'partial', ['biometric categorisation detected']);
+    expect(rems.some(r => r.includes('Art. 52(2)'))).toBe(true);
+    expect(rems.some(r => r.includes('consent'))).toBe(true);
+  });
+
+  it('RR25: Article 52 with synthetic signal returns labelling remediation', () => {
+    const rems = getRemediations('Article 52', 'partial', ['synthetic-media detected — deep-fake labelling required']);
+    expect(rems.some(r => r.includes('Art. 52(3)'))).toBe(true);
+    expect(rems.some(r => r.includes('machine-generated'))).toBe(true);
+  });
+
+  it('RR26: Article 52 with no known signals returns fallback review remediation', () => {
+    const rems = getRemediations('Article 52', 'partial', ['some other Art. 52 signal']);
+    expect(rems.length).toBeGreaterThan(0);
+    expect(rems.some(r => r.includes('Art. 52'))).toBe(true);
+  });
+
+  it('RR27: Article 53 returns procurement due-diligence remediations', () => {
+    const rems = getRemediations('Article 53', 'partial', ["GPAI provider 'Google Gemini' detected"]);
+    expect(rems.some(r => r.includes('Art. 53(1)(a)'))).toBe(true);
+    expect(rems.some(r => r.includes('Art. 53(1)(b)'))).toBe(true);
+    expect(rems.some(r => r.includes('procurement'))).toBe(true);
+    expect(rems.length).toBe(5);
+  });
 });
 
 describe('remediations in buildEuComplianceReport()', () => {
