@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-04 (Cycle 77 — Gate 2 audit: 2 hollow N-210 assertions strengthened; 210 initiatives SHIPPED; 4,263 tests.)
+> **Last Updated**: 2026-04-04 (Cycle 78 — TQ cleanup: N-210 Gate 6 TQ closed, Gemini calibration TQ corrected N-210→N-211; 210 initiatives SHIPPED; 4,263 tests.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -949,7 +949,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ~~**Q (2026-04-03)**: EU AI Act sprint — Article 53 gap.~~ **RESOLVED — shipped as N-209 (2026-04-03)**. Art. 53 articleEvidence added; `partial` when real GPAI provider detected, `not-applicable` for mock. 3 tests (A53-1–A53-3). All 12 enforcement-deadline articles now covered (5/6/9/10/11/12/13/14/15/50/52/53).
 
-**Q (2026-04-04 — P0)**: CRUCIBLE Gate 6 FAIL on `compliance-report.ts`. First-run mutation score: **50.44%** (renderers excluded; raw 44.56%). Gate 6 threshold: 80%. Gap: 29.56 points. Root cause: `buildEuComplianceReport()` has 12 article blocks each with multi-branch status logic; 308 ConditionalExpression survivors indicate intermediate branches (e.g., Art. 9 contradicted→non-compliant vs mixed→partial, Art. 15 >30% contradiction threshold) are not explicitly tested. `getRemediations()` article×signal combinations also undertested. **Proposed N-210: compliance-report.ts hardening sprint** — add ~80–120 tests covering per-article status boundary conditions, `getRemediations()` article×signal matrix, score calculation thresholds. Estimated post-hardening score: 75–85%. Config: `stryker-compliance.config.mjs` (created Cycle 72). **Approve as N-210 P0?**
+~~**Q (2026-04-04 — P0)**: CRUCIBLE Gate 6 FAIL on `compliance-report.ts`.~~ **RESOLVED — shipped as N-210 (2026-04-04)**. 7 hardening batches, 292 new tests, score 50.44%→80.81% (threshold 80%). `break: 80` enforced in `stryker-compliance.config.mjs`. Gate 6 PASS.
 
 **Q (2026-04-04)**: CHANGELOG `[Unreleased]` vs `[v0.5.0]` pre-publish coherence. `packages/cli/package.json` is at version `0.5.0` (set in release-prep commit 93883e8 on 2026-04-02). After that prep, N-204–N-209 shipped (12 EU AI Act articles, full compliance engine, 39 new tests) plus a bug fix. These appear in `[Unreleased]` but NOT in the `[v0.5.0]` CHANGELOG entry. When npm publishes v0.5.0, consumers will get code that includes N-204–N-209 but the published CHANGELOG for v0.5.0 won't describe them. Three options: **(A)** Bump `package.json` to `0.5.1`, rename `[Unreleased]` → `[v0.5.1]`, publish 0.5.1 (clean semver story — 0.5.0 was never published). **(B)** Merge `[Unreleased]` items into `[v0.5.0]` and clear `[Unreleased]` before publishing (simplest — v0.5.0 was never published so no consumers to break). **(C)** Publish v0.5.0 as-is, accept CHANGELOG mismatch, cut v0.5.1 immediately after. **Decision needed from CoS: which option?**
 
@@ -973,7 +973,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 **Updated decisions needed from CoS**:
 - (a) Run Pro benchmark with billing-enabled key to confirm Pro scores B3/B5 predictions
-- (b) **Approve calibration prompt tweak as N-210+** — addresses the single confirmed failure mode. Provider-agnostic. Ready to ship. *(N-152 was consumed by geminiService.ts + rules/registry.ts hardening — next available initiative is N-210)*
+- (b) **Approve calibration prompt tweak as N-211** — addresses the single confirmed failure mode. Provider-agnostic. Ready to ship. *(N-210 was consumed by compliance-report.ts Gate 6 hardening sprint — next available initiative is N-211)*
 - (c) Wire `--model=accurate` flag (N-79) — lower priority now that Flash shows stronger-than-predicted nuance on B4/B5
 
 **Q (2026-03-21 — original)**: Gemini model benchmark — Flash vs Pro for claim verification. Research task completed; full report at `docs/gemini-model-benchmark.md`. *(Superseded by 2026-03-22 update above.)*
@@ -1010,6 +1010,7 @@ The Kaggle version remains at  (tagged  at commit ).
 | 2026-04-04 | Cycle 69 | No PENDING directives; idle protocol: docs sweep (GTM/actions/versions all current); SARIF upload gap raised as Team Q N-210 candidate (open since Cycle 36–44) |
 | 2026-04-04 | Cycle 70 | No PENDING directives; idle protocol: pre-publish CHANGELOG coherence gap — [Unreleased] N-204–N-209 ship in v0.5.0 binary but absent from [v0.5.0] entry; raised as Team Q (3 options for CoS) |
 | 2026-04-04 | Cycle 71 | No PENDING directives; idle protocol: ci-integration.md "EU AI Act Compliance Gate" section added — N-159 --ci gate, --threshold/--strict/SARIF, composite action, art6ConformityRequired docs |
+| 2026-04-04 | Cycle 78 | No PENDING directives; idle protocol: Team Questions cleanup — closed stale N-210 Gate 6 TQ (shipped); corrected Gemini calibration TQ item (b) N-210→N-211 (N-210 was consumed by Gate 6 sprint) |
 | 2026-04-04 | Cycle 77 | No PENDING directives; idle protocol: CRUCIBLE Gate 2 audit of N-210 hardening tests — 2 hollow assertions found (H4g-1, H5d-6); strengthened with content assertions; 4,263 tests GREEN |
 | 2026-04-04 | Cycle 76 | No PENDING directives; idle protocol: SARIF CI gap closed — added `permissions: security-events: write` to faultline-ci.yml job; closed stale SARIF Team Question |
 | 2026-04-04 | Cycle 75 | No PENDING directives; idle protocol: README badge 3886→4263; llms.txt 209→210/3886→4263/compliance-report 80.81% mutation score added; CHANGELOG N-210 Added entry; working tree clean |
