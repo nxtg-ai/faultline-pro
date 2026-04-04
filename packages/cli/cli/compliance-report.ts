@@ -85,6 +85,7 @@ export interface EuAiActComplianceReport {
 function buildTestCategoryMappings(
   claims: Claim[],
   verifications: Record<string, VerificationResult>,
+  ruleFindings: Finding[] = [],
 ): TestCategoryMapping[] {
   const mappings: TestCategoryMapping[] = [];
 
@@ -148,6 +149,55 @@ function buildTestCategoryMappings(
       euArticle: 'Article 9 + Article 14 – Risk Management & Human Oversight',
       status: 'partial',
       owaspRef: 'OWASP Agentic AI A03: Excessive Agency',
+    });
+  }
+
+  // bias findings → Art. 10 data governance
+  const biasFindings = ruleFindings.filter(f => f.ruleId.toLowerCase().includes('bias'));
+  if (biasFindings.length > 0) {
+    mappings.push({
+      category: 'bias finding(s)',
+      claimCount: biasFindings.length,
+      euArticle: 'Article 10 – Data and Data Governance',
+      status: 'non-compliant',
+      owaspRef: 'OWASP Agentic AI A05: Improper Output Handling',
+    });
+  }
+
+  // high-importance unverified claims → Art. 10 data completeness
+  const highImportanceUnverified = claims.filter(
+    c => (c.importance ?? 0) >= 4 && ['unverified', 'mixed'].includes(verifications[c.id]?.status ?? ''),
+  );
+  if (highImportanceUnverified.length > 0) {
+    mappings.push({
+      category: 'fact (high-importance, unverified)',
+      claimCount: highImportanceUnverified.length,
+      euArticle: 'Article 10 – Data and Data Governance (data completeness)',
+      status: 'partial',
+    });
+  }
+
+  // claims with verification documentation → Art. 11 technical documentation
+  const claimsWithDocumentation = claims.filter(c => {
+    const v = verifications[c.id];
+    return v && ((v.explanation && v.explanation.length > 0) || (v.sources && v.sources.length > 0));
+  });
+  if (claimsWithDocumentation.length > 0) {
+    mappings.push({
+      category: 'claim(s) with verification documentation',
+      claimCount: claimsWithDocumentation.length,
+      euArticle: 'Article 11 – Technical Documentation',
+      status: 'compliant',
+    });
+  }
+
+  // structured claim metadata present → Art. 12 record-keeping
+  if (claims.length > 0) {
+    mappings.push({
+      category: 'claim(s) with structured metadata',
+      claimCount: claims.length,
+      euArticle: 'Article 12 – Record-Keeping',
+      status: 'compliant',
     });
   }
 
@@ -781,7 +831,7 @@ export function buildEuComplianceReport(
   });
 
   // ── Test Category Mappings ─────────────────────────────────────────────────
-  const testCategoryMappings = buildTestCategoryMappings(claims, verifications);
+  const testCategoryMappings = buildTestCategoryMappings(claims, verifications, ruleFindings);
 
   // ── Article 50 Disclosure Object ──────────────────────────────────────────
   const article50Disclosure = {

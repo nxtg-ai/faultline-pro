@@ -533,6 +533,107 @@ describe('buildEuComplianceReport()', () => {
     expect(categories).toContain('interpretation');
   });
 
+  // ── TC1–TC8: Articles 10/11/12 test-category mappings ─────────────────────
+  it('TC1: Art. 10 mapping appears for bias rule findings', () => {
+    const scan = makeScan({
+      ruleFindings: [{ ruleId: 'bias-detection', severity: 'high', message: 'Bias detected', claimId: 'c1' }],
+    });
+    const report = buildEuComplianceReport(scan);
+    const articles = report.testCategoryMappings.map(m => m.euArticle);
+    expect(articles.some(a => a.includes('Article 10'))).toBe(true);
+    const art10 = report.testCategoryMappings.find(m => m.euArticle.includes('Article 10') && m.category === 'bias finding(s)');
+    expect(art10).toBeDefined();
+    expect(art10!.status).toBe('non-compliant');
+    expect(art10!.owaspRef).toContain('A05');
+  });
+
+  it('TC2: Art. 10 mapping appears for high-importance unverified claims', () => {
+    const scan = makeScan({
+      claims: [
+        { id: 'c1', text: 'Critical claim.', type: 'fact', importance: 5 },
+        { id: 'c2', text: 'Normal claim.', type: 'fact', importance: 2 },
+      ],
+      verifications: {
+        c1: { claimId: 'c1', status: 'unverified', explanation: '', sources: [] },
+        c2: { claimId: 'c2', status: 'supported', explanation: 'OK.', sources: [] },
+      },
+    });
+    const report = buildEuComplianceReport(scan);
+    const art10 = report.testCategoryMappings.find(
+      m => m.euArticle.includes('Article 10') && m.category.includes('high-importance'),
+    );
+    expect(art10).toBeDefined();
+    expect(art10!.claimCount).toBe(1);
+    expect(art10!.status).toBe('partial');
+  });
+
+  it('TC3: Art. 10 mapping absent when no bias findings and no high-importance unverified', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const art10Mappings = report.testCategoryMappings.filter(m => m.euArticle.includes('Article 10'));
+    expect(art10Mappings).toHaveLength(0);
+  });
+
+  it('TC4: Art. 11 mapping appears when claims have explanation or sources', () => {
+    const scan = makeScan({
+      verifications: {
+        c1: { claimId: 'c1', status: 'supported', explanation: 'Confirmed by source.', sources: ['http://example.com'] },
+        c2: { claimId: 'c2', status: 'supported', explanation: 'Confirmed.', sources: [] },
+      },
+    });
+    const report = buildEuComplianceReport(scan);
+    const art11 = report.testCategoryMappings.find(m => m.euArticle.includes('Article 11'));
+    expect(art11).toBeDefined();
+    expect(art11!.status).toBe('compliant');
+    expect(art11!.claimCount).toBeGreaterThan(0);
+  });
+
+  it('TC5: Art. 11 mapping absent when no claims have documentation', () => {
+    const scan = makeScan({
+      verifications: {
+        c1: { claimId: 'c1', status: 'unverified', explanation: '', sources: [] },
+        c2: { claimId: 'c2', status: 'unverified', explanation: '', sources: [] },
+      },
+    });
+    const report = buildEuComplianceReport(scan);
+    const art11 = report.testCategoryMappings.find(m => m.euArticle.includes('Article 11'));
+    expect(art11).toBeUndefined();
+  });
+
+  it('TC6: Art. 12 mapping appears when claims are present', () => {
+    const report = buildEuComplianceReport(makeScan());
+    const art12 = report.testCategoryMappings.find(m => m.euArticle.includes('Article 12'));
+    expect(art12).toBeDefined();
+    expect(art12!.category).toBe('claim(s) with structured metadata');
+    expect(art12!.claimCount).toBe(2);
+    expect(art12!.status).toBe('compliant');
+  });
+
+  it('TC7: Art. 12 mapping absent when no claims', () => {
+    const scan = makeScan({ claims: [], verifications: {} });
+    const report = buildEuComplianceReport(scan);
+    const art12 = report.testCategoryMappings.find(m => m.euArticle.includes('Article 12'));
+    expect(art12).toBeUndefined();
+  });
+
+  it('TC8: Art. 10/11/12 all appear in testCategoryMappings for a rich scan', () => {
+    const scan = makeScan({
+      claims: [
+        { id: 'c1', text: 'Critical claim.', type: 'fact', importance: 5 },
+        { id: 'c2', text: 'Normal claim.', type: 'fact', importance: 3 },
+      ],
+      verifications: {
+        c1: { claimId: 'c1', status: 'unverified', explanation: 'No evidence.', sources: [] },
+        c2: { claimId: 'c2', status: 'supported', explanation: 'Confirmed.', sources: ['http://src.com'] },
+      },
+      ruleFindings: [{ ruleId: 'bias-detection', severity: 'high', message: 'Bias', claimId: 'c1' }],
+    });
+    const report = buildEuComplianceReport(scan);
+    const articles = report.testCategoryMappings.map(m => m.euArticle);
+    expect(articles.some(a => a.includes('Article 10'))).toBe(true);
+    expect(articles.some(a => a.includes('Article 11'))).toBe(true);
+    expect(articles.some(a => a.includes('Article 12'))).toBe(true);
+  });
+
   it('summary counts are correct', () => {
     const report = buildEuComplianceReport(makeScan());
     const total =
