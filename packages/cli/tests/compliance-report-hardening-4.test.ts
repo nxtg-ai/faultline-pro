@@ -443,9 +443,9 @@ describe('N-210 H4g — buildTestCategoryMappings unacceptable riskLevel + Art.6
     const scan = makeScan({
       complianceReport: makeComplianceReport({
         claimMappings: [{
-          claimId: 'c1', riskLevel: 'unacceptable',
-          matchedPatterns: ['biometric categorisation'],
-          euRiskTier: 'unacceptable',
+          claimId: 'c1', claimText: 'Biometric categorisation.', verificationStatus: 'supported', riskLevel: 'unacceptable',
+          category: { level: 'unacceptable', title: 'Prohibited', description: '', articles: [], requiredActions: [] },
+          matchedPatterns: ['biometric categorisation'], confidence: 'high', confidenceScore: 0.9,
         }],
       }),
     });
@@ -460,9 +460,9 @@ describe('N-210 H4g — buildTestCategoryMappings unacceptable riskLevel + Art.6
     const scan = makeScan({
       complianceReport: makeComplianceReport({
         claimMappings: [{
-          claimId: 'c1', riskLevel: 'medium',
-          matchedPatterns: ['some pattern'],
-          euRiskTier: 'limited',
+          claimId: 'c1', claimText: 'Some pattern.', verificationStatus: 'supported', riskLevel: 'limited',
+          category: { level: 'limited', title: 'Limited', description: '', articles: [], requiredActions: [] },
+          matchedPatterns: ['some pattern'], confidence: 'medium', confidenceScore: 0.5,
         }],
       }),
     });
@@ -477,9 +477,9 @@ describe('N-210 H4g — buildTestCategoryMappings unacceptable riskLevel + Art.6
     const scan = makeScan({
       complianceReport: makeComplianceReport({
         claimMappings: [{
-          claimId: 'c1', riskLevel: 'unacceptable',
-          matchedPatterns: ['emotion recognition'],
-          euRiskTier: 'unacceptable',
+          claimId: 'c1', claimText: 'Emotion recognition.', verificationStatus: 'supported', riskLevel: 'unacceptable',
+          category: { level: 'unacceptable', title: 'Prohibited', description: '', articles: [], requiredActions: [] },
+          matchedPatterns: ['emotion recognition'], confidence: 'high', confidenceScore: 0.9,
         }],
       }),
     });
@@ -494,9 +494,9 @@ describe('N-210 H4g — buildTestCategoryMappings unacceptable riskLevel + Art.6
     const scan = makeScan({
       complianceReport: makeComplianceReport({
         claimMappings: [{
-          claimId: 'c1', riskLevel: 'high',
-          matchedPatterns: ['biometrics', 'employment', 'education'],
-          euRiskTier: 'high',
+          claimId: 'c1', claimText: 'Biometrics employment education.', verificationStatus: 'supported', riskLevel: 'high',
+          category: { level: 'high', title: 'High Risk', description: '', articles: [], requiredActions: [] },
+          matchedPatterns: ['biometrics', 'employment', 'education'], confidence: 'high', confidenceScore: 0.9,
         }],
       }),
     });
@@ -509,9 +509,9 @@ describe('N-210 H4g — buildTestCategoryMappings unacceptable riskLevel + Art.6
     const scan = makeScan({
       complianceReport: makeComplianceReport({
         claimMappings: [{
-          claimId: 'c1', riskLevel: 'high',
-          matchedPatterns: ['biometrics', 'employment', 'education', 'healthcare'],
-          euRiskTier: 'high',
+          claimId: 'c1', claimText: 'Healthcare AI system.', verificationStatus: 'supported', riskLevel: 'high',
+          category: { level: 'high', title: 'High Risk', description: '', articles: [], requiredActions: [] },
+          matchedPatterns: ['biometrics', 'employment', 'education', 'healthcare'], confidence: 'high', confidenceScore: 0.9,
         }],
       }),
     });
@@ -524,9 +524,9 @@ describe('N-210 H4g — buildTestCategoryMappings unacceptable riskLevel + Art.6
     const scan = makeScan({
       complianceReport: makeComplianceReport({
         claimMappings: [{
-          claimId: 'c1', riskLevel: 'high',
-          matchedPatterns: ['biometric categorisation'],
-          euRiskTier: 'high',
+          claimId: 'c1', claimText: 'Biometric categorisation.', verificationStatus: 'supported', riskLevel: 'high',
+          category: { level: 'high', title: 'High Risk', description: '', articles: [], requiredActions: [] },
+          matchedPatterns: ['biometric categorisation'], confidence: 'high', confidenceScore: 0.9,
         }],
       }),
     });
@@ -539,9 +539,9 @@ describe('N-210 H4g — buildTestCategoryMappings unacceptable riskLevel + Art.6
     const scan = makeScan({
       complianceReport: makeComplianceReport({
         claimMappings: [{
-          claimId: 'c1', riskLevel: 'high',
-          matchedPatterns: ['biometric categorisation'],
-          euRiskTier: 'high',
+          claimId: 'c1', claimText: 'Biometric categorisation.', verificationStatus: 'supported', riskLevel: 'high',
+          category: { level: 'high', title: 'High Risk', description: '', articles: [], requiredActions: [] },
+          matchedPatterns: ['biometric categorisation'], confidence: 'high', confidenceScore: 0.9,
         }],
       }),
     });
@@ -560,9 +560,9 @@ describe('N-210 H4g — buildTestCategoryMappings unacceptable riskLevel + Art.6
     const scan = makeScan({
       complianceReport: makeComplianceReport({
         claimMappings: [{
-          claimId: 'c1', riskLevel: 'high',
-          matchedPatterns: ['biometric categorisation'],
-          euRiskTier: 'high',
+          claimId: 'c1', claimText: 'Biometric categorisation.', verificationStatus: 'supported', riskLevel: 'high',
+          category: { level: 'high', title: 'High Risk', description: '', articles: [], requiredActions: [] },
+          matchedPatterns: ['biometric categorisation'], confidence: 'high', confidenceScore: 0.9,
         }],
       }),
     });
@@ -582,10 +582,9 @@ describe('N-210 H4h — renderCiGateOutput annex item icons and arithmetic', () 
       articleEvidence: [
         {
           article: 'Article 9 – Risk Management System',
-          requirement: 'R',
-          status: 'partial',
-          findings: ['High risk.'],
-          remediations: [],
+          requirement: 'R', status: 'partial',
+          findings: ['High risk.'], remediations: [],
+          evidenceCount: 0, sourceCount: 0, strengthScore: 0,
         },
       ],
     });
@@ -593,7 +592,7 @@ describe('N-210 H4h — renderCiGateOutput annex item icons and arithmetic', () 
 
   it('H4h-1: annex item status pass → [PASS] icon in output (kills status StringLiteral)', () => {
     const report = makeAnnexReport([
-      { article: 'Art. 9', requirement: 'Risk management', status: 'pass' },
+      { id: 'a-9', article: 'Art. 9', requirement: 'Risk management', status: 'pass', evidence: 'e' },
     ]);
     const gate = evaluateComplianceGate(report);
     const output = renderCiGateOutput(gate, report);
@@ -603,7 +602,7 @@ describe('N-210 H4h — renderCiGateOutput annex item icons and arithmetic', () 
 
   it('H4h-2: annex item status fail → [FAIL] icon in output (kills status StringLiteral)', () => {
     const report = makeAnnexReport([
-      { article: 'Art. 10', requirement: 'Data governance', status: 'fail' },
+      { id: 'a-10', article: 'Art. 10', requirement: 'Data governance', status: 'fail', evidence: 'e' },
     ]);
     const gate = evaluateComplianceGate(report);
     const output = renderCiGateOutput(gate, report);
@@ -612,7 +611,7 @@ describe('N-210 H4h — renderCiGateOutput annex item icons and arithmetic', () 
 
   it('H4h-3: annex item status partial → [PART] icon in output (kills status StringLiteral)', () => {
     const report = makeAnnexReport([
-      { article: 'Art. 11', requirement: 'Technical doc', status: 'partial' },
+      { id: 'a-11', article: 'Art. 11', requirement: 'Technical doc', status: 'partial', evidence: 'e' },
     ]);
     const gate = evaluateComplianceGate(report);
     const output = renderCiGateOutput(gate, report);
@@ -621,7 +620,7 @@ describe('N-210 H4h — renderCiGateOutput annex item icons and arithmetic', () 
 
   it('H4h-4: passRate 0.75 → 75% shown in output (kills * 100 arithmetic)', () => {
     const report = makeAnnexReport([
-      { article: 'Art. 9', requirement: 'Risk', status: 'pass' },
+      { id: 'a-9', article: 'Art. 9', requirement: 'Risk', status: 'pass', evidence: 'e' },
     ], 0.75);
     const gate = evaluateComplianceGate(report);
     const output = renderCiGateOutput(gate, report);
@@ -630,7 +629,7 @@ describe('N-210 H4h — renderCiGateOutput annex item icons and arithmetic', () 
 
   it('H4h-5: passRate 0.50 → 50% shown in output (kills * 100 arithmetic)', () => {
     const report = makeAnnexReport([
-      { article: 'Art. 9', requirement: 'Risk', status: 'fail' },
+      { id: 'a-9', article: 'Art. 9', requirement: 'Risk', status: 'fail', evidence: 'e' },
     ], 0.50);
     const gate = evaluateComplianceGate(report);
     const output = renderCiGateOutput(gate, report);
@@ -639,7 +638,7 @@ describe('N-210 H4h — renderCiGateOutput annex item icons and arithmetic', () 
 
   it('H4h-6: pass rate text label present (kills StringLiteral for "Pass rate:" label)', () => {
     const report = makeAnnexReport([
-      { article: 'Art. 9', requirement: 'Risk', status: 'pass' },
+      { id: 'a-9', article: 'Art. 9', requirement: 'Risk', status: 'pass', evidence: 'e' },
     ], 1.0);
     const gate = evaluateComplianceGate(report);
     const output = renderCiGateOutput(gate, report);

@@ -129,9 +129,9 @@ describe('N-210 H5a — Art.52 unique text + negative assertions', () => {
     const scan = makeScan({
       complianceReport: makeComplianceReport({
         claimMappings: [{
-          claimId: 'c1', riskLevel: 'high',
-          matchedPatterns: ['biometric identification system'],
-          euRiskTier: 'high',
+          claimId: 'c1', claimText: 'Biometric.', verificationStatus: 'supported', riskLevel: 'high',
+          category: { level: 'high', title: 'High Risk', description: '', articles: [], requiredActions: [] },
+          matchedPatterns: ['biometric identification system'], confidence: 'high', confidenceScore: 0.9,
         }],
       }),
     });
@@ -150,9 +150,9 @@ describe('N-210 H5a — Art.52 unique text + negative assertions', () => {
     const scan = makeScan({
       complianceReport: makeComplianceReport({
         claimMappings: [{
-          claimId: 'c1', riskLevel: 'high',
-          matchedPatterns: ['biometric categorisation of persons'],
-          euRiskTier: 'high',
+          claimId: 'c1', claimText: 'Biometric categorisation.', verificationStatus: 'supported', riskLevel: 'high',
+          category: { level: 'high', title: 'High Risk', description: '', articles: [], requiredActions: [] },
+          matchedPatterns: ['biometric categorisation of persons'], confidence: 'high', confidenceScore: 0.9,
         }],
       }),
     });
@@ -240,6 +240,7 @@ describe('N-210 H5b — renderComplianceReportMarkdown annex icons and passRate'
       articleEvidence: [{
         article: 'Article 9 – Risk Management System', requirement: 'R',
         status: 'partial', findings: ['Issue.'], remediations: ['Fix it.'],
+        evidenceCount: 0, sourceCount: 0, strengthScore: 0,
       }],
     });
   }
@@ -340,7 +341,7 @@ describe('N-210 H5b — renderComplianceReportMarkdown annex icons and passRate'
 describe('N-210 H5c — htmlStatusColor and escapeHtml via HTML renderer', () => {
   function makeHtmlReport(status: EuAiActComplianceReport['articleEvidence'][0]['status']): EuAiActComplianceReport {
     return makeMinimalReport({
-      articleEvidence: [{ article: 'Test Article', requirement: 'R', status, findings: [], remediations: [] }],
+      articleEvidence: [{ article: 'Test Article', requirement: 'R', status, findings: [], remediations: [], evidenceCount: 0, sourceCount: 0, strengthScore: 0 }],
     });
   }
 
@@ -383,7 +384,7 @@ describe('N-210 H5c — htmlStatusColor and escapeHtml via HTML renderer', () =>
     const report = makeMinimalReport({
       articleEvidence: [{
         article: 'Test', requirement: 'Check <input> & validate "output"', status: 'partial',
-        findings: [], remediations: [],
+        findings: [], remediations: [], evidenceCount: 0, sourceCount: 0, strengthScore: 0,
       }],
     });
     const gate = evaluateComplianceGate(report);
@@ -397,6 +398,7 @@ describe('N-210 H5c — htmlStatusColor and escapeHtml via HTML renderer', () =>
       articleEvidence: [{
         article: 'Test', requirement: 'R', status: 'partial',
         findings: ['Issue.'], remediations: ['Fix <this> & review "policy"'],
+        evidenceCount: 0, sourceCount: 0, strengthScore: 0,
       }],
     });
     const gate = evaluateComplianceGate(report);
@@ -488,6 +490,7 @@ describe('N-210 H5d — renderComplianceReportSarif annex items level mapping', 
       articleEvidence: [{
         article: 'Article 9 – Risk Management System',
         requirement: 'R', status: 'partial', findings: ['F.'], remediations: [],
+        evidenceCount: 0, sourceCount: 0, strengthScore: 0,
       }],
     });
     const gate = evaluateComplianceGate(report);
@@ -506,7 +509,7 @@ describe('N-210 H5e — evaluateComplianceGate strict mode + art6ConformityRequi
     const report = makeMinimalReport({
       overallRisk: 'low',
       articleEvidence: [
-        { article: 'Article 9', requirement: 'R', status: 'partial', findings: [], remediations: [] },
+        { article: 'Article 9', requirement: 'R', status: 'partial', findings: [], remediations: [], evidenceCount: 0, sourceCount: 0, strengthScore: 0 },
       ],
     });
     const gate = evaluateComplianceGate(report, { strict: true });
@@ -518,7 +521,7 @@ describe('N-210 H5e — evaluateComplianceGate strict mode + art6ConformityRequi
     const report = makeMinimalReport({
       overallRisk: 'low',
       articleEvidence: [
-        { article: 'Article 9', requirement: 'R', status: 'partial', findings: [], remediations: [] },
+        { article: 'Article 9', requirement: 'R', status: 'partial', findings: [], remediations: [], evidenceCount: 0, sourceCount: 0, strengthScore: 0 },
       ],
     });
     const gate = evaluateComplianceGate(report, { strict: false });
