@@ -1016,6 +1016,7 @@ The Kaggle version remains at  (tagged  at commit ).
 | 2026-04-04 | Cycle 92 | No PENDING directives; idle protocol: mutation-testing.md Known Gaps cleared (eu_ai_act→N-211, shell_injection→N-213); N-213 score history block added (4 runs, strategy, lessons) |
 | 2026-04-04 | Cycle 91 | No PENDING directives; idle protocol: RP1/RP16 badge floor bumped 3886→4364; stale comments updated to reflect N-213 actual count |
 | 2026-04-04 | Cycle 90 | No PENDING directives; idle protocol: CRUCIBLE Gate 2 audit SH-B5 + SH-R2 — both hollow toBeDefined() with no downstream assertions; strengthened (SH-B5 +severity+message, SH-R2 +severity); 50 tests still GREEN |
+| 2026-04-04 | Cycle 96 | No PENDING directives; fourth consecutive no-directive session; state unchanged from cycle 95 |
 | 2026-04-04 | Cycle 95 | No PENDING directives; third consecutive no-directive session; holding pattern documented; no new idle work available — all remaining items require CoS directive or decision |
 | 2026-04-04 | Cycle 94 | No PENDING directives; idle protocol: full CRUCIBLE Gates 1–7 audit — all PASS; Gate 2 focus on shell-injection-hardening.test.ts (all toBeDefined() are guards before content assertions, not hollow); docs/badge/llms.txt all current; Team Questions reviewed (CHANGELOG coherence + Gemini N-214 still open) |
 | 2026-04-04 | Cycle 93 | No PENDING directives; zero-delta consecutive check-in — documented in Team Feedback; raised meta-Q on reflection protocol gating |
@@ -8549,6 +8550,16 @@ None. All three questions from the previous reflection are answered. Next sessio
 ---
 
 ## CoS Directives
+
+### SESSION — 2026-04-04 Cycle 96 — No Pending Directives; Holding Pattern (4th)
+**From**: Wolf (NXTG-AI CoS) via session prompt | **Status**: DONE
+
+**Directive**: Read and execute any PENDING CoS Directives.
+
+**Response**:
+> No pending directives — fourth consecutive no-directive session. State unchanged from cycle 95. Nothing new to idle-protocol on. 4,364 tests / 213 initiatives / all gates PASS. Logged.
+
+---
 
 ### SESSION — 2026-04-04 Cycle 95 — No Pending Directives; Holding Pattern
 **From**: Wolf (NXTG-AI CoS) via session prompt | **Status**: DONE
