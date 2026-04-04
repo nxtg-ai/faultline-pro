@@ -134,19 +134,21 @@ describe('CHANGELOG.md — v0.4.0 release validation', () => {
 
 describe('package.json — v0.4.0 version validation', () => {
   // RP26: @nxtg/faultline (cli) is version >= 0.4.0
+  // Regex accepts 0.4.x through 0.9.x (forward-compatible; bumped to 0.5.0 in N-204 prep)
   it('RP26: @nxtg/faultline package version is >= 0.4.0', () => {
     const pkg = JSON.parse(
       readFileSync(resolve(ROOT, 'packages/cli/package.json'), 'utf-8'),
     ) as { version: string };
-    expect(pkg.version).toMatch(/^0\.4\.\d+$/);
+    expect(pkg.version).toMatch(/^0\.[4-9]\.\d+$/);
   });
 
   // RP27: @nxtg/faultline-api is version >= 0.4.0
+  // Regex accepts 0.4.x through 0.9.x (forward-compatible)
   it('RP27: @nxtg/faultline-api package version is >= 0.4.0', () => {
     const pkg = JSON.parse(
       readFileSync(resolve(ROOT, 'packages/api/package.json'), 'utf-8'),
     ) as { version: string };
-    expect(pkg.version).toMatch(/^0\.4\.\d+$/);
+    expect(pkg.version).toMatch(/^0\.[4-9]\.\d+$/);
   });
 });
 

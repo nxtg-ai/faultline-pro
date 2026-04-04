@@ -140,7 +140,7 @@ docs/
 - **GDPR compliant** — Article 15 export + Article 17 erasure implemented
 - **Mutation-tested** — claim forensics critical path above 80% threshold
 - **Security hardened** — security headers (CSP, X-Frame-Options, nosniff), timing-safe auth, GraphQL query bounds, Mermaid XSS sanitization
-- **Version**: 0.4.1 (pre-publish)
+- **Version**: 0.5.0 (pre-publish — awaiting npm/PyPI push)
 
 ## License
 

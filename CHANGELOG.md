@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [v0.5.0] — 2026-04-02
+
 ### Added
 
 - N-159: `faultline compliance-report --ci` — CI/CD compliance gate that exits non-zero if any EU AI Act article is non-compliant or overall risk is high/critical. New exports: `evaluateComplianceGate()`, `renderCiGateOutput()`, `CiGateResult`
