@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-01 (N-203 — Shell Injection Detection; 203 initiatives SHIPPED; 3,904 tests.)
+> **Last Updated**: 2026-04-02 (Cycle 49 — v0.5.0 release prep committed; 203 initiatives SHIPPED; 3,943 tests.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -993,6 +993,43 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-04-02 — CoS check-in — cycle 49 (delta: v0.5.0 prep committed; 203 SHIPPED; 3,843 tests)
+
+### 1. What shipped since last check-in
+
+v0.5.0 release prep committed (idle-time protocol, item 5 — stale documentation update):
+- **CHANGELOG cut**: `[Unreleased]` → `[v0.5.0] — 2026-04-02` covering N-159–N-203 (45 initiatives); empty `[Unreleased]` section re-inserted above
+- **Version bumps**: `packages/cli` 0.4.1 → 0.5.0; `packages/sdk` 0.1.0 → 0.5.0; `sdks/python` 0.1.0 → 0.5.0
+- **llms.txt**: Updated version line to `0.5.0 (pre-publish — awaiting npm/PyPI push)`
+- **RP26/RP27 test fix**: Strict `^0\.4\.\d+$` regex → `^0\.[4-9]\.\d+$` (forward-compatible; blocked on 0.5.0 version bump)
+
+**Test count**: 3,843 vitest (178 files) + 100 Python = **3,943**. No regressions.
+
+### 2. What surprised me
+
+The RP26 failure was expected — the test was written for v0.4.0 release validation and used a hardcoded range. What was non-obvious: RP27 (API package) would have passed even without a fix because `packages/api` is still at 0.4.1. The API version bump to 0.5.0 is not part of idle-time scope — that requires a publish directive.
+
+Also: `packages/sdk` was at 0.1.0 (never version-aligned with CLI/API). Bumping it to 0.5.0 for consistency made sense but is slightly aggressive for a 37%-coverage package. Logged as open CoS question — should SDK publish separately?
+
+### 3. Cross-project signals
+
+v0.5.0 prep revealed a pattern: release gates written for a specific version range (RP26) become blockers the moment a minor-version bump happens. The `^0\.[4-9]\.` fix is future-proof through 0.9.x, but a proper fix would be a semver `>=` comparison. Worth applying across the portfolio for any release-prep tests that hardcode a version range.
+
+### 4. Next priorities (no directives — idle-time assessment)
+
+1. **P1 (Wolf)**: Await publish directive for `npm publish @nxtg/faultline` + PyPI — sole unblock for both EU Act metrics pipeline and npm download tracking
+2. **P1 (Wolf)**: EU AI Act compliance delivery — 120-day deadline 2026-08-02; feature is complete (Art. 5/9/10/13/14/50); blocked only on publish
+3. **P2 idle**: `packages/api` version bump to 0.5.0 requires explicit directive (API is deployed; version bump has downstream implications)
+4. **P3 idle**: CI improvements — Stryker step in `ci.yml` (Gate 6 is local-only); SARIF upload in `faultline-ci.yml`
+
+### 5. Blockers / questions for CoS
+
+- **Q1 (publish directive)**: CoS authorization needed for `npm publish @nxtg/faultline`, `npm publish @nxtg/faultline-sdk`, `pip publish faultline-sdk` — irreversible external action; scope confirmed but awaiting N-204 directive
+- **Q2 (SDK versioning)**: Should `@nxtg/faultline-sdk` publish at 0.5.0 (version-aligned with CLI) or remain at 0.1.x given 37% test coverage? SDK is functional but not mutation-tested
+- **Q3 (API version)**: `packages/api` is at 0.4.1. Should it bump to 0.5.0 as part of publish? Or does the API follow its own version track?
+
+---
 
 > **Reflection cycle**: 2026-04-02 — CoS check-in — cycle 48 (delta: none; 203 SHIPPED; 3,943 tests)
 
