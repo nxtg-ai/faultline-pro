@@ -307,6 +307,92 @@ See the full API spec at [`packages/api/docs/openapi.yaml`](../packages/api/docs
 
 ---
 
+## EU AI Act Compliance Gate
+
+In addition to the risk-based `--fail-on` gate, Faultline provides a dedicated EU AI Act compliance gate via `faultline compliance-report --ci` (N-159). This is separate from scan risk — it evaluates per-article evidence and fails the workflow if any article is `non-compliant`, or if the weighted compliance score falls below a configurable threshold.
+
+### Basic compliance gate
+
+```bash
+# Exit 1 if any EU AI Act article is non-compliant
+faultline compliance-report --input scan.json --ci
+```
+
+### With score threshold and strict mode
+
+```bash
+# Exit 1 if compliance score < 70, OR any article is non-compliant/gap
+faultline compliance-report --input scan.json --ci --threshold 70 --strict
+```
+
+### GitHub Actions (two-step: scan + compliance gate)
+
+```yaml
+- name: Faultline scan
+  run: |
+    faultline scan --input ./docs/ai-output.txt --provider gemini \
+      --output-format json --output scan.json
+
+- name: EU AI Act compliance gate
+  run: |
+    faultline compliance-report --input scan.json --ci \
+      --threshold 70 --strict \
+      --format sarif --output compliance.sarif
+
+- name: Upload compliance SARIF
+  if: always()
+  uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: compliance.sarif
+    category: eu-ai-act-compliance
+```
+
+### Using the composite action (recommended)
+
+The `faultline-scan` GitHub Action handles scan + compliance gate in one step:
+
+```yaml
+- uses: ./.github/actions/faultline-scan
+  with:
+    input: docs/ai-output.txt
+    provider: gemini
+    compliance-gate: 'true'
+    compliance-sarif: 'true'
+    compliance-threshold: '70'
+    compliance-strict: 'false'
+    project-name: 'My AI App'
+```
+
+### Compliance gate exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Compliance gate passed — score ≥ threshold, no non-compliant articles |
+| `1` | Gate failed — non-compliant article, score below threshold, or `--strict` violated |
+
+### Key CI gate flags
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--ci` | Enable CI gate mode (exit code 1 on failure) | off |
+| `--threshold N` | Minimum compliance score (0–100) | `0` (non-compliant articles only) |
+| `--strict` | Require all articles to be compliant or not-applicable | `false` |
+| `--format sarif` | Output SARIF 2.1.0 for GitHub Code Scanning | `json` |
+| `--project-name` | Project name in report header | `''` |
+
+### `art6ConformityRequired` flag
+
+When the Annex III conformity checklist is triggered (high-risk domain content detected), the `CiGateResult.art6ConformityRequired` flag is set to `true` and the CI gate output includes a warning:
+
+```
+⚠ Art. 6 conformity assessment required — Annex III high-risk domain detected.
+  Register your system in the EU AI Act database before deployment.
+```
+
+This is surfaced even when the gate otherwise passes, so teams are aware of the Annex III obligation.
+
+---
+
 ## Risk Level Reference
 
 | Level | `--fail-on` behavior | Triggered by |

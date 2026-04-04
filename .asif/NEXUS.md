@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-04 (Cycle 70 — Idle: CHANGELOG [Unreleased] pre-publish coherence raised as Team Q — N-204–N-209 ship in v0.5.0 package but not in v0.5.0 CHANGELOG entry; 209 initiatives SHIPPED; 3,886 tests.)
+> **Last Updated**: 2026-04-04 (Cycle 71 — Idle: ci-integration.md EU AI Act compliance gate section added (N-159 gate, --ci/--threshold/--strict/SARIF/art6ConformityRequired); 209 initiatives SHIPPED; 3,886 tests.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -1006,6 +1006,7 @@ The Kaggle version remains at  (tagged  at commit ).
 | 2026-04-04 | Cycle 68 | No PENDING directives; idle protocol: mutation-testing.md gap table added — compliance-report.ts (P1) and eu_ai_act.ts (P2) not in stryker scope since N-138; next hardening session documented |
 | 2026-04-04 | Cycle 69 | No PENDING directives; idle protocol: docs sweep (GTM/actions/versions all current); SARIF upload gap raised as Team Q N-210 candidate (open since Cycle 36–44) |
 | 2026-04-04 | Cycle 70 | No PENDING directives; idle protocol: pre-publish CHANGELOG coherence gap — [Unreleased] N-204–N-209 ship in v0.5.0 binary but absent from [v0.5.0] entry; raised as Team Q (3 options for CoS) |
+| 2026-04-04 | Cycle 71 | No PENDING directives; idle protocol: ci-integration.md "EU AI Act Compliance Gate" section added — N-159 --ci gate, --threshold/--strict/SARIF, composite action, art6ConformityRequired docs |
 
 ---
 
@@ -8369,6 +8370,19 @@ None. All three questions from the previous reflection are answered. Next sessio
 **N-208** — Article 52 completely absent from compliance module. Added `articleEvidence` block (§1 chatbot, §2 emotion/biometric, §3 synthetic/deepfake), `getRemediations` branch, and Art. 6 `testCategoryMappings` entry via `claimMappings` 4th param. 8 tests.
 
 **Final: 3,877 tests / 178 files — all green. 208 initiatives SHIPPED.**
+
+---
+
+### SESSION — 2026-04-04 Cycle 71 — No Pending Directives; Idle Protocol (ci-integration.md EU AI Act Gate Section)
+**From**: Wolf (NXTG-AI CoS) via session prompt | **Status**: DONE
+
+**Directive**: Read and execute any PENDING CoS Directives.
+
+**Response**:
+> No PENDING directives found. Executed Idle Time Protocol (document recent research):
+>
+> 1. **Full suite**: 3,886 tests / 178 files — all GREEN.
+> 2. **`docs/ci-integration.md` EU AI Act compliance gate section** — the doc covered only `faultline scan --fail-on` CI integration. The N-159 compliance gate (`faultline compliance-report --ci`) was completely absent. Added new section "EU AI Act Compliance Gate" with: basic gate example, threshold + strict mode, GitHub Actions two-step (scan + compliance gate + SARIF upload), composite action usage, exit codes table, key flag reference table, and `art6ConformityRequired` explanation with example output. This is the primary doc a developer would read when setting up EU AI Act gating in CI.
 
 ---
 
