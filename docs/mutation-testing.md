@@ -359,11 +359,36 @@ vitest: {
 | `api/src/stores/notifications.ts` | 92.45% | ✅ Gate 6 cleared |
 | `api/src/stores/schedules.ts` | 80.94% | ✅ Gate 6 cleared |
 
+**First-run scores** (`stryker-compliance.config.mjs` created Cycle 72, 2026-04-04):
+
+| Module | Raw score | Score (renderers excluded) | Status | Notes |
+|--------|-----------|---------------------------|--------|-------|
+| `cli/compliance-report.ts` | 44.56% | **50.44%** | ❌ Gate 6 FAIL | Threshold: 80%. Renderers excluded = HTML (lines 1662–1822) + PDF (1823–2115). See survivor analysis below. |
+
+**Survivor analysis** (2,518 total mutants, renderers-included run):
+
+| Type | Count | Action |
+|------|-------|--------|
+| StringLiteral | 470 | ~400 in HTML/PDF renderers (excluded in focused run) — legitimately untestable string templates |
+| ConditionalExpression | 308 | **Real gap** — article evidence status conditions not fully branch-covered |
+| EqualityOperator | 170 | **Real gap** — `===` comparisons in evidence logic |
+| ArithmeticOperator | 97 | Score/count calculations; some testable |
+| MethodExpression | 64 | `.push()`, `.filter()`, `.some()` calls |
+| LogicalOperator | 48 | AND/OR logic in status derivation |
+| Other | 172 | Object/array/block mutations |
+
+**Root cause of FAIL**: `buildEuComplianceReport()` has 12 article blocks, each with multi-branch status logic (`non-compliant` / `partial` / `gap` / `compliant` / `not-applicable`). The 250 existing tests exercise the happy path and the article-present/absent cases, but many intermediate branches (e.g., exactly 1 vs 0 signals, >30% contradiction rate threshold, mixed vs contradicted paths) are not explicitly covered. `getRemediations()` condition branches (findings substring checks) are partially covered by RR22–RR27 but many article/status combinations are not.
+
+**Required hardening work** (P0 directive candidate):
+1. Add per-article boundary tests for each status transition (e.g., Art. 9: contradicted→non-compliant, mixed→partial, no signals→compliant)
+2. Add `getRemediations()` tests for each article × finding-signal combination
+3. Add score calculation boundary tests (exactly 30% contradiction threshold, exactly 0 vs 1 sources)
+4. Estimated: +80–120 new tests, expected score after hardening: 75–85%
+
 **Known gaps** (modules not yet in any stryker config — added after N-138):
 
 | Module | Added | Size | Priority | Notes |
 |--------|-------|------|----------|-------|
-| `cli/compliance-report.ts` | N-157–N-209 | ~500 LOC | **P1** | EU AI Act evidence engine — `buildEuComplianceReport()`, `getRemediations()`, `buildTestCategoryMappings()`. High-complexity branching on 12 articles. Critical-tier candidate. |
-| `cli/compliance/eu_ai_act.ts` | N-157 | ~200 LOC | P2 | Risk mapping regexes and `mapClaimToRiskCategory()` — already exercised indirectly via `cli/scan.ts` Stryker run, but not directly targeted. |
+| `cli/compliance/eu_ai_act.ts` | N-157 | ~200 LOC | P2 | Risk mapping regexes and `mapClaimToRiskCategory()` — exercised indirectly via `cli/scan.ts` Stryker run, not directly targeted. |
 
-**Next hardening session recommendation**: Create `stryker-compliance.config.mjs` targeting `cli/compliance-report.ts`. Test manifest should include `packages/cli/tests/compliance-report.test.ts` (250 tests). Expected score: unknown — first run. Gate 6 threshold: 80%.
+**Next hardening session**: `stryker-compliance.config.mjs` exists — run with `npx stryker run stryker-compliance.config.mjs`. Test manifest: `packages/cli/tests/compliance-report.test.ts` (250 tests). Gate 6 threshold: 80%.
