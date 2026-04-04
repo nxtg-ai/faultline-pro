@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-04 (Cycle 63 — Idle: Team Questions cleanup — 2 stale resolved questions collapsed; Gemini benchmark question confirmed still open (calibration tweak never shipped); 209 initiatives SHIPPED; 3,886 tests.)
+> **Last Updated**: 2026-04-04 (Cycle 64 — Idle: Gemini TQ corrected N-152→N-210+ for calibration tweak; all live docs confirmed current; 209 initiatives SHIPPED; 3,886 tests.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -966,7 +966,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 **Updated decisions needed from CoS**:
 - (a) Run Pro benchmark with billing-enabled key to confirm Pro scores B3/B5 predictions
-- (b) **Approve calibration prompt tweak as N-152** — addresses the single confirmed failure mode. Provider-agnostic. Ready to ship.
+- (b) **Approve calibration prompt tweak as N-210+** — addresses the single confirmed failure mode. Provider-agnostic. Ready to ship. *(N-152 was consumed by geminiService.ts + rules/registry.ts hardening — next available initiative is N-210)*
 - (c) Wire `--model=accurate` flag (N-79) — lower priority now that Flash shows stronger-than-predicted nuance on B4/B5
 
 **Q (2026-03-21 — original)**: Gemini model benchmark — Flash vs Pro for claim verification. Research task completed; full report at `docs/gemini-model-benchmark.md`. *(Superseded by 2026-03-22 update above.)*
@@ -995,6 +995,7 @@ The Kaggle version remains at  (tagged  at commit ).
 | 2026-04-04 | Cycle 61 | No PENDING directives; idle protocol: closed stale Art. 53 Team Question (resolved N-209 2026-04-03); Gate 7 verified 7/7 spec refs current |
 | 2026-04-04 | Cycle 62 | No PENDING directives; idle protocol: llms.txt Project Status synced (203→209 initiatives, 3943→3886 tests, EU AI Act article list 5/9/10/13/14/50 → full 12-article enforcement-deadline list) |
 | 2026-04-04 | Cycle 63 | No PENDING directives; idle protocol: collapsed 2 stale-but-resolved Team Questions (reflection cadence, Dependabot); confirmed Gemini benchmark calibration tweak still open (N-152 was different work) |
+| 2026-04-04 | Cycle 64 | No PENDING directives; idle protocol: full doc scan — no live stale refs; Gemini TQ item (b) corrected N-152→N-210+ (N-152 was consumed by geminiService hardening) |
 
 ---
 
@@ -8358,6 +8359,20 @@ None. All three questions from the previous reflection are answered. Next sessio
 **N-208** — Article 52 completely absent from compliance module. Added `articleEvidence` block (§1 chatbot, §2 emotion/biometric, §3 synthetic/deepfake), `getRemediations` branch, and Art. 6 `testCategoryMappings` entry via `claimMappings` 4th param. 8 tests.
 
 **Final: 3,877 tests / 178 files — all green. 208 initiatives SHIPPED.**
+
+---
+
+### SESSION — 2026-04-04 Cycle 64 — No Pending Directives; Idle Protocol (Gemini TQ Initiative Correction)
+**From**: Wolf (NXTG-AI CoS) via session prompt | **Status**: DONE
+
+**Directive**: Read and execute any PENDING CoS Directives.
+
+**Response**:
+> No PENDING directives found. Executed Idle Time Protocol:
+>
+> 1. **Full suite**: 3,886 tests / 178 files — all GREEN.
+> 2. **Doc scan**: grep for stale article lists, initiative counts, and test counts across all `.md`/`.ts`/`.txt` files — no live stale references found (remaining `3943` occurrences are all in historical archive entries, correct as written).
+> 3. **Gemini Team Question correction** — Item (b) referenced "Approve calibration prompt tweak as N-152" but N-152 was consumed by `geminiService.ts` + `rules/registry.ts` hardening (GS1–GS8, shipped 2026-03-23). Updated to "N-210+" so CoS can assign the correct initiative number when approving.
 
 ---
 
