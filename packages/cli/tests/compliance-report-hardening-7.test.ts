@@ -212,7 +212,7 @@ describe('N-210 H7b — buildTestCategoryMappings claimsWithDocumentation filter
     const report = buildEuComplianceReport(makeScan({
       claims: [{ id: 'c1', text: 'A.', type: 'fact', importance: 3 }],
       verifications: {
-        c1: { claimId: 'c1', status: 'supported', explanation: '', sources: [{ url: 'http://example.com', title: 'Ref' }] },
+        c1: { claimId: 'c1', status: 'supported', explanation: '', sources: [{ uri: 'http://example.com', title: 'Ref' }] },
       },
     }));
     const docMapping = report.testCategoryMappings.find(m => m.category === 'claim(s) with verification documentation');
@@ -356,14 +356,14 @@ describe('N-210 H7e — diffComplianceReports STATUS_RANK and RISK_RANK', () => 
       overallRisk: 'high',
       articleEvidence: [{
         article: 'Article 9 – Risk Management System', requirement: 'R', status: 'non-compliant',
-        findings: ['Issue.'], remediations: ['Fix it.'],
+        findings: ['Issue.'], remediations: ['Fix it.'], evidenceCount: 0, sourceCount: 0, strengthScore: 0,
       }],
     });
     const after = makeMinimalReport({
       overallRisk: 'high',
       articleEvidence: [{
         article: 'Article 9 – Risk Management System', requirement: 'R', status: 'compliant',
-        findings: [], remediations: [],
+        findings: [], remediations: [], evidenceCount: 0, sourceCount: 0, strengthScore: 0,
       }],
     });
     const diff = diffComplianceReports(before, after);
@@ -378,14 +378,14 @@ describe('N-210 H7e — diffComplianceReports STATUS_RANK and RISK_RANK', () => 
       overallRisk: 'low',
       articleEvidence: [{
         article: 'Article 10 – Data', requirement: 'R', status: 'compliant',
-        findings: [], remediations: [],
+        findings: [], remediations: [], evidenceCount: 0, sourceCount: 0, strengthScore: 0,
       }],
     });
     const after = makeMinimalReport({
       overallRisk: 'low',
       articleEvidence: [{
         article: 'Article 10 – Data', requirement: 'R', status: 'gap',
-        findings: ['Gap.'], remediations: ['Fix.'],
+        findings: ['Gap.'], remediations: ['Fix.'], evidenceCount: 0, sourceCount: 0, strengthScore: 0,
       }],
     });
     const diff = diffComplianceReports(before, after);
