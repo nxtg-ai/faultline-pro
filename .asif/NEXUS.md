@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-03 (Cycle 56 — Idle: EU AI Act coverage doc written; 209 initiatives SHIPPED; 3,880 tests.)
+> **Last Updated**: 2026-04-03 (Cycle 57 — Bug fix: getRemediations Art. 5 branch substring collision with Art. 52/53; 250/250 compliance tests GREEN; 209 initiatives SHIPPED; 3,880 tests.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -8363,6 +8363,22 @@ None. All three questions from the previous reflection are answered. Next sessio
 **N-208** — Article 52 completely absent from compliance module. Added `articleEvidence` block (§1 chatbot, §2 emotion/biometric, §3 synthetic/deepfake), `getRemediations` branch, and Art. 6 `testCategoryMappings` entry via `claimMappings` 4th param. 8 tests.
 
 **Final: 3,877 tests / 178 files — all green. 208 initiatives SHIPPED.**
+
+---
+
+### SESSION — 2026-04-03 Cycle 57 — Bug Fix: getRemediations Art. 5 Substring Collision
+**From**: Continuation of Cycle 56 work | **Status**: DONE
+
+**Directive**: Read and execute any PENDING CoS Directives.
+
+**Response**:
+> No PENDING directives found. Completed in-progress bug fix from Cycle 56:
+>
+> **Bug**: `getRemediations()` in `compliance-report.ts` line 260 — condition `article.includes('Article 5') && !article.includes('Article 50')` incorrectly matched `'Article 52'` and `'Article 53'` because both contain the substring `'Article 5'` and neither contains `'Article 50'`. This caused the Art. 52 and Art. 53 `else if` branches to be unreachable, silently returning incorrect remediations (Art. 5 prohibited-practice remediations) for Art. 52 and Art. 53 articles.
+>
+> **Fix**: Added exclusion guards — condition is now `article.includes('Article 5') && !article.includes('Article 50') && !article.includes('Article 52') && !article.includes('Article 53')`.
+>
+> **Verification**: 250/250 tests GREEN — RR23–RR27 (previously failing) now pass.
 
 ---
 

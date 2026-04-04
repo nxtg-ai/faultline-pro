@@ -257,7 +257,7 @@ export function getRemediations(article: string, status: EvidenceStatus, finding
 
   const rems: string[] = [];
 
-  if (article.includes('Article 5') && !article.includes('Article 50')) {
+  if (article.includes('Article 5') && !article.includes('Article 50') && !article.includes('Article 52') && !article.includes('Article 53')) {
     rems.push('Remove or reclassify claims flagged as prohibited AI practices.');
     rems.push('Conduct Art. 5(1) legal review before deployment.');
     rems.push('Document justification if flagged claims are false positives.');
