@@ -14,6 +14,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - N-208: Article 52 (Transparency Obligations for Specific AI System Types) completely absent — added `articleEvidence` block (§1 chatbot/opinion signals, §2 emotion-recognition/biometric, §3 synthetic-media/deep-fake); `getRemediations()` branch; Art. 6 `testCategoryMappings` entry via `claimMappings` 4th param; 8 tests
 - N-209: Article 53 (Obligations for Providers of GPAI Models) added to `articleEvidence` — `partial` when real GPAI provider detected (`scan.provider`), `not-applicable` for mock; 5-item `getRemediations` branch (documentation/training-data/copyright/AUP/procurement); 3 tests (A53-1–A53-3)
 
+### Fixed
+
+- `getRemediations()` Art. 5 branch condition matched `'Article 52'` and `'Article 53'` due to substring overlap (`'Article 52'.includes('Article 5')` is `true`). Added explicit exclusion guards for Art. 52 and Art. 53 so their `else if` branches are reachable. 6 remediation tests added (RR22–RR27); 5 were previously failing silently. Total: 3,886 tests.
+
 ---
 
 ## [v0.5.0] — 2026-04-02
