@@ -1016,6 +1016,7 @@ The Kaggle version remains at  (tagged  at commit ).
 | 2026-04-04 | Cycle 92 | No PENDING directives; idle protocol: mutation-testing.md Known Gaps cleared (eu_ai_act→N-211, shell_injection→N-213); N-213 score history block added (4 runs, strategy, lessons) |
 | 2026-04-04 | Cycle 91 | No PENDING directives; idle protocol: RP1/RP16 badge floor bumped 3886→4364; stale comments updated to reflect N-213 actual count |
 | 2026-04-04 | Cycle 90 | No PENDING directives; idle protocol: CRUCIBLE Gate 2 audit SH-B5 + SH-R2 — both hollow toBeDefined() with no downstream assertions; strengthened (SH-B5 +severity+message, SH-R2 +severity); 50 tests still GREEN |
+| 2026-04-04 | Cycle 97 | No PENDING directives; Gate 2 audit of scan-mutation-hardening.test.ts — MH13 `resolves.toBeDefined()` hollow; strengthened to `toMatchObject({ input: 'Some text.' })`; all CLI hardening files now audited |
 | 2026-04-04 | Cycle 96 | No PENDING directives; fourth consecutive no-directive session; state unchanged from cycle 95 |
 | 2026-04-04 | Cycle 95 | No PENDING directives; third consecutive no-directive session; holding pattern documented; no new idle work available — all remaining items require CoS directive or decision |
 | 2026-04-04 | Cycle 94 | No PENDING directives; idle protocol: full CRUCIBLE Gates 1–7 audit — all PASS; Gate 2 focus on shell-injection-hardening.test.ts (all toBeDefined() are guards before content assertions, not hollow); docs/badge/llms.txt all current; Team Questions reviewed (CHANGELOG coherence + Gemini N-214 still open) |
@@ -8550,6 +8551,22 @@ None. All three questions from the previous reflection are answered. Next sessio
 ---
 
 ## CoS Directives
+
+### SESSION — 2026-04-04 Cycle 97 — No Pending Directives; Gate 2 Hardening (MH13)
+**From**: Wolf (NXTG-AI CoS) via session prompt | **Status**: DONE
+
+**Directive**: Read and execute any PENDING CoS Directives.
+
+**Response**:
+> No pending directives confirmed. Executed Idle Time Protocol:
+>
+> 1. **Full suite**: 4,364 tests / 187 files — all GREEN.
+> 2. **CRUCIBLE Gate 2 audit** — scanned un-audited hardening files (compliance-report-hardening.test.ts, -6, eu-ai-act-hardening, gemini-service-hardening, scan-mutation-hardening-2/3). Found one hollow assertion in `scan-mutation-hardening.test.ts`:
+>    - **MH13 line 208**: `resolves.toBeDefined()` — terminal assertion for "mock provider bypasses API-key check". Resolved value was unverified; any non-null result would pass. Strengthened to `.resolves.toMatchObject({ input: 'Some text.' })` — now pins that the correct scan result is returned, not just "something resolved".
+>    - MH10 loop `toBeDefined()` (line 174): reviewed and confirmed non-hollow — guards before specific key lookups that complement the length check on line 172. PASS.
+> 3. **Gate 2 audit coverage**: all CLI hardening test files now explicitly audited.
+
+---
 
 ### SESSION — 2026-04-04 Cycle 96 — No Pending Directives; Holding Pattern (4th)
 **From**: Wolf (NXTG-AI CoS) via session prompt | **Status**: DONE

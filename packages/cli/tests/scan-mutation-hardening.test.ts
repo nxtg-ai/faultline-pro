@@ -205,7 +205,7 @@ describe('scan — structural invariants', () => {
     delete process.env['GEMINI_API_KEY'];
     try {
       mockExtractClaims.mockResolvedValue([]);
-      await expect(scan('Some text.', 'mock')).resolves.toBeDefined();
+      await expect(scan('Some text.', 'mock')).resolves.toMatchObject({ input: 'Some text.' });
     } finally {
       if (orig !== undefined) process.env['GEMINI_API_KEY'] = orig;
     }
