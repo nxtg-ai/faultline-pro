@@ -1,4 +1,9 @@
 // Validates: N-157 (EU AI Act Compliance Report Generator — Art. 9/13/50 evidence, PDF + JSON)
+// Validates: N-204 (Art. 6/15 evidence, Art. 50(4) resolved — 10 articles)
+// Validates: N-205 (Art. 10/11/12 testCategoryMappings — TC1–TC8)
+// Validates: N-206 (annexApplicable Art. 6 trigger, annex-iii-0 — items 7→8)
+// Validates: N-207 (art6ConformityRequired CI gate flag — CG1–CG5)
+// Validates: N-208 (Art. 52 articleEvidence + Art. 6 testCategoryMappings — TCA1–TCA2, A52-1–A52-6)
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { writeFileSync, mkdtempSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
