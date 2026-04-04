@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-04 (Cycle 58 — Idle: badge/llms.txt synced 3880→3886 (RR22–RR27 net +6); 209 initiatives SHIPPED; 3,886 tests.)
+> **Last Updated**: 2026-04-04 (Cycle 59 — Idle: CHANGELOG Fixed entry added for Cycle 57 bug; Gate 2 audit RR22–RR27 PASS; 209 initiatives SHIPPED; 3,886 tests.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -1001,6 +1001,7 @@ The Kaggle version remains at  (tagged  at commit ).
 | 2026-04-03 | Cycle 54 | No PENDING directives; idle protocol: CRUCIBLE Gate 2 audit of N-205–N-208 tests (PASS — all 23 new tests have specific assertions); Gate 7 spec ref updated compliance-report.test.ts lines 1–6 to cite N-204–N-208; raised Art. 53 Team Question (GPAI provider obligations — next sprint gap) |
 | 2026-04-03 | Cycle 56 | No PENDING directives; idle protocol: verified 3,880 tests GREEN post-N-209; wrote `docs/eu-ai-act-coverage.md` — coverage table (12 articles), excluded-articles rationale (10 items), status state machine, testCategoryMappings table, Annex III checklist, new-article pattern template |
 | 2026-04-04 | Cycle 58 | No PENDING directives; idle protocol: full suite GREEN 3,886 (RR22–RR27 +6 net from Cycle 57 fix); synced README badge and llms.txt 3880→3886 |
+| 2026-04-04 | Cycle 59 | No PENDING directives; idle protocol: CHANGELOG Fixed entry added for Cycle 57 Art. 5 substring bug; Gate 2 audit RR22–RR27 PASS (all 6 have specific article-code assertions) |
 
 ---
 
@@ -8364,6 +8365,20 @@ None. All three questions from the previous reflection are answered. Next sessio
 **N-208** — Article 52 completely absent from compliance module. Added `articleEvidence` block (§1 chatbot, §2 emotion/biometric, §3 synthetic/deepfake), `getRemediations` branch, and Art. 6 `testCategoryMappings` entry via `claimMappings` 4th param. 8 tests.
 
 **Final: 3,877 tests / 178 files — all green. 208 initiatives SHIPPED.**
+
+---
+
+### SESSION — 2026-04-04 Cycle 59 — No Pending Directives; Idle Protocol (CHANGELOG + Gate 2)
+**From**: Wolf (NXTG-AI CoS) via session prompt | **Status**: DONE
+
+**Directive**: Read and execute any PENDING CoS Directives.
+
+**Response**:
+> No PENDING directives found. Executed Idle Time Protocol:
+>
+> 1. **Full suite**: 3,886 tests / 178 files — all GREEN.
+> 2. **CHANGELOG `### Fixed`** — Cycle 57 bug fix (Art. 5 substring collision) was missing from `[Unreleased]`. Added entry documenting the root cause, the guard condition change, and the 6 RR22–RR27 tests.
+> 3. **CRUCIBLE Gate 2 audit** (RR22–RR27) — all 6 remediation tests have specific assertions targeting article-number strings, exact sub-obligation codes (Art. 52(1), 52(2), 52(3), 53(1)(a/b)), and exact `rems.length` counts. No hollow assertions. Gate 2: PASS.
 
 ---
 
