@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- N-204: EU AI Act compliance sprint — Art. 6 (Classification Rules for High-Risk AI Systems), Art. 15 (Accuracy/Robustness/Cybersecurity) evidence blocks; Art. 50(4) PLACEHOLDER resolved to `not-applicable` when no opinion/GPAI signals present; 10 articles in `articleEvidence` (was 7); 11 tests
+- N-205: `testCategoryMappings` missing Art. 10/11/12 cross-references — `buildTestCategoryMappings()` extended with `ruleFindings` 3rd param; bias→Art.10(2), high-importance-unverified→Art.10(3), documented-claims→Art.11, structured-metadata→Art.12; 8 tests
+- N-206: `annexApplicable` logic blind to Art. 6 evidence — medium-risk scans with Annex III domain content (biometric/employment/etc.) now trigger the conformity checklist; `annex-iii-0` (Art. 6 classification trigger) added as first checklist item; items 7→8; 4 tests
+- N-207: CI gate `default` mode silent on Art. 6 conformity obligation — `art6ConformityRequired` boolean added to `CiGateResult`; gate fails when Annex III triggered by Art. 6 domain content even at medium risk; `renderCiGateOutput` surfaces the reason; 5 tests
+- N-208: Article 52 (Transparency Obligations for Specific AI System Types) completely absent — added `articleEvidence` block (§1 chatbot/opinion signals, §2 emotion-recognition/biometric, §3 synthetic-media/deep-fake); `getRemediations()` branch; Art. 6 `testCategoryMappings` entry via `claimMappings` 4th param; 8 tests
+
 ---
 
 ## [v0.5.0] — 2026-04-02
