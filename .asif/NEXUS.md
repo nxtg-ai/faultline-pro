@@ -1039,6 +1039,63 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-04 — CoS check-in — cycle 92 (delta: N-205→N-213 CRUCIBLE sprint; 213 SHIPPED; 4,364 tests)
+
+### 1. What shipped since last check-in
+
+**Cycle 50 → Cycle 92** | Delta: +9 initiatives (N-205–N-213), +510 tests (3,854 → 4,364)
+
+**EU AI Act compliance hardening (N-205–N-209)**:
+- **N-205** — Art. 10/11/12 testCategoryMappings gap closed: `fact`/`opinion`/`interpretation` claim types now cross-reference correct EU articles in the compliance report engine.
+- **N-206** — Annex III applicable logic fix: `annexIiiApplicable` was false-negative when Art. 6 evidence existed but domain keywords were absent. Fixed trigger logic.
+- **N-207** — CI gate blind to Art. 6: `art6ConformityRequired` fail condition added so CI pipeline catches Annex III conformity-assessment failures.
+- **N-208** — Art. 52 + Art. 6 testCategoryMappings + 16 TypeScript errors resolved (blocked CI gate).
+- **N-209** — Art. 53 GPAI provider obligations: new `articleEvidence` entry; `result.provider` + `result.model` fields satisfy partial evidence status.
+
+**CRUCIBLE Gate 6 sweep (N-210–N-213)**:
+- **N-210** — `compliance-report.ts` mutation hardening: 50.44% → **80.81% PASS** (7 rounds; heaviest Gate 6 session in project history). Also caught Art. 5 substring collision bug as side-effect.
+- **N-211** — `eu_ai_act.ts` Gate 6: **100% function-level mutation score** on first run — no hardening required.
+- **N-212** — Contract oracle expansion (Zod): 14 new Zod tests covering EU AI Act types (`EuAiActArticle`, `ArticleEvidence`, `ComplianceStatus`). Total contract tests now 43.
+- **N-213** — `shell_injection_rule.ts` Gate 6: **80.29% PASS** (thin margin; 2 hollow assertions (SH-B5/SH-R2) strengthened via Gate 2 follow-up).
+
+**Bug fixes & docs**:
+- `getRemediations` Art. 5 substring collision fixed (Art. 52/53 were silently receiving Art. 5 remediations).
+- SARIF upload CI permissions fixed (`security-events: write`).
+- `docs/mutation-testing.md` Known Gaps table cleared; `docs/eu-ai-act-coverage.md` written; `ARCHITECTURE.md` Test Architecture section rewritten; contract testing patterns doc added.
+
+### 2. What surprised me
+
+**eu_ai_act.ts hit 100% on first Stryker run.** No hardening required. This was the outlier — every other Gate 6 target needed multiple rounds. The reason: `eu_ai_act.ts` is a pure function module with no side effects or conditional chains. Pure functions are trivially mutation-testable. This is now a reliable pattern: extract pure business logic into separate files to get Gate 6 scores cheaply.
+
+**N-210 required 7 rounds of hardening** — compliance-report.ts has 12 branching article paths × multiple status states. Initial score of 50.44% meant ~half the mutants survived. The hardening pattern that actually worked was adding `toContain()` on specific article codes rather than `toBeDefined()` on evidence objects. Generic shape assertions don't kill boundary mutants; specific string content does.
+
+**The Art. 5 substring collision was invisible to tests for 3+ cycles.** `article.includes('Article 5')` matched `'Article 52'` and `'Article 53'`. All tests passed because no test was asserting the correct remediation for those articles — they were returning Art. 5 prohibited-practice text without anyone noticing. Gate 6 mutation pressure on the branch logic is what forced writing the regression tests (RR22–RR27) that exposed it.
+
+**N-213 scored 80.29% — one killed mutant away from failing.** shell_injection_rule.ts has many fast, short mutations (string comparisons, boolean guards). The margin is thin. Any refactor of that file risks dropping below threshold without a corresponding hardening pass.
+
+### 3. Cross-project signals
+
+**Pure-function extraction = Gate 6 leverage.** Any module that mixes I/O with business logic will score poorly on Stryker (like compliance-report.ts at 50% baseline). Modules that are pure functions (like eu_ai_act.ts) score at 100% without hardening. Portfolio-wide recommendation: extract article/rule evaluation logic into pure functions as a deliberate Gate 6 strategy. High ROI.
+
+**Contract oracle (Zod) is cheaper than example-based testing for shape validation.** N-212 added 14 Zod tests covering EU AI Act type shapes; an equivalent example-based test suite would need 50+ tests to cover the same boundary conditions. Zod schema tests are also self-documenting — the schema IS the contract. Portfolio projects with typed domain objects should use this pattern.
+
+**Version-range test gates create maintenance debt.** RP1/RP16 in `release-prep.test.ts` use floor values (3886→4364 after N-213) that require a bump commit every time test count grows. This is a recurring cost. Consider replacing floor-check tests with relative delta checks (count must not decrease by more than 5) — the Gate 4 CRUCIBLE rule already does this at commit-time; the floor tests are redundant and noisy.
+
+### 4. Next priorities (no pending directives)
+
+1. **P0 (awaiting directive)**: npm/PyPI publish — `npm publish @nxtg/faultline@0.5.0`, `@nxtg/faultline-sdk@0.5.0`, `pip publish faultline-sdk==0.5.0`. Pre-conditions: all PASS (4,364 tests, CHANGELOG cut, versions bumped, compliance gaps closed). Q1 from Cycle 50 still unanswered.
+2. **P1 (self)**: Gate 6 in CI — Stryker runs locally only; SARIF upload permissions fixed (N-210) but `ci.yml` doesn't invoke Stryker. Adding a Gate 6 CI step would close the loop between local and remote enforcement.
+3. **P2 (directive needed)**: `packages/api` version bump to 0.5.0 — ships new compliance coverage (Art. 6/15/52/53); warrants minor bump but affects deployed API.
+4. **P3 (idle)**: Mutation testing on `packages/cli/cli/compliance-report.ts` (CLI-side) — only the `packages/api/lib/compliance-report.ts` path is covered by Gate 6 configs so far. The CLI version of the same logic is unmeasured.
+
+### 5. Blockers / questions for CoS
+
+- **Q1 (publish — open since Cycle 49)**: Publish directive still not issued. All pre-conditions met. Is there a blocker on the CoS side (legal, portfolio coordination, infrastructure)?
+- **Q2 (Gate 6 in CI)**: Should Stryker be added to `ci.yml` as a required gate? Trade-off: adds ~3–5 min to CI runtime but closes the local/remote enforcement gap. Request a P-level signal — I'll implement if it's P1 or above.
+- **Q3 (N-213 thin margin)**: `shell_injection_rule.ts` is at 80.29% — passing but fragile. Should this be a tracked debt item in NEXUS, or is "above threshold = done" the right policy?
+
+---
+
 > **Reflection cycle**: 2026-04-02 — CoS check-in — cycle 50 (delta: N-204 EU AI Act compliance sprint; 204 SHIPPED; 3,854 tests)
 
 ### 1. What shipped since last check-in
