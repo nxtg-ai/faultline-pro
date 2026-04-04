@@ -409,6 +409,34 @@ vitest: {
 
 **Known gaps** (modules not yet in any stryker config — added after N-138):
 
-| Module | Added | Size | Priority | Baseline | Notes |
-|--------|-------|------|----------|----------|-------|
-| `cli/compliance/eu_ai_act.ts` | N-157 | ~200 LOC | P2 | **100%** function-level (Cycle 81, 2026-04-04) | Static constant mutants (lines 22–120: EU_RISK_CATEGORIES, HIGH_RISK_DOMAINS, UNACCEPTABLE_PATTERNS) are Stryker `static: true` — uncoverable with Vitest ESM (module cache not invalidated per mutant). Function logic (lines 121–197, `mapClaimToRiskCategory`) is 59/59 = 100% killed. Config: `stryker-eu-ai-act.config.mjs` (targets lines 121–197 only, break=80 enforced). |
+*All known gaps cleared as of N-213.*
+
+| Module | Cleared | Notes |
+|--------|---------|-------|
+| ~~`cli/compliance/eu_ai_act.ts`~~ | N-211 | 100% fn-level; static constants (lines 22–120) are ESM-cached, excluded from `mutate` range. `stryker-eu-ai-act.config.mjs`. |
+| ~~`cli/rules/shell_injection_rule.ts`~~ | N-213 | 80.29%; static constants (lines 1–99) excluded. `stryker-shell-injection.config.mjs`. |
+
+---
+
+## N-213 Shell Injection Hardening (2026-04-04)
+
+**Score history** (`stryker-shell-injection.config.mjs`):
+
+| Date | Score | Status | Notes |
+|------|-------|--------|-------|
+| 2026-04-04 (Run 1) | **63.50%** | ❌ Gate 6 FAIL | 24 tests; import `.js` extension mismatch causing module cache split |
+| 2026-04-04 (Run 2) | **71.53%** | ❌ Gate 6 FAIL | 38 tests; import fixed + SH-M/H/FP groups added |
+| 2026-04-04 (Run 3) | **74.45%** | ❌ Gate 6 FAIL | SH-M tests with fresh `createShellInjectionRule()` instances |
+| 2026-04-04 (Run 4) | **80.29%** | ✅ Gate 6 PASS | N-213: +12 SH-N tests for named control char messages |
+
+**N-213 hardening strategy** (2026-04-04):
+
+4 runs targeting the critical survivors:
+- **Run 1 (baseline)**: 24 tests from `rules.test.ts` alone — 63.50%
+- **Run 2**: Added SH-B (boundary), SH-C1 (C1 range), SH-S (severity), SH-R (ruleId), SH-A (ASCII skip), SH-FP (false-positive) groups; fixed `.js` import extension mismatch
+- **Run 3**: SH-M tests use fresh `createShellInjectionRule()` per test to avoid module cache masking name/description StringLiterals
+- **Run 4 (final)**: SH-N1–N12 tests assert exact named strings in control char messages (`'null byte'`, `'start of heading'`, `'start of text'`, etc.) — killed L157–162 StringLiterals
+
+**Key lesson**: The names `Record<number, string>` at L157–162 has 13 string values. `toBeDefined()` + `severity` assertions don't touch them. Each `toContain(name)` kills the corresponding StringLiteral mutation.
+
+**Remaining survivors** (26): ASCII skip logic (L112–L117, structurally masked — chars fall through harmlessly without the skip), surrogate-pair conditionals (L197/202, equivalent — low surrogates not in any detection map), some `toUpperCase` paths.
