@@ -13,6 +13,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - N-207: CI gate `default` mode silent on Art. 6 conformity obligation — `art6ConformityRequired` boolean added to `CiGateResult`; gate fails when Annex III triggered by Art. 6 domain content even at medium risk; `renderCiGateOutput` surfaces the reason; 5 tests
 - N-208: Article 52 (Transparency Obligations for Specific AI System Types) completely absent — added `articleEvidence` block (§1 chatbot/opinion signals, §2 emotion-recognition/biometric, §3 synthetic-media/deep-fake); `getRemediations()` branch; Art. 6 `testCategoryMappings` entry via `claimMappings` 4th param; 8 tests
 - N-209: Article 53 (Obligations for Providers of GPAI Models) added to `articleEvidence` — `partial` when real GPAI provider detected (`scan.provider`), `not-applicable` for mock; 5-item `getRemediations` branch (documentation/training-data/copyright/AUP/procurement); 3 tests (A53-1–A53-3)
+- N-210: CRUCIBLE Gate 6 hardening sprint for `compliance-report.ts` — mutation score raised from 50.44% to 80.81% (threshold 80%); 292 new tests across 7 hardening files; `break: 80` enforced in `stryker-compliance.config.mjs`
 
 ### Fixed
 
