@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-04 (Cycle 65 — Idle: INTEGRATION.md section 11 updated — compliance API, GDPR, npm endpoints missing since N-159/178/185; 209 initiatives SHIPPED; 3,886 tests.)
+> **Last Updated**: 2026-04-04 (Cycle 66 — Idle: release-prep floor raised 3877→3886 (RP1/RP16); 209 initiatives SHIPPED; 3,886 tests.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -997,6 +997,7 @@ The Kaggle version remains at  (tagged  at commit ).
 | 2026-04-04 | Cycle 63 | No PENDING directives; idle protocol: collapsed 2 stale-but-resolved Team Questions (reflection cadence, Dependabot); confirmed Gemini benchmark calibration tweak still open (N-152 was different work) |
 | 2026-04-04 | Cycle 64 | No PENDING directives; idle protocol: full doc scan — no live stale refs; Gemini TQ item (b) corrected N-152→N-210+ (N-152 was consumed by geminiService hardening) |
 | 2026-04-04 | Cycle 65 | No PENDING directives; idle protocol: INTEGRATION.md section 11 — added 13 missing endpoints (7 compliance, 2 GDPR, 4 npm metrics) missing since N-159/178/185 |
+| 2026-04-04 | Cycle 66 | No PENDING directives; idle protocol: release-prep RP1/RP16 floor raised 3877→3886 (comments updated to actual count post-RR22–RR27) |
 
 ---
 
@@ -8360,6 +8361,19 @@ None. All three questions from the previous reflection are answered. Next sessio
 **N-208** — Article 52 completely absent from compliance module. Added `articleEvidence` block (§1 chatbot, §2 emotion/biometric, §3 synthetic/deepfake), `getRemediations` branch, and Art. 6 `testCategoryMappings` entry via `claimMappings` 4th param. 8 tests.
 
 **Final: 3,877 tests / 178 files — all green. 208 initiatives SHIPPED.**
+
+---
+
+### SESSION — 2026-04-04 Cycle 66 — No Pending Directives; Idle Protocol (Release-Prep Floor)
+**From**: Wolf (NXTG-AI CoS) via session prompt | **Status**: DONE
+
+**Directive**: Read and execute any PENDING CoS Directives.
+
+**Response**:
+> No PENDING directives found. Executed Idle Time Protocol:
+>
+> 1. **Full suite**: 3,886 tests / 178 files — all GREEN.
+> 2. **Release-prep floor tightened** — RP1 (`release-prep.test.ts`) and RP16 (`release-prep-v040.test.ts`) both had floor `>= 3877` with comments saying "actual count 3877 after N-204–N-208." Actual count is 3,886 (RR22–RR27 +6, committed Cycle 60). Updated floor to `>= 3886` and comments updated. CRUCIBLE Gate 2: guard now catches any regression that drops below current actual count.
 
 ---
 
