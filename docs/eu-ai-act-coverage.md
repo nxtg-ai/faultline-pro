@@ -2,9 +2,12 @@
 
 Reference document for `packages/cli/cli/compliance-report.ts` — `buildEuComplianceReport()`.
 
-Last updated: 2026-04-04 (N-210). Sprint N-204–N-209 closed all enforcement-deadline articles
+Last updated: 2026-04-04 (N-212). Sprint N-204–N-209 closed all enforcement-deadline articles
 automatically derivable from a text scan. N-210 raised `compliance-report.ts` Gate 6 mutation
-score from 50.44% → 80.81% (292 hardening tests; threshold 80% enforced).
+score from 50.44% → 80.81% (292 hardening tests; threshold 80% enforced). N-211 raised
+`eu_ai_act.ts` Gate 6 to 100% fn-level (59/59 mutants killed; 37 hardening tests).
+N-212 added Zod contract oracle coverage for EU AI Act types (EuArticleEvidence, AnnexIIICheckItem,
+EuAiActComplianceReport, CiGateResult) — 43 total contract schemas.
 
 ---
 
