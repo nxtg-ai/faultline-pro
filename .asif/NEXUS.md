@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-02 (Cycle 49 — v0.5.0 release prep committed; 203 initiatives SHIPPED; 3,943 tests.)
+> **Last Updated**: 2026-04-02 (Cycle 50 — N-204 EU AI Act compliance sprint; 204 initiatives SHIPPED; 3,954 tests.)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -179,6 +179,7 @@
 | N-201 | TypeScript SDK compliance enhancements — complianceExport() method, ComplianceHistoryEntry/ComplianceExportResponse types, WebhookEvent updated, ScanResult complianceScore/Pass; 4 tests | DISTRIBUTION | SHIPPED | P1 | 2026-04-01 |
 | N-202 | Python SDK compliance enhancements — compliance_export() method (JSON+CSV), ComplianceHistoryEntry/ComplianceExportResponse models, inline complianceScore/compliancePass in ScanResult; 14 tests | DISTRIBUTION | SHIPPED | P1 | 2026-04-01 |
 | N-203 | Shell injection detection rules — YAML rule (12 regex patterns: cmd substitution, IFS, eval, curl-pipe-sh, base64, dangerous rm, env override, mkfifo) + TypeScript rule (Unicode zero-width, bidi override, control chars, homoglyphs); 31 tests | FORENSIC | SHIPPED | P0 | 2026-04-01 |
+| N-204 | EU AI Act compliance sprint — Art. 6 (Classification/Annex III), Art. 15 (Accuracy/Robustness/Cybersecurity), Art. 50(4) PLACEHOLDER resolved; 10 articles in articleEvidence (was 7); 3 test mock fixes; 11 new tests | COMPLIANCE | SHIPPED | P0 | 2026-04-02 |
 | N-156 | AAIO baseline measurement — `data/outputs/aaio-baseline.md`; 15 web search queries across 5 clusters (brand, problem-space, technical, ecosystem); result: 2 HITs (Forge multi-agent orchestration, NXTG.AI forge governance), 3 PARTIALs (Faultline brand queries surface old Kaggle repo not Pro), 10 MISSes; root causes ranked: (1) `@nxtg/faultline` unpublished/not indexed — #1 gap; (2) `nxtg-ai/faultline-pro` is private — not indexed; (3) content in private repo, not externally published; (4) naming collisions (FaultlineAI.com, arXiv FaultLine paper); (5) wrong keyword framing; opportunities: publish npm, make repo public, publish comparison post to dev.to, write "weakest-link claim detection" article; competitor sightings: Systima Comply (EU AI Act CLI), QWED-verification (SARIF), EuConform, OpenFactCheck | DISTRIBUTION | SHIPPED | P1 | 2026-03-24 |
 | N-155 | Content pipeline — comparison post draft `docs/content/faultline-vs-promptfoo-deepeval.md` (GTM-PLAN §4 Week 2 piece): "Faultline vs Promptfoo vs DeepEval — An Honest Comparison" — honest feature matrix across 3 tools (Promptfoo=prompt hardening, DeepEval=RAG quality, Faultline=output forensics); decision matrix (9 use-case rows); "when you need all three" scenario; EU AI Act compliance section; Gemini Flash benchmark callout with accuracy data and calibration fix; competitive positioning diagram; publication-ready markdown for dev.to / Substack / LinkedIn | DISTRIBUTION | SHIPPED | P2 | 2026-03-24 |
 | N-154 | AAIO baseline — `llms.txt` at repo root: AI crawler-optimized project description following llmstxt.org format; covers install, 4-phase pipeline, key differentiators, 8 use cases, CLI reference, API endpoint summary, packages table, competitive positioning diagram (Promptfoo/DeepEval/Faultline), repository structure, and project status (153 initiatives, 3,494 tests, 8/8 CRUCIBLE gates); parallel to nxtg.ai N-63 AAIO Phase 1; enables AI tools to accurately surface Faultline Pro when users ask about AI claim verification, EU AI Act compliance tooling, or hallucination detection | DISTRIBUTION | SHIPPED | P2 | 2026-03-24 |
@@ -993,6 +994,52 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-04-02 — CoS check-in — cycle 50 (delta: N-204 EU AI Act compliance sprint; 204 SHIPPED; 3,854 tests)
+
+### 1. What shipped since last check-in
+
+**N-204 — EU AI Act Compliance Sprint** (P0 directive from Emma via Wolf):
+
+Closed all remaining compliance gaps in `compliance-report.ts`:
+
+- **Article 6 — Classification Rules** (new `articleEvidence` entry): detects Annex III high-risk domain matches in scanned content via `complianceReport.claimMappings`; status `partial` when high-risk domains found, `not-applicable` when clean. Feeds into compliance score.
+- **Article 15 — Accuracy, Robustness, Cybersecurity** (new `articleEvidence` entry): contradiction rate > 30% → `non-compliant`; injection findings → `non-compliant`; minor contradictions → `partial`; clean → `compliant`. Previously only existed as Annex III checklist item using inline logic — now a full evidence entry with remediations and strength scoring.
+- **Article 50(4) PLACEHOLDER resolved**: Voice/audio disclosure changed from `status: 'placeholder'` to `status: 'not-applicable'` — text-only scanning is explicitly not subject to Art. 50(4) audio obligations. Was appearing as "PLACEHOLDER" in every customer compliance report.
+- **Annex III item 7**: updated to derive from Art. 15 articleEvidence via `artStatus()` (was inline `contradictedClaims.length` calculation).
+- **`getRemediations`**: added Art. 6 (conformity assessment, EU database registration) and Art. 15 (accuracy benchmarking, robustness testing, cybersecurity assessment) handlers.
+- **3 test mocks fixed**: `e2e.test.ts`, `i18n.test.ts`, `integration-flow.test.ts` — all had `complianceReport` mocks missing `claimMappings: []`, which caused POST /scan to return 500 when Art. 6 code called `.filter()` on undefined.
+
+**Test count**: 3,843 → **3,854** (+11 new tests across Art. 6 and Art. 15 coverage).
+
+**Compliance report now covers**: Articles 5/6/9/10/11/12/13/14/15/50 = **10 articles** (was 7).
+
+### 2. What surprised me
+
+The `claimMappings` bug in the test mocks was the blocking issue — `buildEuComplianceReport` was fine, but 3 API test files had minimal mock objects for `complianceReport` that predated the `claimMappings` field. They had been passing because nothing in the original code accessed `claimMappings`. My Art. 6 evidence block was the first to access it. The fix was trivial (`claimMappings: []`), but diagnosing it required bisecting — the 500 errors were in POST /scan (which calls `buildEuComplianceReport` inline) and masked the actual TypeError.
+
+Also notable: the Article 50(4) PLACEHOLDER string was hardcoded in a TypeScript literal type (`status: 'placeholder'`). This kind of typed constant signals "this is a known gap" — a pattern worth adopting for other deferred capabilities.
+
+### 3. Cross-project signals
+
+**Mock completeness** is a compliance test pattern: when a function is extended to access deeper fields on an argument, all mocks of that argument need updating. This is exactly the kind of regression that Stryker (mutation testing) won't catch because it's a mock integrity issue, not a mutation of production logic. Gate 2 (non-empty assertions) caught the downstream effect (500 instead of 200), but the root cause was mock staleness.
+
+Worth documenting as a project-level convention: any `complianceReport` mock object in the API tests MUST include `claimMappings: []` (even if empty) to match the real `ComplianceReport` type.
+
+### 4. Next priorities (no pending directives — status assessment)
+
+1. **P0 (Emma/Wolf)**: Awaiting N-205 publish directive — `npm publish @nxtg/faultline@0.5.0`, `npm publish @nxtg/faultline-sdk@0.5.0`, `pip publish faultline-sdk==0.5.0`. This single action unblocks: EU Act metrics pipeline, npm download tracking, revenue visibility. All compliance gaps now closed.
+2. **P1 (self)**: Update NEXUS Executive Dashboard to mark N-204 SHIPPED (initiated this session).
+3. **P2**: `packages/api` version bump to 0.5.0 — requires directive (API is deployed; version bump has downstream implications for tenant/key API compatibility).
+4. **P3**: Stryker mutation coverage on Art. 6/15 — the new compliance paths are untested by mutation. Gate 6 currently covers `cli/scan.ts` and GDPR paths only.
+
+### 5. Blockers / questions for CoS
+
+- **Q1 (publish)**: N-205 publish directive needed — all pre-conditions met: CHANGELOG cut, versions bumped, tests passing (3,854), compliance gaps closed. Request authorization.
+- **Q2 (API version)**: Should `packages/api` v0.4.1 bump to v0.5.0 as part of the publish? Or does API follow independent semver? It ships new compliance coverage (Art. 6/15) which arguably warrants a minor bump.
+- **Q3 (compliance completeness)**: With 10 articles now covered (Art. 5/6/9/10/11/12/13/14/15/50), is there a specific article or Annex that Emma/compliance team needs added before the Aug 2 deadline? Full Annex III has 8 domains — all detected via keyword matching. Articles 16/17/26 (provider/deployer obligations) are not covered.
+
+---
 
 > **Reflection cycle**: 2026-04-02 — CoS check-in — cycle 49 (delta: v0.5.0 prep committed; 203 SHIPPED; 3,843 tests)
 
