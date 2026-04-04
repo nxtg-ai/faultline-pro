@@ -207,13 +207,13 @@ The `cli/` directory adds a full command-line interface on top of the core pipel
 
 ## Test Architecture
 
-**4,314 tests across 186 files** (CLI + API + Python SDK + integration + property-based + contract + mutation).
+**4,364 tests across 187 files** (CLI + API + Python SDK + integration + property-based + contract + mutation).
 
 ### Oracle Coverage (CRUCIBLE Critical tier — all 4 types required)
 
 | Oracle Type | Count | Tool | Initiative |
 |-------------|-------|------|-----------|
-| Example-based | 4,314 tests | Vitest | ongoing |
+| Example-based | 4,364 tests | Vitest | ongoing |
 | Property-based | 19 properties | fast-check | N-76 |
 | Contract | 43 Zod schemas | Zod + Vitest | N-77/N-212 |
 | Integration / E2E | 12 scenarios | Vitest | N-81 |
@@ -224,7 +224,7 @@ The `cli/` directory adds a full command-line interface on top of the core pipel
 - **Property-based**: confidence bound invariants, dedup stability, cost aggregation, sort determinism (fast-check, `tests/properties.test.ts`)
 - **Contract**: Zod schema validation of all pipeline output shapes — catches runtime type drift that TypeScript can't (`tests/contract.test.ts`, see `docs/contract-testing-patterns.md`)
 - **Integration / E2E**: full pipeline (extract → verify → score → report), multi-provider shape parity, API flow (`tests/integration.test.ts`, `tests/integration/`)
-- **Mutation hardening**: Stryker on critical paths — `cli/scan.ts` 81.97%, `compliance-report.ts` 80.81%, `eu_ai_act.ts` 100% fn-level, GDPR stores 80.94%–96.81% (see `docs/mutation-testing.md`)
+- **Mutation hardening**: Stryker on critical paths — `cli/scan.ts` 81.97%, `compliance-report.ts` 80.81%, `eu_ai_act.ts` 100% fn-level, `shell_injection_rule.ts` 80.29%, GDPR stores 80.94%–96.81% (see `docs/mutation-testing.md`)
 
 ### Key Properties
 

@@ -16,6 +16,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - N-210: CRUCIBLE Gate 6 hardening sprint for `compliance-report.ts` — mutation score raised from 50.44% to 80.81% (threshold 80%); 292 new tests across 7 hardening files; `break: 80` enforced in `stryker-compliance.config.mjs`
 - N-211: CRUCIBLE Gate 6 for `eu_ai_act.ts` — `mapClaimToRiskCategory()` function-level score 100% (59/59 mutants killed); 37 hardening tests covering all articleRef/annexRef values, confidenceScore literals, and isEscalated branch; `stryker-eu-ai-act.config.mjs` created; ESM static mutation limitation documented in `docs/mutation-testing.md`
 - N-212: CRUCIBLE contract oracle for EU AI Act types — Zod schema tests for `EuArticleEvidence` (with `evidenceCount`/`sourceCount`/`strengthScore`), `AnnexIIICheckItem` (with `id`/`evidence`), `EuAiActComplianceReport`, and `CiGateResult` (with `art6ConformityRequired`, `exitCode: 0|1`); 14 new contract tests in `contract.test.ts`; 4,314 tests total
+- N-213: CRUCIBLE Gate 6 for `shell_injection_rule.ts` — mutation score 80.29% (108 killed / 2 timeout / 26 survived / 137 effective); 50 hardening tests in `shell-injection-hardening.test.ts` (SH-B/C1/S/R/A/M/H/FP/N groups covering boundary mutations, severity literals, ruleId strings, hex-format uppercase, control-char named messages, false-positive suppression); `stryker-shell-injection.config.mjs` targets lines 100–208 (check() body only); 4,364 tests total
 
 ### Fixed
 

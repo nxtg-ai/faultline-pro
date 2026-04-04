@@ -92,11 +92,11 @@ Rules that apply to this project (Critical tier — claim forensics is safety-cr
 
 - **Gate 2**: Non-empty assertions — data-producing tests must assert result is non-empty. If a test creates data then queries it, assert `length > 0` or exact count before checking downstream behavior.
 - **Gate 4**: Delta gate — test count decreases > 5 require justification in commit message: `CRUCIBLE-G4: <reason>`. Enforced by pre-push hook.
-- **Gate 6**: Mutation testing — `@stryker-mutator/core` active on claim forensics critical paths. Threshold: 80% mutation score. Configs: `stryker-cli.config.mjs`, `stryker-stream.config.mjs`, `stryker-gdpr.config.mjs`, `stryker-compliance.config.mjs`, `stryker-eu-ai-act.config.mjs`. See `docs/mutation-testing.md` for patterns. Current scores: `cli/scan.ts` 81.97%, `stream.ts` 85%, GDPR stores 80.94%–96.81%, `compliance-report.ts` 80.81% (N-210), `eu_ai_act.ts` 100% fn-level (N-211) — all above threshold.
+- **Gate 6**: Mutation testing — `@stryker-mutator/core` active on claim forensics critical paths. Threshold: 80% mutation score. Configs: `stryker-cli.config.mjs`, `stryker-stream.config.mjs`, `stryker-gdpr.config.mjs`, `stryker-compliance.config.mjs`, `stryker-eu-ai-act.config.mjs`, `stryker-shell-injection.config.mjs`. See `docs/mutation-testing.md` for patterns. Current scores: `cli/scan.ts` 81.97%, `stream.ts` 85%, GDPR stores 80.94%–96.81%, `compliance-report.ts` 80.81% (N-210), `eu_ai_act.ts` 100% fn-level (N-211), `shell_injection_rule.ts` 80.29% (N-213) — all above threshold.
 - **Gate 7**: Spec-test traceability — new integration/E2E tests must cite a NEXUS acceptance criterion via `// Validates: N-NN (...)` or `// NEXUS:` comment. **Denominator = integration/E2E test files only** (not all test files — unit tests and mutation hardening tests don't belong to acceptance criteria). Current: 7 integration/E2E files; 7/7 have spec refs (100%) after N-141. Not enforced by hook; tracked manually.
 - **Oracle tier: CRITICAL** — all 4 oracle types required on claim forensics (example-based, property-based, contract, integration).
 
-Current oracle coverage: example-based (✅ 4,314 tests), property-based (✅ 19 properties — fast-check, N-76), contract (✅ 43 Zod schema tests — N-77/N-212), integration (✅ 12 E2E tests, N-81).
+Current oracle coverage: example-based (✅ 4,364 tests), property-based (✅ 19 properties — fast-check, N-76), contract (✅ 43 Zod schema tests — N-77/N-212), integration (✅ 12 E2E tests, N-81).
 
 ## Dx3 Brain Integration
 On every session start, recall relevant context from Dx3 before starting work:
