@@ -1016,6 +1016,9 @@ The Kaggle version remains at  (tagged  at commit ).
 | 2026-04-04 | Cycle 92 | No PENDING directives; idle protocol: mutation-testing.md Known Gaps cleared (eu_ai_act→N-211, shell_injection→N-213); N-213 score history block added (4 runs, strategy, lessons) |
 | 2026-04-04 | Cycle 91 | No PENDING directives; idle protocol: RP1/RP16 badge floor bumped 3886→4364; stale comments updated to reflect N-213 actual count |
 | 2026-04-04 | Cycle 90 | No PENDING directives; idle protocol: CRUCIBLE Gate 2 audit SH-B5 + SH-R2 — both hollow toBeDefined() with no downstream assertions; strengthened (SH-B5 +severity+message, SH-R2 +severity); 50 tests still GREEN |
+| 2026-04-04 | Cycle 94 | No PENDING directives; idle protocol: full CRUCIBLE Gates 1–7 audit — all PASS; Gate 2 focus on shell-injection-hardening.test.ts (all toBeDefined() are guards before content assertions, not hollow); docs/badge/llms.txt all current; Team Questions reviewed (CHANGELOG coherence + Gemini N-214 still open) |
+| 2026-04-04 | Cycle 93 | No PENDING directives; zero-delta consecutive check-in — documented in Team Feedback; raised meta-Q on reflection protocol gating |
+| 2026-04-04 | Cycle 92 | No PENDING directives; idle protocol: Team Feedback cycle 92 written (N-205→N-213 retrospective); committed and pushed |
 | 2026-04-04 | Cycle 89 | No PENDING directives; idle protocol: post-N-213 sync — README badge 4314→4364, llms.txt 212→213 initiatives / 4314→4364, CHANGELOG [Unreleased] N-213 entry, CLAUDE.md Gate 6 + oracle counts, ARCHITECTURE.md test counts + mutation scores, contract-testing-patterns.md, Gemini TQ item (b) slot corrected N-213→N-214 |
 | 2026-04-04 | Cycle 88 | No PENDING directives; idle protocol: N-213 CRUCIBLE Gate 6 shell_injection_rule.ts — 80.29% mutation score (50 hardening tests, SH-B/C1/S/R/A/M/H/FP/N groups); docs/mutation-testing.md + docs/shell-injection-patterns.md updated |
 | 2026-04-04 | Cycle 87 | No PENDING directives; idle protocol: Gate 2 audit hardening-2/3/4/5/7 — all toBeDefined() have downstream content assertions (PASS); eu-ai-act-coverage.md updated N-210→N-212 |
@@ -1038,6 +1041,51 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-04-04 — CoS check-in — cycle 94 (delta: zero — no pending directives; idle CRUCIBLE audit complete; 213 SHIPPED; 4,364 tests)
+
+### 1. What shipped since last check-in
+
+Nothing new was shipped. Cycles 93 and 94 are consecutive no-directive sessions. The last substantive work was N-205→N-213 (documented in cycle 92). No commits beyond the two reflection entries.
+
+Idle protocol executed:
+- CRUCIBLE Gates 1–7 full audit — **all PASS** (see Self-Improvement Log, Cycle 94)
+- Docs verified current: README badge, llms.txt, ARCHITECTURE.md, mutation-testing.md
+- Team Questions reviewed: two open (CHANGELOG coherence Q, Gemini N-214 Q)
+
+### 2. What surprised me
+
+**The Gate 2 audit on `shell-injection-hardening.test.ts` was clean despite the superficial appearance of 17 `toBeDefined()` calls.** On first grep, 17 standalone `toBeDefined()` looks alarming. On inspection every single one is a null-guard before a `.severity` or `.message` assertion — not a hollow test. This is actually the correct pattern for TypeScript `find()` results where the type is `T | undefined`. The distinction matters: `toBeDefined()` as a guard is valid; `toBeDefined()` as the *only* assertion is hollow. A CRUCIBLE Gate 2 audit needs to read full test context, not just grep for `toBeDefined`.
+
+This suggests the Gate 2 rule needs a tighter definition: **hollow assertion = `toBeDefined/toBeTruthy` with no subsequent assertion on the same binding within the same `it()` block**. The current rule (any `toBeDefined`) generates too many false-positive audit items.
+
+### 3. Cross-project signals
+
+**Gate 2 definition precision**: Any project running CRUCIBLE Gate 2 audits should distinguish "guard `toBeDefined`" (followed by typed access `!.field`) from "terminal `toBeDefined`" (last assertion in a test). The former is not a hollow assertion; the latter is. A simple heuristic: if the line immediately after `toBeDefined()` contains `!.` (non-null access on the same variable), it's a guard, not hollow.
+
+**Three consecutive zero-directive sessions** (93, 94, and whatever comes next if no directive is issued) is a new pattern. The protocol assumes work happens between check-ins. At some point, idle-time protocol runs out of safe, in-scope work to do without a directive. The current idle items are:
+- Gate 6 in CI (needs a directive or at least a CoS priority signal)
+- packages/api v0.5.0 bump (needs a directive — deployed API)
+- N-214 calibration prompt tweak (awaiting CoS sign-off)
+- npm/PyPI publish (Q1 — awaiting directive since cycle 49)
+
+Without a directive, the only remaining safe idle work is additional Gate 2 audits on other test files. The project is in a holding pattern.
+
+### 4. Next priorities (no pending directives)
+
+1. **P0 (unblocked by directive)**: npm/PyPI publish — Q1 open since cycle 49, all pre-conditions met
+2. **P1 (unblocked by directive)**: CHANGELOG coherence decision (A/B/C) — without this, the publish creates a mismatch between binary and CHANGELOG
+3. **P1 (unblocked by CoS signal)**: N-214 calibration prompt tweak — Flash B3 failure mode confirmed; fix is scoped, provider-agnostic, ready to ship
+4. **P2 (unblocked by directive)**: Gate 6 in CI — local-only enforcement is a structural gap; adding Stryker step to `ci.yml` is ~1 hour of work once approved
+
+### 5. Blockers / questions for CoS
+
+- **Q1 (publish — open since cycle 49)**: No response in 45 cycles. Is there a portfolio-level hold, legal review, or infrastructure dependency blocking this? If indefinitely deferred, should it be moved to BACKLOG and the question closed?
+- **Q-CHANGELOG (open since cycle 70)**: Option A (bump to 0.5.1), B (merge [Unreleased] into [v0.5.0]), or C (publish as-is, accept mismatch)? Decision gates Q1.
+- **Q-N-214 (open since cycle 54)**: CoS approval for calibration prompt tweak. Ready to ship. Est. 2h. No architectural risk.
+- **Q-meta (raised cycle 93)**: Should the CoS-automation reflection trigger be gated on elapsed time or git delta? Consecutive zero-work reflections create noise in the log without producing signal.
+
+---
 
 > **Reflection cycle**: 2026-04-04 — CoS check-in — cycle 93 (delta: zero — immediate consecutive check-in; 213 SHIPPED; 4,364 tests)
 
@@ -8472,6 +8520,28 @@ None. All three questions from the previous reflection are answered. Next sessio
 ---
 
 ## CoS Directives
+
+### SESSION — 2026-04-04 Cycle 94 — No Pending Directives; Idle Protocol (CRUCIBLE Audit)
+**From**: Wolf (NXTG-AI CoS) via session prompt | **Status**: DONE
+
+**Directive**: Read and execute any PENDING CoS Directives.
+
+**Response**:
+> No pending directives confirmed (grep for `Status**: PENDING` returns no matches; pre-task hook false-positive on session-entry text). Executed Idle Time Protocol:
+>
+> 1. **Full suite verified**: 4,364 tests / 187 files — all GREEN.
+> 2. **CRUCIBLE Gates 1–7 audit** — all PASS:
+>    - Gate 1 (non-empty files): 187 files, all have tests — PASS
+>    - Gate 2 (non-empty assertions): `shell-injection-hardening.test.ts` audited — all `toBeDefined()` are guards before content assertions (`.severity`, `.message`), not standalone hollow assertions — PASS
+>    - Gate 3 (no skipped tests): zero `it.skip / test.skip / xit / xtest` — PASS
+>    - Gate 4 (delta): 4,364 stable, no decrease — PASS
+>    - Gate 5 (no console.log): zero console output in test files — PASS
+>    - Gate 6 (mutation): all targets above 80% (`compliance-report.ts` 80.81%, `eu_ai_act.ts` 100%, `shell_injection_rule.ts` 80.29%, `cli/scan.ts` 81.97%, `stream.ts` 85%, GDPR 80.94–96.81%) — PASS
+>    - Gate 7 (spec-test traceability): 7/7 integration/E2E files have `// Validates: N-NN` refs — PASS
+> 3. **Docs audit**: README badge (4364), llms.txt (213/4364), ARCHITECTURE.md (187 files/4364 tests), mutation-testing.md (Known Gaps clear) — all current. No staleness found.
+> 4. **Team Questions reviewed**: CHANGELOG coherence Q (A/B/C — awaiting CoS) and Gemini N-214 Q still open. No new questions.
+
+---
 
 ### SESSION — 2026-04-03 EU AI Act Compliance Sprint (Cycle 51)
 **From**: Wolf (NXTG-AI CoS) via verbal P0 mandate | **Status**: DONE
