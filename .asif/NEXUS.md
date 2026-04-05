@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-04 (Cycle 97 — N-214 shipped: faultline stats command, 34 tests, 4,398 total)
+> **Last Updated**: 2026-04-05 (N-215 shipped: Gemini calibration prompt hardening, 5 tests, 4,403 total)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -182,6 +182,7 @@
 | N-211 | CRUCIBLE Gate 6 — eu_ai_act.ts mapClaimToRiskCategory() function-level score 100% (59/59); 37 hardening tests (articleRef/annexRef/confidenceScore/isEscalated); stryker-eu-ai-act.config.mjs; ESM static mutation limitation documented | DEVELOPER-X | SHIPPED | P2 | 2026-04-04 |
 | N-212 | CRUCIBLE contract oracle — Zod schema tests for EU AI Act types (EuArticleEvidence, AnnexIIICheckItem, EuAiActComplianceReport, CiGateResult); 14 new contract tests; evidenceCount/sourceCount/strengthScore/art6ConformityRequired/exitCode 0|1 verified at runtime boundary | DEVELOPER-X | SHIPPED | P2 | 2026-04-04 |
 | N-214 | npm download metrics CLI — `faultline stats` command fetches last-week download counts via npmjs.org API for @nxtg/faultline + @nxtg/faultline-sdk; weekly snapshots persisted in `.faultline/stats-snapshots.json` (52-week ring, deduplication by periodEnd); WoW trend (▲/▼/──); `--no-save`, `--package`, `--snapshot-path` flags; partial-success handling; 34 tests (ST-F/L/S/T/R/C/I groups) | ANALYTICS | SHIPPED | P1 | 2026-04-04 |
+| N-215 | Gemini calibration prompt hardening — multi-point CALIBRATION RULE replacing single-sentence rule in verifyClaim(); explicit mixed triggers: conflicting meta-analyses, dose-dependent effects, IARC/WHO/FDA Group 2A/2B classifications, population-dependent effects, contested peer-reviewed consensus; "when in doubt choose mixed" tie-breaker; fixes B3 overconfidence failure (coffee/hot beverages + cancer IARC Group 2A returns contradicted instead of mixed); applied to CLI + web geminiService; 5 prompt-integrity + behavioral tests (CAL-1–CAL-5) | FORENSIC | SHIPPED | P1 | 2026-04-05 |
 | N-213 | CRUCIBLE Gate 6 — shell_injection_rule.ts mutation hardening; 80.29% score (108 killed / 2 timeout / 26 survived / 137 effective); 50 hardening tests (SH-B/C1/S/R/A/M/H/FP/N groups); stryker-shell-injection.config.mjs targeting lines 100–208; ESM static constant limitation documented | DEVELOPER-X | SHIPPED | P2 | 2026-04-04 |
 | N-210 | CRUCIBLE Gate 6 — compliance-report.ts mutation hardening sprint; 50.44%→80.81% via 7 hardening batches (292 new tests); stryker-compliance.config.mjs break threshold set to 80; all 7 test files cover: getRemediations Art.5–53, buildTestCategoryMappings filters, annexIIIChecklist, evaluateComplianceGate, renderCiGateOutput, renderComplianceReportMarkdown, renderComplianceReportSarif, renderComplianceReportHtml, diffComplianceReports | DEVELOPER-X | SHIPPED | P0 | 2026-04-04 |
 | N-209 | Art. 53 (Obligations for providers of GPAI models) added to articleEvidence — partial when real GPAI provider detected (Google Gemini/OpenAI/Anthropic Claude/Perplexity), not-applicable for mock; getRemediations branch (5 items); 3 new tests (A53-1–A53-3) | COMPLIANCE | SHIPPED | P0 | 2026-04-03 |
@@ -988,7 +989,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ~~**Q (2026-04-04 — P0)**: CRUCIBLE Gate 6 FAIL on `compliance-report.ts`.~~ **RESOLVED — shipped as N-210 (2026-04-04)**. 7 hardening batches, 292 new tests, score 50.44%→80.81% (threshold 80%). `break: 80` enforced in `stryker-compliance.config.mjs`. Gate 6 PASS.
 
-~~**Q (2026-04-04)**: CHANGELOG `[Unreleased]` vs `[v0.5.0]` pre-publish coherence.~~ **ANSWERED (CoS, 2026-04-05)**. Three options: (A) Bump to 0.5.1, (B) Merge [Unreleased] into [v0.5.0], (C) Publish as-is.
+~~**Q (2026-04-04)**: CHANGELOG `[Unreleased]` vs `[v0.5.0]` pre-publish coherence.~~ **RESOLVED (2026-04-05 — executed)**. Option B selected by CoS: all [Unreleased] entries merged into [v0.5.0]; [Unreleased] cleared to empty scaffold. N-204–N-213, N-214, and 4 Fixed entries now in [v0.5.0].
 
 > **CoS Response (Wolf, 2026-04-05 11:30 PDT):**
 >
@@ -997,6 +998,8 @@ The Kaggle version remains at  (tagged  at commit ).
 > **Execute now**: Move all `[Unreleased]` entries into `[v0.5.0]`, clear `[Unreleased]`, commit. This is S-sized, self-authorized. **Status: Q-CHANGELOG ANSWERED. GO.**
 
 ~~**Q (2026-04-04)**: `.github/workflows/faultline-ci.yml` SARIF upload missing.~~ **RESOLVED (Cycle 76, 2026-04-04)** — Action already had the upload-sarif step built-in (line 276–280). Only missing piece was `permissions: security-events: write` on the job. Added 2-line permissions block to `faultline-ci.yml`. SARIF upload now unblocked.
+
+~~**Q (2026-03-22 — UPDATE)**: Gemini benchmark EXECUTED.~~ **RESOLVED — N-215 shipped (2026-04-05)**. B3 calibration failure fixed: multi-point CALIBRATION RULE in verifyClaim() prompt with IARC/dose-dependent/population triggers + "when in doubt choose mixed" tie-breaker. 5 tests (CAL-1–CAL-5), 4,403 total.
 
 **Q (2026-03-22 — UPDATE)**: Gemini benchmark EXECUTED. Flash 5/5 complete. Full results at `docs/gemini-model-benchmark-results.md`. Key findings:
 
@@ -1122,6 +1125,7 @@ The Kaggle version remains at  (tagged  at commit ).
 | 2026-04-05 | Cycle 151 | No PENDING directives; hard block unchanged; awaiting Q-CHANGELOG + Q-N-215 |
 | 2026-04-05 | Cycle 152 | No PENDING directives; hard block unchanged; awaiting Q-CHANGELOG + Q-N-215 |
 | 2026-04-05 | Cycle 153 | No PENDING directives; hard block unchanged; awaiting Q-CHANGELOG + Q-N-215 |
+| 2026-04-05 | Cycle 154 | UNBLOCKED: CoS answers for Q-CHANGELOG + Q-N-215 found in commit 47a9b3b. Executed both: (1) Q-CHANGELOG Option B — all [Unreleased] entries (N-204–N-214, 4 Fixed) merged into [v0.5.0]; [Unreleased] cleared to empty scaffold. (2) N-215 — multi-point CALIBRATION RULE in verifyClaim() prompt; 7-condition mixed-trigger list (conflicting meta-analyses, dose-dependent, IARC Group 2A/2B, population-dependent, contested consensus); "when in doubt choose mixed" tie-breaker; applied to both CLI + web geminiService; 5 tests (CAL-1–CAL-5) all GREEN; 4,398→4,403 tests; NEXUS updated, Team Questions RESOLVED. |
 | 2026-04-04 | Cycle 99 | No PENDING directives; post-N-214 housekeeping: RP1/RP16 floor 4364→4398, CLAUDE.md oracle count 4,364→4,398 |
 | 2026-04-04 | Cycle 97 | No PENDING directives; Gate 2 audit of scan-mutation-hardening.test.ts — MH13 `resolves.toBeDefined()` hollow; strengthened to `toMatchObject({ input: 'Some text.' })`; all CLI hardening files now audited |
 | 2026-04-04 | Cycle 96 | No PENDING directives; fourth consecutive no-directive session; state unchanged from cycle 95 |

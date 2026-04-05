@@ -122,7 +122,15 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
     1. Search for evidence.
     2. Determine if the claim holds up ("supported"), fails ("contradicted"), or is inconclusive ("mixed").
 
-    CALIBRATION RULE: If sources conflict or you are uncertain, output status: "mixed" and explain the uncertainty explicitly. Never commit to "supported" or "contradicted" when evidence is ambiguous.
+    CALIBRATION RULE — apply before returning status:
+    Use "mixed" when ANY of these conditions hold:
+    - Different meta-analyses or major studies reach opposite conclusions
+    - The effect is dose-dependent (harmful above a threshold, neutral or beneficial below it)
+    - A major regulatory or scientific body (IARC, WHO, FDA, EFSA) classifies the agent as "possibly" or "probably" harmful (e.g. Group 2A/2B, Category 2) — not definitively
+    - The claim is true in some populations, conditions, or dose ranges but not others
+    - Scientific consensus is actively contested in peer-reviewed literature or has shifted in the last decade
+    Use "contradicted" ONLY when the preponderance of robust, consistent evidence clearly refutes the claim with no meaningful body of contrary peer-reviewed evidence.
+    When in doubt between "contradicted" and "mixed", always choose "mixed".
 
     OUTPUT INSTRUCTION:
     Return strictly a JSON object. Do not include markdown formatting or preamble.

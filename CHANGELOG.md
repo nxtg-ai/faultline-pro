@@ -7,6 +7,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- N-215: Gemini calibration prompt hardening — multi-point `CALIBRATION RULE` replaces single-sentence rule in `verifyClaim()` prompt (CLI + web `geminiService.ts`); 7-condition "use mixed when" list covering: conflicting meta-analyses, dose-dependent effects, IARC/WHO/FDA Group 2A/2B partial classifications, population-dependent effects, contested peer-reviewed consensus; explicit "when in doubt between contradicted and mixed, always choose mixed" tie-breaker; fixes B3 overconfidence failure (IARC Group 2A hot-beverages classification returned `contradicted` instead of `mixed`); 5 prompt-integrity + behavioral tests in `gemini-service-hardening.test.ts` (CAL-1–CAL-5)
+
+---
+
+## [v0.5.0] — 2026-04-02
+
+### Added
+
 - N-214: `faultline stats` CLI command — fetches last-week npm download counts for `@nxtg/faultline` and `@nxtg/faultline-sdk` via npmjs.org API; weekly snapshots persisted in `.faultline/stats-snapshots.json` (52-week ring, dedup by periodEnd); WoW trend arrows (▲/▼/──); flags: `--no-save`, `--package`, `--snapshot-path`; partial-success handling; 34 tests (ST-F/L/S/T/R/C/I)
 
 - N-204: EU AI Act compliance sprint — Art. 6 (Classification Rules for High-Risk AI Systems), Art. 15 (Accuracy/Robustness/Cybersecurity) evidence blocks; Art. 50(4) PLACEHOLDER resolved to `not-applicable` when no opinion/GPAI signals present; 10 articles in `articleEvidence` (was 7); 11 tests
@@ -19,19 +27,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - N-211: CRUCIBLE Gate 6 for `eu_ai_act.ts` — `mapClaimToRiskCategory()` function-level score 100% (59/59 mutants killed); 37 hardening tests covering all articleRef/annexRef values, confidenceScore literals, and isEscalated branch; `stryker-eu-ai-act.config.mjs` created; ESM static mutation limitation documented in `docs/mutation-testing.md`
 - N-212: CRUCIBLE contract oracle for EU AI Act types — Zod schema tests for `EuArticleEvidence` (with `evidenceCount`/`sourceCount`/`strengthScore`), `AnnexIIICheckItem` (with `id`/`evidence`), `EuAiActComplianceReport`, and `CiGateResult` (with `art6ConformityRequired`, `exitCode: 0|1`); 14 new contract tests in `contract.test.ts`; 4,314 tests total
 - N-213: CRUCIBLE Gate 6 for `shell_injection_rule.ts` — mutation score 80.29% (108 killed / 2 timeout / 26 survived / 137 effective); 50 hardening tests in `shell-injection-hardening.test.ts` (SH-B/C1/S/R/A/M/H/FP/N groups covering boundary mutations, severity literals, ruleId strings, hex-format uppercase, control-char named messages, false-positive suppression); `stryker-shell-injection.config.mjs` targets lines 100–208 (check() body only); 4,364 tests total
-
-### Fixed
-
-- `getRemediations()` Art. 5 branch condition matched `'Article 52'` and `'Article 53'` due to substring overlap (`'Article 52'.includes('Article 5')` is `true`). Added explicit exclusion guards for Art. 52 and Art. 53 so their `else if` branches are reachable. 6 remediation tests added (RR22–RR27); 5 were previously failing silently. Total: 3,886 tests.
-- `.github/workflows/faultline-ci.yml` missing `permissions: security-events: write` — the composite action already contained `github/codeql-action/upload-sarif` but the calling workflow lacked the required permission, causing SARIF upload to silently fail on every CI run. Added `permissions:` block to the `faultline-scan` job.
-- CRUCIBLE Gate 2: two hollow assertions in N-210 hardening tests (H4g-1, H5d-6) asserted only `toBeDefined()` without content verification. Strengthened with `euArticle` and `tags` content assertions respectively.
-- CRUCIBLE Gate 2 full sweep (cycles 101–109): 126 hollow terminal `toBeDefined()`/`toBeTruthy()` assertions hardened across 103 test files. All were terminal assertions with no downstream content check (the hollow pattern). Replaced with typed assertions: ISO date regex, `typeof === 'string'/'number'/'object'`, `Array.isArray()`, `toHaveProperty()`, `toMatchObject()`, `toMatch(/^sha256=/)`, exact error strings. Two confirmed guards retained (attribution.ts:81, plugin.ts:168). Detection script and fix patterns documented in `docs/hollow-assertion-patterns.md`.
-
----
-
-## [v0.5.0] — 2026-04-02
-
-### Added
 
 - N-159: `faultline compliance-report --ci` — CI/CD compliance gate that exits non-zero if any EU AI Act article is non-compliant or overall risk is high/critical. New exports: `evaluateComplianceGate()`, `renderCiGateOutput()`, `CiGateResult`
 - N-160: GitHub Action `compliance-gate` input — both `packages/cli/action.yml` and `.github/actions/faultline-scan/action.yml` now accept `compliance-gate: 'true'` to auto-enforce EU AI Act compliance in CI workflows. Outputs `compliance-status` (pass/fail)
@@ -77,6 +72,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - N-201: TypeScript SDK compliance enhancements — `complianceExport()` method with filters; `ComplianceHistoryEntry` + `ComplianceExportResponse` types; `WebhookEvent` union updated with `compliance.gate_failed`; `ScanResult` extended with optional `complianceScore`/`compliancePass`; 4 tests
 - N-202: Python SDK compliance enhancements — `compliance_export()` method (JSON + CSV formats); `ComplianceHistoryEntry` + `ComplianceExportResponse` dataclass models with `from_dict()`; inline `compliance_score`/`compliance_pass` on `ScanResult`; 14 new tests (100 Python SDK total)
 - N-203: Shell injection detection rules — YAML rule with 12 regex patterns (command substitution, IFS injection, eval/exec, base64-decode-pipe, curl-pipe-shell, dangerous rm, PATH/LD_PRELOAD override, process substitution, semicolon chains, dd overwrite, mkfifo reverse shell) + TypeScript rule for Unicode obfuscation (zero-width chars, bidi overrides, non-ASCII whitespace, control characters, Cyrillic/Greek homoglyphs); 31 new tests. Inspired by Claude Code's 21-check bash security layer (RESEARCH-001 Phase 2)
+
+### Fixed
+
+- `getRemediations()` Art. 5 branch condition matched `'Article 52'` and `'Article 53'` due to substring overlap (`'Article 52'.includes('Article 5')` is `true`). Added explicit exclusion guards for Art. 52 and Art. 53 so their `else if` branches are reachable. 6 remediation tests added (RR22–RR27); 5 were previously failing silently. Total: 3,886 tests.
+- `.github/workflows/faultline-ci.yml` missing `permissions: security-events: write` — the composite action already contained `github/codeql-action/upload-sarif` but the calling workflow lacked the required permission, causing SARIF upload to silently fail on every CI run. Added `permissions:` block to the `faultline-scan` job.
+- CRUCIBLE Gate 2: two hollow assertions in N-210 hardening tests (H4g-1, H5d-6) asserted only `toBeDefined()` without content verification. Strengthened with `euArticle` and `tags` content assertions respectively.
+- CRUCIBLE Gate 2 full sweep (cycles 101–109): 126 hollow terminal `toBeDefined()`/`toBeTruthy()` assertions hardened across 103 test files. All were terminal assertions with no downstream content check (the hollow pattern). Replaced with typed assertions: ISO date regex, `typeof === 'string'/'number'/'object'`, `Array.isArray()`, `toHaveProperty()`, `toMatchObject()`, `toMatch(/^sha256=/)`, exact error strings. Two confirmed guards retained (attribution.ts:81, plugin.ts:168). Detection script and fix patterns documented in `docs/hollow-assertion-patterns.md`.
 
 ---
 

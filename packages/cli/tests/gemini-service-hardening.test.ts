@@ -172,3 +172,98 @@ describe('rules/registry.ts — YAML loader branches', () => {
     expect(countAfterSecond).toBe(countAfterFirst);
   });
 });
+
+// ===========================================================================
+// CAL-1–CAL-5 — N-215 calibration prompt hardening
+// Validates that verifyClaim sends a prompt with the multi-point calibration
+// rule that prevents Gemini Flash from over-committing to "contradicted" on
+// genuinely ambiguous claims (B3 failure pattern: coffee/hot beverages +
+// cancer — IARC Group 2A, conflicting meta-analyses, dose-dependent effects).
+// ===========================================================================
+
+describe('verifyClaim — N-215 calibration prompt hardening (CAL-1–CAL-5)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('CAL-1: prompt contains multi-point CALIBRATION RULE header', async () => {
+    mockGenerateContent.mockResolvedValue({
+      text: '{"status":"mixed","explanation":"Conflicting meta-analyses."}',
+      candidates: [],
+    });
+
+    await verifyClaim(
+      { id: 'c1', text: 'Coffee consumption increases cancer risk.', type: 'fact', importance: 4 },
+      'test-key'
+    );
+
+    const callArgs = mockGenerateContent.mock.calls[0]![0] as { contents: string };
+    expect(callArgs.contents).toContain('CALIBRATION RULE');
+    expect(callArgs.contents).toContain('"mixed"');
+    expect(callArgs.contents).toContain('"contradicted"');
+  });
+
+  it('CAL-2: prompt includes IARC and dose-dependent calibration triggers', async () => {
+    mockGenerateContent.mockResolvedValue({
+      text: '{"status":"mixed","explanation":"IARC Group 2A classification applies."}',
+      candidates: [],
+    });
+
+    await verifyClaim(
+      { id: 'c2', text: 'Hot beverages at temperatures above 65°C are carcinogenic.', type: 'fact', importance: 4 },
+      'test-key'
+    );
+
+    const callArgs = mockGenerateContent.mock.calls[0]![0] as { contents: string };
+    expect(callArgs.contents).toContain('IARC');
+    expect(callArgs.contents).toContain('dose-dependent');
+  });
+
+  it('CAL-3: prompt contains "when in doubt" tie-breaking rule favouring mixed', async () => {
+    mockGenerateContent.mockResolvedValue({
+      text: '{"status":"mixed","explanation":"Evidence is contested."}',
+      candidates: [],
+    });
+
+    await verifyClaim(
+      { id: 'c3', text: 'Red wine prevents cardiovascular disease.', type: 'fact', importance: 3 },
+      'test-key'
+    );
+
+    const callArgs = mockGenerateContent.mock.calls[0]![0] as { contents: string };
+    // The tie-breaking rule must be present — ensures "mixed" is preferred over "contradicted" when uncertain
+    expect(callArgs.contents).toContain('When in doubt');
+    expect(callArgs.contents).toContain('always choose "mixed"');
+  });
+
+  it('CAL-4: mock returns "mixed" for conflicting evidence → status "mixed" preserved', async () => {
+    mockGenerateContent.mockResolvedValue({
+      text: '{"status":"mixed","explanation":"Some studies support, others refute — contested scientific consensus."}',
+      candidates: [],
+    });
+
+    const result = await verifyClaim(
+      { id: 'c4', text: 'Coffee causes cancer in humans.', type: 'fact', importance: 4 },
+      'test-key'
+    );
+
+    expect(result.status).toBe('mixed');
+    expect(result.explanation).toContain('contested');
+  });
+
+  it('CAL-5: mock returns "contradicted" for unambiguous denial → status "contradicted" preserved', async () => {
+    mockGenerateContent.mockResolvedValue({
+      text: '{"status":"contradicted","explanation":"Overwhelming, uncontested evidence shows the Earth is spherical."}',
+      candidates: [],
+    });
+
+    const result = await verifyClaim(
+      { id: 'c5', text: 'The Earth is flat.', type: 'fact', importance: 5 },
+      'test-key'
+    );
+
+    // Calibration rule does not suppress clear-cut denials
+    expect(result.status).toBe('contradicted');
+    expect(result.explanation).toContain('spherical');
+  });
+});
