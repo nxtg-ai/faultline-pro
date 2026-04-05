@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-04 (Cycle 92 — mutation-testing.md: Known Gaps table cleared (N-211/N-213); N-213 shell injection score history + hardening strategy added.)
+> **Last Updated**: 2026-04-04 (Cycle 97 — N-214 shipped: faultline stats command, 34 tests, 4,398 total)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -181,6 +181,7 @@
 | N-203 | Shell injection detection rules — YAML rule (12 regex patterns: cmd substitution, IFS, eval, curl-pipe-sh, base64, dangerous rm, env override, mkfifo) + TypeScript rule (Unicode zero-width, bidi override, control chars, homoglyphs); 31 tests | FORENSIC | SHIPPED | P0 | 2026-04-01 |
 | N-211 | CRUCIBLE Gate 6 — eu_ai_act.ts mapClaimToRiskCategory() function-level score 100% (59/59); 37 hardening tests (articleRef/annexRef/confidenceScore/isEscalated); stryker-eu-ai-act.config.mjs; ESM static mutation limitation documented | DEVELOPER-X | SHIPPED | P2 | 2026-04-04 |
 | N-212 | CRUCIBLE contract oracle — Zod schema tests for EU AI Act types (EuArticleEvidence, AnnexIIICheckItem, EuAiActComplianceReport, CiGateResult); 14 new contract tests; evidenceCount/sourceCount/strengthScore/art6ConformityRequired/exitCode 0|1 verified at runtime boundary | DEVELOPER-X | SHIPPED | P2 | 2026-04-04 |
+| N-214 | npm download metrics CLI — `faultline stats` command fetches last-week download counts via npmjs.org API for @nxtg/faultline + @nxtg/faultline-sdk; weekly snapshots persisted in `.faultline/stats-snapshots.json` (52-week ring, deduplication by periodEnd); WoW trend (▲/▼/──); `--no-save`, `--package`, `--snapshot-path` flags; partial-success handling; 34 tests (ST-F/L/S/T/R/C/I groups) | ANALYTICS | SHIPPED | P1 | 2026-04-04 |
 | N-213 | CRUCIBLE Gate 6 — shell_injection_rule.ts mutation hardening; 80.29% score (108 killed / 2 timeout / 26 survived / 137 effective); 50 hardening tests (SH-B/C1/S/R/A/M/H/FP/N groups); stryker-shell-injection.config.mjs targeting lines 100–208; ESM static constant limitation documented | DEVELOPER-X | SHIPPED | P2 | 2026-04-04 |
 | N-210 | CRUCIBLE Gate 6 — compliance-report.ts mutation hardening sprint; 50.44%→80.81% via 7 hardening batches (292 new tests); stryker-compliance.config.mjs break threshold set to 80; all 7 test files cover: getRemediations Art.5–53, buildTestCategoryMappings filters, annexIIIChecklist, evaluateComplianceGate, renderCiGateOutput, renderComplianceReportMarkdown, renderComplianceReportSarif, renderComplianceReportHtml, diffComplianceReports | DEVELOPER-X | SHIPPED | P0 | 2026-04-04 |
 | N-209 | Art. 53 (Obligations for providers of GPAI models) added to articleEvidence — partial when real GPAI provider detected (Google Gemini/OpenAI/Anthropic Claude/Perplexity), not-applicable for mock; getRemediations branch (5 items); 3 new tests (A53-1–A53-3) | COMPLIANCE | SHIPPED | P0 | 2026-04-03 |
@@ -274,7 +275,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260404-01 — P1: npm Download Metrics Pipeline
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
-**Injected**: 2026-04-04 17:12 | **Estimate**: M | **Status**: PENDING
+**Injected**: 2026-04-04 17:12 | **Estimate**: M | **Status**: DONE
 
 **Problem**: `@nxtg/faultline` is published on npm but we have ZERO visibility on downloads, active users, or error rates. EU AI Act revenue track needs usage data to validate product-market fit before the Aug 2 deadline (119 days).
 
@@ -285,6 +286,23 @@ The Kaggle version remains at  (tagged  at commit ).
 4. Optional: opt-in anonymous telemetry for active usage (must be opt-in, not default)
 
 **Acceptance**: `faultline stats` returns real npm download data. Weekly snapshot persisted.
+
+**Response** (filled by team):
+> **SHIPPED 2026-04-04 — N-214**
+>
+> All 3 deliverables complete:
+>
+> 1. **npm API fetch** — `fetchNpmDownloads(pkg)` in `packages/cli/cli/stats.ts` calls `https://api.npmjs.org/downloads/point/last-week/:pkg` with URL-encoded scoped names (`@nxtg/faultline` → `%40nxtg%2Ffaultline`). Default packages: `@nxtg/faultline` and `@nxtg/faultline-sdk`.
+>
+> 2. **Weekly snapshots** — `saveSnapshot()` persists to `.faultline/stats-snapshots.json` (same dir convention as `.faultline/history`). Deduplicates by `package+periodEnd` so re-running within the same week updates rather than appends. Keeps last 52 weeks per package. `loadSnapshots()` returns `[]` gracefully if file missing or corrupt.
+>
+> 3. **`faultline stats` CLI command** — `case 'stats':` added to `packages/cli/cli/index.ts`. Output: table with package name, download count, WoW trend arrow (▲ +N / ▼ -N / ── flat) and TOTAL row. Flags: `--no-save` (skip persistence), `--package <name>` (override package list), `--snapshot-path <path>`.
+>
+> 4. **Telemetry (item 4)** — deliberately NOT implemented. No opt-in telemetry added. The directive said "optional" and collecting any anonymous usage data without a privacy review and documented consent flow would be premature. Flagging as a future initiative if CoS decides to pursue it.
+>
+> **Tests**: 34 tests (ST-F1–F4 fetch, ST-L1–L4 load, ST-S1–S6 save, ST-T1–T7 trend, ST-R1–R6 render, ST-C1–C6 command, ST-I1 CLI routing). 4,364 → **4,398** tests total.
+>
+> **Live verification**: `curl https://api.npmjs.org/downloads/point/last-week/@nxtg/faultline` returns `{"downloads":205,...}` — real data flowing.
 
 ---
 
@@ -8567,6 +8585,16 @@ None. All three questions from the previous reflection are answered. Next sessio
 ---
 
 ## CoS Directives
+
+### SESSION — 2026-04-04 Cycle 98 — DIRECTIVE-NXTG-20260404-01: npm stats command (N-214)
+**From**: Wolf (NXTG-AI CoS) via session prompt | **Status**: DONE
+
+**Directive**: Execute DIRECTIVE-NXTG-20260404-01 — npm download metrics pipeline.
+
+**Response**:
+> **SHIPPED N-214** — `faultline stats` command. 3 files: `cli/stats.ts` (new), `cli/index.ts` (wired), `tests/stats.test.ts` (new, 34 tests). 4,364 → 4,398 tests. Live npm API confirmed 205 downloads for @nxtg/faultline. Directive status updated DONE.
+
+---
 
 ### SESSION — 2026-04-04 Cycle 97 — No Pending Directives; Gate 2 Hardening (MH13)
 **From**: Wolf (NXTG-AI CoS) via session prompt | **Status**: DONE

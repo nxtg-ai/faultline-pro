@@ -7,6 +7,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- N-214: `faultline stats` CLI command — fetches last-week npm download counts for `@nxtg/faultline` and `@nxtg/faultline-sdk` via npmjs.org API; weekly snapshots persisted in `.faultline/stats-snapshots.json` (52-week ring, dedup by periodEnd); WoW trend arrows (▲/▼/──); flags: `--no-save`, `--package`, `--snapshot-path`; partial-success handling; 34 tests (ST-F/L/S/T/R/C/I)
+
 - N-204: EU AI Act compliance sprint — Art. 6 (Classification Rules for High-Risk AI Systems), Art. 15 (Accuracy/Robustness/Cybersecurity) evidence blocks; Art. 50(4) PLACEHOLDER resolved to `not-applicable` when no opinion/GPAI signals present; 10 articles in `articleEvidence` (was 7); 11 tests
 - N-205: `testCategoryMappings` missing Art. 10/11/12 cross-references — `buildTestCategoryMappings()` extended with `ruleFindings` 3rd param; bias→Art.10(2), high-importance-unverified→Art.10(3), documented-claims→Art.11, structured-metadata→Art.12; 8 tests
 - N-206: `annexApplicable` logic blind to Art. 6 evidence — medium-risk scans with Annex III domain content (biometric/employment/etc.) now trigger the conformity checklist; `annex-iii-0` (Art. 6 classification trigger) added as first checklist item; items 7→8; 4 tests

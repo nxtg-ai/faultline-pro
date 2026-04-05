@@ -35,6 +35,7 @@ import { listKeys, getDormantKeys, getExpiringSoonKeys, rotateKey, getRotationSt
 import { getStaleScans, getScanUsage, getScansPrunePreview, pruneScans, formatStaleList, formatScanUsage, formatScansPrunePreview, formatScansPruneResult } from './scans-client.js';
 import { streamScan, formatStreamResult } from './stream-client.js';
 import { buildEuComplianceReport, renderComplianceReportJson, renderComplianceReportPdf, renderComplianceReportMarkdown, renderComplianceReportSarif, renderComplianceReportHtml, evaluateComplianceGate, renderCiGateOutput, diffComplianceReports, renderComplianceDiffOutput, loadComplianceConfig } from './compliance-report.js';
+import { statsCommand } from './stats.js';
 
 const VERSION = '0.4.0';
 
@@ -166,6 +167,16 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
     case '--version':
     case '-v':
       return { exitCode: 0, output: `Faultline v${VERSION}` };
+
+    case 'stats': {
+      // N-214: npm download metrics — fetch last-week counts, persist snapshot, show trend
+      const pkgs = flags['package']
+        ? (Array.isArray(flags['package']) ? flags['package'] : [flags['package']])
+        : undefined;
+      const snapshotPath = flags['snapshot-path'] as string | undefined;
+      const noSave = Boolean(flags['no-save']);
+      return statsCommand({ packages: pkgs as string[] | undefined, snapshotPath, noSave });
+    }
 
     case 'help':
     case '--help':
