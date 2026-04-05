@@ -41,13 +41,13 @@ describe('README.md — release-prep validation', () => {
     readme = readFileSync(resolve(ROOT, 'README.md'), 'utf-8');
   });
 
-  // RP1: badge count is ≥ 4398 (prevents stale badge; floor updated 2026-04-04 after
-  // N-214 faultline stats command — actual count 4398)
+  // RP1: badge count is ≥ 4403 (prevents stale badge; floor updated 2026-04-05 after
+  // N-215 Gemini calibration prompt hardening — actual count 4403)
   it('RP1: test badge count is at least 3900', () => {
     const match = readme.match(/tests-(\d+)%20passing/);
     expect(match, 'README must have a tests-N%20passing badge').toBeTruthy();
     const count = parseInt(match![1], 10);
-    expect(count).toBeGreaterThanOrEqual(4398);
+    expect(count).toBeGreaterThanOrEqual(4403);
   });
 
   // RP2: badge count is a round number (catches off-by-one accidents like 2757)
