@@ -42,13 +42,13 @@ describe('README.md — v0.4.0 release validation', () => {
     readme = readFileSync(resolve(ROOT, 'README.md'), 'utf-8');
   });
 
-  // RP16: badge count is ≥ 4364 (floor updated 2026-04-04 after
-  // N-213 shell_injection_rule.ts Gate 6 hardening — actual count 4364)
+  // RP16: badge count is ≥ 4398 (floor updated 2026-04-04 after
+  // N-214 faultline stats command — actual count 4398)
   it('RP16: test badge count is at least 3900', () => {
     const match = readme.match(/tests-(\d+)%20passing/);
     expect(match, 'README must have a tests-N%20passing badge').toBeTruthy();
     const count = parseInt(match![1], 10);
-    expect(count).toBeGreaterThanOrEqual(4364);
+    expect(count).toBeGreaterThanOrEqual(4398);
   });
 
   // RP17: README mentions GDPR

@@ -1050,6 +1050,7 @@ The Kaggle version remains at  (tagged  at commit ).
 | 2026-04-04 | Cycle 92 | No PENDING directives; idle protocol: mutation-testing.md Known Gaps cleared (eu_ai_act→N-211, shell_injection→N-213); N-213 score history block added (4 runs, strategy, lessons) |
 | 2026-04-04 | Cycle 91 | No PENDING directives; idle protocol: RP1/RP16 badge floor bumped 3886→4364; stale comments updated to reflect N-213 actual count |
 | 2026-04-04 | Cycle 90 | No PENDING directives; idle protocol: CRUCIBLE Gate 2 audit SH-B5 + SH-R2 — both hollow toBeDefined() with no downstream assertions; strengthened (SH-B5 +severity+message, SH-R2 +severity); 50 tests still GREEN |
+| 2026-04-04 | Cycle 99 | No PENDING directives; post-N-214 housekeeping: RP1/RP16 floor 4364→4398, CLAUDE.md oracle count 4,364→4,398 |
 | 2026-04-04 | Cycle 97 | No PENDING directives; Gate 2 audit of scan-mutation-hardening.test.ts — MH13 `resolves.toBeDefined()` hollow; strengthened to `toMatchObject({ input: 'Some text.' })`; all CLI hardening files now audited |
 | 2026-04-04 | Cycle 96 | No PENDING directives; fourth consecutive no-directive session; state unchanged from cycle 95 |
 | 2026-04-04 | Cycle 95 | No PENDING directives; third consecutive no-directive session; holding pattern documented; no new idle work available — all remaining items require CoS directive or decision |
@@ -8585,6 +8586,21 @@ None. All three questions from the previous reflection are answered. Next sessio
 ---
 
 ## CoS Directives
+
+### SESSION — 2026-04-04 Cycle 99 — No Pending Directives; Idle Protocol (Post-N-214 Sync)
+**From**: Wolf (NXTG-AI CoS) via session prompt | **Status**: DONE
+
+**Directive**: Read and execute any PENDING CoS Directives.
+
+**Response**:
+> No pending directives. Executed Idle Time Protocol (post-N-214 housekeeping):
+>
+> 1. **Full suite**: 4,398 tests / 188 files — all GREEN.
+> 2. **RP1/RP16 badge floor bumped** 4364→4398 (release-prep.test.ts + release-prep-v040.test.ts).
+> 3. **CLAUDE.md oracle count** updated 4,364→4,398.
+> 4. All other docs (README, llms.txt, CHANGELOG, NEXUS) already synced in N-214 commit.
+
+---
 
 ### SESSION — 2026-04-04 Cycle 98 — DIRECTIVE-NXTG-20260404-01: npm stats command (N-214)
 **From**: Wolf (NXTG-AI CoS) via session prompt | **Status**: DONE
