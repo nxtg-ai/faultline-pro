@@ -59,7 +59,7 @@ describe('GET /compliance/deadlines', () => {
       expect(d.deadline).toBeDefined();
       expect(typeof d.daysUntil).toBe('number');
       expect(d.severity).toBeDefined();
-      expect(d.url).toBeDefined();
+      expect(d.url).toMatch(/^https?:\/\//);
     }
 
     // Suppress TS unused-variable warning for `deadlines`
@@ -126,7 +126,7 @@ describe('POST /compliance/scan-check', () => {
     const { alerts } = JSON.parse(res.body);
     expect(alerts.length).toBeGreaterThan(0); // Gate 2
     const euAlert = alerts.find((a: { regulation: string }) => a.regulation === 'EU AI Act');
-    expect(euAlert).toBeDefined();
+    expect(typeof (euAlert as { severity: string }).severity).toBe('string');
   });
 
   it('CC8: returns empty alerts for non-matching text', async () => {

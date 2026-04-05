@@ -42,7 +42,7 @@ function parseSSE(body: string): Array<Record<string, unknown>> {
 describe('scan() onClaimVerified callback (PS1–PS7)', () => {
   it('PS1: scan() accepts onClaimVerified callback without throwing', async () => {
     const cb: ScanClaimCallback = () => { /* no-op */ };
-    await expect(scan(SCAN_TEXT, 'mock', undefined, undefined, undefined, cb)).resolves.toBeDefined();
+    await expect(scan(SCAN_TEXT, 'mock', undefined, undefined, undefined, cb)).resolves.toMatchObject({ input: SCAN_TEXT });
   });
 
   it('PS2: callback fires exactly once per verifiable claim', async () => {

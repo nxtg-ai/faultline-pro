@@ -70,7 +70,7 @@ describe('GET /scan/stream — start event (WS2–WS4)', () => {
     });
     const events = parseSSE(res.body);
     const start = events.find(e => e['type'] === 'start');
-    expect(start).toBeDefined();
+    expect(start!['type']).toBe('start');
   });
 
   it('WS3: start event has claimCount field (non-negative integer)', async () => {
@@ -120,7 +120,7 @@ describe('GET /scan/stream — claim_verified events (WS5–WS8)', () => {
     const events = parseSSE(res.body);
     const verified = events.filter(e => e['type'] === 'claim_verified');
     for (const ev of verified) {
-      expect(ev['claim']).toBeDefined();
+      expect((ev['claim'] as { id: string }).id).toBeTruthy();
     }
   });
 
@@ -162,7 +162,7 @@ describe('GET /scan/stream — complete event (WS9–WS11)', () => {
     });
     const events = parseSSE(res.body);
     const complete = events.find(e => e['type'] === 'complete');
-    expect(complete).toBeDefined();
+    expect(complete!['type']).toBe('complete');
   });
 
   it('WS10: complete event has overallRisk field (non-empty string)', async () => {
@@ -223,7 +223,7 @@ describe('GET /scan/stream — validation (WS13)', () => {
     });
     expect(res.statusCode).toBe(400);
     const body = JSON.parse(res.body) as Record<string, unknown>;
-    expect(body['error']).toBeDefined();
+    expect(typeof body['error']).toBe('string');
   });
 });
 

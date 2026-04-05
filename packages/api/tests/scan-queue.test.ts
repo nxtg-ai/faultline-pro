@@ -34,7 +34,7 @@ describe('ScanQueue.enqueue', () => {
     expect(item.text).toBe('hello');
     expect(item.provider).toBe('gemini');
     expect(item.status).toBe('pending');
-    expect(item.createdAt).toBeDefined();
+    expect(item.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it('item is retrievable via get()', () => {

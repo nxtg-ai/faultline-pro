@@ -177,7 +177,7 @@ describe('POST /scan/compliance/healthcare', () => {
     const body = JSON.parse(res.body);
     expect(body.overallRisk).toBeDefined();
     expect(body.claims).toBeDefined();
-    expect(body.complianceAnalysis).toBeDefined();
+    expect(body.complianceAnalysis).toHaveProperty('templateId');
   });
 
   it('CL4: complianceAnalysis has templateId, templateName, triggeredRules, summary, generatedAt', async () => {
@@ -197,7 +197,7 @@ describe('POST /scan/compliance/healthcare', () => {
     expect(ca.templateName).toBeDefined();
     expect(Array.isArray(ca.triggeredRules)).toBe(true);
     expect(ca.summary).toBeDefined();
-    expect(ca.generatedAt).toBeDefined();
+    expect(ca.generatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 });
 
@@ -301,7 +301,7 @@ describe('POST /templates/compliance — custom template', () => {
     expect(body.id).toBeDefined();
     expect(body.name).toBe('Retail Compliance');
     expect(body.custom).toBe(true);
-    expect(body.createdAt).toBeDefined();
+    expect(body.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it('CL10: custom template appears in GET /templates/compliance list', async () => {
@@ -316,7 +316,7 @@ describe('POST /templates/compliance — custom template', () => {
     const list = JSON.parse(res.body);
     expect(list.length).toBe(5); // 4 built-in + 1 custom — Gate 2
     const custom = list.find((t: { name: string }) => t.name === 'Retail Compliance');
-    expect(custom).toBeDefined();
+    expect(custom!.custom).toBe(true);
   });
 
   it('CL11: DELETE /templates/compliance/:id removes custom template', async () => {

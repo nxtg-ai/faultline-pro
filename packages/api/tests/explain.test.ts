@@ -75,7 +75,7 @@ describe('GET /claims/:id/explain', () => {
     expect(body.confidence).toBeDefined();
     expect(body.reasoningChain).toBeDefined();
     expect(body.evidenceFound).toBeDefined();
-    expect(body.suggestions).toBeDefined();
+    expect(Array.isArray(body.suggestions)).toBe(true);
   });
 
   // EX2: 404 for unknown id

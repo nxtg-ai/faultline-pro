@@ -81,7 +81,7 @@ describe('Webhook CRUD routes', () => {
     expect(body.url).toBe('https://example.com/hook');
     expect(body.events).toContain('scan.complete');
     expect(body.secret).toBeDefined();
-    expect(body.createdAt).toBeDefined();
+    expect(body.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it('C2. auto-generated secret is 64-char hex', async () => {
@@ -155,7 +155,7 @@ describe('Webhook CRUD routes', () => {
   it('C9. DELETE non-existent id returns 404', async () => {
     const res = await server.inject({ method: 'DELETE', url: '/webhooks/no-such-id', headers: { 'x-api-key': 'admin-secret' } });
     expect(res.statusCode).toBe(404);
-    expect(JSON.parse(res.body).error).toBeDefined();
+    expect(typeof JSON.parse(res.body).error).toBe('string');
   });
 
   it('C10. POST /webhooks rejects invalid event value → 400', async () => {

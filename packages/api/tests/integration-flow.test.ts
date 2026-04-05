@@ -164,7 +164,7 @@ describe('F1: Full scan pipeline', () => {
     const body = JSON.parse(res.body);
     expect(body.claims.length).toBeGreaterThan(0); // Gate 2
     expect(body.overallRisk).toBeDefined();
-    expect(body.verifications).toBeDefined();
+    expect(typeof body.verifications).toBe('object');
   });
 
   it('F1.3 ClaimIndex contains the ingested claims (Gate 2)', () => {
@@ -185,7 +185,7 @@ describe('F1: Full scan pipeline', () => {
     const scanEntry = entries.find(e => e.endpoint === '/scan' && e.statusCode === 200);
     expect(scanEntry).toBeDefined();
     expect(scanEntry!.latencyMs).toBeGreaterThanOrEqual(0);
-    expect(scanEntry!.keyId).toBeDefined();
+    expect(typeof scanEntry!.keyId).toBe('string');
   });
 });
 
@@ -320,7 +320,7 @@ describe('F4: Audit trail completeness', () => {
     const entries = getAuditLogger().getEntries();
     expect(entries.length).toBeGreaterThan(pre); // Gate 2: entry was added
     const rejected = entries.find(e => e.endpoint === '/scan' && e.statusCode === 401);
-    expect(rejected).toBeDefined();
+    expect(rejected!.statusCode).toBe(401);
   });
 
   it('F4.4 AuditLogger store holds all request entries (Gate 2)', () => {

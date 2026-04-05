@@ -162,7 +162,7 @@ describe('dispatchWebhook() — rate limiter integration', () => {
     // Currently blocked
     await dispatchWebhook(wh, 'scan.complete', {});
     const blockedLog = getWebhookDeliveryLog().list(wh.id);
-    expect(blockedLog.find(r => r.error === 'rate limited')).toBeDefined();
+    expect(blockedLog.find(r => r.error === 'rate limited')!.delivered).toBe(false);
 
     // Reset and retry
     rl.reset(wh.id);
@@ -173,7 +173,7 @@ describe('dispatchWebhook() — rate limiter integration', () => {
     await dispatchWebhook(wh, 'scan.complete', {});
     expect(mockFetch).toHaveBeenCalledOnce();
     const resumedLog = getWebhookDeliveryLog().list(wh.id);
-    expect(resumedLog.find(r => r.delivered)).toBeDefined();
+    expect(resumedLog.find(r => r.delivered)!.delivered).toBe(true);
   });
 });
 

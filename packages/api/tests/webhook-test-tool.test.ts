@@ -20,16 +20,16 @@ function setup() {
 
 describe('SAMPLE_PAYLOADS', () => {
   it('has scan.complete payload', () => {
-    expect(SAMPLE_PAYLOADS['scan.complete']).toBeDefined();
+    expect(SAMPLE_PAYLOADS['scan.complete']).toHaveProperty('overallRisk');
   });
   it('has scan.failed payload', () => {
-    expect(SAMPLE_PAYLOADS['scan.failed']).toBeDefined();
+    expect(SAMPLE_PAYLOADS['scan.failed']).toHaveProperty('error');
   });
   it('has job.complete payload', () => {
-    expect(SAMPLE_PAYLOADS['job.complete']).toBeDefined();
+    expect(SAMPLE_PAYLOADS['job.complete']).toHaveProperty('jobId');
   });
   it('has claim.verdict_changed payload', () => {
-    expect(SAMPLE_PAYLOADS['claim.verdict_changed']).toBeDefined();
+    expect(SAMPLE_PAYLOADS['claim.verdict_changed']).toHaveProperty('claimId');
   });
   it('has 6 event types', () => {
     expect(Object.keys(SAMPLE_PAYLOADS)).toHaveLength(6);

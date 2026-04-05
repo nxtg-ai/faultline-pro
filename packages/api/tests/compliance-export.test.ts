@@ -44,7 +44,7 @@ describe('GET /compliance/export', () => {
     const body = JSON.parse(res.body);
     expect(body.entries).toBeDefined();
     expect(body.count).toBe(0);
-    expect(body.exportedAt).toBeDefined();
+    expect(body.exportedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it('CE2: JSON export includes recorded entries', async () => {

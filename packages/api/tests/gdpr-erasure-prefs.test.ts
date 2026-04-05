@@ -126,7 +126,7 @@ describe('GDPR erasure — notification prefs completeness (EP1–EP15)', () => 
     await server.inject({ method: 'DELETE', url: `/tenants/${tenantId}/data`, headers: adminHeaders() });
 
     // Tenant B's prefs should still exist
-    expect(getNotificationStore().getPrefs(key2.id)).toBeDefined();
+    expect(getNotificationStore().getPrefs(key2.id)!.keyId).toBe(key2.id);
   });
 
   // ── EP8: empty tenant (no keys) returns 0 notificationPrefs ──────────────

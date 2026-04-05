@@ -75,7 +75,7 @@ describe('POST /scan/batch — Basic', () => {
     const body = JSON.parse(res.body);
     // Gate 2: assert results are present before accessing downstream field
     expect(body.results.length).toBeGreaterThan(0);
-    expect(body.results[0].overallRisk).toBeDefined();
+    expect(typeof body.results[0].overallRisk).toBe('string');
   });
 
   it('B3. 200 with 1 text → total=1', async () => {

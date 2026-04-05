@@ -37,7 +37,7 @@ describe('POST /scan/compliance-gate', () => {
     expect(typeof body.gate.pass).toBe('boolean');
     expect(body.gate.exitCode).toBeDefined();
     expect(body.report).toBeDefined();
-    expect(body.scanId).toBeDefined();
+    expect(typeof body.scanId).toBe('string');
   });
 
   it('CG2: response includes articleEvidence in report', async () => {
@@ -399,7 +399,7 @@ describe('POST /scan/compliance-gate — remediations and threshold', () => {
       headers: { 'x-api-key': 'test-secret' },
     });
     const body = JSON.parse(res.body);
-    expect(body.gate).toBeDefined();
+    expect(body.gate).toHaveProperty('pass');
   });
 });
 

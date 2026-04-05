@@ -65,7 +65,7 @@ describe('KeyStore.rotate', () => {
     const entry = getKeyStore().create('Test Key');
     getKeyStore().rotate(entry.id);
     const updated = getKeyStore().validateById(entry.id);
-    expect(updated?.lastRotatedAt).toBeDefined();
+    expect(updated?.lastRotatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it('second rotation replaces previousKey (no stacking)', () => {

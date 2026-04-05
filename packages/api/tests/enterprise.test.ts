@@ -61,7 +61,7 @@ describe('POST /keys', () => {
     expect(body.name).toBe('CI Runner');
     expect(Array.isArray(body.permissions)).toBe(true);
     expect(body.createdAt).toBeDefined();
-    expect(body.key).toBeDefined();
+    expect(typeof body.key).toBe('string');
   });
 
   it('2. key secret is a 64-char hex string', async () => {
@@ -410,7 +410,7 @@ describe('GET /usage', () => {
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.keyId).toBeDefined();
-    expect(body.usage).toBeDefined();
+    expect(typeof body.usage).toBe('object');
   });
 
   it('27. usage is empty object before any scans', async () => {

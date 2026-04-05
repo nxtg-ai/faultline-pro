@@ -212,7 +212,7 @@ describe('GET /keys/dormant — HTTP', () => {
     });
 
     const body = JSON.parse(res.body);
-    expect(body.keys[0].lastUsedAt).toBeDefined();
+    expect(body.keys[0].lastUsedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it('KDo14: days clamped to 365 maximum', async () => {

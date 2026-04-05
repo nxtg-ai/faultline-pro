@@ -75,7 +75,7 @@ describe('POST /scan/diff', () => {
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.before).toBeDefined();
-    expect(body.after).toBeDefined();
+    expect(body.after).toHaveProperty('claims');
   });
 
   it('DF2: response has newClaims, removedClaims, changedVerdicts, trustScoreDelta, summary, inlineDiff', async () => {

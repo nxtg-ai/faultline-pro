@@ -171,7 +171,7 @@ describe('E2E smoke — full API surface', () => {
     expect(body.succeeded).toBe(2);
     expect(body.failed).toBe(0);
     expect(body.results.length).toBe(2); // Gate 2
-    expect(body.results[0].overallRisk).toBeDefined();
+    expect(typeof body.results[0].overallRisk).toBe('string');
   });
 
   it('S6. POST /scan/upload with mock PDF → 200', async () => {
@@ -185,7 +185,7 @@ describe('E2E smoke — full API surface', () => {
     });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
-    expect(body.overallRisk).toBeDefined();
+    expect(typeof body.overallRisk).toBe('string');
   });
 
   it('S7. POST /scan/report → 200, content-type application/pdf', async () => {
@@ -216,7 +216,7 @@ describe('E2E smoke — full API surface', () => {
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.scans.today).toBeGreaterThan(0);
-    expect(body.riskDistribution).toBeDefined();
+    expect(typeof body.riskDistribution).toBe('object');
   });
 
   it('S10. Audit log has entries from prior scans (Gate 2)', () => {

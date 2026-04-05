@@ -96,7 +96,7 @@ describe('Monitoring & Health Dashboard', () => {
     expect(body.providers.gemini).toBeDefined();
     expect(body.providers.openai).toBeDefined();
     expect(body.providers.claude).toBeDefined();
-    expect(body.providers.perplexity).toBeDefined();
+    expect(body.providers.perplexity).toHaveProperty('configured');
   });
 
   it('each provider entry has configured boolean', async () => {

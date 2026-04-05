@@ -73,7 +73,7 @@ describe('GraphQL API', () => {
         payload: gqlBody('{ scan(text: "Hello", provider: "gemini") { id provider } }'),
       });
       const body = JSON.parse(res.body);
-      expect(body.data.scan).toBeDefined();
+      expect(body.data.scan).toHaveProperty('id');
     });
 
     it('records scan in ScanStore', async () => {

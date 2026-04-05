@@ -38,7 +38,7 @@ describe('Tenants API', () => {
     expect(body.id).toBeDefined();
     expect(body.name).toBe('Acme Corp');
     expect(Array.isArray(body.keyIds)).toBe(true);
-    expect(body.createdAt).toBeDefined();
+    expect(body.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it('T2: GET /tenants lists all tenants (Gate 2: length > 0 after create)', async () => {

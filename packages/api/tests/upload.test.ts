@@ -139,7 +139,7 @@ describe('POST /scan/upload', () => {
     });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
-    expect(body.overallRisk).toBeDefined();
+    expect(typeof body.overallRisk).toBe('string');
   });
 
   it('401 missing x-api-key', async () => {

@@ -247,7 +247,7 @@ describe('Upload audit + usage', () => {
     // Any status: the hook should have run
     const entries = getAuditLogger().getEntries();
     const uploadEntry = entries.find((e) => e.endpoint === '/scan/upload');
-    expect(uploadEntry).toBeDefined();
+    expect(uploadEntry!.endpoint).toBe('/scan/upload');
   });
 
   it('C22. audit timestamp is a valid ISO string', async () => {

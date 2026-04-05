@@ -62,7 +62,7 @@ describe('OrgStore CRUD', () => {
 
   it('getBySlug returns org', () => {
     getOrgStore().create({ name: 'Slug Test' }, 'k1'); // space → hyphen in slug
-    expect(getOrgStore().getBySlug('slug-test')).toBeDefined();
+    expect(getOrgStore().getBySlug('slug-test')).toMatchObject({ slug: 'slug-test' });
   });
 
   it('listForKey returns only orgs the key belongs to', () => {
