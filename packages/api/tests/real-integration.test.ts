@@ -273,7 +273,7 @@ describe('Real Integration Oracle — end-to-end pipeline (no scan mock)', () =>
     const body = JSON.parse(res.body);
     // Deep scan enriches each claim with evidenceLinks
     expect(typeof body).toBe('object');
-    expect(body.claims ?? body.scan?.claims).toBeDefined();
+    expect(Array.isArray(body.claims ?? body.scan?.claims)).toBe(true);
   });
 
   // ── RI12: ScanHistory claimCount reflects real claim count ───────────────

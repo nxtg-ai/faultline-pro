@@ -115,7 +115,7 @@ describe('ScheduleRunner.runSchedule() — event type routing', () => {
 
     const history = getNotificationStore().getHistory('key-sc');
     const rec = history.find(r => r.eventType === 'scan.completed');
-    expect(rec).toBeDefined();
+    expect(rec!.eventType).toBe('scan.completed');
   });
 
   // SC7: success → scan.failed NOT dispatched
@@ -137,7 +137,7 @@ describe('ScheduleRunner.runSchedule() — event type routing', () => {
 
     const history = getNotificationStore().getHistory('key-sc');
     const rec = history.find(r => r.eventType === 'scan.failed');
-    expect(rec).toBeDefined();
+    expect(rec!.eventType).toBe('scan.failed');
   });
 
   // SC9: error → scan.completed NOT dispatched

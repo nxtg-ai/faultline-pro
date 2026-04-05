@@ -78,7 +78,7 @@ describe('POST /templates', () => {
     const body = JSON.parse(res.body);
     expect(body.id).toBeDefined();
     expect(body.name).toBe('minimal-template');
-    expect(body.createdAt).toBeDefined();
+    expect(body.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it('201 with all optional fields', async () => {

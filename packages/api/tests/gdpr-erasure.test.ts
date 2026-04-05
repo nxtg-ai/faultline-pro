@@ -152,7 +152,7 @@ describe('GDPR erasure endpoint (ER1–ER15)', () => {
 
   it('ER10: tenant record itself is not deleted — only its data', async () => {
     await server.inject({ method: 'DELETE', url: `/tenants/${tenantId}/data`, headers: adminHeaders() });
-    expect(getTenantStore().get(tenantId)).toBeDefined();
+    expect(getTenantStore().get(tenantId)).toMatchObject({ id: tenantId });
   });
 
   // ── ER11: idempotent — second call returns all-zero counts ────────────────

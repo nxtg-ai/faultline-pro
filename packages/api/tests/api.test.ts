@@ -85,7 +85,7 @@ describe('POST /scan', () => {
     expect(Array.isArray(body.claims)).toBe(true);
     // Gate 2: assert non-empty (mock returns 1 claim)
     expect(body.claims.length).toBeGreaterThan(0);
-    expect(body.ruleFindings).toBeDefined();
+    expect(Array.isArray(body.ruleFindings)).toBe(true);
   });
 
   it('accepts optional provider field', async () => {
@@ -429,7 +429,7 @@ describe('POST /scan — additional coverage', () => {
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.complianceReport).toBeDefined();
-    expect(body.complianceReport.riskTier).toBeDefined();
+    expect(typeof body.complianceReport.riskTier).toBe('string');
   });
 
   // CS1: POST /scan response includes complianceScore as a number 0–100

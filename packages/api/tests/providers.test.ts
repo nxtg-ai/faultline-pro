@@ -82,7 +82,7 @@ describe('POST /providers/register', () => {
     const body = JSON.parse(res.body);
     expect(body.name).toBe('my-plugin');
     expect(body.endpoint).toBe('https://example.com/verify');
-    expect(body.registeredAt).toBeDefined();
+    expect(body.registeredAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it('201 with optional authHeader', async () => {
@@ -197,7 +197,7 @@ describe('GET /providers/health', () => {
     const body = JSON.parse(res.body);
     expect(body.providers).toBeDefined();
     expect(body.providers.length).toBeGreaterThan(0); // Gate 2
-    expect(body.generatedAt).toBeDefined();
+    expect(body.generatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it('built-in providers present (gemini, openai, claude, perplexity, mock)', async () => {
@@ -278,7 +278,7 @@ describe('ProviderRegistry', () => {
       verify: async () => ({ status: 'supported', explanation: 'ok', confidence: 0.9 }),
     });
     const provider = registry.getProvider('test-builtin');
-    expect(provider).toBeDefined();
+    expect(provider!.name).toBe('test-builtin');
   });
 
   it('recordSuccess + recordError update health snapshot', () => {

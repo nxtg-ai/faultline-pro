@@ -143,7 +143,7 @@ describe('POST /scan/deep', () => {
     expect(body.overallRisk).toBe('medium');
     expect(Array.isArray(body.claims)).toBe(true);
     expect(body.claims.length).toBeGreaterThan(0);
-    expect(body.complianceReport).toBeDefined();
+    expect(body.complianceReport).toHaveProperty('riskTier');
   });
 
   it('requires API key — returns 401 without key', async () => {
@@ -177,7 +177,7 @@ describe('POST /scan/deep', () => {
     expect(res2.headers['x-cache']).toBe('HIT');
     expect(res2.statusCode).toBe(200);
     const body2 = JSON.parse(res2.body);
-    expect(body2.evidenceLinks).toBeDefined();
+    expect(Array.isArray(body2.evidenceLinks)).toBe(true);
   });
 
   it('each source has uri, title, available, statusCode, evidenceScore fields', async () => {

@@ -25,7 +25,7 @@ describe('GET /health — subsystem info', () => {
     expect(body.subsystems).toBeDefined();
     expect(body.subsystems.keyStore).toBeDefined();
     expect(body.subsystems.scanEngine).toBeDefined();
-    expect(body.providers).toBeDefined();
+    expect(typeof body.providers).toBe('object');
   });
 
   it('H2. /health subsystems.keyStore.activeKeys is a non-negative integer', async () => {

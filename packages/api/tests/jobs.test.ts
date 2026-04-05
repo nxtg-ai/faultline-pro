@@ -189,7 +189,7 @@ describe('DELETE /jobs', () => {
       headers: { 'x-api-key': 'admin' },
     });
     expect(res.statusCode).toBe(404);
-    expect(JSON.parse(res.body).error).toBeDefined();
+    expect(JSON.parse(res.body).error).toBe('Job not found.');
   });
 });
 

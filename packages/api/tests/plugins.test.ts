@@ -128,7 +128,7 @@ describe('POST /plugins/publish', () => {
     });
     expect(res.statusCode).toBe(400);
     const body = JSON.parse(res.body);
-    expect(body.details).toBeDefined();
+    expect(Array.isArray(body.details)).toBe(true);
   });
 
   it('returns 409 when same name published by different author', async () => {

@@ -97,7 +97,7 @@ describe('GraphQL query bounds', () => {
     });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
-    expect(body.data.scans).toBeDefined();
+    expect(Array.isArray(body.data.scans)).toBe(true);
   });
 
   it('GQL2: audit query defaults to max 500', async () => {
@@ -108,7 +108,7 @@ describe('GraphQL query bounds', () => {
     });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
-    expect(body.data.audit).toBeDefined();
+    expect(Array.isArray(body.data.audit)).toBe(true);
   });
 
   it('GQL3: scanBatch caps at 20 texts', async () => {
