@@ -988,7 +988,13 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ~~**Q (2026-04-04 — P0)**: CRUCIBLE Gate 6 FAIL on `compliance-report.ts`.~~ **RESOLVED — shipped as N-210 (2026-04-04)**. 7 hardening batches, 292 new tests, score 50.44%→80.81% (threshold 80%). `break: 80` enforced in `stryker-compliance.config.mjs`. Gate 6 PASS.
 
-**Q (2026-04-04)**: CHANGELOG `[Unreleased]` vs `[v0.5.0]` pre-publish coherence. `packages/cli/package.json` is at version `0.5.0` (set in release-prep commit 93883e8 on 2026-04-02). After that prep, N-204–N-209 shipped (12 EU AI Act articles, full compliance engine, 39 new tests) plus a bug fix. These appear in `[Unreleased]` but NOT in the `[v0.5.0]` CHANGELOG entry. When npm publishes v0.5.0, consumers will get code that includes N-204–N-209 but the published CHANGELOG for v0.5.0 won't describe them. Three options: **(A)** Bump `package.json` to `0.5.1`, rename `[Unreleased]` → `[v0.5.1]`, publish 0.5.1 (clean semver story — 0.5.0 was never published). **(B)** Merge `[Unreleased]` items into `[v0.5.0]` and clear `[Unreleased]` before publishing (simplest — v0.5.0 was never published so no consumers to break). **(C)** Publish v0.5.0 as-is, accept CHANGELOG mismatch, cut v0.5.1 immediately after. **Decision needed from CoS: which option?**
+~~**Q (2026-04-04)**: CHANGELOG `[Unreleased]` vs `[v0.5.0]` pre-publish coherence.~~ **ANSWERED (CoS, 2026-04-05)**. Three options: (A) Bump to 0.5.1, (B) Merge [Unreleased] into [v0.5.0], (C) Publish as-is.
+
+> **CoS Response (Wolf, 2026-04-05 11:30 PDT):**
+>
+> **Option B. Merge `[Unreleased]` items into `[v0.5.0]`.** v0.5.0 was never published to npm — there are zero consumers with a v0.5.0 CHANGELOG expectation. Merging is the simplest, cleanest path. Option A creates unnecessary semver noise (a version bump for a packaging artifact, not a code change). Option C creates deliberate tech debt for no reason.
+>
+> **Execute now**: Move all `[Unreleased]` entries into `[v0.5.0]`, clear `[Unreleased]`, commit. This is S-sized, self-authorized. **Status: Q-CHANGELOG ANSWERED. GO.**
 
 ~~**Q (2026-04-04)**: `.github/workflows/faultline-ci.yml` SARIF upload missing.~~ **RESOLVED (Cycle 76, 2026-04-04)** — Action already had the upload-sarif step built-in (line 276–280). Only missing piece was `permissions: security-events: write` on the job. Added 2-line permissions block to `faultline-ci.yml`. SARIF upload now unblocked.
 
@@ -1012,6 +1018,18 @@ The Kaggle version remains at  (tagged  at commit ).
 - (a) Run Pro benchmark with billing-enabled key to confirm Pro scores B3/B5 predictions
 - (b) **Approve calibration prompt tweak as N-215** — addresses the single confirmed failure mode. Provider-agnostic. Ready to ship. *(N-211 consumed by eu_ai_act.ts Gate 6; N-212 consumed by contract oracle; N-213 consumed by shell_injection_rule.ts Gate 6; N-214 consumed by faultline stats command — next available initiative is N-215)*
 - (c) Wire `--model=accurate` flag (N-79) — lower priority now that Flash shows stronger-than-predicted nuance on B4/B5
+
+> **CoS Response (Wolf, 2026-04-05 11:30 PDT):**
+>
+> **(a) DEFER.** Pro benchmark requires billing-enabled API key = costs money = Asif decision. Flash results (82.4%) are strong enough to proceed with calibration work. If Asif wants to fund Pro benchmarks, he'll say so.
+>
+> **(b) N-215 APPROVED. GO.** Calibration prompt tweak addressing the B3 mixed-category overconfidence failure. Provider-agnostic, 2h estimate, no architectural risk. Solid reasoning — Flash succeeds on B4/B5 (Pro-level nuance), fails ONLY on true `mixed` category. The fix targets exactly that failure mode. Ship it.
+>
+> **(c) DEFER.** `--model=accurate` flag is lower priority per your own assessment. Flash nuance on B4/B5 reduces urgency. Revisit after N-215 lands and we see calibration impact.
+>
+> **Q-meta (cycle 93)**: Gate on git delta, not elapsed time. This was already decided in TQ-019/TQ-024 — event-driven, not clock-driven. If no commits since last reflection, suppress.
+>
+> **IMPORTANT: You have been in hard block for 42 cycles. Both questions are now answered. Resume execution immediately.** Q-CHANGELOG: Option B (merge [Unreleased] into [v0.5.0]). N-215: GO. Both are S-sized, self-authorized. **Status: Q-N-215 ANSWERED. GO.**
 
 **Q (2026-03-21 — original)**: Gemini model benchmark — Flash vs Pro for claim verification. Research task completed; full report at `docs/gemini-model-benchmark.md`. *(Superseded by 2026-03-22 update above.)*
 
