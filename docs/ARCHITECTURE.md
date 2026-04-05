@@ -207,13 +207,13 @@ The `cli/` directory adds a full command-line interface on top of the core pipel
 
 ## Test Architecture
 
-**4,364 tests across 187 files** (CLI + API + Python SDK + integration + property-based + contract + mutation).
+**4,398 tests across 188 files** (CLI + API + Python SDK + integration + property-based + contract + mutation).
 
 ### Oracle Coverage (CRUCIBLE Critical tier — all 4 types required)
 
 | Oracle Type | Count | Tool | Initiative |
 |-------------|-------|------|-----------|
-| Example-based | 4,364 tests | Vitest | ongoing |
+| Example-based | 4,398 tests | Vitest | ongoing |
 | Property-based | 19 properties | fast-check | N-76 |
 | Contract | 43 Zod schemas | Zod + Vitest | N-77/N-212 |
 | Integration / E2E | 12 scenarios | Vitest | N-81 |
