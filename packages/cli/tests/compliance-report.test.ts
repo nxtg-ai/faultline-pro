@@ -1300,7 +1300,7 @@ describe('CLI: compliance-report command', () => {
     expect(exitCode).toBe(0);
     expect(existsSync(outFile)).toBe(true);
     const parsed = JSON.parse(require('fs').readFileSync(outFile, 'utf-8'));
-    expect(parsed.articleEvidence).toBeDefined();
+    expect(Array.isArray(parsed.articleEvidence)).toBe(true);
   });
 
   it('--ci shows article-by-article results', async () => {
@@ -2430,7 +2430,7 @@ describe('renderComplianceReportSarif()', () => {
   it('SF1: returns valid JSON', () => {
     const sarif = renderComplianceReportSarif(makeReport(), makeGate());
     const parsed = JSON.parse(sarif);
-    expect(parsed).toBeDefined();
+    expect(parsed).toHaveProperty('runs');
   });
 
   it('SF2: contains SARIF 2.1.0 schema and version', () => {
@@ -2542,7 +2542,7 @@ describe('renderComplianceReportSarif()', () => {
     const report = buildEuComplianceReport(makeScan({ overallRisk: 'high' }), { projectName: 'TestProject' });
     const gate = evaluateComplianceGate(report);
     const parsed = JSON.parse(renderComplianceReportSarif(report, gate));
-    expect(parsed.runs[0].invocations[0].properties.annexIIIPassRate).toBeDefined();
+    expect(typeof parsed.runs[0].invocations[0].properties.annexIIIPassRate).toBe('number');
   });
 
   it('SF15: no Annex III rules for low-risk reports', () => {

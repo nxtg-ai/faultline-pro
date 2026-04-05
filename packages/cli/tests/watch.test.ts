@@ -422,7 +422,7 @@ describe('processFileChange', () => {
     writeFileSync(file, 'Content here.');
     expect(debouncer.getLastScan(file)).toBeUndefined();
     await processFileChange(file, debouncer, opts());
-    expect(debouncer.getLastScan(file)).toBeDefined();
+    expect(typeof debouncer.getLastScan(file)).toBe('number');
   });
 
   it('should parse scan result as JSON', async () => {
@@ -431,8 +431,8 @@ describe('processFileChange', () => {
     await processFileChange(file, debouncer, opts());
     const parsed = JSON.parse(results[0].output);
     expect(parsed.provider).toBe('Mock Provider');
-    expect(parsed.claims).toBeDefined();
-    expect(parsed.ruleFindings).toBeDefined();
+    expect(Array.isArray(parsed.claims)).toBe(true);
+    expect(Array.isArray(parsed.ruleFindings)).toBe(true);
   });
 
   it('should use findings tracker when provided', async () => {
