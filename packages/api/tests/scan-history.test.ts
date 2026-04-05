@@ -65,7 +65,7 @@ describe('ScanHistory — integration tests', () => {
     expect(recent[0].overallRisk).toBe('low');
     expect(recent[0].claimCount).toBe(2);
     expect(recent[0].textPreview).toContain('moon landing');
-    expect(recent[0].id).toBeTruthy();
+    expect(typeof recent[0].id).toBe('string');
   });
 
   // SH2: GET /dashboard includes scanFeed array

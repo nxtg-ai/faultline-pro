@@ -214,7 +214,7 @@ describe('GET /claims/trending', () => {
       expect(typeof claim.frequency).toBe('number');
       expect(claim.firstSeen).toBeTruthy();
       expect(claim.lastSeen).toBeTruthy();
-      expect(claim.lastVerdict).toBeTruthy();
+      expect(typeof claim.lastVerdict).toBe('string');
     }
   });
 

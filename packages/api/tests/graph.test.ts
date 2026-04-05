@@ -46,7 +46,7 @@ describe('GET /scan/:id/graph', () => {
     });
     expect(res.statusCode).toBe(404);
     const body = JSON.parse(res.body);
-    expect(body.error).toBeTruthy();
+    expect(typeof body.error).toBe('string');
   });
 
   it('returns 200 with mermaid for known scan', async () => {
@@ -128,7 +128,7 @@ describe('GET /scan/:id/graph', () => {
 
     const res = await server.inject({ method: 'GET', url: `/scan/${stored.id}/graph` });
     const body = JSON.parse(res.body);
-    expect(body.scannedAt).toBeTruthy();
+    expect(body.scannedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it('handles scan with no claims — returns empty graph', async () => {

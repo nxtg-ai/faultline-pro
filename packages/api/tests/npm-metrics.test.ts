@@ -33,7 +33,7 @@ describe('NpmMetricsStore', () => {
     expect(result.package).toBe('@nxtg/faultline');
     expect(result.totalDownloads).toBe(50);
     expect(result.downloads).toHaveLength(3);
-    expect(result.lastFetched).toBeTruthy();
+    expect(result.lastFetched).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it('get returns null for unknown package', () => {
@@ -101,7 +101,7 @@ describe('NpmMetricsStore', () => {
 
   it('lastPollTime updates after record', () => {
     getNpmMetricsStore().record('test', [{ day: '2026-03-30', downloads: 1 }]);
-    expect(getNpmMetricsStore().lastPollTime).toBeTruthy();
+    expect(getNpmMetricsStore().lastPollTime).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 });
 

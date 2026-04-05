@@ -429,7 +429,7 @@ describe('POST /orgs/:id/members/invite', () => {
     const body = JSON.parse(res.body);
     expect(body.token).toBeTruthy();
     expect(body.role).toBe('analyst');
-    expect(body.expiresAt).toBeTruthy();
+    expect(body.expiresAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it('returns 403 for non-admin', async () => {

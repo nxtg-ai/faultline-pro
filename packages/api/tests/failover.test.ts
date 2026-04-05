@@ -201,7 +201,7 @@ describe('Failover — integration', () => {
 
     expect(res.statusCode).toBe(500);
     const body = JSON.parse(res.body);
-    expect(body.error).toBeTruthy();
+    expect(typeof body.error).toBe('string');
   });
 
   it('POST /scan where circuit-broken provider is skipped automatically', async () => {

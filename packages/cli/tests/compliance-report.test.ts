@@ -830,7 +830,7 @@ describe('buildEuComplianceReport()', () => {
 
   it('defaults projectName when not provided', () => {
     const report = buildEuComplianceReport(makeScan());
-    expect(report.projectName).toBeTruthy();
+    expect(typeof report.projectName).toBe('string');
   });
 
   // ── N-187: Evidence strength scoring ──────────────────────────────────────

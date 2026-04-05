@@ -83,7 +83,7 @@ describe('GET /claims/:id/explain', () => {
     const res = await server.inject({ method: 'GET', url: '/claims/does-not-exist/explain' });
     expect(res.statusCode).toBe(404);
     const body = JSON.parse(res.body);
-    expect(body.error).toBeTruthy();
+    expect(typeof body.error).toBe('string');
   });
 
   // EX3: Response shape — claim, claimType, verdict, confidence, reasoningChain, evidenceFound, suggestions
@@ -268,6 +268,6 @@ describe('GET /claims/:id/explain', () => {
     expect(typeof entry.seenAt).toBe('string');
     expect(entry.title).toBe('My Source');
     expect(entry.uri).toBe('https://example.com/source');
-    expect(entry.seenAt).toBeTruthy();
+    expect(entry.seenAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 });

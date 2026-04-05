@@ -402,7 +402,7 @@ describe('POST /schedules/:id/trigger', () => {
     expect(res.statusCode).toBe(202);
     const body = JSON.parse(res.body);
     expect(body.scheduleId).toBe(s.id);
-    expect(body.triggeredAt).toBeTruthy();
+    expect(body.triggeredAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it('returns 404 for unknown schedule', async () => {

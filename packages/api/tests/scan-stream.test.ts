@@ -120,7 +120,7 @@ describe('GET /scan/stream — claim_verified events (WS5–WS8)', () => {
     const events = parseSSE(res.body);
     const verified = events.filter(e => e['type'] === 'claim_verified');
     for (const ev of verified) {
-      expect((ev['claim'] as { id: string }).id).toBeTruthy();
+      expect(typeof (ev['claim'] as { id: string }).id).toBe('string');
     }
   });
 

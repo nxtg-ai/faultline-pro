@@ -56,7 +56,7 @@ describe('GET /claims/:id/attribution', () => {
     const res = await server.inject({ method: 'GET', url: '/claims/does-not-exist/attribution' });
     expect(res.statusCode).toBe(404);
     const body = JSON.parse(res.body);
-    expect(body.error).toBeTruthy();
+    expect(typeof body.error).toBe('string');
   });
 
   it('returns 200 with attribution chain after scan', async () => {
@@ -138,7 +138,7 @@ describe('GET /claims/:id/attribution', () => {
       expect(src.title).toBeTruthy();
       expect(src.uri).toBeTruthy();
       expect(src.scanId).toBeTruthy();
-      expect(src.seenAt).toBeTruthy();
+      expect(src.seenAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     }
   });
 

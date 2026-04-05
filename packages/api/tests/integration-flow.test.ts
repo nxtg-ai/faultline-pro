@@ -250,7 +250,7 @@ describe('F3: Webhook delivery on scan.complete', () => {
     });
     expect(res.statusCode).toBe(201);
     webhookId = JSON.parse(res.body).id;
-    expect(webhookId).toBeTruthy();
+    expect(typeof webhookId).toBe('string');
   });
 
   it('F3.2 POST /scan fires webhook with correct event and HMAC (Gate 2)', async () => {
@@ -272,7 +272,7 @@ describe('F3: Webhook delivery on scan.complete', () => {
 
     const payload = JSON.parse(init.body as string);
     expect(payload.event).toBe('scan.complete'); // Gate 2: correct event type
-    expect((init.headers as Record<string, string>)['X-Faultline-Signature']).toBeTruthy(); // HMAC present
+    expect((init.headers as Record<string, string>)['X-Faultline-Signature']).toMatch(/^sha256=[0-9a-f]+$/); // HMAC present
 
     vi.unstubAllGlobals();
   });

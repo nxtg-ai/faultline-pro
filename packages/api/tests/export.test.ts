@@ -217,7 +217,7 @@ describe('POST /export', () => {
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.count).toBe(0);
-    expect(body.message).toBeTruthy();
+    expect(typeof body.message).toBe('string');
   });
 
   // ── Defaults ─────────────────────────────────────────────────────────────────

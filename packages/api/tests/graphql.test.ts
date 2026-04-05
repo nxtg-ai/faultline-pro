@@ -62,7 +62,7 @@ describe('GraphQL API', () => {
       expect(body.data.scan.claims[0].text).toBe('The sky is blue.');
       expect(body.data.scan.complianceReport.riskTier).toBe('minimal');
       expect(body.data.scan.id).toBeTruthy();
-      expect(body.data.scan.scannedAt).toBeTruthy();
+      expect(body.data.scan.scannedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     });
 
     it('accepts an optional provider argument', async () => {
@@ -238,7 +238,7 @@ describe('GraphQL API', () => {
       expect(body.data.createKey.name).toBe('my-key');
       expect(body.data.createKey.permissions).toContain('scan');
       expect(body.data.createKey.id).toBeTruthy();
-      expect(body.data.createKey.createdAt).toBeTruthy();
+      expect(body.data.createKey.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     });
 
     it('creates a key with custom permissions', async () => {

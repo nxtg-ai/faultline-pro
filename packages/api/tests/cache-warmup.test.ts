@@ -189,7 +189,7 @@ describe('WarmupStore', () => {
     const s = getWarmupStore().getSummary();
     expect(s.successCount).toBe(1);
     expect(s.errorCount).toBe(1);
-    expect(s.lastRun).toBeTruthy();
+    expect(s.lastRun).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 });
 
@@ -466,7 +466,7 @@ describe('POST /cache/warmup/run', () => {
     expect(body.succeeded).toBe(1);
     expect(body.failed).toBe(0);
     expect(body.results).toHaveLength(1);
-    expect(body.triggeredAt).toBeTruthy();
+    expect(body.triggeredAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it('returns 401 without auth', async () => {

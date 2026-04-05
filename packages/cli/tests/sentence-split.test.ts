@@ -120,8 +120,8 @@ describe('guaranteeClaimPerSentence', () => {
     ];
     const text = 'AI will cure cancer by 2025. The study confirms this finding. GPT-5 has 98% accuracy.';
     const result = guaranteeClaimPerSentence(text, claims);
-    expect(result.find(c => c.id === 'c1')).toBeTruthy();
-    expect(result.find(c => c.id === 'c2')).toBeTruthy();
+    expect(result.find(c => c.id === 'c1')).toMatchObject({ id: 'c1' });
+    expect(result.find(c => c.id === 'c2')).toMatchObject({ id: 'c2' });
   });
 
   it('does not add fragments shorter than 3 words as claims', () => {
