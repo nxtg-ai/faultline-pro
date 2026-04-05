@@ -186,7 +186,7 @@ Contract tests are Gate-6 adjacent (they harden the runtime contract) but serve 
 
 ```
 Current oracle coverage:
-  example-based: 4,398 tests
+  example-based: 4,403 tests
   property-based: 19 properties (fast-check, N-76)
   contract:       43 Zod schema tests (N-77/N-212)
   integration:    12 E2E tests (N-81)

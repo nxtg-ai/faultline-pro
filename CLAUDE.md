@@ -96,7 +96,7 @@ Rules that apply to this project (Critical tier — claim forensics is safety-cr
 - **Gate 7**: Spec-test traceability — new integration/E2E tests must cite a NEXUS acceptance criterion via `// Validates: N-NN (...)` or `// NEXUS:` comment. **Denominator = integration/E2E test files only** (not all test files — unit tests and mutation hardening tests don't belong to acceptance criteria). Current: 7 integration/E2E files; 7/7 have spec refs (100%) after N-141. Not enforced by hook; tracked manually.
 - **Oracle tier: CRITICAL** — all 4 oracle types required on claim forensics (example-based, property-based, contract, integration).
 
-Current oracle coverage: example-based (✅ 4,398 tests), property-based (✅ 19 properties — fast-check, N-76), contract (✅ 43 Zod schema tests — N-77/N-212), integration (✅ 12 E2E tests, N-81).
+Current oracle coverage: example-based (✅ 4,403 tests), property-based (✅ 19 properties — fast-check, N-76), contract (✅ 43 Zod schema tests — N-77/N-212), integration (✅ 12 E2E tests, N-81).
 
 ## Dx3 Brain Integration
 On every session start, recall relevant context from Dx3 before starting work:
