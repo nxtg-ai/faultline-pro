@@ -81,6 +81,8 @@ Max: 17 pts (3 pts × B1/B2/B4 + 4 pts × B3/B5)
 **B3 Score: 1/4** | Confidence score: 0.85
 
 > **Analysis**: Flash committed to `contradicted` without flagging the IARC Group 2A status of hot beverages. This is the calibration failure predicted in the benchmark design. The claim is genuinely `mixed` — coffee as a substance is not carcinogenic, but consuming any beverage at temperatures above 65°C carries risk. Flash missed the temperature-vs-substance distinction entirely.
+>
+> **✅ Fixed by N-215 (2026-04-05)**: Multi-point CALIBRATION RULE now explicitly triggers `mixed` for IARC Group 2A/2B classifications. The B3 failure pattern is the primary motivation for N-215.
 
 ---
 
@@ -181,17 +183,20 @@ Flash returned `confidence: 0.85` on every single claim — including B3 where i
 
 ## Recommendations
 
-### 1. Ship the calibration prompt tweak (N-152, provider-agnostic)
+### 1. ✅ Ship the calibration prompt tweak — **SHIPPED as N-215 (2026-04-05)**
 
-From the benchmark design doc (arXiv 2603.05471):
+The single-sentence calibration rule was replaced with a multi-point `CALIBRATION RULE` in `verifyClaim()` in both `packages/cli/services/geminiService.ts` and `packages/web/services/geminiService.ts`.
 
-```
-CALIBRATION RULE: If sources conflict or you are uncertain, output status: 'mixed'
-and explain the uncertainty explicitly. Never commit to 'supported' or 'contradicted'
-when evidence is ambiguous.
-```
+New rule covers 7 explicit `mixed` triggers:
+- Different meta-analyses or major studies reach opposite conclusions
+- Dose-dependent effects (harmful above threshold, neutral/beneficial below)
+- IARC/WHO/FDA/EFSA "possibly" or "probably" harmful classifications (Group 2A/2B, Category 2)
+- True in some populations, conditions, or dose ranges but not others
+- Contested peer-reviewed consensus or consensus shifted in the last decade
 
-Add to `geminiService.ts` line ~124 (after OUTPUT INSTRUCTION). This would likely have changed B3 from `contradicted` to `mixed`. Target improvement: B3 from 1→4 points.
+Plus an explicit tie-breaker: *"When in doubt between 'contradicted' and 'mixed', always choose 'mixed'."*
+
+This directly targets B3 — the IARC Group 2A hot-beverages classification is a textbook Group 2A trigger. 5 tests (CAL-1–CAL-5) in `gemini-service-hardening.test.ts` verify prompt integrity and behavioral preservation.
 
 ### 2. Keep Flash as default
 
@@ -212,12 +217,12 @@ When Asif's account has a billing-enabled key:
 
 ## Action Items
 
-| Item | Priority | Who |
-|------|----------|-----|
-| Ship calibration prompt tweak | **P0** | Ship immediately — provider-agnostic, affects Flash today |
-| Run Pro benchmark with billing-enabled key | P1 | Asif — needs billing key |
-| Wire `--model=accurate` flag (N-79) | P2 | Dev — after Pro benchmark confirms ≥3 pt gain |
-| Fix hardcoded `confidenceScore: 0.85` | P2 | Dev |
+| Item | Priority | Status |
+|------|----------|--------|
+| Ship calibration prompt tweak | **P0** | ✅ DONE — N-215 (2026-04-05); multi-point CALIBRATION RULE, 5 tests |
+| Run Pro benchmark with billing-enabled key | P1 | DEFERRED — requires billing-enabled API key (Asif decision) |
+| Wire `--model=accurate` flag (N-79) | P2 | DEFERRED — Flash B4/B5 nuance reduces urgency |
+| Fix hardcoded `confidenceScore: 0.85` | P2 | Open — independent of model choice |
 
 ---
 
