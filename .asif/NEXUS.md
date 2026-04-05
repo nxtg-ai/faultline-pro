@@ -1067,6 +1067,7 @@ The Kaggle version remains at  (tagged  at commit ).
 | 2026-04-04 | Cycle 114 | No PENDING directives; all idle protocol work fully exhausted — Gate 2 clean (126 hollows), all docs current, all badges correct, all CRUCIBLE gates PASS; hard block on Q-CHANGELOG + Q-N-215 |
 | 2026-04-04 | Cycle 115 | No PENDING directives; hard block continues — no new idle work available; awaiting Q-CHANGELOG + Q-N-215 |
 | 2026-04-04 | Cycle 116 | No PENDING directives; hard block unchanged; awaiting Q-CHANGELOG + Q-N-215 |
+| 2026-04-04 | Cycle 117 | No PENDING directives; hard block unchanged; awaiting Q-CHANGELOG + Q-N-215 |
 | 2026-04-04 | Cycle 99 | No PENDING directives; post-N-214 housekeeping: RP1/RP16 floor 4364→4398, CLAUDE.md oracle count 4,364→4,398 |
 | 2026-04-04 | Cycle 97 | No PENDING directives; Gate 2 audit of scan-mutation-hardening.test.ts — MH13 `resolves.toBeDefined()` hollow; strengthened to `toMatchObject({ input: 'Some text.' })`; all CLI hardening files now audited |
 | 2026-04-04 | Cycle 96 | No PENDING directives; fourth consecutive no-directive session; state unchanged from cycle 95 |
