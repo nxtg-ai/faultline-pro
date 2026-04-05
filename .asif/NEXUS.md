@@ -1051,6 +1051,7 @@ The Kaggle version remains at  (tagged  at commit ).
 | 2026-04-04 | Cycle 91 | No PENDING directives; idle protocol: RP1/RP16 badge floor bumped 3886→4364; stale comments updated to reflect N-213 actual count |
 | 2026-04-04 | Cycle 90 | No PENDING directives; idle protocol: CRUCIBLE Gate 2 audit SH-B5 + SH-R2 — both hollow toBeDefined() with no downstream assertions; strengthened (SH-B5 +severity+message, SH-R2 +severity); 50 tests still GREEN |
 | 2026-04-04 | Cycle 100 | No PENDING directives; Gate 2 audit all API hardening files — 6 files / 11 toBeDefined() hits, all non-hollow; Gemini TQ slot corrected N-214→N-215 |
+| 2026-04-04 | Cycle 101 | No PENDING directives; Gate 2 audit CLI non-hardening files — 5 hollow terminal toBeDefined() found and strengthened (compliance-report L1303 → Array.isArray; SF1 → toHaveProperty('runs'); SF14 → typeof 'number'; watch L425 → typeof 'number'; watch L434–436 → Array.isArray); 4,398 tests GREEN |
 | 2026-04-04 | Cycle 99 | No PENDING directives; post-N-214 housekeeping: RP1/RP16 floor 4364→4398, CLAUDE.md oracle count 4,364→4,398 |
 | 2026-04-04 | Cycle 97 | No PENDING directives; Gate 2 audit of scan-mutation-hardening.test.ts — MH13 `resolves.toBeDefined()` hollow; strengthened to `toMatchObject({ input: 'Some text.' })`; all CLI hardening files now audited |
 | 2026-04-04 | Cycle 96 | No PENDING directives; fourth consecutive no-directive session; state unchanged from cycle 95 |
