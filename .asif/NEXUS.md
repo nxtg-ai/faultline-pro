@@ -272,6 +272,22 @@ The Kaggle version remains at  (tagged  at commit ).
 
 > **107 directives archived** (+ D-163 through D-169 + MAXOUT BURN).
 
+### DIRECTIVE-NXTG-20260404-01 — P1: npm Download Metrics Pipeline
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-04-04 17:12 | **Estimate**: M | **Status**: PENDING
+
+**Problem**: `@nxtg/faultline` is published on npm but we have ZERO visibility on downloads, active users, or error rates. EU AI Act revenue track needs usage data to validate product-market fit before the Aug 2 deadline (119 days).
+
+**Deliverable**: Build a basic npm download tracking module:
+1. Fetch npm download counts via `https://api.npmjs.org/downloads/point/last-week/@nxtg/faultline`
+2. Store weekly snapshots (JSON or Dx3 record)
+3. Surface in CLI: `faultline stats` shows install count + trend
+4. Optional: opt-in anonymous telemetry for active usage (must be opt-in, not default)
+
+**Acceptance**: `faultline stats` returns real npm download data. Weekly snapshot persisted.
+
+---
+
 ### DIRECTIVE-NXTG-20260320-03 — P0: Claim Extraction Misses Separate Sentences
 **From**: NXTG-AI CoS (Wolf) via Asif UAT | **Priority**: P0
 **Injected**: 2026-03-20 12:45 | **Estimate**: M | **Status**: DONE
