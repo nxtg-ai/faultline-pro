@@ -122,6 +122,6 @@ describe('createScanSpinner — MACHINE_FORMATS', () => {
     Object.defineProperty(process.stderr, 'isTTY', { value: false, configurable: true });
     // Should not throw — undefined format falls back to '' via ?? ''
     const spinner = await createScanSpinner(undefined);
-    expect(spinner).toBeDefined();
+    expect(typeof spinner.succeed).toBe('function');
   });
 });
