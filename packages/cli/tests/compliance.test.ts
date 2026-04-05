@@ -46,7 +46,7 @@ describe('EU AI Act Risk Mapping', () => {
       expect(EU_RISK_CATEGORIES.unacceptable).toBeDefined();
       expect(EU_RISK_CATEGORIES.high).toBeDefined();
       expect(EU_RISK_CATEGORIES.limited).toBeDefined();
-      expect(EU_RISK_CATEGORIES.minimal).toBeDefined();
+      expect(EU_RISK_CATEGORIES.minimal).toHaveProperty('title');
     });
 
     it('each category should have articles and required actions', () => {
@@ -56,7 +56,7 @@ describe('EU AI Act Risk Mapping', () => {
         expect(cat.articles.length).toBeGreaterThan(0);
         expect(cat.requiredActions.length).toBeGreaterThan(0);
         expect(cat.title).toBeTruthy();
-        expect(cat.description).toBeTruthy();
+        expect(cat.description.length).toBeGreaterThan(0);
       }
     });
   });
@@ -194,7 +194,7 @@ describe('Compliance Report Generator', () => {
     expect(report.euRiskSummary).toBeDefined();
     expect(report.claimMappings).toHaveLength(1);
     expect(report.triggeredArticles).toBeDefined();
-    expect(report.mitigations).toBeDefined();
+    expect(Array.isArray(report.mitigations)).toBe(true);
   });
 
   it('should count risk tiers correctly', () => {

@@ -116,8 +116,8 @@ describe('types.ts — Type Definitions', () => {
         critique: 'Structural weaknesses detected.',
         improvedPrompt: 'Ask with sources.',
       };
-      expect(state.critique).toBeDefined();
-      expect(state.improvedPrompt).toBeDefined();
+      expect(typeof state.critique).toBe('string');
+      expect(typeof state.improvedPrompt).toBe('string');
     });
 
     it('should cover all step values', () => {

@@ -65,7 +65,7 @@ describe('CLI: main()', () => {
       expect(result.claims.length).toBeGreaterThan(0);
       expect(result.overallRisk).toBeDefined();
       expect(result.complianceReport).toBeDefined();
-      expect(result.complianceReport.euRiskSummary).toBeDefined();
+      expect(result.complianceReport.euRiskSummary).toHaveProperty('highestTier');
     });
 
     it('mock provider should produce valid compliance report', async () => {
@@ -201,7 +201,7 @@ describe('CLI: main()', () => {
       // Check that at least one result location uses the actual input path
       const run = parsed.runs[0];
       expect(run.originalUriBaseIds).toBeDefined();
-      expect(run.originalUriBaseIds['%SRCROOT%']).toBeDefined();
+      expect(typeof run.originalUriBaseIds['%SRCROOT%']).toBe('object');
     });
 
     it('should reject invalid --output-format', async () => {
@@ -331,7 +331,7 @@ describe('CLI: main()', () => {
       expect(batch.summary.totalClaims).toBeGreaterThanOrEqual(3);
       expect(batch.summary.riskCounts).toBeDefined();
       expect(batch.summary.highestRisk).toBeDefined();
-      expect(batch.summary.euTierCounts).toBeDefined();
+      expect(batch.summary.euTierCounts).toHaveProperty('minimal');
     });
 
     it('should include directory path and per-file results', async () => {
@@ -969,7 +969,7 @@ describe('CLI: renderReportAs()', () => {
     it('should return valid JSON', () => {
       const output = renderReportAs(mockData, 'sarif');
       const parsed = JSON.parse(output);
-      expect(parsed).toBeDefined();
+      expect(parsed).toHaveProperty('$schema');
     });
 
     it('should have SARIF 2.1.0 $schema and version', () => {
@@ -1145,7 +1145,7 @@ describe('CLI: renderReportAs()', () => {
       expect(invocation.properties.overallRisk).toBe('low');
       expect(invocation.properties.euHighestTier).toBe('minimal');
       expect(invocation.properties.totalClaims).toBe(1);
-      expect(invocation.properties.confidenceDistribution).toBeDefined();
+      expect(typeof invocation.properties.confidenceDistribution).toBe('object');
     });
 
     it('should include ruleIndex referencing correct rule definition', () => {
@@ -1225,7 +1225,7 @@ describe('CLI: renderReportAs()', () => {
       expect(result.relatedLocations[0].id).toBe(0);
       expect(result.relatedLocations[0].message.text).toContain('Claim:');
       expect(result.relatedLocations[0].message.text).toContain('Earth is round.');
-      expect(result.relatedLocations[0].physicalLocation.artifactLocation).toBeDefined();
+      expect(typeof result.relatedLocations[0].physicalLocation.artifactLocation).toBe('object');
     });
 
     it('should include relatedLocations on EU AI Act results', () => {

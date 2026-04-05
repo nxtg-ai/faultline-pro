@@ -164,7 +164,7 @@ describe('geminiService.ts', () => {
       const callArgs = mockGenerateContent.mock.calls[0][0];
       // Should not have inlineData part
       expect(callArgs.contents.parts).toHaveLength(1);
-      expect(callArgs.contents.parts[0].text).toBeDefined();
+      expect(typeof callArgs.contents.parts[0].text).toBe('string');
     });
   });
 

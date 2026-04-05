@@ -50,11 +50,11 @@ describe('N-18 Workspace Validation: packages/cli (@nxtg/faultline)', () => {
   });
 
   it('CLI dependencies include tsx (runtime TypeScript execution)', () => {
-    expect(cliPkg.dependencies?.tsx).toBeDefined();
+    expect(typeof cliPkg.dependencies?.tsx).toBe('string');
   });
 
   it('CLI dependencies include @google/genai (LLM provider)', () => {
-    expect(cliPkg.dependencies?.['@google/genai']).toBeDefined();
+    expect(typeof cliPkg.dependencies?.['@google/genai']).toBe('string');
   });
 
   it('CLI package has bin entry for faultline command', () => {
@@ -85,15 +85,15 @@ describe('N-18 Workspace Validation: packages/web (@nxtg/faultline-web)', () => 
   });
 
   it('Web package dependencies include react', () => {
-    expect(webPkg.dependencies?.react).toBeDefined();
+    expect(typeof webPkg.dependencies?.react).toBe('string');
   });
 
   it('Web package dependencies include react-dom', () => {
-    expect(webPkg.dependencies?.['react-dom']).toBeDefined();
+    expect(typeof webPkg.dependencies?.['react-dom']).toBe('string');
   });
 
   it('Web package dependencies include lucide-react', () => {
-    expect(webPkg.dependencies?.['lucide-react']).toBeDefined();
+    expect(typeof webPkg.dependencies?.['lucide-react']).toBe('string');
   });
 });
 

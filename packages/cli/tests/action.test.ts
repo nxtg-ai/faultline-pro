@@ -298,14 +298,14 @@ describe('action.yml — GitHub Action manifest', () => {
 
   it('A1. action.yml is valid YAML', () => {
     const action = loadAction();
-    expect(action).toBeDefined();
+    expect(typeof action.name).toBe('string');
   });
 
   it('A2. has required top-level fields: name, description, runs', () => {
     const action = loadAction();
     expect(typeof action.name).toBe('string');
     expect(typeof action.description).toBe('string');
-    expect(action.runs).toBeDefined();
+    expect(action.runs).toHaveProperty('using');
   });
 
   it('A3. runs.using is composite', () => {
@@ -316,7 +316,7 @@ describe('action.yml — GitHub Action manifest', () => {
   it('A4. inputs include api-key', () => {
     const action = loadAction();
     const inputs = action.inputs as Record<string, unknown>;
-    expect(inputs['api-key']).toBeDefined();
+    expect(inputs['api-key']).toHaveProperty('required');
   });
 
   it('A5. inputs include fail-on with default high', () => {
@@ -329,14 +329,14 @@ describe('action.yml — GitHub Action manifest', () => {
   it('A6. inputs include path', () => {
     const action = loadAction();
     const inputs = action.inputs as Record<string, unknown>;
-    expect(inputs['path']).toBeDefined();
+    expect(inputs['path']).toHaveProperty('description');
   });
 
   it('A7. outputs include risk-level and findings-count', () => {
     const action = loadAction();
     const outputs = action.outputs as Record<string, unknown>;
-    expect(outputs['risk-level']).toBeDefined();
-    expect(outputs['findings-count']).toBeDefined();
+    expect(outputs['risk-level']).toHaveProperty('description');
+    expect(outputs['findings-count']).toHaveProperty('description');
   });
 
   it('A8. runs.steps is a non-empty array', () => {

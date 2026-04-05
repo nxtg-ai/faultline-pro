@@ -97,7 +97,7 @@ describe('ScanQueue — uncovered branches', () => {
     getScanQueue().tick();
     await vi.waitFor(() => expect(item.status).toBe('failed'), { timeout: 2000 });
     expect(item.error).toBe('Provider unavailable');
-    expect(item.completedAt).toBeDefined();
+    expect(item.completedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it('SQ4: start() registers a timer; stop() clears it', () => {

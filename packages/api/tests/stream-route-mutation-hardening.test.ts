@@ -200,7 +200,7 @@ describe('stream.ts error path — mutation hardening (SM9–SM11)', () => {
     const events = parseSSE(res.body);
     const errEvent = events.find(e => e['type'] === 'error');
     // Kills no-coverage mutants in catch block
-    expect(errEvent).toBeDefined();
+    expect(typeof errEvent!['message']).toBe('string');
   });
 
   it('SM10: error event message field is a non-empty string', async () => {

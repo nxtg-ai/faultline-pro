@@ -49,7 +49,7 @@ describe('CW1: compliance gate failure fires webhook event', () => {
     });
 
     const body = JSON.parse(res.body);
-    expect(body.gate).toBeDefined();
+    expect(body.gate).toHaveProperty('pass');
 
     if (!body.gate.pass) {
       expect(vi.mocked(fireWebhookEvent)).toHaveBeenCalledWith(
@@ -72,7 +72,7 @@ describe('CW2: compliance gate pass does NOT fire webhook', () => {
     });
 
     const body = JSON.parse(res.body);
-    expect(body.gate).toBeDefined();
+    expect(body.gate).toHaveProperty('pass');
 
     if (body.gate.pass) {
       expect(vi.mocked(fireWebhookEvent)).not.toHaveBeenCalledWith(
@@ -95,7 +95,7 @@ describe('CW3: webhook payload includes required fields', () => {
     });
 
     const body = JSON.parse(res.body);
-    expect(body.gate).toBeDefined();
+    expect(body.gate).toHaveProperty('pass');
 
     if (!body.gate.pass) {
       expect(vi.mocked(fireWebhookEvent)).toHaveBeenCalledWith(

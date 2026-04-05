@@ -171,7 +171,7 @@ describe('scan — structural invariants', () => {
     const r = await scan('Five claims.', 'mock');
     expect(Object.keys(r.verifications)).toHaveLength(5);
     for (let i = 1; i <= 5; i++) {
-      expect(r.verifications[`c${i}`]).toBeDefined();
+      expect(r.verifications[`c${i}`]).toHaveProperty('status');
     }
   });
 

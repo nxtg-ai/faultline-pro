@@ -119,7 +119,7 @@ describe('History: saveHistoryEntry()', () => {
     const content = readFileSync(join(historyDir, files[0]), 'utf-8');
     const parsed = JSON.parse(content);
     expect(parsed.file).toBe('check.txt');
-    expect(parsed.timestamp).toBeDefined();
+    expect(parsed.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it('filename should contain timestamp and hash', () => {
@@ -252,7 +252,7 @@ describe('History: analyzeTrend()', () => {
     const trend = analyzeTrend('test.txt', historyDir);
     expect(trend.direction).toBe('insufficient-data');
     expect(trend.points).toHaveLength(1);
-    expect(trend.firstScan).toBeDefined();
+    expect(trend.firstScan).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it('should detect stable trend when findings stay the same', () => {

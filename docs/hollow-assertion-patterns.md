@@ -188,6 +188,7 @@ Use `toBeDefined()` or `toBeTruthy()` when:
 | 103 | API non-hardening batch 2 (25 files) | `toBeDefined()` | 43 |
 | 103+ | CLI spinner | `toBeDefined()` | 1 |
 | 104 | CLI + API (16 files) | `toBeTruthy()` | 25 |
-| **Total** | **88 files** | | **91** |
+| 109 | CLI + API (15 files) — second pass | `toBeDefined()` / `toBeTruthy()` | 35 |
+| **Total** | **103 files** | | **126** |
 
-Guard pattern confirmed non-hollow (not fixed): 11 instances in API hardening files.
+Guard pattern confirmed non-hollow (not fixed): 13 instances (attribution.ts:81, plugin.ts:168 + 11 API hardening).

@@ -244,7 +244,7 @@ describe('POST /queue/scans — resolvePriority() branches', () => {
     expect(body.status).toBe('pending');
     expect(typeof body.priority).toBe('number');
     expect(body.pollUrl).toMatch(/^\/queue\/scans\//);
-    expect(body.createdAt).toBeDefined();
+    expect(body.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it('RH10: enqueue() throws (queue full spy) → 503 with error message', async () => {

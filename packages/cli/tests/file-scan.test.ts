@@ -100,7 +100,7 @@ describe('CLI --file flag', () => {
     ]);
     expect(exitCode).toBe(0);
     const parsed = JSON.parse(output);
-    expect(parsed.overallRisk).toBeDefined();
+    expect(typeof parsed.overallRisk).toBe('string');
   });
 
   it('returns error when extraction returns empty text', async () => {
@@ -122,7 +122,7 @@ describe('CLI --file flag', () => {
     expect(parsed.claims).toBeDefined();
     expect(parsed.verifications).toBeDefined();
     expect(parsed.overallRisk).toBeDefined();
-    expect(parsed.complianceReport).toBeDefined();
+    expect(parsed.complianceReport).toHaveProperty('euRiskSummary');
   });
 
   it('returns error when --file and --input are both provided', async () => {

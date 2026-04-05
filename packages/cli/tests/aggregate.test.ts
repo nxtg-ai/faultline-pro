@@ -238,7 +238,7 @@ describe('renderAggregatedReport()', () => {
       const output = renderAggregatedReport(sampleReport, 'json');
       const parsed = JSON.parse(output);
       expect(parsed.filesAnalyzed).toBe(2);
-      expect(parsed.riskHeatmap).toBeDefined();
+      expect(Array.isArray(parsed.riskHeatmap)).toBe(true);
     });
   });
 

@@ -78,7 +78,7 @@ describe('getDemoResult', () => {
   it('verifications map covers all claim IDs', () => {
     const result = getDemoResult();
     for (const claim of result.claims) {
-      expect(result.verifications[claim.id]).toBeDefined();
+      expect(result.verifications[claim.id]).toHaveProperty('status');
     }
   });
 
