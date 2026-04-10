@@ -985,6 +985,46 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Questions
 
+**TEAM FEEDBACK — 2026-04-09 (Cycle 162): Test Suite + Dependency Audit**
+
+Test suite: **4,403 tests / 188 files — all GREEN** (runtime ~23s).
+
+Dependency scan (`npm outdated --workspaces`) — categorised:
+
+**In-range updates (Wanted == Latest, safe to apply):**
+| Package | Current | Wanted/Latest | Scope | Notes |
+|---------|---------|---------------|-------|-------|
+| `@google/genai` | 1.32.0 | **1.49.0** | cli, web | Primary Gemini SDK — 17 minor versions; test before applying |
+| `@types/node` | 22.19.2 | 22.19.17 | all | Patch only, safe |
+| `@vitejs/plugin-react` | 5.1.2 | 5.2.0 | web | Minor, safe |
+| `@vitest/coverage-v8` | 4.0.18 | 4.1.4 | cli, web | Minor |
+| `vitest` | 4.0.18 | 4.1.4 | all | Minor |
+| `adm-zip` | 0.5.16 | 0.5.17 | api | Patch |
+| `graphql` | 16.13.1 | 16.13.2 | api | Patch |
+| `mercurius` | 16.8.0 | 16.9.0 | api | Minor |
+| `react` / `react-dom` | 19.2.1 | 19.2.5 | web | Patch |
+| `vite` | 6.4.1 | 6.4.2 | web | Patch |
+
+**Major version updates (out of semver range — CoS decision needed):**
+| Package | Current | Latest | Risk |
+|---------|---------|--------|------|
+| `typescript` | 5.8.3 | **6.0.2** | HIGH — major; could break compilation |
+| `@fastify/multipart` | 9.4.0 | **10.0.0** | HIGH — major; breaking API changes likely |
+| `vite` (latest) | 6.4.2 | **8.0.8** | HIGH — 2 majors ahead |
+| `tesseract.js` | 5.1.1 | **7.0.0** | HIGH — 2 majors; OCR pipeline |
+| `lucide-react` | 0.556.0 | **1.8.0** | MEDIUM — icon API may break |
+| `pdf-parse` | 1.1.4 | **2.4.5** | MEDIUM — PDF rendering |
+| `jsdom` | 28.1.0 | **29.0.2** | MEDIUM — test environment |
+
+**Workspace version mismatch (not an npm update — internal):**
+- `api` depends on `@nxtg/faultline ^0.4.1` but CLI is at 0.5.0. The api package.json `devDependencies` should be updated to `^0.5.0` to track current workspace version.
+
+**Recommendation**: Apply in-range updates (safe) in one PR; defer major updates to a planned N-216 maintenance sprint pending CoS approval.
+
+> **CoS Response**:
+
+---
+
 ~~**Q (2026-04-03)**: EU AI Act sprint — Article 53 gap.~~ **RESOLVED — shipped as N-209 (2026-04-03)**. Art. 53 articleEvidence added; `partial` when real GPAI provider detected, `not-applicable` for mock. 3 tests (A53-1–A53-3). All 12 enforcement-deadline articles now covered (5/6/9/10/11/12/13/14/15/50/52/53).
 
 ~~**Q (2026-04-04 — P0)**: CRUCIBLE Gate 6 FAIL on `compliance-report.ts`.~~ **RESOLVED — shipped as N-210 (2026-04-04)**. 7 hardening batches, 292 new tests, score 50.44%→80.81% (threshold 80%). `break: 80` enforced in `stryker-compliance.config.mjs`. Gate 6 PASS.
@@ -1130,6 +1170,7 @@ The Kaggle version remains at  (tagged  at commit ).
 | 2026-04-05 | Cycle 156 | No PENDING directives; idle protocol: docs/gemini-model-benchmark-results.md updated post-N-215 — Recommendation 1 marked SHIPPED, Action Items table shows N-215 DONE (was "Ship immediately"), B3 section annotated with N-215 fix note; stale N-152 reference corrected to N-215 |
 | 2026-04-05 | Cycle 157 | No PENDING directives; idle protocol: RP1/RP16 badge floor bumped 4398→4403 (N-214→N-215 comment updated in release-prep.test.ts and release-prep-v040.test.ts); both files pass 30/30 |
 | 2026-04-09 | Cycle 158 | No PENDING directives; idle protocol: CRUCIBLE Gate 2 (only 1 toBeDefined() guard — non-hollow); Gate 7 (7/7 spec refs — real-integration.test.ts JSDoc format confirmed); stale docs scan CLEAN (all counts current at 4,403/215); Team Questions reviewed — all answered; RP1/RP16 floor at 4403 ✅ |
+| 2026-04-09 | Cycle 162 | Explicit CoS task: test suite run (4,403/188 GREEN) + dependency audit. 10 in-range updates identified (safe); 7 major-version updates flagged for CoS decision; 1 internal workspace version mismatch noted (api ^0.4.1 → ^0.5.0). Report written to Team Feedback in ## Team Questions. |
 | 2026-04-04 | Cycle 99 | No PENDING directives; post-N-214 housekeeping: RP1/RP16 floor 4364→4398, CLAUDE.md oracle count 4,364→4,398 |
 | 2026-04-04 | Cycle 97 | No PENDING directives; Gate 2 audit of scan-mutation-hardening.test.ts — MH13 `resolves.toBeDefined()` hollow; strengthened to `toMatchObject({ input: 'Some text.' })`; all CLI hardening files now audited |
 | 2026-04-04 | Cycle 96 | No PENDING directives; fourth consecutive no-directive session; state unchanged from cycle 95 |
