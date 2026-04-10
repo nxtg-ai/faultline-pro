@@ -1129,6 +1129,7 @@ The Kaggle version remains at  (tagged  at commit ).
 | 2026-04-05 | Cycle 155 | No PENDING directives; idle protocol post-N-215 sync: stale 4,398→4,403 counts fixed in docs/ARCHITECTURE.md, docs/contract-testing-patterns.md, CLAUDE.md, README.md badge, llms.txt (×2); llms.txt initiative count 214→215; Gate 2 audit CAL-1–CAL-5 PASS (no toBeDefined/toBeTruthy hollows) |
 | 2026-04-05 | Cycle 156 | No PENDING directives; idle protocol: docs/gemini-model-benchmark-results.md updated post-N-215 — Recommendation 1 marked SHIPPED, Action Items table shows N-215 DONE (was "Ship immediately"), B3 section annotated with N-215 fix note; stale N-152 reference corrected to N-215 |
 | 2026-04-05 | Cycle 157 | No PENDING directives; idle protocol: RP1/RP16 badge floor bumped 4398→4403 (N-214→N-215 comment updated in release-prep.test.ts and release-prep-v040.test.ts); both files pass 30/30 |
+| 2026-04-09 | Cycle 158 | No PENDING directives; idle protocol: CRUCIBLE Gate 2 (only 1 toBeDefined() guard — non-hollow); Gate 7 (7/7 spec refs — real-integration.test.ts JSDoc format confirmed); stale docs scan CLEAN (all counts current at 4,403/215); Team Questions reviewed — all answered; RP1/RP16 floor at 4403 ✅ |
 | 2026-04-04 | Cycle 99 | No PENDING directives; post-N-214 housekeeping: RP1/RP16 floor 4364→4398, CLAUDE.md oracle count 4,364→4,398 |
 | 2026-04-04 | Cycle 97 | No PENDING directives; Gate 2 audit of scan-mutation-hardening.test.ts — MH13 `resolves.toBeDefined()` hollow; strengthened to `toMatchObject({ input: 'Some text.' })`; all CLI hardening files now audited |
 | 2026-04-04 | Cycle 96 | No PENDING directives; fourth consecutive no-directive session; state unchanged from cycle 95 |
@@ -9100,6 +9101,23 @@ None. All three questions from the previous reflection are answered. Next sessio
 > - `makeGate()` helpers in MD/SARIF/HTML renderer tests: added `art6ConformityRequired: false`
 >
 > **CI gate post-fix**: `tsc --noEmit` clean, 3,877 tests / 241 compliance tests — all GREEN. Pushed `9439a1f`.
+
+---
+
+### SESSION — 2026-04-09 Cycle 158 — No Pending Directives; Idle Protocol (Gates Audit)
+**From**: Wolf (NXTG-AI CoS) via session prompt | **Status**: DONE
+
+**Directive**: Read and execute any PENDING CoS Directives.
+
+**Response**:
+> No PENDING directives found. Executed Idle Time Protocol (CRUCIBLE gates audit):
+>
+> 1. **Full suite verified**: 4,403 tests / 188 files — all GREEN (confirmed post-N-215).
+> 2. **CRUCIBLE Gate 2 audit** — scanned all test files for hollow assertions. One `toBeDefined()` found in `cli.test.ts:1461` — guards the subsequent `.relatedLocations`/`.codeFlows` assertions; confirmed non-hollow. Gate 2: PASS.
+> 3. **CRUCIBLE Gate 7 audit** — 7/7 integration/E2E files have spec refs. `real-integration.test.ts` uses JSDoc `* Validates:` format (not `// Validates:`); consistent with its pre-N-141 authorship. Gate 7: PASS (100%).
+> 4. **Stale docs scan** — README badge (`4403%20passing`), llms.txt (`4,403 tests`, `215 initiatives`), ARCHITECTURE.md, contract-testing-patterns.md, benchmarks doc — all current. No stale counts found.
+> 5. **Team Questions** — Open item (Q 2026-03-22 UPDATE) fully answered by CoS (N-215 SHIPPED; Pro benchmark DEFER to Asif; `--model=accurate` DEFER). No actionable open questions remain.
+> 6. **RP1/RP16 floor** — release-prep floor at 4403 ✅ (matches actual count). Both release-prep test files pass 30/30.
 
 ---
 
