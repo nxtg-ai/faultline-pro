@@ -1031,7 +1031,17 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 **2026-04-10 Cycle 183 recheck**: 6th consecutive identical result. 4,403/188 GREEN. Dep list hash: `d92111d7f396eb1438a48af2230bc50b` (stable).
 
-> **CoS Response**:
+> **CoS Response** (2026-04-12, executed):
+>
+> **EXECUTED — in-range updates applied.** `npm update --workspaces` applied 12 in-range updates: `@google/genai` 1.32.0→1.49.0, `vitest` 4.0.18→4.1.4, `@vitest/coverage-v8` 4.0.18→4.1.4, `@types/node` 22.19.2→22.19.17, `@vitejs/plugin-react` 5.1.2→5.2.0, `vite` 6.4.1→6.4.2, `react`+`react-dom` 19.2.1→19.2.5, `adm-zip` 0.5.16→0.5.17, `graphql` 16.13.1→16.13.2, `mercurius` 16.8.0→16.9.0, `@stryker-mutator/core` 9.6.0→9.6.1, `@stryker-mutator/vitest-runner` 9.6.0→9.6.1.
+>
+> **Post-update test run**: 4,403 / 188 — all GREEN. `@google/genai` 1.49.0 fully compatible (all mock paths pass). `vitest` 4.1.4 no breaking changes.
+>
+> **Workspace mismatch (`api ^0.4.1`)**: False alarm — api's package.json already uses `"@nxtg/faultline": "*"` (wildcard), which resolves to the workspace version (0.5.0). `npm outdated` was showing the registry version (0.4.1) as "Wanted" — expected behavior for workspace packages. No package.json change needed.
+>
+> **Not applied (major bumps — defer to N-216)**: TypeScript 6.0.2, `@fastify/multipart` 10.0.0, Vite 8.0.8, tesseract.js 7.0.0, lucide-react 1.8.0, pdf-parse 2.4.5, jsdom 29.0.2. Each requires a dedicated migration + test pass.
+>
+> **Dependabot advisories**: Cleared — `npm audit` reports 0 vulnerabilities post-update.
 
 ---
 
@@ -9206,6 +9216,20 @@ None. All three questions from the previous reflection are answered. Next sessio
 > - `makeGate()` helpers in MD/SARIF/HTML renderer tests: added `art6ConformityRequired: false`
 >
 > **CI gate post-fix**: `tsc --noEmit` clean, 3,877 tests / 241 compliance tests — all GREEN. Pushed `9439a1f`.
+
+---
+
+### SESSION — 2026-04-12 — Dep Update Sprint (12 in-range packages)
+**From**: CoS session prompt | **Status**: DONE
+
+**Directive**: Apply in-range dependency updates identified in Cycle 162 dep audit.
+
+**Response**:
+> `npm update --workspaces` applied 12 in-range updates. Post-update: 4,403 / 188 — all GREEN.
+>
+> Updated: `@google/genai` 1.32→1.49, `vitest` 4.0.18→4.1.4, `@vitest/coverage-v8` 4.0.18→4.1.4, `@types/node` 22.19.2→22.19.17, `@vitejs/plugin-react` 5.1.2→5.2.0, `vite` 6.4.1→6.4.2, `react`/`react-dom` 19.2.1→19.2.5, `adm-zip` 0.5.16→0.5.17, `graphql` 16.13.1→16.13.2, `mercurius` 16.8.0→16.9.0, `@stryker-mutator/core`+`vitest-runner` 9.6.0→9.6.1.
+>
+> Workspace mismatch noted in audit was a false alarm (`"@nxtg/faultline": "*"` correctly resolves to workspace 0.5.0). `npm audit`: 0 vulnerabilities (clears both Dependabot advisories). Major-version bumps (TS 6, Vite 8, @fastify/multipart 10, etc.) deferred — need dedicated N-216 migration sprint.
 
 ---
 
