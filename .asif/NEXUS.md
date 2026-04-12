@@ -1216,6 +1216,55 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-12 — CoS check-in (post-Cycle 183) — delta: N-215 shipped; 5 dep-audit rechecks; 215 SHIPPED; 4,403 tests
+
+### 1. What shipped since last check-in
+
+**N-215 — Gemini calibration prompt hardening** (`1385fdb`, 2026-04-09)
+- Fixed the B3 mixed-overconfidence failure mode: Gemini was returning `SUPPORTED` on claims where evidence was genuinely mixed. The fix tightened the calibration prompt to force explicit hedging on mixed evidence.
+- Test delta: 4,398 → 4,403 (+5 tests covering the B3 edge case and adjacent overconfidence paths).
+- All 188 test files GREEN post-ship.
+
+**Cycles 158–183 — Maintenance runs (no new features)**
+- Cycle 158: Full CRUCIBLE gates audit — Gates 2, 7 PASS; all docs current; RP1/RP16 floors confirmed at 4,403.
+- Cycle 162: Full dependency audit. 10 in-range updates identified (safe, no action needed). 7 major-version bumps flagged requiring CoS decision: TypeScript 6, Vite 8, `@fastify/multipart` 10, `tesseract.js` 7, and others. Workspace mismatch noted: `api` still depends on `@nxtg/faultline ^0.4.1` while `cli` is at `0.5.0`.
+- Cycles 167–183: 5 dep-audit rechecks — no change across all 5 iterations. Rechecks paused at cycle 171 per commit note (no new signal).
+
+Net deliverables since cycle 95: 1 substantive feature (N-215), +39 tests, 1 dep audit, 1 gates audit.
+
+### 2. What surprised me
+
+**The dep audit stayed frozen across 5 rechecks spanning ~3 days.** 10 safe in-range updates identified in cycle 162 remained unapplied — not because they're blocked, but because applying them requires a directive. The project has safe dependency maintenance sitting idle. In practice, `npm update` (non-major) is zero-risk and could be run as idle protocol work without a formal directive, but the governance boundary isn't clear. Worth a CoS call: *should in-range dep updates be idle-protocol-eligible?*
+
+**TypeScript 6 has been available for 183+ cycles without a directive.** This is the most consequential deferred upgrade in the dep list — TS 6 breaks some type coercion patterns that FP uses. The longer this drifts, the larger the migration cost. Other ASIF projects may be in the same state.
+
+**The workspace version mismatch** (`api ^0.4.1` pinned to an old `@nxtg/faultline` while `cli` published 0.5.0) is a silent risk. Nothing fails — the workspace resolves locally — but a fresh install from npm would resolve the old api against the old cli version. This is a publish-time correctness bug, not a dev-time one.
+
+### 3. Cross-project signals
+
+**Dep-freeze pattern (portfolio risk)**: TypeScript 6 and Vite 8 are available across the ecosystem. Any ASIF project on TS 4/5 or Vite 5/6/7 should audit their upgrade path before TS 5 support ends. FP deferred TypeScript 6 due to the coercion-pattern breakage risk — other projects should check for the same.
+
+**Workspace version skew**: Monorepos where package A depends on package B (both in the workspace) can silently develop version skew if the workspace dependency pin isn't updated when B publishes a new version. The `api → cli` skew here is a template-level gap in the `nexus-bootstrap` workflow: there's no automated check that workspace cross-dependencies stay in sync with published versions.
+
+**N-215 calibration pattern**: The B3 fix (forcing explicit hedging on mixed evidence) is provider-agnostic. Any ASIF project that uses LLM-as-judge for classification should test for mixed-evidence overconfidence. The fix is a single prompt constraint: "If evidence supports and contradicts the claim, return MIXED — never SUPPORTED."
+
+### 4. What I'd prioritize with fresh directives
+
+1. **npm/PyPI publish** — Q1 open since cycle 49 (~135+ cycles). This is the project's primary revenue milestone. All pre-conditions have been met for months. If this is blocked by legal/infrastructure/CoS bandwidth, it should be explicitly deferred and the question closed to reduce noise.
+2. **In-range dep updates** — 10 packages with safe minor/patch updates. Unblock as idle-protocol-eligible or issue a directive. Zero architectural risk.
+3. **TypeScript 6 migration** — The longer this waits, the more expensive it gets. Scope estimate: M (need to audit coercion patterns in `api/` and `cli/`).
+4. **Gate 6 in CI** — Stryker runs locally only. Adding it to `ci.yml` is ~1h of work. Mutation regressions are invisible until someone runs it manually.
+5. **Workspace version mismatch fix** — `api/package.json` pin `^0.4.1` → `^0.5.0`. XS scope.
+
+### 5. Blockers / questions for CoS
+
+- **Q1 (publish — open since cycle 49, ~135 cycles)**: No response in 130+ cycles. Is there a portfolio hold, legal review, or infrastructure dependency? If indefinitely deferred, close the question and move to BACKLOG.
+- **Q-dep-governance (new)**: Are in-range dependency updates (non-major, no API changes) eligible for idle-protocol execution without a formal directive? Current interpretation is no — but this leaves safe maintenance work permanently blocked.
+- **Q-TS6 (new)**: Should TypeScript 6 migration be added to the NEXUS initiative list and prioritized? Every week of delay increases migration cost as more TS-5-only patterns accumulate.
+- **Q-CHANGELOG (open since cycle 70)**: Option A (bump to 0.5.1), B (merge [Unreleased] into [v0.5.0]), or C (publish as-is, accept mismatch)? Still gates Q1.
+
+---
+
 > **Reflection cycle**: 2026-04-04 — CoS check-in — cycle 95 (delta: zero — third consecutive no-directive session; 213 SHIPPED; 4,364 tests)
 
 ### 1. What shipped since last check-in
