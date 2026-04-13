@@ -51,6 +51,13 @@ describe('Rate limiting — free tier', () => {
   let freeKeyId: string;
 
   beforeEach(async () => {
+    // Freeze Date mid-minute: multi-scan tests (R5, R7, R9, R10) chain several
+    // scan() calls expecting 429. If a minute boundary falls between requests,
+    // RateLimiter.getEntry() resets the counter to 0 and 429 becomes 200.
+    // { toFake: ['Date'] } — only mock Date; leave setTimeout/setImmediate real
+    // so that await server.ready() and Fastify internals continue to work.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-01-01T12:30:00.000Z'));
     setup();
     server = buildServer();
     await server.ready();
@@ -61,6 +68,7 @@ describe('Rate limiting — free tier', () => {
 
   afterEach(async () => {
     await server.close();
+    vi.useRealTimers();
     delete process.env.FAULTLINE_API_KEY;
   });
 
@@ -247,6 +255,10 @@ describe('Rate limiting — reset + isolation', () => {
   let server: FastifyInstance;
 
   beforeEach(async () => {
+    // Freeze Date mid-minute: R19/R21 chain multiple scans expecting 429.
+    // { toFake: ['Date'] } only — leave timers real for await server.ready().
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-01-01T12:30:00.000Z'));
     setup();
     server = buildServer();
     await server.ready();
