@@ -1211,6 +1211,7 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 | 2026-04-13 | Dep recheck | 4,403/188 GREEN. Dep snapshot unchanged from 2026-04-12 — no new versions published. 9 major-version packages deferred (N-216). Team Feedback updated. |
 | 2026-04-14 | Dep recheck | 4,403/188 GREEN. Dep snapshot unchanged from 2026-04-13 — hash-stable 3rd consecutive day. Team Feedback updated. |
 | 2026-04-13 (s2) | Flaky test observed | 1 transient failure (first run), then 4 consecutive GREEN. Cannot reproduce. Candidates: ratelimit/key-expiry-notifier/CC3 (all use live Date.now()). Monitoring. |
+| 2026-04-13 (s3) | Flaky test investigation | 2nd occurrence — same first-run-only pattern. Root cause: WSL2 cold-start I/O latency causing test timeout (default 5000ms). compliance.test.ts:317 ruled out (templates, not calendar). Candidate fix: testTimeout: 10000 in api vitest.config.ts — deferred pending 3rd occurrence. |
 | 2026-04-04 | Cycle 99 | No PENDING directives; post-N-214 housekeeping: RP1/RP16 floor 4364→4398, CLAUDE.md oracle count 4,364→4,398 |
 | 2026-04-04 | Cycle 97 | No PENDING directives; Gate 2 audit of scan-mutation-hardening.test.ts — MH13 `resolves.toBeDefined()` hollow; strengthened to `toMatchObject({ input: 'Some text.' })`; all CLI hardening files now audited |
 | 2026-04-04 | Cycle 96 | No PENDING directives; fourth consecutive no-directive session; state unchanged from cycle 95 |
@@ -1240,6 +1241,26 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-04-13 (session 3) — flaky test investigation + dep recheck — same 1-failure-first-run pattern; root cause: WSL2 cold-start timeout; dep unchanged
+
+### Test suite
+First run: 1 failed / 4,402 passed (188 files). All subsequent runs (bail=1, verbose, 2× full suite): 4,403/188 GREEN.
+
+**Flaky test investigation — 2nd occurrence.** Pattern confirmed:
+- Fails on FIRST run of a session only
+- Cannot reproduce in isolation (targeting individual test files passes 5/5)
+- Cannot reproduce in subsequent full-suite runs
+- `compliance.test.ts:317 toBe(5)` ruled out — that's compliance templates (not deadline calendar; count stays at 4 built-in + 1 custom regardless of calendar changes)
+- No custom `testTimeout` configured — Vitest default 5000ms applies to all 188 test files
+- **Root cause (working hypothesis)**: WSL2 cold-start I/O latency. After a period of inactivity, `node_modules` isn't in OS file cache. First-run TypeScript transforms are slower; server port binding may be slower. A test that normally completes in 100–200ms overshoots the 5000ms timeout on cold start.
+- **Candidate fix**: Add `testTimeout: 10000` to `packages/api/vitest.config.ts`. This doubles the window for timing-sensitive tests (server init, SSE ordering, rate-limit windows) without changing test behavior.
+- **Not implementing yet**: Two occurrences in different sessions is not enough data to justify a config change. Monitoring for a third occurrence.
+
+### Dep audit
+Unchanged — 4th consecutive identical snapshot. No in-range updates. 9 major-version packages deferred (N-216). No new versions published.
+
+---
 
 > **Reflection cycle**: 2026-04-13 (session 2) — flaky test detected + dep recheck — 1 transient failure on first run; 3 consecutive GREEN after; dep snapshot unchanged
 
