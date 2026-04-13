@@ -9,6 +9,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - N-215: Gemini calibration prompt hardening — multi-point `CALIBRATION RULE` replaces single-sentence rule in `verifyClaim()` prompt (CLI + web `geminiService.ts`); 7-condition "use mixed when" list covering: conflicting meta-analyses, dose-dependent effects, IARC/WHO/FDA Group 2A/2B partial classifications, population-dependent effects, contested peer-reviewed consensus; explicit "when in doubt between contradicted and mixed, always choose mixed" tie-breaker; fixes B3 overconfidence failure (IARC Group 2A hot-beverages classification returned `contradicted` instead of `mixed`); 5 prompt-integrity + behavioral tests in `gemini-service-hardening.test.ts` (CAL-1–CAL-5)
 
+### Fixed
+
+- Compliance calendar staleness — added `eu-ai-act-annex-i-2027` deadline (2027-08-02, severity: high) for EU AI Act full application to Annex I regulated products (medical devices, machinery, aviation). Previous `getUpcoming()` returned 0 results when queried after 2026-08-02 since the only remaining future deadline was missing. CC13 expected count updated 5→6.
+
 ### Maintenance
 
 - Dependency updates (2026-04-12, `npm update --workspaces`): `@google/genai` 1.32.0→1.49.0, `vitest` 4.0.18→4.1.4, `@vitest/coverage-v8` 4.0.18→4.1.4, `@types/node` 22.19.2→22.19.17, `@vitejs/plugin-react` 5.1.2→5.2.0, `vite` 6.4.1→6.4.2, `react`/`react-dom` 19.2.1→19.2.5, `adm-zip` 0.5.16→0.5.17, `graphql` 16.13.1→16.13.2, `mercurius` 16.8.0→16.9.0, `@stryker-mutator/core`+`vitest-runner` 9.6.0→9.6.1. Post-update: 4,403/188 GREEN, `npm audit` 0 vulnerabilities. Major-version bumps (TypeScript 6, Vite 8, `@fastify/multipart` 10, `tesseract.js` 7, `lucide-react` 1.x, `pdf-parse` 2.x, `jsdom` 29) deferred to N-216.
