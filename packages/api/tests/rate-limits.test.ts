@@ -191,8 +191,21 @@ describe('GET /rate-limits', () => {
 
 describe('GET /rate-limits.json', () => {
   let server: FastifyInstance;
-  beforeEach(() => { setup(); server = buildServer(); });
-  afterEach(async () => { await server.close(); delete process.env.FAULTLINE_API_KEY; });
+  beforeEach(() => {
+    // Freeze time mid-minute to prevent window resets at minute boundaries.
+    // The rate limiter's windowKey uses toISOString().slice(0,16) (YYYY-MM-DDTHH:mm).
+    // If a test runs across a minute boundary, increments land in minute N but
+    // getAllStats() reads in minute N+1 — resetting the counter to 0. Fix: pin time.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T12:30:00.000Z'));
+    setup();
+    server = buildServer();
+  });
+  afterEach(async () => {
+    await server.close();
+    vi.useRealTimers();
+    delete process.env.FAULTLINE_API_KEY;
+  });
 
   it('returns 401 without API key', async () => {
     const res = await server.inject({ method: 'GET', url: '/rate-limits.json' });

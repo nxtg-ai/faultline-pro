@@ -1215,6 +1215,7 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 | 2026-04-13 (s4) | Dep recheck + flake monitor | 4,403/188 GREEN clean first run (no flake). Dep snapshot unchanged (6th consecutive day). security-scan v4 (PR #13) noted — Bandit + Bearer added to CI. |
 | 2026-04-14 (s2) | Dep recheck | 4,403/188 GREEN. Dep snapshot unchanged (7th consecutive day). Flake monitor clean. |
 | 2026-04-15 | Dep recheck | 4,403/188 GREEN. Dep snapshot unchanged (8th consecutive day). Flake monitor clean. |
+| 2026-04-15 (s2) | Flaky test root cause + fix | Root cause: rate-limits.test.ts `warningKeys` test crosses minute window boundary — getEntry() resets counter to 0. Fix: vi.useFakeTimers() in beforeEach of describe block. 29/29 pass, 4,403/188 GREEN. |
 | 2026-04-04 | Cycle 99 | No PENDING directives; post-N-214 housekeeping: RP1/RP16 floor 4364→4398, CLAUDE.md oracle count 4,364→4,398 |
 | 2026-04-04 | Cycle 97 | No PENDING directives; Gate 2 audit of scan-mutation-hardening.test.ts — MH13 `resolves.toBeDefined()` hollow; strengthened to `toMatchObject({ input: 'Some text.' })`; all CLI hardening files now audited |
 | 2026-04-04 | Cycle 96 | No PENDING directives; fourth consecutive no-directive session; state unchanged from cycle 95 |
@@ -1244,6 +1245,25 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-04-15 (session 2) — flaky test ROOT CAUSE FOUND + FIXED; dep recheck unchanged
+
+### Flaky test — ROOT CAUSE FOUND AND FIXED
+
+**File**: `packages/api/tests/rate-limits.test.ts`
+**Test**: `summary.warningKeys counts keys >= 80% used` (line 250)
+**Root cause**: `RateLimiter.getEntry()` uses `new Date().toISOString().slice(0, 16)` as a 1-minute window key. If the 8 `increment()` calls happen in minute N and the `server.inject()` stats query happens in minute N+1, `getEntry()` resets the counter to 0. Result: `warningKeys = 0` instead of 1.
+
+**Fix**: Added `vi.useFakeTimers()` + `vi.setSystemTime(new Date('2026-01-01T12:30:00.000Z'))` to the `beforeEach` of the `describe('GET /rate-limits.json')` block. Pins time mid-minute so no window boundary can occur during test execution. Restored with `vi.useRealTimers()` in `afterEach`.
+
+**Scope**: The same vulnerability exists in the `keys array includes a key after increment` test in the same block — both are now protected by the fake timer.
+
+29/29 tests in the file pass. Full suite: 4,403/188 GREEN.
+
+### Dep audit
+Unchanged — 8th consecutive day. 9 major-version packages frozen in N-216.
+
+---
 
 > **Reflection cycle**: 2026-04-15 — dep recheck — 4,403/188 GREEN; dep snapshot unchanged (8th consecutive day); no flake
 
