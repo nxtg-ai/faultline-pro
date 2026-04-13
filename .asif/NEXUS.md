@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-05 (N-215 shipped: Gemini calibration prompt hardening, 5 tests, 4,403 total)
+> **Last Updated**: 2026-04-12 (dep sprint: 12 in-range updates applied, 4,403/188 GREEN, N-216 BACKLOG registered)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -185,6 +185,7 @@
 | N-215 | Gemini calibration prompt hardening — multi-point CALIBRATION RULE replacing single-sentence rule in verifyClaim(); explicit mixed triggers: conflicting meta-analyses, dose-dependent effects, IARC/WHO/FDA Group 2A/2B classifications, population-dependent effects, contested peer-reviewed consensus; "when in doubt choose mixed" tie-breaker; fixes B3 overconfidence failure (coffee/hot beverages + cancer IARC Group 2A returns contradicted instead of mixed); applied to CLI + web geminiService; 5 prompt-integrity + behavioral tests (CAL-1–CAL-5) | FORENSIC | SHIPPED | P1 | 2026-04-05 |
 | N-213 | CRUCIBLE Gate 6 — shell_injection_rule.ts mutation hardening; 80.29% score (108 killed / 2 timeout / 26 survived / 137 effective); 50 hardening tests (SH-B/C1/S/R/A/M/H/FP/N groups); stryker-shell-injection.config.mjs targeting lines 100–208; ESM static constant limitation documented | DEVELOPER-X | SHIPPED | P2 | 2026-04-04 |
 | N-210 | CRUCIBLE Gate 6 — compliance-report.ts mutation hardening sprint; 50.44%→80.81% via 7 hardening batches (292 new tests); stryker-compliance.config.mjs break threshold set to 80; all 7 test files cover: getRemediations Art.5–53, buildTestCategoryMappings filters, annexIIIChecklist, evaluateComplianceGate, renderCiGateOutput, renderComplianceReportMarkdown, renderComplianceReportSarif, renderComplianceReportHtml, diffComplianceReports | DEVELOPER-X | SHIPPED | P0 | 2026-04-04 |
+| N-216 | Major Dependencies Migration Sprint — TypeScript 5.x→6.x, Vite 6.x→8.x, `@fastify/multipart` 9.x→10.x, `tesseract.js` 5.x→7.x, `lucide-react` 0.x→1.x, `pdf-parse` 1.x→2.x, `jsdom` 28.x→29.x; each requires dedicated migration + test pass (type coercion audit for TS6, API surface check for others); all 7 packages identified in Cycle 162 dep audit; in-range updates applied 2026-04-12 | DEVELOPER-X | BACKLOG | P2 | 2026-04-12 |
 | N-209 | Art. 53 (Obligations for providers of GPAI models) added to articleEvidence — partial when real GPAI provider detected (Google Gemini/OpenAI/Anthropic Claude/Perplexity), not-applicable for mock; getRemediations branch (5 items); 3 new tests (A53-1–A53-3) | COMPLIANCE | SHIPPED | P0 | 2026-04-03 |
 | N-208 | Art. 52 (Transparency for specific AI system types — chatbot §1, emotion recognition/biometric §2, deep fakes §3) added to articleEvidence; Art. 6 entry added to buildTestCategoryMappings via claimMappings param; Art. 52 getRemediations branch; 8 new tests (TCA1–TCA2, A52-1–A52-6) | COMPLIANCE | SHIPPED | P0 | 2026-04-03 |
 | N-207 | CI gate blind to Art. 6 Annex III trigger — art6ConformityRequired flag added to CiGateResult; gate fails in default mode when Art. 6 detected domain content but riskFail not already firing; renderCiGateOutput surfaces conformity assessment message; 5 new tests (CG1–CG5) | COMPLIANCE | SHIPPED | P0 | 2026-04-03 |
@@ -1196,6 +1197,9 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 | 2026-04-10 | Cycle 175 | Explicit CoS task (4th recheck): 4,403/188 GREEN; deps identical (no new npm versions). |
 | 2026-04-10 | Cycle 179 | Explicit CoS task (5th recheck): 4,403/188 GREEN; deps unchanged. |
 | 2026-04-10 | Cycle 183 | Explicit CoS task (6th recheck): 4,403/188 GREEN; deps unchanged (hash stable). |
+| 2026-04-12 | CoS check-in reflection | CoS reflection written (post-Cycle 183): N-215 retrospective, dep audit summary, 4 new CoS questions raised (dep-governance eligibility, TS6 migration, Q1 publish status, Q-CHANGELOG). Committed `a1e51e6`. |
+| 2026-04-12 | Dep update sprint | Applied 12 in-range dep updates via `npm update --workspaces`; 4,403/188 GREEN post-update; `npm audit` 0 vulns; workspace mismatch was false alarm (`*` already resolves workspace). NEXUS CoS Response filled. Committed `0f4f010`. |
+| 2026-04-12 | Post-dep housekeeping | CHANGELOG [Unreleased] updated with maintenance entry; N-216 (Major Deps Migration Sprint) registered as BACKLOG in Executive Dashboard; Self-Improvement Log updated. |
 | 2026-04-04 | Cycle 99 | No PENDING directives; post-N-214 housekeeping: RP1/RP16 floor 4364→4398, CLAUDE.md oracle count 4,364→4,398 |
 | 2026-04-04 | Cycle 97 | No PENDING directives; Gate 2 audit of scan-mutation-hardening.test.ts — MH13 `resolves.toBeDefined()` hollow; strengthened to `toMatchObject({ input: 'Some text.' })`; all CLI hardening files now audited |
 | 2026-04-04 | Cycle 96 | No PENDING directives; fourth consecutive no-directive session; state unchanged from cycle 95 |
