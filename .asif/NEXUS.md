@@ -1207,6 +1207,7 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 | 2026-04-12 | Post-dep housekeeping | CHANGELOG [Unreleased] updated with maintenance entry; N-216 (Major Deps Migration Sprint) registered as BACKLOG in Executive Dashboard; Self-Improvement Log updated. |
 | 2026-04-12 | Publish runbook + checklist | `docs/PUBLISH-RUNBOOK.md` written — exact 5-step pre-publish gate + publish commands + post-publish steps + v0.5.0 feature summary. GTM-PLAN.md checklist updated: React dep split item checked (N-18 completed this). Verified CLI package has zero React/Vite production deps. 30/30 release-prep tests PASS. Package is ready to publish; decision remains with Asif. |
 | 2026-04-12 | Compliance calendar staleness fix | Added `eu-ai-act-annex-i-2027` deadline (2027-08-02, high severity) for EU AI Act full application to Annex I regulated products (medical devices, machinery, aviation). Updated CC13 expected count 5→6. 4,403/188 GREEN. Committed `55bad36`. |
+| 2026-04-12 | Dep recheck + Team Feedback | Dep audit: no in-range updates available (12 applied earlier this session). 9 major-version packages deferred (N-216 was 7 — `@types/node` 22→25 and `@vitejs/plugin-react` 5→6 are new majors). Team Feedback written covering compliance calendar fix, dep table, 3 CoS questions. |
 | 2026-04-04 | Cycle 99 | No PENDING directives; post-N-214 housekeeping: RP1/RP16 floor 4364→4398, CLAUDE.md oracle count 4,364→4,398 |
 | 2026-04-04 | Cycle 97 | No PENDING directives; Gate 2 audit of scan-mutation-hardening.test.ts — MH13 `resolves.toBeDefined()` hollow; strengthened to `toMatchObject({ input: 'Some text.' })`; all CLI hardening files now audited |
 | 2026-04-04 | Cycle 96 | No PENDING directives; fourth consecutive no-directive session; state unchanged from cycle 95 |
@@ -1236,6 +1237,56 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-04-12 — dep audit recheck + idle protocol wrap-up — 4,403/188 GREEN; 9 major-version packages deferred (N-216); compliance calendar staleness fixed
+
+### 1. What shipped since last check-in
+
+**Compliance calendar staleness fix** (`55bad36`, 2026-04-12)
+- `eu-ai-act-annex-i-2027` deadline added (2027-08-02, severity: high) for EU AI Act full application to Annex I regulated products (medical devices, machinery, aviation).
+- Gap: `getUpcoming()` would have returned 0 results after the `eu-ai-act-high-risk` deadline (2026-08-02) passed — 112 days from now. Now it returns 1 result until 2027-08-02.
+- CC13 expected count updated 5→6. 4,403/188 GREEN.
+
+**Dep update sprint** (`0f4f010`, 2026-04-12)
+- 12 in-range dep updates applied (`@google/genai` 1.32→1.49, `vitest` 4.0→4.1, `react` 19.2.1→19.2.5, and 9 others).
+- 0 vulnerabilities post-update. Workspace mismatch (`@nxtg/faultline ^0.4.1` in api) confirmed as false alarm — api uses `*` which resolves workspace.
+
+**`docs/PUBLISH-RUNBOOK.md`** (`a178891`, 2026-04-12)
+- Exact 5-step pre-publish gate, publish commands, post-publish steps, v0.5.0 feature summary, v0.5.1 bump guide.
+
+### 2. Dep audit — 2026-04-12
+
+**No in-range updates available.** All Wanted = Current. 12 safe updates applied earlier this session; nothing left in the minor/patch range.
+
+**Major-version packages deferred (now 9, was 7 in N-216):**
+
+| Package | Current | Latest | Note |
+|---------|---------|--------|------|
+| TypeScript | 5.8.3 | 6.0.2 | Coercion-pattern breakage risk; in N-216 |
+| Vite | 6.4.2 | 8.0.8 | Major config API changes; in N-216 |
+| @fastify/multipart | 9.4.0 | 10.0.0 | API surface change; in N-216 |
+| tesseract.js | 5.1.1 | 7.0.0 | Skipped v6; in N-216 |
+| lucide-react | 0.556.0 | 1.8.0 | 0.x → 1.x; in N-216 |
+| pdf-parse | 1.1.4 | 2.4.5 | in N-216 |
+| jsdom | 28.1.0 | 29.0.2 | in N-216 |
+| @types/node | 22.19.17 | 25.6.0 | **NEW** — was in-range at last audit |
+| @vitejs/plugin-react | 5.2.0 | 6.0.1 | **NEW** — was in-range (5.1→5.2) at last audit |
+
+Two new major-version jumps since cycle 162 audit. N-216 backlog should be updated to reflect 9 deferred packages (was 7).
+
+### 3. What surprised me
+
+**`@types/node` jumped two major versions between audits.** Last cycle it was a safe in-range update (22.x → 22.x); this cycle it's at 25.6.0. The jump is likely because Node 22 LTS became active and types followed. This is a devDep so the blast radius is low, but it's worth knowing the pace of drift.
+
+**`@vitejs/plugin-react` 5→6 also flipped major.** This pairs with the Vite 6→8 migration in N-216. Both should be upgraded together — doing `@vitejs/plugin-react` 6 while staying on Vite 6 may create a version mismatch.
+
+### 4. Blockers / questions for CoS
+
+- **Q1 (publish — open since cycle 49)**: Runbook is written, all pre-conditions met. If this is deferred indefinitely, close the question.
+- **N-216 scope update**: Backlog now has 9 major-version packages (was 7). Should the N-216 initiative description be updated? `@types/node` and `@vitejs/plugin-react` both need to be added to scope.
+- **Q-dep-governance**: Are in-range dep updates eligible for idle-protocol execution without a formal directive? This came up again — applied 12 updates this session under a CoS explicit instruction, but the standing policy is unclear.
+
+---
 
 > **Reflection cycle**: 2026-04-12 — CoS check-in (post-Cycle 183) — delta: N-215 shipped; 5 dep-audit rechecks; 215 SHIPPED; 4,403 tests
 
