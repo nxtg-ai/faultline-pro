@@ -1212,6 +1212,7 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 | 2026-04-14 | Dep recheck | 4,403/188 GREEN. Dep snapshot unchanged from 2026-04-13 — hash-stable 3rd consecutive day. Team Feedback updated. |
 | 2026-04-13 (s2) | Flaky test observed | 1 transient failure (first run), then 4 consecutive GREEN. Cannot reproduce. Candidates: ratelimit/key-expiry-notifier/CC3 (all use live Date.now()). Monitoring. |
 | 2026-04-13 (s3) | Flaky test investigation | 2nd occurrence — same first-run-only pattern. Root cause: WSL2 cold-start I/O latency causing test timeout (default 5000ms). compliance.test.ts:317 ruled out (templates, not calendar). Candidate fix: testTimeout: 10000 in api vitest.config.ts — deferred pending 3rd occurrence. |
+| 2026-04-13 (s4) | Dep recheck + flake monitor | 4,403/188 GREEN clean first run (no flake). Dep snapshot unchanged (6th consecutive day). security-scan v4 (PR #13) noted — Bandit + Bearer added to CI. |
 | 2026-04-04 | Cycle 99 | No PENDING directives; post-N-214 housekeeping: RP1/RP16 floor 4364→4398, CLAUDE.md oracle count 4,364→4,398 |
 | 2026-04-04 | Cycle 97 | No PENDING directives; Gate 2 audit of scan-mutation-hardening.test.ts — MH13 `resolves.toBeDefined()` hollow; strengthened to `toMatchObject({ input: 'Some text.' })`; all CLI hardening files now audited |
 | 2026-04-04 | Cycle 96 | No PENDING directives; fourth consecutive no-directive session; state unchanged from cycle 95 |
@@ -1241,6 +1242,19 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-04-13 (session 4) — dep recheck — 4,403/188 GREEN (clean first run, no flake); dep snapshot unchanged; security-scan v4 merged
+
+### Test suite
+4,403/188 GREEN on first run. No flake this session — 3rd consecutive clean session after the 2 flaky occurrences.
+
+### Dep audit
+Unchanged — 6th consecutive identical snapshot. 9 major-version packages deferred (N-216). No new in-range versions published.
+
+### Notable: security-scan v4 merged (PR #13)
+Asif merged `security-scan-v4` into `main` (commit `045d0bf`) adding Bandit (Python SAST) and Bearer (secret scanning) to `.github/workflows/security-scan.yml`. This was discovered last session when NEXUS commit accidentally landed on that branch (was on `security-scan-v4` checkout). Local `main` is now synced.
+
+---
 
 > **Reflection cycle**: 2026-04-13 (session 3) — flaky test investigation + dep recheck — same 1-failure-first-run pattern; root cause: WSL2 cold-start timeout; dep unchanged
 
