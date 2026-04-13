@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-12 (dep sprint: 12 in-range updates applied, 4,403/188 GREEN, N-216 BACKLOG registered)
+> **Last Updated**: 2026-04-17 (RL5–RL8 minute-window flake fixed, d6f00af; dep unchanged 10th day; 4,403/188 GREEN)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -1246,6 +1246,19 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-04-17 — second minute-window flake fixed (rate-limits-wikipedia-hardening.test.ts RL5-RL8); dep unchanged (10th day)
+
+### Flake fix — RL5–RL8 meterBar() describe block
+
+**File**: `packages/api/tests/rate-limits-wikipedia-hardening.test.ts`
+**Tests**: RL5–RL8 (`meterBar()` CSS class branches — line 30)
+**Root cause**: Same minute-window pattern as the `warningKeys` flake fixed at `75e3edc`. The `meterBar()` describe block was missing `vi.useFakeTimers()` + `vi.setSystemTime()`. The `statusBadge()` block (RL1–RL4) was already protected; RL5–RL8 was the remaining exposure.
+**Fix**: Added fake timer guard (pin to `2026-01-01T12:30:00.000Z`) to `beforeEach`; `vi.useRealTimers()` in `afterEach`. Commit `d6f00af`.
+
+4,403/188 GREEN. Dep snapshot unchanged — 10th consecutive identical day. 9 major-version packages frozen in N-216.
+
+---
 
 > **Reflection cycle**: 2026-04-16 — dep recheck — 4,403/188 GREEN; dep unchanged (9th day); flaky test fixed and confirmed clean
 
