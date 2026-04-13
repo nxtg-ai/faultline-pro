@@ -71,6 +71,16 @@ const DEADLINES: RegulatoryDeadline[] = [
     keywords: ['nist', 'risk management framework', 'federal ai', 'government ai'],
     severity: 'medium',
   },
+  {
+    id: 'eu-ai-act-annex-i-2027',
+    name: 'EU AI Act — Annex I Products Full Application',
+    regulation: 'EU AI Act',
+    description: 'AI systems embedded as safety components in Annex I regulated products (medical devices, machinery, aviation) must fully comply with all applicable EU AI Act requirements.',
+    deadline: '2027-08-02',
+    url: 'https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32024R1689',
+    keywords: ['medical device', 'machinery', 'aviation', 'safety component', 'annex i', 'regulated product'],
+    severity: 'high',
+  },
 ];
 
 // ─── Store ────────────────────────────────────────────────────────────────────

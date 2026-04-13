@@ -199,10 +199,10 @@ describe('POST /compliance/deadlines/notify', () => {
 // ── CC13–CC14: ComplianceCalendar store unit tests ─────────────────────────────
 
 describe('ComplianceCalendar store', () => {
-  it('CC13: getAll() returns 5 built-in deadlines', () => {
+  it('CC13: getAll() returns 6 built-in deadlines', () => {
     const calendar = getComplianceCalendar();
     const all = calendar.getAll();
-    expect(all.length).toBe(5); // Gate 2
+    expect(all.length).toBe(6); // Gate 2
   });
 
   it('CC14: checkClaims() matches keywords case-insensitively', () => {
