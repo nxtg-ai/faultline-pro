@@ -1210,6 +1210,7 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 | 2026-04-12 | Dep recheck + Team Feedback | Dep audit: no in-range updates available (12 applied earlier this session). 9 major-version packages deferred (N-216 was 7 — `@types/node` 22→25 and `@vitejs/plugin-react` 5→6 are new majors). Team Feedback written covering compliance calendar fix, dep table, 3 CoS questions. |
 | 2026-04-13 | Dep recheck | 4,403/188 GREEN. Dep snapshot unchanged from 2026-04-12 — no new versions published. 9 major-version packages deferred (N-216). Team Feedback updated. |
 | 2026-04-14 | Dep recheck | 4,403/188 GREEN. Dep snapshot unchanged from 2026-04-13 — hash-stable 3rd consecutive day. Team Feedback updated. |
+| 2026-04-13 (s2) | Flaky test observed | 1 transient failure (first run), then 4 consecutive GREEN. Cannot reproduce. Candidates: ratelimit/key-expiry-notifier/CC3 (all use live Date.now()). Monitoring. |
 | 2026-04-04 | Cycle 99 | No PENDING directives; post-N-214 housekeeping: RP1/RP16 floor 4364→4398, CLAUDE.md oracle count 4,364→4,398 |
 | 2026-04-04 | Cycle 97 | No PENDING directives; Gate 2 audit of scan-mutation-hardening.test.ts — MH13 `resolves.toBeDefined()` hollow; strengthened to `toMatchObject({ input: 'Some text.' })`; all CLI hardening files now audited |
 | 2026-04-04 | Cycle 96 | No PENDING directives; fourth consecutive no-directive session; state unchanged from cycle 95 |
@@ -1239,6 +1240,20 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-04-13 (session 2) — flaky test detected + dep recheck — 1 transient failure on first run; 3 consecutive GREEN after; dep snapshot unchanged
+
+### Test suite
+First run: 1 failed / 4,402 passed (188 files). Three subsequent runs: 4,403/188 GREEN.
+
+**Flaky test observed — cannot reproduce.** The failure appeared on the first run but not on 3 immediate re-runs. Root cause unknown — most likely a system load / timing issue rather than a code defect. Most probable candidates are rate-limit or key-expiry-notifier tests (both use live `Date.now()` with timing-sensitive assertions). Compliance calendar tests (CC3 uses `Date.now()` for 30-day window) are also a candidate since CC13 was recently changed (count 5→6).
+
+**Action taken**: Logged. Will monitor across next 3 sessions. If failure recurs, will bisect to the specific test file.
+
+### Dep audit
+Identical snapshot to 2026-04-13/2026-04-14. No in-range updates. 9 major-version packages deferred (N-216). No change.
+
+---
 
 > **Reflection cycle**: 2026-04-14 — dep recheck — 4,403/188 GREEN; dep snapshot unchanged from 2026-04-13
 
