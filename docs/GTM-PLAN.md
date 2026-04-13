@@ -274,7 +274,7 @@ Before Asif gives the GO for npm publish:
 - [x] Validate `npm pack` + `npx @nxtg/faultline scan` end-to-end
 - [x] Rewrite README.md for npm (lead with positioning, not Kaggle origin)
 - [x] Add `--help` flag support
-- [ ] Remove React dependencies from CLI package (or split packages)
+- [x] Remove React dependencies from CLI package — N-18 workspace split moved React/Vite to `packages/web`; CLI is clean
 - [x] Confirm license choice with Asif (CC-BY-4.0 vs Apache-2.0) — Apache-2.0 chosen
 - [x] Add 2-3 more example files (medical claims, financial claims)
 - [ ] Record terminal demo GIF
