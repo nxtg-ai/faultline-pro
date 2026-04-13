@@ -1216,6 +1216,7 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 | 2026-04-14 (s2) | Dep recheck | 4,403/188 GREEN. Dep snapshot unchanged (7th consecutive day). Flake monitor clean. |
 | 2026-04-15 | Dep recheck | 4,403/188 GREEN. Dep snapshot unchanged (8th consecutive day). Flake monitor clean. |
 | 2026-04-15 (s2) | Flaky test root cause + fix | Root cause: rate-limits.test.ts `warningKeys` test crosses minute window boundary — getEntry() resets counter to 0. Fix: vi.useFakeTimers() in beforeEach of describe block. 29/29 pass, 4,403/188 GREEN. |
+| 2026-04-16 | Dep recheck | 4,403/188 GREEN (clean first run). Dep unchanged (9th consecutive day). Flake fix confirmed holding. |
 | 2026-04-04 | Cycle 99 | No PENDING directives; post-N-214 housekeeping: RP1/RP16 floor 4364→4398, CLAUDE.md oracle count 4,364→4,398 |
 | 2026-04-04 | Cycle 97 | No PENDING directives; Gate 2 audit of scan-mutation-hardening.test.ts — MH13 `resolves.toBeDefined()` hollow; strengthened to `toMatchObject({ input: 'Some text.' })`; all CLI hardening files now audited |
 | 2026-04-04 | Cycle 96 | No PENDING directives; fourth consecutive no-directive session; state unchanged from cycle 95 |
@@ -1245,6 +1246,12 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-04-16 — dep recheck — 4,403/188 GREEN; dep unchanged (9th day); flaky test fixed and confirmed clean
+
+4,403/188 GREEN on first run. Dep snapshot identical for 9th consecutive day. 9 major-version packages frozen in N-216. Flake monitor: clean — `rate-limits.test.ts` minute-window fix (`75e3edc`) is holding.
+
+---
 
 > **Reflection cycle**: 2026-04-15 (session 2) — flaky test ROOT CAUSE FOUND + FIXED; dep recheck unchanged
 
