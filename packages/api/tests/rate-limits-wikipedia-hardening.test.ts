@@ -33,6 +33,11 @@ describe('GET /rate-limits HTML — statusBadge() branches (lines 23-26)', () =>
   let server: FastifyInstance;
 
   beforeEach(() => {
+    // Freeze time mid-minute: seedKey() calls increment() then server.inject()
+    // reads getAllStats(). If a minute boundary falls between the two calls, the
+    // rate limiter resets the counter to 0 and the badge threshold test fails.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T12:30:00.000Z'));
     resetRateLimiter();
     resetRateLimitAlertStore();
     resetKeyStore();
@@ -42,6 +47,7 @@ describe('GET /rate-limits HTML — statusBadge() branches (lines 23-26)', () =>
 
   afterEach(async () => {
     await server.close();
+    vi.useRealTimers();
     delete process.env.FAULTLINE_API_KEY;
   });
 
@@ -119,6 +125,11 @@ describe('GET /rate-limits HTML — meterBar() CSS class branches (line 30)', ()
   let server: FastifyInstance;
 
   beforeEach(() => {
+    // Freeze time mid-minute: seedKey() calls increment() then server.inject()
+    // reads getAllStats(). If a minute boundary falls between the two calls, the
+    // rate limiter resets the counter to 0 and the meter class assertion fails.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T12:30:00.000Z'));
     resetRateLimiter();
     resetRateLimitAlertStore();
     resetKeyStore();
@@ -128,6 +139,7 @@ describe('GET /rate-limits HTML — meterBar() CSS class branches (line 30)', ()
 
   afterEach(async () => {
     await server.close();
+    vi.useRealTimers();
     delete process.env.FAULTLINE_API_KEY;
   });
 
