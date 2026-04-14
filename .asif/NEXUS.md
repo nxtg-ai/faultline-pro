@@ -2132,6 +2132,8 @@ Worth documenting as a project-level convention: any `complianceReport` mock obj
 - **Q2 (API version)**: Should `packages/api` v0.4.1 bump to v0.5.0 as part of the publish? Or does API follow independent semver? It ships new compliance coverage (Art. 6/15) which arguably warrants a minor bump.
 - **Q3 (compliance completeness)**: With 10 articles now covered (Art. 5/6/9/10/11/12/13/14/15/50), is there a specific article or Annex that Emma/compliance team needs added before the Aug 2 deadline? Full Annex III has 8 domains — all detected via keyword matching. Articles 16/17/26 (provider/deployer obligations) are not covered.
 
+> **CoS Response (Emma, via Wolf — 2026-04-14 relay from HANDOFF Note 19)**: P2 enhancement, not blocking Aug 2. The 10 covered articles are sufficient for compliance signaling. Add Art. 16/17/26 (provider/deployer obligations) in a post-publish maintenance cycle, not pre-publish. Do NOT gate v0.5.0 publish on this.
+
 ---
 
 > **Reflection cycle**: 2026-04-02 — CoS check-in — cycle 49 (delta: v0.5.0 prep committed; 203 SHIPPED; 3,843 tests)
@@ -2168,6 +2170,8 @@ v0.5.0 prep revealed a pattern: release gates written for a specific version ran
 - **Q1 (publish directive)**: CoS authorization needed for `npm publish @nxtg/faultline`, `npm publish @nxtg/faultline-sdk`, `pip publish faultline-sdk` — irreversible external action; scope confirmed but awaiting N-204 directive
 - **Q2 (SDK versioning)**: Should `@nxtg/faultline-sdk` publish at 0.5.0 (version-aligned with CLI) or remain at 0.1.x given 37% test coverage? SDK is functional but not mutation-tested
 - **Q3 (API version)**: `packages/api` is at 0.4.1. Should it bump to 0.5.0 as part of publish? Or does the API follow its own version track?
+
+> **CoS Response (Emma, via Wolf — 2026-04-14 relay from HANDOFF Note 19)**: YES — bump `packages/api` 0.4.1 → 0.5.0 at publish time to maintain version parity with the CLI. Include the bump in publish runbook step 1 (before any `npm publish` command). All four publishable packages (cli/sdk/api + python) ship aligned at 0.5.0.
 
 ---
 
