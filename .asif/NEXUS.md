@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-14 (Cycle 223 dep recheck — unchanged 40th day; 4,403/188 GREEN)
+> **Last Updated**: 2026-04-14 (Cycle 224 — @google/genai 1.49.0→1.50.0; 4,403/188 GREEN)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -1246,6 +1246,12 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-04-14 (Cycle 224) — @google/genai 1.49.0→1.50.0 applied; 4,403/188 GREEN
+
+4,403/188 GREEN. **@google/genai bumped 1.49.0→1.50.0** (in-range semver update — Wanted=1.50.0, first in-range change in 40+ days). Applied via `npm update --workspaces`. Tests GREEN post-update. All other packages: Wanted=Current. 9 major-version packages remain frozen on N-216.
+
+---
 
 > **Reflection cycle**: 2026-04-14 (Cycle 223) — dep recheck; unchanged (40th day); 4,403/188 GREEN
 
