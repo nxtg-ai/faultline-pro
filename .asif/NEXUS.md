@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-14 (Cycle 229 — dep Wanted=Current; 4,403/188 GREEN)
+> **Last Updated**: 2026-04-14 (Cycle 230 — 4-test flake logged; Q3 raised; dep Wanted=Current)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -986,6 +986,15 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Questions
 
+**Q3 RECURRING FLAKE — 2026-04-14 (Cycles 225 + 230)**:
+Two occurrences of unidentified transient failures, both at minute boundaries:
+- Cycle 225: 2 failures in 1 file, suite started at 01:13:48 (12s before 01:14:00)
+- Cycle 230: 4 failures in 1 file, suite started at 02:59:51 (9s before 03:00:00)
+
+Both pass immediately on re-run. Thorough scan of all 188 test files: no unprotected multi-request rate-limit sequences found outside the 5 already-fixed describe blocks. The increase from 2→4 failures suggests a second describe block may be vulnerable, but cannot be identified. Recommend: should I run the suite deliberately at a minute boundary (e.g. `sleep` until XX:59:50) to force reproduction, or add a broader fake-timer guard (global `vi.useFakeTimers({ toFake: ['Date'] })` in vitest setup)?
+
+---
+
 **Q1 PUBLISH STATUS — 2026-04-12 update**:
 All technical publish prerequisites are met. Runbook written at `docs/PUBLISH-RUNBOOK.md` with exact commands. Pre-publish gate: 4,403/188 GREEN, 30/30 release-prep PASS, `npm audit` 0 vulns, `npm pack` 107 kB / 55 files clean. CLI package has zero React/Vite production deps. The only remaining action is: `npm login --scope=@nxtg` then `npm publish --workspace=packages/cli --access=public` and `npm publish --workspace=packages/sdk --access=public`. **Decision and credentials: Asif.**
 
@@ -1246,6 +1255,12 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-04-14 (Cycle 230) — 4-test unidentified flake at 02:59:51; dep Wanted=Current
+
+4,403/188 GREEN on re-run. Suite at 02:59:51 (9s before minute boundary) produced 4 failures in 1 file — same minute-window signature as Cycle 225 (2 failures at 01:13:48). Re-run immediately GREEN; 3 successive runs all GREEN. Thorough scan of all 188 test files: no unprotected multi-request rate-limit sequences found outside the 5 already-fixed files. Hypothesis: rare race where fake timer pinning in beforeEach narrowly loses to a boundary flip before `vi.setSystemTime()` completes. Filed as second unidentified transient — escalating in Team Questions for CoS review. Dep snapshot: all external Wanted=Current.
+
+---
 
 > **Reflection cycle**: 2026-04-14 (Cycle 229) — dep Wanted=Current; 4,403/188 GREEN
 
