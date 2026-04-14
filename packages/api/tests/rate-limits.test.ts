@@ -71,7 +71,21 @@ describe('RateLimiter.getAllStats', () => {
 // ── RateLimitAlertStore ───────────────────────────────────────────────────────
 
 describe('RateLimitAlertStore', () => {
-  beforeEach(setup);
+  beforeEach(() => {
+    // Freeze Date mid-minute: 'checkAndAlert does not double-fire in same window'
+    // calls checkAndAlert twice with one await each. If real time crosses a minute
+    // boundary between the two calls, windowKey() returns a new value, the
+    // deduplication check in shouldAlert() fails, and a second alert fires.
+    // { toFake: ['Date'] } — leave setTimeout/setImmediate real (no server here,
+    // but some inline vi.useFakeTimers() tests manage their own timer lifecycle).
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-01-01T12:30:00.000Z'));
+    setup();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   it('ALERT_THRESHOLD_PCT is 80', () => {
     expect(ALERT_THRESHOLD_PCT).toBe(80);

@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-14 (Cycle 243 — dep Wanted=Current; 4,403/188 GREEN)
+> **Last Updated**: 2026-04-14 (Cycle 244 — minute-boundary flake root cause found + fix committed; 4,403/188 GREEN)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -986,12 +986,11 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Team Questions
 
-**Q3 RECURRING FLAKE — 2026-04-14 (Cycles 225 + 230)**:
-Two occurrences of unidentified transient failures, both at minute boundaries:
-- Cycle 225: 2 failures in 1 file, suite started at 01:13:48 (12s before 01:14:00)
-- Cycle 230: 4 failures in 1 file, suite started at 02:59:51 (9s before 03:00:00)
+**Q3 RECURRING FLAKE — RESOLVED (Cycle 244)**:
+Root cause identified on 3rd occurrence (Cycle 244, 08:00:01):
+`RateLimitAlertStore` describe block in `rate-limits.test.ts` had no fake timer guard. Test `'checkAndAlert does not double-fire in same window'` made two sequential `await checkAndAlert()` calls; if minute changed between them, `windowKey()` returned a new value, deduplication failed, and a second alert fired — causing 2-4 failures.
 
-Both pass immediately on re-run. Thorough scan of all 188 test files: no unprotected multi-request rate-limit sequences found outside the 5 already-fixed describe blocks. The increase from 2→4 failures suggests a second describe block may be vulnerable, but cannot be identified. Recommend: should I run the suite deliberately at a minute boundary (e.g. `sleep` until XX:59:50) to force reproduction, or add a broader fake-timer guard (global `vi.useFakeTimers({ toFake: ['Date'] })` in vitest setup)?
+Fix: Added `vi.useFakeTimers({ toFake: ['Date'] })` + `vi.setSystemTime(new Date('2026-01-01T12:30:00.000Z'))` in the describe block's `beforeEach`, plus `vi.useRealTimers()` in a new `afterEach`. This is the 6th minute-boundary fix applied across the test suite. 4,403/188 GREEN confirmed post-fix. No CoS response needed — closed.
 
 ---
 
@@ -1255,6 +1254,8 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-04-14 (Cycle 244) — 6th minute-boundary fix: `RateLimitAlertStore` describe block in `rate-limits.test.ts` lacked fake timer guard; `checkAndAlert does not double-fire in same window` made two sequential awaited calls without time protection. Added `vi.useFakeTimers({ toFake: ['Date'] })` + frozen time in beforeEach. Q3 can now be closed — root cause fully identified and remediated. 4,403/188 GREEN.
 
 > **Reflection cycle**: 2026-04-14 (Cycle 243) — dep Wanted=Current; 4,403/188 GREEN
 
