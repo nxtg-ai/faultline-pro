@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-14 (Cycle 224 — @google/genai 1.49.0→1.50.0; 4,403/188 GREEN)
+> **Last Updated**: 2026-04-14 (Cycle 225 — unidentified 2-test flake logged; dep Wanted=Current; 4,403/188 GREEN)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -1246,6 +1246,12 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-04-14 (Cycle 225) — unidentified 2-test flake at 01:13:48; passed on re-run; dep Wanted=Current
+
+4,403/188 GREEN. Test run at 01:13:48 produced 2 failures in 1 file (suite started 12s before 01:14:00 minute boundary — consistent with window-reset flake). Re-run immediately GREEN. Targeted run of all 5 known rate-limit test files: 100/100 GREEN. All known vulnerable describe blocks have fake timer guards. Failure not attributable to any unprotected sequence — logging as unidentified transient. Dep snapshot: Wanted=Current for all packages.
+
+---
 
 > **Reflection cycle**: 2026-04-14 (Cycle 224) — @google/genai 1.49.0→1.50.0 applied; 4,403/188 GREEN
 
