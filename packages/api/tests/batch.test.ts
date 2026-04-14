@@ -199,6 +199,11 @@ describe('POST /scan/batch — Rate limiting', () => {
   let server: FastifyInstance;
 
   beforeEach(async () => {
+    // Freeze Date mid-minute: R3 chains 3 batch calls expecting the last to be
+    // 429. If a minute boundary falls between calls, the counter resets and the
+    // 429 becomes 200. { toFake: ['Date'] } — leave timers real for server.ready().
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-01-01T12:30:00.000Z'));
     resetAll();
     server = buildServer();
     await server.ready();
@@ -206,6 +211,7 @@ describe('POST /scan/batch — Rate limiting', () => {
 
   afterEach(async () => {
     await server.close();
+    vi.useRealTimers();
     delete process.env.FAULTLINE_API_KEY;
     vi.unstubAllGlobals();
   });

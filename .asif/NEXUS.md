@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-17 (Cycle 221 dep recheck — unchanged 39th day; 4,403/188 GREEN)
+> **Last Updated**: 2026-04-17 (Cycle 222 — batch.test.ts + dashboard.test.ts minute-window flakes fixed; 4,403/188 GREEN)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -1246,6 +1246,27 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-04-17 (Cycle 222) — batch.test.ts + dashboard.test.ts minute-window flakes fixed
+
+### Flake fix — batch.test.ts + dashboard.test.ts (4th and 5th instances)
+
+**Caught**: First run at 23:47:57 — 3 seconds before the 23:48:00 boundary — 2 failures in 1 file.
+**Files fixed**:
+- `packages/api/tests/batch.test.ts` — `POST /scan/batch — Rate limiting` describe block. R3 chains 3 batch calls expecting the 3rd to be 429; minute boundary between calls 1 and 2 resets counter → 429 becomes 200.
+- `packages/api/tests/dashboard.test.ts` — `GET /dashboard — scan counts` describe block. D12 chains 2 scans expecting the 2nd to be 429 for analytics non-recording test.
+
+**Pattern** (same as all prior fixes): `vi.useFakeTimers({ toFake: ['Date'] })` + `vi.setSystemTime(new Date('2026-01-01T12:30:00.000Z'))` in `beforeEach`; `vi.useRealTimers()` in `afterEach`. Full fake timers avoided (would hang `await server.ready()`).
+
+**Running total of minute-window fixes**:
+1. `75e3edc` — rate-limits.test.ts (warningKeys)
+2. `d6f00af` — rate-limits-wikipedia-hardening.test.ts (RL5-RL8 meterBar)
+3. `a8b2b1f` — ratelimit.test.ts (Groups A+D, R1-R10, R19, R21)
+4-5. (this commit) — batch.test.ts R3 + dashboard.test.ts D12
+
+4,403/188 GREEN. Dep snapshot unchanged for 39th consecutive day.
+
+---
 
 > **Reflection cycle**: 2026-04-17 (Cycle 221) — dep recheck; unchanged (39th day); 4,403/188 GREEN
 

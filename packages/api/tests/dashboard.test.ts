@@ -155,6 +155,11 @@ describe('GET /dashboard — scan counts', () => {
   let server: FastifyInstance;
 
   beforeEach(async () => {
+    // Freeze Date mid-minute: D12 chains two scans expecting the 2nd to be 429.
+    // If a minute boundary falls between them, the counter resets and 429 → 200.
+    // { toFake: ['Date'] } only — leave timers real for await server.ready().
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-01-01T12:30:00.000Z'));
     setup();
     server = buildServer();
     await server.ready();
@@ -162,6 +167,7 @@ describe('GET /dashboard — scan counts', () => {
 
   afterEach(async () => {
     await server.close();
+    vi.useRealTimers();
     delete process.env.FAULTLINE_API_KEY;
   });
 
