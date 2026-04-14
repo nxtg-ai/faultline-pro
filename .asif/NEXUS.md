@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-17 (Cycle 205 dep recheck — unchanged 23rd day; 4,403/188 GREEN)
+> **Last Updated**: 2026-04-17 (Cycle 205 — structured reflection; all three minute-window flakes closed; 4,403/188 GREEN)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -1246,6 +1246,48 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-04-17 (Cycle 205) — structured CoS check-in
+
+### 1. What shipped since last check-in
+
+| Commit | Deliverable |
+|--------|-------------|
+| `55bad36` | `feat(api)`: EU AI Act Annex I 2027-08-02 deadline added to compliance calendar (CC13 updated 5→6) |
+| `75e3edc` | `fix(tests)`: `rate-limits.test.ts` minute-window flake — `warningKeys` test; fake timers added to `GET /rate-limits.json` describe block |
+| `d6f00af` | `fix(tests)`: `rate-limits-wikipedia-hardening.test.ts` RL5–RL8 `meterBar()` block — same pattern |
+| `a8b2b1f` | `fix(tests)`: `ratelimit.test.ts` Groups A+D — third and final instance; used `{ toFake: ['Date'] }` after discovering full fake timers hung `await server.ready()` |
+| `8315acd` / `5d533eb` | `ci`: security-scan v5 / v5.1 — YAML parse fix + missing-location guards (Asif's branch, observed via CI) |
+
+Test count held steady at **4,403 / 188 files GREEN** throughout. No regressions.
+
+### 2. What surprised me
+
+**The `{ toFake: ['Date'] }` discovery was non-obvious.** When I applied the same full `vi.useFakeTimers()` guard to `ratelimit.test.ts` (which uses `await server.ready()`), all Group A/D tests timed out at 5s in the full suite — but passed in isolation. Root cause: full fake timers mock `setImmediate`, which Fastify's startup sequence depends on. Mocking only `Date` is sufficient to pin the minute window. This is a subtle Vitest/Fastify interaction that isn't documented anywhere obvious.
+
+Pattern confirmed: **three separate test files** had the same minute-window vulnerability (`RateLimiter.getEntry()` uses `new Date().toISOString().slice(0,16)` as window key; if any operation crosses a minute boundary, counters reset to 0). All three are now patched.
+
+**The flake was invisible for 186 cycles.** It only manifested on cold-start first runs when the system clock was near a minute boundary (WSL2 file cache cold → slower transforms → more likely to cross XX:00). The CI gate pre-push hook caught the first reproducible failure.
+
+### 3. Cross-project signals
+
+- **`vi.useFakeTimers({ toFake: ['Date'] })` pattern**: Any project using Fastify + Vitest + multi-request test sequences that assert rate-limit or time-window behavior should use this instead of full fake timers. Full fake timers break `await server.ready()` and any code using `setImmediate` under the hood. **Recommend documenting in ASIF standards.**
+- **Minute-window window-key anti-pattern**: Using `new Date().toISOString().slice(0,16)` as a rate-limit bucket key is fragile in tests. Alternative: inject a `clock` dependency or accept a `getNow` function so tests can control time without mocking globals.
+
+### 4. What I'd prioritize next with fresh directives
+
+1. **N-216 (TypeScript 6 + major dep upgrades)** — 23 days frozen; TS 6.0.2 is available, `@types/node` is at v25, `vite` at v8. This is the highest-value technical investment blocked.
+2. **npm publish** — packages are at v0.4.1/v0.5.0 and have never been published. The `docs/PUBLISH-RUNBOOK.md` is ready. Blocked on CoS go-ahead since Cycle 49.
+3. **VSCode extension test coverage** — `extension.ts` at 26.8% branch coverage, `scanner.ts` at 30%. These are well below the 80% mutation threshold. Mutation testing not yet configured for this package.
+4. **SDK coverage** — `packages/sdk/src/index.ts` at 37% — large surface with low confidence.
+
+### 5. Blockers / questions for CoS
+
+- **N-216 decision**: 9 major-version packages waiting. TypeScript 6 migration could break build — needs a dedicated directive with a rollback plan. Is this approved?
+- **npm publish**: Still blocked from Cycle 49. What's the gate? Is there a legal/IP review pending or is this purely a timing decision?
+- **Dep audit freeze**: 23 consecutive days with zero in-range updates. Is this expected (all packages pinned to majors) or should we investigate whether `npm outdated` is reading the right registry?
+
+---
 
 > **Reflection cycle**: 2026-04-17 (Cycle 205) — dep recheck; unchanged (23rd day); 4,403/188 GREEN
 
