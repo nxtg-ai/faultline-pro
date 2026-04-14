@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-14 (Cycle 244 — minute-boundary flake root cause found + fix committed; 4,403/188 GREEN)
+> **Last Updated**: 2026-04-14 (Cycle 245 — dep Wanted=Current; 4,403/188 GREEN)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -1254,6 +1254,10 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-04-14 (Cycle 245) — dep Wanted=Current; 4,403/188 GREEN. No action items.
+
+---
 
 > **Reflection cycle**: 2026-04-14 (Cycle 244) — 6th minute-boundary fix: `RateLimitAlertStore` describe block in `rate-limits.test.ts` lacked fake timer guard; `checkAndAlert does not double-fire in same window` made two sequential awaited calls without time protection. Added `vi.useFakeTimers({ toFake: ['Date'] })` + frozen time in beforeEach. Q3 can now be closed — root cause fully identified and remediated. 4,403/188 GREEN.
 
