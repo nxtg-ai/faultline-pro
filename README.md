@@ -1,6 +1,8 @@
 # Faultline — AI Claim Forensics
 
-Forensic verification for AI-generated text. Faultline decomposes output into atomic claims, verifies each against live evidence, maps findings to EU AI Act risk tiers, and enforces a CI gate before hallucinations reach production.
+**The only AI safety CLI not owned by an AI lab.**
+
+Forensic verification for AI-generated text. Faultline decomposes output into atomic claims, verifies each against live evidence, maps findings to EU AI Act risk tiers, and enforces a CI gate before hallucinations reach production. Provider-agnostic: Gemini, OpenAI, Claude, Perplexity, or Mock — switch at runtime with no code changes.
 
 [![CI](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@nxtg/faultline.svg)](https://www.npmjs.com/package/@nxtg/faultline)

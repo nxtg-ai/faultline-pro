@@ -1,7 +1,7 @@
 {
   "name": "@nxtg/faultline",
   "version": "0.5.0",
-  "description": "AI Trust & Safety Platform — Verify AI claims, assess risk, ensure EU AI Act compliance.",
+  "description": "The only AI safety CLI not owned by an AI lab. Verify AI claims, assess risk, enforce EU AI Act compliance — provider-agnostic.",
   "type": "module",
   "bin": {
     "faultline": "./bin/faultline.js"
