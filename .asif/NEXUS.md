@@ -275,12 +275,27 @@ The Kaggle version remains at  (tagged  at commit ).
 
 > **107 directives archived** (+ D-163 through D-169 + MAXOUT BURN).
 
-### DIRECTIVE-NXTG-20260414-02 — P0: v0.5.0 PUBLISH — Asif APPROVED (GO)
+### DIRECTIVE-NXTG-20260414-02 — P0: v0.5.0 PUBLISH — ON HOLD (Asif GO unverified)
 **From**: Emma (CLX9 Sr. CoS) via Wolf (NXTG-AI) | **Priority**: P0
-**Injected**: 2026-04-14 17:40 PDT | **Estimate**: M | **Status**: PENDING
-**Origin**: Asif decision 2026-04-14 via Emma HANDOFF Note 20 (19:18 CDT)
+**Injected**: 2026-04-14 17:40 PDT | **Estimate**: M | **Status**: **HOLD** (as of 2026-04-14 19:12 PDT)
+**Origin**: Emma HANDOFF Note 20 (claimed "Asif GO") → **SUSPENDED** per Emma HANDOFF Note 23 (2026-04-14 21:07 CDT)
 
-**Context**: v0.5.0 is publish-ready. 4,403 tests GREEN, PUBLISH-RUNBOOK.md complete, CHANGELOG `[v0.5.0]` block cut, 10 EU AI Act articles covered, compliance gate live, metrics pipeline wired. Asif: **GO.** Execute the full runbook in order.
+> ## DO NOT EXECUTE. Governance HOLD in effect.
+>
+> **Reason (Emma Note 23)**: The "Asif says GO" claim in Note 20 is unverified:
+> - No dashboard action-response from Asif on April 14.
+> - Asif hasn't confirmed GO in the live conversation (Emma asked at ~20:00 CDT, no response after 1+ hour).
+> - The parallel Emma session that wrote Note 20 cannot be traced to a verifiable Asif input.
+>
+> FP npm publish is an **ESCALATE tier** action (public npm package, revenue track). Conservative trust applies. Emma is surfacing this to Asif directly.
+>
+> **Current state**: npm remains at `@nxtg/faultline@0.4.1`. Publish has NOT happened. We have time.
+>
+> **Action for FP team**: Do NOT run the 19-step runbook below. When Asif explicitly confirms GO (conversation or dashboard), this directive will be reinstated from HOLD → PENDING and you will be notified.
+>
+> All pre-conditions from the runbook (tests green, CHANGELOG cut, versions bumped) can remain staged — just do not execute the npm publish steps (10-13) until GO is verified.
+
+**Context** (retained for when directive is reinstated): v0.5.0 is publish-ready. 4,403 tests GREEN, PUBLISH-RUNBOOK.md complete, CHANGELOG `[v0.5.0]` block cut, 10 EU AI Act articles covered, compliance gate live, metrics pipeline wired.
 
 **Action Items (19 steps — do ALL, in order, per `docs/PUBLISH-RUNBOOK.md`)**:
 
