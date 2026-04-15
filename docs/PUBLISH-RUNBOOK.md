@@ -21,6 +21,9 @@ npx tsc --noEmit
 # 4. Pack dry-run — verify tarball contents look right
 npm pack --workspace=packages/cli --dry-run
 npm pack --workspace=packages/sdk --dry-run
+# ↑ After this: cross-check every directory imported in cli/index.ts
+# against the 'files' array. A missing directory ships silently and
+# only fails on cold install (v0.5.0 lesson: plugins/ was omitted).
 
 # 5. Security audit — must report 0 vulnerabilities
 npm audit

@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-15 (Cycle 305 — v0.5.2 patch: plugins/ missing from files array; `@nxtg/faultline@0.5.2` published)
+> **Last Updated**: 2026-04-15 (Cycle 306 — Step 18 VERIFIED: `npx @nxtg/faultline@0.5.2 --version` → "Faultline v0.5.2" ✅)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -379,7 +379,7 @@ The Kaggle version remains at  (tagged  at commit ).
 > - v0.5.1: `--import tsx` resolved from CWD → fixed with `createRequire(import.meta.url)` absolute file:// URL.
 > - v0.5.2: `plugins/` directory missing from `files` array → `ERR_MODULE_NOT_FOUND: plugins/loader.js` → fixed by adding `"plugins/"` to files.
 >
-> **Emma HANDOFF**: `@nxtg/faultline@0.5.2` is the correct live version. Tarball verified (58 files, all dirs present). Tests 4,403/188 GREEN. DIRECTIVE COMPLETE.
+> **Emma HANDOFF**: `@nxtg/faultline@0.5.2` is the correct live version. Cold install confirmed by Asif: `npx @nxtg/faultline@0.5.2 --version` → "Faultline v0.5.2" ✅. Tests 4,403/188 GREEN. Step 19 (`faultline stats`) will show download data once npm aggregates publish-day installs (~24h lag). DIRECTIVE FULLY COMPLETE.
 
 ---
 
