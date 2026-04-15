@@ -275,25 +275,42 @@ The Kaggle version remains at  (tagged  at commit ).
 
 > **107 directives archived** (+ D-163 through D-169 + MAXOUT BURN).
 
-### DIRECTIVE-NXTG-20260414-02 — P0: v0.5.0 PUBLISH — ON HOLD (Asif GO unverified)
+### DIRECTIVE-NXTG-20260414-02 — P0: v0.5.0 PUBLISH — REINSTATED, Asif GO CONFIRMED 2026-04-15
 **From**: Emma (CLX9 Sr. CoS) via Wolf (NXTG-AI) | **Priority**: P0
-**Injected**: 2026-04-14 17:40 PDT | **Estimate**: M | **Status**: **HOLD** (as of 2026-04-14 19:12 PDT)
-**Origin**: Emma HANDOFF Note 20 (claimed "Asif GO") → **SUSPENDED** per Emma HANDOFF Note 23 (2026-04-14 21:07 CDT)
+**Injected**: 2026-04-14 17:40 PDT | **Reinstated**: 2026-04-15 08:58 PDT | **Estimate**: M | **Status**: **PENDING — EXECUTE TODAY**
+**Origin**: Emma HANDOFF Note 32 (2026-04-15 10:50 CDT) — **Asif confirmed GO.** Prior HOLD (Note 23) lifted.
 
-> ## DO NOT EXECUTE. Governance HOLD in effect.
+> ## CLEARED TO EXECUTE. Asif GO verified by Emma 2026-04-15.
 >
-> **Reason (Emma Note 23)**: The "Asif says GO" claim in Note 20 is unverified:
-> - No dashboard action-response from Asif on April 14.
-> - Asif hasn't confirmed GO in the live conversation (Emma asked at ~20:00 CDT, no response after 1+ hour).
-> - The parallel Emma session that wrote Note 20 cannot be traced to a verifiable Asif input.
->
-> FP npm publish is an **ESCALATE tier** action (public npm package, revenue track). Conservative trust applies. Emma is surfacing this to Asif directly.
->
-> **Current state**: npm remains at `@nxtg/faultline@0.4.1`. Publish has NOT happened. We have time.
->
-> **Action for FP team**: Do NOT run the 19-step runbook below. When Asif explicitly confirms GO (conversation or dashboard), this directive will be reinstated from HOLD → PENDING and you will be notified.
->
-> All pre-conditions from the runbook (tests green, CHANGELOG cut, versions bumped) can remain staged — just do not execute the npm publish steps (10-13) until GO is verified.
+> Prior HOLD lifted. `npm view @nxtg/faultline version` still shows `0.4.1` — publish window is OPEN.
+
+**CRITICAL pre-publish addition (Emma Note 32)**: Before running step 10 (`npm login`), update **README + npm description** with new lead messaging:
+
+> **Lead tagline**: *"The only AI safety CLI not owned by an AI lab."*
+
+**Why the messaging pivot** (full research: `~/ASIF/enrichment/2026-04-15-fp-publish-timing-research.md`):
+1. **Promptfoo acquired by OpenAI (March 2026, $86M)** — no longer neutral. Every org using Anthropic/Google/Mistral/Cohere/Azure has institutional reason to switch. This nervous-adopter window is OPEN NOW.
+2. **FP's 5-provider model-agnostic posture is now the cleanest differentiation in the space.** Lead with the OpenAI-independence angle.
+3. **EU AI Act Digital Omnibus extends runway to Dec 2027** — DON'T delete Aug 2026 references; pivot framing: "Model-agnostic AI safety auditing — built for teams who cannot rely on OpenAI's tools to test OpenAI's tools. Compliance-ready for August 2026 and beyond."
+4. **No new npm-native CLI competitor in Q1 2026** — the install surface is still yours to own.
+
+**Messaging update pre-publish checklist**:
+- [ ] README.md lead section: model-agnostic tagline + OpenAI-independence framing
+- [ ] `packages/cli/package.json` `description` field updated
+- [ ] `packages/sdk/package.json` `description` field updated
+- [ ] `llms.txt` at repo root: positioning line updated
+- [ ] Compliance section reframed as "audit infrastructure for Aug 2026 AND Dec 2027 runway"
+
+**Then execute the staged 19-step runbook per `docs/PUBLISH-RUNBOOK.md`** (original action items below remain the source of truth — messaging update lands as part of steps 6-8).
+
+**After publish (Emma explicit ask)**: Write a HANDOFF note back with the npm version URL and confirm tests passed clean. Emma is tracking for Asif.
+
+**Constraints**:
+- Execute in order — skipping a gate is a P0 policy violation.
+- If any gate fails: STOP, investigate, do NOT bypass with `--no-verify`.
+- Messaging update MUST land before `npm publish` step — republishing with corrected description is more expensive than getting it right the first time.
+
+**Reference**: Emma HANDOFF Note 32 (Asif GO confirmed), `~/ASIF/enrichment/2026-04-15-fp-publish-timing-research.md` (full brief).
 
 **Context** (retained for when directive is reinstated): v0.5.0 is publish-ready. 4,403 tests GREEN, PUBLISH-RUNBOOK.md complete, CHANGELOG `[v0.5.0]` block cut, 10 EU AI Act articles covered, compliance gate live, metrics pipeline wired.
 
