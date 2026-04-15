@@ -37,7 +37,7 @@ import { streamScan, formatStreamResult } from './stream-client.js';
 import { buildEuComplianceReport, renderComplianceReportJson, renderComplianceReportPdf, renderComplianceReportMarkdown, renderComplianceReportSarif, renderComplianceReportHtml, evaluateComplianceGate, renderCiGateOutput, diffComplianceReports, renderComplianceDiffOutput, loadComplianceConfig } from './compliance-report.js';
 import { statsCommand } from './stats.js';
 
-const VERSION = '0.4.0';
+const VERSION = '0.5.1';
 
 const API_KEY_MAP: Record<string, string> = {
   claude: 'ANTHROPIC_API_KEY',
