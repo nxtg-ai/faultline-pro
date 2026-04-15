@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-15 (Cycle 299 — dep Wanted=Current; 4,403/188 GREEN)
+> **Last Updated**: 2026-04-15 (Cycle 300 — check-in reflection; 4,403/188 GREEN)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -1354,6 +1354,34 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-04-15 (Cycle 300 — check-in)
+
+**1. What shipped since last check-in (approx Cycles 244–299)?**
+- **6th minute-boundary flake fix** (Cycle 244): Root cause finally identified after 3 occurrences (Cycles 225, 230, 244). `RateLimitAlertStore` describe block in `rate-limits.test.ts` had no fake timer guard — `checkAndAlert does not double-fire in same window` made two sequential `await` calls without time protection. Fixed with `vi.useFakeTimers({ toFake: ['Date'] })` + frozen time. Q3 closed.
+- **`@google/genai` 1.50.0→1.50.1** (Cycle 260): In-range patch applied, tests verified GREEN.
+- **56 dep audit cycles** (Cycles 245–299): All Wanted=Current; no external updates available. 9 major-version packages remain frozen on N-216.
+- **Test suite**: 4,403/188 GREEN throughout. One transient minute-boundary flake on Cycle 260 first run (16:55:41, boundary at 16:56:00) — clean on rerun.
+
+**2. What surprised us?**
+- The 6th minute-boundary flake was in `RateLimitAlertStore` — a non-HTTP alert store, not directly in rate-limiting HTTP tests. Prior audits focused on HTTP multi-request sequences and missed this because it uses a parallel mechanism (`windowKey()`) rather than a counter. The lesson: minute-boundary vulnerability exists wherever `new Date().toISOString().slice(0,16)` appears across two async awaits, regardless of whether HTTP is involved.
+- The `@google/genai` 1.50.0→1.50.1 patch triggered a flake on the first run at a minute boundary — confirming the fix in Cycle 244 didn't close all boundary windows (subsequent investigation found the run started at 16:55:41, right before 16:56:00). The flake was transient, not related to the dep update.
+
+**3. Cross-project signals**
+- The `{ toFake: ['Date'] }` pattern for guarding minute-window deduplication logic is now battle-tested across 6 fixes. Any project using time-windowed deduplication (alerts, rate limits, session windows) in Vitest should apply this pattern to all describe blocks with multi-await sequences. Applicable to any ASIF project using similar store patterns.
+- The root-cause detection method (grep for `toISOString().slice(0,16)` + audit every `await` sequence in the same describe block) is a reusable audit technique worth documenting.
+
+**4. What to prioritize next?**
+- **P1 — npm publish** (Q1, open since Cycle 49): All pre-conditions met. Runbook at `docs/PUBLISH-RUNBOOK.md`. Blocked on Asif credentials + authorization. This is the highest-leverage unblocked action.
+- **P2 — N-216 (TypeScript 6 + major deps)**: 9 packages frozen. TS 6.0.2 is Latest; upgrade would require testing TS 6 breaking changes. Worth a scoped spike.
+- **P3 — Gate 6 in CI** (Q2): Stryker still local-only. Adding to `ci.yml` closes the enforcement gap.
+
+**5. Blockers / questions for CoS**
+- **Q1 (publish)**: Still blocked. 56 idle cycles since last check-in. All gates green. Request go/no-go.
+- **Q2 (Gate 6 in CI)**: P-level signal requested — add Stryker to CI? Adds ~3–5 min to CI runtime.
+- **N-216 (major deps)**: Should TS 6 upgrade be a standalone directive or bundled with other major-version bumps?
+
+---
 
 > **Reflection cycle**: 2026-04-15 (Cycle 299) — dep Wanted=Current; 4,403/188 GREEN. No action items.
 
