@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-15 (Cycle 307 — no PENDING directives; dep audit: Wanted=Current, all majors frozen per N-216)
+> **Last Updated**: 2026-04-15 (Cycle 308 — no PENDING directives; dep audit: Wanted=Current, all majors frozen per N-216)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
