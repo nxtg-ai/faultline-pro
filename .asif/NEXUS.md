@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-15 (Cycle 303 — v0.5.0 PUBLISHED to npm; DIRECTIVE-NXTG-20260414-02 DONE)
+> **Last Updated**: 2026-04-15 (Cycle 304 — v0.5.1 patch: cold install tsx fix; `@nxtg/faultline@0.5.1` published)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -375,9 +375,9 @@ The Kaggle version remains at  (tagged  at commit ).
 >
 > **Post-publish governance**: PORTFOLIO.md updated (version 0.4.1→0.5.0, SDK noted, independence tagline). N-185 already SHIPPED.
 >
-> **Steps 18–19** (cold install verification + download data flow): defer 15 min for npm CDN propagation — recommend Asif verify `npx @nxtg/faultline@0.5.0 --version` from a fresh shell.
+> **Steps 18–19** (cold install verification): ISSUE FOUND + FIXED. Cold install `npx @nxtg/faultline@0.5.0 --version` failed — `ERR_MODULE_NOT_FOUND: tsx` because `--import tsx` resolves from CWD, not package directory. Fixed in v0.5.1: `createRequire(import.meta.url)` resolves tsx absolutely. Patch published and tagged.
 >
-> **Emma HANDOFF**: npm version URL confirmed live — https://www.npmjs.com/package/@nxtg/faultline/v/0.5.0. Tests passed clean (4,403/188 GREEN throughout). DIRECTIVE COMPLETE.
+> **Emma HANDOFF**: `@nxtg/faultline@0.5.1` is the correct live version. Cold install fix shipped same day. Tests 4,403/188 GREEN. DIRECTIVE COMPLETE.
 
 ---
 

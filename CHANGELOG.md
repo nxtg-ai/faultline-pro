@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [v0.5.1] — 2026-04-15
+
+### Fixed
+
+- Cold install / npx failure — `bin/faultline.js` used `--import tsx` (bare specifier), which Node.js resolves from CWD. In a fresh npx install where tsx is not in the user's working directory, this caused `ERR_MODULE_NOT_FOUND`. Fix: use `createRequire(import.meta.url)` to resolve tsx relative to the package's own install directory, then pass the absolute `file://` URL to `--import`. VERSION constant in `cli/index.ts` also corrected 0.4.0 → 0.5.1.
+
+---
+
 ### Added
 
 - N-215: Gemini calibration prompt hardening — multi-point `CALIBRATION RULE` replaces single-sentence rule in `verifyClaim()` prompt (CLI + web `geminiService.ts`); 7-condition "use mixed when" list covering: conflicting meta-analyses, dose-dependent effects, IARC/WHO/FDA Group 2A/2B partial classifications, population-dependent effects, contested peer-reviewed consensus; explicit "when in doubt between contradicted and mixed, always choose mixed" tie-breaker; fixes B3 overconfidence failure (IARC Group 2A hot-beverages classification returned `contradicted` instead of `mixed`); 5 prompt-integrity + behavioral tests in `gemini-service-hardening.test.ts` (CAL-1–CAL-5)
