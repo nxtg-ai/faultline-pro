@@ -275,6 +275,58 @@ The Kaggle version remains at  (tagged  at commit ).
 
 > **107 directives archived** (+ D-163 through D-169 + MAXOUT BURN).
 
+### DIRECTIVE-NXTG-20260414-02 — P0: v0.5.0 PUBLISH — Asif APPROVED (GO)
+**From**: Emma (CLX9 Sr. CoS) via Wolf (NXTG-AI) | **Priority**: P0
+**Injected**: 2026-04-14 17:40 PDT | **Estimate**: M | **Status**: PENDING
+**Origin**: Asif decision 2026-04-14 via Emma HANDOFF Note 20 (19:18 CDT)
+
+**Context**: v0.5.0 is publish-ready. 4,403 tests GREEN, PUBLISH-RUNBOOK.md complete, CHANGELOG `[v0.5.0]` block cut, 10 EU AI Act articles covered, compliance gate live, metrics pipeline wired. Asif: **GO.** Execute the full runbook in order.
+
+**Action Items (19 steps — do ALL, in order, per `docs/PUBLISH-RUNBOOK.md`)**:
+
+**Pre-publish gates**:
+1. [ ] `npm test` → verify 4,403/188 GREEN
+2. [ ] Release-prep validation → 30/30 PASS
+3. [ ] `npx tsc --noEmit` → 0 errors
+4. [ ] `npm pack --dry-run` on both packages (`packages/cli`, `packages/sdk`)
+5. [ ] `npm audit` → 0 vulnerabilities
+
+**Documentation**:
+6. [ ] `CHANGELOG.md` — confirm `[v0.5.0]` section is complete, accurate, dated today
+7. [ ] `README.md` — version badge updated to 0.5.0, new commands (compliance-report, stats) documented
+8. [ ] `packages/cli/package.json` + `packages/sdk/package.json` — both at 0.5.0
+9. [ ] `packages/api/package.json` — bump to 0.5.0 for parity (private, not published — per prior Q3 CoS Response at line 2170)
+
+**Publish**:
+10. [ ] `npm login --scope=@nxtg`
+11. [ ] `npm publish --workspace=packages/cli --access=public`
+12. [ ] `npm publish --workspace=packages/sdk --access=public`
+13. [ ] Verify: `npm view @nxtg/faultline version` → 0.5.0
+
+**Version control**:
+14. [ ] `git tag v0.5.0 && git push origin v0.5.0`
+15. [ ] GitHub Release at `nxtg-ai/faultline-pro/releases/new?tag=v0.5.0`, use CHANGELOG `[v0.5.0]` as release notes
+
+**Post-publish governance**:
+16. [ ] FP NEXUS — mark N-185 (metrics pipeline), N-216 (dep migration, if done), and v0.5.0 publish initiative as SHIPPED
+17. [ ] PORTFOLIO.md — update FP test count (4,403), version (0.5.0), phase
+18. [ ] Verify: `npx @nxtg/faultline --version` → 0.5.0 from npm (cold install — confirm it's live)
+19. [ ] Verify: `faultline stats` shows download data starting to flow
+
+**Constraints**:
+- Execute in order — skipping a gate is a P0 policy violation
+- If any gate fails: STOP, investigate, do NOT bypass with `--no-verify` or similar
+- Write response in this directive when complete. Emma will pick up on her next enrichment cycle.
+
+**Reference**: Emma HANDOFF Note 20 (2026-04-14 19:18 CDT). Publish authorized by Asif directly — this is the long-awaited GO.
+
+**EU AI Act tailwind context** (see NEW "EU AI Act framing" section below — reframed planning horizon from Aug 2026 → Dec 2027 per Digital Omnibus): don't let the publish drag. The tailwind is "publish now to lead the market through the compliance cycle," not "relax because the deadline moved."
+
+**Response** (fill when complete):
+> _(to be filled by team)_
+
+---
+
 ### DIRECTIVE-NXTG-20260404-01 — P1: npm Download Metrics Pipeline
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P1
 **Injected**: 2026-04-04 17:12 | **Estimate**: M | **Status**: DONE
@@ -965,6 +1017,22 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Portfolio Intelligence
 > Injected by CLX9 CoS (Emma) — Enrichment Cycle 2026-03-05
+
+> **EU AI Act framing update (2026-04-14, Emma via Wolf — HANDOFF Note 21)**:
+> The EU **Digital Omnibus** (EU Commission, Nov 2025) proposes shifting high-risk AI deadlines:
+> - Standalone high-risk AI (Annex III): **Aug 2026 → Dec 2, 2027**
+> - High-risk in existing products (Annex I): Aug 2026 → Aug 2, 2028
+>
+> **Legislative status**: EU Council adopted general approach Mar 13. EP IMCO+LIBE voted 101-9 Mar 18. Trilogue still needed. **Aug 2026 remains operative law until it passes.**
+>
+> **Reframing for FP**:
+> 1. This is a **tailwind**, not a setback — longer runway, more enterprise budget cycles, more sales time. Do NOT deprioritize the EU AI Act angle.
+> 2. Change internal framing from **"Aug 2026 deadline"** → **"planning horizon Dec 2027 — publish now to lead the market through the compliance cycle."**
+> 3. **GTM messaging upgrade**: "get ahead of Dec 2027" is a stronger enterprise message than "you have 4 months." Marketing / content / sales materials should be refreshed accordingly.
+> 4. All prior references to "Aug 2, 2026" / "August 2026 deadline" in this NEXUS reflect the at-time-of-writing legal state. They are historical context, not targets — plan forward against Dec 2027.
+>
+> **Reference**: `~/ASIF/enrichment/2026-04-14-eu-ai-act-deadline-shift.md` (full Emma analysis).
+
 
 - **npm publish**: Decision pending with Asif. **Competitive brief delivered**: `~/ASIF/enrichment/2026-03-05-faultline-pro-competitive-brief.md`. Wolf recommends GO.
 - **Market opportunity**: $15.7B deepfake detection market. EU AI Act high-risk deadline **August 2026**.
