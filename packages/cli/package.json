@@ -1,6 +1,6 @@
 {
   "name": "@nxtg/faultline",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "The only AI safety CLI not owned by an AI lab. Verify AI claims, assess risk, enforce EU AI Act compliance — provider-agnostic.",
   "type": "module",
   "bin": {
@@ -13,6 +13,7 @@
     "analysis/",
     "compliance/",
     "history/",
+    "plugins/",
     "providers/",
     "rules/",
     "services/",

@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [v0.5.2] — 2026-04-15
+
+### Fixed
+
+- Cold install — `plugins/` directory missing from `files` array in `packages/cli/package.json`. Caused `ERR_MODULE_NOT_FOUND: plugins/loader.js` on any fresh npx/global install. Fixed by adding `"plugins/"` to the published file list.
+
+---
+
 ## [v0.5.1] — 2026-04-15
 
 ### Fixed

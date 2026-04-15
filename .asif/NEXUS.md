@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-15 (Cycle 304 — v0.5.1 patch: cold install tsx fix; `@nxtg/faultline@0.5.1` published)
+> **Last Updated**: 2026-04-15 (Cycle 305 — v0.5.2 patch: plugins/ missing from files array; `@nxtg/faultline@0.5.2` published)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -375,9 +375,11 @@ The Kaggle version remains at  (tagged  at commit ).
 >
 > **Post-publish governance**: PORTFOLIO.md updated (version 0.4.1→0.5.0, SDK noted, independence tagline). N-185 already SHIPPED.
 >
-> **Steps 18–19** (cold install verification): ISSUE FOUND + FIXED. Cold install `npx @nxtg/faultline@0.5.0 --version` failed — `ERR_MODULE_NOT_FOUND: tsx` because `--import tsx` resolves from CWD, not package directory. Fixed in v0.5.1: `createRequire(import.meta.url)` resolves tsx absolutely. Patch published and tagged.
+> **Steps 18–19** (cold install verification): TWO ISSUES FOUND + FIXED same day.
+> - v0.5.1: `--import tsx` resolved from CWD → fixed with `createRequire(import.meta.url)` absolute file:// URL.
+> - v0.5.2: `plugins/` directory missing from `files` array → `ERR_MODULE_NOT_FOUND: plugins/loader.js` → fixed by adding `"plugins/"` to files.
 >
-> **Emma HANDOFF**: `@nxtg/faultline@0.5.1` is the correct live version. Cold install fix shipped same day. Tests 4,403/188 GREEN. DIRECTIVE COMPLETE.
+> **Emma HANDOFF**: `@nxtg/faultline@0.5.2` is the correct live version. Tarball verified (58 files, all dirs present). Tests 4,403/188 GREEN. DIRECTIVE COMPLETE.
 
 ---
 
