@@ -1407,6 +1407,40 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-16 (Cycle 305 — check-in)
+
+**1. What shipped since last check-in?**
+- **v0.5.0 npm publish** (Cycle 303): `@nxtg/faultline` + `@nxtg/faultline-sdk` published with "The only AI safety CLI not owned by an AI lab." tagline. README, llms.txt, package descriptions updated with Promptfoo/OpenAI acquisition angle.
+- **v0.5.1 cold-install fix** (Cycle 303): `tsx` bare specifier resolved via `createRequire(import.meta.url).resolve('tsx')` → absolute `file://` URL. Fixed ERR_MODULE_NOT_FOUND on fresh `npx @nxtg/faultline` calls outside the monorepo.
+- **v0.5.2 files-array fix** (Cycle 303): `plugins/` directory missing from `"files"` allowlist in `packages/cli/package.json` — silently excluded from tarball. Added, verified with `npm pack --dry-run` (58 files). Confirmed working by Asif: `npx @nxtg/faultline@0.5.2 --version` → `Faultline v0.5.2`.
+- **DIRECTIVE-NXTG-20260416-01 — EU AI Act compliance evidence layer** (Cycle 304): All 3 features shipped:
+  - Art. 9: `POST /scan/risk-register` — lifecycle-phase risk register export (RR1–RR14, 14 tests)
+  - Art. 12: `GET /audit/log/manifest` — SHA-256 chained-hash tamper-evident manifest (AM1–AM13, 13 tests)
+  - Art. 14: `POST /scans/:id/approve` + `GET /scans/:id/approvals` — human sign-off record (AP1–AP19, 19 tests)
+- **Heartbeat false-positive root cause fixed** (Cycle 305): `hb_has_pending_directive` in `heartbeat-core.sh` rewritten to use NEXUS grep as primary check; Dx3 demoted to fallback for NEXUS-absent projects. Three stale `[CI-HEALTH] Faultline-Pro` Dx3 records were matching "directive PENDING Faultline-Pro" semantically (score 0.78) and triggering injections every session.
+- **Tests**: 2,263/124 GREEN (was 2,230 before Cycle 304; +33 net from EU AI Act features).
+
+**2. What surprised us?**
+- Two sequential cold-install bugs on publish day: the `tsx` bare-specifier CWD issue is well-known but the `files` allowlist exclusion was silent — `npm pack --dry-run` is essential post-pack verification that wasn't in the runbook. Now documented.
+- The Dx3 semantic false positive was deeper than expected: three separate CI-HEALTH records all matched, and since the Dx3 API has no delete endpoint, the only viable fix was architectural (swap primary/fallback order). The cap file suppressed it session-by-session but couldn't survive NEXUS commits resetting the hash.
+- `requireAdmin` returns 403 (not 401) for missing keys — a deliberate security design choice (403 leaks less auth structure than 401). Two EU AI Act tests initially wrote 401 and had to be corrected.
+
+**3. Cross-project signals**
+- **npm `files` allowlist audit**: Any project publishing with an explicit `files` array should run `npm pack --dry-run` and cross-check every directory imported in the CLI entry point. Silent exclusion is the failure mode — no error at publish time, only at install time. Pattern documented in `docs/PUBLISH-RUNBOOK.md`.
+- **SHA-256 chain manifest pattern**: The `chainHash(n) = SHA-256(entryHash(n) + prevChainHash(n-1))` pattern is reusable for any audit log that needs third-party verifiability without proprietary tooling. The implementation is ~30 lines in `audit-log.ts`. Any ASIF project with compliance logging requirements could adopt this directly.
+- **Dx3 semantic recall + NEXUS grep ordering**: Dx3 semantic search should never be the sole authority for binary PENDING/NOT-PENDING decisions — it will match unrelated records by project name proximity. NEXUS grep is exact and authoritative. Always use it as primary.
+
+**4. What to prioritize next?**
+- **P1 — N-216 (TypeScript 6 + major deps)**: 9 packages frozen. Post-publish the risk profile is lower — a TS 6 upgrade spike now is well-timed.
+- **P2 — faultline stats check** (calendar: 2026-04-16): v0.5.2 download data should be available now. Check npm stats.
+- **P3 — Gate 6 in CI** (Q2): Stryker still local-only. Adding to `ci.yml` closes the mutation enforcement gap.
+- **P4 — CLI `faultline approve <scan-id>` command**: Art. 14 sign-off is API-only. A CLI flag would close the loop for teams using the CLI workflow.
+
+**5. Blockers / Questions for CoS**
+- None. Clean state. All directives done, no CI red, deps current.
+
+---
+
 > **Reflection cycle**: 2026-04-15 (Cycle 302) — dep Wanted=Current; 4,403/188 GREEN. No action items.
 
 ---
