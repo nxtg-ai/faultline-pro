@@ -62,6 +62,8 @@ import { auditLogRoutes } from './routes/audit-log.js';
 import { complianceGateRoutes } from './routes/compliance-gate.js';
 import { streamRoutes } from './routes/stream.js';
 import { npmMetricsRoutes } from './routes/npm-metrics.js';
+import { riskRegisterRoutes } from './routes/risk-register.js';
+import { approvalsRoutes } from './routes/approvals.js';
 import { getNotificationStore } from './store/notifications.js';
 import { getKeyExpiryNotifier } from './store/key-expiry-notifier.js';
 import { getKeyRotationNotifier } from './store/key-rotation-notifier.js';
@@ -190,6 +192,8 @@ export function buildServer() {
   fastify.register(auditLogRoutes);
   fastify.register(streamRoutes);
   fastify.register(npmMetricsRoutes);
+  fastify.register(riskRegisterRoutes);
+  fastify.register(approvalsRoutes);
 
   fastify.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
     if (request.url === '/graphql' && request.method === 'POST') {

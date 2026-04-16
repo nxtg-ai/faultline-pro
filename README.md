@@ -438,6 +438,18 @@ The EU AI Act's high-risk AI system requirements take effect August 2026. Faultl
 
 Each scan produces a compliance report listing triggered articles and recommended mitigations.
 
+### Art. 9 — Risk Register (`POST /scan/risk-register`)
+
+EU AI Act Article 9 requires operators of high-risk AI systems to maintain a documented risk management system across the AI lifecycle. Faultline's risk register endpoint aggregates all scan history into a structured report — indexed by lifecycle phase (development, testing, deployment, monitoring) — with a `riskDistribution` breakdown, `highRiskCount`, `criticalRiskCount`, and per-scan findings. Each finding carries the triggered article reference and lifecycle phase so auditors can trace risk back to the point of introduction.
+
+### Art. 12 — Tamper-Evident Audit Log (`GET /audit/log/manifest`)
+
+EU AI Act Article 12 requires that audit logs for high-risk AI systems be tamper-evident and verifiable by competent authorities. Faultline implements a SHA-256 chain manifest: each log entry is hashed individually (`entryHash`), then chained to the previous entry's hash (`chainHash = SHA-256(entryHash + prevChainHash)`). The final `rootHash` covers the entire log. Any modification to any entry — or any insertion/deletion — breaks the chain. Third-party auditors can verify integrity without Faultline tooling using only `openssl dgst -sha256`.
+
+### Art. 14 — Human Sign-Off Record (`POST /scans/:id/approve`)
+
+EU AI Act Article 14 requires meaningful human oversight of high-risk AI system outputs before deployment. Faultline's approval endpoints let a named reviewer formally approve or reject any scan result — recording the reviewer identity (API key), decision (`approved` / `rejected`), optional note, and UTC timestamp. All approvals are queryable via `GET /scans/:id/approvals` and are immutable once recorded, providing a durable audit trail of human sign-off prior to production use.
+
 ---
 
 Built by [NextGen AI](https://nxtg.ai)

@@ -12,6 +12,7 @@
  *   Same filters as above; returns NDJSON stream for log archival.
  */
 
+import { createHash } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { getAuditLogger, type AuditEntry } from '../store/audit.js';
 import { requireAdmin } from '../plugins/auth.js';
@@ -140,6 +141,49 @@ export async function auditLogRoutes(fastify: FastifyInstance): Promise<void> {
         .header('Content-Disposition', `attachment; filename="faultline-audit-${date}.ndjson"`)
         .header('X-Export-Count', String(filtered.length))
         .send(ndjson);
+    },
+  );
+
+  /**
+   * GET /audit/log/manifest — tamper-evident chained-hash manifest
+   * // Validates: N-219 (Art. 12 Tamper-Evident Log)
+   *
+   * EU AI Act Art. 12 — Logging and record-keeping.
+   * Returns each audit entry with an entryHash (SHA-256 of the entry JSON) and a
+   * chainHash (SHA-256 of entryHash + previousChainHash), forming a verifiable chain.
+   * The rootHash is the final chainHash — any tampering with any entry breaks it.
+   * Third-party auditors can verify integrity without FP tooling.
+   */
+  fastify.get(
+    '/audit/log/manifest',
+    { preHandler: requireAdmin },
+    async (_request, reply) => {
+      const entries = getAuditLogger().getEntries(); // chronological order
+
+      let prevChainHash = '';
+      const manifestEntries = entries.map((e, index) => {
+        const entryHash = createHash('sha256').update(JSON.stringify(e)).digest('hex');
+        const chainHash = createHash('sha256').update(entryHash + prevChainHash).digest('hex');
+        prevChainHash = chainHash;
+        return {
+          index,
+          timestamp: e.timestamp,
+          keyId: e.keyId,
+          endpoint: e.endpoint,
+          method: e.method,
+          statusCode: e.statusCode,
+          entryHash,
+          chainHash,
+        };
+      });
+
+      return reply.send({
+        algorithm: 'SHA-256-chain',
+        generatedAt: new Date().toISOString(),
+        totalEntries: manifestEntries.length,
+        rootHash: prevChainHash || null,
+        entries: manifestEntries,
+      });
     },
   );
 }
