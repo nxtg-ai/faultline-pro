@@ -273,6 +273,30 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
+### DIRECTIVE-NXTG-20260416-01 — P2: EU AI Act Compliance Evidence Layer — 3 Gap Closures
+**From**: CLX9 Sr. CoS (Emma) via Wolf (NXTG-AI) | **Priority**: P2
+**Injected**: 2026-04-16 09:10 PDT | **Estimate**: M | **Status**: PENDING
+
+**Context**: 107 days to EU AI Act high-risk enforcement (2026-08-02). FP has strong coverage on Arts. 9/10/11/12/13/14/15/17 but is missing the synthesis layer auditors ask for first. Three concrete gaps identified by research (`~/ASIF/enrichment/2026-04-16-fp-eu-ai-act-feature-scope.md` — read this first for the full Article→feature mapping). These are achievable before the deadline and directly support the "forensics layer your compliance package is missing" positioning.
+
+Emma (CLX9 Sr. CoS) blessed the scope on 2026-04-16 — all 3 features in-scope for FP's existing architecture, no new infra required, defensible against regulation text.
+
+**Action Items**:
+1. [ ] **Art. 9 Risk Register Export** — add `POST /scan/risk-register` (or equivalent CLI flag `--format risk-register`) that aggregates scan history into a versioned, structured risk register document (JSON + optional PDF). Map each finding to Art. 9 lifecycle phase: development / testing / deployment / monitoring. FP already has all raw data — this is a synthesis/export layer only. Auditors request this document first.
+2. [ ] **Art. 12 Tamper-Evident Log Export** — the existing audit log (N-78) hashes per-record. Upgrade to a chained-hash manifest (e.g., Merkle tree or per-entry HMAC where each entry's hash includes the prior entry hash). The export format should make the chain verifiable by a third-party auditor without FP tooling. This is what differentiates "we have logs" from "audit-grade evidence."
+3. [ ] **Art. 14 Human Sign-Off Record** — add `POST /scans/:id/approve` (or `faultline approve <scan-id>`) with approver identity (API key + tenant), UTC timestamp, and optional note. Stored in the audit log. Enables enterprises to record that a named human reviewed and accepted (or rejected) a scan result before deployment. This closes the human-in-loop evidence gap.
+
+**DoD**:
+- PASS when: all three features are implemented, tested, and documented with a 1-paragraph note in the README explaining which EU AI Act article each satisfies
+- FAIL if: test count drops, or changes touch the FM-agnostic provider architecture
+
+**Constraints**:
+- Do NOT claim "FP is EU AI Act compliant" in docs or README — accurate framing is: "generates compliance evidence" or "the forensics layer your compliance package is missing"
+- Each feature should add tests — target no decrease in total count
+- These are additive only — do NOT refactor existing audit/scan code
+
+---
+
 > **107 directives archived** (+ D-163 through D-169 + MAXOUT BURN).
 
 ### DIRECTIVE-NXTG-20260414-02 — P0: v0.5.0 PUBLISH — REINSTATED, Asif GO CONFIRMED 2026-04-15
