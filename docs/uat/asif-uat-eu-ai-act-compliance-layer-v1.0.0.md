@@ -59,22 +59,13 @@ npm test --workspace=packages/api -- --reporter=verbose 2>&1 | grep -E "AM|RR|AP
 
 ```bash
 # RR2 / RR3 — basic shape
-curl -s -X POST http://localhost:3010/scan/risk-register \
-  -H "x-api-key: admin-secret" \
-  -H "content-type: application/json" \
-  -d '{}' | jq '{version,generatedAt,article,lifecyclePhase,summary}'
+curl -s -X POST http://localhost:3010/scan/risk-register -H "x-api-key: admin-secret" -H "content-type: application/json" -d '{}' | jq '{version,generatedAt,article,lifecyclePhase,summary}'
 
 # RR12 — explicit lifecycle phase
-curl -s -X POST http://localhost:3010/scan/risk-register \
-  -H "x-api-key: admin-secret" \
-  -H "content-type: application/json" \
-  -d '{"phase":"development"}' | jq '{lifecyclePhase, first_finding_phase: .findings[0].lifecyclePhase}'
+curl -s -X POST http://localhost:3010/scan/risk-register -H "x-api-key: admin-secret" -H "content-type: application/json" -d '{"phase":"development"}' | jq '{lifecyclePhase, first_finding_phase: .findings[0].lifecyclePhase}'
 
 # RR13 — invalid phase fallback
-curl -s -X POST http://localhost:3010/scan/risk-register \
-  -H "x-api-key: admin-secret" \
-  -H "content-type: application/json" \
-  -d '{"phase":"invalid"}' | jq '.lifecyclePhase'
+curl -s -X POST http://localhost:3010/scan/risk-register -H "x-api-key: admin-secret" -H "content-type: application/json" -d '{"phase":"invalid"}' | jq '.lifecyclePhase'
 # Expected: "monitoring"
 ```
 
@@ -113,12 +104,10 @@ curl -s http://localhost:3010/health -H "x-api-key: admin-secret" > /dev/null
 curl -s http://localhost:3010/health -H "x-api-key: admin-secret" > /dev/null
 
 # Fetch manifest
-curl -s http://localhost:3010/audit/log/manifest \
-  -H "x-api-key: admin-secret" | jq '{algorithm, totalEntries, rootHash}'
+curl -s http://localhost:3010/audit/log/manifest -H "x-api-key: admin-secret" | jq '{algorithm, totalEntries, rootHash}'
 
 # Live chain verification — no Faultline tooling, pure Python stdlib
-curl -s http://localhost:3010/audit/log/manifest \
-  -H "x-api-key: admin-secret" | python3 -c "
+curl -s http://localhost:3010/audit/log/manifest -H "x-api-key: admin-secret" | python3 -c "
 import json, sys, hashlib
 body = json.load(sys.stdin)
 prev = ''
@@ -171,24 +160,16 @@ Chain verification script: VERIFIED
 SCAN_ID="demo-scan-001"
 
 # AP2 + AP5 — approve with default decision
-curl -s -X POST http://localhost:3010/scans/${SCAN_ID}/approve \
-  -H "x-api-key: admin-secret" \
-  -H "content-type: application/json" \
-  -d '{"note":"Reviewed by Wolf — LGTM"}' | jq '{id,scanId,approver,decision,note,timestamp}'
+curl -s -X POST http://localhost:3010/scans/${SCAN_ID}/approve -H "x-api-key: admin-secret" -H "content-type: application/json" -d '{"note":"Reviewed by Wolf — LGTM"}' | jq '{id,scanId,approver,decision,note,timestamp}'
 
 # AP6 — reject
-curl -s -X POST http://localhost:3010/scans/${SCAN_ID}/approve \
-  -H "x-api-key: admin-secret" \
-  -H "content-type: application/json" \
-  -d '{"decision":"rejected","note":"Claims unverifiable — do not ship"}' | jq '{decision,note}'
+curl -s -X POST http://localhost:3010/scans/${SCAN_ID}/approve -H "x-api-key: admin-secret" -H "content-type: application/json" -d '{"decision":"rejected","note":"Claims unverifiable — do not ship"}' | jq '{decision,note}'
 
 # AP16 — retrieve both records
-curl -s http://localhost:3010/scans/${SCAN_ID}/approvals \
-  -H "x-api-key: admin-secret" | jq '{scanId,total,approvals_count: (.approvals|length)}'
+curl -s http://localhost:3010/scans/${SCAN_ID}/approvals -H "x-api-key: admin-secret" | jq '{scanId,total,approvals_count: (.approvals|length)}'
 
 # AP15 — isolation check (different scan should have 0)
-curl -s http://localhost:3010/scans/other-scan/approvals \
-  -H "x-api-key: admin-secret" | jq '.total'
+curl -s http://localhost:3010/scans/other-scan/approvals -H "x-api-key: admin-secret" | jq '.total'
 # Expected: 0
 ```
 
