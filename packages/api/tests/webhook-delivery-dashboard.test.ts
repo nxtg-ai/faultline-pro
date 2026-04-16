@@ -15,6 +15,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { buildServer } from '../src/server.js';
 import { getWebhookDeliveryLog, resetWebhookDeliveryLog } from '../src/store/webhooks.js';
 import type { WebhookDeliveryRecord } from '../src/store/webhooks.js';
 
@@ -44,10 +45,10 @@ function makeRecord(overrides: Partial<WebhookDeliveryRecord> = {}): WebhookDeli
   };
 }
 
-async function getHtmlBody(apiKey = 'test-key'): Promise<{ res: Awaited<ReturnType<typeof server.inject>>; server: Awaited<ReturnType<typeof buildServer>> }> {
-  const { buildServer } = await import('../src/server.js');
+async function getHtmlBody(apiKey = 'test-key'): Promise<{ res: Awaited<ReturnType<ReturnType<typeof buildServer>['inject']>>; server: ReturnType<typeof buildServer> }> {
   const server = buildServer();
   process.env.FAULTLINE_API_KEY = apiKey;
+  await server.ready();
   const res = await server.inject({
     method: 'GET',
     url: '/webhooks/deliveries/view',
