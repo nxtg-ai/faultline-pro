@@ -275,7 +275,9 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260416-01 — P2: EU AI Act Compliance Evidence Layer — 3 Gap Closures
 **From**: CLX9 Sr. CoS (Emma) via Wolf (NXTG-AI) | **Priority**: P2
-**Injected**: 2026-04-16 09:10 PDT | **Estimate**: M | **Status**: **DONE — 2026-04-15 (Cycle 304)**
+**Injected**: 2026-04-16 09:10 PDT | **Estimate**: M | **Status**: **DONE — 2026-04-16 (Cycle 304)**
+
+> **CoS Verification (Wolf, 2026-04-16 10:05 PDT)**: Independently verified in commit `c845c63`. All 3 routes exist: `packages/api/src/routes/risk-register.ts` (Art. 9), `packages/api/src/routes/audit-log.ts:158` `/audit/log/manifest` (Art. 12), `packages/api/src/routes/approvals.ts:33` `/scans/:id/approve` (Art. 14). Ran the 3 new test files: **46/46 passed** (14+13+19) in 4.81s. README updated. No existing code refactored. **~32 minute execution turnaround** from directive inject (09:10) to shipped+tested (09:41) — remarkable team velocity. DoD met on all counts. (Original response had a date typo — said 04-15; corrected to 04-16 matching commit timestamp.)
 
 **Context**: 107 days to EU AI Act high-risk enforcement (2026-08-02). FP has strong coverage on Arts. 9/10/11/12/13/14/15/17 but is missing the synthesis layer auditors ask for first. Three concrete gaps identified by research (`~/ASIF/enrichment/2026-04-16-fp-eu-ai-act-feature-scope.md` — read this first for the full Article→feature mapping). These are achievable before the deadline and directly support the "forensics layer your compliance package is missing" positioning.
 
