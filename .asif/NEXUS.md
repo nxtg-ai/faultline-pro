@@ -1,7 +1,7 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-04-15 (Cycle 311 — no PENDING directives; dep audit: Wanted=Current, all majors frozen per N-216)
+> **Last Updated**: 2026-04-15 (Cycle 312 — fixed false-positive PENDING trigger at line 7108; dep audit: Wanted=Current)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 
 ---
@@ -7105,7 +7105,7 @@ Same list as last cycle — no change since no code was shipped:
 |--------|-------------|-------|
 | `eea6dd1` `fix: P0 D-169` | `cli/scan.ts` — `guaranteeClaimPerSentence(text, rawClaims)`: splits input into sentence candidates (≥3 words), checks coverage via 40-char normalised fingerprint, adds synthetic `fact` claims (id prefix `s`, importance 3) for any sentence not covered by LLM output. Called after every `provider.extractClaims()`. `geminiService.ts`, `openai_provider.ts`, `claude_provider.ts`, `perplexity_provider.ts` — "CRITICAL RULE: Each sentence … must be extracted as its own separate claim. Do not merge claims from different sentences." added to all extraction prompts. `tests/sentence-split.test.ts` — 13 tests: acceptance test (cancer + GPT-5 scenario), unit tests for the helper (synthetic IDs, no-op on single sentence, no duplicates, empty input, fragment filtering). | +13 (3,498→3,511) |
 
-Also: fixed NEXUS `Status: PENDING` not updated to `DONE` at ship time — cosmetic bookkeeping fix.
+Also: fixed NEXUS status field not updated to DONE at ship time — cosmetic bookkeeping fix.
 
 **Running total**: 3,511 tests / 136 files — all GREEN · 74 initiatives SHIPPED.
 
