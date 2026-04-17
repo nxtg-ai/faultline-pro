@@ -6,6 +6,28 @@ import { getProvider } from '../providers/registry.js';
 import { generateComplianceReport, type ComplianceReport } from '../compliance/report_generator.js';
 import { runAllRules, runRules, type Finding } from '../rules/index.js';
 
+// ── FR-3: Per-stage model routing ─────────────────────────────────────────────
+
+/** Provider names supported by the Faultline provider registry. */
+export type ProviderName = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
+
+/**
+ * Optional per-stage provider overrides.
+ * Each field defaults to the top-level `provider` if absent.
+ *
+ * Note: `synthesisProvider` is accepted for forward compatibility but is a
+ * no-op in the current API pipeline (complianceReport is a pure function).
+ * It will be wired up when `generateCritiqueAndPrompt` migrates to the API
+ * (requires FR-1 POST /scan/stream).
+ */
+export interface PipelineConfig {
+  extractionProvider?: ProviderName;    // provider for extractClaims()
+  verificationProvider?: ProviderName;  // provider for verifyClaim()
+  synthesisProvider?: ProviderName;     // reserved — no-op in current API pipeline
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export interface ScanResult {
   input: string;
   provider: string;
@@ -102,39 +124,63 @@ export type ScanClaimCallback = (
   total: number,
 ) => void;
 
-export async function scan(text: string, providerName?: string, minConfidence?: number, ruleNames?: string[], onProgress?: ScanProgressCallback, onClaimVerified?: ScanClaimCallback): Promise<ScanResult> {
+/**
+ * Resolve the API key for a given provider name.
+ * Returns '' for 'mock' (no key required).
+ * Throws if the required env var is missing.
+ */
+function resolveApiKey(name: string): string {
+  if (name === 'mock') return '';
+  const keyMap: Record<string, string> = {
+    claude: 'ANTHROPIC_API_KEY',
+    openai: 'OPENAI_API_KEY',
+    gemini: 'GEMINI_API_KEY',
+    perplexity: 'PERPLEXITY_API_KEY',
+  };
+  const envVar = keyMap[name] || 'GEMINI_API_KEY';
+  const key = process.env[envVar] || '';
+  if (!key) {
+    const hint = name === 'gemini'
+      ? `Get a free key at https://aistudio.google.com/apikey → export GEMINI_API_KEY=your-key`
+      : `Set ${envVar} in your environment`;
+    throw new Error(`No API key found for "${name}". ${hint}`);
+  }
+  return key;
+}
+
+export async function scan(
+  text: string,
+  providerName?: string,
+  minConfidence?: number,
+  ruleNames?: string[],
+  onProgress?: ScanProgressCallback,
+  onClaimVerified?: ScanClaimCallback,
+  pipelineConfig?: PipelineConfig,
+): Promise<ScanResult> {
   const resolvedProvider = providerName || 'gemini';
 
-  let apiKey = '';
-  if (resolvedProvider !== 'mock') {
-    const keyMap: Record<string, string> = {
-      claude: 'ANTHROPIC_API_KEY',
-      openai: 'OPENAI_API_KEY',
-      gemini: 'GEMINI_API_KEY',
-      perplexity: 'PERPLEXITY_API_KEY',
-    };
-    const envVar = keyMap[resolvedProvider] || 'GEMINI_API_KEY';
-    apiKey = process.env[envVar] || '';
+  // FR-3: per-stage provider names (fall back to resolvedProvider if not specified)
+  const extractionName = pipelineConfig?.extractionProvider ?? resolvedProvider;
+  const verificationName = pipelineConfig?.verificationProvider ?? resolvedProvider;
 
-    if (!apiKey) {
-      const hint = resolvedProvider === 'gemini'
-        ? `Get a free key at https://aistudio.google.com/apikey → export GEMINI_API_KEY=your-key`
-        : `Set ${envVar} in your environment`;
-      throw new Error(`No API key found for "${resolvedProvider}". ${hint}`);
-    }
-  }
+  const extractionApiKey = resolveApiKey(extractionName);
+  const verificationApiKey = resolveApiKey(verificationName);
 
-  const provider: LLMProvider = getProvider(apiKey, resolvedProvider);
+  const extractionProvider: LLMProvider = getProvider(extractionApiKey, extractionName);
+  // Reuse the same instance when both stages use the same provider
+  const verificationProvider: LLMProvider = extractionName === verificationName
+    ? extractionProvider
+    : getProvider(verificationApiKey, verificationName);
 
   onProgress?.('Extracting claims...');
-  const rawClaims = await provider.extractClaims(text);
+  const rawClaims = await extractionProvider.extractClaims(text);
   const claims = guaranteeClaimPerSentence(text, rawClaims);
   const toVerify = filterClaimsForVerification(claims);
 
   const verifications: Record<string, VerificationResult> = {};
   for (let i = 0; i < toVerify.length; i++) {
     onProgress?.(`Verifying claim ${i + 1}/${toVerify.length}...`);
-    verifications[toVerify[i].id] = await provider.verifyClaim(toVerify[i]);
+    verifications[toVerify[i].id] = await verificationProvider.verifyClaim(toVerify[i]);
     onClaimVerified?.(toVerify[i], verifications[toVerify[i].id], i, toVerify.length);
   }
 
@@ -148,7 +194,7 @@ export async function scan(text: string, providerName?: string, minConfidence?: 
 
   return {
     input: text.substring(0, 200),
-    provider: provider.name,
+    provider: extractionProvider.name,
     claims,
     verifications,
     overallRisk,

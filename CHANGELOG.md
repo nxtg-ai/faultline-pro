@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [v0.5.3] — 2026-04-16
+
+### Added
+
+- FR-3 (N-220): Per-stage model routing (`PipelineConfig`) — optional `pipelineConfig` in `POST /scan` request body lets callers specify distinct providers for extraction and verification stages. Falls back to `provider` field if absent; backward-compatible. `synthesisProvider` accepted for forward compatibility (no-op in current API pipeline — requires FR-1 POST /scan/stream). Missing API key returns `{"error":"provider_not_configured","provider":"..."}`. Invalid provider name returns 400. 7 tests (PC1–PC7). CLI: 0.5.2→0.5.3, API: 0.5.0→0.5.1.
+
+---
+
 ## [v0.5.2] — 2026-04-15
 
 ### Fixed

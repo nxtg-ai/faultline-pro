@@ -17,6 +17,8 @@ import { recordScanTelemetry } from '../store/telemetry.js';
 import { notifyScanFailed } from '../store/notifications.js';
 import { buildEuComplianceReport, evaluateComplianceGate } from '@nxtg/faultline/cli/compliance-report.js';
 
+const PROVIDER_ENUM = ['gemini', 'openai', 'claude', 'perplexity', 'mock'] as const;
+
 const BODY_SCHEMA = {
   type: 'object',
   required: ['text'],
@@ -24,7 +26,17 @@ const BODY_SCHEMA = {
     text: { type: 'string', minLength: 1, maxLength: 50000 },
     provider: {
       type: 'string',
-      enum: ['gemini', 'openai', 'claude', 'perplexity', 'mock'],
+      enum: PROVIDER_ENUM,
+    },
+    // FR-3: optional per-stage provider overrides
+    pipelineConfig: {
+      type: 'object',
+      properties: {
+        extractionProvider:   { type: 'string', enum: PROVIDER_ENUM },
+        verificationProvider: { type: 'string', enum: PROVIDER_ENUM },
+        synthesisProvider:    { type: 'string', enum: PROVIDER_ENUM },
+      },
+      additionalProperties: false,
     },
   },
   additionalProperties: false,
@@ -32,9 +44,16 @@ const BODY_SCHEMA = {
 
 type ScanProvider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
 
+interface PipelineConfigBody {
+  extractionProvider?: ScanProvider;
+  verificationProvider?: ScanProvider;
+  synthesisProvider?: ScanProvider;
+}
+
 interface ScanBody {
   text: string;
   provider?: ScanProvider;
+  pipelineConfig?: PipelineConfigBody;
 }
 
 const SCAN_TEMPLATE_SCHEMA = {
@@ -60,12 +79,58 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
       schema: { tags: ['Scan'], summary: 'Scan text for claim verification', body: BODY_SCHEMA },
     },
     async (request, reply) => {
-      const { text, provider } = request.body;
+      const { text, provider, pipelineConfig } = request.body;
 
       const keyId = request.keyId ?? 'unknown';
-
-      // Cache lookup — before failover / API calls
       const effectiveProvider = provider ?? 'gemini';
+
+      // FR-3: pipelineConfig path — bypass cache and circuit breaker, use explicit providers
+      if (pipelineConfig) {
+        const startTime = Date.now();
+        try {
+          const result = await scan(
+            text,
+            effectiveProvider,
+            /* minConfidence */ undefined,
+            /* ruleNames */ undefined,
+            /* onProgress */ undefined,
+            /* onClaimVerified */ undefined,
+            pipelineConfig,
+          );
+          getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
+          recordScanTelemetry({
+            provider:    effectiveProvider,
+            riskLevel:   result.overallRisk,
+            claimCount:  Array.isArray(result.claims) ? result.claims.length : 0,
+            claimTypes:  Array.isArray(result.claims)
+              ? (result.claims as Array<{ type?: string }>).reduce<Record<string, number>>((acc, c) => {
+                  const t = c.type ?? 'unknown'; acc[t] = (acc[t] ?? 0) + 1; return acc;
+                }, {})
+              : {},
+            latencyMs:   Date.now() - startTime,
+            inputLength: text.length,
+            cacheHit:    false,
+          });
+          const compReport = buildEuComplianceReport(result, {});
+          const compGate = evaluateComplianceGate(compReport);
+          const enriched = {
+            ...result,
+            complianceScore: compReport.complianceScore,
+            compliancePass: compGate.pass,
+          };
+          fireWebhookEvent('scan.complete', enriched);
+          return reply.status(200).send(enriched);
+        } catch (err) {
+          // Missing API key for a specified provider
+          if (err instanceof Error && err.message.startsWith('No API key found for')) {
+            const match = err.message.match(/"([^"]+)"/);
+            const missing = match?.[1] ?? 'unknown';
+            return reply.status(503).send({ error: 'provider_not_configured', provider: missing });
+          }
+          return reply.status(500).send({ error: err instanceof Error ? err.message : String(err) });
+        }
+      }
+
       const cached = getScanCache().get(text, effectiveProvider);
       if (cached) {
         reply.header('X-Cache', 'HIT');
