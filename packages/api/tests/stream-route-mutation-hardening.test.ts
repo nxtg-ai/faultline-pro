@@ -497,6 +497,7 @@ describe('0-claim fallback start emit — mutation hardening (SM29–SM30)', () 
   it('SM29: GET 0-claim fallback — start is emitted with claimCount=0 (kills if(!startEmitted)→if(false) at GET line 112)', async () => {
     const scanModule = await import('@nxtg/faultline/cli/scan.js');
     const spy = vi.spyOn(scanModule, 'scan').mockResolvedValueOnce({
+      input: '',
       claims: [],
       verifications: {},
       complianceReport: undefined as never,
@@ -523,6 +524,7 @@ describe('0-claim fallback start emit — mutation hardening (SM29–SM30)', () 
   it('SM30: POST 0-claim fallback — start is emitted with claimCount=0 (kills if(!startEmitted)→if(false) at POST line 194)', async () => {
     const scanModule = await import('@nxtg/faultline/cli/scan.js');
     const spy = vi.spyOn(scanModule, 'scan').mockResolvedValueOnce({
+      input: '',
       claims: [],
       verifications: {},
       complianceReport: undefined as never,
