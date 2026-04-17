@@ -278,6 +278,20 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
+### DIRECTIVE-NXTG-20260416-02 — P1: CLI Command Truth Table for Docs Alignment
+**From**: Wolf (NXTG-AI CoS) — Asif-initiated | **Priority**: P1
+**Injected**: 2026-04-16 23:50 PDT | **Estimate**: S | **Status**: PENDING
+
+**Pain**: FW's `/docs/cli` page documents CLI commands that may not exist in FP. Asif found ghost features. FW team is running a full docs audit (DIRECTIVE-NXTG-20260416-04) but needs ground truth from FP on what the CLI actually supports.
+
+**Desired Outcome**: A verified truth table of every CLI command, subcommand, and flag that actually exists and works in `@nxtg/faultline`. FW uses this as the source of truth for their docs rewrite.
+
+**Deliverable**: `docs/CLI-TRUTH-TABLE.md` — table format: `Command | Flags | Works | Notes`. Run each command and confirm it produces expected output, not just that the code path exists.
+
+**DoD**: Truth table committed. Every entry verified by execution, not just code inspection.
+
+---
+
 ### DIRECTIVE-NXTG-20260416-01 — P2: EU AI Act Compliance Evidence Layer — 3 Gap Closures
 **From**: CLX9 Sr. CoS (Emma) via Wolf (NXTG-AI) | **Priority**: P2
 **Injected**: 2026-04-16 09:10 PDT | **Estimate**: M | **Status**: **DONE — 2026-04-16 (Cycle 304)**
