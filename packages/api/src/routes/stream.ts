@@ -2,10 +2,37 @@ import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import type { PipelineConfig } from '@nxtg/faultline/cli/scan.js';
 
 type ScanProvider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
 
 const VALID_PROVIDERS = new Set<ScanProvider>(['gemini', 'openai', 'claude', 'perplexity', 'mock']);
+const PROVIDER_ENUM = ['gemini', 'openai', 'claude', 'perplexity', 'mock'] as const;
+
+const POST_STREAM_BODY_SCHEMA = {
+  type: 'object',
+  required: ['text'],
+  properties: {
+    text: { type: 'string', minLength: 1, maxLength: 50000 },
+    provider: { type: 'string', enum: PROVIDER_ENUM },
+    pipelineConfig: {
+      type: 'object',
+      properties: {
+        extractionProvider:   { type: 'string', enum: PROVIDER_ENUM },
+        verificationProvider: { type: 'string', enum: PROVIDER_ENUM },
+        synthesisProvider:    { type: 'string', enum: PROVIDER_ENUM },
+      },
+      additionalProperties: false,
+    },
+  },
+  additionalProperties: false,
+} as const;
+
+interface StreamPostBody {
+  text: string;
+  provider?: ScanProvider;
+  pipelineConfig?: PipelineConfig;
+}
 
 /**
  * N-134/N-135 — Server-Sent Events scan streaming with progressive per-claim delivery.
@@ -82,6 +109,88 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
         const claimCount = Array.isArray(result.claims) ? result.claims.length : 0;
 
         // Fallback: emit start if no claims were verified (0-claim edge case)
+        if (!startEmitted) {
+          emit({ type: 'start', claimCount, provider: effectiveProvider });
+        }
+
+        emit({ type: 'complete', overallRisk: result.overallRisk, claimCount });
+      } catch (err) {
+        if (!startEmitted) {
+          emit({ type: 'start', claimCount: 0, provider: effectiveProvider });
+        }
+        emit({ type: 'error', message: err instanceof Error ? err.message : String(err) });
+      }
+
+      reply
+        .header('Content-Type', 'text/event-stream')
+        .header('Cache-Control', 'no-cache')
+        .header('Connection', 'keep-alive')
+        .send(chunks.join(''));
+    },
+  );
+
+  /**
+   * FR-1 — POST /scan/stream
+   *
+   * Same SSE event sequence as GET /scan/stream but accepts a JSON body,
+   * removing the ~2KB querystring ceiling. Also supports FR-3 pipelineConfig.
+   *
+   * Event sequence:
+   *   data: {"type":"start","claimCount":N,"provider":"..."}
+   *   data: {"type":"claim_verified","index":N,"claim":{...},"verdict":{...}}  × N
+   *   data: {"type":"complete","overallRisk":"low|medium|high|critical","claimCount":N}
+   *   data: {"type":"error","message":"..."}  (on failure only)
+   */
+  fastify.post<{ Body: StreamPostBody }>(
+    '/scan/stream',
+    {
+      preHandler: [requireApiKey, rateLimitScan],
+      schema: {
+        tags: ['Scan'],
+        summary: 'Stream scan results via SSE (POST — no URL length ceiling)',
+        description: 'Identical SSE event sequence to GET /scan/stream but accepts a JSON body, removing the ~2KB querystring ceiling. Supports pipelineConfig for per-stage provider routing (FR-3).',
+        body: POST_STREAM_BODY_SCHEMA,
+        security: [{ apiKey: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { text, provider, pipelineConfig } = request.body;
+
+      const effectiveProvider: ScanProvider = VALID_PROVIDERS.has(provider as ScanProvider)
+        ? (provider as ScanProvider)
+        : 'mock';
+
+      const chunks: string[] = [];
+      const emit = (data: Record<string, unknown>): void => {
+        chunks.push(`data: ${JSON.stringify(data)}\n\n`);
+      };
+
+      let startEmitted = false;
+
+      try {
+        const result = await scan(
+          text,
+          effectiveProvider,
+          /* minConfidence */ undefined,
+          /* ruleNames */ undefined,
+          /* onProgress */ undefined,
+          (claim, verdict, index, total) => {
+            if (!startEmitted) {
+              emit({ type: 'start', claimCount: total, provider: effectiveProvider });
+              startEmitted = true;
+            }
+            emit({
+              type: 'claim_verified',
+              index,
+              claim: claim as unknown as Record<string, unknown>,
+              verdict: verdict as unknown as Record<string, unknown>,
+            });
+          },
+          pipelineConfig,
+        );
+
+        const claimCount = Array.isArray(result.claims) ? result.claims.length : 0;
+
         if (!startEmitted) {
           emit({ type: 'start', claimCount, provider: effectiveProvider });
         }

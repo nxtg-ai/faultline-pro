@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [v0.5.4] — 2026-04-16
+
+### Added
+
+- FR-1 (N-221): `POST /scan/stream` — same SSE event sequence as `GET /scan/stream` but accepts a JSON body, removing the ~2KB querystring ceiling. Supports `pipelineConfig` (FR-3). Event sequence: `start` → N × `claim_verified` → `complete`, `error` on failure. Existing `GET /scan/stream` and `POST /scan` unchanged. API: 0.5.1→0.5.2. 10 tests (SPP1–SPP10).
+
+---
+
 ## [v0.5.3] — 2026-04-16
 
 ### Added

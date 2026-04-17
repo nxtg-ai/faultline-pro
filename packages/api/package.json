@@ -1,6 +1,6 @@
 {
   "name": "@nxtg/faultline-api",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Faultline Cloud Platform API — hosted POST /scan endpoint.",
   "private": true,
   "type": "module",
