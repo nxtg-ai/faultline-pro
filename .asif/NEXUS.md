@@ -1430,6 +1430,45 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-17 (Cycle 313 — check-in)
+
+**1. What shipped since last check-in (Cycle 305, 2026-04-16)?**
+
+- **FR-1 faultline-web wire-up** (session open): `translateFPStreamEvents` in `faultline-web/lib/fp-proxy.ts` rewritten to build a proper `ScanResult` in the `complete` event handler. Previously the function passed through FP's raw stream without translating to the shape `use-scan.ts` expects. Added `deriveTrustScore()`, `seenVerdicts` accumulator, full `ScanResult` construction, and `cacheHit` propagation from X-Cache header. faultline-web test suite: 854/854 GREEN.
+- **Stryker `stream.ts` 82.58% → 88.64%** (SM33–SM41): Root cause of VALID_PROVIDERS mutations surviving was ES module caching — module-level constants initialize once before stryker activates the mutant. Fixed via `vi.resetModules()` + dynamic `import()` inside test bodies, forcing fresh module evaluation per test. Also added GET schema enum tests (SM38–SM41) killing 63:23/58/68/78. Changed `coverageAnalysis: 'all'` for consistent test selection.
+- **DIRECTIVE-NXTG-20260416-02 — CLI Truth Table**: `docs/CLI-TRUTH-TABLE.md` written. Every command executed against v0.5.2 binary. 9 behavioural notes documented for FW docs rewrite.
+- **Badge + llms.txt sync**: README badge and llms.txt updated 4,403 → 4,492 tests (this entry).
+- **Tests**: 4,492/193 GREEN (was 4,403 at last check-in; +89 net: SM16–SM41 mutation hardening +26, EU AI Act features +33, faultline-web proxy tests +30).
+
+**2. What surprised us?**
+
+- **ES module caching in stryker**: Module-level `const VALID_PROVIDERS = new Set([...])` initializes before stryker activates a mutant in the test runner. `coverageAnalysis: 'perTest'` improves attribution but doesn't fix this — the module is already cached. `coverageAnalysis: 'all'` also doesn't fix it (runs all tests but same cache issue). The only reliable fix is `vi.resetModules()` + dynamic import inside test bodies. This is not documented in stryker docs or our mutation-testing.md.
+- **CLI `--template` silent fallback**: `faultline scan --template nonexistent-name` shows the general usage error without any "template not found" message. Users will assume their template name is wrong in an invisible way. This is a UX bug worth a small fix.
+- **`compliance-report --format html` writes to CWD**: All other `--format` values stream to stdout; HTML silently writes an auto-named file to CWD. This is an inconsistency that FW's docs rewrite surfaced — the truth table exercise found it.
+- **`graph` default provider is auto-detect (not mock)**: Despite being a local graph visualization command, it calls the scan pipeline with auto-detected provider. Any user without a key will hit "No API key found for gemini" unexpectedly. Docs imply it works standalone.
+
+**3. Cross-project signals**
+
+- **`vi.resetModules()` + dynamic import for stryker module-level constants**: If any other ASIF project uses stryker and has module-level constants that stryker targets (Sets, Maps, arrays, enum-like objects at the top of a file), their mutations will silently survive without this pattern. The fix is 3 lines: `vi.resetModules(); const { thing } = await import('./module.js'); const s = thing();`. Worth adding to shared mutation testing standards.
+- **CLI truth table methodology**: Running every command and capturing behavioural quirks (not just "exit 0") found 9 undocumented behaviours in a single pass. Any project with a FW docs dependency should produce one. Low cost, high signal.
+- **`npm pack --dry-run` + cross-check against imports**: The `files` allowlist silent-exclusion bug from Cycle 303 (plugins/ directory) is a class of publish-day surprise. For any project maintaining an npm `files` field, the CI gate should include `npm pack --dry-run` and check that every directory in the entry-point import chain is present. Documented in our `docs/PUBLISH-RUNBOOK.md`.
+
+**4. What to prioritize next?**
+
+- **P1 — docs/mutation-testing.md**: Document the `vi.resetModules()` pattern for module-level constants. The lesson was earned the hard way (4 stryker runs to diagnose). Should not require re-learning next session.
+- **P2 — CLI bug: `--template` silent fallback**: Small fix — lookup should emit a clear error when the named template doesn't exist in `.faultlinerc.json`. Low risk, high usability impact.
+- **P3 — `graph` default provider**: Change default from auto-detect to `mock` for the graph command (or add a guard that fails fast with a friendly message when no key and no `--provider` flag). Currently misleading for keyless users.
+- **P4 — Gate 6 in CI**: Stryker is still local-only. All 6 configs are now above threshold; adding them to `ci.yml` closes the enforcement gap.
+- **P5 — N-216 (TypeScript 6 + major deps)**: 9 packages frozen. Still unblocked pending a directive.
+
+**5. Blockers / Questions for CoS**
+
+- **Q1 (CLI `--template` bug)**: Is fixing the silent fallback in scope, or is it deliberately deferring to general usage output (treat as feature not bug)?
+- **Q2 (`graph` default provider)**: Change default to `mock`, or add a guard? Or leave as-is and just document it in the truth table?
+- **Q3 (Gate 6 in CI)**: Still pending P-level signal from last check-in. Adding stryker to CI adds ~3–5 min. Worth it now that all 6 configs are above threshold and patterns are documented?
+
+---
+
 > **Reflection cycle**: 2026-04-16 (Cycle 305 — check-in)
 
 **1. What shipped since last check-in?**

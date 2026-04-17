@@ -39,7 +39,7 @@ No API key required for the `mock` provider. Real verification uses:
 - **Enterprise API** — REST + GraphQL; API key management; multi-tenant; GDPR Article 15/17; audit trail; webhooks
 - **GitHub Actions** — `faultline-scan` composite action with compliance gate, SARIF upload, threshold/strict configuration
 - **Mutation-tested** — CRUCIBLE Protocol Gate 6: claim forensics 81.97%; compliance-report 80.81%; eu_ai_act fn 100%; GDPR stores 80.94%–96.81%
-- **4,403 tests** across CLI, API, Python SDK, GDPR, mutation hardening, property-based, contract, integration
+- **4,492 tests** across CLI, API, Python SDK, GDPR, mutation hardening, property-based, contract, integration
 - **npm adoption metrics** — npmjs.org download tracking, Prometheus export, weekly trend analysis
 
 ## Use Cases
@@ -134,7 +134,7 @@ docs/
 ## Project Status
 
 - **215 initiatives SHIPPED** (N-01 through N-215)
-- **4,403 tests** (CLI + API + Python SDK + integration + property-based + contract + mutation)
+- **4,492 tests** (CLI + API + Python SDK + integration + property-based + contract + mutation)
 - **8/8 CRUCIBLE gates PASS** (example, property, contract, integration oracles)
 - **EU AI Act enforcement-deadline ready** — Full compliance reporting (Art. 5/6/9/10/11/12/13/14/15/50/52/53), evidence strength scoring, Annex III conformity checklist, gating, SARIF, 5 output formats
 - **GDPR compliant** — Article 15 export + Article 17 erasure implemented
