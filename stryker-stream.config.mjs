@@ -12,7 +12,7 @@ export default {
   mutate: [
     'packages/api/src/routes/stream.ts',
   ],
-  coverageAnalysis: 'off',
+  coverageAnalysis: 'all',
   thresholds: { high: 80, low: 60, break: 0 },
   reporters: ['clear-text'],
   logLevel: 'warn',
@@ -21,6 +21,7 @@ export default {
     'packages/api/tests/scan-stream.test.ts',
     'packages/api/tests/scan-progressive-stream.test.ts',
     'packages/api/tests/stream-route-mutation-hardening.test.ts',
+    'packages/api/tests/scan-stream-post.test.ts',
   ],
   vitest: {
     dir: 'packages/api',

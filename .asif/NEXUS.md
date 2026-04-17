@@ -280,7 +280,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260416-02 — P1: CLI Command Truth Table for Docs Alignment
 **From**: Wolf (NXTG-AI CoS) — Asif-initiated | **Priority**: P1
-**Injected**: 2026-04-16 23:50 PDT | **Estimate**: S | **Status**: PENDING
+**Injected**: 2026-04-16 23:50 PDT | **Estimate**: S | **Status**: **DONE — 2026-04-17 (Cycle 313)**
 
 **Pain**: FW's `/docs/cli` page documents CLI commands that may not exist in FP. Asif found ghost features. FW team is running a full docs audit (DIRECTIVE-NXTG-20260416-04) but needs ground truth from FP on what the CLI actually supports.
 
@@ -289,6 +289,8 @@ The Kaggle version remains at  (tagged  at commit ).
 **Deliverable**: `docs/CLI-TRUTH-TABLE.md` — table format: `Command | Flags | Works | Notes`. Run each command and confirm it produces expected output, not just that the code path exists.
 
 **DoD**: Truth table committed. Every entry verified by execution, not just code inspection.
+
+**Response**: `docs/CLI-TRUTH-TABLE.md` committed. All commands executed against v0.5.2 binary. Key ghost-feature findings: (1) `scan --template <name>` silently falls back to usage error when template absent from `.faultlinerc.json` — no "not found" message; (2) `graph` defaults to gemini auto-detect, fails without key (must specify `--provider mock`); (3) `compliance-report --format html` writes to auto-named CWD file, not stdout; (4) `scan --sarif` writes `results.sarif` to CWD AND stdout; (5) `keys`/`scans`/`stream` require FP API server, not faultline-web. 9 behavioural notes documented in table. DoD: PASS.
 
 ---
 
@@ -1395,6 +1397,8 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 | 2026-04-14 (s2) | Dep recheck | 4,403/188 GREEN. Dep snapshot unchanged (7th consecutive day). Flake monitor clean. |
 | 2026-04-15 | Dep recheck | 4,403/188 GREEN. Dep snapshot unchanged (8th consecutive day). Flake monitor clean. |
 | 2026-04-15 (s2) | Flaky test root cause + fix | Root cause: rate-limits.test.ts `warningKeys` test crosses minute window boundary — getEntry() resets counter to 0. Fix: vi.useFakeTimers() in beforeEach of describe block. 29/29 pass, 4,403/188 GREEN. |
+| 2026-04-17 | Cycle 313 | DIRECTIVE-NXTG-20260416-02: CLI Truth Table. All commands executed against v0.5.2. `docs/CLI-TRUTH-TABLE.md` written — 9 behavioural notes incl. ghost-feature findings (scan --template silent fallback, graph default provider, compliance-report html CWD write, --sarif writes results.sarif). |
+| 2026-04-17 | Cycle 313 (pre) | Stryker stream.ts: 82.58%→88.64% via vi.resetModules()+dynamic import SM33–SM41. Root cause: module-level VALID_PROVIDERS const cached before mutant activation; dynamic import forces re-evaluation. coverageAnalysis: all. |
 | 2026-04-16 | Dep recheck | 4,403/188 GREEN (clean first run). Dep unchanged (9th consecutive day). Flake fix confirmed holding. |
 | 2026-04-04 | Cycle 99 | No PENDING directives; post-N-214 housekeeping: RP1/RP16 floor 4364→4398, CLAUDE.md oracle count 4,364→4,398 |
 | 2026-04-04 | Cycle 97 | No PENDING directives; Gate 2 audit of scan-mutation-hardening.test.ts — MH13 `resolves.toBeDefined()` hollow; strengthened to `toMatchObject({ input: 'Some text.' })`; all CLI hardening files now audited |
