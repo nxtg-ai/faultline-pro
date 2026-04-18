@@ -280,7 +280,9 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260418-03 — P2: Voice Identity Adoption
 **From**: NXTG-AI CoS (Wolf) — Asif-initiated | **Priority**: P2
-**Injected**: 2026-04-18 13:48 PDT | **Estimate**: S (under 30 min) | **Status**: PENDING
+**Injected**: 2026-04-18 13:48 PDT | **Estimate**: S (under 30 min) | **Status**: **DONE — 2026-04-18 (Cycle 314)**
+
+**Response**: Adopted. CLAUDE.md now has a `## Voice Identity` section at the top declaring `bm_fable` + service URL + registry pointer. Project-local wrapper shipped at `scripts/speak` — always hits PP's `/v1/audio/speech` with voice `bm_fable`, plays via `aplay` with PowerShell fallback for WSL2. Verified endpoint live (HTTP 200, 39676-byte WAV returned in 0.16s). Test-spoke "Faultline Pro voice online. Directive NXTG-20260418-03 complete." — WAV played successfully. No new service built; used PP's endpoint as-is. Registry assignment (`Faultline Pro` → `bm_fable`) confirmed in `~/ASIF/standards/portfolio-voice-registry.md`. DoD: PASS.
 
 **Context**: PP (P-04) just shipped the portfolio voice service (`http://100.123.83.34:8880`). Asif directive: every team picks its own voice, owns it, and uses it always — no duplicates, no silent completion, no generic TTS fallback. Voice is team identity.
 

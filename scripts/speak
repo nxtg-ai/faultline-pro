@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# Faultline Pro voice wrapper — always speaks in `bm_fable`
+# (Authoritative British — EU AI Act compliance voice).
+#
+# Usage:
+#   ./scripts/speak "Cycle 314 complete — 2128 tests green."
+#   echo "Directive done" | ./scripts/speak
+#
+# Env overrides:
+#   VOICE_SERVICE_URL — override the PP voice endpoint (default PP NXTG-AI IP)
+
+set -euo pipefail
+
+VOICE="bm_fable"
+URL="${VOICE_SERVICE_URL:-http://100.123.83.34:8880}/v1/audio/speech"
+
+if [[ $# -gt 0 ]]; then
+  TEXT="$*"
+elif [[ ! -t 0 ]]; then
+  TEXT="$(cat)"
+else
+  echo "usage: $0 <text>    (or pipe text via stdin)" >&2
+  exit 2
+fi
+
+WAV="$(mktemp --suffix=.wav)"
+trap 'rm -f "$WAV"' EXIT
+
+HTTP=$(curl -sS --max-time 30 -o "$WAV" -w '%{http_code}' -X POST "$URL" \
+  -H 'Content-Type: application/json' \
+  --data "$(printf '{"model":"kokoro","input":%s,"voice":"%s","response_format":"wav"}' \
+    "$(printf '%s' "$TEXT" | python3 -c 'import json,sys;print(json.dumps(sys.stdin.read()))')" \
+    "$VOICE")")
+
+if [[ "$HTTP" != "200" ]]; then
+  echo "voice service returned HTTP $HTTP" >&2
+  exit 1
+fi
+
+# Play via aplay (Linux) or PowerShell MediaPlayer on WSL2 (Windows audio).
+if command -v aplay >/dev/null 2>&1; then
+  aplay -q "$WAV" 2>/dev/null || {
+    # Fallback to PowerShell when aplay can't find a device (WSL2 common case).
+    if [[ -x /mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe ]]; then
+      WIN_WAV="$(/mnt/c/Windows/System32/cmd.exe /C "wsl wslpath -w '$WAV'" 2>/dev/null | tr -d '\r')"
+      /mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -Command \
+        "(New-Object Media.SoundPlayer '$WIN_WAV').PlaySync()" 2>/dev/null || true
+    fi
+  }
+elif [[ -x /mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe ]]; then
+  WIN_WAV="$(/mnt/c/Windows/System32/cmd.exe /C "wsl wslpath -w '$WAV'" 2>/dev/null | tr -d '\r')"
+  /mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -Command \
+    "(New-Object Media.SoundPlayer '$WIN_WAV').PlaySync()" 2>/dev/null || true
+else
+  echo "no audio playback available; WAV saved at $WAV" >&2
+  trap - EXIT  # preserve for manual inspection
+fi

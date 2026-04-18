@@ -1,5 +1,12 @@
 # CLAUDE.md — Faultline
 
+## Voice Identity
+**Voice**: `bm_fable`
+**Service**: http://100.123.83.34:8880/v1/audio/speech
+**Registry**: ~/ASIF/standards/portfolio-voice-registry.md
+**Use**: every cycle-complete, every P0/P1 completion, every directive response.
+**Wrapper**: `./scripts/speak` (project-local; always uses `bm_fable`). Rationale: Authoritative British — EU AI Act compliance voice.
+
 ## Project Overview
 
 Faultline is a forensic AI claim verification platform. It extracts atomic claims from AI-generated text, verifies them against live web data, and presents a risk scorecard.
