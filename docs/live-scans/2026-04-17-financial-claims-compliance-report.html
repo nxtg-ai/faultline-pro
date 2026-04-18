@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EU AI Act Compliance — Untitled AI System Assessment</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin-bottom: 1.5rem; }
+  h2 { font-size: 1.15rem; margin: 1.5rem 0 0.75rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.25rem; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; font-size: 0.875rem; }
+  th, td { text-align: left; padding: 0.5rem 0.75rem; border: 1px solid #e2e8f0; }
+  th { background: #f1f5f9; font-weight: 600; }
+  .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px; color: #fff; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
+  .summary-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.75rem 1rem; }
+  .summary-card .label { font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+  .summary-card .value { font-size: 1.25rem; font-weight: 700; margin-top: 0.25rem; }
+  ul { padding-left: 1.5rem; margin-bottom: 0.5rem; }
+  li { margin-bottom: 0.25rem; font-size: 0.8rem; }
+  footer { margin-top: 2rem; font-size: 0.75rem; color: #94a3b8; text-align: center; }
+</style>
+</head>
+<body>
+<h1>&#x274C; EU AI Act Compliance — FAIL</h1>
+
+<div class="summary-grid">
+  <div class="summary-card"><div class="label">Score</div><div class="value">69/100</div></div>
+  <div class="summary-card"><div class="label">Overall Risk</div><div class="value">HIGH</div></div>
+  <div class="summary-card"><div class="label">Project</div><div class="value">Untitled AI System Assessment</div></div>
+  <div class="summary-card"><div class="label">Claims</div><div class="value">8</div></div>
+  <div class="summary-card"><div class="label">High-Risk</div><div class="value">2</div></div>
+  
+</div>
+
+<h2>Article Status</h2>
+<table>
+  <thead><tr><th>Article</th><th>Status</th><th>Requirement</th><th>Remediations</th></tr></thead>
+  <tbody><tr><td>Article 6 – Classification Rules for High-Risk AI Systems</td><td><span class="badge" style="background:#6b7280">not-applicable</span></td><td>AI systems listed in Annex III are classified as high-risk if they pose significant risk to health, safety, or fundamental rights. Article 6 determines whether conformity assessment obligations (Articles 9–15) apply.</td><td>—</td></tr>
+<tr><td>Article 9 – Risk Management System</td><td><span class="badge" style="background:#ca8a04">partial</span></td><td>Establish and maintain a continuous risk management system throughout the AI system lifecycle, including identification, analysis, estimation, evaluation, and treatment of risks.</td><td><ul><li>Review and correct contradicted claims with accurate source data.</li><li>Complete Annex III conformity assessment for high-risk classification.</li></ul></td></tr>
+<tr><td>Article 10 – Data and Data Governance</td><td><span class="badge" style="background:#ca8a04">partial</span></td><td>Training, validation, and testing data sets shall be relevant, representative, free of errors, and complete. Data governance measures must address bias detection, data quality, and special category data processing in accordance with GDPR.</td><td><ul><li>Audit training data quality — contradicted outputs indicate potential errors in training data per Art. 10(3).</li><li>Review data completeness — unverified high-importance claims suggest gaps in training data coverage.</li></ul></td></tr>
+<tr><td>Article 11 – Technical Documentation</td><td><span class="badge" style="background:#16a34a">compliant</span></td><td>Technical documentation shall be drawn up before the AI system is placed on the market, covering system description, design specifications, and decision-making rationale.</td><td>—</td></tr>
+<tr><td>Article 12 – Record-Keeping</td><td><span class="badge" style="background:#16a34a">compliant</span></td><td>AI systems shall be designed with capabilities enabling automatic recording of events (logs) throughout their lifecycle, ensuring traceability of system functioning.</td><td>—</td></tr>
+<tr><td>Article 13 – Transparency and Provision of Information</td><td><span class="badge" style="background:#ca8a04">partial</span></td><td>AI system must be sufficiently transparent to enable users to understand its capabilities, limitations, purpose, and the logic behind significant outputs.</td><td><ul><li>Add source attribution for unverified claims.</li><li>Implement confidence scoring to flag uncertain outputs.</li><li>Document AI system capabilities, limitations, and intended purpose.</li></ul></td></tr>
+<tr><td>Article 14 – Human Oversight</td><td><span class="badge" style="background:#16a34a">compliant</span></td><td>AI system design must enable natural persons to effectively oversee and intervene during operation to prevent or minimise risks to health, safety, or fundamental rights.</td><td>—</td></tr>
+<tr><td>Article 15 – Accuracy, Robustness, and Cybersecurity</td><td><span class="badge" style="background:#ca8a04">partial</span></td><td>High-risk AI systems shall achieve appropriate levels of accuracy and be resilient against errors, faults, and cybersecurity attacks that could cause the system to behave in an unintended way.</td><td><ul><li>Investigate contradicted claims — accuracy failures may indicate training data or inference issues per Art. 15(1).</li><li>Implement accuracy benchmarking against representative test sets per Art. 15(1).</li><li>Conduct robustness testing against distributional shift and edge cases per Art. 15(2).</li></ul></td></tr>
+<tr><td>Article 52 – Transparency Obligations for Specific AI System Types</td><td><span class="badge" style="background:#6b7280">not-applicable</span></td><td>AI systems interacting with humans must disclose they are AI (§1). Systems performing emotion recognition or biometric categorisation must inform the persons concerned (§2). Deep-fake and synthetic media must be labelled as machine-generated (§3).</td><td>—</td></tr>
+<tr><td>Article 53 – Obligations for Providers of GPAI Models</td><td><span class="badge" style="background:#ca8a04">partial</span></td><td>Providers of general-purpose AI models must maintain technical documentation (§1a), publish training data content summaries (§1b), implement copyright compliance (§1c), and publish an acceptable use policy (§1d). Models with systemic risk have additional obligations under Art. 55.</td><td><ul><li>Confirm the GPAI model provider has published technical documentation per Art. 53(1)(a).</li><li>Verify the provider has published a summary of training data content per Art. 53(1)(b).</li><li>Confirm the provider has a copyright compliance policy per Art. 53(1)(c).</li><li>Confirm the provider has published an acceptable use policy per Art. 53(1)(d).</li><li>Include GPAI provider Art. 53 compliance confirmation in your procurement due-diligence checklist.</li></ul></td></tr>
+<tr><td>Article 50 – Transparency Obligations for GPAI Models</td><td><span class="badge" style="background:#6b7280">not-applicable</span></td><td>AI-generated content must be disclosed to users. Synthetic, opinion-based, or GPAI-produced content requires explicit machine-generated labelling.</td><td>—</td></tr></tbody>
+</table>
+
+
+<h2>Annex III Conformity Assessment</h2>
+<div class="summary-grid">
+  <div class="summary-card"><div class="label">Applicable</div><div class="value">Yes</div></div>
+  <div class="summary-card"><div class="label">Pass Rate</div><div class="value">50%</div></div>
+</div>
+<table>
+  <thead><tr><th>#</th><th>Article</th><th>Requirement</th><th>Status</th><th>Evidence</th></tr></thead>
+  <tbody><tr><td>annex-iii-0</td><td>Article 6</td><td>High-risk classification — Annex III domain match assessed; conformity assessment obligation determined</td><td><span class="badge" style="background:#16a34a">pass</span></td><td>Article 6 status: not-applicable</td></tr>
+<tr><td>annex-iii-1</td><td>Article 9</td><td>Risk management system — continuous identification, analysis, evaluation, and treatment of risks</td><td><span class="badge" style="background:#ca8a04">partial</span></td><td>Article 9 status: partial</td></tr>
+<tr><td>annex-iii-2</td><td>Article 10</td><td>Data and data governance — training data quality, completeness, bias examination</td><td><span class="badge" style="background:#ca8a04">partial</span></td><td>Article 10 status: partial</td></tr>
+<tr><td>annex-iii-3</td><td>Article 11</td><td>Technical documentation — sufficient for conformity assessment and post-market monitoring</td><td><span class="badge" style="background:#16a34a">pass</span></td><td>Article 11 status: compliant</td></tr>
+<tr><td>annex-iii-4</td><td>Article 12</td><td>Record-keeping — automatic logging of events during AI system operation</td><td><span class="badge" style="background:#16a34a">pass</span></td><td>Article 12 status: compliant</td></tr>
+<tr><td>annex-iii-5</td><td>Article 13</td><td>Transparency — users can interpret and use AI output appropriately</td><td><span class="badge" style="background:#ca8a04">partial</span></td><td>Article 13 status: partial</td></tr>
+<tr><td>annex-iii-6</td><td>Article 14</td><td>Human oversight — effective oversight by natural persons during operation</td><td><span class="badge" style="background:#16a34a">pass</span></td><td>Article 14 status: compliant</td></tr>
+<tr><td>annex-iii-7</td><td>Article 15</td><td>Accuracy, robustness, and cybersecurity — appropriate to intended purpose</td><td><span class="badge" style="background:#ca8a04">partial</span></td><td>Article 15 status: partial</td></tr></tbody>
+</table>
+
+<footer>Generated by Faultline Pro &mdash; FP-EUACT-20260418004730</footer>
+</body>
+</html>

@@ -1159,6 +1159,18 @@ Emma (CLX9 Sr. CoS) blessed the scope on 2026-04-16 — all 3 features in-scope 
 
 ## Team Questions
 
+**Q-PDFKIT-BUG — 2026-04-17 (Cycle 313 follow-up)**: `renderComplianceReportPdf` in `packages/cli/cli/compliance-report.ts:1823+` has severe layout defects discovered during first real live scan visual audit:
+- **Page 3 Article Evidence**: article blocks draw on top of each other (unreadable overlap) — root cause is `doc.y`-relative negative offsets drifting between draws
+- **Pages 2/5/7 render blank** with orphan footer at top — `doc.addPage()` calls fire between article blocks while content spills
+- **Unicode symbols (`→`, `·`) render as `!'` mojibake** — pdfkit Helvetica has no Unicode glyph mapping
+- **Missing EU blue/gold top bar, "OVERALL RISK" badge, metadata box border** on cover
+
+**Mitigation applied**: all customer-facing live-scan PDFs in `docs/live-scans/` now generated via Chrome headless from the `--format html` output (clean, no refactor needed). `--format pdf` CLI path still exposes the bug.
+
+**Decision needed**: (a) refactor `renderComplianceReportPdf` to use Y-capture helpers + bundle DejaVu Sans for Unicode, or (b) deprecate `--format pdf` and route all PDF generation through HTML+headless Chrome. Option (b) is 10× less risk. Filed as future sprint candidate.
+
+---
+
 **Q3 RECURRING FLAKE — RESOLVED (Cycle 244)**:
 Root cause identified on 3rd occurrence (Cycle 244, 08:00:01):
 `RateLimitAlertStore` describe block in `rate-limits.test.ts` had no fake timer guard. Test `'checkAndAlert does not double-fire in same window'` made two sequential `await checkAndAlert()` calls; if minute changed between them, `windowKey()` returned a new value, deduplication failed, and a second alert fired — causing 2-4 failures.
