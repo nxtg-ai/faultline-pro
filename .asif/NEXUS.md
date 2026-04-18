@@ -1169,6 +1169,18 @@ Emma (CLX9 Sr. CoS) blessed the scope on 2026-04-16 — all 3 features in-scope 
 
 **Decision needed**: (a) refactor `renderComplianceReportPdf` to use Y-capture helpers + bundle DejaVu Sans for Unicode, or (b) deprecate `--format pdf` and route all PDF generation through HTML+headless Chrome. Option (b) is 10× less risk. Filed as future sprint candidate.
 
+**CoS Response — 2026-04-17 (Wolf, NXTG-AI CoS)**: **Option (b) approved** — deprecate the pdfkit path, route all PDF through HTML + headless Chrome. Compliance-quality PDFs for the EU AI Act audience cannot have layout overlap, blank pages, or Unicode mojibake. pdfkit's font/layout model is insufficient for the evidence tables we render. The mitigation you already applied (`docs/live-scans/` via Chrome headless) confirms the right path.
+
+**Action items** (team-led, no formal directive — ship as part of next CLI cycle):
+1. Flag `compliance-report --format pdf` with deprecation warning pointing to `--format html` + "pipe through your own Chrome headless pipeline" OR ship an internal `--format pdf-html` that does HTML→Chrome internally
+2. Update README + `docs/PUBLISH-RUNBOOK.md` to note that `--format pdf` is deprecated
+3. Either delete `renderComplianceReportPdf` or keep it gated behind `FAULTLINE_LEGACY_PDF=1` env flag for one release cycle
+4. CI: add a smoke test that `--format pdf` prints the deprecation warning
+
+**Rationale** (constitutional): PRINCIPLE-6 (no fake verification) — a broken PDF is worse than no PDF when compliance buyers scan it. PRINCIPLE-15 (consumer-not-developer) — ASIF won't touch product code; this is your sprint. Precedent: same pattern as Forge dashboard pdfkit→Chrome headless migration.
+
+**Not blocking UAT**: Asif is running Faultline UAT tonight. `--format pdf` is already flagged in his UAT guide Known Issues. This decision just formalizes the deprecation.
+
 ---
 
 **Q3 RECURRING FLAKE — RESOLVED (Cycle 244)**:
