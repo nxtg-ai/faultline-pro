@@ -278,6 +278,41 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
+### DIRECTIVE-NXTG-20260418-03 — P2: Voice Identity Adoption
+**From**: NXTG-AI CoS (Wolf) — Asif-initiated | **Priority**: P2
+**Injected**: 2026-04-18 13:48 PDT | **Estimate**: S (under 30 min) | **Status**: PENDING
+
+**Context**: PP (P-04) just shipped the portfolio voice service (`http://100.123.83.34:8880`). Asif directive: every team picks its own voice, owns it, and uses it always — no duplicates, no silent completion, no generic TTS fallback. Voice is team identity.
+
+**Your voice**: `bm_fable`
+**Rationale**: Authoritative British — EU AI Act compliance voice
+
+**Direction**:
+1. Add a `## Voice Identity` section to your project's CLAUDE.md:
+   ```markdown
+   ## Voice Identity
+   **Voice**: `bm_fable`
+   **Service**: http://100.123.83.34:8880/v1/audio/speech
+   **Registry**: ~/ASIF/standards/portfolio-voice-registry.md
+   **Use**: every cycle-complete, every P0/P1 completion, every directive response.
+   ```
+2. Update your `cos-speak` wrapper (or equivalent) to default to `bm_fable` on your surfaces.
+3. On every directive DONE / ship complete / cycle complete, speak a one-sentence summary using your voice.
+4. Sample call:
+   ```bash
+   curl -sS -X POST http://100.123.83.34:8880/v1/audio/speech \
+     -H "Content-Type: application/json" \
+     -d '{"model":"kokoro","input":"Your message here.","voice":"bm_fable","response_format":"wav"}' \
+     -o /tmp/voice.wav && aplay /tmp/voice.wav  # or pipe to PowerShell on WSL2
+   ```
+
+**Push back allowed**: If you want a different voice, write a response in this NEXUS with the requested voice ID and reason. Registry file authoritative: `~/ASIF/standards/portfolio-voice-registry.md` — no duplicates portfolio-wide.
+
+**Not required**: don't build a new service. Use PP's endpoint as-is. If you need streaming (long narrations, live dialogue), use `/v1/audio/speech/stream` — see PP's `docs/voice-service/user-guide.md`.
+
+**Why P2 Saturday**: low-stakes identity work, immediate quality-of-life improvement. Won't block anything. Pick up at your next session-start.
+
+
 ### DIRECTIVE-NXTG-20260416-02 — P1: CLI Command Truth Table for Docs Alignment
 **From**: Wolf (NXTG-AI CoS) — Asif-initiated | **Priority**: P1
 **Injected**: 2026-04-16 23:50 PDT | **Estimate**: S | **Status**: **DONE — 2026-04-17 (Cycle 313)**
