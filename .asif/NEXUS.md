@@ -1491,6 +1491,52 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-18 (Cycle 314 — check-in)
+
+**1. What shipped since last check-in (Cycle 313, 2026-04-17)?**
+
+- **Dep audit** (`4c51b03`): `@types/pdfkit` 0.17.5→0.17.6, `fast-check` 4.6.0→4.7.0 applied; `npm audit fix` resolved `protobufjs` (critical) + `@fastify/static` (moderate/critical, path traversal). 0 local vulns. 4,492/193 GREEN retained.
+- **Mutation pattern doc** (`c1464d1`): `docs/mutation-testing.md` gained a full N-Cycle section on the ESM module-cache bug, the `vi.resetModules()` fix, when to apply it, and a table of 14 remaining unkillable mutations. Pattern from Cycle 313 is now preserved — not reinvented next time.
+- **Live FR-3 scan deliverable for FW** (`0ecc198`): First real end-to-end per-stage scan (OpenAI extract → Gemini verify w/ Google Search grounding → Claude synthesize) on `examples/financial-claims.txt`. 147.64s wall time, 8 claims, `overallRisk: high`, `complianceScore: 69`, `compliancePass: false`. Shipped to `docs/live-scans/`: JSON reference payload, HTML/PDF/MD for both scan report and EU AI Act compliance report, and a full **FW integration README** covering response shape, timing expectations, Gemini redirect-URI caveat, and the `stageCosts`/`timings` gap. Also: 3 repo URL fixes (`asifwaliuddin/Faultline` → `nxtg-ai/faultline-pro`) across `report.ts` markdown footer + SARIF `informationUri`, and `aggregate.ts` markdown + 2× SARIF. 2,128/2,128 CLI tests GREEN post-URL changes.
+- **Voice identity** (`fdd25d9`, DIRECTIVE-NXTG-20260418-03 DONE): `bm_fable` adopted. `CLAUDE.md` gained `## Voice Identity` section (service URL, registry pointer, usage policy). `scripts/speak` wrapper shipped — always uses `bm_fable`, WSL2-aware audio playback (aplay → PowerShell MediaPlayer fallback). Endpoint verified live (HTTP 200, 0.16s, 39,676-byte WAV).
+- **NEXUS hygiene**: pdfkit compliance-PDF layout bug filed as `Q-PDFKIT-BUG` Team Question with root cause, page-by-page findings, and two remediation paths for CoS decision.
+
+**Commits since 313 check-in**: 4 (`4c51b03`, `c1464d1`, `0ecc198`, `fdd25d9`). All pushed to main. ASIF CI Gate passed every push.
+
+**2. What surprised us?**
+
+- **pdfkit compliance PDF is catastrophically broken — and the tests passed anyway.** First real visual audit (Chrome-rendered PNG of every page) showed: page 3 (Article Evidence) has every article block drawn on top of the next one, pages 2/5/7 render blank with orphan footers at the top, Unicode `→`/`·` render as `!'` mojibake, and the EU blue/gold header bar + risk badge + metadata box border never appear on the cover. `renderComplianceReportPdf` has tests asserting on buffer presence and page count (both pass — 11 pages, non-zero buffer) but **no test asserts on the PDF's visual content**. This is a CRUCIBLE Gate 2 gap disguised as coverage.
+- **FR-3 is half-shipped and the acceptance gap is invisible.** The engine accepts `pipelineConfig` in `/scan` and `/scan/stream` request bodies, correctly routes per-stage to different providers, and returns a normal `ScanResult`. But the FR-3 spec requires `stageCosts` and `timings` fields on the `complete` event — the engine never emits them. There's no test asserting their presence, so the gap is silent. FW's integration will hit this the moment they try to wire a "cost per scan" UI.
+- **API server does not auto-load `packages/api/.env`.** `src/index.ts` reads `process.env.*` directly, no `dotenv` package wired. Starting via `npm start` in a fresh shell gives `providersConfigured: 1` (OpenAI only — the one var exported in my shell). Required `set -a; source .env; set +a && npm start` to surface the keys. Not blocking, but a DX papercut for new contributors.
+- **Gemini source URIs are always wrapped.** Every `verifications[*].sources[*].uri` from the verify stage is `https://vertexaisearch.cloud.google.com/grounding-api-redirect/<opaque-id>`. The publisher domain leaks through `sources[*].title` (`federalreserve.gov`, `schwab.com`, etc.), but the raw target URL is behind Google's redirect. Any UI showing "click to see source" needs server-side resolution or the user sees `vertexaisearch.cloud.google.com` on hover.
+- **Chrome-headless HTML→PDF crushed pdfkit with zero engineering cost.** Advisor pivoted me away from a planned ~200-line pdfkit refactor. Chrome-render gave 3 clean pages for the scan report and 4 clean pages for the compliance report, with native Unicode, working CSS, proper page breaks, and color-accurate badges — all for one `google-chrome --headless --print-to-pdf=...` invocation.
+
+**3. Cross-project signals**
+
+- **Chrome-headless as pdfkit alternative**: Any project doing complex branded PDF output via pdfkit should seriously consider pivoting to `<format>=html` → headless Chrome. Faultline's compliance PDF was broken in 4+ ways with passing tests; one curl command gave us a publication-quality PDF. Pattern worth documenting in a portfolio standard.
+- **Gemini redirect URL caveat** (`@google/genai` + grounding): **Any project using Gemini with `googleSearch` grounding will emit wrapped `vertexaisearch.cloud.google.com/grounding-api-redirect/...` URLs in source citations**, not raw target URLs. If UX shows source links, do server-side redirect resolution or display publisher titles. Flag to: next-gen (P-10 SynApps), Atlas (P-15), nxtg-content-engine (P-14) — any surface citing Gemini grounding results.
+- **Live-scan fixture methodology**: The `docs/live-scans/` pattern (real scan payload + human-readable derivatives + FW integration README) is a high-signal deliverable template. Any project whose API will be consumed by another portfolio team should produce a similar "real response + consumer guide" drop. One JSON file plus a 150-line README unblocked FW's UI wiring with zero back-and-forth questions.
+- **`set -a; source .env; set +a` pattern for node apps without dotenv**: Recurring enough to document. Alternative: `node --env-file=.env` (Node ≥20.6). Both worth codifying in ASIF standards.
+- **Voice identity wrapper pattern**: `scripts/speak` in-project (WSL2-aware, always-uses-assigned-voice) is the cleanest adoption of the portfolio voice registry. Other teams should copy this approach rather than rely on host-keyed `cos-speak-remote` default (which gives every project on NXTG-AI the same `am_fenrir` voice unless overridden).
+
+**4. What to prioritize next?**
+
+- **P1 — Close FR-3 acceptance gap**: Add `stageCosts` and `timings` fields to `/scan` and `/scan/stream` responses. Engine already knows which provider ran each stage; just needs to time each call and emit. Tests should assert field presence. Without this, FW can't build the per-stage cost breakdown FR-3 was designed for.
+- **P1 — pdfkit vs Chrome-PDF decision**: Either (a) refactor `renderComplianceReportPdf` with Y-capture helpers + bundled DejaVu Sans font, or (b) deprecate `--format pdf` and document Chrome-headless as the canonical path. Option (b) is 10× less risk; option (a) preserves offline/airgap CLI use. CoS decision needed — documented in Q-PDFKIT-BUG.
+- **P2 — Auto-resolve Gemini redirect URLs in engine**: Server-side follow the `vertexaisearch.cloud.google.com` redirects, replace `uri` with the resolved target URL. Falls under "improve forensics provenance quality". Caller (FW) shouldn't have to hand-build this.
+- **P2 — `dotenv` in API start**: Add `import 'dotenv/config'` or move to `node --env-file=.env`. Removes a DX papercut. Two-line change, one test.
+- **P3 — CLI `--template <name>` silent fallback** (still open from Cycle 313): Emit a clear error when template missing from `.faultlinerc.json`.
+- **P3 — Gate 6 in CI** (still open from Cycle 313): All 6 stryker configs above threshold, patterns documented, still local-only.
+
+**5. Blockers / Questions for CoS**
+
+- **Q1 (FR-3 closure)**: Should `stageCosts` + `timings` field addition be a new initiative (N-217?) or rolled under existing FR-3? Spec is clear on the shape; just need the go-ahead to wire it.
+- **Q2 (pdfkit vs Chrome)**: Which path — (a) fix pdfkit (higher engineering cost, preserves offline CLI use) or (b) deprecate `--format pdf` in favor of Chrome-headless (lower cost, introduces a runtime dep)?
+- **Q3 (Gemini redirect resolution)**: Auto-resolve in engine (clean caller UX, but adds latency per source URL), or leave to caller (current behaviour, every consumer re-implements)?
+- **Q4 (live-scan fixtures in repo)**: `docs/live-scans/` adds ~280 KB (4 PDFs + HTMLs + JSON) to the repo. OK to keep as canonical fixtures, or should these live elsewhere (artifact storage, separate `@nxtg/faultline-fixtures` package)?
+
+---
+
 > **Reflection cycle**: 2026-04-17 (Cycle 313 — check-in)
 
 **1. What shipped since last check-in (Cycle 305, 2026-04-16)?**
