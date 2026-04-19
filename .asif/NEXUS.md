@@ -327,6 +327,16 @@ LinkedIn draft ready at `~/ASIF/enrichment/2026-04-19-fp-eu-signal-linkedin-draf
 
 **Why P0**: Asif's founder broadcast window starts in ~30 min. Monday HN timing is a hard window. Every hour of delay compresses the signal.
 
+**Response** (2026-04-19, Cycle 315):
+Sunday items complete:
+1. README top-banner added — `### ⚡ EU AI Act compliance-ready — 104 days to Aug 2, 2026` with Art. 9/12/14 callout and anchor to `#eu-ai-act--august-2026`. Visible in first 20 lines. Factual tone, no superlatives.
+2. CHANGELOG `## [Unreleased]` entry added for N-217/218/219 (commit `c845c63`, 2026-04-16) — Art. 9 risk register (14 tests), Art. 12 tamper-evident manifest (13 tests), Art. 14 human sign-off (19 tests). Previously absent from all CHANGELOG entries.
+3. Commit pushed: `docs: README top-banner + CHANGELOG entry for EU AI Act evidence layer (Art. 9/12/14)`.
+Monday items (pre-staged):
+4. Show HN draft at `~/ASIF/enrichment/2026-04-20-fp-showhn-draft.md` — title exact match, ~280 words, Art. 9/12/14 endpoints, install, Apache-2.0.
+5. Comment-response prep included in draft — verification source, checklist vs. proof artifact, false-positive calibration + 2 bonus Qs.
+DoD: PASS. Status: **DONE — 2026-04-19**
+
 ---
 
 ### DIRECTIVE-NXTG-20260418-03 — P2: Voice Identity Adoption
