@@ -1552,6 +1552,50 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-19 (Cycle 315 — Sunday launch-prep check-in)
+
+**1. What shipped since last check-in (Cycle 314, 2026-04-18)?**
+
+- **DIRECTIVE-NXTG-20260419-01 P0 launch signal — both halves** (commit `975175b`):
+  - **Sunday**: README top-banner at `README.md:13-15` — `### ⚡ EU AI Act compliance-ready — 104 days to Aug 2, 2026` + 2-line pitch naming Art. 9/12/14 and openssl verifiability, anchored to the existing section. Factual tone, no superlatives, no edits to the article sections themselves (lines 430-451 stay untouched — they ship verifiable primitives, that IS the signal).
+  - **Sunday**: CHANGELOG `[Unreleased]` Art. 9/12/14 entry committed alongside (was already in working tree, uncommitted from a prior session; staged and shipped).
+  - **Monday prep**: `~/ASIF/enrichment/2026-04-20-fp-showhn-draft.md` — 280-word Show HN body, title per directive spec, + **6 pre-drafted comment responses** (verification-source "live evidence not embeddings", checklist critique "openssl chain not checkbox", false-positives / CALIBRATION RULE, Promptfoo/DeepEval scope comparison, open-core rationale, Ollama/offline-mode caveats) + timing logistics + deflection strategy for pricing questions.
+- **Delivered 17 hours ahead of Monday 7 AM PDT deadline.**
+
+**Commits since 314 check-in**: 1 (`975175b`). Tests unchanged at 4,492/193. CI green.
+
+**2. What surprised us?**
+
+- **CHANGELOG `[Unreleased]` already had the Art. 9/12/14 entry — uncommitted, from a prior session.** Nearly missed this. `git status` before writing — check working tree state doesn't mismatch NEXUS state. Hygiene note: when a directive says "if not already present, add X," the "not already present" check needs to include uncommitted working-tree changes, not just HEAD.
+- **The constraint "do NOT edit the article sections" was the right call.** Old instinct would have been to re-word the lines 430-451 content for punchier marketing. The directive's framing — "they ship verifiable primitives, that IS the signal" — was correct. Signal value comes from the `openssl dgst -sha256` verifiability of the primitives themselves, not from punchier copy *about* them. The banner lifts them above the fold without retelling; HN/LinkedIn readers who click through land on factual evidence, not a rewrite.
+- **Show HN comment-response prep exceeded the body.** The 280-word post is half the value; the other half is the ~1,400-word pre-drafted Q&A. "Happy to answer anything" is cheap to promise and expensive to deliver live on the thread. Having Asif's likely answers already drafted in a file he can grep during the post lag turns a real-time firefight into paste-and-adjust.
+- **Directive-response duration was ~35 minutes total**, tiny compared to the estimate (M = 3-4h). Docs + positioning scoped tight beats feature work for time discipline — as the directive explicitly required ("No new feature work tonight — documentation + positioning only"). Asif-CoS discipline on constraints saved an hour of drift.
+
+**3. Cross-project signals**
+
+- **"Lift, don't rewrite" pattern for launch-signal docs polish**: When an existing section already does the factual heavy lifting, don't rewrite — surface it above the fold with a banner + anchor. Preserves the work and avoids re-litigating tone. Useful for any portfolio project doing a README rewrite for launch: PP (P-04 voice-jib-jab), SynApps (P-10), nxtg-content-engine (P-14), Atlas (P-15).
+- **Pre-drafted HN comment responses as a launch-signal deliverable**: 6 Q&A pairs (~1,400 words) covering likely technical objections. Worth codifying as a portfolio template for any open-source launch on HN. Format: one "expected question" heading, one paragraph answer keeping CoS voice, link back to specific code paths. Should live as `~/ASIF/standards/showhn-response-template.md` if the pattern repeats.
+- **CHANGELOG `[Unreleased]` visibility on HN-linked repos**: An `[Unreleased]` block containing already-shipped work can confuse visitors who hit a Show HN link. The Art. 9/12/14 endpoints are live in v0.5.4 (commit c845c63) but the CHANGELOG lists them under `[Unreleased]`. Portfolio question: is there a convention for when to "close" [Unreleased] into a version section? This hits every project with a changelog and an HN/LinkedIn moment.
+- **`.env` auto-loading (still unfixed)**: Flagged in Cycle 314. Every project using Fastify + `process.env.*` without `dotenv` or `node --env-file` hits the same DX papercut. Two-line fix per project.
+- **Gemini redirect URI caveat (still unfixed)**: Flagged in Cycle 314. Any Gemini-grounded UI surface the portfolio ships without server-side URL resolution will display `vertexaisearch.cloud.google.com` hover targets instead of publisher domains.
+
+**4. What to prioritize next?**
+
+- **P0 — Monday AM (2026-04-20): HN vigil.** Be available for quick engineering responses if Asif's Show HN thread draws a technical question he wants vetted before posting. No feature work. Standing by only.
+- **P1 — Carried from Cycle 314**: FR-3 `stageCosts`+`timings` gap closure (FW's cost-per-scan UI blocked without it); pdfkit vs Chrome PDF decision (Q-PDFKIT-BUG); Gemini redirect URL resolution; live-scan fixture storage policy.
+- **P2 — CHANGELOG tidy**: After Monday HN post, rotate `[Unreleased]` Art. 9/12/14 block into a formal version section (v0.5.5 candidate, dated 2026-04-16 to match commit c845c63). Removes the visitor confusion.
+- **P3 — Carried from Cycle 313**: CLI `--template <name>` silent fallback; `graph` default provider (mock vs auto-detect); Gate 6 in CI.
+
+**5. Blockers / Questions for CoS**
+
+- **Q1 (new, from this cycle)**: **CHANGELOG versioning on HN-visible repos** — should `[Unreleased]` entries containing shipped work be auto-rotated into dated version sections before a launch signal, or is `[Unreleased]` acceptable as-is? Suggest a portfolio convention: close `[Unreleased]` when a commit tag lands, always.
+- **Q2 (carried from 314)**: FR-3 `stageCosts`/`timings` field addition — is this a new initiative or rolled into existing FR-3?
+- **Q3 (carried from 314)**: pdfkit vs Chrome-headless canonical PDF path — which way?
+- **Q4 (carried from 314)**: Gemini redirect URL resolution — engine or caller?
+- **Q5 (carried from 314)**: `docs/live-scans/` fixture storage policy — in-repo OK or separate artifact/fixture package?
+
+---
+
 > **Reflection cycle**: 2026-04-18 (Cycle 314 — check-in)
 
 **1. What shipped since last check-in (Cycle 313, 2026-04-17)?**
