@@ -278,6 +278,41 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
+### DIRECTIVE-NXTG-20260419-01 — P0: EU AI Act launch signal (README polish + Show HN draft)
+**From**: NXTG-AI CoS (Wolf) — Asif direct at Sunday review 2026-04-19 11:12 PDT | **Priority**: P0
+**Injected**: 2026-04-19 11:15 PDT | **Estimate**: M (3-4h split across today + Monday AM) | **Status**: PENDING
+
+**Context**: Asif decided at Sunday 1pm CST review (11 AM PDT) — **Option C-split** on FP EU AI Act launch signal:
+- **Today (Sunday)**: LinkedIn post (Asif's founder account) + README polish ship NOW
+- **Monday AM**: Show HN post (timed for prime Pacific 8-10 AM slot to avoid Sunday HN burial)
+
+LinkedIn draft ready at `~/ASIF/enrichment/2026-04-19-fp-eu-signal-linkedin-draft.md`. Asif posts from his own account — PP team only needs to support Show HN draft + README polish.
+
+**Action Items — Sunday today**:
+1. [ ] **README polish**: add a top-of-file banner/section above the fold: `### ⚡ EU AI Act compliance-ready (104 days to Aug 2, 2026)` with a 2-line pitch + anchor to existing `## EU AI Act — August 2026` section (already covers Art. 9/12/14 well, lines 430-451). Don't rewrite what's there — just lift it above the fold so GitHub visitors see it in the first screen.
+2. [ ] **CHANGELOG entry**: if not already present, add v0.5.x entry noting Art. 9/12/14 evidence layer shipped commit `c845c63` (2026-04-16). Reference line 441-451 for the specifics.
+3. [ ] Commit with message: `docs: README top-banner + CHANGELOG entry for EU AI Act evidence layer (Art. 9/12/14)`. Push.
+
+**Action Items — Monday AM**:
+4. [ ] **Show HN draft** (overnight prep, Asif posts Monday 8 AM PDT): title `Show HN: Faultline — forensic verification + EU AI Act compliance evidence (open-core)`. Body ~300 words: problem (hallucinations → Aug 2026 deadline), approach (atomic claim extraction + tamper-evident audit log), concrete evidence (Art. 9/12/14 endpoints), install (`npm i @nxtg/faultline`), open-core licensing. Target max-shareability, minimum hype. Save draft at `~/ASIF/enrichment/2026-04-20-fp-showhn-draft.md` by 7 AM PDT Monday.
+5. [ ] **Comment-response prep**: pre-draft answers to likely HN critiques: "what's the verification source?" (live evidence not embeddings), "isn't this just a checklist?" (SHA-256 chain is verifiable by auditors without our tooling), "what about false positives?" (calibration + confidence scoring).
+
+**Acceptance Criteria**:
+- [ ] README top-banner visible in first 20 lines, links to Art. 9/12/14 section
+- [ ] CHANGELOG current
+- [ ] Sunday commit pushed + CI green
+- [ ] Monday draft at agreed path by 7 AM PDT
+- [ ] No new feature work tonight — documentation + positioning only
+
+**Constraints**:
+- Do NOT edit the EU Act article sections themselves (lines 430-451 are solid — they ship verifiable primitives, that's the signal)
+- Do NOT add marketing superlatives. Keep the existing "auditors can verify with openssl" factual tone
+- No changes to licensing, no pricing changes in this directive — scope is LinkedIn + README + Show HN only
+
+**Why P0**: Asif's founder broadcast window starts in ~30 min. Monday HN timing is a hard window. Every hour of delay compresses the signal.
+
+---
+
 ### DIRECTIVE-NXTG-20260418-03 — P2: Voice Identity Adoption
 **From**: NXTG-AI CoS (Wolf) — Asif-initiated | **Priority**: P2
 **Injected**: 2026-04-18 13:48 PDT | **Estimate**: S (under 30 min) | **Status**: **DONE — 2026-04-18 (Cycle 314)**
