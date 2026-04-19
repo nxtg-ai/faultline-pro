@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- N-217/218/219 (commit `c845c63`, 2026-04-16): EU AI Act compliance evidence layer — Art. 9/12/14 API endpoints:
+  - Art. 9 — `POST /scan/risk-register`: structured risk register aggregating all scan history by lifecycle phase (development/testing/deployment/monitoring); riskDistribution, highRiskCount, criticalRiskCount, per-scan findings. 14 tests (RR1–RR14).
+  - Art. 12 — `GET /audit/log/manifest`: SHA-256 chained-hash manifest; chainHash(n) = SHA-256(entryHash(n) + chainHash(n-1)); rootHash covers entire log; verifiable by third-party auditors using `openssl dgst -sha256` without Faultline tooling. 13 tests (AM1–AM13).
+  - Art. 14 — `POST /scans/:id/approve` + `GET /scans/:id/approvals`: human sign-off record with approver identity, decision (approved/rejected), UTC timestamp, optional note; immutable once recorded. 19 tests (AP1–AP19).
+
 ## [v0.5.4] — 2026-04-16
 
 ### Added

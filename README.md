@@ -10,6 +10,10 @@ Forensic verification for AI-generated text. Faultline decomposes output into at
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 
+### ⚡ EU AI Act compliance-ready — 104 days to Aug 2, 2026
+
+Faultline ships Art. 9 (risk register), Art. 12 (tamper-evident audit log), and Art. 14 (human sign-off) as verifiable code paths — not marketing copy. Auditors validate the SHA-256 chain manifest with only `openssl dgst -sha256`, no Faultline tooling required. See [EU AI Act — August 2026](#eu-ai-act--august-2026) for the three endpoints.
+
 ---
 
 ## What It Does
