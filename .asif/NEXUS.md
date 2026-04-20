@@ -1719,6 +1719,51 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-20 (Cycle 318 — MockProvider elimination / Show HN final gate)
+
+**1. What shipped since last check-in (Cycle 317, 2026-04-20)?**
+
+- **DIRECTIVE-NXTG-20260420-03 P0 — default provider mock→openai** (commits `b045803`, `4aec849`):
+  - Changed implicit fallback from `'mock'` to `'openai'` in 4 route files: `stream.ts` (GET + POST handlers), `scan.ts` (template path), `diff.ts`, `bulk.ts`. Explicit `provider:"mock"` preserved for dev/test.
+  - Fixed 2 tests: WS15 description aligned with existing docstring (was testing default behavior, not explicit mock); SM3 added `&provider=mock` to prevent real OpenAI calls in CI.
+  - `fly deploy` completed; SHA `b045803` live in production.
+  - **Acceptance criterion confirmed**: no-provider POST → `provider:"openai"`, skeptical real verdicts, `overallRisk: "medium"` for FDA cancer claim. "Mock verification: supported." is gone from all default paths.
+
+**Commits this cycle**: 2 (`b045803`, `4aec849`). Tests: 4,492/193. ASIF CI Gate PASSED.
+
+**2. What surprised us?**
+
+- **The mock default was in 4 files, not 2.** The directive pointed at `stream.ts` GET and POST handlers. Grepping for `?? 'mock'` and `: 'mock'` in routes/ revealed two additional hits: `scan.ts` template path (line 278) and `diff.ts` (line 70), plus `bulk.ts`. All four shared the same pattern — a plain `?? 'mock'` or `?? provider ?? 'mock'` final fallback. The blast radius was wider than the directive expected.
+- **WS15's docstring and implementation had diverged.** The file-level comment at line 19 already said "WS15: Explicit 'mock' provider is reflected in start event" — but the actual test body was testing *omission* behavior (no provider → expect mock). These had drifted silently. The fix aligned implementation to docstring without changing the mutation-hardening intent. Pattern: docstring drift in test files is invisible until a behavior change forces you to read the test.
+- **SM3 timeout instead of failure.** When the default changed to `openai`, SM3 didn't fail with a wrong assertion — it *timed out*, because the test environment made a real network call to OpenAI API (no key set in test env) and hung for 5000ms. Timeout ≠ assertion failure. If the CI timeout were longer, it would have hung indefinitely. This is a category of test fragility that doesn't show up as a red assertion — it shows up as a slow-then-hanging test suite. The fix (explicit `provider=mock`) is also a correctness fix: unit tests should never make real API calls unless the test is explicitly an integration test.
+- **Path C (FW-side change) was not available.** FW is a separate repo. We can only guarantee the FP side. The defense-in-depth pattern (FP defaults to openai AND FW explicitly sends openai) requires FW to make the parallel change. This is noted for the CoS — the cross-repo contract gap persists until FW makes the change.
+
+**3. Cross-project signals**
+
+- **"Search all route files, not just the reported one."** When a bug like `?? 'mock'` is found in one file, grep the whole routes/ directory for the same pattern before closing the directive. Takes 5 seconds; prevents partial fixes that leave the same bug in 3 other files. Portfolio rule: any "change this default" fix should be preceded by `grep -r "old_value" src/routes/`.
+- **Test docstring drift is a silent quality decay.** File-level comment said "explicit mock"; test body tested "omitted provider". No test was red; no lint caught it. The only way it surfaced was a behavior change that forced reading both. Any project with mutation-hardening test files should periodically diff the file-level SPEC comment against the actual test bodies. Alternatively: use the test `it()` description as the spec — file-level comments can't be mechanically validated.
+- **Unit tests that make real API calls are a CI fragility bomb.** SM3 is the concrete case. The general pattern: any test that uses an in-process server and calls a real external API will (a) fail silently in CI if the key is absent, (b) timeout instead of asserting, (c) add latency to the test suite. Detection: any test that injects into a Fastify server with a real provider name (not `mock`) is potentially doing this. A CI rule of "no provider other than `mock` in unit/integration tests" would catch this class of issue.
+- **The `provider=mock` convention is the test isolation boundary.** Now that the production default is `openai`, every test that wants fast, key-free, deterministic behavior MUST explicitly pass `provider=mock`. This is a good constraint — it makes test isolation intentional rather than accidental. Document it in `docs/testing-patterns.md` or a test-setup README so it doesn't have to be rediscovered.
+
+**4. What to prioritize next?**
+
+- **P0 (Asif action, blocking)**: Gemini billing — enable paid tier on AI Studio project owning `GEMINI_API_KEY`. Until done, `provider=gemini` returns 503/429 in production.
+- **P1 — Claude model ID bug**: `claude_provider.ts:10` `DEFAULT_MODEL = 'claude-sonnet-4-6'` → verify correct Anthropic API string and patch. S-sized. Raise as N-222.
+- **P1 — FW parallel change**: FW should update their `/api/scan/route.ts` default from `'gemini'` to `'openai'` (or just remove the default and let FP handle it). Belt+suspenders for Show HN. FW team action.
+- **P2 — Post-launch contract test**: Add a no-provider POST to the integration test suite asserting the response is not MockProvider. One assertion; prevents this class of regression permanently. Raise as N-223.
+- **P2 — Test isolation doc**: Add `provider=mock` convention to `docs/testing-patterns.md` — any test using an in-process server should use mock provider unless explicitly marked as an integration test with a real API key available.
+- **P3 — Carry-forward**: Gemini billing (Asif), Claude model ID (N-222), CHANGELOG version rotation, FR-3 stageCosts/timings, pdfkit PDF bug.
+
+**5. Blockers / Questions for CoS**
+
+- **Q1 (critical, Gemini billing)**: Same as Cycle 317 Q1 — still blocking Gemini in production. Asif: go to the Google AI Studio project owning `GEMINI_API_KEY` → Billing → Enable.
+- **Q2 (FW parallel change)**: Has FW been notified to change their default from `'gemini'` to `'openai'`? The FP side is fixed but FW's `/api/scan/route.ts` still sends `provider:'gemini'` by default (per Wolf's evidence at commit `b7b30e8`). This means the FW→FP chain still routes to broken Gemini unless FW makes the change.
+- **Q3 (N-222 scope confirm)**: Claude model ID fix — should we patch `claude_provider.ts:10` with the correct Anthropic API model string now, or hold for a post-Show HN N-222 sprint? Need the correct model string (e.g. `claude-opus-4-0`, `claude-sonnet-4-5`) confirmed.
+- **Q4 (carried from 317)**: CHANGELOG versioning convention — ratify before more version entries accumulate in `[Unreleased]`.
+- **Q5 (carried from 316)**: FW API key — do they have a `FAULTLINE_API_KEY` value provisioned for hitting `faultline-api.fly.dev`? They need it as `x-api-key` header.
+
+---
+
 > **Reflection cycle**: 2026-04-20 (Cycle 317 — Show HN morning ops / provider secrets diagnosis)
 
 **1. What shipped since last check-in (Cycle 316, 2026-04-20)?**
