@@ -1596,6 +1596,50 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-20 (Cycle 316 — post-launch-prep / Show HN morning check-in)
+
+**1. What shipped since last check-in (Cycle 315, 2026-04-19)?**
+
+- **DIRECTIVE-NXTG-20260420-01 P0 — fly.dev redeployment** (commit `a58a43f`):
+  - `fly deploy --config packages/api/fly.toml` completed in ~90 seconds. Deployed SHA `8a726b0` (image `deployment-01KPMVGEWQSQC7AW2RJ7PPYFR1`, 161 MB). Rolling strategy; 2 machines updated; both in good state post-deploy.
+  - `POST https://faultline-api.fly.dev/scan/stream` → **401** (not 404). P0 acceptance criterion met ~6+ hours before 07:00 PDT deadline.
+  - CHANGELOG Ops entry added: deployed SHA, explains the 4-day gap since `b9ccd5a` merged, rationale for deployed-SHA tracking.
+  - NEXUS directive marked DONE, action items updated with outcomes.
+- **Tests**: unchanged at 4,492/193. CI skipped on governance-only push (ADR-008 fast path).
+
+**Commits this cycle**: 1 (`a58a43f`). Pushed to main.
+
+**2. What surprised us?**
+
+- **Wolf's pre-diagnosis made the cycle pure execution.** The directive arrived with exact curl commands, exact SHA, exact route, exact symptom string. Nothing to investigate — just execute, verify, document. This is what a good operational runbook looks like. The cycle took ~10 minutes start to finish, well under the S (15-30 min) estimate.
+- **`fly deploy` warning: "not listening on expected address" for machine `843e16a2d27758`** — this appeared during the rolling deploy but the health check passed immediately after and both machines ended in a good state. Transient fly-proxy routing note during image swap, not a real failure. Worth knowing: fly health checks will catch a genuinely broken start; a mid-roll warning on one machine is not always a blocker.
+- **401 as a better success signal than 200** — smoke-testing a deployed route by expecting 401 (auth gate) rather than 200 is cleaner when you don't have a valid token handy. It validates: (a) route exists, (b) auth middleware is running, (c) request parsing is working. A 404 is unambiguous failure; 401 is unambiguous "route live, gate active." This pattern belongs in integration/smoke test docs.
+- **4-day deployment gap with no alert.** `b9ccd5a` merged April 16; production was broken until April 20. No CI gate, no canary, no post-deploy contract test. Wolf caught this via a Faultline Web team question, not from FP-side monitoring. This is the most important signal from this cycle.
+
+**3. Cross-project signals**
+
+- **Deployed-SHA in `/health` response** — the CHANGELOG Ops entry captures the gap post-hoc, but the real fix is proactive: embed `gitSha` or `buildId` in the `/health` endpoint so `GET /health` tells you exactly which commit is running in production. One field addition. Every FP API consumer (FW, CLI, future) benefits. Pattern applicable to any portfolio API on fly.dev or Vercel.
+- **Cross-repo contract drift is a structural problem** — FW owns the consumer; FP owns the API. Neither repo has a CI gate that checks the other's deployed state. Four days of broken production is the cost of that gap. The stretch item (N-222 CI auto-deploy gate) is not just convenience — it's a contract integrity mechanism. Any portfolio project with a consumer ↔ provider split across repos has this same risk (e.g., Atlas + any downstream consumer).
+- **`[Unreleased]` / version rotation before a launch signal** — the Art. 9/12/14 endpoints are live in v0.5.4 (since commit `c845c63`, April 16) but CHANGELOG lists them under `[Unreleased]`. This is the same Q1 raised in Cycle 315. Show HN visitors hitting the CHANGELOG see shipped work labeled as unreleased. Fix is 2 minutes; the cost of not doing it is visitor confusion. Portfolio convention suggestion: any CHANGELOG entry referencing a released commit tag should be rotated out of `[Unreleased]` before a public launch signal.
+
+**4. What to prioritize next?**
+
+- **P0 (morning watch)**: HN vigil — standing by if Asif's thread draws technical questions needing a quick engineering response. No feature work.
+- **P1 — FW auth chain**: FP requires an API key; FW's production `/api/scan` will get 401 until they send one. If FW doesn't have a key provisioned, someone needs to issue one via `POST /keys`. This is the only remaining gap between "route exists" and "FW demo works."
+- **P1 — `GET /health` SHA field**: Add `gitSha`/`buildId` to health response so deployed-version is inspectable without CHANGELOG archaeology. S-sized.
+- **P2 — CHANGELOG version rotation**: Rotate `[Unreleased]` Art. 9/12/14 block into a formal `[v0.5.5]` dated `2026-04-16`. Remove the "shipped work labeled unreleased" confusion before HN traffic lands.
+- **P3 — Carry-forward**: FR-3 `stageCosts`/`timings` gap; pdfkit vs Chrome PDF (Q-PDFKIT-BUG CoS decision needed); Gemini redirect URL resolution; live-scan fixture storage policy; N-222 CI auto-deploy.
+
+**5. Blockers / Questions for CoS**
+
+- **Q1 (new, FW auth)**: Does FW have a provisioned API key for FP production? If not, who issues it — FP team generates and shares out-of-band? Or is the auth layer intended to be disabled for the Show HN demo? Clarify before 08:00 PDT Mon.
+- **Q2 (new, N-222 ownership)**: CI auto-deploy gate — does the GitHub Actions workflow live in FP repo (triggers on `packages/api/**` push) or in FW repo (triggers on FW deploy to verify FP chain)? Or both? Which repo owns the contract test?
+- **Q3 (carried from 315)**: CHANGELOG versioning convention — when to close `[Unreleased]` before a public launch signal. Propose: always close before tagging a Show HN/LinkedIn post. CoS ratify?
+- **Q4 (carried from 315)**: FR-3 `stageCosts`/`timings` — new initiative N-222 or rolled into existing FR-3?
+- **Q5 (carried from 315)**: pdfkit vs Chrome-headless canonical PDF path decision.
+
+---
+
 > **Reflection cycle**: 2026-04-19 (Cycle 315 — Sunday launch-prep check-in)
 
 **1. What shipped since last check-in (Cycle 314, 2026-04-18)?**
