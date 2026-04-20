@@ -287,6 +287,13 @@ The Kaggle version remains at  (tagged  at commit ).
 
 **Spec (self-contained, authored by FW team)**: `~/projects/faultline-web/docs/feature-requests/FR-5-weakest-critique-endpoints.md` — full request/response contracts, semantics, auth model, acceptance criteria, and post-deploy smoke tests for both endpoints.
 
+**Spec UPGRADED 2026-04-20 10:17 PDT** (FW commit `1c55472`) — 3 appendices added. READ THESE BEFORE CODING:
+- **Appendix A — Reference implementation (port 1:1)**: exact fragility formula `(verdictScore * 0.6 + uncertaintyScore * 0.4) * importanceFactor`, verdict score table, argument-strength thresholds (>=0.70 critical / >=0.45 fragile / >=0.20 stable / <0.20 resilient), summary format, failed-status set. **Canonical implementations already exist** as pure TS in FW repo: `~/projects/faultline-web/lib/weakest-link.ts` (69 lines) + `~/projects/faultline-web/lib/critique.ts` (34 lines). FW test suites at `tests/lib/weakest-link.test.ts` + `tests/lib/critique.test.ts` port 1:1 and give you instant confidence the port matches. **Do not redesign these.** Port them verbatim.
+- **Appendix B — Error response contract**: `{ error: string, message?: string }` JSON. Suggested codes: 400 `invalid_body`, 429 rate limit, 500 `provider_error`, 502 `provider_unavailable`, 504 `provider_timeout`. FW forwards status codes verbatim, so FP's shape IS the UX contract.
+- **Appendix C — Timeout expectations**: `/weakest` pure compute, p95 <500ms, 5s timeout. `/critique` one LLM call, p95 <15s, 30s timeout. FW route `maxDuration=60`, so stay well under.
+
+**FW/FP scope split** (from spec): **FW work = ZERO.** Proxy routes, types, UI all already in place. When FP deploys, shimmer clears on next scan. No FW deploy, no FW code change.
+
 **Context**:
 - Show HN launched 08:00 PDT. FW `/results` page calls `POST ${FAULTLINE_API_URL}/weakest` + `POST /critique` post-scan to populate the VERIFICATION section.
 - FP has never implemented these routes. Production 09:55 PDT probes returned `404 "Route POST:/weakest not found"` + `404 "Route POST:/critique not found"`.
@@ -317,8 +324,16 @@ curl -s -X POST https://faultline-api.fly.dev/critique -H 'Content-Type: applica
 - FR-4 ComplianceReport shape crash (fixed at 09:05 via commit `0594304`) had been sitting in a WIP stash through the entire launch gate. Class of error: WIP-stash-across-a-launch-gate. Post-launch retro principle: launch-readiness scans must rebase/apply stashed WIPs, not just check HEAD.
 
 **Constraints**:
-- "Thoughtful and careful" (Asif). Do NOT sacrifice correctness for speed. If the fragility/critique logic needs reasoning about edge cases (no verified claims, all claims `skipped`, mixed verdicts), take the time to think it through.
+- "Thoughtful and careful" (Asif). Do NOT sacrifice correctness for speed. If the fragility/critique logic needs reasoning about edge cases (no verified claims, all claims `skipped`, mixed verdicts), take the time to think it through — but Appendix A already has the answers for those cases (e.g. `rankedClaims.length===0` → `"No verified claims to analyze."` + `strengthScore:1` + `argumentStrength:'resilient'`).
 - Ship behind auth feature-flag if the implementation risks any regression to `/scan/stream` — that endpoint is the demo chain and cannot degrade.
+
+**UAT coordination plan (Wolf ↔ FP ↔ FW)**:
+1. **FP ships** `/weakest` + `/critique` to fly.dev. Paste both smoke-curl outputs (the ones in spec §Smoke test) in your directive response.
+2. **Wolf reruns smokes** independently against fly.dev (no team self-report trust — verify against live production).
+3. **Wolf pings FW team** via `WORKSTREAMS:Faultline-Web` to run a real `/results` UAT pass: anon scan → verify shimmer clears on both panels → verify strength score + critique render sensibly.
+4. **Wolf acks Asif** only after all three pass. Mark directive DONE.
+
+Timeline target: FP implementation 24-36h, UAT 2-4h, ack by 2026-04-22 EOD latest.
 
 ---
 
