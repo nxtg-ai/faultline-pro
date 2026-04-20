@@ -278,6 +278,48 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
+### DIRECTIVE-NXTG-20260420-05 — **P0**: Per-claim LLM verify latency fix (Show HN resume gate)
+**From**: NXTG-AI CoS (Wolf) — routed from FW team handoff | **Priority**: **P0**
+**Injected**: 2026-04-20 14:30 PDT | **Estimate**: S-M | **Status**: **PENDING**
+
+**Context**: FW UAT-4 (Marcus synthetic persona, Oracle MIRROR 2026-04-20 ~13:30 PDT) measured end-to-end scan at **72.8s on faultline.nxtg.ai** — kills the "share window" for Show HN visitors. FW profiled it: FW network/SSE overhead is minimal; the bulk is per-claim LLM verify on the FP engine. FW measurement: ~12s × 8 claims serial ≈ 96-102s.
+
+**FW handoff (verbatim)**:
+> Root cause is per-claim LLM verify latency on FP. Recommend FP team investigate:
+> 1. Parallelism — are verifications running serially? Moving to Promise.all with concurrency cap could cut 8× ≈ 102s → ~15-20s p95.
+> 2. Grounding/search cost — if Vertex AI Search grounding is per-call, could batch.
+> 3. Model choice — if OpenAI gpt-4 is in the path, gpt-4o-mini on verification could halve latency.
+
+**Direction (COMPASS — outcome, not implementation)**:
+- Get typical 8-claim scan **under 20s p95 on fly.dev prod** without degrading accuracy or grounding quality.
+- Preserve provider-agnostic architecture (one-engine-many-surfaces — no FW-specific branches in engine).
+- Preserve existing SSE progressive streaming contract (FW depends on it).
+
+**Deliverables**:
+1. Root-cause profile: which call is serial, what's the actual per-claim wall time, how many verify calls per scan.
+2. Fix shipped to fly.dev prod (whether parallelism cap, model swap, batched grounding, caching — team decides the path).
+3. Before/after measurement on the same Marcus-style input: end-to-end `POST /scan/stream` duration, per-claim verify duration, accuracy sanity (verdict distribution shouldn't shift).
+4. Commit hash + fly.dev deploy ID + raw timing output in NEXUS when done.
+
+**Verification (Wolf will independently check)**:
+```bash
+time curl -X POST https://api.faultline.nxtg.ai/scan/stream \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"<Marcus-style 8-claim input>"}'
+```
+Target: total < 20s. Non-mock verdicts. No 5xx.
+
+**Why P0**: FW is in RED/HOLD. The three Oracle-found UX blockers (wizard, stats, latency) were FW's responsibility — FW shipped UAT-4/5/6 (commit `e16b1e5`) but latency is engine-side. Until this lands, Marcus-flow still times out → Oracle MIRROR pass 2 will still flag AMBER → HOLD doesn't lift → Show HN stays paused.
+
+**Out of scope** (do NOT ship these as part of this directive):
+- New endpoints, features, or rule engines.
+- UI changes (engine-only).
+- Breaking API surface changes.
+
+**Deadline**: ASAP — every hour this is open delays Show HN resume.
+
+---
+
 ### DIRECTIVE-NXTG-20260420-04 — **P0**: Implement `POST /weakest` + `POST /critique` endpoints (FW /results shimmer blocker)
 **From**: NXTG-AI CoS (Wolf) | **Priority**: **P0** (post-Show HN, PLG UX blocker)
 **Injected**: 2026-04-20 10:15 PDT | **Estimate**: M (1-3 days, "thoughtful and careful") | **Status**: **DONE — 2026-04-20** | **CoS verified**: 2026-04-20 10:56 PDT (Wolf independent smokes on fly.dev direct + FW proxy chain)
