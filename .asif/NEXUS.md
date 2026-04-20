@@ -1666,6 +1666,52 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-20 (Cycle 317 — Show HN morning ops / provider secrets diagnosis)
+
+**1. What shipped since last check-in (Cycle 316, 2026-04-20)?**
+
+- **DIRECTIVE-NXTG-20260420-02 P0 — LLM provider secrets** (commit `b5dc66f`):
+  - `fly secrets set GEMINI_API_KEY ANTHROPIC_API_KEY` — both deployed from `packages/api/.env`. Values not logged.
+  - MockProvider completely eliminated — no scan path returns "Mock verification" any more.
+  - **OpenAI verified working in production**: `POST /scan/stream` with `provider=openai` returns 5 real claims with LLM-grounded verdicts, `overallRisk: high`. This is the Show HN demo provider.
+  - Full production secrets inventory: `FAULTLINE_API_KEY` ✅, `NODE_ENV` ✅, `OPENAI_API_KEY` ✅, `GEMINI_API_KEY` ⚠️, `ANTHROPIC_API_KEY` ⚠️.
+  - Escalations filed in NEXUS (Gemini billing, Claude model ID bug).
+
+**Commits this cycle**: 1 (`b5dc66f`). Tests unchanged at 4,492/193. CI governance-path skip.
+
+**2. What surprised us?**
+
+- **The directive said "5-15 min" — it took 45 min due to two sequential surprises.** The first surprise (free-tier Gemini quota) surfaced only after setting the key and running a live verify. The second surprise (Claude 400) surfaced only after the Gemini diagnosis was complete. Neither was diagnosable without live probes against production. This is the cost of having no pre-deploy secrets validation gate.
+- **Gemini 503 → 429 reveals key tier, not model overload.** The first Gemini run returned 503 "high demand" — looked like a capacity issue. Switching to `gemini-2.0-flash` returned 429 with the full quota violation message (`free_tier_requests limit: 0`). The 503 was masking the real issue. **Lesson: Gemini 503 on a fresh key is often a quota/tier signal, not a transient capacity spike.**
+- **Claude 400 Bad Request on `claude-sonnet-4-6` model ID.** `claude_provider.ts:10` hardcodes `DEFAULT_MODEL = 'claude-sonnet-4-6'` — but the Anthropic API appears to reject this string with a 400. The valid Anthropic API model IDs use different naming conventions (e.g. `claude-3-7-sonnet-20250219`, `claude-opus-4-0`). The model ID string used internally by Claude Code is NOT necessarily the same string the Anthropic API accepts in a `POST /v1/messages` body. This distinction was not documented anywhere in FP.
+- **`fly secrets list` is the single most useful 5-second deploy diagnostic** — it shows exactly which keys are deployed without exposing values. Running this after every `fly deploy` should be a checklist item. It wasn't, which is why the key gap persisted from the first deploy (`8a726b0`) until now.
+- **`/health` endpoint reports `gemini: false, openai: true, claude: false`** based on `Boolean(process.env.GEMINI_API_KEY)` — but this only tells you the key is _present_, not whether the key has quota, is valid, or belongs to a paid tier. A `false` is useful but a `true` is misleading post-deployment. The health check needs a "configured but degraded" state.
+
+**3. Cross-project signals**
+
+- **"Secrets don't follow deploys" is a universal fly.io pattern.** Any FP API consumer (FW, Atlas, others) that deploys to fly.io needs a post-deploy secrets checklist: `fly secrets list` + provider health probe. Not unique to FP. Every portfolio project on fly.io has the same gap until it bites them.
+- **`/health` truthiness gap**: A health endpoint that returns `gemini: true` when the key is set but quota-exhausted is worse than `false` — it creates false confidence. Pattern to fix: health endpoint should do a lightweight API probe (e.g. Gemini `generateContent` with `max_tokens=1`) and report `"gemini": { "configured": true, "reachable": false, "error": "429 quota_exceeded" }`. This matters for any multi-provider API with a health endpoint — FW, Atlas, others.
+- **Anthropic API model ID ≠ Claude Code model ID.** `claude-sonnet-4-6` is the Claude Code internal identifier. The Anthropic `POST /v1/messages` API uses a different naming scheme. Any portfolio project calling the Anthropic API programmatically needs to verify the model string against the published Anthropic model list, not infer it from Claude Code session metadata. This is a documentation gap in FP's `claude_provider.ts`.
+- **Free-tier Gemini keys are invisible quota bombs.** A free AI Studio key works fine locally at low call rates. In a deployed service receiving concurrent requests (Show HN traffic spike), the quota evaporates in seconds. Every portfolio project using Gemini in a deployed context needs a paid key — or at minimum a `FAULTLINE_GEMINI_MODEL=gemini-1.5-flash-8b` fallback with lower quota consumption.
+
+**4. What to prioritize next?**
+
+- **P0 (now, Asif action)**: Enable billing on AI Studio project owning `GEMINI_API_KEY`. Until done, every `provider=gemini` request fails in production. `fly secrets set GEMINI_API_KEY=<paid-tier-key>` once billing is active.
+- **P1 — Claude model ID fix**: `claude_provider.ts:10` `DEFAULT_MODEL = 'claude-sonnet-4-6'` → correct Anthropic API model string. Verify with a local `curl -X POST https://api.anthropic.com/v1/messages` before patching. S-sized. Raise as N-222.
+- **P1 — `/health` degraded-provider state**: Extend health endpoint to distinguish `configured-but-degraded` from `not-configured`. At minimum: catch 429/503 on a lightweight probe and return `"status": "quota_exceeded"` vs `"status": "ok"`. S-sized. Raise as N-223.
+- **P2 — Pre-deploy secrets checklist**: Add `fly secrets list` + per-provider health probe to the deploy runbook (NEXUS ops section or README). Two commands; prevents the next secrets-gap from surviving a deploy.
+- **P3 — Carry-forward**: FR-3 `stageCosts`/`timings`; pdfkit vs Chrome PDF (Q-PDFKIT-BUG); N-222 CI auto-deploy gate; CHANGELOG version rotation.
+
+**5. Blockers / Questions for CoS**
+
+- **Q1 (new, blocking Gemini in production)**: Which Google Cloud project owns the `GEMINI_API_KEY` in `packages/api/.env`? Asif needs to go to that project's billing page and enable a paid tier. Once enabled, the key will work without any code change — just a `fly secrets set` with the same or a new paid-tier key.
+- **Q2 (new)**: Claude model ID — does Asif know the correct Anthropic API model string for the production model? Options: `claude-opus-4-0`, `claude-sonnet-4-5`, or check `curl https://api.anthropic.com/v1/models -H "x-api-key: $ANTHROPIC_API_KEY"`. Should we patch `claude_provider.ts` now or post-Show HN?
+- **Q3 (carried from 316)**: FW auth — did FW receive their `FAULTLINE_API_KEY` for hitting production? They need it as `x-api-key` header. If not, issue one via `POST /keys`.
+- **Q4 (carried from 316)**: N-222 CI auto-deploy gate ownership — FP repo or FW repo?
+- **Q5 (carried from 315, still open)**: CHANGELOG versioning convention ratification.
+
+---
+
 > **Reflection cycle**: 2026-04-20 (Cycle 316 — post-launch-prep / Show HN morning check-in)
 
 **1. What shipped since last check-in (Cycle 315, 2026-04-19)?**
