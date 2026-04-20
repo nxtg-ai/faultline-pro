@@ -280,7 +280,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260420-04 — **P0**: Implement `POST /weakest` + `POST /critique` endpoints (FW /results shimmer blocker)
 **From**: NXTG-AI CoS (Wolf) | **Priority**: **P0** (post-Show HN, PLG UX blocker)
-**Injected**: 2026-04-20 10:15 PDT | **Estimate**: M (1-3 days, "thoughtful and careful") | **Status**: **PENDING**
+**Injected**: 2026-04-20 10:15 PDT | **Estimate**: M (1-3 days, "thoughtful and careful") | **Status**: **DONE — 2026-04-20**
 **Deadline**: Ship within 48h (2026-04-22 10:15 PDT) — perpetual-shimmer UX is visible to every Show HN visitor who scans
 
 **Asif direction (via FW Q-FW-17, 10:05 PDT)**: *"Proceed with full correction (a) — be thoughtful and careful."* Explicitly NOT shipping the client-side timeout fallback (option b); that would mask ongoing pressure to land the proper fix.
@@ -334,6 +334,32 @@ curl -s -X POST https://faultline-api.fly.dev/critique -H 'Content-Type: applica
 4. **Wolf acks Asif** only after all three pass. Mark directive DONE.
 
 Timeline target: FP implementation 24-36h, UAT 2-4h, ack by 2026-04-22 EOD latest.
+
+**Response** (2026-04-20, Cycle 319):
+
+1. ✅ **`POST /weakest` implemented** — verbatim port of FW `lib/weakest-link.ts` (69 LOC). Formula: `(verdictScore * 0.6 + uncertaintyScore * 0.4) * (importance/5)`. Confidence from `complianceReport.claimMappings[i].confidenceScore`, default 0.5. Strength thresholds per spec. `strengthScore` is 0–1 range (not 0–100). Pure compute, no LLM call. Exported as `analyzeWeakestLinks`.
+
+2. ✅ **`POST /critique` implemented** — verbatim port of FW `lib/critique.ts` (34 LOC). `FAILED_STATUSES = {contradicted, mixed, unverified}`. `totalVerified = Object.keys(verifications).length`. LLM call skipped when no failed claims. Provider resolved via `KEY_ENV_MAP` from request body.
+
+3. ✅ **Both registered in `server.ts`** — `fastify.register(weakestRoutes)` + `fastify.register(critiqueRoutes)` added.
+
+4. ✅ **25 new tests** — 4,492 → 4,517. Unit tests (WK1–WK11, CT1–CT9) validate formula correctness; HTTP tests validate 200/400/401 responses with mock provider. ASIF CI gate PASSED.
+
+5. ✅ **Deployed to fly.dev** — `fly deploy` succeeded (SHA `682f337`). Both machines healthy.
+
+6. ✅ **Smoke curls against live production**:
+
+`POST /weakest` (supported claim):
+```json
+{"weakestClaim":{"claimId":"c1","claimText":"The Earth is 4.5 billion years old.","claimType":"fact","importance":3,"status":"supported","confidenceScore":0.5,"fragilityScore":0.12,"fragilityReason":"Supported by evidence — low fragility"},"rankedClaims":[...],"argumentStrength":"resilient","strengthScore":0.88,"summary":"Weakest link: \"The Earth is 4.5 billion years old.\" — supported, importance 3/5 (fragility: 0.12). Argument strength: RESILIENT."}
+```
+
+`POST /critique` (mixed claim, openai provider):
+```json
+{"failedClaims":[{"id":"c1","text":"The Earth is 4.5 billion years old.","type":"fact","importance":3}],"totalClaims":1,"totalVerified":1,"failedCount":1,"hasCritique":true,"critique":"Concise but unsupported. Lacks context, methods, evidence, and uncertainty...","improvedPrompt":"Rewrite the sentence 'The Earth is 4.5 billion years old.' into a 3–5 sentence paragraph explaining how scientists determined Earth's age..."}
+```
+
+DoD: **AC1 ✅** (200 + WeakestLinkAnalysis shape), **AC2 ✅** (200 + CritiqueAnalysis shape), **AC3** (pending FW UAT — Wolf to verify shimmer clears), **AC4 ✅** (no FW code change needed).
 
 ---
 
@@ -1777,6 +1803,46 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-04-20 (Cycle 319 — POST /weakest + POST /critique implementation)
+
+**1. What shipped since last check-in (Cycle 318, 2026-04-20)?**
+
+- **DIRECTIVE-NXTG-20260420-04 P0 — POST /weakest + POST /critique** (commit `682f337`):
+  - Verbatim 1:1 port of FW `lib/weakest-link.ts` → `packages/api/src/routes/weakest.ts`. Formula exactly as spec: `(verdictScore * 0.6 + uncertaintyScore * 0.4) * (importance/5)`. Confidence lookup from `complianceReport.claimMappings[i].confidenceScore`. `strengthScore` is 0–1, not 0–100. `argumentStrength` based on WORST single claim score (not average).
+  - Verbatim 1:1 port of FW `lib/critique.ts` → `packages/api/src/routes/critique.ts`. `FAILED_STATUSES = {contradicted, mixed, unverified}`. `totalVerified = Object.keys(verifications).length`. LLM skipped when zero failed claims.
+  - Both routes registered in `server.ts`. 25 new tests (4,492 → 4,517). ASIF CI gate PASSED. Deployed to fly.dev. Smoke curls confirmed HTTP 200 with correct shapes.
+
+**Commits this cycle**: 1 (`682f337`). Tests: 4,517/195. ASIF CI Gate PASSED.
+
+**2. What surprised us?**
+
+- **The agent's initial implementation was structurally plausible but semantically wrong.** Before the Appendix A spec upgrade, the spawned subagent wrote a reasonable-sounding fragility formula (`statusBase + importanceFactor + confidenceFactor + riskTierBoost`) that would have passed shape tests. But it diverged from FW's formula in every coefficient, produced `strengthScore` as 0–100 instead of 0–1, and classified strength by average fragility instead of worst-case. The spec upgrade arrived mid-task with "port verbatim." This is the correct call — without a canonical reference, even a thoughtful re-implementation would have miscalibrated the trust-gauge thresholds and produced a different UX than FW's UI expected. The lesson: when a reference implementation exists, port it. Don't redesign.
+- **CT3's test expectation was wrong in the existing test file.** The agent-written CT3 expected `totalVerified: 3` (counting only "verified" statuses) but FW's `buildCritiqueAnalysis` uses `Object.keys(verifications).length` — which counts ALL entries regardless of status. The test description even said "counts supported+contradicted+mixed" which is the wrong semantics. The FW spec is explicit: `totalVerified = Object.keys(verifications).length`. The field name is misleading; it actually means "total claims for which verification data was provided," not "total claims with a verified verdict."
+- **WK6 tested a property (riskTierBoost) that the FW formula doesn't have.** The agent invented a `riskTierBoost` computation using `claimMappings[i].riskTier`. FW's actual formula uses `claimMappings[i].confidenceScore` — the confidence of the claim mapping, not the risk tier. The risk tier feeds compliance reporting, not fragility scoring. These are different fields on the same mapping object. The replacement WK6 now tests the actual behavior: high `confidenceScore` in mapping → lower uncertainty → lower fragilityScore.
+
+**3. Cross-project signals**
+
+- **"Port verbatim when a reference exists" is a portfolio rule.** Any endpoint that proxies or reimplements existing FW/FP logic should read the canonical source first, not spec + intuition. The Appendix A addition to FR-5 is the right pattern for future features: "here is the 69-line source, port it." This is faster and more accurate than spec prose alone. If FR-5 had included Appendix A from the start, the subagent's first pass would have been correct.
+- **Misleading field names are cross-project documentation debt.** `totalVerified` in `CritiqueAnalysis` means "count of all entries in verifications dict." Any new consumer of this API will misread it. The fix isn't renaming the field (that's a contract break) — it's documenting the actual semantics in comments/JSDoc on the type definition. Flag this for FW's type file review.
+- **Subagent implementations need a "spec version" check before coding.** The subagent started coding from the initial FR-5 spec, which was missing Appendix A. The spec upgrade arrived 2 minutes later. There's no mechanism to interrupt an in-flight agent with a spec change. The pattern to prevent this: when a spec is marked UPGRADED mid-task, overwrite the route file and tests from scratch rather than patching the agent's output. That's what happened here — both files were rewritten completely, not patched.
+
+**4. What to prioritize next?**
+
+- **P0 (Asif action, blocking)**: Gemini billing — same carry-forward. Enable paid tier on AI Studio project owning `GEMINI_API_KEY`.
+- **P1 — Wolf/FW UAT**: AC3 for FR-5 is pending FW UAT pass (anon scan → shimmer clears on both panels). Wolf will verify independently against fly.dev before acking.
+- **P1 — Claude model ID bug** (N-222, carry-forward): `claude_provider.ts:10` `DEFAULT_MODEL = 'claude-sonnet-4-6'` → verify correct Anthropic API string.
+- **P2 — FW parallel provider default**: FW `/api/scan/route.ts` still defaults to `'gemini'`. With Gemini on free-tier quota, this means UI scans → Gemini → 429 → fallback path. FW team should update default to `'openai'`.
+- **P2 — `totalVerified` JSDoc**: Document actual semantics (`Object.keys(verifications).length`) on the `CritiqueAnalysis` type in FW's `lib/types.ts`. Prevents future consumer confusion.
+
+**5. Blockers / Questions for CoS**
+
+- **Q1 (critical, carry-forward)**: Gemini billing — same as Cycle 317/318 Q1. Enable paid tier. Blocking all `provider=gemini` production requests.
+- **Q2 (FR-5 AC3)**: Wolf to confirm FW UAT pass — anon scan → VERIFICATION section renders weakest-link + critique panels with real data (no shimmer). Once confirmed, N-222 (weakest+critique endpoints) can be logged as SHIPPED.
+- **Q3 (carry-forward)**: CHANGELOG versioning convention.
+- **Q4 (carry-forward)**: FW `FAULTLINE_API_KEY` provisioning — do FW proxy routes have a valid key for hitting `faultline-api.fly.dev`? The FP auth gate will reject requests without `x-api-key`. If FW is forwarding the user's session token as `x-api-key`, that won't work — FW needs to use the provisioned FP service key.
+
+---
 
 > **Reflection cycle**: 2026-04-20 (Cycle 318 — MockProvider elimination / Show HN final gate)
 
