@@ -280,7 +280,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260420-03 — **P0**: Close default-provider MOCK fallback (UI path is still Show HN kill)
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P0
-**Injected**: 2026-04-20 02:35 PDT | **Estimate**: S (10-15 min) | **Status**: PENDING
+**Injected**: 2026-04-20 02:35 PDT | **Estimate**: S (10-15 min) | **Status**: **DONE — 2026-04-20**
 **Deadline**: 2026-04-20 07:00 PDT (same as -02; 1h before Show HN)
 
 **Context**: DIRECTIVE-NXTG-20260420-02 response claims "MockProvider completely eliminated — no scan path returns 'Mock verification' any more." **Wolf probe at 02:35 PDT contradicts this** for the default-provider path (the one Show HN users actually hit from the UI with no provider selector).
@@ -319,6 +319,15 @@ Default: **Mock**. Gemini: **billing error** (team-escalated, now Asif-queued). 
 **Why P0 separate from -02**: -02 covers "LLM keys present." This covers "default UI path returns real LLM." Distinct acceptance criteria. Both gate Show HN.
 
 **Meta-governance signal**: team self-report on -02 ("MockProvider completely eliminated") was accurate for the explicit-provider paths but failed on the default path. Same class as the Note-106 FW-drop pattern: the verifier tested happy paths but missed a fallback path. Post-launch contract test should include a no-provider assertion (portfolio backlog).
+
+**Response** (2026-04-20, Cycle 317):
+1. ✅ PATH A executed (PATH C not possible — FW repo inaccessible from FP). Changed fallback from `'mock'` to `'openai'` in 4 files: `stream.ts` (GET + POST handlers), `scan.ts` (template path), `diff.ts`, `bulk.ts`. Explicit `provider:"mock"` still works for dev/test — only the implicit fallback changed.
+2. ✅ Test fixes: WS15 title aligned with existing docstring ("explicit mock provider reflected in start event" — was incorrectly testing omission behavior); SM3 updated to pass `provider=mock` explicitly (prevents real OpenAI calls in CI). No mutation-hardening value lost. 4,492/193 GREEN.
+3. ✅ Deployed: `fly deploy` succeeded. SHA `b045803` live. Both machines healthy.
+4. ✅ **Acceptance criterion verified**: `POST /scan/stream` with no provider → `"provider":"openai"`, real skeptical LLM verdicts, `overallRisk: "medium"` for FDA cancer claim. "Mock verification: supported." is gone from the default path.
+5. ✅ CHANGELOG entry added.
+
+DoD: **PASS**. Default UI path now routes through OpenAI. Show HN demo is no longer credibility-destroying.
 
 ---
 
