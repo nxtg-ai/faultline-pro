@@ -318,26 +318,27 @@ Target: total < 20s. Non-mock verdicts. No 5xx.
 
 **Deadline**: ASAP — every hour this is open delays Show HN resume.
 
-**Response (2026-04-20 ~15:00 PDT)**:
+**Response (2026-04-20 ~15:00 PDT — REVISED after DIRECTIVE-06 correctness regression)**:
 
-Root cause confirmed: `packages/cli/cli/scan.ts:183` — serial `await` inside `for` loop, one claim at a time.
+Root cause confirmed: `packages/cli/cli/scan.ts:183` — serial `await` inside `for` loop.
 
-Fix path: **parallelism + token cap** (no model swap needed):
-1. Iterator pool (`VERIFY_CONCURRENCY = 8`) — all 8 claims concurrent, one LLM round
-2. `max_tokens: 200` on verification call — caps output generation overhead
+**DIRECTIVE-05 shipped then regressed** — `max_tokens:200` caused 400 Bad Request on `gpt-5-mini`. Stubs were silent catch-block fallbacks, not real verifications. Appeared fast (~11s) because all verification calls were failing instantly. This was missed because timing tests checked count, not verdict content.
 
-**Before/after (fly.dev direct, same Marcus-style 8-claim input)**:
-| Metric | Before (serial) | After (concurrent) |
+DIRECTIVE-06 fix (commit `84a9e14`):
+- Model swap: `gpt-5-mini` → `gpt-4o-mini` (fast, ~1s/call, no token-cap issue)
+- Removed `max_tokens` (wasn't needed with gpt-4o-mini fast inference)
+- Surfaced `error.message` in all 4 provider catch blocks
+- 429 rethrown from providers; runSlot retries 3× with exponential backoff+jitter
+
+**Final before/after (fly.dev direct, Wolf's exact 8-claim AI hype payload)**:
+| Metric | Before (serial) | After (final) |
 |---|---|---|
-| End-to-end p50 (API) | ~34s | **11.9–13.2s** |
+| End-to-end p50 (API) | ~34s | **8.0s** |
 | FW UAT measured | 72.8s | — |
 | Target | <20s | ✅ MET |
+| Real verdicts | ✅ (gpt-5-mini) | ✅ (gpt-4o-mini, mixed/unverified variety) |
 
-Verdict distribution unchanged (mixed/supported/unverified variety confirmed on 3 separate fresh texts).
-
-Commit: `8007a29` (perf: concurrent claim verification)
-Deploy: fly.dev `faultline-api` — confirmed healthy via fly status.
-Tests: 4517/4517 pass (0 regressions).
+Commit: `84a9e14` | Tests: 4517/4517 pass.
 
 ---
 
@@ -1894,6 +1895,41 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-04-20 (Cycle 323 — DIRECTIVE-06 correctness regression fix: real verdicts restored, 8s p50)
+
+**1. What shipped since last check-in (Cycle 322)?**
+
+DIRECTIVE-NXTG-20260420-06 (P0 correctness regression): gpt-4o-mini model swap + surfaced error.message in 4 provider catch blocks + 429 rethrow + exponential backoff retry in runSlot. Commit `84a9e14`, deployed to fly.dev. 4517/4517 tests pass. Wolf's exact 8-claim AI hype payload now returns real mixed/unverified verdicts in **8.0s** (down from 72.8s FW UAT baseline, under 20s target).
+
+**2. What surprised us?**
+
+Two things:
+- The "fake speedup" trap: `max_tokens=200` causing all 8 concurrent calls to fail (400) meant they returned stubs almost instantly — 11-13s looked like a performance win, but it was a silent failure. The lesson: **always verify verdict content, not just count, when testing verification correctness.**
+- gpt-4o-mini is dramatically faster than gpt-5-mini (~1s/call vs ~15s/call). The model swap alone was worth more than the entire parallelism refactor. Classic "find the right tool first, then optimize" — had we tried gpt-4o-mini before adding concurrency, we might have hit <10s serially.
+
+**3. Cross-project signals**
+
+- **Silent-catch anti-pattern** is a portfolio-wide risk. Any provider with `catch (error) { return fallback }` is undetectable in production without content verification. Should be a CRUCIBLE gate: catch blocks must either rethrow or include `error.message` in the fallback.
+- **Verify verdict quality, not just count** in integration tests — `count > 0` doesn't mean the engine worked. Wolf's research notes this under "Anti-patterns: silent fallback stubs."
+- **429 rethrow + runSlot backoff pattern** is reusable across any concurrent provider call loop.
+
+**4. What to prioritize next?**
+
+- **P0 (Asif)**: Gemini billing (unchanged, still external).
+- **P1**: AC3 FW browser UAT confirmation — real verdicts now flowing, green path to N-222 SHIPPED.
+- **P1**: Claude model ID patch (`claude_provider.ts:10`).
+- **P2**: FW progressive-reveal SSE (already partial — render per-claim as SSE `verification` events fire, not batched at `complete`). Wolf's research #1 SOTA pattern.
+- **P3**: Batch multi-claim verify (single LLM call for all 8 claims → 1 RTT → ~3-5s) — post-Show HN v2.
+
+**5. Blockers / Questions for CoS**
+
+- **Q1**: Gemini billing (unchanged).
+- **Q2**: AC3 FW UAT status + N-222 SHIPPED confirmation.
+- **Q3**: Claude model ID for claude-sonnet-4-6 (correct Anthropic API string).
+- **Q5** (new): Is DIRECTIVE-06 closure sufficient to unblock Oracle MIRROR pass 3? Requesting CoS to confirm HOLD lifts after independent Wolf re-verify on faultline.nxtg.ai.
+
+---
 
 > **Reflection cycle**: 2026-04-20 (Cycle 322 — DIRECTIVE-NXTG-20260420-05 DONE, Show HN HOLD cleared)
 
