@@ -278,6 +278,50 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
+### DIRECTIVE-NXTG-20260420-04 — **P0**: Implement `POST /weakest` + `POST /critique` endpoints (FW /results shimmer blocker)
+**From**: NXTG-AI CoS (Wolf) | **Priority**: **P0** (post-Show HN, PLG UX blocker)
+**Injected**: 2026-04-20 10:15 PDT | **Estimate**: M (1-3 days, "thoughtful and careful") | **Status**: **PENDING**
+**Deadline**: Ship within 48h (2026-04-22 10:15 PDT) — perpetual-shimmer UX is visible to every Show HN visitor who scans
+
+**Asif direction (via FW Q-FW-17, 10:05 PDT)**: *"Proceed with full correction (a) — be thoughtful and careful."* Explicitly NOT shipping the client-side timeout fallback (option b); that would mask ongoing pressure to land the proper fix.
+
+**Spec (self-contained, authored by FW team)**: `~/projects/faultline-web/docs/feature-requests/FR-5-weakest-critique-endpoints.md` — full request/response contracts, semantics, auth model, acceptance criteria, and post-deploy smoke tests for both endpoints.
+
+**Context**:
+- Show HN launched 08:00 PDT. FW `/results` page calls `POST ${FAULTLINE_API_URL}/weakest` + `POST /critique` post-scan to populate the VERIFICATION section.
+- FP has never implemented these routes. Production 09:55 PDT probes returned `404 "Route POST:/weakest not found"` + `404 "Route POST:/critique not found"`.
+- Was masked by a secondary auth bug (401 for anon) until FW commit `514c9e8` added anon PLG path to the FW proxy routes — which surfaced the underlying 404.
+- Every post-scan user sees a perpetual loading shimmer on weakest-link + critique panels.
+- Logic previously lived in the deleted `lib/engine/analysis/weakest-link.ts` — FP replacement must honor the same type contract (`WeakestLinkAnalysis`, `CritiqueAnalysis`).
+
+**Acceptance criteria** (from FR-5):
+1. `POST https://faultline-api.fly.dev/weakest` returns HTTP 200 with well-formed `WeakestLinkAnalysis` (weakestClaim, rankedClaims, argumentStrength, strengthScore, summary).
+2. `POST https://faultline-api.fly.dev/critique` returns HTTP 200 with well-formed `CritiqueAnalysis` (failedClaims, totalClaims, totalVerified, failedCount, hasCritique, critique, improvedPrompt).
+3. FW `/results` renders real data — no perpetual shimmer — for an anonymous PLG scan.
+4. No FW code change required; types and contracts stay as-is.
+
+**Auth**: Accept whatever auth tokens FW forwards (Clerk / widget-key / anon PLG). Do NOT gate independently — FW owns the auth surface.
+
+**Post-deploy smoke** (run against live fly.dev, paste results in response):
+```bash
+curl -s -X POST https://faultline-api.fly.dev/weakest -H 'Content-Type: application/json' -d @<(cat <<'EOF'
+{"claims":[{"id":"c1","text":"The Earth is 4.5 billion years old.","type":"fact","importance":3}],"verifications":{"c1":{"claimId":"c1","status":"supported","explanation":"...","sources":[]}},"complianceReport":{"overallRiskLevel":"low","euRiskSummary":{"highestTier":"minimal","totalClaims":1,"unacceptable":0,"high":0,"limited":0,"minimal":1},"claimMappings":[],"triggeredArticles":[],"mitigations":[],"confidenceDistribution":{"high":0,"medium":1,"low":0}}}
+EOF
+) | jq .
+
+curl -s -X POST https://faultline-api.fly.dev/critique -H 'Content-Type: application/json' -d '{"claims":[{"id":"c1","text":"The Earth is 4.5 billion years old.","type":"fact","importance":3}],"verifications":{"c1":{"claimId":"c1","status":"mixed","explanation":"Partially accurate.","sources":[]}},"text":"The Earth is 4.5 billion years old."}' | jq .
+```
+
+**Governance lessons (for the team, not blame)**:
+- FW team caught this at 09:55 PDT as "fourth governance failure tonight" via their own reflection-curl cadence. Portfolio pattern validated: teams self-catch PLG-path drift before CoS sees it. No Wolf directive needed to detect the bug — only to route the fix.
+- FR-4 ComplianceReport shape crash (fixed at 09:05 via commit `0594304`) had been sitting in a WIP stash through the entire launch gate. Class of error: WIP-stash-across-a-launch-gate. Post-launch retro principle: launch-readiness scans must rebase/apply stashed WIPs, not just check HEAD.
+
+**Constraints**:
+- "Thoughtful and careful" (Asif). Do NOT sacrifice correctness for speed. If the fragility/critique logic needs reasoning about edge cases (no verified claims, all claims `skipped`, mixed verdicts), take the time to think it through.
+- Ship behind auth feature-flag if the implementation risks any regression to `/scan/stream` — that endpoint is the demo chain and cannot degrade.
+
+---
+
 ### DIRECTIVE-NXTG-20260420-03 — **P0**: Close default-provider MOCK fallback (UI path is still Show HN kill)
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P0
 **Injected**: 2026-04-20 02:35 PDT | **Estimate**: S (10-15 min) | **Status**: **DONE — 2026-04-20**
