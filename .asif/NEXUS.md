@@ -278,6 +278,50 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
+### DIRECTIVE-NXTG-20260420-03 — **P0**: Close default-provider MOCK fallback (UI path is still Show HN kill)
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P0
+**Injected**: 2026-04-20 02:35 PDT | **Estimate**: S (10-15 min) | **Status**: PENDING
+**Deadline**: 2026-04-20 07:00 PDT (same as -02; 1h before Show HN)
+
+**Context**: DIRECTIVE-NXTG-20260420-02 response claims "MockProvider completely eliminated — no scan path returns 'Mock verification' any more." **Wolf probe at 02:35 PDT contradicts this** for the default-provider path (the one Show HN users actually hit from the UI with no provider selector).
+
+**Evidence (Wolf, 02:35 PDT, same text three probes)**:
+```
+$ curl ... -d '{"text":"The product treats cancer."}'
+  verification: status=supported, explanation="Mock verification: supported."
+
+$ curl ... -d '{"text":"The product treats cancer.","provider":"gemini"}'
+  verification: status=unverified, explanation="Stress-test failed due to technical error."
+
+$ curl ... -d '{"text":"The product treats cancer.","provider":"openai"}'
+  verification: status=unverified, explanation="The claim is too vague to evaluate—no
+    specific product, clinical trial data, or regulatory approval is provided..."
+```
+
+Default: **Mock**. Gemini: **billing error** (team-escalated, now Asif-queued). OpenAI: **working, skeptical, grounded** — Show HN quality.
+
+**Show HN path**: FW UI with no provider selector → `/api/scan` → FW route.ts has `providerName = body.provider ?? 'gemini'` at commit `b7b30e8`. But production probe with `{text}` returns Mock, meaning EITHER (a) FW Vercel deploy is stale (that default isn't live) or (b) FP receives+ignores FW's provider field. Either way, Show HN users hit Mock.
+
+**Action Items** (choose ONE path; whichever ships fastest):
+1. [ ] **PATH A — FP-side (recommended)**: Change FP server-side default in `packages/api/src/routes/stream.ts` — when `provider` is missing OR requested provider fails, fall back to **OpenAI (verified working)** rather than MockProvider. MockProvider should only be selectable by explicit `provider:"mock"`. Redeploy fly.dev. Acceptance: `curl -X POST https://faultline.nxtg.ai/api/scan -d '{"text":"X"}'` returns an OpenAI-grounded verification (not "Mock verification"). 10 min.
+2. [ ] **PATH B — FW-side**: Change FW's default from `'gemini'` to `'openai'` in `app/api/scan/route.ts:122`. Redeploy Vercel (force if needed; Vercel may have cached older build). Acceptance: same curl returns OpenAI-grounded verification. 5 min on FW repo; deploy propagation ~60s.
+3. [ ] **PATH C (belt+suspenders, preferred if time allows)**: Do BOTH. FW sends 'openai' explicitly; FP server-side fallback also picks 'openai' when provider missing. Defense-in-depth so future FW deploy drift doesn't re-break.
+
+**Acceptance Criteria**:
+- `curl -X POST https://faultline.nxtg.ai/api/scan -H 'Content-Type: application/json' -d '{"text":"The product treats cancer. It is FDA approved."}'` — verification event must have `explanation` NOT containing `"Mock verification"`.
+- UI at `https://faultline.nxtg.ai` — pasting a dramatic medical claim must return real LLM-grounded response, not `"Mock verification: supported."`.
+
+**Constraints**:
+- Gemini billing is a SEPARATE issue now in Asif Decision Queue. This directive does NOT ask you to fix Gemini. It asks you to route around the broken-Gemini + missing-provider → Mock fallback.
+- OpenAI is already working in production (team verified). Use it as the reliable default.
+- Keep explicit `provider:"mock"` working for dev/test. Don't silently remove MockProvider — just remove it from the *implicit* fallback chain.
+
+**Why P0 separate from -02**: -02 covers "LLM keys present." This covers "default UI path returns real LLM." Distinct acceptance criteria. Both gate Show HN.
+
+**Meta-governance signal**: team self-report on -02 ("MockProvider completely eliminated") was accurate for the explicit-provider paths but failed on the default path. Same class as the Note-106 FW-drop pattern: the verifier tested happy paths but missed a fallback path. Post-launch contract test should include a no-provider assertion (portfolio backlog).
+
+---
+
 ### DIRECTIVE-NXTG-20260420-02 — **P0**: Configure production LLM provider secrets on fly.dev (Mock mode is Show HN kill)
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P0
 **Injected**: 2026-04-20 02:00 PDT | **Estimate**: S (5-15 min) | **Status**: **DONE (partial) — 2026-04-20 — ESCALATION REQUIRED (Gemini billing)**
