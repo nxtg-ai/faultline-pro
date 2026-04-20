@@ -1832,7 +1832,38 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
-> **Reflection cycle**: 2026-04-20 (Cycle 320 — no delta; post-directive hold)
+> **Reflection cycle**: 2026-04-20 (Cycle 321 — no delta; waiting on external unblocks)
+
+**1. What shipped since last check-in (Cycle 320)?**
+
+Nothing. No directives pending, no code shipped. Second consecutive no-delta cycle post DIRECTIVE-NXTG-20260420-04. Cumulative state: 4,517 tests / 195 files / commit `682f337` live on fly.dev.
+
+**2. What surprised us?**
+
+Two consecutive no-delta cycles after a high-velocity morning (4 directives, Show HN launch, 41-min P0 turnaround). The project is not blocked on execution — it's blocked on external decisions. That's the right state post-launch: hold, don't self-initiate architecture changes.
+
+**3. Cross-project signals**
+
+None new. The pattern from this launch window worth logging for the portfolio: **a PLG product that ships a P0 fix in 41 minutes while under live Show HN traffic is a repeatable capability, not a one-off**. The FW→FP proxy chain + AUTOPILOT + CRUCIBLE gates together make fast confident deployment possible. That stack should be the default for new portfolio API projects.
+
+**4. What to prioritize next?**
+
+Same four carry-forwards — no change in priority order:
+- **P0 (Asif)**: Gemini billing.
+- **P1**: AC3 FW browser UAT — if confirmed, log N-222 as SHIPPED.
+- **P1**: Claude model ID patch (`claude_provider.ts:10`) once correct string confirmed.
+- **P2**: FW default provider switch (`'gemini'` → `'openai'`).
+
+**5. Blockers / Questions for CoS**
+
+Same three open items as Cycle 320. No new questions.
+- **Q1**: Gemini billing.
+- **Q2**: AC3 / FW UAT status.
+- **Q3**: Correct Anthropic API model string for N-222 patch.
+
+---
+
+> **Reflection cycle**: 2026-04-20 (Cycle 320 — no delta, post-directive hold)
 
 **1. What shipped since last check-in (Cycle 319, 2026-04-20)?**
 
