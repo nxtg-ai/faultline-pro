@@ -278,6 +278,41 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
+### DIRECTIVE-NXTG-20260420-01 — **P0**: Redeploy packages/api to fly.dev (POST /scan/stream missing in production)
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P0
+**Injected**: 2026-04-20 00:00 PDT | **Estimate**: S (15-30 min) | **Status**: PENDING
+**Deadline**: 2026-04-20 07:00 PDT (1h buffer before Mon 8 AM PDT Show HN)
+
+**Context**: Faultline Web team flagged Q-FW-11 tonight (2026-04-19 22:31 PDT, commit `5a0a7d6`): production `/scan/stream` is broken. FW's `/api/scan` proxies to FP at `FAULTLINE_API_URL=https://faultline-api.fly.dev` using `POST /scan/stream` (FR-1, commit `5d99375` on FW side).
+
+**Wolf diagnosis** (verified via production probes, 2026-04-19 23:58 PDT):
+- `GET https://faultline-api.fly.dev/scan/stream?text=test&provider=mock` → **401** (route exists, auth layer)
+- `POST https://faultline-api.fly.dev/scan/stream` → **404** `{"message":"Route POST:/scan/stream not found","error":"Not Found","statusCode":404}`
+- `GET https://faultline-api.fly.dev/health` → **200** (app is alive)
+
+**Root cause**: `POST /scan/stream` was added in commit `b9ccd5a` (v0.5.4, `feat(N-221): FR-1 POST /scan/stream`) at `packages/api/src/routes/stream.ts:145`. Code is in main. fly.dev deployment has not been refreshed since — production still runs an older version without the POST handler. This is a pure deployment gap, not a code gap.
+
+**Action Items**:
+1. [ ] `fly deploy --config packages/api/fly.toml` from `~/projects/Faultline-Pro` to push current `main` (already includes `b9ccd5a`) to fly.dev
+2. [ ] Verify: `curl -s -o /dev/null -w "%{http_code}\n" -X POST -H "Content-Type: application/json" -d '{"text":"hello","provider":"mock"}' https://faultline-api.fly.dev/scan/stream` returns **200** (or 401 if auth required, NOT 404)
+3. [ ] Smoke-test FW → FP chain once deployed: hit FW's production `/api/scan` and confirm SSE events flow end-to-end (mock provider)
+4. [ ] Update deployment log / changelog entry noting which commit SHA is now live on fly.dev (governance: we want "deployed SHA" visibility so this diagnosis is 5 seconds next time, not 15 minutes)
+5. [ ] (Stretch, not P0) add CI job or post-merge hook that triggers `fly deploy` on `packages/api/**` changes — explicitly flagged by FW as "cross-repo FW↔FP contract drift has no CI gate"
+
+**Acceptance Criteria**:
+- `POST /scan/stream` returns non-404 from https://faultline-api.fly.dev by 07:00 PDT Mon 2026-04-20
+- FW's production `/api/scan` successfully proxies a mock scan through FP
+- Show HN at 08:00 PDT Mon lands with working live demo, not broken demo
+
+**Constraints**:
+- DO NOT change v0.5.2 npm publish (that's already live + working standalone; independent of deployment)
+- If `fly deploy` fails due to auth/credentials, escalate to Asif immediately (not something team can fix alone) — fly.io account is Asif's
+- If `fly deploy` succeeds but smoke fails, investigate whether FP expects an API key FW isn't sending (FW team noted some auth may be needed)
+
+**Why P0**: Show HN Monday 8 AM PDT is the launch event — this is the same deadline class as DIRECTIVE-NXTG-20260419-04 (FW 0-vulns shipped tonight at 21:50 PDT). Broken demo = launch failure. FW team can't fix from their repo — this is entirely FP-side.
+
+---
+
 ### DIRECTIVE-NXTG-20260419-01 — P0: EU AI Act launch signal (README polish + Show HN draft)
 **From**: NXTG-AI CoS (Wolf) — Asif direct at Sunday review 2026-04-19 11:12 PDT | **Priority**: P0
 **Injected**: 2026-04-19 11:15 PDT | **Estimate**: M (3-4h split across today + Monday AM) | **Status**: **DONE (Sunday + Monday prep) — 2026-04-19 (Cycle 315)**
