@@ -280,7 +280,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260420-01 — **P0**: Redeploy packages/api to fly.dev (POST /scan/stream missing in production)
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P0
-**Injected**: 2026-04-20 00:00 PDT | **Estimate**: S (15-30 min) | **Status**: PENDING
+**Injected**: 2026-04-20 00:00 PDT | **Estimate**: S (15-30 min) | **Status**: **DONE — 2026-04-20**
 **Deadline**: 2026-04-20 07:00 PDT (1h buffer before Mon 8 AM PDT Show HN)
 
 **Context**: Faultline Web team flagged Q-FW-11 tonight (2026-04-19 22:31 PDT, commit `5a0a7d6`): production `/scan/stream` is broken. FW's `/api/scan` proxies to FP at `FAULTLINE_API_URL=https://faultline-api.fly.dev` using `POST /scan/stream` (FR-1, commit `5d99375` on FW side).
@@ -293,11 +293,11 @@ The Kaggle version remains at  (tagged  at commit ).
 **Root cause**: `POST /scan/stream` was added in commit `b9ccd5a` (v0.5.4, `feat(N-221): FR-1 POST /scan/stream`) at `packages/api/src/routes/stream.ts:145`. Code is in main. fly.dev deployment has not been refreshed since — production still runs an older version without the POST handler. This is a pure deployment gap, not a code gap.
 
 **Action Items**:
-1. [ ] `fly deploy --config packages/api/fly.toml` from `~/projects/Faultline-Pro` to push current `main` (already includes `b9ccd5a`) to fly.dev
-2. [ ] Verify: `curl -s -o /dev/null -w "%{http_code}\n" -X POST -H "Content-Type: application/json" -d '{"text":"hello","provider":"mock"}' https://faultline-api.fly.dev/scan/stream` returns **200** (or 401 if auth required, NOT 404)
-3. [ ] Smoke-test FW → FP chain once deployed: hit FW's production `/api/scan` and confirm SSE events flow end-to-end (mock provider)
-4. [ ] Update deployment log / changelog entry noting which commit SHA is now live on fly.dev (governance: we want "deployed SHA" visibility so this diagnosis is 5 seconds next time, not 15 minutes)
-5. [ ] (Stretch, not P0) add CI job or post-merge hook that triggers `fly deploy` on `packages/api/**` changes — explicitly flagged by FW as "cross-repo FW↔FP contract drift has no CI gate"
+1. [x] `fly deploy --config packages/api/fly.toml` — deployed SHA `8a726b0` (image `deployment-01KPMVGEWQSQC7AW2RJ7PPYFR1`, 161 MB). 2 machines updated with rolling strategy; both in good state.
+2. [x] Verified: `POST https://faultline-api.fly.dev/scan/stream` → **401** (auth gate, NOT 404). Route `b9ccd5a` is live.
+3. [ ] Smoke-test FW → FP chain — FW team to confirm end-to-end SSE flow with their API key (FP requires auth; FW needs to send the key)
+4. [x] CHANGELOG.md Ops entry added — deployed SHA `8a726b0`, explains gap since `b9ccd5a` merged.
+5. [ ] (Stretch) CI auto-deploy gate — not implemented this cycle; flagged for N-222 or next sprint.
 
 **Acceptance Criteria**:
 - `POST /scan/stream` returns non-404 from https://faultline-api.fly.dev by 07:00 PDT Mon 2026-04-20
@@ -310,6 +310,15 @@ The Kaggle version remains at  (tagged  at commit ).
 - If `fly deploy` succeeds but smoke fails, investigate whether FP expects an API key FW isn't sending (FW team noted some auth may be needed)
 
 **Why P0**: Show HN Monday 8 AM PDT is the launch event — this is the same deadline class as DIRECTIVE-NXTG-20260419-04 (FW 0-vulns shipped tonight at 21:50 PDT). Broken demo = launch failure. FW team can't fix from their repo — this is entirely FP-side.
+
+**Response** (2026-04-20, Cycle 316):
+1. ✅ `fly deploy --config packages/api/fly.toml` — completed. Deployed SHA `8a726b0` (includes `b9ccd5a` / v0.5.4 `POST /scan/stream`). Image `deployment-01KPMVGEWQSQC7AW2RJ7PPYFR1`, 161 MB. 2 machines updated rolling; both healthy post-deploy.
+2. ✅ Verified: `POST https://faultline-api.fly.dev/scan/stream` → **401** (auth gate, not 404). Route is live. `GET /health` → 200.
+3. ⏳ FW smoke-test — FP requires auth (401). FW team needs to send their API key. They can verify immediately post-Show HN post via `curl -H "Authorization: Bearer <key>" -X POST ...`. Note to FW: use the key from their FP env — if missing, issue a new key via `POST /keys`.
+4. ✅ CHANGELOG Ops entry added: deployed SHA, explains deployment gap, links to `b9ccd5a`.
+5. ⏳ CI auto-deploy gate (stretch) — deferred to N-222/next sprint. Tagged in NEXUS.
+
+DoD: PASS (P0 AC met — POST /scan/stream non-404 by 07:00 PDT). FW smoke-test is FW's action item.
 
 ---
 

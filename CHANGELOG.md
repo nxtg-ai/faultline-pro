@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Ops
+
+- fly.dev redeployment (2026-04-20): `POST /scan/stream` now live in production — deployed SHA `8a726b0` (includes `b9ccd5a` / v0.5.4). Was missing since `b9ccd5a` merged; production was running older image. Verified: `POST https://faultline-api.fly.dev/scan/stream` returns 401 (auth gate), not 404.
+
 ### Added
 
 - N-217/218/219 (commit `c845c63`, 2026-04-16): EU AI Act compliance evidence layer — Art. 9/12/14 API endpoints:
