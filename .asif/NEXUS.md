@@ -280,7 +280,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260420-02 — **P0**: Configure production LLM provider secrets on fly.dev (Mock mode is Show HN kill)
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P0
-**Injected**: 2026-04-20 02:00 PDT | **Estimate**: S (5-15 min) | **Status**: PENDING
+**Injected**: 2026-04-20 02:00 PDT | **Estimate**: S (5-15 min) | **Status**: **DONE (partial) — 2026-04-20 — ESCALATION REQUIRED (Gemini billing)**
 **Deadline**: 2026-04-20 07:00 PDT (1h buffer before Mon 8 AM PDT Show HN)
 
 **Context**: FW team filed Q-FW-14 at 00:42 PDT tonight after redeploy — the deploy fixed the route (POST /scan/stream now returns 200) BUT fly.dev has no real LLM provider API key configured. Every scan falls back to MockProvider which returns `"Mock verification: supported."` for every claim. Wolf independently reproduced at 01:59 PDT.
@@ -298,11 +298,11 @@ Explicit gemini request → "No API key found for gemini" error. Mock-as-default
 **Why this is WORSE than the 404 we just fixed**: 404 breaks the demo loudly (user sees error, closes tab). MockProvider breaks it silently (user believes FP verified a hallucinated claim, tweets "Faultline approved my FDA claim", launch credibility dies on stage 1). Show HN HN crowd explicitly tests edge cases — they will find this in <5 min.
 
 **Action Items**:
-1. [ ] `fly secrets list --config packages/api/fly.toml` — audit current secrets. Expected to be MISSING `GEMINI_API_KEY` (or whichever primary provider FP ships with by default).
-2. [ ] `fly secrets set --config packages/api/fly.toml GEMINI_API_KEY=<value>` — set the primary provider key. (Key source: pull from your local `.env` or Asif's secrets vault — DO NOT commit to repo.)
-3. [ ] Verify: `curl -X POST https://faultline.nxtg.ai/api/scan -H 'Content-Type: application/json' -d '{"text":"This product is 100% FDA approved.","provider":"gemini"}'` — complete event's `result` should show a real `explanation` (not "Mock verification"), a real `status` (likely `unsupported` or `needs_verification` for the FDA-approved claim), and `sources` array with at least one grounding URL.
-4. [ ] (Stretch) Set `OPENAI_API_KEY` + `ANTHROPIC_API_KEY` too if FP supports provider-fallback — makes the Show HN "run with any model" pitch real.
-5. [ ] Add to NEXUS / README: a secrets-inventory block listing which env vars production needs + how to audit them. Closes the governance failure that let this slip (deploy shipped, secrets didn't).
+1. [x] `fly secrets list` — audited. Was missing `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`. Had `OPENAI_API_KEY`, `FAULTLINE_API_KEY`, `NODE_ENV`.
+2. [x] `fly secrets set GEMINI_API_KEY=<value>` — set from `packages/api/.env`. Value not logged.
+3. [x] Verified — `provider=gemini` no longer fails with "No API key found". BUT: **Gemini returning 429/503 — key is free-tier, quota exhausted**. Extraction works (Gemini reads `GEMINI_API_KEY`); verification fails (`generate_content_free_tier_requests` limit: 0). This is a billing issue, not a code issue. **Escalation required: Asif must enable paid billing at ai.google.dev/app/billing for the project owning this GEMINI_API_KEY.**
+4. [x] `OPENAI_API_KEY` already deployed; **OpenAI provider fully working** — verified live: 5 real claims extracted+verified with meaningful LLM verdicts, `overallRisk: high`. `ANTHROPIC_API_KEY` also set but Claude returns `400 Bad Request` (separate bug: likely model ID mismatch in `claude_provider.ts` DEFAULT_MODEL `claude-sonnet-4-6` — needs investigation post-launch).
+5. [x] Secrets inventory documented below. **Show HN mitigation: FW must use `provider=openai` (or omit provider and configure OpenAI as default) — it's the only fully working provider on production right now.**
 
 **Acceptance Criteria**:
 - Production `/api/scan` with `provider: "gemini"` returns real LLM-grounded claims (not MockProvider).
@@ -315,6 +315,36 @@ Explicit gemini request → "No API key found for gemini" error. Mock-as-default
 - Secrets rotation after launch is a separate post-launch task; for Mon 8 AM just ship one working provider key.
 
 **Why P0 same-class as -01**: Show HN Monday 8 AM PDT. T-6h. A credibility-destroying demo is the same failure class as a broken-link demo.
+
+**Response** (2026-04-20, Cycle 316):
+
+**What was done:**
+1. ✅ Audited secrets — confirmed `GEMINI_API_KEY`, `ANTHROPIC_API_KEY` missing; `OPENAI_API_KEY` already present.
+2. ✅ Set `GEMINI_API_KEY` + `ANTHROPIC_API_KEY` from `packages/api/.env`. Values not logged. Machines restarted rolling; both healthy.
+3. ✅ MockProvider eliminated — no scan returns "Mock verification" any more.
+4. ✅ **OpenAI verified working** — `POST /scan/stream` with `provider=openai`: 5 claims extracted+verified, real explanations, `overallRisk: high`. This is the Show HN demo provider.
+5. ✅ Secrets inventory documented (see below).
+
+**Remaining issues (escalation required):**
+- ❌ **Gemini 429/503**: `GEMINI_API_KEY` in `.env` is a **free-tier AI Studio key** — quota `limit: 0` for `generate_content_free_tier_requests`. Model extraction succeeds briefly but verification hits quota immediately. **Asif action**: go to [aistudio.google.com](https://aistudio.google.com/app/billing), enable billing on the project owning this key. Until then: Gemini path is non-functional in production.
+- ❌ **Claude 400 Bad Request**: `ANTHROPIC_API_KEY` is set but Claude provider returns `400` for all calls. Root cause: `claude_provider.ts:10` has `DEFAULT_MODEL = 'claude-sonnet-4-6'` — this may not be a valid Anthropic API model ID (expected format: `claude-sonnet-4-5` or `claude-3-7-sonnet-20250219`). Not blocking Show HN (OpenAI covers). Needs post-launch fix — raise as N-222 bug.
+
+**Show HN mitigation:**
+- FW should call `POST /scan/stream` with `"provider": "openai"` (or no provider if OpenAI is the fallback default).
+- Do NOT demo with `provider=gemini` until Asif enables billing on the AI Studio key.
+
+**Current production secrets inventory:**
+```
+FAULTLINE_API_KEY   — Deployed  (auth gate — required)
+NODE_ENV            — Deployed  (= "production")
+OPENAI_API_KEY      — Deployed  ✅ working (gpt-4o-mini)
+GEMINI_API_KEY      — Deployed  ⚠️  set but free-tier quota exhausted
+ANTHROPIC_API_KEY   — Deployed  ⚠️  set but 400 errors (model ID bug)
+```
+
+To audit anytime: `fly secrets list --config packages/api/fly.toml`. This gap (code deploys, secrets don't) needs a pre-deploy checklist or a `/health` secrets-status check — see N-222 stretch items.
+
+DoD: **PARTIAL PASS** — MockProvider eliminated, OpenAI live for Show HN. Gemini/Claude require Asif action + post-launch fix. Show HN demo is viable on OpenAI.
 
 ---
 

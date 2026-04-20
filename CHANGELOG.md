@@ -8,6 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Ops
 
 - fly.dev redeployment (2026-04-20): `POST /scan/stream` now live in production — deployed SHA `8a726b0` (includes `b9ccd5a` / v0.5.4). Was missing since `b9ccd5a` merged; production was running older image. Verified: `POST https://faultline-api.fly.dev/scan/stream` returns 401 (auth gate), not 404.
+- fly.dev secrets (2026-04-20): set `GEMINI_API_KEY`, `ANTHROPIC_API_KEY` on production. MockProvider eliminated. **OpenAI (`provider=openai`) is fully functional in production** — use for Show HN demo. Gemini path blocked by free-tier quota (Asif: enable billing on AI Studio key). Claude path blocked by `400` / model ID bug in `claude_provider.ts` (post-launch fix needed). Production secrets: `FAULTLINE_API_KEY`, `NODE_ENV`, `OPENAI_API_KEY` ✅, `GEMINI_API_KEY` ⚠️, `ANTHROPIC_API_KEY` ⚠️.
 
 ### Added
 
