@@ -6,6 +6,8 @@ import { getProvider } from '../providers/registry.js';
 import { generateComplianceReport, type ComplianceReport } from '../compliance/report_generator.js';
 import { runAllRules, runRules, type Finding } from '../rules/index.js';
 
+const VERIFY_CONCURRENCY = 8;
+
 // ── FR-3: Per-stage model routing ─────────────────────────────────────────────
 
 /** Provider names supported by the Faultline provider registry. */
@@ -178,11 +180,19 @@ export async function scan(
   const toVerify = filterClaimsForVerification(claims);
 
   const verifications: Record<string, VerificationResult> = {};
-  for (let i = 0; i < toVerify.length; i++) {
-    onProgress?.(`Verifying claim ${i + 1}/${toVerify.length}...`);
-    verifications[toVerify[i].id] = await verificationProvider.verifyClaim(toVerify[i]);
-    onClaimVerified?.(toVerify[i], verifications[toVerify[i].id], i, toVerify.length);
-  }
+  let completedCount = 0;
+  let cursor = 0;
+  const runSlot = async (): Promise<void> => {
+    while (cursor < toVerify.length) {
+      const i = cursor++;
+      onProgress?.(`Verifying claim ${i + 1}/${toVerify.length}...`);
+      const result = await verificationProvider.verifyClaim(toVerify[i]);
+      verifications[toVerify[i].id] = result;
+      completedCount++;
+      onClaimVerified?.(toVerify[i], result, i, toVerify.length);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(VERIFY_CONCURRENCY, toVerify.length) }, runSlot));
 
   onProgress?.('Generating report...');
   const overallRisk = calculateRisk(verifications);

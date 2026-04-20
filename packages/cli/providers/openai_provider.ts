@@ -77,7 +77,7 @@ Return a JSON object:
     }];
 
     try {
-      const response = await this.callAPI(content, 'user');
+      const response = await this.callAPI(content, 'user', 200);
       const resultJson = JSON.parse(response);
 
       return {
@@ -129,18 +129,20 @@ Return a JSON object: { "critique": string, "improvedPrompt": string }`,
    * Call the OpenAI Chat Completions API with JSON mode.
    * Isolated for easy mocking in tests.
    */
-  async callAPI(content: any[], role: string): Promise<string> {
+  async callAPI(content: any[], role: string, maxTokens?: number): Promise<string> {
+    const body: Record<string, unknown> = {
+      model: this.modelId,
+      response_format: { type: 'json_object' },
+      messages: [{ role, content }],
+    };
+    if (maxTokens !== undefined) body.max_tokens = maxTokens;
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.apiKey}`,
       },
-      body: JSON.stringify({
-        model: this.modelId,
-        response_format: { type: 'json_object' },
-        messages: [{ role, content }],
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
