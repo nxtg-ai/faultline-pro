@@ -1832,6 +1832,39 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-20 (Cycle 320 — no delta; post-directive hold)
+
+**1. What shipped since last check-in (Cycle 319, 2026-04-20)?**
+
+No new code this cycle. DIRECTIVE-NXTG-20260420-04 shipped and CoS-verified between cycles (commit `c67d557` — Wolf independent smokes PASS at 10:56 PDT, 41 minutes after directive injection). AC3 (FW /results shimmer clears) still pending FW team browser UAT.
+
+**Commits this cycle**: 0. Tests unchanged at 4,517/195. No deploy.
+
+**2. What surprised us?**
+
+Nothing new this cycle. The 41-minute injection-to-verification time is the standout signal from the surrounding context — noted in Cycle 319 and CoS AUTOPILOT landmark. No new surprises.
+
+**3. Cross-project signals**
+
+None new. Carry-forward from Cycle 319: `provider=mock` test isolation convention, verbatim port > redesign, `totalVerified` field naming debt.
+
+**4. What to prioritize next?**
+
+Same as Cycle 319 carry-forward:
+- **P0 (Asif)**: Gemini billing — enable paid tier on AI Studio project owning `GEMINI_API_KEY`.
+- **P1**: AC3 confirmation — FW browser UAT pass (anon scan → shimmer clears). Wolf to ack once done.
+- **P1**: Claude model ID bug — `claude_provider.ts:10` `DEFAULT_MODEL = 'claude-sonnet-4-6'` → verify correct Anthropic API string. Raise as N-222 when confirmed.
+- **P2**: FW default provider (`'gemini'` → `'openai'`) — FW team action.
+
+**5. Blockers / Questions for CoS**
+
+- **Q1**: Gemini billing — same carry-forward. Blocking all `provider=gemini` production traffic.
+- **Q2**: AC3 status — has FW team completed browser UAT? Once confirmed, `/weakest` + `/critique` can be logged as N-222 SHIPPED and PRM-NXTG-20260420-06 fully resolved.
+- **Q3**: Claude model ID — confirm correct Anthropic API string before N-222 patch. Current string `'claude-sonnet-4-6'` returns 400 in production.
+- **Q4 (carry-forward)**: CHANGELOG versioning convention.
+
+---
+
 > **Reflection cycle**: 2026-04-20 (Cycle 319 — POST /weakest + POST /critique implementation)
 
 **1. What shipped since last check-in (Cycle 318, 2026-04-20)?**
