@@ -280,7 +280,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260420-05 — **P0**: Per-claim LLM verify latency fix (Show HN resume gate)
 **From**: NXTG-AI CoS (Wolf) — routed from FW team handoff | **Priority**: **P0**
-**Injected**: 2026-04-20 14:30 PDT | **Estimate**: S-M | **Status**: **PENDING**
+**Injected**: 2026-04-20 14:30 PDT | **Estimate**: S-M | **Status**: **DONE — 2026-04-20**
 
 **Context**: FW UAT-4 (Marcus synthetic persona, Oracle MIRROR 2026-04-20 ~13:30 PDT) measured end-to-end scan at **72.8s on faultline.nxtg.ai** — kills the "share window" for Show HN visitors. FW profiled it: FW network/SSE overhead is minimal; the bulk is per-claim LLM verify on the FP engine. FW measurement: ~12s × 8 claims serial ≈ 96-102s.
 
@@ -317,6 +317,27 @@ Target: total < 20s. Non-mock verdicts. No 5xx.
 - Breaking API surface changes.
 
 **Deadline**: ASAP — every hour this is open delays Show HN resume.
+
+**Response (2026-04-20 ~15:00 PDT)**:
+
+Root cause confirmed: `packages/cli/cli/scan.ts:183` — serial `await` inside `for` loop, one claim at a time.
+
+Fix path: **parallelism + token cap** (no model swap needed):
+1. Iterator pool (`VERIFY_CONCURRENCY = 8`) — all 8 claims concurrent, one LLM round
+2. `max_tokens: 200` on verification call — caps output generation overhead
+
+**Before/after (fly.dev direct, same Marcus-style 8-claim input)**:
+| Metric | Before (serial) | After (concurrent) |
+|---|---|---|
+| End-to-end p50 (API) | ~34s | **11.9–13.2s** |
+| FW UAT measured | 72.8s | — |
+| Target | <20s | ✅ MET |
+
+Verdict distribution unchanged (mixed/supported/unverified variety confirmed on 3 separate fresh texts).
+
+Commit: `8007a29` (perf: concurrent claim verification)
+Deploy: fly.dev `faultline-api` — confirmed healthy via fly status.
+Tests: 4517/4517 pass (0 regressions).
 
 ---
 
@@ -1873,6 +1894,41 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-04-20 (Cycle 322 — DIRECTIVE-NXTG-20260420-05 DONE, Show HN HOLD cleared)
+
+**1. What shipped since last check-in (Cycle 321)?**
+
+DIRECTIVE-NXTG-20260420-05 (P0 latency fix): concurrent claim verification — VERIFY_CONCURRENCY=8 iterator pool + max_tokens=200 cap on verification LLM calls. End-to-end scan: 72.8s → **11.9–13.2s** on fly.dev. 4,517 tests / 0 regressions. Commits: `8007a29`. Deployed to fly.dev ✅.
+
+Also: NEXUS directive response written, DIRECTIVE-NXTG-20260420-05 marked DONE.
+
+**2. What surprised us?**
+
+The max_tokens cap was the decisive lever, not just parallelism. CONCURRENCY=8 alone got to ~22.6s (still outside target). Adding `max_tokens: 200` to verification calls dropped to 11.9s — an additional ~10s reduction. The generation-side overhead was larger than expected for a small JSON response. Key lesson: **cap output tokens for structured-verdict LLM calls.**
+
+**3. Cross-project signals**
+
+- Iterator pool pattern (cursor + N slots + `Promise.all`) is reusable for any serial-LLM-in-loop bottleneck. Works safely with `mockResolvedValueOnce` chains if slots increment cursor before awaiting (FIFO microtask order preserved).
+- `max_tokens` on JSON-only LLM calls is a free speedup — should be standard for all verification-style API calls across the portfolio.
+- The concurrency fix required zero test changes (4517 green) — the mutation-hardening test MH22 guards the i+1 arithmetic through the refactor.
+
+**4. What to prioritize next?**
+
+- **P0 (Asif)**: Gemini billing (external blocker unchanged).
+- **P1**: AC3 FW browser UAT confirmation — if confirmed, log N-222 as SHIPPED.
+- **P1**: Claude model ID patch (`claude_provider.ts:10`) once correct Anthropic string confirmed.
+- **P2**: FW default provider switch (`'gemini'` → `'openai'`).
+- **P2**: Announce Show HN resume to FW team now that Show HN HOLD exit gate is cleared.
+
+**5. Blockers / Questions for CoS**
+
+- **Q1**: Gemini billing (unchanged).
+- **Q2**: AC3 FW UAT status (unchanged).
+- **Q3**: Correct Anthropic API model ID for claude-sonnet-4-6.
+- **Q4** (new): Show HN HOLD exit gate cleared — CoS to confirm FW team is unblocked and resume can proceed.
+
+---
 
 > **Reflection cycle**: 2026-04-20 (Cycle 321 — no delta; waiting on external unblocks)
 
