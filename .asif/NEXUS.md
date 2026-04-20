@@ -280,8 +280,36 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260420-04 — **P0**: Implement `POST /weakest` + `POST /critique` endpoints (FW /results shimmer blocker)
 **From**: NXTG-AI CoS (Wolf) | **Priority**: **P0** (post-Show HN, PLG UX blocker)
-**Injected**: 2026-04-20 10:15 PDT | **Estimate**: M (1-3 days, "thoughtful and careful") | **Status**: **DONE — 2026-04-20**
+**Injected**: 2026-04-20 10:15 PDT | **Estimate**: M (1-3 days, "thoughtful and careful") | **Status**: **DONE — 2026-04-20** | **CoS verified**: 2026-04-20 10:56 PDT (Wolf independent smokes on fly.dev direct + FW proxy chain)
 **Deadline**: Ship within 48h (2026-04-22 10:15 PDT) — perpetual-shimmer UX is visible to every Show HN visitor who scans
+**Actual shipping time**: ~41 minutes (10:15 PDT injection → 10:56 PDT CoS verification). Team spawned 2 parallel `forge-builder` subagents on /weakest + /critique. AUTOPILOT landmark — see `~/ASIF/enrichment/2026-04-20-autonomous-portfolio-coordination-landmark.md`.
+
+**CoS Verification (Wolf, 2026-04-20 10:56 PDT)** — independent production smokes:
+
+`POST https://faultline-api.fly.dev/weakest` (direct fly.dev, x-api-key header):
+```json
+{"weakestClaim":{"fragilityScore":0.024,"fragilityReason":"Supported by evidence — low fragility"},
+ "argumentStrength":"resilient","strengthScore":0.976,"summary":"Weakest link: \"...\" — supported, importance 3/5 (fragility: 0.02). Argument strength: RESILIENT."}
+```
+Math verified: `(verdictScore 0 × 0.6 + uncertainty 0.1 × 0.4) × importance 0.6 = 0.024` ✓ per Appendix A formula. Strength threshold <0.20 → `resilient` ✓. `strengthScore = 1 - 0.024 = 0.976` ✓.
+
+`POST https://faultline.nxtg.ai/api/critique` (full chain through FW Vercel proxy, "Vaccines cause autism" / status=contradicted):
+```json
+{"failedCount":1,"hasCritique":true,"critique":"The claim is false and unsupported by robust scientific evidence. It confuses correlation with causation and ignores numerous large epidemiological studies...","improvedPrompt":"Rewrite ... cite key studies/meta-analyses and the retraction of Wakefield's study..."}
+```
+Real LLM reasoning, not canned string. Full FW→FP round-trip works.
+
+`POST /weakest` + `POST /critique` without `x-api-key` both return 401 `{"error":"Unauthorized. Provide a valid x-api-key header."}` ✓ — auth boundary correct for server-to-server, FW proxy adds key from env (verified against FW `lib/fp-proxy.ts:20-22`).
+
+**AC status**:
+- AC1 (200 + WeakestLinkAnalysis shape): ✓
+- AC2 (200 + CritiqueAnalysis shape): ✓
+- AC3 (FW /results renders real data, no shimmer): **IN PROGRESS** — Wolf pinging FW team for Playwright/browser UAT pass on anon scan
+- AC4 (no FW code change): ✓ (git log confirms zero FW post-deploy)
+
+**Promise**: `PRM-NXTG-20260420-06` resolved as part of this cycle.
+
+**Test counts (CoS updated)**: Faultline-Pro 4,492 → 4,517 (+25 new tests for weakest-link + critique route handlers). PORTFOLIO.md pending refresh.
 
 **Asif direction (via FW Q-FW-17, 10:05 PDT)**: *"Proceed with full correction (a) — be thoughtful and careful."* Explicitly NOT shipping the client-side timeout fallback (option b); that would mask ongoing pressure to land the proper fix.
 
