@@ -278,6 +278,46 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
+### DIRECTIVE-NXTG-20260420-02 — **P0**: Configure production LLM provider secrets on fly.dev (Mock mode is Show HN kill)
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P0
+**Injected**: 2026-04-20 02:00 PDT | **Estimate**: S (5-15 min) | **Status**: PENDING
+**Deadline**: 2026-04-20 07:00 PDT (1h buffer before Mon 8 AM PDT Show HN)
+
+**Context**: FW team filed Q-FW-14 at 00:42 PDT tonight after redeploy — the deploy fixed the route (POST /scan/stream now returns 200) BUT fly.dev has no real LLM provider API key configured. Every scan falls back to MockProvider which returns `"Mock verification: supported."` for every claim. Wolf independently reproduced at 01:59 PDT.
+
+**Evidence (Wolf, 01:59 PDT)**:
+```
+$ curl -X POST https://faultline.nxtg.ai/api/scan \
+    -H 'Content-Type: application/json' \
+    -d '{"text":"This product treats cancer. It is FDA approved.","provider":"gemini"}'
+data: {"type":"claims_extracted","claims":[]}
+data: {"type":"error","message":"No API key found for \"gemini\". Get a free key at https://aistudio.google.com/apikey → export GEMINI_API_KEY=your-key"}
+```
+Explicit gemini request → "No API key found for gemini" error. Mock-as-default is why user-facing demos return cheerful fake verification text for hostile claims.
+
+**Why this is WORSE than the 404 we just fixed**: 404 breaks the demo loudly (user sees error, closes tab). MockProvider breaks it silently (user believes FP verified a hallucinated claim, tweets "Faultline approved my FDA claim", launch credibility dies on stage 1). Show HN HN crowd explicitly tests edge cases — they will find this in <5 min.
+
+**Action Items**:
+1. [ ] `fly secrets list --config packages/api/fly.toml` — audit current secrets. Expected to be MISSING `GEMINI_API_KEY` (or whichever primary provider FP ships with by default).
+2. [ ] `fly secrets set --config packages/api/fly.toml GEMINI_API_KEY=<value>` — set the primary provider key. (Key source: pull from your local `.env` or Asif's secrets vault — DO NOT commit to repo.)
+3. [ ] Verify: `curl -X POST https://faultline.nxtg.ai/api/scan -H 'Content-Type: application/json' -d '{"text":"This product is 100% FDA approved.","provider":"gemini"}'` — complete event's `result` should show a real `explanation` (not "Mock verification"), a real `status` (likely `unsupported` or `needs_verification` for the FDA-approved claim), and `sources` array with at least one grounding URL.
+4. [ ] (Stretch) Set `OPENAI_API_KEY` + `ANTHROPIC_API_KEY` too if FP supports provider-fallback — makes the Show HN "run with any model" pitch real.
+5. [ ] Add to NEXUS / README: a secrets-inventory block listing which env vars production needs + how to audit them. Closes the governance failure that let this slip (deploy shipped, secrets didn't).
+
+**Acceptance Criteria**:
+- Production `/api/scan` with `provider: "gemini"` returns real LLM-grounded claims (not MockProvider).
+- FP fly.dev secrets list includes `GEMINI_API_KEY` (or equivalent).
+- Secrets-inventory documented so this class of gap is visible in future deploys.
+
+**Constraints**:
+- DO NOT log the key value to stdout, decision journals, or commits.
+- If the FP team doesn't have access to the key, **escalate to Asif immediately** (voice wake is authorized) — this is a Show HN launch blocker, not a per-engineering-hours blocker.
+- Secrets rotation after launch is a separate post-launch task; for Mon 8 AM just ship one working provider key.
+
+**Why P0 same-class as -01**: Show HN Monday 8 AM PDT. T-6h. A credibility-destroying demo is the same failure class as a broken-link demo.
+
+---
+
 ### DIRECTIVE-NXTG-20260420-01 — **P0**: Redeploy packages/api to fly.dev (POST /scan/stream missing in production)
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P0
 **Injected**: 2026-04-20 00:00 PDT | **Estimate**: S (15-30 min) | **Status**: **DONE — 2026-04-20**
