@@ -275,7 +275,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       const { text, provider } = request.body;
-      const effectiveProvider = (provider ?? template.provider ?? 'mock') as ScanProvider;
+      const effectiveProvider = (provider ?? template.provider ?? 'openai') as ScanProvider;
 
       const result = await scan(text, effectiveProvider);
 

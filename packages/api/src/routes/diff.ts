@@ -67,7 +67,7 @@ export async function diffRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request, reply) => {
       const { before, after, provider } = request.body;
-      const effectiveProvider: Provider = provider ?? 'mock';
+      const effectiveProvider: Provider = provider ?? 'openai';
 
       const [scanBefore, scanAfter] = await Promise.all([
         scan(before, effectiveProvider),

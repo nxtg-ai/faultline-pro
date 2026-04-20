@@ -99,10 +99,10 @@ describe('stream.ts startEmitted guards — mutation hardening (SM1–SM4)', () 
     expect(startEvents.length).toBe(1);
   });
 
-  it('SM3: start event is present even when provider omitted (0-claim fallback path)', async () => {
+  it('SM3: start event is present even when provider=mock (0-claim fallback path)', async () => {
     const res = await server.inject({
       method: 'GET',
-      url:    `/scan/stream?text=${encodeURIComponent(ONE_CLAIM_TEXT)}`,
+      url:    `/scan/stream?text=${encodeURIComponent(ONE_CLAIM_TEXT)}&provider=mock`,
       headers: { 'x-api-key': 'test-secret' },
     });
     const events = parseSSE(res.body);

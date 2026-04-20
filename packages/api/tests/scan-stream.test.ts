@@ -242,16 +242,16 @@ describe('GET /scan/stream — auth enforcement (WS14)', () => {
 // ── WS15: explicit provider reflected in start event ─────────────────────────
 
 describe('GET /scan/stream — provider reflection (WS15)', () => {
-  it('WS15: omitting provider defaults to mock in start event', async () => {
+  it('WS15: explicit mock provider is reflected in start event', async () => {
     const res = await server.inject({
       method: 'GET',
-      url:    `/scan/stream?text=${encodeURIComponent(SCAN_TEXT)}`,
+      url:    `/scan/stream?text=${encodeURIComponent(SCAN_TEXT)}&provider=mock`,
       headers: { 'x-api-key': 'test-secret' },
     });
     expect(res.statusCode).toBe(200);
     const events = parseSSE(res.body);
     const start = events.find(e => e['type'] === 'start');
-    // Unknown/omitted provider falls back to 'mock' in the stream route
+    // Explicit mock provider is echoed back in the start event provider field
     expect(start?.['provider']).toBe('mock');
   });
 });

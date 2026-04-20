@@ -96,7 +96,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.status(400).send({ error: 'Invalid or unreadable ZIP archive.' });
       }
 
-      const provider = ((request.query as { provider?: string }).provider ?? 'mock') as Provider;
+      const provider = ((request.query as { provider?: string }).provider ?? 'openai') as Provider;
       const job = getBulkJobStore().create(entryCount);
 
       if (entryCount === 0) {
