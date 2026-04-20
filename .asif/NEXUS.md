@@ -189,6 +189,9 @@
 | N-217 | EU AI Act Art. 9 — `POST /scan/risk-register`; lifecycle-phase (development/testing/deployment/monitoring) risk register export; aggregates scan history; versioned JSON with riskDistribution/highRiskCount/criticalRiskCount/findings[]; admin auth required (403); 14 tests (RR1–RR14) | COMPLIANCE | SHIPPED | P2 | 2026-04-16 |
 | N-218 | EU AI Act Art. 14 — `POST /scans/:id/approve` + `GET /scans/:id/approvals`; human sign-off record with approver identity, decision (approved/rejected), UTC timestamp, optional note; immutable store; 19 tests (AP1–AP19) | COMPLIANCE | SHIPPED | P2 | 2026-04-16 |
 | N-219 | EU AI Act Art. 12 — `GET /audit/log/manifest`; SHA-256 chain manifest: chainHash(n)=SHA-256(entryHash(n)+chainHash(n-1)), rootHash=final chainHash; verifiable via openssl — no FP tooling required; admin auth required (403); 13 tests (AM1–AM13) | COMPLIANCE | SHIPPED | P2 | 2026-04-16 |
+| N-224 | Search grounding for citations — sources[] currently empty on gpt-4o-mini; options: Perplexity Sonar, Google Search Grounding (Gemini 2.0 Flash native), or cache-and-fan-out search context; DIRECTIVE-07 P1 post-Show HN | FORENSIC | BACKLOG | P1 | 2026-04-20 |
+| N-223 | /health degraded-provider state — distinguish configured-but-degraded from not-configured; 429/503 probe → "quota_exceeded" vs "ok" | ENTERPRISE | BACKLOG | P2 | 2026-04-20 |
+| N-222 | FR-5: POST /weakest + POST /critique endpoints — verbatim port of FW weakest-link.ts + critique.ts; 17 tests; DIRECTIVE-04; CoS verified 2026-04-20 | FORENSIC | SHIPPED | P0 | 2026-04-20 |
 | N-220 | FR-3: Per-stage model routing (PipelineConfig) — optional `pipelineConfig` in `POST /scan` body; extractionProvider+verificationProvider+synthesisProvider per-stage overrides (fall back to `provider` if absent); backward-compatible; bypasses circuit breaker when present; missing key → 503 provider_not_configured; invalid provider → 400; synthesisProvider no-op (reserved); CLI 0.5.2→0.5.3, API 0.5.0→0.5.1; 7 tests (PC1–PC7) | PLATFORM | SHIPPED | P1 | 2026-04-16 |
 | N-221 | FR-1: `POST /scan/stream` — same SSE event sequence as `GET /scan/stream` (start→claim_verified×N→complete) but accepts JSON body, removing ~2KB querystring ceiling; supports pipelineConfig (FR-3); GET /scan/stream and POST /scan unchanged; API 0.5.1→0.5.2; 10 tests (SPP1–SPP10) | PLATFORM | SHIPPED | P1 | 2026-04-16 |
 | N-209 | Art. 53 (Obligations for providers of GPAI models) added to articleEvidence — partial when real GPAI provider detected (Google Gemini/OpenAI/Anthropic Claude/Perplexity), not-applicable for mock; getRemediations branch (5 items); 3 new tests (A53-1–A53-3) | COMPLIANCE | SHIPPED | P0 | 2026-04-03 |
@@ -339,6 +342,12 @@ DIRECTIVE-06 fix (commit `84a9e14`):
 | Real verdicts | ✅ (gpt-5-mini) | ✅ (gpt-4o-mini, mixed/unverified variety) |
 
 Commit: `84a9e14` | Tests: 4517/4517 pass.
+
+**CoS Independent Verify (Wolf, 15:38 PDT)**: DIRECTIVE-06 CLOSED ✅
+- Latency: 7.9s ✅ | Stubs: 0 ✅ | Real verdicts: 2 contradicted / 10 mixed / 4 unverified ✅
+- trustScore: 35 (not 85 fallback) ✅ | HOLD exit gate 4: CLEARED ✅
+
+**DIRECTIVE-07 filed as N-224** (P1, post-Show HN): Search grounding for citations. `sources[]` currently empty on gpt-4o-mini (no native grounding). Options: Perplexity Sonar, Google Search Grounding (Gemini 2.0 Flash native), or cache-and-fan-out. Filed below in Initiatives.
 
 ---
 
@@ -1895,6 +1904,36 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 ---
 
 ## Team Feedback
+
+> **Reflection cycle**: 2026-04-20 (Cycle 324 — DIRECTIVE-06 CoS verified CLOSED. N-224 filed. Show HN HOLD gate 4 CLEARED. Asif UAT pass is last gate.)
+
+**1. What shipped since last check-in (Cycle 323)?**
+
+Nothing new coded — this cycle is administrative closure. CoS Wolf independently verified DIRECTIVE-06 on faultline.nxtg.ai: 7.9s, 0 stubs, real verdicts (2 contradicted / 10 mixed / 4 unverified), trustScore 35. HOLD exit gate 4 cleared. N-222 (FR-5), N-223 (health degraded state), N-224 (search grounding) registered in Executive Dashboard.
+
+**2. What surprised us?**
+
+Nothing new from this cycle. Carrying the Cycle 323 lesson: the model swap to gpt-4o-mini (Wolf's SOTA research suggestion) delivered more latency gain than the entire concurrency refactor. First-principle lesson: find the right model before optimizing the loop.
+
+**3. Cross-project signals**
+
+None new this cycle.
+
+**4. What to prioritize next?**
+
+- **Wait**: Asif UAT pass (HOLD gate 3 — last remaining gate before Show HN).
+- **P0 (Asif)**: Gemini billing.
+- **P1**: Claude model ID patch.
+- **P1 (post-UAT)**: N-224 search grounding scoping — Perplexity Sonar vs Gemini 2.0 Flash native grounding.
+
+**5. Blockers / Questions for CoS**
+
+- **Q1**: Gemini billing (unchanged).
+- **Q2**: Asif UAT pass timing — any blockers on gate 3?
+- **Q3**: Claude model ID for claude-sonnet-4-6.
+- **Q6** (new): N-224 architecture decision — Perplexity Sonar (search-native) or Google Search Grounding (Gemini 2.0 Flash)? Cost/accuracy tradeoff at 8 concurrent search calls per scan.
+
+---
 
 > **Reflection cycle**: 2026-04-20 (Cycle 323 — DIRECTIVE-06 correctness regression fix: real verdicts restored, 8s p50)
 
