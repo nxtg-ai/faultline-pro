@@ -186,10 +186,24 @@ export async function scan(
     while (cursor < toVerify.length) {
       const i = cursor++;
       onProgress?.(`Verifying claim ${i + 1}/${toVerify.length}...`);
-      const result = await verificationProvider.verifyClaim(toVerify[i]);
-      verifications[toVerify[i].id] = result;
+      let result: VerificationResult;
+      let delay = 1000;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          result = await verificationProvider.verifyClaim(toVerify[i]);
+          break;
+        } catch {
+          if (attempt < 2) {
+            await new Promise(r => setTimeout(r, delay + Math.floor(Math.random() * 500)));
+            delay *= 2;
+          } else {
+            result = { claimId: toVerify[i].id, status: 'unverified', explanation: 'Verify failed after retries.', sources: [] };
+          }
+        }
+      }
+      verifications[toVerify[i].id] = result!;
       completedCount++;
-      onClaimVerified?.(toVerify[i], result, i, toVerify.length);
+      onClaimVerified?.(toVerify[i], result!, i, toVerify.length);
     }
   };
   await Promise.all(Array.from({ length: Math.min(VERIFY_CONCURRENCY, toVerify.length) }, runSlot));

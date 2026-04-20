@@ -84,13 +84,10 @@ Return strictly a JSON object:
         sources: [],
       };
     } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (msg.includes('429')) throw error;
       console.error(`Error verifying claim ${claim.id} (Claude):`, error);
-      return {
-        claimId: claim.id,
-        status: 'unverified',
-        explanation: 'Stress-test failed due to technical error.',
-        sources: [],
-      };
+      return { claimId: claim.id, status: 'unverified', explanation: `Verify failed: ${msg}`, sources: [] };
     }
   }
 

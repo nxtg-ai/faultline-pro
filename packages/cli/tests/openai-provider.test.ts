@@ -49,7 +49,7 @@ describe('OpenAIProvider', () => {
 
     it('should expose correct model ID', () => {
       const provider = createOpenAIProvider('test-key');
-      expect(provider.modelId).toBe('gpt-5-mini');
+      expect(provider.modelId).toBe('gpt-4o-mini');
     });
 
     it('factory should satisfy ProviderFactory type', () => {
@@ -160,7 +160,7 @@ describe('OpenAIProvider', () => {
 
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
       expect(body.response_format).toEqual({ type: 'json_object' });
-      expect(body.model).toBe('gpt-5-mini');
+      expect(body.model).toBe('gpt-4o-mini');
     });
 
     it('should handle empty choices array', async () => {
@@ -231,14 +231,14 @@ describe('OpenAIProvider', () => {
 
       expect(result.claimId).toBe('c3');
       expect(result.status).toBe('unverified');
-      expect(result.explanation).toContain('technical error');
+      expect(result.explanation).toContain('Verify failed');
     });
 
     it('should fallback to unverified on non-OK response', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
-        status: 429,
-        statusText: 'Too Many Requests',
+        status: 500,
+        statusText: 'Internal Server Error',
       });
 
       const provider = createOpenAIProvider('test-key');
@@ -305,7 +305,7 @@ describe('OpenAIProvider', () => {
   describe('FAULTLINE_OPENAI_MODEL env var', () => {
     it('should use default model when env var is not set', () => {
       const provider = createOpenAIProvider('test-key');
-      expect(provider.modelId).toBe('gpt-5-mini');
+      expect(provider.modelId).toBe('gpt-4o-mini');
     });
 
     it('should use custom model from FAULTLINE_OPENAI_MODEL', () => {
@@ -330,14 +330,14 @@ describe('OpenAIProvider', () => {
     it('should fall back to default when env var is empty string', () => {
       process.env.FAULTLINE_OPENAI_MODEL = '';
       const provider = createOpenAIProvider('test-key');
-      expect(provider.modelId).toBe('gpt-5-mini');
+      expect(provider.modelId).toBe('gpt-4o-mini');
     });
 
     it('different instances can have different models if env changes between constructions', () => {
       const p1 = createOpenAIProvider('key-1');
       process.env.FAULTLINE_OPENAI_MODEL = 'gpt-4-turbo';
       const p2 = createOpenAIProvider('key-2');
-      expect(p1.modelId).toBe('gpt-5-mini');
+      expect(p1.modelId).toBe('gpt-4o-mini');
       expect(p2.modelId).toBe('gpt-4-turbo');
     });
   });
@@ -374,7 +374,7 @@ describe('OpenAIProvider', () => {
       await provider.extractClaims('Test');
 
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(body.model).toBe('gpt-5-mini');
+      expect(body.model).toBe('gpt-4o-mini');
     });
   });
 });

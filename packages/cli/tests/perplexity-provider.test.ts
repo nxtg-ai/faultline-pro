@@ -233,14 +233,14 @@ describe('PerplexityProvider', () => {
 
       expect(result.claimId).toBe('c3');
       expect(result.status).toBe('unverified');
-      expect(result.explanation).toContain('technical error');
+      expect(result.explanation).toContain('Verify failed');
     });
 
     it('should fallback to unverified on non-OK response', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
-        status: 429,
-        statusText: 'Too Many Requests',
+        status: 500,
+        statusText: 'Internal Server Error',
       });
 
       const provider = createPerplexityProvider('test-key');

@@ -197,7 +197,7 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
     return {
       claimId: claim.id,
       status: 'unverified',
-      explanation: 'Stress-test failed due to technical error.',
+      explanation: `Verify failed: ${error instanceof Error ? error.message : String(error)}`,
       sources: []
     };
   }
