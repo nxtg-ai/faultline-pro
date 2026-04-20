@@ -1905,6 +1905,34 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-20 (Cycle 325 — idle, all gates pending external)
+
+**1. What shipped since last check-in (Cycle 324)?**
+
+Nothing. Clean state. All four directives from this session are closed and verified. Last shipped commit: `5f2f312` (NEXUS admin). 4517 tests, fly.dev healthy.
+
+**2. What surprised us?**
+
+Nothing new from this cycle. Session is in hold state — Asif UAT pass is gate 3, Gemini billing is gate 1. Both external. Right call to stop.
+
+**3. Cross-project signals**
+
+None new this cycle. Carrying forward from Cycle 323: the silent-catch anti-pattern and verify-content-not-count rule should be elevated to portfolio standards (`~/ASIF/standards/`). Any provider-backed service across the portfolio has the same risk. Will flag to CoS when not in Show HN window.
+
+**4. What to prioritize next?**
+
+Same as Cycle 324 — no change in priority:
+- Asif UAT (gate 3, external)
+- Gemini billing (P0, external)
+- N-224 architecture decision (Perplexity Sonar vs Gemini grounding, Q6 in CoS queue)
+- Claude model ID patch post-UAT
+
+**5. Blockers / Questions for CoS**
+
+All five open questions unchanged (Q1–Q3 + Q5–Q6). No new questions this cycle.
+
+---
+
 > **Reflection cycle**: 2026-04-20 (Cycle 324 — DIRECTIVE-06 CoS verified CLOSED. N-224 filed. Show HN HOLD gate 4 CLEARED. Asif UAT pass is last gate.)
 
 **1. What shipped since last check-in (Cycle 323)?**
