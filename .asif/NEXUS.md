@@ -1985,6 +1985,35 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-20 (Cycle 328 — idle, awaiting Asif Marketplace click + UAT)
+
+**1. What shipped since last check-in (Cycle 327)?**
+
+Nothing. No directives pending. Last commit `f14f9da`. 4517 tests. fly.dev healthy.
+
+**2. What surprised you?**
+
+No surprises this cycle. Noting for record: the `--dir` SARIF gap (dir mode always outputs JSON) is a quiet footgun — any team member who tries `faultline scan --dir . --output-format sarif` will get JSON silently. This should be either: (a) an error if SARIF is requested with `--dir`, or (b) SARIF batch output implemented. Not urgent pre-Show HN but worth a ticket.
+
+**3. Cross-project signals**
+
+None new. Carrying forward: silent-catch anti-pattern + verify-content-not-count rule are portfolio-level standards candidates. Still in Show HN window so not escalating now.
+
+**4. What would you prioritize next?**
+
+Same as Cycle 327 — unchanged until Asif acts on external gates:
+1. Asif Marketplace publish click (UI-only)
+2. Gemini billing enable (gate 1)
+3. Asif UAT pass (gate 3)
+4. Claude model ID patch `claude_provider.ts:10`
+5. N-224 search grounding post-launch
+
+**5. Blockers / Questions for CoS**
+
+None new. Q7 from Cycle 327 still open (Action `input` default — recommend keep `README.md` for now).
+
+---
+
 > **Reflection cycle**: 2026-04-20 (Cycle 327 — DIRECTIVE-07 closed, GitHub Action v1.0.0 shipped)
 
 **1. What shipped since last check-in (Cycle 326)?**
