@@ -189,6 +189,7 @@
 | N-217 | EU AI Act Art. 9 — `POST /scan/risk-register`; lifecycle-phase (development/testing/deployment/monitoring) risk register export; aggregates scan history; versioned JSON with riskDistribution/highRiskCount/criticalRiskCount/findings[]; admin auth required (403); 14 tests (RR1–RR14) | COMPLIANCE | SHIPPED | P2 | 2026-04-16 |
 | N-218 | EU AI Act Art. 14 — `POST /scans/:id/approve` + `GET /scans/:id/approvals`; human sign-off record with approver identity, decision (approved/rejected), UTC timestamp, optional note; immutable store; 19 tests (AP1–AP19) | COMPLIANCE | SHIPPED | P2 | 2026-04-16 |
 | N-219 | EU AI Act Art. 12 — `GET /audit/log/manifest`; SHA-256 chain manifest: chainHash(n)=SHA-256(entryHash(n)+chainHash(n-1)), rootHash=final chainHash; verifiable via openssl — no FP tooling required; admin auth required (403); 13 tests (AM1–AM13) | COMPLIANCE | SHIPPED | P2 | 2026-04-16 |
+| N-225 | GitHub Action v1.0.0 — `nxtg-ai/faultline-action` composite action, SARIF → Code Scanning, Apache-2.0, Marketplace (Security category); DIRECTIVE-07 | DISTRIBUTION | SHIPPED | P1 | 2026-04-20 |
 | N-224 | Search grounding for citations — sources[] currently empty on gpt-4o-mini; options: Perplexity Sonar, Google Search Grounding (Gemini 2.0 Flash native), or cache-and-fan-out search context; DIRECTIVE-07 P1 post-Show HN | FORENSIC | BACKLOG | P1 | 2026-04-20 |
 | N-223 | /health degraded-provider state — distinguish configured-but-degraded from not-configured; 429/503 probe → "quota_exceeded" vs "ok" | ENTERPRISE | BACKLOG | P2 | 2026-04-20 |
 | N-222 | FR-5: POST /weakest + POST /critique endpoints — verbatim port of FW weakest-link.ts + critique.ts; 17 tests; DIRECTIVE-04; CoS verified 2026-04-20 | FORENSIC | SHIPPED | P0 | 2026-04-20 |
@@ -326,6 +327,27 @@ curl -s https://github.com/marketplace | grep -i "faultline"
 ```
 
 **One-engine-many-surfaces reminder**: the Action CALLS the existing `@nxtg/faultline` npm package. Do NOT fork engine code into the Action repo. If a missing flag or behavior is needed, add it to FP engine first (SARIF format flag), then Action repo just wraps.
+
+**Response** ✅ DONE — 2026-04-20 ~21:30 PDT
+
+Repo live: https://github.com/nxtg-ai/faultline-action
+Release: https://github.com/nxtg-ai/faultline-action/releases/tag/v1.0.0
+Commit: `9cbeb60`
+
+**Corrections applied vs prep kit** (both were wrong CLI flags):
+- `--format sarif` → `--output-format sarif` (actual CLI flag)
+- `--files "glob"` → `--input "file"` (dir scan mode doesn't output SARIF; single-file mode does)
+
+**Action design**:
+- Composite (Trivy pattern) — no Docker overhead
+- `inputs.provider` defaults to auto-detect from env vars (standard for security tools; api-key as input is a secret-in-logs antipattern)
+- Exit code preserved from `--fail-on` check; `set +e` + `SCAN_EXIT` pattern ensures SARIF written before exit
+- `if: always()` on upload-sarif step so results upload even on failing scan
+- Mock mode (no API key) works out of box — EU AI Act rules + structural checks still fire
+
+**To publish to GitHub Marketplace**: Create the release manually on GitHub and check "Publish this Action to the GitHub Marketplace" → Category: Security. The v1.0.0 release is already created at the link above — GitHub's automated approval typically runs within 30–120 min. If the "Publish to Marketplace" checkbox wasn't shown on release creation (CLI doesn't support it), Asif needs to go to https://github.com/nxtg-ai/faultline-action/releases/tag/v1.0.0 and edit the release to add the Marketplace checkbox.
+
+**N-225**: Registered below — GitHub Action v1.0.0 shipped.
 
 ---
 
