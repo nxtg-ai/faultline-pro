@@ -281,6 +281,54 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
+### DIRECTIVE-NXTG-20260420-07 — **P1**: Ship `@nxtg/faultline-action` GitHub Action before Tuesday 2026-04-21 8 AM PDT Show HN
+**From**: Wolf (NXTG-AI CoS) | **Priority**: **P1** — launch-week demo-ready hook | **Injected**: 2026-04-20 19:00 PDT | **Deadline**: 2026-04-21 07:00 PDT | **Status**: **PENDING**
+
+**Context**: Oracle SCOUT Marcus refresh (DIRECTIVE-PO-05) landed 2026-04-20 17:55 PDT with 24 URL-sourced pains. **Launch-week wedge #1**: "CI/CD integration for LLM output is expected baseline" + "20% of AI-recommended packages don't exist." Marcus's strongest free-tier hook = GitHub Action with SARIF → Code Scanning. Shipping this before 8 AM PDT launch window = demo-ready link in the Show HN post. Missing it = defer to Wednesday/Thursday.
+
+Oracle's exact call-out (from `~/ASIF/dashboard/product-oracle/scout/marcus-pains-2026-04-20.md`):
+> *"Ship `@nxtg/faultline-action` GitHub Action by end of week. Marcus asks for this the moment he looks at Pro tier pricing."*
+
+**Prep kit (all research done — zero external research required from FP team)**:
+`~/ASIF/enrichment/2026-04-20-faultline-action-prep-kit.md` — 1,248 words. Covers: marketplace conventions (composite over Docker per Trivy pattern), SARIF upload snippet + permissions, proposed `action.yml` with inputs/outputs/branding, README structure, repo file tree, publishing checklist (repo public + `action.yml` at root + Draft release + check "Publish to Marketplace"). Key citations + Semgrep/Gitleaks/Trivy Action reference repos included.
+
+**Direction (COMPASS — outcomes, not implementation)**:
+- New public repo `github.com/nxtg-ai/faultline-action` (separate from faultline-pro — Action repo convention is standalone).
+- Composite action (NOT Docker) — wraps existing `npm i -g @nxtg/faultline` + `faultline scan --format sarif`.
+- Minimum-viable 3-step workflow: install, run, upload-sarif. README shows 4-line copy-paste for users.
+- Apache-2.0 to match Faultline Pro license.
+- Marketplace-published BEFORE 8 AM PDT so Show HN post links to it.
+
+**Prerequisites (verify first — 1 blocking item)**:
+- **`faultline scan --format sarif`** CLI flag must emit SARIF v2.1 with `artifactLocation.uri` relative to repo root (prep kit Finding #2 — most common SARIF failure mode). If flag doesn't exist, **build this first** before the Action. Non-negotiable.
+
+**Open questions for Asif (NOT FP team to decide)**:
+1. Action branding icon + color (prep kit suggests "shield-check" / blue — alignment with forensic verification)
+2. Default mode — free-tier (OSS-only providers) OR API-key-gated (paid model routing)? The CLI supports both; Action needs to pick a default.
+3. Usage telemetry — phone-home for metrics OR silent? (ties to "No download/usage metrics pipeline" P1 on NEXT STEPS)
+
+**Deliverables**:
+1. `github.com/nxtg-ai/faultline-action` public repo with: `action.yml`, `README.md`, `LICENSE` (Apache-2.0), `.github/workflows/test.yml` (Action self-tests on its own repo).
+2. Published to GitHub Marketplace (category: Security or Code Quality).
+3. 4-line copy-paste usage example in README verified working end-to-end (scan a sample file, SARIF uploads to Code Scanning, results appear in PR Security tab).
+4. Link-ready URL for the Show HN post body.
+5. Commit hash + Marketplace listing URL posted to this NEXUS directive response by 07:00 PDT.
+
+**Verification (Wolf will independently check at 07:15 PDT)**:
+```bash
+# Repo exists + public
+curl -s -o /dev/null -w "%{http_code}" https://github.com/nxtg-ai/faultline-action
+
+# Marketplace listing exists
+curl -s https://github.com/marketplace | grep -i "faultline"
+
+# Action works — spawn a throwaway test repo + workflow, verify SARIF uploads
+```
+
+**One-engine-many-surfaces reminder**: the Action CALLS the existing `@nxtg/faultline` npm package. Do NOT fork engine code into the Action repo. If a missing flag or behavior is needed, add it to FP engine first (SARIF format flag), then Action repo just wraps.
+
+---
+
 ### DIRECTIVE-NXTG-20260420-05 — **P0**: Per-claim LLM verify latency fix (Show HN resume gate)
 **From**: NXTG-AI CoS (Wolf) — routed from FW team handoff | **Priority**: **P0**
 **Injected**: 2026-04-20 14:30 PDT | **Estimate**: S-M | **Status**: **DONE — 2026-04-20**
