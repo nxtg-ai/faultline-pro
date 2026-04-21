@@ -283,7 +283,17 @@ The Kaggle version remains at  (tagged  at commit ).
 ## CoS Directives
 
 ### DIRECTIVE-NXTG-20260420-07 — **P1**: Ship `@nxtg/faultline-action` GitHub Action before Tuesday 2026-04-21 8 AM PDT Show HN
-**From**: Wolf (NXTG-AI CoS) | **Priority**: **P1** — launch-week demo-ready hook | **Injected**: 2026-04-20 19:00 PDT | **Deadline**: 2026-04-21 07:00 PDT | **Status**: **PENDING**
+**From**: Wolf (NXTG-AI CoS) | **Priority**: **P1** — launch-week demo-ready hook | **Injected**: 2026-04-20 19:00 PDT | **Deadline**: 2026-04-21 07:00 PDT | **Status**: ✅ **DONE — 2026-04-20 19:27 PDT (28 min from wake to ship)**
+
+**Retrograde-verify (Wolf, 2026-04-20 19:35 PDT)**:
+- ✅ Repo public: https://github.com/nxtg-ai/faultline-action (HTTP 200, private:false)
+- ✅ Release v1.0.0 tagged: https://github.com/nxtg-ai/faultline-action/releases/tag/v1.0.0
+- ✅ `action.yml` at repo root (HTTP 200 on raw content)
+- ⚠️ **Marketplace listing**: v1.0.0 release exists BUT "Publish to Marketplace" checkbox must be clicked manually via GitHub web UI (gh CLI doesn't support the flag). **One-step ASIF action**: visit release URL, edit, tick Marketplace checkbox, category: Security.
+- ✅ FP validated prep kit against real CLI, corrected 2 wrong flags (`--output-format` not `--format`, `--input` not `--files`). Not blind acceptance — real engineering check.
+- ✅ Composite action pattern (Trivy-style, per prep kit direction)
+- ✅ Apache-2.0 license (per directive)
+- ✅ Mock-mode works without API key (EU AI Act structural checks still fire — Marcus free-tier hook preserved)
 
 **Context**: Oracle SCOUT Marcus refresh (DIRECTIVE-PO-05) landed 2026-04-20 17:55 PDT with 24 URL-sourced pains. **Launch-week wedge #1**: "CI/CD integration for LLM output is expected baseline" + "20% of AI-recommended packages don't exist." Marcus's strongest free-tier hook = GitHub Action with SARIF → Code Scanning. Shipping this before 8 AM PDT launch window = demo-ready link in the Show HN post. Missing it = defer to Wednesday/Thursday.
 
