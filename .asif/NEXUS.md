@@ -1985,6 +1985,42 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-20 (Cycle 327 — DIRECTIVE-07 closed, GitHub Action v1.0.0 shipped)
+
+**1. What shipped since last check-in (Cycle 326)?**
+
+- `nxtg-ai/faultline-action` repo created, committed, pushed to GitHub public
+- `v1.0.0` release created: https://github.com/nxtg-ai/faultline-action/releases/tag/v1.0.0
+- Composite action: install → scan → upload-sarif (3-step, no Docker)
+- NEXUS directive response + N-225 registered
+- 2 commits: `9cbeb60` (action repo), `0880032` (NEXUS)
+- Test count unchanged (4517) — Action repo is YAML/docs only, no engine changes
+
+**2. What surprised you?**
+
+Two prep kit flag errors would have broken the Action silently in CI. `--format sarif` doesn't exist (correct: `--output-format sarif`). `--files` doesn't exist (correct: `--input`). More importantly: `--dir` mode outputs JSON regardless of `--output-format` — SARIF only works via `--input` single-file mode. This is a CLI design gap: dir-mode SARIF would be useful for Actions scanning multi-file outputs. Filed mentally as tech debt; not blocking Show HN.
+
+The `gh release create` CLI doesn't expose the "Publish to Marketplace" checkbox — it's UI-only. Asif needs one manual click before the listing goes live. Documented in directive response.
+
+**3. Cross-project signals**
+
+The `set +e` / `SCAN_EXIT` pattern for CLI tools in composite GitHub Actions (ensure SARIF is written before non-zero exit) is reusable across any CLI-wrapping Action in the portfolio. If FW or any other project ships a GitHub Action, this pattern prevents "file not found" errors when `--fail-on` triggers a failure exit.
+
+**4. What would you prioritize next?**
+
+1. Asif manual click: publish to Marketplace (blocking Show HN action link)
+2. Gemini billing (gate 1, Asif action)
+3. Asif UAT pass (gate 3 — last Show HN gate)
+4. Claude model ID patch `claude_provider.ts:10` (S-sized, unblocked)
+5. N-224 search grounding scoping (post-Show HN)
+
+**5. Blockers / Questions for CoS**
+
+- **Marketplace publish (Asif action)**: Edit the v1.0.0 release on GitHub UI → check "Publish to GitHub Marketplace" → Category: Security.
+- **Q7**: Should `input` default to `README.md` (low friction, wrong file risk) or be required with no default (forces intentionality, breaks zero-config)? Recommendation: keep default `README.md` for Show HN — change post-launch.
+
+---
+
 > **Reflection cycle**: 2026-04-20 (Cycle 326 — no delta, same clean state)
 
 **1. What shipped since last check-in (Cycle 325)?**
