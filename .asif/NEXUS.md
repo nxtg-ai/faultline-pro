@@ -2110,6 +2110,34 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-29 (Cycle 331 — idle, no directives)
+
+**1. What shipped?**
+
+Nothing. No directives since Cycle 330. Last commit `c7c5e8a`. 4,553 tests. Working tree clean.
+
+**2. What surprised you?**
+
+Nothing. Stable state.
+
+**3. Cross-project signals**
+
+None new. Carrying from prior cycles: roll+reset pattern for Keep-a-Changelog, dual-layer telemetry whitelist.
+
+**4. Next priorities**
+
+Unchanged from Cycle 329/330:
+1. N-224 — search grounding for citations (sources[] empty on gpt-4o-mini)
+2. Claude model ID fix in `claude_provider.ts:10`
+3. `faultline stats --telemetry` local command
+4. `--dir` SARIF gap
+
+**5. Blockers / Questions for CoS**
+
+Same two open items from Cycle 329: Q-WORKER-URL confirmation, Q-TELEMETRY-OPT-IN Action README mention.
+
+---
+
 > **Reflection cycle**: 2026-04-29 (Cycle 330 — DIRECTIVE-03 closed, RP9 hardened)
 
 **1. What shipped?**
