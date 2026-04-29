@@ -3,7 +3,7 @@
 All notable changes to Faultline Pro are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [v0.5.3] — 2026-04-29
 
 ### Added
 
@@ -36,7 +36,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [v0.5.3] — 2026-04-16
+## [v0.5.3-dev] — 2026-04-16 (included in v0.5.3)
 
 ### Added
 
