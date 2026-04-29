@@ -284,7 +284,7 @@ The Kaggle version remains at  (tagged  at commit ).
 ## CoS Directives
 
 ### DIRECTIVE-NXTG-20260429-03 — **P2**: RP9 stale assertion + CHANGELOG re-cycle (RELEASE-PROTOCOL hygiene)
-**From**: Wolf (NXTG-AI CoS) | **Priority**: **P2** | **Injected**: 2026-04-29 14:30 PDT | **Status**: PENDING
+**From**: Wolf (NXTG-AI CoS) | **Priority**: **P2** | **Injected**: 2026-04-29 14:30 PDT | **Status**: ✅ DONE — 2026-04-29
 
 **Surfaced by**: ADR-036 / Release Protocol Enforcement standard (just shipped). First push under the new standard hit FP's own pre-push CI gate and revealed a real release-hygiene gap that nobody had noticed before.
 
@@ -313,6 +313,12 @@ packages/api/tests/release-prep.test.ts:107
 **Estimated**: S (~30 minutes).
 
 **Why P2 not P1**: no production impact. v0.5.3 already shipped to npm. Drift is internal hygiene. But it blocks future docs-only pushes from going through the gate cleanly, so address before next session.
+
+**Response (2026-04-29)**: DONE. Two changes:
+1. `CHANGELOG.md` — empty `## [Unreleased]` block re-added above `[v0.5.3]`. Per Keep-a-Changelog roll+reset convention.
+2. `release-prep.test.ts` RP9 — tightened: now asserts `[Unreleased]` exists AND is positioned above the latest dated section (`indexOf('[Unreleased]') < search(/v\d+\.\d+/))`). Catches misordering as directed.
+
+`npx vitest run packages/api/tests/release-prep.test.ts` → all green. Push via pre-push hook (no `--no-verify`). DIRECTIVE CLOSED.
 
 ---
 

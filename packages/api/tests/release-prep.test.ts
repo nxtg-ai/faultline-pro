@@ -102,9 +102,14 @@ describe('CHANGELOG.md — release-prep validation', () => {
     expect(changelog).toContain('## [v0.2.0]');
   });
 
-  // RP9: has an Unreleased section (post-v0.3.0 work)
-  it('RP9: has an [Unreleased] section for post-v0.3.0 work', () => {
+  // RP9: has an [Unreleased] section positioned above the latest dated release
+  // ADR-036: roll + reset — [Unreleased] must be re-added after every version roll
+  it('RP9: has an [Unreleased] section positioned above the latest dated release', () => {
     expect(changelog).toContain('## [Unreleased]');
+    const unreleasedIdx = changelog.indexOf('## [Unreleased]');
+    const latestVersionIdx = changelog.search(/## \[v\d+\.\d+\.\d+\]/);
+    expect(unreleasedIdx).toBeGreaterThanOrEqual(0);
+    expect(latestVersionIdx).toBeGreaterThan(unreleasedIdx);
   });
 
   // RP10: CHANGELOG mentions webhook resilience features (N-113–N-115)
