@@ -1,1 +1,3 @@
 npx tsc --noEmit && npx vitest run --coverage --reporter=dot
+release_protocol_enabled: true
+release_protocol_manifest: packages/cli/package.json

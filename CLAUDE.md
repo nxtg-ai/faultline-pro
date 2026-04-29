@@ -105,6 +105,21 @@ Rules that apply to this project (Critical tier — claim forensics is safety-cr
 
 Current oracle coverage: example-based (✅ 4,492 tests), property-based (✅ 19 properties — fast-check, N-76), contract (✅ 43 Zod schema tests — N-77/N-212), integration (✅ 12 E2E tests, N-81).
 
+## Release Protocol Enforcement (ASIF Standard, ADR-036)
+
+When you bump the version in `packages/cli/package.json` (the published `@nxtg/faultline`):
+1. **Tag**: `git tag vX.Y.Z && git push origin vX.Y.Z`
+2. **GH Release**: `gh release create vX.Y.Z --notes-from-tag` (or with CHANGELOG section)
+3. **Publish**: `cd packages/cli && npm publish` — verify with `npm view @nxtg/faultline version`
+4. **CHANGELOG**: roll `[Unreleased]` → `[vX.Y.Z] — YYYY-MM-DD` in CHANGELOG.md
+5. **Docs**: update any pinned version references in README.md / docs
+
+If you bump the version but skip steps 1–5, you've broken the release train. The Wolf-loop sense pass surfaces drift portfolio-wide; the daily `release-protocol-check.yml` action opens a `release-drift` issue. Atomic releases or no version bump.
+
+**Origin incident**: 2026-04-29 13:32 PDT — Worker shipped to production with v0.5.3 in repo, but npm at v0.5.2, no tag, no release, CHANGELOG `[Unreleased]`. Asif caught it. DIRECTIVE-NXTG-20260429-02 closed the gap. ADR-036 prevents recurrence.
+
+**Bypass (EMERGENCY ONLY)**: `git push --no-verify` — and document the bypass in NEXUS or HANDOFF.
+
 ## Dx3 Brain Integration
 On every session start, recall relevant context from Dx3 before starting work:
 - Use recall() to check for prior decisions, lessons, and patterns related to your current task
