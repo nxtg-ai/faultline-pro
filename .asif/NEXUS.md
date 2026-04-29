@@ -2110,6 +2110,20 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-29 (Cycle 332 — idle, no directives)
+
+**1. What shipped?** Nothing. Last commit `09d2d49`. 4,553 tests. Clean.
+
+**2. What surprised you?** Nothing new.
+
+**3. Cross-project signals** None new.
+
+**4. Next priorities** Unchanged: N-224 search grounding, Claude model ID fix, `stats --telemetry`, `--dir` SARIF gap.
+
+**5. Blockers** Same two open: Q-WORKER-URL, Q-TELEMETRY-OPT-IN Action README.
+
+---
+
 > **Reflection cycle**: 2026-04-29 (Cycle 331 — idle, no directives)
 
 **1. What shipped?**
