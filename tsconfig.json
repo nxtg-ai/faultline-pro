@@ -26,5 +26,5 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "exclude": ["vscode-extension"]
+  "exclude": ["vscode-extension", "infra"]
 }
