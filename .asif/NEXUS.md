@@ -283,6 +283,39 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
+### DIRECTIVE-NXTG-20260429-03 — **P2**: RP9 stale assertion + CHANGELOG re-cycle (RELEASE-PROTOCOL hygiene)
+**From**: Wolf (NXTG-AI CoS) | **Priority**: **P2** | **Injected**: 2026-04-29 14:30 PDT | **Status**: PENDING
+
+**Surfaced by**: ADR-036 / Release Protocol Enforcement standard (just shipped). First push under the new standard hit FP's own pre-push CI gate and revealed a real release-hygiene gap that nobody had noticed before.
+
+**Bypass disclosure**: Wolf pushed commit `880f792` (CLAUDE.md Layer 0 + .asif-ci config) using `git push --no-verify` because RP9 was failing on this docs-only change. Per ADR-036, all `--no-verify` bypasses must be documented in NEXUS or HANDOFF — this directive IS that documentation. The bypassed commit contains zero functional code: only `CLAUDE.md` (release-protocol guidance) and `.asif-ci` (release_protocol_manifest config). Neither file is reachable from the test suite.
+
+**Failing test**:
+```
+packages/api/tests/release-prep.test.ts:107
+  RP9: has an [Unreleased] section for post-v0.3.0 work
+  expect(changelog).toContain('## [Unreleased]')  → FAIL
+```
+
+**Root cause**: v0.5.3 release commit `0560c1b` correctly rolled `[Unreleased]` → `[v0.5.3] — 2026-04-29` per ADR-021. But the conventional Keep-a-Changelog flow is **roll + reset** — after dating the released section, a fresh empty `[Unreleased]` block goes back at the top so next-cycle changes have a home. RP9 is asserting the post-roll reset, not the dated section. The reset step was missed.
+
+**COMPASS Outcomes** (team picks the implementation):
+1. CHANGELOG.md ends a release flow with both `[v0.5.3] — 2026-04-29` (dated, immutable) AND `[Unreleased]` (empty, ready for next cycle). RP9 passes again.
+2. Release-prep tooling/docs reflect this as "step 5 of release: re-add empty `[Unreleased]` section after rolling".
+3. Optional: tighten RP9 to assert the empty `[Unreleased]` is positioned ABOVE the latest dated section (catches misordering).
+
+**Constraints**:
+- DO NOT delete or relax RP9 — it's catching a real hygiene gap.
+- Release procedure update should be tracked back to ADR-036 in `~/ASIF/standards/release-protocol-enforcement.md` (Wolf will amend the standard with a "Step 4b: re-add empty [Unreleased]" line based on team's resolution).
+
+**Acceptance**: `npx vitest run packages/api/tests/release-prep.test.ts` → all green. CHANGELOG has both dated v0.5.3 section and empty `[Unreleased]`. Push without `--no-verify` succeeds.
+
+**Estimated**: S (~30 minutes).
+
+**Why P2 not P1**: no production impact. v0.5.3 already shipped to npm. Drift is internal hygiene. But it blocks future docs-only pushes from going through the gate cleanly, so address before next session.
+
+---
+
 ### DIRECTIVE-NXTG-20260429-02 — **P1**: v0.5.3 Release Protocol (RELEASE-PROTOCOL)
 **From**: Wolf (NXTG-AI CoS) | **Priority**: **P1** | **Injected**: 2026-04-29 ~21:00 PDT | **Status**: ✅ DONE — 2026-04-29 21:05 PDT
 
