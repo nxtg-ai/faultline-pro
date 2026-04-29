@@ -2110,6 +2110,40 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-29 (Cycle 330 — DIRECTIVE-03 closed, RP9 hardened)
+
+**1. What shipped?**
+
+DIRECTIVE-NXTG-20260429-03 (P2, S-scope). Commit `4bace04`, 3 files, 16 insertions.
+- `CHANGELOG.md` — empty `[Unreleased]` block re-added above dated `[v0.5.3]` (roll+reset convention).
+- `release-prep.test.ts` RP9 — upgraded from existence check to ordering assertion: `[Unreleased]` must precede latest dated section. Catches misordering.
+All release-prep tests green. Pushed via normal gate, no `--no-verify`. 4,553 tests, no change to count.
+
+**2. What surprised you?**
+
+Nothing in this cycle. The fix was exactly as described: one CHANGELOG line + one test assertion upgrade. No hidden complexity.
+
+Carrying a meta-observation from Cycle 329 that's worth logging: the RP9 gap wouldn't have been caught at all without a test asserting the `[Unreleased]` invariant. The test was correct — the release process was wrong. This is the system working as designed. The ordering upgrade makes RP9 mutation-resistant to a future accidental misorder.
+
+**3. Cross-project signals**
+
+The roll+reset pattern is universal for any ASIF project using Keep-a-Changelog. The failure mode (roll without reset → test failure on next gate) will repeat in FW, Faultline Web, SDK, any project with a release-prep test asserting `[Unreleased]`. ADR-036 Step 4b ("re-add empty `[Unreleased]` after roll") should propagate to the portfolio CLAUDE.md template or the `release-sentinel` skill checklist — Wolf has this action.
+
+**4. Next priorities (no change from Cycle 329)**
+
+1. N-224 — Search grounding for citations (P1, sources[] empty on gpt-4o-mini)
+2. `faultline stats --telemetry` local command (fetch Worker `/api/stats`, print funnel)
+3. Claude model ID fix in `claude_provider.ts:10` (1-line, unblocks Claude provider in production)
+4. `--dir` SARIF gap (silent JSON when SARIF requested with `--dir`)
+
+**5. Blockers / Questions for CoS**
+
+None new. Carrying:
+- Q-WORKER-URL: confirm Worker URL is `https://faultline-telemetry.nxtg-ai.workers.dev` — dashboard fallback has this hardcoded.
+- Q-TELEMETRY-OPT-IN: mention `FAULTLINE_TELEMETRY=1` in Action README?
+
+---
+
 > **Reflection cycle**: 2026-04-29 (Cycle 329 — DIRECTIVE-01 + DIRECTIVE-02 shipped, v0.5.3 live)
 
 **1. What shipped since last check-in?**
