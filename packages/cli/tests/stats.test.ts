@@ -12,13 +12,16 @@ import { tmpdir } from 'node:os';
 
 import {
   fetchNpmDownloads,
+  fetchDailyRange,
   loadSnapshots,
   saveSnapshot,
   computeTrend,
   renderStats,
+  renderSparkline,
   statsCommand,
   type NpmDownloadPoint,
   type NpmSnapshot,
+  type NpmDailyPoint,
 } from '../cli/stats.js';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -402,6 +405,166 @@ describe('statsCommand', () => {
     const result = await statsCommand({ packages: ['@nxtg/faultline'], snapshotPath });
     expect(result.exitCode).toBe(0);
     expect(result.output).toMatch(/▲|\+105/);
+  });
+});
+
+// ── fetchDailyRange ───────────────────────────────────────────────────────────
+
+const MOCK_RANGE_RESPONSE = {
+  start: '2026-03-30',
+  end: '2026-04-28',
+  package: '@nxtg/faultline',
+  downloads: [
+    { day: '2026-03-30', downloads: 10 },
+    { day: '2026-03-31', downloads: 15 },
+    { day: '2026-04-01', downloads: 20 },
+  ] as NpmDailyPoint[],
+};
+
+describe('fetchDailyRange', () => {
+  beforeEach(() => { vi.stubGlobal('fetch', vi.fn()); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('ST-DR1: returns range response on success', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => MOCK_RANGE_RESPONSE,
+    } as Response);
+    const result = await fetchDailyRange('@nxtg/faultline', 30);
+    expect(result.downloads).toHaveLength(3);
+    expect(result.downloads[0]!.day).toBe('2026-03-30');
+    expect(result.downloads[2]!.downloads).toBe(20);
+  });
+
+  it('ST-DR2: URL uses range API with date range', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => MOCK_RANGE_RESPONSE,
+    } as Response);
+    await fetchDailyRange('@nxtg/faultline', 30);
+    const url = vi.mocked(fetch).mock.calls[0]?.[0] as string;
+    expect(url).toContain('downloads/range');
+    expect(url).toContain('%40nxtg%2Ffaultline');
+  });
+
+  it('ST-DR3: throws on non-ok response', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: false, status: 404, statusText: 'Not Found',
+    } as Response);
+    await expect(fetchDailyRange('@nxtg/faultline', 30)).rejects.toThrow(/404/);
+  });
+
+  it('ST-DR4: throws on network error', async () => {
+    vi.mocked(fetch).mockRejectedValue(new Error('network down'));
+    await expect(fetchDailyRange('@nxtg/faultline', 30)).rejects.toThrow('network down');
+  });
+});
+
+// ── renderSparkline ───────────────────────────────────────────────────────────
+
+describe('renderSparkline', () => {
+  it('ST-SP1: returns fallback string for empty input', () => {
+    const result = renderSparkline([]);
+    expect(result.length).toBeGreaterThan(0);
+    // Either dashes or "(no data)" — both valid fallbacks
+    expect(result).toMatch(/^[─(].*/);
+  });
+
+  it('ST-SP2: length equals width parameter', () => {
+    const points: NpmDailyPoint[] = Array.from({ length: 30 }, (_, i) => ({ day: `2026-04-${String(i + 1).padStart(2, '0')}`, downloads: i * 10 }));
+    const result = renderSparkline(points, 20);
+    expect([...result].length).toBe(20);
+  });
+
+  it('ST-SP3: uses block characters', () => {
+    const points: NpmDailyPoint[] = [
+      { day: '2026-04-01', downloads: 0 },
+      { day: '2026-04-02', downloads: 100 },
+    ];
+    const result = renderSparkline(points);
+    expect(result).toMatch(/[▁▂▃▄▅▆▇█]/);
+  });
+
+  it('ST-SP4: single data point renders as max block', () => {
+    const result = renderSparkline([{ day: '2026-04-01', downloads: 100 }]);
+    expect(result).toContain('█');
+  });
+
+  it('ST-SP5: all-zero downloads renders as all first-bar', () => {
+    const points: NpmDailyPoint[] = Array.from({ length: 5 }, (_, i) => ({ day: `2026-04-0${i + 1}`, downloads: 0 }));
+    const result = renderSparkline(points, 5);
+    expect(result).not.toContain('█');
+  });
+
+  it('ST-SP6: does not render more than width characters', () => {
+    const points: NpmDailyPoint[] = Array.from({ length: 50 }, (_, i) => ({ day: `2026-03-${String(i + 1).padStart(2, '0')}`, downloads: i }));
+    const result = renderSparkline(points, 28);
+    expect([...result].length).toBeLessThanOrEqual(28);
+  });
+});
+
+// ── statsCommand — daily trend ────────────────────────────────────────────────
+
+describe('statsCommand — daily trend', () => {
+  let tmpDir: string;
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'fl-stats-'));
+    vi.stubGlobal('fetch', vi.fn());
+  });
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+    vi.unstubAllGlobals();
+  });
+
+  it('ST-DT1: daily trend appears in output when fetchDailyRange succeeds', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({ ok: true, json: async () => MOCK_POINT } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => MOCK_RANGE_RESPONSE } as Response);
+    const result = await statsCommand({
+      packages: ['@nxtg/faultline'],
+      snapshotPath: join(tmpDir, 'snaps.json'),
+      dailyTrend: true,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain('30-DAY DAILY TREND');
+  });
+
+  it('ST-DT2: sparkline appears in trend section', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({ ok: true, json: async () => MOCK_POINT } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => MOCK_RANGE_RESPONSE } as Response);
+    const result = await statsCommand({
+      packages: ['@nxtg/faultline'],
+      snapshotPath: join(tmpDir, 'snaps.json'),
+      dailyTrend: true,
+    });
+    expect(result.output).toContain('Sparkline:');
+  });
+
+  it('ST-DT3: daily trend failure is non-fatal (weekly stats still shown)', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({ ok: true, json: async () => MOCK_POINT } as Response)
+      .mockRejectedValueOnce(new Error('range API down'));
+    const result = await statsCommand({
+      packages: ['@nxtg/faultline'],
+      snapshotPath: join(tmpDir, 'snaps.json'),
+      dailyTrend: true,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain('205'); // weekly stats still present
+  });
+
+  it('ST-DT4: dailyTrend:false skips range fetch', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true, json: async () => MOCK_POINT,
+    } as Response);
+    await statsCommand({
+      packages: ['@nxtg/faultline'],
+      snapshotPath: join(tmpDir, 'snaps.json'),
+      dailyTrend: false,
+    });
+    // Only 1 fetch call (the weekly point), not 2
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
   });
 });
 

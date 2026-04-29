@@ -1,0 +1,16 @@
+{
+  "name": "@nxtg/faultline-telemetry-worker",
+  "version": "1.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250430.0",
+    "typescript": "^5.4.5",
+    "wrangler": "^4.0.0"
+  }
+}

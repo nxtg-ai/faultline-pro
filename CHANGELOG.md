@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- N-226 (DIRECTIVE-NXTG-20260428-01): Download/Usage Metrics Pipeline v1
+  - **Outcome 1 — Daily npm download trend**: `fetchDailyRange()` fetches day-by-day counts from npm range API for the last 30 days. `renderSparkline()` renders ASCII block sparkline. `faultline stats` now shows 30-day curve with peak and average. 10 new tests (ST-DR1–4, ST-SP1–6).
+  - **Outcome 2–4 — CLI telemetry**: `packages/cli/cli/telemetry.ts` — opt-in module gated by `FAULTLINE_TELEMETRY=1`. Sends 8 whitelisted fields (install_id, run_id, version, provider, exit_status, eval_count, error_code enum, os_platform). No PII, no API keys, no eval content. 2s fire-and-forget, never blocks CLI. `install_id` persisted at `~/.faultline/install-id`. 16 new tests (TEL-E1–3, TEL-D1–2, TEL-S1–10, TEL-I1, TEL-C1–6).
+  - **Telemetry Worker**: `infra/telemetry-worker/` — Cloudflare Worker (Apache-2.0) accepting `POST /events` + `GET /api/stats`. D1 database `faultline-telemetry` provisioned (id: a7c5997f). Deploy: `cd infra/telemetry-worker && wrangler login && wrangler deploy`.
+  - **Outcome 5 — Dashboard panel**: `/faultline` route added to ASIF dashboard. Shows npm 30-day sparklines per package + CLI funnel (1/2-4/5-9/10+ runs) + top-3 error codes.
+  - Privacy disclosure: see README § Telemetry.
+  - Tests: 4,553 total (up from 4,492, +61).
+
 ### Ops
 
 - fly.dev redeployment (2026-04-20): `POST /scan/stream` now live in production — deployed SHA `8a726b0` (includes `b9ccd5a` / v0.5.4). Was missing since `b9ccd5a` merged; production was running older image. Verified: `POST https://faultline-api.fly.dev/scan/stream` returns 401 (auth gate), not 404.

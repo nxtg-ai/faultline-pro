@@ -36,8 +36,9 @@ import { getStaleScans, getScanUsage, getScansPrunePreview, pruneScans, formatSt
 import { streamScan, formatStreamResult } from './stream-client.js';
 import { buildEuComplianceReport, renderComplianceReportJson, renderComplianceReportPdf, renderComplianceReportMarkdown, renderComplianceReportSarif, renderComplianceReportHtml, evaluateComplianceGate, renderCiGateOutput, diffComplianceReports, renderComplianceDiffOutput, loadComplianceConfig } from './compliance-report.js';
 import { statsCommand } from './stats.js';
+import { sendTelemetry, classifyError } from './telemetry.js';
 
-const VERSION = '0.5.2';
+const VERSION = '0.5.3';
 
 const API_KEY_MAP: Record<string, string> = {
   claude: 'ANTHROPIC_API_KEY',
@@ -817,8 +818,10 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
       try {
         result = await scan(text, providerName, minConfidence, ruleNames, spinner.onProgress);
         spinner.succeed('Scan complete');
+        sendTelemetry({ version: VERSION, provider: result.provider, exit_status: 0, eval_count: result.claims.length });
       } catch (err) {
         spinner.fail('Scan failed');
+        sendTelemetry({ version: VERSION, provider: providerName ?? 'unknown', exit_status: 1, eval_count: 0, error_code: classifyError(err) });
         throw err;
       }
 

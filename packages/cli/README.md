@@ -219,6 +219,34 @@ Contact: [hello@nxtg.ai](mailto:hello@nxtg.ai)
 
 ---
 
+## Telemetry
+
+Faultline Pro collects **optional, anonymized** usage telemetry to improve reliability and prioritize development. Telemetry is **opt-in only** — it is never sent unless you explicitly enable it.
+
+**To enable:**
+```bash
+export FAULTLINE_TELEMETRY=1
+```
+
+**What is collected** (when enabled):
+
+| Field | Value |
+|---|---|
+| `install_id` | Anonymous UUID created once per install (`~/.faultline/install-id`) |
+| `run_id` | UUID per run |
+| `version` | CLI version string |
+| `provider` | Provider name (`gemini`, `openai`, `claude`, `perplexity`, `mock`) |
+| `exit_status` | `0` (success) or `1` (error) |
+| `eval_count` | Number of claims scanned |
+| `error_code` | Enumerated error code only — never raw `error.message` |
+| `os_platform` | `linux`, `darwin`, or `win32` |
+
+**What is never collected**: API keys, eval content, file paths, hostnames, IP addresses, email, or any personally identifiable information.
+
+Telemetry is processed by a Cloudflare Worker (operator: Cloudflare, Inc.) and stored in Cloudflare D1. The telemetry module source is Apache-2.0 licensed: `packages/cli/cli/telemetry.ts`.
+
+---
+
 ## License
 
 [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0)

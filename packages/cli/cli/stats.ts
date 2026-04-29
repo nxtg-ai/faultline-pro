@@ -1,10 +1,11 @@
 /**
  * Faultline Stats — npm download metrics for @nxtg/faultline and @nxtg/faultline-sdk.
  *
- * Fetches weekly download counts from the public npm registry API and persists
+ * Fetches weekly + daily-range download counts from the public npm registry API and persists
  * snapshots to `.faultline/stats-snapshots.json` for trend analysis.
  *
  * N-214 — DIRECTIVE-NXTG-20260404-01
+ * N-226 — DIRECTIVE-NXTG-20260428-01 (daily trend curve)
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -43,6 +44,10 @@ export interface StatsOptions {
   packages?: string[];
   snapshotPath?: string;
   noSave?: boolean;
+  /** Include 30-day daily trend sparkline (default: true) */
+  dailyTrend?: boolean;
+  /** Number of days for range fetch (default: 30) */
+  rangeDays?: number;
 }
 
 export interface StatsResult {
@@ -56,6 +61,23 @@ const NPM_API_BASE = 'https://api.npmjs.org/downloads/point/last-week';
 const DEFAULT_SNAPSHOT_PATH = '.faultline/stats-snapshots.json';
 const DEFAULT_PACKAGES = ['@nxtg/faultline', '@nxtg/faultline-sdk'];
 const MAX_SNAPSHOTS = 52; // keep one year of weekly snapshots
+const NPM_RANGE_BASE = 'https://api.npmjs.org/downloads/range';
+
+// ── Daily range types ──────────────────────────────────────────────────────────
+
+/** One day entry from npm range API */
+export interface NpmDailyPoint {
+  day: string;       // YYYY-MM-DD
+  downloads: number;
+}
+
+/** Response from https://api.npmjs.org/downloads/range/{start}:{end}/{pkg} */
+export interface NpmRangeResponse {
+  start: string;
+  end: string;
+  package: string;
+  downloads: NpmDailyPoint[];
+}
 
 // ── Core functions ────────────────────────────────────────────────────────────
 
@@ -72,6 +94,33 @@ export async function fetchNpmDownloads(pkg: string): Promise<NpmDownloadPoint> 
   }
   const data = await res.json() as NpmDownloadPoint;
   return data;
+}
+
+/**
+ * Fetch day-by-day download counts for the last N days.
+ * Uses the npm range API endpoint.
+ */
+export async function fetchDailyRange(pkg: string, days = 30): Promise<NpmRangeResponse> {
+  const end = new Date();
+  const start = new Date(end);
+  start.setDate(start.getDate() - days + 1);
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  const encoded = encodeURIComponent(pkg);
+  const url = `${NPM_RANGE_BASE}/${fmt(start)}:${fmt(end)}/${encoded}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`npm range API error for "${pkg}": ${res.status} ${res.statusText}`);
+  }
+  return res.json() as Promise<NpmRangeResponse>;
+}
+
+/** Render a sparkline bar chart for daily downloads (ASCII, 30-char wide). */
+export function renderSparkline(points: NpmDailyPoint[], width = 28): string {
+  if (points.length === 0) return '(no data)';
+  const vals = points.map((p) => p.downloads);
+  const max = Math.max(...vals, 1);
+  const bars = '▁▂▃▄▅▆▇█';
+  return vals.slice(-width).map((v) => bars[Math.min(7, Math.floor((v / max) * 8))]).join('');
 }
 
 /** Load existing snapshots from disk. Returns [] if the file doesn't exist. */
@@ -206,6 +255,8 @@ export function renderStats(
 export async function statsCommand(opts: StatsOptions = {}): Promise<StatsResult> {
   const packages = opts.packages ?? DEFAULT_PACKAGES;
   const snapshotPath = opts.snapshotPath ?? DEFAULT_SNAPSHOT_PATH;
+  const includeDailyTrend = opts.dailyTrend ?? true;
+  const rangeDays = opts.rangeDays ?? 30;
 
   const points: NpmDownloadPoint[] = [];
   const errors: string[] = [];
@@ -237,6 +288,30 @@ export async function statsCommand(opts: StatsOptions = {}): Promise<StatsResult
   }
 
   let output = renderStats(points, snapshots);
+
+  // Fetch and render daily trend curves
+  if (includeDailyTrend) {
+    const rangeSections: string[] = [];
+    for (const pkg of packages) {
+      try {
+        const range = await fetchDailyRange(pkg, rangeDays);
+        const spark = renderSparkline(range.downloads);
+        const total = range.downloads.reduce((s, p) => s + p.downloads, 0);
+        const peak = range.downloads.reduce((best, p) => p.downloads > best.downloads ? p : best, range.downloads[0] ?? { day: '?', downloads: 0 });
+        rangeSections.push(
+          `\n${pkg} — last ${rangeDays} days (${range.start} → ${range.end})\n` +
+          `  Sparkline: ${spark}\n` +
+          `  Total: ${total.toLocaleString()}  Peak: ${peak.downloads.toLocaleString()} on ${peak.day}`,
+        );
+      } catch {
+        // Non-fatal: weekly stats already shown above
+      }
+    }
+    if (rangeSections.length > 0) {
+      output += '\n\n=== 30-DAY DAILY TREND ===' + rangeSections.join('\n');
+    }
+  }
+
   if (errors.length > 0) {
     output += `\n\nWarnings (partial data):\n${errors.join('\n')}`;
   }
