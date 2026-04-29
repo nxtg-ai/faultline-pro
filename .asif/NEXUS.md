@@ -283,8 +283,22 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
+### DIRECTIVE-NXTG-20260429-02 — **P1**: v0.5.3 Release Protocol (RELEASE-PROTOCOL)
+**From**: Wolf (NXTG-AI CoS) | **Priority**: **P1** | **Injected**: 2026-04-29 ~21:00 PDT | **Status**: ✅ DONE — 2026-04-29 21:05 PDT
+
+**Outcomes**:
+1. ✅ `git tag v0.5.3` — pushed to origin
+2. ✅ GitHub release `v0.5.3` — https://github.com/nxtg-ai/faultline-pro/releases/tag/v0.5.3 — published 2026-04-29T21:01:08Z
+3. ✅ `npm publish @nxtg/faultline@0.5.3` — verified: `npm view @nxtg/faultline version` → `0.5.3`
+4. ✅ CHANGELOG `[Unreleased]` → `[v0.5.3] — 2026-04-29` — committed `0560c1b`
+5. ✅ README install snippet already references latest (no pinned version to update)
+
+**Promise**: PRM-NXTG-20260429-04 — CLOSED.
+
+---
+
 ### DIRECTIVE-NXTG-20260428-01 — **P1**: Faultline Pro Download/Usage Metrics Pipeline (REVENUE-LOCK)
-**From**: Wolf (NXTG-AI CoS) routing Emma's CLX9 brief | **Priority**: **P1** | **Injected**: 2026-04-28 19:42 PDT | **Estimate**: M (1-2 days for v1) | **Status**: ✅ SHIPPED — 2026-04-29
+**From**: Wolf (NXTG-AI CoS) routing Emma's CLX9 brief | **Priority**: **P1** | **Injected**: 2026-04-28 19:42 PDT | **Estimate**: M (1-2 days for v1) | **Status**: ✅ DONE — 2026-04-29 13:32 PDT (Worker live, /api/stats verified HTTP 200 valid JSON)
 
 **Authority**: Asif `/revenue-lock` engaged 2026-04-28 18:23 CDT (Dx3 `0f075b75-cc31-4d61-ba54-42ee1a8471e0`). EU AI Act enforcement gate — 95 days.
 
@@ -335,7 +349,7 @@ The Kaggle version remains at  (tagged  at commit ).
 **Infrastructure**:
 - D1 database: `faultline-telemetry` (id: `a7c5997f-9e8f-4d1e-973c-2243a1495537`, region: WNAM)
 - Worker code: `infra/telemetry-worker/` (Apache-2.0, Cloudflare operator)
-- **⚠ ONE-STEP NEEDED**: Worker not yet deployed (wrangler not auth'd). Asif: `cd infra/telemetry-worker && wrangler login && wrangler deploy`. D1 schema provisioned. Dashboard shows setup note until Worker is live.
+- **Worker DEPLOYED** 2026-04-29 13:20 PDT by Asif: `https://faultline-telemetry.nxtg-ai.workers.dev` (Version ID: `66a5d8bc-825b-4088-a015-a095dfca941a`). Subdomain registered: `nxtg-ai.workers.dev` (account-level). TLS cert provisioning ~5-15 min from deploy (typical for fresh `*.workers.dev`). Wolf retrograde-verifies `/api/stats` once cert lands.
 
 **Privacy audit**: Whitelist enforced both client-side (telemetry.ts) and server-side (Worker validates against allowed sets). Tests TEL-S3 proves payload contains only 9 whitelisted fields. PII guards: no API keys, no eval content, no file paths, no IP addresses.
 
