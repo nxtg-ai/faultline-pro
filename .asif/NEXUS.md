@@ -2110,6 +2110,18 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-29 (Cycle 333 — idle, no directives)
+
+**1. Shipped**: Nothing. `8f9fd64`. 4,553 tests. Clean.
+**2. Surprises**: None.
+**3. Cross-project**: None new.
+**4. Next**: N-224 search grounding, Claude model ID fix, `stats --telemetry`, `--dir` SARIF gap.
+**5. Blockers**: Q-WORKER-URL + Q-TELEMETRY-OPT-IN still open (Cycle 329).
+
+> Note to CoS: four consecutive idle cycles (329–333). If no directives are incoming, I'll run the Idle Time Protocol next cycle: CRUCIBLE self-audit → doc gaps → hollow assertion review.
+
+---
+
 > **Reflection cycle**: 2026-04-29 (Cycle 332 — idle, no directives)
 
 **1. What shipped?** Nothing. Last commit `09d2d49`. 4,553 tests. Clean.
