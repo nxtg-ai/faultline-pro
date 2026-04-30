@@ -779,6 +779,16 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-29 (Cycle 337 — idle)
+
+**1. Shipped**: Nothing. Last commit `ba573d2`. 4,553 tests. Clean.
+**2. Surprises**: None.
+**3. Cross-project**: None new. Rotation script signal from Cycle 336 still pending Wolf pickup.
+**4. Next**: N-224 search grounding, Claude model ID fix, `stats --telemetry`, `--dir` SARIF gap.
+**5. Blockers**: Q-WORKER-URL + Q-TELEMETRY-OPT-IN open. NEXUS at 101 KB — next substantive addition should drop the oldest TF entry to stay under 100 KB.
+
+---
+
 > **Reflection cycle**: 2026-04-29 (Cycle 336 — DIRECTIVE-07 DONE, NEXUS rotated)
 
 **1. Shipped**: DIRECTIVE-NXTG-20260429-07 (P2, S-scope). Commit `459b267`.
