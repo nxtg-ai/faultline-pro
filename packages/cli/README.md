@@ -120,7 +120,7 @@ Switch providers with `--provider <name>`. No code changes required.
 
 Faultline classifies AI outputs by EU AI Act risk tier. High-risk outputs (Article 6 / Annex III) receive article-level findings with recommended mitigations. `POST /scan/eu-report` generates an audit-ready PDF covering Articles 6, 9, 13, 14, and 15.
 
-The EU AI Act's high-risk AI system requirements take effect **August 2026**. Run Faultline against your AI outputs now to identify compliance gaps before the deadline.
+The EU AI Act's high-risk AI system requirements take effect when the regulation enters force. Faultline maps each verified claim to the applicable risk tier and surfaces the triggered articles with evidence.
 
 ---
 

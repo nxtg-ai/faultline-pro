@@ -1,18 +1,18 @@
-# Faultline — AI Claim Forensics
+# Faultline — Agent Governance for AI Outputs
 
-**The only AI safety CLI not owned by an AI lab.**
+**Future-proof your agent stack. The only governance CLI not owned by an AI lab.**
 
-Forensic verification for AI-generated text. Faultline decomposes output into atomic claims, verifies each against live evidence, maps findings to EU AI Act risk tiers, and enforces a CI gate before hallucinations reach production. Provider-agnostic: Gemini, OpenAI, Claude, Perplexity, or Mock — switch at runtime with no code changes.
+Faultline decomposes AI-generated output into atomic claims, verifies each against live evidence, and enforces a CI gate before hallucinations reach production. Built for teams governing LLM agents at scale — provider-agnostic across Gemini, OpenAI, Claude, Perplexity, and local models.
 
 [![CI](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@nxtg/faultline.svg)](https://www.npmjs.com/package/@nxtg/faultline)
-[![Tests](https://img.shields.io/badge/tests-4492%20passing-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-4553%20passing-brightgreen)](tests/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 
-### ⚡ EU AI Act compliance-ready — 104 days to Aug 2, 2026
+### Audit-grade governance infrastructure
 
-Faultline ships Art. 9 (risk register), Art. 12 (tamper-evident audit log), and Art. 14 (human sign-off) as verifiable code paths — not marketing copy. Auditors validate the SHA-256 chain manifest with only `openssl dgst -sha256`, no Faultline tooling required. See [EU AI Act — August 2026](#eu-ai-act--august-2026) for the three endpoints.
+Faultline ships Art. 9 (risk register), Art. 12 (tamper-evident audit log), and Art. 14 (human sign-off) as verifiable code paths — not marketing copy. Auditors validate the SHA-256 chain manifest with only `openssl dgst -sha256`, no Faultline tooling required. These capabilities map to the EU AI Act, NIST AI RMF, and ISO 42001 — whichever framework applies to your stack.
 
 ---
 
@@ -431,9 +431,9 @@ Promptfoo tests your prompts. DeepEval scores your RAG pipeline. **Faultline aud
 
 ---
 
-## EU AI Act — August 2026
+## EU AI Act Compliance Evidence
 
-The EU AI Act's high-risk AI system requirements take effect August 2026. Faultline maps each verified claim to the applicable risk tier:
+Faultline maps each verified claim to the applicable risk tier under the EU AI Act (when high-risk AI system requirements take effect) and other AI governance frameworks:
 
 - **Unacceptable risk** — Article 5 prohibited practices (social scoring, real-time biometric surveillance)
 - **High risk** — Annex III systems (medical, recruitment, credit, law enforcement)

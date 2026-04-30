@@ -38,7 +38,7 @@ import { buildEuComplianceReport, renderComplianceReportJson, renderComplianceRe
 import { statsCommand } from './stats.js';
 import { sendTelemetry, classifyError } from './telemetry.js';
 
-const VERSION = '0.5.3';
+const VERSION = '0.6.0';
 
 const API_KEY_MAP: Record<string, string> = {
   claude: 'ANTHROPIC_API_KEY',

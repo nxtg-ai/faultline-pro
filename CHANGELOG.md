@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [v0.6.0] — 2026-04-29
+
+### Changed
+
+- **Narrative pivot — agent governance framing** (DIRECTIVE-NXTG-20260429-05): Faultline Pro is repositioned as "agent governance" — the empty-marketplace category. The EU AI Act deadline (Aug 2, 2026) was contingent on the Digital Omnibus, which proposes a 16-24 month delay; pitching urgency burned trust with enterprise legal teams. This release drops date-pinned urgency framing and leads with "future-proof your agent stack."
+  - `README.md`: H1 now "Agent Governance for AI Outputs"; hero subheading "Audit-grade governance infrastructure"; EU AI Act section renamed to "EU AI Act Compliance Evidence" with neutral framing; test badge updated to 4,553.
+  - `packages/cli/README.md`: EU AI Act section opening no longer references "the deadline."
+  - `packages/cli/package.json` description: "Agent governance for AI outputs. Verify claims, detect hallucinations, enforce compliance gates — provider-agnostic."
+  - `packages/cli/package.json` keywords: `agent-governance` + `ai-governance` now lead; `eu-ai-act` and `compliance` retained as supporting context.
+  - No behavior, API, or test changes. 4,553 tests unchanged.
+
 ## [v0.5.3] — 2026-04-29
 
 ### Added
