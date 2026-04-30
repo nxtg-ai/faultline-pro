@@ -257,8 +257,16 @@
 - **Shipped**: N-02, N-04, N-10, N-17
 
 ### COMPLIANCE — "Regulation Ready"
-- EU AI Act risk classification
+- EU AI Act risk classification, Articles 9 / 12 / 14, NIST AI RMF, ISO 42001, internal model risk policies
 - **Shipped**: N-03
+- **Pivot 2026-04-29**: positioning demoted from hero to supporting context. EU AI Act is now ONE trigger among many under the broader **Agent Governance** category (see Origin §Strategic Reset). Capability stays; framing changes.
+
+### AGENT-GOVERNANCE — "The Empty Marketplace Vertical" (NEW — 2026-04-29)
+- Faultline Pro's primary positioning as of strategic reset 2026-04-29 17:06 CDT (Asif).
+- Wedge: agent-output verification + audit trail + risk-tier classification, distributed via marketplace channels (AWS, Azure, AppExchange, ServiceNow Store, MCP marketplaces).
+- Reasoning: Digital Omnibus likely defers EU AI Act 16-24mo → urgency framing burns trust → "future-proof your agent stack" lands where "comply by Aug 2" no longer does.
+- Dx3 grounding: *"governance is the most valuable empty vertical, zero PMO/portfolio governance MCP tools."*
+- Driving directives: DIRECTIVE-NXTG-20260429-04 (FW landing), DIRECTIVE-NXTG-20260429-05 (FP README + npm).
 
 ### SYNTHESIS — "Not Just Finding, Fixing"
 - Critique of reasoning gaps + improved prompt generation
@@ -277,11 +285,68 @@
 
 Split from P-08 Faultline (Kaggle) on 2026-03-03. Asif rewrote the Kaggle Google-ADK-only entry as an FM-agnostic multi-provider CLI tool. 868 tests, 4 providers, 13 shipped initiatives.
 
+### Strategic Reset — 2026-04-29 (Asif APPROVED 17:06 CDT)
+- **What changed**: positioning pivot from "EU AI Act compliance ahead of Aug 2" to "agent governance — future-proof your agent stack."
+- **Why**: Digital Omnibus tracking 16-24mo deadline deferral; enterprise legal teams reading the writing on the wall and waiting for May 13 trilogue. Date-pinned urgency now category-eroding.
+- **Truth state**: `~/ASIF/governance/eu-ai-act-status.json` (status: CONTINGENT). All references must read from this source — no hardcoded Aug 2 anywhere.
+- **What's intact**: Apache-2.0 license, 4,557 tests, 5 providers, telemetry pipeline live (`https://faultline-telemetry.nxtg-ai.workers.dev`), `/faultline` dashboard route 200, npm `@nxtg/faultline` v0.5.3, open-core revenue model.
+- **Driving directives**: DIRECTIVE-NXTG-20260429-04 (FW), DIRECTIVE-NXTG-20260429-05 (FP).
+- **Source briefing**: `~/ASIF/dashboard/briefings/strategic-reset-20260429-1646.md`.
+
 The Kaggle version remains at  (tagged  at commit ).
 
 ---
 
 ## CoS Directives
+
+### DIRECTIVE-NXTG-20260429-05 — P1: FP narrative reshape — drop urgency, lead category-creation
+**From**: Wolf (NXTG-AI CoS) via Emma Note 143 | **Priority**: P1
+**Injected**: 2026-04-29 17:08 PDT | **Estimate**: M (1-3 days, can chunk) | **Status**: PENDING
+**Approval**: Asif APPROVED 2026-04-29 17:06 CDT (strategic reset briefing `dashboard/briefings/strategic-reset-20260429-1646.md` in ASIF). Companion directive: DIRECTIVE-NXTG-20260429-04 to faultline-web (P-08c) covers landing-side reshape.
+
+**Why this changed** (read this before touching copy):
+- Digital Omnibus is on track to defer the EU AI Act Aug 2 deadline by 16-24 months. Pitching urgency now to enterprise legal teams burns trust.
+- "Aug 2 / 104 days / comply by deadline" framing is now category-eroding. The product is intact; the narrative is the bug.
+- Truth state for the deadline lives in `~/ASIF/governance/eu-ai-act-status.json` (status: CONTINGENT). Do NOT hardcode Aug 2. Read from this file or omit dates entirely.
+
+**Outcomes** (NOT implementation — your team owns the path):
+
+1. **New positioning**: Faultline Pro is **"agent governance"** — the empty-marketplace category. The 30-second pitch should land as "future-proof your agent stack," NOT "comply by Aug 2." Dx3 brain quote that grounds this: *"governance is the most valuable empty vertical, zero PMO/portfolio governance MCP tools."*
+2. **EU AI Act demoted to one trigger of many**: keep the technical capability (Articles 9 / 12 / 14 mappings, risk tier classification, SHA-256 chain manifest) — these ship today and are real product. Surface them as supporting context, NOT the lead. Other triggers exist (NIST AI RMF, ISO 42001, internal model risk policies). Broaden, don't narrow.
+3. **Drop date-pinned urgency from README**. No "104 days," "Aug 2, 2026," "compliance-ready," "deadline." If a date references the EU AI Act, it should be neutral context ("when high-risk AI system requirements take effect under the EU AI Act") not urgency.
+4. **npm package metadata is part of this surface**: `package.json` `description` and `keywords` need to lead with "agent governance" framing, not "EU AI Act compliance." This affects npm search ranking and how 1,434+ existing consumers see the package on the registry.
+
+**Scope** (Faultline-Pro, P-08b):
+- `README.md` (root + any subpackage READMEs that ship public-facing copy)
+- `packages/cli/package.json` description + keywords (this is what publishes to npm as `@nxtg/faultline`)
+- Any in-CLI banner/help-text that leads with EU AI Act urgency
+- CHANGELOG entry under `[Unreleased]` documenting the narrative pivot — this is a real change to public surface
+- Version bump (your call: 0.5.4 patch since no behavior change, OR 0.6.0 minor to signal positioning change — I'd lean 0.6.0 because the public face changes meaningfully)
+
+**Out of scope** (do NOT touch):
+- Underlying scan engine, claim verification, risk tier classification, telemetry pipeline, providers — product is intact
+- Pricing or licensing (Apache-2.0 stays; open-core stays)
+- Faultline-web (P-08c) — covered by DIRECTIVE-NXTG-20260429-04
+- Marketplace listing build-out itself — separate workstream once messaging settles
+
+**Acceptance criteria**:
+- [ ] README hero (first 200 words) leads with "agent governance" / "future-proof your agent stack" framing — no Aug 2, no countdown
+- [ ] EU AI Act references survive ONLY as supporting context (capabilities table, technical docs) — never above the fold
+- [ ] `packages/cli/package.json` description + keywords reflect new positioning ("agent governance" forward, "EU AI Act compliance" demoted or removed)
+- [ ] No string-search hits for `Aug 2`, `August 2, 2026`, `104 days`, `comply by`, `compliance-ready` in user-facing copy (CHANGELOG history under prior versions OK)
+- [ ] CHANGELOG `[Unreleased]` documents the pivot; release follows ADR-036 Release Protocol (tag + GH release + npm publish + CHANGELOG roll)
+- [ ] All 4,557 existing tests still green
+- [ ] HANDOFF on ship — CoS will verify npm `view @nxtg/faultline` description/keywords + README hero live
+
+**Constraints**:
+- COMPASS: outcomes, not implementations. You know the codebase + npm publish flow better than CoS.
+- This is P1, not P0. "Thoughtful reshape, not rushed" per Asif. May 13 EU trilogue is the next external signal.
+- Honor existing CI gates + RP9 release protocol. No `--no-verify` shortcut pushes (and if you must, document the bypass in this NEXUS per ADR-036).
+- Coordinate with FW team only if a shared term needs alignment — but each repo ships independently per machine sovereignty.
+
+**Verification target**: HANDOFF on ship; CoS verifies via `npm view @nxtg/faultline description keywords` + README hero scrape + grep for absence of urgency strings.
+
+---
 
 ### DIRECTIVE-NXTG-20260429-03 — **P2**: RP9 stale assertion + CHANGELOG re-cycle (RELEASE-PROTOCOL hygiene)
 **From**: Wolf (NXTG-AI CoS) | **Priority**: **P2** | **Injected**: 2026-04-29 14:30 PDT | **Status**: ✅ DONE — 2026-04-29
