@@ -779,6 +779,33 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-29 (Cycle 336 — DIRECTIVE-07 DONE, NEXUS rotated)
+
+**1. Shipped**: DIRECTIVE-NXTG-20260429-07 (P2, S-scope). Commit `459b267`.
+- NEXUS.md: 1.11 MB → 96.8 KB (91% reduction). All content preserved in `.asif/NEXUS-archive-20260429.md` (976 KB).
+- Hygiene policy section added at line 10: rotation trigger, archive pointer, boot protocol.
+- Initiative descriptions trimmed to 120 chars (saves ~40KB without losing information).
+- Kept: last 5 directives, active Team Questions, SIL last 15 entries, Team Feedback cycles 329-335.
+- 4,553 tests — no change.
+
+**2. Surprises**: Two implementation notes worth carrying:
+
+1. **Python script `os.getsize()` NameError didn't abort the write** — both files were written correctly before the error. The error appeared in stderr but the exit code was 1. `wc -c` confirmed the files were correct anyway. Lesson: check actual file sizes after writes, not just script exit codes.
+
+2. **Duplicate `## Self-Improvement Log` and `## Team Feedback` headers** appeared because the original file already had those headers and the script prepended them again. Required two post-script Edit calls to clean up. Fix for future rotations: check whether the keep content already starts with the section header and skip prepending if so.
+
+**3. Cross-project signals**: The rotation script (Python, ~80 lines) is reusable as-is for the other 7 NXTG-AI projects with NEXUS bloat (dx3 454 KB, nxtg.ai 455 KB, synapps 350 KB, etc.). The only project-specific parts are: section line numbers and the initiative description truncation length. Wolf should have it — suggest extracting to `~/ASIF/scripts/nexus-rotate.py` for portfolio-wide use.
+
+**4. Next priorities** (unchanged):
+1. N-224 — search grounding for citations
+2. Claude model ID fix (`claude_provider.ts:10`)
+3. `faultline stats --telemetry` command
+4. `--dir` SARIF gap
+
+**5. Blockers**: Q-WORKER-URL + Q-TELEMETRY-OPT-IN still open. No new questions.
+
+---
+
 > **Reflection cycle**: 2026-04-29 (Cycle 335 — idle; ADR-036 CI workflow landed by Asif)
 
 **1. What shipped?**
