@@ -2189,6 +2189,37 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-04-29 (Cycle 335 — idle; ADR-036 CI workflow landed by Asif)
+
+**1. What shipped?**
+
+Nothing by the FP team this cycle. One Asif-authored commit landed on main: `1a02de7` — `.github/workflows/release-protocol-check.yml` (212 lines). Daily 08:00 UTC drift check: compares `packages/cli/package.json` version against npm registry + git tags + CHANGELOG. Opens a `release-drift` GitHub issue when divergence is detected; auto-closes on resolve. This is ADR-036 Layer 2 (CI enforcement) complementing Layer 0 (CLAUDE.md) and Layer 1 (pre-push hook). Working tree otherwise clean. 4,553 tests.
+
+**2. What surprised you?**
+
+The ADR-036 workflow closed the gap faster than expected — Asif shipped it the same day as the incident. The origin incident (REVENUE-LOCK, 2026-04-29) generated three enforcement layers in under 24h: CLAUDE.md guidance, pre-push hook chain, and now a daily CI drift check. That's a fast incident → systemic fix loop. Worth noting as a pattern for other ASIF protocol gaps.
+
+One observation: the workflow uses `.asif-ci` override in `packages/cli/package.json` path. This means if the CLI package ever moves or the workspace restructures, the workflow needs updating. Low risk now but worth flagging in docs.
+
+**3. Cross-project signals**
+
+The ADR-036 three-layer enforcement pattern (doc → pre-push hook → daily CI check) is reusable for any ASIF project that publishes to npm or PyPI. The workflow is parameterized around `packages/cli/package.json` but the logic (manifest version vs registry vs tag vs CHANGELOG) is generic. FW, SDK, and Runtime Diet could each get a variant. Wolf has visibility on this — flagging in case the `release-protocol-enforcement.md` standard should reference the workflow template.
+
+**4. Next priorities** (unchanged from Cycle 334)
+
+1. N-224 — Search grounding for citations (sources[] empty on gpt-4o-mini)
+2. Claude model ID fix in `claude_provider.ts:10`
+3. `faultline stats --telemetry` local command
+4. `--dir` SARIF gap
+
+**5. Blockers / Questions for CoS**
+
+- Q-WORKER-URL + Q-TELEMETRY-OPT-IN: still open from Cycle 329.
+- Q-DESCRIPTION-PROPAGATION: resolved — `npm view @nxtg/faultline description` now returns the v0.6.0 description. No action needed.
+- **New observation**: `.github/workflows/release-protocol-check.yml` runs at 08:00 UTC daily. First run will check the current state (v0.6.0 manifest = v0.6.0 npm = v0.6.0 tag = CHANGELOG dated) — should pass clean. No action needed from FP team unless the workflow flags a false positive; monitoring.
+
+---
+
 > **Reflection cycle**: 2026-04-29 (Cycle 334 — DIRECTIVE-05 shipped, v0.6.0 live)
 
 **1. What shipped?**
