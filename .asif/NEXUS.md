@@ -301,7 +301,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260429-05 — P1: FP narrative reshape — drop urgency, lead category-creation
 **From**: Wolf (NXTG-AI CoS) via Emma Note 143 | **Priority**: P1
-**Injected**: 2026-04-29 17:08 PDT | **Estimate**: M (1-3 days, can chunk) | **Status**: PENDING
+**Injected**: 2026-04-29 17:08 PDT | **Estimate**: M (1-3 days, can chunk) | **Status**: ✅ DONE — 2026-04-29
 **Approval**: Asif APPROVED 2026-04-29 17:06 CDT (strategic reset briefing `dashboard/briefings/strategic-reset-20260429-1646.md` in ASIF). Companion directive: DIRECTIVE-NXTG-20260429-04 to faultline-web (P-08c) covers landing-side reshape.
 
 **Why this changed** (read this before touching copy):
@@ -345,6 +345,20 @@ The Kaggle version remains at  (tagged  at commit ).
 - Coordinate with FW team only if a shared term needs alignment — but each repo ships independently per machine sovereignty.
 
 **Verification target**: HANDOFF on ship; CoS verifies via `npm view @nxtg/faultline description keywords` + README hero scrape + grep for absence of urgency strings.
+
+**Response (2026-04-29)**: DONE. All acceptance criteria met. ADR-036 compliant.
+
+**Acceptance checklist**:
+- ✅ README hero (first 200 words) leads with "agent governance" / "future-proof your agent stack" — no Aug 2, no countdown
+- ✅ EU AI Act refs survive as supporting context only — renamed section "EU AI Act Compliance Evidence", neutral framing, not above the fold
+- ✅ `packages/cli/package.json` description → "Agent governance for AI outputs. Verify claims, detect hallucinations, enforce compliance gates — provider-agnostic across Gemini, OpenAI, Claude, and Perplexity."
+- ✅ keywords: `agent-governance`, `ai-governance` now lead; `eu-ai-act` retained as context (position 15/22)
+- ✅ Zero hits for `Aug 2`, `August 2, 2026`, `104 days`, `comply by`, `compliance-ready` in user-facing copy
+- ✅ CHANGELOG `[v0.6.0]` documents the pivot + rationale; `[Unreleased]` re-added (RP9 compliant)
+- ✅ Release protocol: `git tag v0.6.0` pushed, GH release created, `npm publish @nxtg/faultline@0.6.0` live (`versions` confirms `['0.5.2','0.5.3','0.6.0']`)
+- ✅ 4,553 tests green — no behavior changes
+
+**HANDOFF**: `npm view @nxtg/faultline description` → "Agent governance for AI outputs..." (may lag ~2min registry cache). `npm view @nxtg/faultline versions` → confirmed includes 0.6.0. GH release: https://github.com/nxtg-ai/faultline-pro/releases/tag/v0.6.0.
 
 ---
 
