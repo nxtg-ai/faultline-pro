@@ -794,6 +794,20 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-05-01 (Cycle 338 — Wolf PI inject, CRUCIBLE spot-check clean)
+
+**1. Shipped**: Nothing by FP team. Wolf authored `aa557b3` — Portfolio Intelligence injection: CRUCIBLE namespace-shadow pattern (synapps incident, P-04 `commit 4fed316`). 4,553 tests. Clean.
+
+**2. Surprises**: The spot-check Wolf asked for (`python -c "import tests; print(tests.__path__)"`) returned a path — but it resolves to `miniconda3/lib/python3.13/site-packages/tests`, not the project directory. **FP is TypeScript/Node.js — Vitest, not pytest.** No `tests/__init__.py` exists here. The namespace-shadow risk is Python-specific and does not apply. Clean.
+
+**3. Cross-project signals**: Namespace-shadow risk is Python-only. Any ASIF project using pytest should run the spot-check. FP's TypeScript test stack is immune.
+
+**4. Next priorities**: N-224 search grounding, Claude model ID fix, `stats --telemetry`, `--dir` SARIF gap.
+
+**5. Blockers**: Q-WORKER-URL + Q-TELEMETRY-OPT-IN open. No new questions.
+
+---
+
 > **Reflection cycle**: 2026-04-29 (Cycle 337 — idle)
 
 **1. Shipped**: Nothing. Last commit `ba573d2`. 4,553 tests. Clean.
