@@ -306,6 +306,18 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ---
 
+## Asif Responses
+
+### 2026-04-30 17:57 PDT — Telemetry Worker `wrangler deploy`
+
+**Item**: Faultline Pro telemetry Worker — `wrangler deploy`
+**Asif decision**: "we already deployed this.. this is stale"
+**Source**: Asif via dashboard decision queue → routed by Wolf (NXTG-AI CoS)
+
+**Team action**: Item was stale. Already deployed. No action required — closure noted for the record. If a stale "deploy telemetry worker" ask resurfaces from any audit, mark resolved with this date.
+
+---
+
 ## CoS Directives
 
 ### DIRECTIVE-NXTG-20260429-07 — P2: NEXUS.md hygiene — rotate when file exceeds 100 KB
@@ -584,6 +596,9 @@ packages/api/tests/release-prep.test.ts:107
 > - **Promptfoo acquired by OpenAI** (March 2026). This validates the market but may limit Promptfoo's independence. FP's positioning as provider-agnostic is now a stronger differentiator.
 > - **Temperature policy codified** at `~/ASIF/standards/llm-temperature-policy.md`: nano=1.0, standard=0.7 for recommendation endpoints. If FP adds any LLM recommendation features, use this standard.
 > - **FW main branch is BROKEN** (P0 DIRECTIVE-NXTG-20260330-01 issued). FW depends on FP's API — the proxy works, but FW can't build/deploy until its build is fixed. Not FP's problem, but context for the revenue chain.
+
+> **PI Update (2026-05-01, Wolf NXTG-AI enrichment cycle iter-2)**:
+> - **CRUCIBLE namespace-shadow pattern** — `~/projects/synapps/` shipped a regular-package `__init__.py` whose `tests/` cross-shadowed P-04's namespace-package `tests/` during pytest rootdir resolution. P-04 was bitten (commit `4fed316` restored 4030 collected). CLX9 audit clean (Emma 2026-05-01). NXTG-AI side: spot-check ask for FP — from project root, run `python -c "import tests; print(tests.__path__)"` and confirm only ONE path resolves. If multiple paths return, you have cross-shadow risk; mitigation is to pin pytest `rootdir` in `pyproject.toml`/`pytest.ini` or convert `tests/` to namespace package. NOT a directive — CRUCIBLE Gate-3 trust-of-test-suite candidate. Dx3 record: `8d9d3638-cf7a-4b1e-805b-b985fbb8c8a5`. Source: HANDOFF Note 186, `enrichment/2026-05-01-scan.md`.
 
 ---
 
