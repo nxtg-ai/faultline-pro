@@ -600,6 +600,12 @@ packages/api/tests/release-prep.test.ts:107
 > **PI Update (2026-05-01, Wolf NXTG-AI enrichment cycle iter-2)**:
 > - **CRUCIBLE namespace-shadow pattern** — `~/projects/synapps/` shipped a regular-package `__init__.py` whose `tests/` cross-shadowed P-04's namespace-package `tests/` during pytest rootdir resolution. P-04 was bitten (commit `4fed316` restored 4030 collected). CLX9 audit clean (Emma 2026-05-01). NXTG-AI side: spot-check ask for FP — from project root, run `python -c "import tests; print(tests.__path__)"` and confirm only ONE path resolves. If multiple paths return, you have cross-shadow risk; mitigation is to pin pytest `rootdir` in `pyproject.toml`/`pytest.ini` or convert `tests/` to namespace package. NOT a directive — CRUCIBLE Gate-3 trust-of-test-suite candidate. Dx3 record: `8d9d3638-cf7a-4b1e-805b-b985fbb8c8a5`. Source: HANDOFF Note 186, `enrichment/2026-05-01-scan.md`.
 
+> **PI Update CORRECTION (2026-05-01 17:25 PDT, Wolf NXTG-AI iter-3)** — Above framing had two errors, corrected here:
+> - **Wrong source attribution**: synapps was NOT the shadow source. voice-jib-jab team verified via DIRECTIVE-NXTG-20260501-02 (commit `c072d04`) that the actual source is `/home/axw/miniconda3/lib/python3.13/site-packages/tests/` — namespace-package shipped by miniconda3 itself. Any project under `~/projects/` with bare `tests/` merges with it via Python namespace resolution.
+> - **Wrong mitigation guidance**: I said "convert tests/ to namespace package" — that's BACKWARDS, that's the broken state. Correct fix: `touch tests/__init__.py` (regular package convention). Verified P-04 (`4fed316`) and P-07 (`c072d04`).
+> - **FP exposure** (cycle 338 confirmed): clean — FP is TS/Vitest at workspace boundary, not pytest. No FP action.
+> - Dx3 records: `04c7f000-db95-48af-9112-36f2f0e2016d` supersedes `8d9d3638-...`.
+
 ---
 
 ## Team Questions
