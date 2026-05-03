@@ -1039,3 +1039,21 @@ In order:
 
 ---
 
+
+### DIRECTIVE-NXTG-20260503-02 — P1: Confirm maintenance posture + scope minimal install/usage metrics
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-05-03 14:30 PDT | **Estimate**: S=hours | **Status**: PENDING
+**Origin**: Today's weekly alignment — Faultline → MAINTENANCE MODE (compliance-trigger reactivation only). Emma HANDOFF Note 198 surfaces sense script flagging two stale P1s.
+
+**Action Items**:
+1. Confirm `.asif/NEXUS.md` Status block reflects MAINTENANCE posture explicitly (no growth work, react to compliance triggers only). Reactivation gate = "EU AI Act deadline confirmed final + non-trivial usage detected".
+2. Reframe "EU AI Act Aug 2 — feature completeness required" line as **CONTINGENT**. Source: `~/ASIF/governance/eu-ai-act-status.json`. The Digital Omnibus may delay 16-24mo. Maintenance posture remains correct under both branches.
+3. Scope a minimal install/usage metrics pipeline — just enough signal to detect the "non-trivial usage" half of the reactivation trigger. NOT full PLG analytics. CLI install count + CLI invocation count is sufficient. Recommend the lightest possible mechanism (existing endpoint, opt-in telemetry, npm download stats — team picks).
+4. Update NEXUS NEXT_STEPS to remove the two stale P1s once items 1-3 are committed. Leave reactivation trigger language so the trigger is auditable.
+
+**DoD**: NEXUS Status = MAINTENANCE + EU AI Act = CONTINGENT + metrics scope written into NEXUS as a tracked item with decision-point criteria. PASS when sense script no longer flags those two as P1 NEXT_STEPS.
+
+**Constraints**: No growth work. No new features beyond what's needed to detect demand. Stripe/billing/PLG are out of scope.
+
+**Response** (filled by team): inline below.
+
