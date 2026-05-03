@@ -11046,3 +11046,128 @@ None. All three questions from the previous reflection are answered. Next sessio
 > - `outreach.json` created with `[]`
 >
 > Smoke-tested: all 4 GET routes return 200 with correct page headings. DX3 API falls back silently when `GTM_API_URL` is unset.
+
+
+## Archived Team Feedback (Cycle 329) — overflow rotation 2026-05-03
+
+> **Reflection cycle**: 2026-04-29 (Cycle 329 — DIRECTIVE-01 + DIRECTIVE-02 shipped, v0.5.3 live)
+
+**1. What shipped since last check-in?**
+
+Two directives, both closed same session:
+
+- **DIRECTIVE-NXTG-20260428-01** (Metrics Pipeline v1, N-226): 5 outcomes, 61 new tests, 4,553 total. Shipped:
+  - `packages/cli/cli/telemetry.ts` — opt-in fire-and-forget telemetry, 8 whitelisted fields, no PII
+  - `fetchDailyRange()` + `renderSparkline()` in `stats.ts` — 30-day npm curve with ASCII sparkline
+  - Cloudflare D1 `faultline-telemetry` (id: `a7c5997f`) provisioned, Worker code in `infra/telemetry-worker/`
+  - ASIF dashboard `/faultline` route — npm trends + install→repeat funnel + top-3 errors
+  - Privacy disclosure in `packages/cli/README.md § Telemetry`
+
+- **DIRECTIVE-NXTG-20260429-02** (Release Protocol): all 5 steps atomic:
+  - `git tag v0.5.3` pushed
+  - GitHub release created with full notes (telemetry opt-in call-out, privacy whitelist)
+  - `npm publish @nxtg/faultline@0.5.3` — verified `npm view` → `0.5.3`
+  - CHANGELOG `[Unreleased]` → `[v0.5.3] — 2026-04-29`
+
+Commits: `4d743ea`, `367cc9f`, `0560c1b`, `6c801ea`. 4 commits, 940 net insertions.
+
+**2. What surprised you?**
+
+Three things:
+
+1. **Release train gap was architectural, not accidental.** The old CLAUDE.md had no release protocol. DIRECTIVE-02 wouldn't have been needed if ADR-036 had existed before the first npm publish. Asif caught it and wrote ADR-036 into CLAUDE.md immediately — the right fix. But it took a production incident (Worker live, npm stale, 1,434 users missing telemetry code for 8+ hours) to surface it. Pattern: publish discipline should be enforced at version-bump time, not at Worker-deploy time.
+
+2. **Wrangler auth gap at deploy time.** The Worker code and D1 schema were ready, but `wrangler` wasn't authenticated in the session. CF MCP had the account auth needed for D1 creation but not for Worker deploy. The gap was correctly filed as a Team Question and Asif closed it (~13:20 PDT). For future Worker deployments: check wrangler auth before writing the code, not after.
+
+3. **`root tsconfig.json` picked up `infra/` Worker files.** The pre-push hook runs `tsc --noEmit` at root. CF Worker types (`D1Database`) aren't in `@types/node`, causing type errors that failed the CI gate. Fix: add `"infra"` to `tsconfig.json` exclude list (same pattern as `vscode-extension`). Simple fix, but it delayed the push by one extra commit.
+
+**3. Cross-project signals**
+
+Two reusable patterns from this session:
+
+1. **Telemetry whitelist enforcement (dual-layer)**: Client module builds payload from a typed struct (TypeScript enforces no extra fields); Worker validates against `Set<string>` of allowed values server-side. Both layers independently prevent PII leakage. This pattern applies to any ASIF project adding opt-in telemetry (FW, Faultline Web, SDK). The `classifyError()` → enumerated code approach (never `error.message`) is particularly reusable — error messages routinely contain file paths, eval content, and API responses.
+
+2. **Cloudflare D1 + Worker pairing**: The D1 provisioning via CF MCP (no wrangler needed) + Worker code-only (deploy deferred to Asif) is a clean separation. Other ASIF projects needing a lightweight data store + public endpoint can use this pattern. D1 is free at this scale, no maintenance burden.
+
+**4. What would I prioritize next (fresh directives)?**
+
+In order:
+
+1. **N-224 — Search grounding for citations** (BACKLOG, P1): `sources[]` is empty on every scan with gpt-4o-mini. This is the #1 user trust gap — "where did you get that?" with no answer. Gemini 2.0 Flash has native grounding; Perplexity Sonar has it too. 1-2 day estimate.
+
+2. **`faultline stats --sync` to pull telemetry into NEXUS digest**: Now that the Worker is live and collecting, a `faultline stats --telemetry` command that fetches `GET /api/stats` and prints the funnel + errors locally would let Asif see the data without opening the dashboard. Low effort, high visibility.
+
+3. **Claude model ID fix in `claude_provider.ts:10`**: Carried from Cycle 328. `400` error on Claude path means the Claude provider is broken in production. The fix is a 1-line model ID correction. Low risk, unblocks a full provider.
+
+4. **`--dir` SARIF gap** (carried from Cycle 328): Silent JSON output when `--output-format sarif` + `--dir` is used. Either error or implement SARIF batch. Small scope.
+
+**5. Blockers / Questions for CoS**
+
+- **Q-WORKER-URL** (filed in Team Questions above): The Worker URL `https://faultline-telemetry.nxtg-ai.workers.dev` — is this correct or did the CF account deploy to a different subdomain? The dashboard `lib/faultline-metrics.ts` has this hardcoded as fallback. If the actual URL differs from the default, set `FAULTLINE_TELEMETRY_WORKER_URL` in the ASIF dashboard env.
+
+- **Q-TELEMETRY-OPT-IN-SIGNAL**: Should we add `FAULTLINE_TELEMETRY=1` to the GitHub Action `action.yml` defaults? The Action runs in CI where users control env — opt-in is correct. But if we want CI usage data, the Action README could mention the env var. Not a blocker, just a question for post-launch.
+
+---
+
+
+### DIRECTIVE-NXTG-20260503-02 — P1: Confirm maintenance posture + scope minimal install/usage metrics
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-05-03 14:30 PDT | **Estimate**: S=hours | **Status**: ✅ DONE — 2026-05-03
+**Origin**: Today's weekly alignment — Faultline → MAINTENANCE MODE (compliance-trigger reactivation only). Emma HANDOFF Note 198 surfaces sense script flagging two stale P1s.
+
+**Action Items**:
+1. Confirm `.asif/NEXUS.md` Status block reflects MAINTENANCE posture explicitly (no growth work, react to compliance triggers only). Reactivation gate = "EU AI Act deadline confirmed final + non-trivial usage detected".
+2. Reframe "EU AI Act Aug 2 — feature completeness required" line as **CONTINGENT**. Source: `~/ASIF/governance/eu-ai-act-status.json`. The Digital Omnibus may delay 16-24mo. Maintenance posture remains correct under both branches.
+3. Scope a minimal install/usage metrics pipeline — just enough signal to detect the "non-trivial usage" half of the reactivation trigger. NOT full PLG analytics. CLI install count + CLI invocation count is sufficient. Recommend the lightest possible mechanism (existing endpoint, opt-in telemetry, npm download stats — team picks).
+4. Update NEXUS NEXT_STEPS to remove the two stale P1s once items 1-3 are committed. Leave reactivation trigger language so the trigger is auditable.
+
+**DoD**: NEXUS Status = MAINTENANCE + EU AI Act = CONTINGENT + metrics scope written into NEXUS as a tracked item with decision-point criteria. PASS when sense script no longer flags those two as P1 NEXT_STEPS.
+
+**Constraints**: No growth work. No new features beyond what's needed to detect demand. Stripe/billing/PLG are out of scope.
+
+**Response (2026-05-03)**: DONE. All 4 action items complete.
+
+1. ✅ **MAINTENANCE posture**: header block added (lines 3-9). Status = MAINTENANCE. Reactivation gate = EU AI Act confirmed + ≥50 installs OR ≥10/day npm downloads (3-day). Both gates must clear simultaneously.
+2. ✅ **EU AI Act CONTINGENT**: Portfolio Intelligence line updated — "August 2026" replaced with "CONTINGENT — Digital Omnibus may defer 16-24mo". Historical references in prior directive bodies left as-is (historical context).
+3. ✅ **Minimal metrics scope**: N-226 pipeline already satisfies this. CF Worker `faultline-telemetry.nxtg-ai.workers.dev` (deployed 2026-04-29) provides unique install count. `faultline stats` + ASIF dashboard `/faultline` provide npm daily trend. No new infra. Threshold defined above and in header.
+4. ✅ **What's Next updated**: stale growth P1s `(a)` and `(b)` (npm monitoring note + GitHub Discussions) removed. Remaining backlog items explicitly gated behind reactivation trigger. Sense script should no longer flag these.
+
+No code changes. 4,553 tests unchanged.
+
+
+
+## Archived Team Feedback (Cycle 330) — overflow rotation 2026-05-03
+
+> **Reflection cycle**: 2026-04-29 (Cycle 330 — DIRECTIVE-03 closed, RP9 hardened)
+
+**1. What shipped?**
+
+DIRECTIVE-NXTG-20260429-03 (P2, S-scope). Commit `4bace04`, 3 files, 16 insertions.
+- `CHANGELOG.md` — empty `[Unreleased]` block re-added above dated `[v0.5.3]` (roll+reset convention).
+- `release-prep.test.ts` RP9 — upgraded from existence check to ordering assertion: `[Unreleased]` must precede latest dated section. Catches misordering.
+All release-prep tests green. Pushed via normal gate, no `--no-verify`. 4,553 tests, no change to count.
+
+**2. What surprised you?**
+
+Nothing in this cycle. The fix was exactly as described: one CHANGELOG line + one test assertion upgrade. No hidden complexity.
+
+Carrying a meta-observation from Cycle 329 that's worth logging: the RP9 gap wouldn't have been caught at all without a test asserting the `[Unreleased]` invariant. The test was correct — the release process was wrong. This is the system working as designed. The ordering upgrade makes RP9 mutation-resistant to a future accidental misorder.
+
+**3. Cross-project signals**
+
+The roll+reset pattern is universal for any ASIF project using Keep-a-Changelog. The failure mode (roll without reset → test failure on next gate) will repeat in FW, Faultline Web, SDK, any project with a release-prep test asserting `[Unreleased]`. ADR-036 Step 4b ("re-add empty `[Unreleased]` after roll") should propagate to the portfolio CLAUDE.md template or the `release-sentinel` skill checklist — Wolf has this action.
+
+**4. Next priorities (no change from Cycle 329)**
+
+1. N-224 — Search grounding for citations (P1, sources[] empty on gpt-4o-mini)
+2. `faultline stats --telemetry` local command (fetch Worker `/api/stats`, print funnel)
+3. Claude model ID fix in `claude_provider.ts:10` (1-line, unblocks Claude provider in production)
+4. `--dir` SARIF gap (silent JSON when SARIF requested with `--dir`)
+
+**5. Blockers / Questions for CoS**
+
+None new. Carrying:
+- Q-WORKER-URL: confirm Worker URL is `https://faultline-telemetry.nxtg-ai.workers.dev` — dashboard fallback has this hardcoded.
+- Q-TELEMETRY-OPT-IN: mention `FAULTLINE_TELEMETRY=1` in Action README?
+
+---
