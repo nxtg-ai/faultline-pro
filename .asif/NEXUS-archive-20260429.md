@@ -11171,3 +11171,70 @@ None new. Carrying:
 - Q-TELEMETRY-OPT-IN: mention `FAULTLINE_TELEMETRY=1` in Action README?
 
 ---
+
+
+## Archived TF Cycles 331-333 — overflow 2026-05-04
+
+> **Reflection cycle**: 2026-04-29 (Cycles 331–332 — idle, no directives, no changes)
+
+---
+
+
+## Archived TF Cycles 333-334 — overflow 2026-05-04
+
+> **Reflection cycle**: 2026-04-29 (Cycle 333 — idle, no directives)
+
+**1. Shipped**: Nothing. `8f9fd64`. 4,553 tests. Clean.
+**2. Surprises**: None.
+**3. Cross-project**: None new.
+**4. Next**: N-224 search grounding, Claude model ID fix, `stats --telemetry`, `--dir` SARIF gap.
+**5. Blockers**: Q-WORKER-URL + Q-TELEMETRY-OPT-IN still open (Cycle 329).
+
+> Note to CoS: four consecutive idle cycles (329–333). If no directives are incoming, I'll run the Idle Time Protocol next cycle: CRUCIBLE self-audit → doc gaps → hollow assertion review.
+
+---
+
+
+## Archived TF Cycles 334+ — overflow 2026-05-04
+
+> **Reflection cycle**: 2026-04-29 (Cycle 334 — DIRECTIVE-05 shipped, v0.6.0 live)
+
+**1. What shipped?**
+
+DIRECTIVE-NXTG-20260429-05 (P1, M-scope). 4 commits: `4cbe152`, `3531c95`, `eae74ae` + tag push.
+
+- `README.md`: H1 → "Agent Governance for AI Outputs"; hero drops "104 days / Aug 2 / compliance-ready"; EU AI Act section renamed, neutral framing; test badge synced to 4,553.
+- `packages/cli/README.md`: EU AI Act opening drops "before the deadline."
+- `packages/cli/package.json`: description → "Agent governance for AI outputs..."; keywords: `agent-governance` + `ai-governance` lead; `eu-ai-act` demoted to position 15.
+- `packages/cli/cli/index.ts`: VERSION `0.5.3` → `0.6.0`.
+- `CHANGELOG.md`: `[v0.6.0]` entry with pivot rationale; `[Unreleased]` re-added (RP9 pass).
+- ADR-036 release protocol: `git tag v0.6.0` pushed, GH release created, `npm publish @nxtg/faultline@0.6.0` live.
+- 4,553 tests — no change. Zero behavior/API changes.
+
+**2. What surprised you?**
+
+Two small friction points:
+
+1. **Agent subagent left "compliance-ready" in the hero subheading.** The agent correctly rewrote the H1, tagline, badge count, and compliance blurb — but wrote `### Governance-first, compliance-ready` which still contained the banned string. Directive said grep for absence of `compliance-ready`; the agent didn't self-check. Caught in the post-agent verification pass. Pattern: always run the acceptance grep *after* agents touch copy, not just before.
+
+2. **npm registry cache lag on `npm view ... version`.** After a successful publish (`+ @nxtg/faultline@0.6.0` confirmed), `npm view @nxtg/faultline version` returned `0.5.3` for ~30 seconds. Switched to `npm view @nxtg/faultline versions --json` which shows all versions immediately and is cache-resistant. Better verification command for future publish checks.
+
+**3. Cross-project signals**
+
+- **Category-creation GTM pattern is portfolio-wide.** The Digital Omnibus signal (EU AI Act deferral) affects every ASIF product that was leading with Aug 2 urgency. FW team (P-08c) has a companion directive (DIRECTIVE-NXTG-20260429-04). Worth confirming Runtime Diet and any other products don't have residual urgency framing tied to the same deadline.
+- **`npm view ... versions --json` is the right publish verification command.** `npm view ... version` (singular) hits CDN cache. The array form is more reliable for confirming a new publish landed. Useful anywhere npm publishes happen in the portfolio.
+
+**4. Next priorities**
+
+1. N-224 — Search grounding for citations (P1, sources[] empty on gpt-4o-mini). First real value-add for the "agent governance" positioning — provenance is table stakes.
+2. Claude model ID fix in `claude_provider.ts:10` — 1-line, unblocks the Claude provider path in production.
+3. `faultline stats --telemetry` local command — fetch Worker `/api/stats`, print funnel in terminal.
+4. `--dir` SARIF gap — silent JSON when SARIF requested with `--dir`.
+
+**5. Blockers / Questions for CoS**
+
+- Q-WORKER-URL (carried): confirm Worker URL is `https://faultline-telemetry.nxtg-ai.workers.dev`. Dashboard fallback has this hardcoded.
+- Q-TELEMETRY-OPT-IN (carried): mention `FAULTLINE_TELEMETRY=1` in Action README?
+- **New — Q-DESCRIPTION-PROPAGATION**: `npm view @nxtg/faultline description` still returns old value due to registry cache. Expected to self-resolve within minutes. No action needed unless Wolf checks immediately post-publish and flags stale copy — it is live at 0.6.0.
+
+---
