@@ -806,6 +806,35 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-05-04 (Cycle 342 — idle protocol: tests GREEN, dep audit, PostCSS patch)
+
+**1. Shipped**: Security patch only (MAINTENANCE-allowed). Commit `6e7ce65`.
+- `npm audit fix` resolved PostCSS moderate XSS (GHSA-qx2v-qp2m-jg93 — unescaped `</style>` in CSS stringify output). `package-lock.json` only, no source changes.
+- 4,553 tests GREEN before and after patch.
+
+**2. Dep audit findings**:
+
+| Package | Current | Safe update | Action |
+|---|---|---|---|
+| postcss | (transitive) | ✅ patched | DONE |
+| `@google/genai` | 1.50.1 | 1.51.1 (minor) | Defer — MAINTENANCE |
+| `vitest` / `@vitest/coverage-v8` | 4.1.4 | 4.1.5 (patch) | Defer — MAINTENANCE |
+| `zod` | 4.3.6 | 4.4.3 (minor) | Defer — MAINTENANCE |
+| `yaml` | 2.8.3 | 2.8.4 (patch) | Defer — MAINTENANCE |
+| `ora` | 9.3.0 | 9.4.0 (minor) | Defer — MAINTENANCE |
+| `@fastify/swagger-ui` | 5.2.5 | 5.2.6 (patch) | Defer — MAINTENANCE |
+| **Major bumps** (TypeScript 6, tesseract.js 7, jsdom 29, pdf-parse 2, @fastify/multipart 10) | — | — | Skip until reactivation |
+
+All deferred updates are safe minor/patch bumps. Applied none beyond the security fix per MAINTENANCE posture.
+
+**3. Surprises**: None. PostCSS vulnerability was already flagged in the Dependabot alert on the repo — same GHSA as the open PR `dependabot/npm_and_yarn/postcss-8.5.12`. `npm audit fix` applied it without needing to merge the Dependabot branch.
+
+**4. Next (MAINTENANCE)**: Monitoring only. EU AI Act trilogue signal: 2026-05-13.
+
+**5. Blockers**: Q-WORKER-URL + Q-TELEMETRY-OPT-IN open. No new questions.
+
+---
+
 > **Reflection cycle**: 2026-05-04 (Cycle 341 — idle, MAINTENANCE)
 
 **1–5.** Nothing shipped. `7de39ba`. 4,553 tests. MAINTENANCE posture active. Monitoring reactivation triggers only (EU AI Act: next signal 2026-05-13 trilogue; usage: `faultline stats`). No new questions.
