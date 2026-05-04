@@ -806,6 +806,12 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-05-04 (Cycle 341 — idle, MAINTENANCE)
+
+**1–5.** Nothing shipped. `7de39ba`. 4,553 tests. MAINTENANCE posture active. Monitoring reactivation triggers only (EU AI Act: next signal 2026-05-13 trilogue; usage: `faultline stats`). No new questions.
+
+---
+
 > **Reflection cycle**: 2026-05-04 (Cycle 340 — DIRECTIVE-NXTG-20260503-02 DONE)
 
 **1. Shipped**: DIRECTIVE-NXTG-20260503-02 (P1, S-scope). Commits `f31777f`, `7077595`.
