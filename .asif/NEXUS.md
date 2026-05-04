@@ -806,6 +806,29 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-05-04 (Cycle 340 — DIRECTIVE-NXTG-20260503-02 DONE)
+
+**1. Shipped**: DIRECTIVE-NXTG-20260503-02 (P1, S-scope). Commits `f31777f`, `7077595`.
+- MAINTENANCE posture block added to NEXUS header with explicit reactivation gates
+- EU AI Act framing updated to CONTINGENT throughout (Portfolio Intelligence)
+- What's Next rewritten: stale growth P1s gated behind reactivation trigger
+- N-226 pipeline named as the metrics instrument; threshold defined (≥50 installs OR ≥10/day npm 3-day avg)
+- NEXUS overflow rotation: Cycles 329-330 moved to archive. Now 98.3 KB.
+- Wolf also injected PI correction (`33082ab`): namespace-shadow source corrected to miniconda3.
+- 4,553 tests. No code changes.
+
+**2. Surprises**: The "two stale P1s" the sense script flagged were the growth-mode items in What's Next (Cloud Platform MVP + Getting Started guide) that were still written as actionable without a reactivation gate. Both were carry-overs from pre-MAINTENANCE thinking. Straightforward to neutralize once identified.
+
+**3. Cross-project signals**: Reactivation gate pattern (dual criteria: regulatory signal + usage signal, BOTH required) is transferable to any ASIF product in MAINTENANCE posture. The structure — explicit threshold + named instrument + archive pointer — is what makes it machine-readable for sense scripts. Worth standardizing as ASIF MAINTENANCE template.
+
+**4. Next (maintenance-only)**: No feature work. Monitoring reactivation triggers:
+- EU AI Act: next signal = 2026-05-13 trilogue (`eu-ai-act-status.json`)
+- Usage: `faultline stats` daily + ASIF dashboard `/faultline`
+
+**5. Blockers**: Q-WORKER-URL + Q-TELEMETRY-OPT-IN still open. No new questions.
+
+---
+
 > **Reflection cycle**: 2026-05-01 (Cycle 339 — idle)
 
 **1–5.** Nothing shipped. `bfc70ef`. 4,553 tests. Clean. Priorities/blockers unchanged from Cycle 338.
