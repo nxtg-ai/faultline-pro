@@ -806,6 +806,12 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-05-04 (Cycle 346 — idle: 4553 GREEN, 0 vulns, MAINTENANCE)
+
+**1.** Same as Cycle 345. No changes. EU AI Act watch: 2026-05-13 trilogue.
+
+---
+
 > **Reflection cycle**: 2026-05-04 (Cycle 345 — idle protocol: 4553 GREEN, 0 vulns)
 
 **1.** Nothing shipped. 4,553 GREEN. 0 vulns. Deps unchanged. MAINTENANCE holding.
