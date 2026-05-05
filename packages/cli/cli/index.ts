@@ -41,9 +41,10 @@ import { sendTelemetry, classifyError } from './telemetry.js';
 const VERSION = '0.6.1';
 const PRICING_URL = 'https://faultline.nxtg.ai/pricing';
 
-/** Print once per invocation to stderr. Silenced by FAULTLINE_NO_BANNER=1. */
+/** Print once per invocation to stderr. Silenced by FAULTLINE_NO_BANNER=1 or test env. */
 function printUpgradeBanner(): void {
   if (process.env.FAULTLINE_NO_BANNER === '1') return;
+  if (process.env.VITEST || process.env.NODE_ENV === 'test') return;
   process.stderr.write(`→ More scans, batch processing & team workspaces: ${PRICING_URL}\n`);
 }
 
