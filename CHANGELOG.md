@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [v0.6.1] — 2026-05-05
+
+### Changed
+
+- **CLI → PLG funnel wire** (DIRECTIVE-CLX9-20260505-01): Closes the npm-CLI → paid-Cloud conversion path.
+  - `README.md` Pricing section: now shows live tiers (Personal $19/mo / Pro $49/mo / Enterprise $99/seat/mo) + "→ Subscribe self-serve at faultline.nxtg.ai/pricing" as primary CTA. `hello@nxtg.ai` retained for Enterprise sales only.
+  - Startup banner: prints `→ More scans, batch processing & team workspaces: https://faultline.nxtg.ai/pricing` to stderr on `scan`/`stream` commands. Silenced by `FAULTLINE_NO_BANNER=1`.
+  - Quota-exceeded hint: 429 rate-limit errors in verify loop now include "Upgrade for higher limits: https://faultline.nxtg.ai/pricing" in the explanation field.
+  - `package.json` homepage: updated to `https://faultline.nxtg.ai/pricing`.
+
 ## [v0.6.0] — 2026-04-29
 
 ### Changed

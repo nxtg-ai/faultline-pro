@@ -38,7 +38,14 @@ import { buildEuComplianceReport, renderComplianceReportJson, renderComplianceRe
 import { statsCommand } from './stats.js';
 import { sendTelemetry, classifyError } from './telemetry.js';
 
-const VERSION = '0.6.0';
+const VERSION = '0.6.1';
+const PRICING_URL = 'https://faultline.nxtg.ai/pricing';
+
+/** Print once per invocation to stderr. Silenced by FAULTLINE_NO_BANNER=1. */
+function printUpgradeBanner(): void {
+  if (process.env.FAULTLINE_NO_BANNER === '1') return;
+  process.stderr.write(`→ More scans, batch processing & team workspaces: ${PRICING_URL}\n`);
+}
 
 const API_KEY_MAP: Record<string, string> = {
   claude: 'ANTHROPIC_API_KEY',
@@ -162,6 +169,11 @@ function parseArgs(args: string[]): { command: string; flags: Record<string, str
 export async function main(args: string[]): Promise<{ exitCode: number; output: string }> {
   const { command, flags } = parseArgs(args);
   setLang(flags['lang'] || 'en');
+
+  // Print upgrade banner for scan commands (not version/help/demo to avoid noise)
+  if (command === 'scan' || command === 'stream') {
+    printUpgradeBanner();
+  }
 
   switch (command) {
     case 'version':

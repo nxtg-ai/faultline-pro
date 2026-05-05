@@ -1,6 +1,6 @@
 {
   "name": "@nxtg/faultline",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Agent governance for AI outputs. Verify claims, detect hallucinations, enforce compliance gates — provider-agnostic across Gemini, OpenAI, Claude, and Perplexity.",
   "type": "module",
   "bin": {
@@ -58,7 +58,7 @@
     "type": "git",
     "url": "git+https://github.com/nxtg-ai/faultline-pro.git"
   },
-  "homepage": "https://github.com/nxtg-ai/faultline-pro#readme",
+  "homepage": "https://faultline.nxtg.ai/pricing",
   "bugs": {
     "url": "https://github.com/nxtg-ai/faultline-pro/issues"
   },

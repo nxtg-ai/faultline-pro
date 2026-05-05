@@ -192,12 +192,13 @@ export async function scan(
         try {
           result = await verificationProvider.verifyClaim(toVerify[i]);
           break;
-        } catch {
+        } catch (err) {
           if (attempt < 2) {
             await new Promise(r => setTimeout(r, delay + Math.floor(Math.random() * 500)));
             delay *= 2;
           } else {
-            result = { claimId: toVerify[i].id, status: 'unverified', explanation: 'Verify failed after retries.', sources: [] };
+            const isRateLimit = err instanceof Error && (err.message.includes('429') || err.message.toLowerCase().includes('rate limit'));
+            result = { claimId: toVerify[i].id, status: 'unverified', explanation: isRateLimit ? 'Rate limit reached. Upgrade for higher limits: https://faultline.nxtg.ai/pricing' : 'Verify failed after retries.', sources: [] };
           }
         }
       }

@@ -203,19 +203,22 @@ The [`examples/`](https://github.com/nxtg-ai/faultline-pro/tree/main/examples) d
 
 ## Pricing
 
-| | Free | Pro | Enterprise |
+| | Personal | Pro | Enterprise |
 |---|---|---|---|
-| Scans | 10/min | 100/min | Custom |
+| **Price** | **$19/mo** | **$49/mo** | **$99/seat/mo** |
+| Scans | 100/mo | 500/mo | Unlimited |
 | CLI + API | Yes | Yes | Yes |
 | All providers | Yes | Yes | Yes |
 | SARIF output | Yes | Yes | Yes |
+| Team workspaces | -- | Yes | Yes |
 | Priority support | -- | Yes | Yes |
-| Advanced rules | -- | Yes | Yes |
 | SSO | -- | -- | Yes |
-| Audit-ready EU compliance reports | -- | -- | Yes |
+| Audit-ready compliance reports | -- | -- | Yes |
 | SLA | -- | -- | Yes |
 
-Contact: [hello@nxtg.ai](mailto:hello@nxtg.ai)
+**→ Subscribe self-serve at [faultline.nxtg.ai/pricing](https://faultline.nxtg.ai/pricing)**
+
+Enterprise sales: [hello@nxtg.ai](mailto:hello@nxtg.ai)
 
 ---
 
