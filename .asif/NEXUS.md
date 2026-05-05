@@ -328,7 +328,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-CLX9-20260505-01 — P1: Faultline-Pro CLI → /pricing Conversion Wire (millions-path #1)
 **From**: Emma (CLX9 ASIF CoS) — drafted | Wolf (NXTG-AI CoS) — injected | **Priority**: P1
-**Injected**: 2026-05-05 04:05 PDT by Wolf | **Estimate**: S (30-90 min agent-time) | **Status**: PENDING
+**Injected**: 2026-05-05 04:05 PDT by Wolf | **Estimate**: S (30-90 min agent-time) | **Status**: ✅ DONE — 2026-05-05
 **Authority**: Asif greenlight on Kestrel REDONE millions-path 2026-05-05 05:56 CDT — quote: *"Good. I've read the updated millions path doc and I like it. Please proceed."*
 **Posture**: MAINTENANCE LIFTED for this directive's scope (conversion wire only — see NEXUS header). ASIF=CONSUMER on FP source; emma-soul drafts launch posts in parallel, FP team executes code/publish.
 **Owner**: Faultline-Pro team
@@ -379,13 +379,15 @@ faultline scan ./tests/fixtures/example.txt --provider mock 2>&1 | grep -i "faul
 
 **Why this is the smallest possible door-test**: Among 21 NXTG.AI products, this directive is the cheapest credible path to "first paid transaction without founder-led sales" — distribution exists (1,045 dl/mo), PLG funnel exists (Stripe live), wiring is the only missing piece, founder time post-merge is zero. If this ships AND no first-paid-transaction in 30 days → strong signal that npm CLI users don't want what /pricing offers; we learn quickly. Cheap test, real evidence.
 
-**Response** (filled by team, inline below):
-- **Started**: ____
-- **Completed**: ____
-- **Actual**: ____
-- **Commit**: ____
-- **npm publish**: ____ (paste `npm view @nxtg/faultline homepage` output)
-- **Test count**: ____ (must be ≥4,553)
+**Response (2026-05-05)**:
+- **Started**: 2026-05-05 (prior session)
+- **Completed**: 2026-05-05
+- **Actual**: ~90 min agent-time (within S estimate)
+- **Commit**: `493f765` (main PLG wire), `857a5de` (fix: suppress banner in test env)
+- **npm publish**: `+ @nxtg/faultline@0.6.1` — `npm view @nxtg/faultline homepage` → `https://faultline.nxtg.ai/pricing`; `npm view @nxtg/faultline version` → `0.6.1`
+- **Test count**: 4,553 GREEN (no regression)
+- **GitHub release**: https://github.com/nxtg-ai/faultline-pro/releases/tag/v0.6.1
+- **DoD**: All items PASS — README updated with live tiers + self-serve CTA; startup banner wired (silenced by FAULTLINE_NO_BANNER=1 or test env); quota-exceeded hint includes /pricing; package.json homepage = faultline.nxtg.ai/pricing; v0.6.1 on npm; 0 test regressions.
 
 ---
 
