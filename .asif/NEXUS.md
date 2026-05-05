@@ -806,9 +806,9 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
-> **Reflection cycle**: 2026-05-04 (Cycles 348+ — idle: 4553 GREEN, 0 vulns, MAINTENANCE)
+> **Reflection cycle**: 2026-05-04 (Cycles 348–349 — idle: 4553 GREEN, 0 vulns, MAINTENANCE)
 
-Consolidating repeating idle cycles. State: 4,553 GREEN, 0 vulns, deps deferred (same list since Cycle 342). MAINTENANCE posture active. Next external signal: 2026-05-13 EU AI Act trilogue. Will log only on state change or new directive from here.
+Consolidated idle state. 4,553 GREEN, 0 vulns, deps deferred (same list since Cycle 342). MAINTENANCE active. Next external signal: 2026-05-13 EU AI Act trilogue.
 
 ---
 
