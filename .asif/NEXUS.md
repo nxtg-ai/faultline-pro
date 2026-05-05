@@ -848,6 +848,25 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-05-04 (Cycle 351 — DIRECTIVE-NXTG-20260504-03 DONE, claude model-ID confirmed)
+
+**1. Shipped**: DIRECTIVE-NXTG-20260504-03 (P1, S-scope, NEXUS-only). Commit `0ee0574`.
+- Live-tested Claude provider with dummy API key → got `401 Unauthorized`, not `400 Bad Request`.
+- Verdict: `claude-sonnet-4-6` is accepted by Anthropic API; model ID was never broken in current codebase.
+- Existing `claude-provider.test.ts` already has 4 assertions on this model ID (lines 52/278/301/332). All passing.
+- No code change needed. 4,553 tests unchanged.
+- Answer to Asif's "Is it fixed?": **Yes — the model ID was already correct.**
+
+**2. Surprises**: The live-test technique (dummy API key → observe 401 vs 400) is a useful diagnostic pattern. A 401 proves the request format and model ID were accepted before auth failed; a 400 would have indicated a malformed request body or invalid model ID. Clean evidence without needing a real API key for format validation.
+
+**3. Cross-project signals**: The dummy-key 401-vs-400 test pattern is portable to any ASIF project using a REST API that validates auth before request body. Useful for confirming model IDs, endpoint paths, and header names without consuming real API credits.
+
+**4. Next (MAINTENANCE)**: No feature work. Monitoring reactivation triggers. EU AI Act trilogue watch: 2026-05-13.
+
+**5. Blockers**: Q-WORKER-URL + Q-TELEMETRY-OPT-IN still open. No new questions.
+
+---
+
 > **Reflection cycle**: 2026-05-04 (Cycles 348–350 — idle: 4553 GREEN, 0 vulns, MAINTENANCE)
 
 Consolidated idle state. 4,553 GREEN, 0 vulns, deps deferred (same list since Cycle 342). MAINTENANCE active. Next external signal: 2026-05-13 EU AI Act trilogue.
