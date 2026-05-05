@@ -325,6 +325,30 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
+### DIRECTIVE-NXTG-20260504-03 — P1: Claude provider live-test + ship fix (Asif "Is it fixed" /actions response)
+**From**: Wolf (NXTG-AI CoS) | **Priority**: P1
+**Injected**: 2026-05-04 20:18 PDT | **Estimate**: S (≤2h: live-test + fix if needed) | **Status**: PENDING
+**Origin**: Asif /actions response 2026-05-04 22:13 UTC = "Is it fixed" against decision-fp-claude-model-id-bug-p1-post-show-hn (originally filed 2026-04-20). Surfaced 2026-05-04 21:54 PDT by Wolf in unrouted-responses sweep. Per Kestrel /alignment 22:15 — handle in Wolf-authority lane, not Asif queue.
+
+**Outcome**: definitive answer to "Is it fixed" with primary-source evidence — either (a) confirmed working with live request/response evidence, or (b) symptom reproduced and fix shipped.
+
+**Action Items** (FP team picks up next session — ≤2h end-to-end):
+1. Read current state: `packages/cli/providers/claude_provider.ts:10` declares `DEFAULT_MODEL = 'claude-sonnet-4-6'` (valid Anthropic API model ID per knowledge cutoff January 2026). NEXUS Cycles 339-349 idle — model-ID fix listed as item #2 in next priorities but never executed.
+2. Live-test: run a minimal claim-extraction or critique against the Claude provider with `FAULTLINE_CLAUDE_MODEL` unset (uses default) AND with a known-current Anthropic model ID. Capture: HTTP status, request body's `model` field, response body's `model` field, any error.
+3. If live-test green: NEXUS update + commit "test(claude_provider): live-test confirms model-ID OK at claude-sonnet-4-6" + flag the entry in Cycles next priorities as RESOLVED (no fix needed).
+4. If live-test surfaces a real bug: fix it (smallest possible patch in `claude_provider.ts`), add a regression test in `test/providers/`, ship in one PR/commit. Maintenance posture is paused for this single P1 fix per Wolf authority.
+5. Post directive response inline with: live-test evidence (command + output), verdict (already-fixed / now-fixed / new-bug-spec), commit sha if code changed.
+
+**DoD**:
+- PASS: directive response has live-test evidence + verdict + (if code changed) green test count from `npm test` (must not regress from 4,553).
+- FAIL: opinion-only response without live-test, OR test regression, OR fix without test.
+
+**Constraints**: do NOT bundle with N-216 major-deps sprint. Single-purpose fix only. Maintenance posture resumes immediately after this directive ships.
+
+**Response** (filled by team): inline below with **Started**, **Completed**, **Actual**, **Commit** sha + live-test evidence.
+
+---
+
 ### DIRECTIVE-NXTG-20260429-07 — P2: NEXUS.md hygiene — rotate when file exceeds 100 KB
 **From**: Wolf (NXTG-AI CoS) | **Priority**: P2 | **Estimate**: S (30-90 min) | **Status**: ✅ DONE — 2026-04-29
 **Injected**: 2026-04-29 19:55 PDT
