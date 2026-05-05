@@ -1,13 +1,14 @@
 # NEXUS — Faultline Pro Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-05-03 (Cycle 340 — DIRECTIVE-NXTG-20260503-02: MAINTENANCE posture confirmed)
+> **Last Updated**: 2026-05-05 (MAINTENANCE posture LIFTED for conversion-wire work — Asif greenlight 05:56 CDT on Kestrel REDONE millions-path doc)
 > **North Star**: FM-agnostic AI Trust & Safety — verify any LLM's claims, with any provider, no vendor lock-in.
 >
-> **⛔ POSTURE: MAINTENANCE** (as of 2026-05-03, DIRECTIVE-NXTG-20260503-02)
-> No growth work. No new features. React to compliance triggers only.
-> **Reactivation gate** (BOTH required): (1) EU AI Act deadline confirmed final/non-deferrable AND (2) non-trivial usage detected — defined as ≥50 unique installs via telemetry Worker OR npm daily downloads trending ≥10/day for 3 consecutive days.
-> **Metrics instrument**: N-226 pipeline (CF Worker `faultline-telemetry.nxtg-ai.workers.dev` + `faultline stats` daily trend). Already live — no new infra needed.
+> **✅ POSTURE: ACTIVE — CONVERSION WIRE LANE OPEN** (as of 2026-05-05, post-Asif greenlight 05:56 CDT)
+> Scope: ship the npm CLI → faultline.nxtg.ai/pricing PLG funnel wire (DIRECTIVE-CLX9-20260505-01 below). NOT a new-features lane; conversion-wire only.
+> **Posture history**: MAINTENANCE was set 2026-05-03 (DIRECTIVE-NXTG-20260503-02) with reactivation gate requiring EU AI Act final/non-deferrable AND ≥10 dl/day for 3 days. Asif's 2026-05-05 05:56 CDT greenlight on Kestrel REDONE millions-path overrode the gate for the conversion-wire scope specifically — Faultline is the canonical #1 path to first paid stranger transaction; current data 1,045 dl/30d (Emma verified).
+> **Source-of-truth canon**: `~/ASIF/enrichment/2026-05-05-millions-path-REDONE-with-verified-data.md` (Kestrel-authored, Asif-approved).
+> **Metrics instrument**: N-226 pipeline (CF Worker + `faultline stats`) — measure pricing visits + signups over 7 days post-publish.
 
 ---
 
@@ -324,6 +325,69 @@ The Kaggle version remains at  (tagged  at commit ).
 ---
 
 ## CoS Directives
+
+### DIRECTIVE-CLX9-20260505-01 — P1: Faultline-Pro CLI → /pricing Conversion Wire (millions-path #1)
+**From**: Emma (CLX9 ASIF CoS) — drafted | Wolf (NXTG-AI CoS) — injected | **Priority**: P1
+**Injected**: 2026-05-05 04:05 PDT by Wolf | **Estimate**: S (30-90 min agent-time) | **Status**: PENDING
+**Authority**: Asif greenlight on Kestrel REDONE millions-path 2026-05-05 05:56 CDT — quote: *"Good. I've read the updated millions path doc and I like it. Please proceed."*
+**Posture**: MAINTENANCE LIFTED for this directive's scope (conversion wire only — see NEXUS header). ASIF=CONSUMER on FP source; emma-soul drafts launch posts in parallel, FP team executes code/publish.
+**Owner**: Faultline-Pro team
+
+**Context (the WHY)**: Faultline-Web (faultline.nxtg.ai) has a complete self-serve PLG funnel — /pricing 3 tiers ($19 Personal / $49 Pro / $99 Enterprise/seat) → Clerk OAuth (LIVE) → Stripe checkout → /dashboard. Subscriber path Playwright-verified by Emma 2026-05-05 01:30 CDT. The `@nxtg/faultline` npm package has 1,045 downloads in the last 30 days (peak 378/day, Emma verified) — real stranger distribution. The CLI README at `packages/cli/README.md` line 204 has a generic "## Pricing" section that ends with "Contact: hello@nxtg.ai" — violates founder-liberation north star, doesn't match live $19/$49/$99 tiers, routes 1,045 mo downloaders to email instead of the PLG funnel. Net: zero conversion from existing distribution because the connector is missing. This directive closes the wire.
+
+**Action Items**:
+1. **Update `packages/cli/README.md` "## Pricing" section** (lines ~204-218):
+   - Replace generic Free/Pro/Enterprise table with the live tier names + prices: **Personal $19/mo (100 scans), Pro $49/mo (500 scans + team + API), Enterprise $99/seat/mo (unlimited + SSO + audit)**
+   - Replace "Contact: [hello@nxtg.ai]" CTA with: **"→ Subscribe self-serve at https://faultline.nxtg.ai/pricing"**
+   - Keep `hello@nxtg.ai` only for Enterprise sales contact, NOT as the default CTA
+2. **Add CLI startup banner** (one line, on first run per session, can be silenced via env or flag): `→ Get more scans, batch processing, and team workspaces at https://faultline.nxtg.ai/pricing` — print to stderr, store first-run-this-session marker.
+3. **Add upgrade hint on quota-exceeded errors**: free-tier rate limit (10/min) error message includes "Upgrade for higher limits: https://faultline.nxtg.ai/pricing"
+4. **Update `packages/cli/package.json` `homepage`** field to `https://faultline.nxtg.ai/pricing` (or keep https://nxtg.ai but add a `funding` field pointing to /pricing).
+5. **Bump CLI version to v0.6.1** with conventional-commit message:
+   ```
+   feat(cli): wire CLI to live PLG /pricing funnel
+
+   Replaces "Contact us" sales CTA with self-serve faultline.nxtg.ai/pricing
+   redirect. Adds first-run upgrade banner and quota-exceeded upgrade hints.
+   Closes the npm-CLI → paid-Cloud conversion path.
+   ```
+6. **Publish to npm**: `npm publish` from `packages/cli/`. Verify with: `npm view @nxtg/faultline homepage` returning the new URL + `npm view @nxtg/faultline version` returning `0.6.1`.
+
+**DoD**:
+- PASS: README has "Subscribe at faultline.nxtg.ai/pricing" as primary CTA + tier names+prices match live page + startup banner prints /pricing URL on first run + quota-exceeded errors include /pricing + v0.6.1 published to npm + `npm view @nxtg/faultline homepage` returns new URL + test count not regressed (≥4,553 GREEN).
+- FAIL: any "hello@nxtg.ai" remaining as default subscribe CTA, OR test regression, OR npm publish fails.
+
+**Constraints**:
+- DO NOT touch faultline-web pricing tier prices/names without coordinating with Faultline-Web team — this directive treats live page as source of truth.
+- DO NOT add tracking parameters to /pricing URL without privacy review (CLI is Apache-2.0, telemetry is opt-in only).
+- DO NOT remove the existing telemetry section.
+- DO NOT change CLI behavior in ways that break existing npm consumers (1,045 dl/mo is real distribution).
+- DO NOT add new features beyond the conversion wire — posture is conversion-wire-only, not full new-features.
+
+**Escalation**:
+- If price tier on /pricing page changes mid-flight → re-confirm before merging README update.
+- If Faultline-Web team disagrees with /pricing as source of truth → escalate to Asif via Decision Queue.
+
+**Verification commands** (for team to run before marking DONE):
+```
+npm view @nxtg/faultline homepage     # expect: https://faultline.nxtg.ai/pricing
+npm view @nxtg/faultline version      # expect: 0.6.1
+npm install -g @nxtg/faultline@latest
+faultline --version                   # expect: 0.6.1
+faultline scan ./tests/fixtures/example.txt --provider mock 2>&1 | grep -i "faultline.nxtg.ai/pricing"
+```
+
+**Why this is the smallest possible door-test**: Among 21 NXTG.AI products, this directive is the cheapest credible path to "first paid transaction without founder-led sales" — distribution exists (1,045 dl/mo), PLG funnel exists (Stripe live), wiring is the only missing piece, founder time post-merge is zero. If this ships AND no first-paid-transaction in 30 days → strong signal that npm CLI users don't want what /pricing offers; we learn quickly. Cheap test, real evidence.
+
+**Response** (filled by team, inline below):
+- **Started**: ____
+- **Completed**: ____
+- **Actual**: ____
+- **Commit**: ____
+- **npm publish**: ____ (paste `npm view @nxtg/faultline homepage` output)
+- **Test count**: ____ (must be ≥4,553)
+
+---
 
 ### DIRECTIVE-NXTG-20260504-03 — P1: Claude provider live-test + ship fix (Asif "Is it fixed" /actions response)
 **From**: Wolf (NXTG-AI CoS) | **Priority**: P1
