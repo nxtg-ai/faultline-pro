@@ -914,6 +914,36 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-05-05 (Cycle 362 — DIRECTIVE-CLX9-20260505-01 DONE: v0.6.1 PLG funnel wire shipped)
+
+**1. Shipped**:
+- `@nxtg/faultline@0.6.1` published to npm. Homepage field updated to `https://faultline.nxtg.ai/pricing`.
+- Startup upgrade banner wired to `scan`/`stream` commands (stderr, silenced by `FAULTLINE_NO_BANNER=1`).
+- Rate-limit quota hint: 429 errors now include `/pricing` URL in explanation text.
+- README pricing table updated to live tiers: Personal $19/mo, Pro $49/mo, Enterprise $99/seat/mo. Self-serve CTA replaces "Contact us" email.
+- GitHub release v0.6.1 created: https://github.com/nxtg-ai/faultline-pro/releases/tag/v0.6.1
+- Commits: `493f765` (PLG wire), `857a5de` (banner test suppression fix), `2bc6358` (NEXUS).
+- Tests: **4,553 GREEN** — no regression.
+
+**2. Surprises**:
+- The CI gate runs `vitest run --coverage`, and `coverage` writes intermediate JSON to a temp file. The startup banner printing to stderr during test execution corrupted that JSON file mid-write, causing a `SyntaxError: Unexpected non-whitespace character after JSON` on coverage merge. Root cause: the banner fires when `main(['scan', ...])` is called inside test harnesses — the test environment check (`VITEST`/`NODE_ENV=test`) was the right fix, but discovering that stderr *writes* (not just stdout) can corrupt coverage output was non-obvious. Worth knowing for any future stderr-emitting startup code.
+- Tag push runs the full CI gate independently of the main push — two full coverage runs back-to-back. The first (transient) coverage run had 18 failures; re-run was clean. Likely a file-descriptor race on the temp coverage JSON during a parallel test worker exit. No code issue.
+
+**3. Cross-project signals**:
+- **Startup banner pattern**: The `FAULTLINE_NO_BANNER=1` + `VITEST`/`NODE_ENV=test` suppression pattern is portable to any CLI tool that prints to stderr on startup. Any ASIF CLI adding a similar upgrade/upsell banner should copy this guard or it will break coverage runs.
+- **npm homepage field as PLG signal**: Setting `package.json` `"homepage"` to `/pricing` rather than the GitHub repo makes the npm package page surface the funnel link prominently. Low-effort, easy to replicate across `@nxtg/*` packages.
+
+**4. Next (if fresh directives)**:
+- Wire telemetry Worker deploy — `faultline-telemetry.nxtg-ai.workers.dev` is coded and D1 provisioned (N-226), but `wrangler deploy` needs Asif's CF token. This is the only outstanding unblocked telemetry step.
+- Conversion analytics: once first paid transaction happens, add a `--plan` metadata field to telemetry events so we can correlate CLI usage → upgrade cohort.
+- EU AI Act: Digital Omnibus deferral still CONTINGENT (trilogue 2026-05-13). If confirmed deferred, update all CONTINGENT framing to "effective 2027/2028."
+
+**5. Blockers / Questions for CoS**:
+- **Q-WORKER-URL** (open from prior cycles): Asif needs to run `wrangler deploy` from `infra/telemetry-worker/` with CF credentials. Worker code is ready.
+- No new blockers. DIRECTIVE-CLX9-20260505-01 fully closed.
+
+---
+
 > **Reflection cycle**: 2026-05-05 (Cycles 352–361 — idle: 4553 GREEN, 0 vulns, MAINTENANCE)
 
 4,553 GREEN, 0 vulns, deps deferred. MAINTENANCE holding. Next: 2026-05-13 trilogue.
