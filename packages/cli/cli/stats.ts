@@ -40,6 +40,14 @@ export interface TrendResult {
   percentChange: number;
 }
 
+export interface CostPercentiles {
+  p50: number;
+  p90: number;
+  p99: number;
+  count: number;
+  windowDays: number;
+}
+
 export interface StatsOptions {
   packages?: string[];
   snapshotPath?: string;
@@ -48,6 +56,12 @@ export interface StatsOptions {
   dailyTrend?: boolean;
   /** Number of days for range fetch (default: 30) */
   rangeDays?: number;
+  /** Show managed-key scan cost percentiles instead of npm stats */
+  costs?: boolean;
+  /** Faultline API base URL for --costs (default: FAULTLINE_API_URL or http://localhost:3000) */
+  apiUrl?: string;
+  /** Faultline API key for --costs (default: FAULTLINE_API_KEY) */
+  apiKey?: string;
 }
 
 export interface StatsResult {
@@ -249,10 +263,65 @@ export function renderStats(
 // ── Command entry point ───────────────────────────────────────────────────────
 
 /**
+ * Fetch p50/p90/p99 cost_usd from the Faultline API's /costs/percentiles endpoint.
+ * Returns an error string if the request fails or the API is unavailable.
+ */
+export async function fetchScanCostPercentiles(
+  apiUrl: string,
+  apiKey: string,
+  days = 30,
+): Promise<CostPercentiles | { error: string }> {
+  try {
+    const res = await fetch(`${apiUrl}/costs/percentiles?days=${days}`, {
+      headers: { 'x-api-key': apiKey },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return { error: `API returned HTTP ${res.status}` };
+    return res.json() as Promise<CostPercentiles>;
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** Render the scan cost percentiles report. */
+export function renderCostStats(result: CostPercentiles): string {
+  const fmt = (n: number) => `$${n.toFixed(6)}`;
+  const lines = [
+    '=== FAULTLINE SCAN COST STATS (last 30 days) ===',
+    '',
+    `Managed-key scans recorded: ${result.count}`,
+    '',
+    `  p50 (median): ${fmt(result.p50)}`,
+    `  p90:          ${fmt(result.p90)}`,
+    `  p99:          ${fmt(result.p99)}`,
+    '',
+    'Costs are estimates (token counts derived from text length).',
+    'Wire actual LLM token responses for billing-grade precision.',
+  ];
+  return lines.join('\n');
+}
+
+/**
  * Main entry point for `faultline stats`.
  * Fetches npm download data, persists a snapshot, and returns formatted output.
  */
 export async function statsCommand(opts: StatsOptions = {}): Promise<StatsResult> {
+  if (opts.costs) {
+    const apiUrl = opts.apiUrl ?? process.env.FAULTLINE_API_URL ?? 'http://localhost:3000';
+    const apiKey = opts.apiKey ?? process.env.FAULTLINE_API_KEY ?? '';
+    if (!apiKey) {
+      return {
+        exitCode: 1,
+        output: 'Error: --api-key or FAULTLINE_API_KEY is required for --costs.\n\nUsage: faultline stats --costs --api-url http://localhost:3000 --api-key <key>',
+      };
+    }
+    const result = await fetchScanCostPercentiles(apiUrl, apiKey);
+    if ('error' in result) {
+      return { exitCode: 1, output: `Failed to fetch cost percentiles: ${result.error}` };
+    }
+    return { exitCode: 0, output: renderCostStats(result) };
+  }
+
   const packages = opts.packages ?? DEFAULT_PACKAGES;
   const snapshotPath = opts.snapshotPath ?? DEFAULT_SNAPSHOT_PATH;
   const includeDailyTrend = opts.dailyTrend ?? true;

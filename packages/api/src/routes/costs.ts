@@ -9,6 +9,10 @@ interface CostsQuery {
   to?: string;
 }
 
+interface PercentilesQuery {
+  days?: string;
+}
+
 export async function costsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: CostsQuery }>(
     '/costs',
@@ -36,6 +40,29 @@ export async function costsRoutes(fastify: FastifyInstance): Promise<void> {
       const costs = store.getCosts(filter);
       const aggregate = store.getAggregate(filter);
       return reply.status(200).send({ costs, aggregate });
+    },
+  );
+
+  fastify.get<{ Querystring: PercentilesQuery }>(
+    '/costs/percentiles',
+    {
+      preHandler: requireApiKey,
+      schema: {
+        tags: ['Analytics'],
+        summary: 'p50/p90/p99 cost_usd per managed-key scan over the last N days',
+        querystring: {
+          type: 'object',
+          properties: {
+            days: { type: 'string' },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    async (request, reply) => {
+      const days = parseInt(request.query.days ?? '30', 10);
+      const result = getCostStore().getPercentiles(isNaN(days) || days <= 0 ? 30 : days);
+      return reply.status(200).send(result);
     },
   );
 }

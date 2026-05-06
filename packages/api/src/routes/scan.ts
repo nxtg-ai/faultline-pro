@@ -11,11 +11,53 @@ import { getAuditLogger } from '../store/audit.js';
 import { getScanCache } from '../store/cache.js';
 import { getTemplateStore } from '../store/templates.js';
 import { getClaimIndex } from '../store/claims.js';
-import { getCostStore } from '../store/costs.js';
+import { getCostStore, computeScanCost, type ManagedScanCostEvent } from '../store/costs.js';
 import { getScanHistory, hashText } from '../store/scan-history.js';
 import { recordScanTelemetry } from '../store/telemetry.js';
 import { notifyScanFailed } from '../store/notifications.js';
 import { buildEuComplianceReport, evaluateComplianceGate } from '@nxtg/faultline/cli/compliance-report.js';
+import { randomUUID } from 'node:crypto';
+import { getKeyStore } from '../store/keys.js';
+
+const TELEMETRY_WORKER = 'https://faultline-telemetry.nxtg-ai.workers.dev';
+
+/** Derive subscription tier from keyId. No PII — only permission metadata. */
+function resolveTier(keyId: string): ManagedScanCostEvent['tier'] {
+  if (keyId === 'admin') return 'enterprise';
+  const key = getKeyStore().validateById(keyId);
+  if (key?.permissions.includes('pro')) return 'pro';
+  return 'personal';
+}
+
+/**
+ * Emit a scan_cost event to the CF Worker telemetry endpoint.
+ * Fire-and-forget: errors are swallowed so scan responses are never delayed.
+ * No PII: no keyId, no text content, no user identity.
+ * Suppressed in test environments (VITEST/NODE_ENV=test) to avoid polluting
+ * mocked fetch expectations in webhook tests — same guard as the upgrade banner.
+ */
+function emitScanCostEvent(event: ManagedScanCostEvent): void {
+  if (process.env.VITEST || process.env.NODE_ENV === 'test') return;
+  const payload = {
+    event: 'scan_cost',
+    ts: event.ts,
+    scan_id: event.scanId,
+    tier: event.tier,
+    key_mode: event.keyMode,
+    provider: event.provider,
+    input_tokens: event.inputTokens,
+    output_tokens: event.outputTokens,
+    grounding_calls: event.groundingCalls,
+    cost_usd: event.costUsd,
+    latency_ms: event.latencyMs,
+  };
+  fetch(`${TELEMETRY_WORKER}/scan-costs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(3000),
+  }).catch(() => { /* fire-and-forget */ });
+}
 
 const PROVIDER_ENUM = ['gemini', 'openai', 'claude', 'perplexity', 'mock'] as const;
 
@@ -174,6 +216,29 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
           const result = await scan(text, p);
           cb.recordSuccess(p);
           getCostStore().record(keyId, p, text, resolveRequestTenantId(keyId));
+
+          // Managed-key scan cost telemetry (N-227 / DIRECTIVE-NXTG-20260506-04).
+          // Tokens are estimated (scan() doesn't expose LLM-reported counts).
+          const inputTokens = Math.ceil(text.length / 4);
+          const outputTokens = Math.ceil(inputTokens * 0.3);
+          const groundingCalls = typeof result.verifications === 'object' && result.verifications !== null
+            ? Object.keys(result.verifications).length : 0;
+          const costUsd = computeScanCost(inputTokens, outputTokens, groundingCalls, p);
+          const costEvent: ManagedScanCostEvent = {
+            scanId: randomUUID(),
+            ts: new Date().toISOString(),
+            tier: resolveTier(keyId),
+            keyMode: 'managed',
+            provider: p,
+            inputTokens,
+            outputTokens,
+            groundingCalls,
+            costUsd,
+            latencyMs: Date.now() - startTime,
+          };
+          getCostStore().recordManaged(costEvent);
+          emitScanCostEvent(costEvent);
+
           getScanHistory().record({
             textHash: hashText(text),
             textPreview: text.slice(0, 100),

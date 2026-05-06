@@ -184,6 +184,13 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
 
     case 'stats': {
       // N-214: npm download metrics — fetch last-week counts, persist snapshot, show trend
+      // DIRECTIVE-NXTG-20260506-04: --costs flag → managed-key scan cost percentiles
+      const costs = Boolean(flags['costs']);
+      if (costs) {
+        const apiUrl = flags['api-url'] as string | undefined;
+        const apiKey = flags['api-key'] as string | undefined;
+        return statsCommand({ costs: true, apiUrl, apiKey });
+      }
       const pkgs = flags['package']
         ? (Array.isArray(flags['package']) ? flags['package'] : [flags['package']])
         : undefined;

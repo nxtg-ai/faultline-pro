@@ -150,6 +150,87 @@ async function handleStats(env: Env): Promise<Response> {
 // Reference to set (named correctly above in handleIngest)
 const ALLOWED_ERRORS = ALLOWED_ERROR_CODES;
 
+// ── Managed-key scan cost events ──────────────────────────────────────────────
+// D1 migration required before deploying (run once against faultline-telemetry DB):
+//   CREATE TABLE IF NOT EXISTS scan_cost_events (
+//     scan_id       TEXT PRIMARY KEY,
+//     ts            TEXT NOT NULL,
+//     tier          TEXT NOT NULL CHECK(tier IN ('enterprise','pro','personal')),
+//     key_mode      TEXT NOT NULL CHECK(key_mode = 'managed'),
+//     provider      TEXT NOT NULL,
+//     input_tokens  INTEGER NOT NULL,
+//     output_tokens INTEGER NOT NULL,
+//     grounding_calls INTEGER NOT NULL,
+//     cost_usd      REAL NOT NULL,
+//     latency_ms    INTEGER NOT NULL
+//   );
+//   CREATE INDEX IF NOT EXISTS idx_scan_cost_ts ON scan_cost_events(ts);
+
+const ALLOWED_TIERS = new Set(['enterprise', 'pro', 'personal']);
+
+async function handleScanCostIngest(request: Request, env: Env): Promise<Response> {
+  let body: unknown;
+  try { body = await request.json(); } catch { return jsonResponse({ error: 'invalid_json' }, 400); }
+  if (!body || typeof body !== 'object') return jsonResponse({ error: 'invalid_body' }, 400);
+
+  const e = body as Record<string, unknown>;
+  const scan_id   = typeof e.scan_id === 'string' && isUuid(e.scan_id) ? e.scan_id : null;
+  const ts        = typeof e.ts === 'string' ? e.ts.slice(0, 30) : null;
+  const tier      = typeof e.tier === 'string' && ALLOWED_TIERS.has(e.tier) ? e.tier : null;
+  const key_mode  = e.key_mode === 'managed' ? 'managed' : null;
+  const provider  = typeof e.provider === 'string' && ALLOWED_PROVIDERS.has(e.provider) ? e.provider : null;
+  const input_tokens    = typeof e.input_tokens === 'number' && e.input_tokens >= 0 ? Math.round(e.input_tokens) : null;
+  const output_tokens   = typeof e.output_tokens === 'number' && e.output_tokens >= 0 ? Math.round(e.output_tokens) : null;
+  const grounding_calls = typeof e.grounding_calls === 'number' && e.grounding_calls >= 0 ? Math.round(e.grounding_calls) : null;
+  const cost_usd  = typeof e.cost_usd === 'number' && isFinite(e.cost_usd) && e.cost_usd >= 0 ? e.cost_usd : null;
+  const latency_ms = typeof e.latency_ms === 'number' && e.latency_ms >= 0 ? Math.round(e.latency_ms) : null;
+
+  if (!scan_id || !ts || !tier || !key_mode || !provider ||
+      input_tokens === null || output_tokens === null || grounding_calls === null ||
+      cost_usd === null || latency_ms === null) {
+    return jsonResponse({ error: 'missing_or_invalid_fields' }, 422);
+  }
+
+  try {
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO scan_cost_events
+         (scan_id, ts, tier, key_mode, provider, input_tokens, output_tokens, grounding_calls, cost_usd, latency_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(scan_id, ts, tier, key_mode, provider, input_tokens, output_tokens, grounding_calls, cost_usd, latency_ms).run();
+  } catch (err) {
+    console.error('D1 scan_cost insert error:', err);
+    return jsonResponse({ error: 'db_error' }, 500);
+  }
+
+  return jsonResponse({ ok: true }, 201);
+}
+
+async function handleScanCostStats(env: Env): Promise<Response> {
+  const rows = await env.DB.prepare(`
+    SELECT cost_usd FROM scan_cost_events
+    WHERE ts >= datetime('now', '-30 days')
+    ORDER BY cost_usd ASC
+  `).all<{ cost_usd: number }>();
+
+  const costs = rows.results.map((r) => r.cost_usd);
+  const count = costs.length;
+
+  function pct(p: number): number {
+    if (count === 0) return 0;
+    const idx = Math.ceil((p / 100) * count) - 1;
+    return costs[Math.max(0, Math.min(idx, count - 1))] ?? 0;
+  }
+
+  return jsonResponse({
+    p50: pct(50),
+    p90: pct(90),
+    p99: pct(99),
+    count,
+    window_days: 30,
+    generated_at: new Date().toISOString(),
+  });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -163,8 +244,16 @@ export default {
       return handleIngest(request, env);
     }
 
+    if (method === 'POST' && url.pathname === '/scan-costs') {
+      return handleScanCostIngest(request, env);
+    }
+
     if (method === 'GET' && url.pathname === '/api/stats') {
       return handleStats(env);
+    }
+
+    if (method === 'GET' && url.pathname === '/api/scan-costs/stats') {
+      return handleScanCostStats(env);
     }
 
     if (method === 'GET' && url.pathname === '/health') {
