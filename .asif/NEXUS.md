@@ -982,6 +982,16 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-05-06 (Cycle 373 — idle health check)
+
+**Tests**: 4,567 GREEN, 197 files, 22.7s. No regressions.
+
+**Deps**: unchanged from prior cycles. Patch/minor batch ready (vitest 4.1.5, zod 4.4.3, yaml 2.8.4, genai 1.52.0, ora 9.4.0, swagger-ui 5.2.6). Majors still pending directives (TS 6, Vite 8, jsdom 29, etc.). No vulns.
+
+**Blockers**: Q-WORKER-URL, Q-TOKEN-COUNTS, Q-TEST-COUNT-BASELINE, Q-REFLECTION-CADENCE — all open from Cycle 371/372.
+
+---
+
 > **Reflection cycle**: 2026-05-06 (Cycle 372 — idle reflection, no new work since Cycle 371)
 
 **1. Shipped**: Nothing since Cycle 371 (same session). Last deliverable: DIRECTIVE-NXTG-20260506-04 — scan-cost telemetry, `ff7f5ae`, 4,567 GREEN.
