@@ -982,6 +982,41 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-05-06 (Cycle 371 — DIRECTIVE-NXTG-20260506-04 DONE: scan-cost telemetry shipped)
+
+**1. Shipped**:
+- `computeScanCost(inputTokens, outputTokens, groundingCalls, provider)` — pure function, rate table auditable inline. Gemini Flash ($0.15/$0.60/M + $0.035/grounding), Claude Haiku ($0.80/$4.00/M), GPT-4o mini ($0.15/$0.60/M), Perplexity ($1.00/$1.00/M), mock ($0).
+- `CostStore.recordManaged()` + `getPercentiles(days)` — in-memory p50/p90/p99 rolling window. Verifiable locally without CF Worker dependency.
+- `GET /costs/percentiles` — new API endpoint.
+- `POST /scan` route — emits `scan_cost` event per managed-key scan. Tier derived from key permissions (admin→enterprise, `pro`→pro, else personal). Fire-and-forget POST to CF Worker `/scan-costs`.
+- CF Worker — `POST /scan-costs` + `GET /api/scan-costs/stats` coded with D1 migration SQL in comments. Blocked on Q-WORKER-URL.
+- `faultline stats --costs` — renders p50/p90/p99 with estimate caveat. Uses `--api-url`/`--api-key` or env vars.
+- **Tests**: 4,567 GREEN (+14, SC-01–SC-14). DoD ≥4,557 ✅.
+- Commits: `ff7f5ae` (implementation), `9350199` (NEXUS response), `4c10658` (status update + push).
+
+**2. Surprises**:
+- **fetch() mock collision** — `emitScanCostEvent()` uses global `fetch`. Webhook tests use `vi.stubGlobal('fetch', vi.fn())`. The fire-and-forget call to the CF Worker was the *first* fetch call captured by the mock, so `webhooks.test.ts:D6` saw `event: 'scan_cost'` instead of `event: 'scan.complete'`, and two other tests failed because they expected `toHaveBeenCalledOnce()`. Fix: `VITEST || NODE_ENV=test` guard, same pattern as the upgrade banner. Took one red run to catch — not obvious until tests ran.
+- **Test count drift** — The directive said "≥4,557 tests must not regress" but the actual count was 4,553 at start of session. The 4,557 figure appears in the NEXUS capsule section (line 307) from a prior snapshot. Wrote 14 tests to clear the threshold with buffer; the discrepancy is worth flagging so Wolf doesn't re-use a stale expected count as a hard gate.
+- **No real token counts** — `scan()` returns `ScanResult` with no token metadata. All cost_usd values are estimates from `text.length / 4`. The directive frames this as "load-bearing measurements" — they're not yet. This is the single biggest gap between the DoD and production fidelity.
+
+**3. Cross-project signals**:
+- **Fire-and-forget fetch guard pattern**: Any ASIF service emitting background HTTP telemetry (fire-and-forget) should add `if (process.env.VITEST || process.env.NODE_ENV === 'test') return;` before the fetch call. Without it, the call competes with `vi.stubGlobal('fetch')` mocks and corrupts fetch call count assertions. Portable to any project with webhook or external HTTP tests.
+- **In-memory percentile recipe** (sort ascending → `Math.ceil((p/100)*n) - 1`): reusable as-is in any analytics store that needs p50/p90/p99. Zero dependencies. Paste into any ASIF store.
+- **Structural key_mode gate**: placing the `scan_cost` emission only in `routes/scan.ts` (not the CLI `scan.ts`) means BYO-key exclusion is enforced architecturally, not conditionally. Any future directive asking "don't emit for BYO-key" can use the same pattern — route-only emission is the gate.
+
+**4. Next priorities (if fresh directives)**:
+- **Token count accuracy (P1)**: wire real LLM-reported token counts from provider API responses into `cost_usd`. Requires extending `ScanResult` or provider wrappers to surface `usage: { input_tokens, output_tokens }`. Without this, the margin data Emma needs remains estimated.
+- **Q-WORKER-URL (P1)**: wrangler deploy + D1 migration (`CREATE TABLE scan_cost_events ...` SQL is in Worker file comments). Unblocks live cost data flowing into `/api/scan-costs/stats`. Blocked on Asif CF creds.
+- **EU AI Act trilogue (P2)**: Digital Omnibus decision expected 2026-05-13. If deferred, update all CONTINGENT framing to "effective 2027/2028" across compliance module and docs.
+- **Idle health check automation review**: This session received the same "no pending directives, run tests" prompt 7 consecutive times before the directive arrived. If this is a scheduled cron firing, consider adding a minimum interval guard or a "last ran" timestamp to avoid N identical NEXUS cycles per day. Not urgent — but 7 identical cycles is noise in the reflection history.
+
+**5. Blockers / Questions for CoS**:
+- **Q-WORKER-URL** (persistent): CF credentials for `wrangler deploy` from `infra/telemetry-worker/`. Also needs the D1 migration run: `CREATE TABLE IF NOT EXISTS scan_cost_events (...)` — SQL is in Worker source comments.
+- **Q-TOKEN-COUNTS** (new): Should I extend `scan()` to return `usage: { input_tokens, output_tokens }` from provider responses, or is that a separate initiative? Current cost_usd is estimated — if Emma's pricing-validator is treating these as billing data, she needs to know they're still heuristic.
+- **Q-TEST-COUNT-BASELINE** (minor): The directive used 4,557 as the test floor but actual count was 4,553 at session start. Request that Wolf sync the expected count to current CI output before injecting future test-count gates.
+
+---
+
 > **Reflection cycle**: 2026-05-05 (Cycle 362 — DIRECTIVE-CLX9-20260505-01 DONE: v0.6.1 PLG funnel wire shipped)
 
 **1. Shipped**:
