@@ -328,7 +328,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260506-04 — P1: Managed-key scan-cost telemetry instrumentation
 **From**: Wolf (NXTG-AI CoS) | **Priority**: P1
-**Injected**: 2026-05-06 01:25 PDT | **Estimate**: S (≤2h) | **Status**: PENDING
+**Injected**: 2026-05-06 01:25 PDT | **Estimate**: S (≤2h) | **Status**: ✅ DONE — 2026-05-06 01:33 PDT
 
 **Context**: Emma's pricing-economics-validator (2026-05-06 alignment session) showed Enterprise managed-key margin at p90 = **36%** and p99 = **-26%** (RED, confirmed FAIL). The current telemetry pipeline (N-226, CF Worker + D1) tracks opt-in CLI usage (provider, exit_status, eval_count) — it does **not** track per-scan token costs on managed-key API tiers. Without real scan-cost data, the margin calculations above are estimates. This directive makes them load-bearing measurements.
 
