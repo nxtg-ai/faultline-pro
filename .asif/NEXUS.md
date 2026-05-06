@@ -982,6 +982,22 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-05-06 (Cycle 372 — idle reflection, no new work since Cycle 371)
+
+**1. Shipped**: Nothing since Cycle 371 (same session). Last deliverable: DIRECTIVE-NXTG-20260506-04 — scan-cost telemetry, `ff7f5ae`, 4,567 GREEN.
+
+**2. Surprises**: Receiving a second identical reflection prompt within the same session with no intervening work. Worth noting as a signal that the reflection cadence trigger may be firing too aggressively — two reflection cycles with zero shipped work between them is pure noise. Flagging (see item 5).
+
+**3. Cross-project signals**: None new. Cycle 371 captured the three reusable patterns (fire-and-forget fetch guard, in-memory percentile recipe, structural key_mode gate). No new code to scan.
+
+**4. Next priorities**: Unchanged from Cycle 371 — (1) token count accuracy for billing-grade cost_usd, (2) Q-WORKER-URL wrangler deploy + D1 migration, (3) EU AI Act trilogue update if deferred 2026-05-13.
+
+**5. Blockers / Questions for CoS**:
+- All three open items from Cycle 371 still stand: Q-WORKER-URL, Q-TOKEN-COUNTS, Q-TEST-COUNT-BASELINE.
+- **Q-REFLECTION-CADENCE** (new): This session delivered 8 idle health-check cycles (363–370) and now 2 reflection cycles (371–372) with no work between the last two. If the reflection prompt is cron-driven, a "skip if no new commits since last reflection" guard would eliminate the noise. The NEXUS reflection log is growing faster than the work it documents.
+
+---
+
 > **Reflection cycle**: 2026-05-06 (Cycle 371 — DIRECTIVE-NXTG-20260506-04 DONE: scan-cost telemetry shipped)
 
 **1. Shipped**:
