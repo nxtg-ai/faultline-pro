@@ -982,6 +982,12 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-05-06 (Cycle 379 — idle health check)
+
+**Tests**: 4,567 GREEN, 197 files, 22.4s. Deps stable. No vulns. (16th consecutive idle cycle.)
+
+---
+
 > **Reflection cycle**: 2026-05-06 (Cycle 378 — idle health check)
 
 **Tests**: 4,567 GREEN, 197 files, 23.9s. Deps stable. No vulns. (15th consecutive idle cycle.)
