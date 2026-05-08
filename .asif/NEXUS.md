@@ -982,6 +982,34 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-05-08 (Cycle 383 — v0.7.0 release train verification)
+
+**1. Shipped** (Asif-initiated, team verified):
+- `@nxtg/faultline@0.7.0` — published to npm ✅
+- GitHub release v0.7.0 published 2026-05-08T21:04:49Z ✅ — https://github.com/nxtg-ai/faultline-pro/releases/tag/v0.7.0
+- git tag `v0.7.0` → commit `34cd7e0` (chore(release): v0.7.0 by Asif) ✅
+- CHANGELOG.md: `[Unreleased]` → `[v0.7.0] — 2026-05-08` ✅
+- `packages/cli/package.json`: v0.7.0 ✅ | `cli/index.ts` VERSION: '0.7.0' ✅
+- **Tests**: 4,569 GREEN (+2 vs pre-release 4,567 — additional tests landed with v0.7.0 release commit)
+- Working tree: clean, HEAD = origin/main ✅
+- ADR-036 release-debt gate: RESET — all 18 commits since v0.6.1 now formalised under v0.7.0.
+
+**2. Surprises**: The release commit (`34cd7e0`) was authored by Asif directly — CHANGELOG, tag, GH release, and npm publish were all done outside this session. The `index.ts` VERSION bump to '0.7.0' arrived as an external modification (system-reminder). Release train was already complete on arrival; my role was verification only. Clean.
+
+**3. Cross-project signals**: The ADR-036 release protocol (tag → GH release → npm publish → CHANGELOG roll → version bump, all atomic) worked as designed. The pre-push CI gate correctly identified the version bump and triggered the release protocol check. Any ASIF project publishing to npm should replicate this gate.
+
+**4. Next priorities**:
+- Q-WORKER-URL: wrangler deploy for CF Worker scan-cost endpoints + D1 migration — still the top unblocked item.
+- Q-TOKEN-COUNTS: wire actual LLM token counts from provider responses into `cost_usd` to make margin data billing-grade.
+- EU AI Act Digital Omnibus: trilogue outcome (expected 2026-05-13) — update CONTINGENT framing if deferred.
+- Patch/minor dep batch: vitest 4.1.5, zod 4.4.3, yaml 2.8.4, genai 1.52.0, ora 9.4.0, swagger-ui 5.2.6 — low-risk, ready to bundle as a maintenance PR.
+
+**5. Blockers / Questions for CoS**:
+- Q-WORKER-URL, Q-TOKEN-COUNTS open (from Cycle 371).
+- Q-REFLECTION-CADENCE: 19 consecutive idle cycles logged before this release verification — cadence trigger still needs a "skip if no new commits" guard.
+
+---
+
 > **Reflection cycle**: 2026-05-06 (Cycle 382 — idle health check)
 
 **Tests**: 4,567 GREEN, 197 files, 22.7s. Deps stable. No vulns. (19th consecutive idle cycle.)
