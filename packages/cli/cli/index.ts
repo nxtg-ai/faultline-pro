@@ -38,7 +38,7 @@ import { buildEuComplianceReport, renderComplianceReportJson, renderComplianceRe
 import { statsCommand } from './stats.js';
 import { sendTelemetry, classifyError } from './telemetry.js';
 
-const VERSION = '0.6.1';
+const VERSION = '0.7.0';
 const PRICING_URL = 'https://faultline.nxtg.ai/pricing';
 
 /** Print once per invocation to stderr. Silenced by FAULTLINE_NO_BANNER=1 or test env. */
@@ -125,6 +125,7 @@ Usage:
   faultline scans stale [--days 30] [--api-url URL] [--api-key KEY]  List stale scan groups
   faultline scans usage [--staleDays 30] [--api-url URL] [--api-key KEY]  Scan usage analytics
   faultline scans prune [--days 30] [--confirm] [--api-url URL] [--api-key KEY]  Delete stale scan groups
+  faultline stats [--costs] [--api-url URL] [--api-key KEY]        Show npm stats or managed-key scan cost percentiles
   faultline compliance-report --input <scan.json> [--format json|pdf|markdown|sarif|html] [--output <file>] [--project-name "My AI"]  Generate EU AI Act Article 9/13/50 evidence report
   faultline compliance-report --text <text> --provider mock [--format json|pdf|markdown|sarif|html] [--project-name "My AI"]  Scan then report
   faultline compliance-report --input <scan.json> --ci                 CI gate: exit 1 on non-compliant articles or high/critical risk
@@ -146,7 +147,7 @@ For CI/testing without an API key, use --provider mock (returns synthetic result
 }
 
 // Boolean flags that take no value argument
-const BOOLEAN_FLAGS = new Set(['sarif', 'all', 'demo', 'confirm', 'ci', 'strict']);
+const BOOLEAN_FLAGS = new Set(['sarif', 'all', 'demo', 'confirm', 'ci', 'strict', 'costs', 'no-save']);
 
 function parseArgs(args: string[]): { command: string; flags: Record<string, string> } {
   const command = args[0] || '';

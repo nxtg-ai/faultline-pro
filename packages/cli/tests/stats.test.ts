@@ -6,7 +6,7 @@
  * renderStats, statsCommand (mocked fetch + mocked fs).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -588,5 +588,37 @@ describe('CLI: faultline stats', () => {
     // If fetch is called we know routing worked; exitCode 0 = success
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain('@nxtg/faultline');
+  });
+
+  it('ST-I2: main(["stats", "--costs"]) preserves api-url and api-key flags', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ p50: 0.0001, p90: 0.0002, p99: 0.0003, count: 12, windowDays: 30 }),
+    } as Response);
+    const { main } = await import('../cli/index.js');
+    const result = await main(['stats', '--costs', '--api-url', 'http://faultline.test', '--api-key', 'test-key']);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain('SCAN COST STATS');
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      'http://faultline.test/costs/percentiles?days=30',
+      expect.objectContaining({ headers: { 'x-api-key': 'test-key' } }),
+    );
+  });
+
+  it('ST-I3: trailing --no-save is parsed as boolean and skips snapshot writes', async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'fl-stats-cli-'));
+    try {
+      const snapshotPath = join(tmpDir, 'snapshots.json');
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => MOCK_POINT,
+      } as Response);
+      const { main } = await import('../cli/index.js');
+      const result = await main(['stats', '--snapshot-path', snapshotPath, '--no-save']);
+      expect(result.exitCode).toBe(0);
+      expect(existsSync(snapshotPath)).toBe(false);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });

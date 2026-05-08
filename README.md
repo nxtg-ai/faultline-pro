@@ -328,6 +328,8 @@ faultline history
 faultline trend --file doc.txt
 
 # Utilities
+faultline stats                                      # npm download stats
+faultline stats --costs --api-url http://localhost:3000 --api-key <key>
 faultline rules                                        # list detection rules
 faultline init                                         # generate .faultlinerc.json
 faultline --version

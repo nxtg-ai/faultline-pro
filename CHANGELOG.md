@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [v0.7.0] — 2026-05-08
+
+### Added
+
+- Managed-key scan cost telemetry (DIRECTIVE-NXTG-20260506-04): API records estimated scan-cost events for managed-key scans and exposes scan-cost percentiles through the cost telemetry path; coverage includes cost calculation, percentile storage, and renderer smoke tests.
+- `faultline stats --costs`: CLI view for managed-key scan cost percentiles using `--api-url` / `--api-key` or `FAULTLINE_API_URL` / `FAULTLINE_API_KEY`.
+
+### Fixed
+
+- CLI test-environment UX: upgrade banner is suppressed under `VITEST` or `NODE_ENV=test`, keeping command tests clean without disabling the production banner.
+- CLI stats flag parsing: `--costs` and trailing `--no-save` are now parsed as boolean flags, so `--api-url`, `--api-key`, and `--snapshot-path` are not swallowed by adjacent boolean options.
+
+### Ops
+
+- Release protocol debt closure: formalizes 18 commits since `v0.6.1` into a tagged GitHub/npm release, resetting ADR-036 unreleased-commit debt for Faultline Pro.
+
 ## [v0.6.1] — 2026-05-05
 
 ### Changed

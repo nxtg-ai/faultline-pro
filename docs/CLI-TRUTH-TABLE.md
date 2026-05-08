@@ -206,6 +206,7 @@ Binary: `faultline` (or `node packages/cli/bin/faultline.js`)
 | `stats` | `--package <n1> --package <n2>` | ✅ | Repeatable flag; multi-package comparison |
 | `stats` | `--no-save` | ✅ | Skips persisting snapshot |
 | `stats` | `--snapshot-path <path>` | ✅ | Custom snapshot storage path |
+| `stats` | `--costs --api-url <URL> --api-key <KEY>` | ⚠️ | Requires running FP API server; fetches managed-key scan cost percentiles from `/costs/percentiles`. `--api-key` or `FAULTLINE_API_KEY` required. |
 
 ---
 

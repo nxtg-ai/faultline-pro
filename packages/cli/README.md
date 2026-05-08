@@ -167,6 +167,10 @@ faultline scan --input doc.txt --provider gemini --lang es
 
 # Reusable scan templates
 faultline scan --input doc.txt --template strict-compliance
+
+# Product stats
+faultline stats --no-save
+faultline stats --costs --api-url http://localhost:3000 --api-key <key>
 ```
 
 ---
