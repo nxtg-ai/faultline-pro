@@ -1638,3 +1638,39 @@ The ADR-036 three-layer enforcement pattern (doc → pre-push hook → daily CI 
 - `--share` flag (L2 loop-compression leak) still in N-216 backlog — loop relies on organic sharing until shipped.
 - `enterprise.faultline.nxtg.ai` still undeployed (WEDGE v3 Repositioning Rec #1 — highest-leverage action per WEDGE author). Helena channel effectiveness is limited until this footprint exists.
 
+
+---
+
+### DIRECTIVE-NXTG-20260518-02 — Scan-cost telemetry on /scan/stream (managed-inference cost emission)
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P0
+**Injected**: 2026-05-18 01:00 PDT | **Estimate**: S (under 4h) | **Status**: PENDING
+
+**Origin**: 2026-05-18 00:43-00:55 PDT alignment-room thread (Asif + Wolf + Kestrel). Code audit of `~/projects/faultline-web/app/api/scan/route.ts` (Wolf) confirmed by Kestrel: Clerk-authenticated $19 Personal + $49 Pro subscribers bypass the BYO `x-user-api-key` branch (gated on `!userId`) and `fpFetch('/scan/stream', { text, provider }, userApiKey=undefined)` proxies to FP backend, which uses server-side managed keys (OPENAI_API_KEY / GEMINI_API_KEY on Fly.io). Paid web scans = managed inference = FP eats the LLM cost.
+
+This invalidates the 97.8% margin number cited in `enrichment/2026-05-06-faultline-web-pricing-validation.md` (corrected at commit `96c6e8d72` 2026-05-18) and `enrichment/2026-05-18-faultline-pricing-research-SYNTHESIS.md` (corrected at commit `4168c46ea`). The validator skill computed BYO economics from the playbook-inferred assumption; primary-source verification on shipped code shows managed. We need measured cost-per-scan before any margin claim is load-bearing again.
+
+**Action Items**:
+1. Add per-invocation cost-emission to the `/scan/stream` handler on faultline-api (Fly.io). Capture at minimum: `provider_name`, `model_id`, `input_tokens`, `output_tokens`, `tool_call_count`, `wall_ms`, `usd_estimate` (computed from provider's published per-1K-token rates), `cache_hit` boolean, `user_tier` (free / personal / pro / enterprise / anon / userkey), `scan_id`, `ts`. Schema must match `~/.claude/skills/pricing-economics-validator/references/token-usage-and-research-credits.md` §Minimum Usage Event so the validator skill can re-ingest.
+2. Persistence: append to a structured log on Fly (NDJSON `/var/log/faultline/scan-cost.jsonl` is fine for v1) AND emit a Prometheus counter / gauge if Fly already has metrics wiring. Per-event row preferred over aggregate for v1 — we want raw events for the re-model.
+3. Per-tier observability roll-up: add a daily script (or extend FP CI scheduled job) that computes p50/p90/p99 cost-per-scan by `user_tier` and writes the digest to `~/projects/Faultline-Pro/.asif/scan-cost-digest.json`. Wolf-lane will mirror to ASIF dashboard for portfolio visibility.
+4. Verify with one synthetic scan post-deploy: hit `/scan/stream` with a known text, confirm the NDJSON row appears with all fields populated and `usd_estimate` is non-zero for a paid-tier or anon path.
+
+**DoD**:
+- PASS when (a) one real production scan on faultline.nxtg.ai produces a complete NDJSON event in `scan-cost.jsonl` with all schema fields, AND (b) `scan-cost-digest.json` updates on the daily roll-up with non-empty p50/p90/p99 per tier (initially can be one-row "single sample" — that's fine for v1).
+- FAIL if (a) the event row is missing any required field, (b) `usd_estimate` is hardcoded zero, or (c) the deploy regresses any existing `/scan/stream` behavior (latency, SSE event shape, error handling).
+
+**Constraints**:
+- Do NOT change the public API surface of `/scan/stream` — same SSE events, same response shape. Telemetry is server-side only.
+- Do NOT block the scan response on telemetry persistence — fire-and-forget or async write. A failed telemetry write must NOT fail the scan.
+- Cost estimation MUST be computed from the actual model used (read from provider routing decision), not a hardcoded average. If provider routing falls back, log the fallback model id.
+- No `Co-Authored-By: Claude …` in commit / PR trailers — use NXTG.AI canon trailer (`~/.claude/rules/commit-co-author-canon.md`).
+
+**Why this is P0**: Asif is running a live $19 paid test on faultline.nxtg.ai/pricing Monday 2026-05-18 AM. Without this telemetry, we will have ZERO data on what the test scan actually costs us. Every margin number the validator skill produces remains an estimate. With this telemetry shipped before or during the test, Tuesday morning we re-model Personal/Pro at measured managed-inference cost and identify red-zone scan volume per tier — load-bearing for any pricing decision after.
+
+**Promise**: PRM-NXTG-20260518-02 (24h, manual-verify, target FAULTLINE_PRO_NXTG).
+
+**Escalation**: If telemetry surfaces a per-scan cost above ~$0.20 sustained at p50 across paid tiers, that's an immediate margin-tripwire — alignment-say @asif + Wolf within the same cycle, do NOT silently ship and continue.
+
+**Response** (filled by team):
+**Started**: TBD | **Completed**: TBD | **Actual**: TBD | **Commit**: TBD
+
