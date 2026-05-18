@@ -1361,6 +1361,48 @@ All deferred updates are safe minor/patch bumps. Applied none beyond the securit
 
 ---
 
+> **Reflection cycle**: 2026-05-18 (Cycle 350 — structured reflection, DIRECTIVE-NXTG-20260518-03 DONE)
+
+**1. Shipped since Cycle 349**
+
+| Deliverable | Commit | Detail |
+|-------------|--------|--------|
+| `@nxtg/faultline-api v0.7.0` version bump | `b11cfe0` | `packages/api/package.json` `0.5.2` → `0.7.0`. ADR-021 compliant: CHANGELOG entry, conventional commit, tag `api-v0.7.0` pushed. |
+| `src/version.ts` | `b11cfe0` | Reads `FAULTLINE_API_VERSION` from `package.json` at runtime. Health endpoint, OpenAPI info, webhook `User-Agent` all now emit the correct version instead of hardcoded `"0.2.0"`. |
+| CHANGELOG entry | `b11cfe0` | `[@nxtg/faultline-api v0.7.0] — 2026-05-18` with grouped Added/Fixed/Ops covering all API changes since `0.5.2`. |
+| Tag `api-v0.7.0` | — | Separate namespace from CLI flat tags (`v0.7.0` was already taken by CLI). |
+
+Tests: **4,582 / 198 — unchanged.** No test additions this cycle; all green.
+
+**2. Surprises**
+
+- **Prior agent session had already done the work — uncommitted**: when I pulled the directive and read `packages/api/package.json`, it showed `"0.7.0"` on disk but `"0.5.2"` in git HEAD. A prior agent had staged the version bump, `version.ts`, health/swagger/webhooks changes, and even partially filled the NEXUS response — all uncommitted. The XS estimate was accurate but only because most of the coding was already done. My role was to verify, run the full suite, write the CHANGELOG, commit, tag, and push. Without reading `git status` before touching anything, I would have double-written over existing work.
+- **Flat tag namespace collision**: `v0.6.0` and `v0.7.0` already existed as CLI tags. Using `api-v0.7.0` was the correct call but required actively checking before tagging — the directive said "determine if separate namespace exists" and none did, so I established one. Future API releases will use `api-vX.Y.Z`.
+- **`"0.2.0"` was hardcoded in three separate places**: `health.ts`, `server.ts`, and `webhooks.ts` all independently hardcoded the version string. The `version.ts` module fixes all three at once. This pattern (hardcoded version strings in multiple route files) is a recurring ASIF tech-debt pattern — any project that doesn't read version from `package.json` at runtime will drift the same way.
+
+**3. Cross-project signals**
+
+- **`src/version.ts` pattern is copy-paste ready**: any Node.js/ESM API in the ASIF portfolio that currently hardcodes its version string should adopt this pattern. The 10-line `createRequire` approach handles ESM correctly (no `import.meta` path gymnastics). Relevant for FamilyMind API, Atlas API, any future Fly-deployed service.
+- **Establish `api-vX.Y.Z` tag namespace as ASIF standard**: monorepos with multiple publishable packages (CLI + API + SDK) need explicit tag namespacing. FP now has: CLI uses flat `v0.x.x`, API uses `api-v0.x.x`. If SDK ever versions independently it should use `sdk-v0.x.x`. Worth a one-liner in ADR-021 or a new ADR.
+- **"Prior session uncommitted work" risk**: when multiple agents work on the same repo across sessions, uncommitted changes accumulate in the working tree without any visibility. The only reliable way to detect this is `git status` at session start before any writes. Worth adding to ASIF boot protocol or session start checklist.
+
+**4. Next priorities if fresh directives arrived**
+
+1. **`FLY_API_TOKEN` GitHub secret** (Asif, < 2 min): `flyctl auth token` → GitHub Settings → Secrets → `FLY_API_TOKEN`. Unblocks auto-deploy for all future `packages/api` pushes. Monday's $19 test needs this before the test scan runs.
+2. **Patch/minor dep bundle**: `zod` 4.3.6→4.4.3, `fast-check` 4.7.0→4.8.0, `vitest` 4.1.4→4.1.6, `react`/`react-dom`, `tsx`, `yaml`, `graphql`, `ora`, `@google/genai` 1.50→1.52. One pass, ~30 min.
+3. **N-216 `--share` flag**: L2 loop-compression leak from VIRAL artifact.
+4. **`faultline stats --telemetry` local command**: carry-over.
+5. **`enterprise.faultline.nxtg.ai`**: Helena footprint still zero.
+
+**5. Blockers / Questions for CoS**
+
+- **Q-FLY-API-TOKEN (P0 — Asif action)**: `flyctl auth token` → GitHub secret `FLY_API_TOKEN`. Without this, `fly-deploy.yml` fails on every push and Monday's test produces zero cost data.
+- **Q-TIER-WIRE-2026-05-18**: FP ready at `847fca3`; waiting on FW `x-user-tier` complement.
+- **Q-WORKER-URL + Q-TELEMETRY-OPT-IN**: open since Cycle 329.
+- **ASIF push conflict**: VIRAL commit `d01818927` still local.
+
+---
+
 > **Reflection cycle**: 2026-05-18 (Cycle 349 — structured reflection, fly-deploy.yml landed)
 
 **1. Shipped since Cycle 348**
