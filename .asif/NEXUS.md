@@ -792,6 +792,9 @@ packages/api/tests/release-prep.test.ts:107
 
 ## Team Questions
 
+**Q-TIER-WIRE-2026-05-18 — FW x-user-tier header complement (DIRECTIVE-NXTG-20260518-02)**:
+FP stream route now reads `x-user-tier` header via `resolveTierFromRequest()` and accepts `personal|pro|enterprise|free|anon|userkey`. FW complement directive said to forward this header. FP side is live at `90cf743`. Once FW ships their side, per-subscriber tier attribution will be accurate in `scan-cost.jsonl` and the digest. **No FP action needed — just confirming the contract is wired and ready.**
+
 **Q-WORKER-DEPLOY — 2026-04-29 (Emma CoS)**: Telemetry Worker deploy needed — `wrangler` v4.86.0 is installed but not authenticated. D1 schema `faultline-telemetry` (id: `a7c5997f`) is provisioned. To activate Outcomes 2-4 (CLI telemetry, funnel, errors), Asif needs to run once:
 ```
 cd /home/axw/projects/Faultline-Pro/infra/telemetry-worker
@@ -1672,7 +1675,7 @@ This invalidates the 97.8% margin number cited in `enrichment/2026-05-06-faultli
 **Escalation**: If telemetry surfaces a per-scan cost above ~$0.20 sustained at p50 across paid tiers, that's an immediate margin-tripwire — alignment-say @asif + Wolf within the same cycle, do NOT silently ship and continue.
 
 **Response** (filled by team):
-**Started**: 2026-05-18 01:00 PDT | **Completed**: 2026-05-18 01:10 PDT | **Actual**: S (~1h including Wolf consumer-verification loop) | **Commit**: see below
+**Started**: 2026-05-18 01:00 PDT | **Completed**: 2026-05-18 01:10 PDT | **Actual**: S (~1h including Wolf consumer-verification loop) | **Commit**: `90cf743`
 
 **Shipped**:
 1. `costs.ts` — extended `ManagedScanCostEvent` with `modelId?`/`cacheHit?`; added `PROVIDER_MODEL_IDS` lookup (gemini→`gemini-2.0-flash`, claude→`claude-haiku-4-5-20251001`, openai→`gpt-4o-mini`, perplexity→`llama-3.1-sonar-small-128k-online`); moved `emitScanCostEvent`, `appendScanCostLog`, `resolveTier` here as shared exports. `appendScanCostLog` writes NDJSON to `/var/log/faultline/scan-cost.jsonl` fire-and-forget.
