@@ -1667,7 +1667,7 @@ This invalidates the 97.8% margin number cited in `enrichment/2026-05-06-faultli
 
 **Why this is P0**: Asif is running a live $19 paid test on faultline.nxtg.ai/pricing Monday 2026-05-18 AM. Without this telemetry, we will have ZERO data on what the test scan actually costs us. Every margin number the validator skill produces remains an estimate. With this telemetry shipped before or during the test, Tuesday morning we re-model Personal/Pro at measured managed-inference cost and identify red-zone scan volume per tier — load-bearing for any pricing decision after.
 
-**Promise**: PRM-NXTG-20260518-02 (24h, manual-verify, target FAULTLINE_PRO_NXTG).
+**Promise**: PRM-NXTG-20260518-03 (24h, manual-verify, target FAULTLINE_PRO_NXTG).
 
 **Escalation**: If telemetry surfaces a per-scan cost above ~$0.20 sustained at p50 across paid tiers, that's an immediate margin-tripwire — alignment-say @asif + Wolf within the same cycle, do NOT silently ship and continue.
 
