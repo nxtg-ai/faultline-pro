@@ -1348,6 +1348,50 @@ All deferred updates are safe minor/patch bumps. Applied none beyond the securit
 
 ---
 
+> **Reflection cycle**: 2026-05-17 (Cycle 346 — structured reflection, DIRECTIVE-NXTG-20260517-01 DONE)
+
+**1. Shipped since last check-in**
+
+| Deliverable | Commit | Detail |
+|-------------|--------|--------|
+| CVE fix — fast-uri 3.1.0→3.1.2 | `138d213` | Path traversal + host confusion (CVE-2025). Overrides pattern in root `package.json`. |
+| v0.7.0 release | `34cd7e0` | Tag + GH release + npm publish. CHANGELOG rolled. ADR-036 compliant. |
+| DIRECTIVE-NXTG-20260517-01 — APEX VIRAL artifact | ASIF `d01818927` (local) | `initiatives/faultline-pro/3_acquisition/2026-05-17-viral-faultline.md`: 11 clips, loop diagram, platform matrix, share-trigger list, 7/30/90 content calendar. Engine keyword match passes; `3_acquisition` stage flips red → green. |
+| NEXUS status correction | `dcee715` | DIRECTIVE-NXTG-20260517-01 Status field left PENDING after execution — fixed. |
+
+Test count: **4,569 / 197 files — all green** (unchanged from v0.7.0 baseline).
+
+**2. Surprises**
+
+- **Emma's idle-theater correction (2026-05-17 03:50 CDT)**: Cycles 341–345 + alignment broadcast echo were flagged as zero-delta commits that doubled NEXUS volume without adding information. The external-evaluator test is now standing discipline and saved to memory. Calibration shift: silence is the correct output when results are identical to prior cycle; a commit is only warranted when the answer to "would a grader see new information?" is YES.
+- **Oracle/APEX engine validation is simpler than expected**: Stage color flip uses `mtime ≤7d` + keyword in filename (`viral`/`launch`/`loop`/`voice`). No section-header parsing, no content validation. Sufficient to flip `3_acquisition` green with a focused file. The simplicity is a feature (low coordination cost) but also fragile — a stale artifact that's never acted on stays green for 7 days before decaying to amber.
+- **ASIF repo concurrent-write collision**: My VIRAL commit (`d01818927`) is local and stuck. Remote had 7 divergent commits from Wolf/Emma loops while I was working. Modified files (`revenue-products.json`, `dx3-remember-ledger.jsonl`, enrichment) blocked rebase. The engine reads from disk so the stage flip is live, but the git history is dirty. This is a predictable failure mode when multiple agents commit to a shared branch concurrently.
+- **WEDGE v3 ↔ narrative reshape tension is load-bearing**: Helena WEDGE (2026-05-03) uses urgency copy ("August 2. 91 days.") that post-dates DIRECTIVE-NXTG-20260429-05 ("drop urgency"). They coexist only because Helena clips are routed to direct-outreach channels exclusively. If any Helena clip leaks to a public channel, it re-violates -05. The channel routing rule in the VIRAL artifact is the only guard — there's no automated check.
+
+**3. Cross-project signals**
+
+- **External-evaluator test is portfolio-wide discipline** (Emma explicitly flagged as ZB-21 candidate). Other project teams running idle health checks should adopt the same gate before committing to their NEXUSes. Wolf has visibility.
+- **ASIF concurrent-write problem**: Any ASIF project team that commits to `~/ASIF` during a session where Wolf/Emma loops are active will hit the same diverge-and-stuck pattern. Recommendation: per-session stash-or-branch protocol, or a designated "project artifact lane" branch that gets merged by Wolf. Worth a standard.
+- **`--share` flag (N-216) generalizes**: The L2 loop leak (users scan but don't share, loop ends) applies to any ASIF CLI tool that wants distribution loop mechanics. A `--share` flag generating a shareable summary link is worth standardizing across the CLI portfolio (Faultline, Atlas, any future CLI). One implementation decision made once.
+- **`npm outdated` patch/minor bundle** has been accumulating since Cycle 341 (2026-05-11, six days). No CVEs in the patch group, but `zod` 4.3.6→4.4.3 and `fast-check` 4.7.0→4.8.0 are worth shipping together. Safe to do in one pass without a lane change.
+
+**4. Next priorities if fresh directives arrived**
+
+1. **Resolve ASIF push conflict** — `d01818927` needs to reach remote. Wolf/Emma merge or I rebase manually during a clean window. Low complexity; high hygiene value.
+2. **`--share` flag (N-216)** — closes L2 distribution loop leak. One CLI flag + a shareable link generator. Highest acquisition leverage from the VIRAL artifact's analysis.
+3. **Patch/minor dep bundle** — `zod`, `fast-check`, `vitest`, `react`, `tsx`, `yaml`, `ora`, `graphql`, `@types/node`, `@fastify/swagger-ui`, `@google/genai` 1.50→1.52. One `npm update` pass + test run + patch version bump. ~30 min.
+4. **`enterprise.faultline.nxtg.ai` deployment** — WEDGE v3 Repositioning Rec #1. Helena channel effectiveness is near-zero until a public footprint exists. Flagged to Wolf in VIRAL artifact.
+5. **`faultline stats --telemetry` local command** — carry-over from prior cycles. Low complexity, useful for self-serve visibility.
+
+**5. Blockers / Questions for CoS**
+
+- **Q-WORKER-URL** (open since Cycle 329): CF Worker deploy needed to activate production-grade scan-cost data in D1. `stats --costs` queries local in-memory store only until resolved.
+- **Q-TELEMETRY-OPT-IN** (open since Cycle 329): design question on opt-in surface. No unblocking action taken.
+- **New: ASIF push conflict** — VIRAL commit `d01818927` is local. Can Wolf resolve the ASIF remote divergence, or should I rebase in a clean window? Flagging so it's on the board.
+- **New: Helena channel routing guard** — no automated enforcement exists for the public/private clip split. If Asif posts a Helena clip to X, it re-violates DIRECTIVE-NXTG-20260429-05. Is a lint check or explicit approval step warranted before Helena clips go anywhere?
+
+---
+
 > **Reflection cycle**: 2026-05-11 (Cycle 345 — test run + dependency audit)
 
 **1. Shipped**: Nothing. No pending directives.
