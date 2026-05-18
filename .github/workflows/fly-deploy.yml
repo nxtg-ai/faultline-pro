@@ -1,0 +1,60 @@
+name: Fly Deploy (faultline-api)
+
+# Auto-deploy faultline-api to Fly.io on every push to main that touches the
+# API package, Dockerfile, or fly.toml. Eliminates manual `flyctl deploy` from
+# the loop — origin commit becomes production commit within ~3 min of push.
+#
+# Setup required ONCE: add repo secret FLY_API_TOKEN
+#   1. Generate token: flyctl auth token  (from a machine with flyctl auth)
+#   2. Add to GitHub: Settings → Secrets and variables → Actions → New
+#      repository secret → Name=FLY_API_TOKEN, Value=<token>
+#   3. Push any commit touching this workflow's paths to trigger first run
+#
+# Background: 2026-05-18 audit caught production at v0.2.0 while local was at
+# v0.5.2 — months of FP improvements absent from prod. Manual `flyctl deploy`
+# from Asif's shell is the current path; this workflow makes that the fallback,
+# not the primary. Origin: DIRECTIVE-NXTG-20260518-02 + asif-decisions.md row
+# 2026-05-18 01:00 PDT.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/api/**'
+      - 'Dockerfile'
+      - 'packages/api/fly.toml'
+      - '.github/workflows/fly-deploy.yml'
+  workflow_dispatch: {}
+
+concurrency:
+  group: fly-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy faultline-api
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to Fly
+        run: flyctl deploy --config packages/api/fly.toml --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Verify release
+        run: |
+          sleep 10
+          VERSION=$(curl -s https://faultline-api.fly.dev/health | python3 -c "import sys,json; print(json.load(sys.stdin).get('version','unknown'))")
+          echo "Production version after deploy: $VERSION"
+          LOCAL_VERSION=$(python3 -c "import json; print(json.load(open('packages/api/package.json'))['version'])")
+          echo "Local package version: $LOCAL_VERSION"
+          if [ "$VERSION" != "$LOCAL_VERSION" ]; then
+            echo "::warning::Production version $VERSION does not match local $LOCAL_VERSION — investigate"
+          fi
