@@ -10,8 +10,8 @@ name: Fly Deploy (faultline-api)
 #      repository secret → Name=FLY_API_TOKEN, Value=<token>
 #   3. Push any commit touching this workflow's paths to trigger first run
 #
-# Background: 2026-05-18 audit caught production at v0.2.0 while local was at
-# v0.5.2 — months of FP improvements absent from prod. Manual `flyctl deploy`
+# Background: 2026-05-18 audit caught production at v0.2.0 while current
+# Faultline release is v0.7.0 — months of FP improvements absent from prod. Manual `flyctl deploy`
 # from Asif's shell is the current path; this workflow makes that the fallback,
 # not the primary. Origin: DIRECTIVE-NXTG-20260518-02 + asif-decisions.md row
 # 2026-05-18 01:00 PDT.
