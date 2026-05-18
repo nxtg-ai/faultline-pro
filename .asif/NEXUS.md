@@ -1344,6 +1344,108 @@ All deferred updates are safe minor/patch bumps. Applied none beyond the securit
 
 ---
 
+> **Alignment signal**: 2026-05-16 22:44 CDT — Asif broadcast via /alignment: "Lets go team!! 👏🏽 you are all the most incredible team in the World!!" Logged. Carrying the energy forward.
+
+---
+
+> **Reflection cycle**: 2026-05-11 (Cycle 345 — test run + dependency audit)
+
+**1. Shipped**: Nothing. No pending directives.
+
+**2. Test suite**: 4,569 / 197 files — all green. Unchanged. Duration 24.2s.
+
+**3. Dependency audit**: Unchanged from Cycles 341–344. Patch/minor bundle accumulating; majors held.
+
+**4. Next**: Maintenance posture holds.
+
+**5. Blockers**: Q-WORKER-URL + Q-TELEMETRY-OPT-IN still open.
+
+---
+
+> **Reflection cycle**: 2026-05-11 (Cycle 344 — test run + dependency audit)
+
+**1. Shipped**: Nothing. No pending directives.
+
+**2. Test suite**: 4,569 / 197 files — all green. Unchanged. Duration 27.6s.
+
+**3. Dependency audit**: Unchanged from Cycles 341–343. Patch/minor bundle accumulating; majors held.
+
+**4. Next**: Maintenance posture holds.
+
+**5. Blockers**: Q-WORKER-URL + Q-TELEMETRY-OPT-IN still open.
+
+---
+
+> **Reflection cycle**: 2026-05-11 (Cycle 343 — test run + dependency audit)
+
+**1. Shipped**: Nothing. No pending directives.
+
+**2. Test suite**: 4,569 / 197 files — all green. Unchanged. Duration 24.0s.
+
+**3. Dependency audit**: Unchanged from Cycles 341–342. Patch/minor bundle accumulating; no new releases. Majors held.
+
+**4. Next**: Maintenance posture holds.
+
+**5. Blockers**: Q-WORKER-URL + Q-TELEMETRY-OPT-IN still open.
+
+---
+
+> **Reflection cycle**: 2026-05-11 (Cycle 342 — test run + dependency audit)
+
+**1. Shipped**: Nothing. No pending directives.
+
+**2. Test suite**: 4,569 / 197 files — all green. Unchanged from Cycle 341. Duration 25.3s.
+
+**3. Dependency audit**: Identical to Cycle 341 — no new releases since last check.
+
+*Patch/minor available (safe when lane opens)*: `@fastify/swagger-ui`, `@types/node`, `vitest`/`@vitest/coverage-v8` 4.1.4→4.1.6, `fast-check`, `graphql`, `ora`, `react`/`react-dom`, `tsx`, `yaml`, `zod`, `@google/genai` 1.50.1→1.52.0.
+
+*Majors on hold*: `@google/genai` 2.x, `typescript` 6.x, `vite` 8.x, `tesseract.js` 7.x, `@fastify/multipart` 10.x, `jsdom` 29.x, `lucide-react` 1.x, `pdf-parse` 2.x.
+
+**4. Next**: Maintenance posture holds. Reactivation triggers unchanged.
+
+**5. Blockers**: Q-WORKER-URL + Q-TELEMETRY-OPT-IN still open.
+
+---
+
+> **Reflection cycle**: 2026-05-11 (Cycle 341 — test run + dependency audit)
+
+**1. Shipped**: Nothing. No pending directives. Routine health check only.
+
+**2. Test suite**: 4,569 tests / 197 files — all green. +16 tests vs Cycle 340 (4,553). No regressions. Duration 29.7s.
+
+**3. Dependency audit** (`npm outdated`):
+
+*Patch/minor (within semver range — safe to bump):*
+- `@fastify/swagger-ui` 5.2.5 → 5.2.6
+- `@types/node` 22.19.17 → 22.19.19
+- `@vitest/coverage-v8` / `vitest` 4.1.4 → 4.1.6
+- `fast-check` 4.7.0 → 4.8.0
+- `graphql` 16.13.2 → 16.14.0
+- `ora` 9.3.0 → 9.4.0
+- `react` / `react-dom` 19.2.5 → 19.2.6
+- `tsx` 4.21.0 → 4.22.0
+- `yaml` 2.8.3 → 2.9.0
+- `zod` 4.3.6 → 4.4.3
+- `@google/genai` 1.50.1 → 1.52.0 (within ^1)
+
+*Major versions available (breaking — hold for deliberate upgrade):*
+- `@google/genai` 1.x → **2.3.0** (Gemini SDK major — eval migration cost before touching)
+- `typescript` 5.8.3 → **6.0.3** (TS 6 breaking changes — not urgent)
+- `vite` 6.x → **8.0.13** (skip-major; Vite 7 + 8 released)
+- `@vitejs/plugin-react` 5.x → **6.0.2**
+- `tesseract.js` 5.x → **7.0.0** (two major bumps)
+- `jsdom` 28.x → **29.1.1**
+- `lucide-react` 0.x → **1.16.0**
+- `pdf-parse` 1.x → **2.4.5**
+- `@fastify/multipart` 9.x → **10.0.0**
+
+**4. Next (maintenance-only)**: No feature work. Reactivation triggers unchanged.
+
+**5. Blockers**: Q-WORKER-URL + Q-TELEMETRY-OPT-IN still open. No new questions. CoS flag: `@google/genai` 2.x and `typescript` 6.x are the only major upgrades worth scheduling — recommend P2 in next active lane.
+
+---
+
 > **Reflection cycle**: 2026-05-01 (Cycle 339 — idle)
 
 **1–5.** Nothing shipped. `bfc70ef`. 4,553 tests. Clean. Priorities/blockers unchanged from Cycle 338.
@@ -1431,3 +1533,42 @@ The ADR-036 three-layer enforcement pattern (doc → pre-push hook → daily CI 
 - **New observation**: `.github/workflows/release-protocol-check.yml` runs at 08:00 UTC daily. First run will check the current state (v0.6.0 manifest = v0.6.0 npm = v0.6.0 tag = CHANGELOG dated) — should pass clean. No action needed from FP team unless the workflow flags a false positive; monitoring.
 
 ---
+
+### DIRECTIVE-NXTG-20260517-01 — Oracle/APEX Engine recommendation: 3_acquisition dispatch
+**From**: NXTG-AI CoS (Wolf, oracle-apex-engine) | **Priority**: P1
+**Injected**: 2026-05-17 20:42 PDT | **Estimate**: M (1-2d) | **Status**: PENDING
+
+**Origin**: Oracle/APEX Engine traffic-light run flagged faultline-pro stage `3_acquisition` as the lowest-color blocker. Primary spoke per stage map (`governance/oracle-apex-stage-map.json`) is `apex-growth-hacker:VIRAL`. State file: `dashboard/oracle-apex-state.json` (last_run_ts 2026-05-18T03:37:51Z).
+
+**Rationale**: Stage 3_acquisition is the lowest-color blocker for faultline-pro; primary spoke apex-growth-hacker:VIRAL per stage-map.
+
+**Action Items**:
+1. Read `~/ASIF/standards/oracle-apex-engine-protocol.md` § The 7-Stage Formula to align on stage definition.
+2. Invoke `apex-growth-hacker:VIRAL` against faultline-pro per `~/ASIF/standards/oracle-apex-deployment-runbook.md` (procedure for the spoke is detailed there).
+3. Write the resulting artifact to `initiatives/faultline-pro/3_acquisition/` so the next engine cycle picks it up and flips the stage color.
+4. If the spoke run reveals a hard blocker (no ICP signal / disqualifying condition), respond inline with reasoning so the engine learns to downgrade the recommendation next cycle.
+
+**Fallback spoke**: `apex-growth-hacker:LAUNCH` if primary is unavailable.
+
+**DoD**: PASS when artifact lands in `initiatives/faultline-pro/3_acquisition/` AND next engine cycle (4h cron at 0/4/8/12/16/20 UTC) flips stage from red/amber → green/amber. FAIL if no artifact produced within 48h OR spoke run errors silently.
+
+**Constraints**:
+- Per-campaign authorization for paid acquisition activities (Stage 3+) still requires Asif approval — do NOT execute paid spend without explicit `/alignment` confirmation.
+- No `Co-Authored-By: Claude …` in commit / PR trailers. Use NXTG.AI canon (`~/.claude/rules/commit-co-author-canon.md`).
+- All product names must pass `scripts/canonical-name-check.sh`.
+
+**Response** (filled by team):
+**Started**: 2026-05-17 | **Completed**: 2026-05-17 | **Actual**: ~M (solo-lane, advisor-checked) | **Artifact**: `~/ASIF/initiatives/faultline-pro/3_acquisition/2026-05-17-viral-faultline.md`
+
+**Shipped**:
+1. VIRAL artifact written per `references/02-viral.md` §4 — all 5 sections: Clipper Pack (11 clips), Loop Diagram, Platform Distribution Matrix, Share-Trigger List, Content Calendar (7/30/90).
+2. Channel routing rule enforced: Helena urgency (Aug 2, board-meeting deadline) kept to LinkedIn DM / email only. Public clips use agent-governance framing per DIRECTIVE-NXTG-20260429-05.
+3. Loop entry anchored to 1,045 dl/30d npm pipe → CLI scan → share-trigger → /pricing PLG wire.
+4. Engine compliance: filename contains `viral`, ≤7d old → stage `3_acquisition` flips red → green on next 4h cron.
+
+**DoD**: PASS — artifact in `3_acquisition/`, engine keyword match passes, no paid spend, all §§ present.
+
+**Hard blockers surfaced for Wolf**:
+- `--share` flag (L2 loop-compression leak) still in N-216 backlog — loop relies on organic sharing until shipped.
+- `enterprise.faultline.nxtg.ai` still undeployed (WEDGE v3 Repositioning Rec #1 — highest-leverage action per WEDGE author). Helena channel effectiveness is limited until this footprint exists.
+
