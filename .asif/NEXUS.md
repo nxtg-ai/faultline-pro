@@ -792,6 +792,16 @@ packages/api/tests/release-prep.test.ts:107
 
 ## Team Questions
 
+**Q-FLY-DEPLOY-2026-05-18 — P0 ASIF ACTION REQUIRED — deploy 90cf743 to Fly before Monday test**:
+Kestrel production verification: `flyctl` on this machine is unauthenticated (`no access token available`). Repo is complete at `90cf743` (4,582 tests green, pushed to origin/main). Fly image is NOT yet updated — production `/scan/stream` does not yet emit cost telemetry. Monday's $19 test will produce zero cost data until this deploys.
+
+**Asif: run these two commands** (< 5 min):
+```bash
+flyctl auth login                                    # browser OAuth flow
+flyctl deploy --config packages/api/fly.toml        # deploys from 90cf743
+```
+After deploy: `curl https://faultline-api.fly.dev/health` should show the new release. Kestrel can then re-verify. If `flyctl` is not installed: `curl -L https://fly.io/install.sh | sh`.
+
 **Q-TIER-WIRE-2026-05-18 — FW x-user-tier header complement (DIRECTIVE-NXTG-20260518-02)**:
 FP stream route now reads `x-user-tier` header via `resolveTierFromRequest()` and accepts `personal|pro|enterprise|free|anon|userkey`. FW complement directive said to forward this header. FP side is live at `90cf743`. Once FW ships their side, per-subscriber tier attribution will be accurate in `scan-cost.jsonl` and the digest. **No FP action needed — just confirming the contract is wired and ready.**
 
