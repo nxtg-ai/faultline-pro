@@ -1784,3 +1784,44 @@ FW proxies paid scans via shared `FAULTLINE_API_KEY` → `request.keyId = admin`
 
 **Escalation trigger armed**: if any scan yields `usd_estimate > $0.20` at p50 → alignment-say @asif + Wolf same cycle.
 
+
+---
+
+### DIRECTIVE-NXTG-20260518-03 — Proper Faultline versioning per ADR-021 Release Control Plane
+**From**: NXTG-AI CoS (Wolf, routed by EmmaSoul) | **Priority**: P0
+**Injected**: 2026-05-18 07:45 PDT | **Estimate**: XS (<30 min) | **Status**: PENDING
+
+**Origin**: Asif /alignment 09:43 — "Update the proper Faultline versioning.. isn't that obvious??" EmmaSoul routed to Wolf-lane execution. **Not a 3-option Asif decision — standard ADR-021 execution.**
+
+**The gap**:
+- `packages/api/package.json` declares `version = "0.5.2"` (and prod Fly `/health` returns `version = "0.2.0"`)
+- Repo tags exist for `v0.5.3`, `v0.6.0`, `v0.6.1`, `v0.7.0`, `v0.5.2-stable` — these appear to be CLI tags
+- `packages/api` has accumulated significant change since 0.5.2 was tagged (most recently: `/scan/stream` managed-cost telemetry commit `90cf743`, new `costs.ts` module, `scan-cost-digest.ts` daily roll-up script, 10 new SCT-* tests, 4,579 tests passing)
+- Per ADR-021 (`standards/release-control-plane.md`) — SemVer, conventional commits, manifest version + tag MUST stay in sync
+
+**Action Items** (you know your monorepo conventions better than CoS — apply ADR-021 properly):
+1. Determine if `packages/api` has its own tag namespace (e.g., `api-v0.x.x`) OR shares the repo's flat tag namespace. If shared, the api needs to coordinate with CLI tag history; if separate, the api needs its own bump.
+2. SemVer the api package: scan-cost telemetry is a new feature → recommend MINOR bump (e.g., `0.5.2 → 0.6.0`) per [semver.org](https://semver.org). If you've also fixed bugs in this window, that's still MINOR (MINOR encompasses additive features + patches).
+3. Update `packages/api/package.json` version field to the new value.
+4. Add CHANGELOG entry (root `CHANGELOG.md` already exists at 43KB) under the new version heading with the conventional-commit-grouped changes since v0.5.2: feat (scan-cost telemetry), chore (auto-deploy workflow), etc.
+5. Conventional commit message: `chore(release): @nxtg/faultline-api v0.6.0 — scan-cost telemetry + auto-deploy workflow` (or whatever bump you pick).
+6. Tag with appropriate namespace: `git tag api-v0.6.0` or `v0.6.0-api` per your monorepo convention.
+7. Push commit + tag to origin.
+8. **Fly deploy gated on Asif** (his FLY_API_TOKEN secret is the remaining blocker for the auto-deploy workflow at `.github/workflows/fly-deploy.yml`). Until secret is set, the version bump won't reach production — but local manifest will be correct + the workflow will deploy v0.6.0 once Asif acts.
+
+**DoD**:
+- PASS: `packages/api/package.json` version reflects accumulated changes; CHANGELOG entry exists; conventional-commit landed; appropriate tag pushed; all 4,579 tests still pass.
+- FAIL: package.json version still at 0.5.2 OR tag created without manifest bump (repeats the original drift) OR tests regress.
+
+**Constraints**:
+- ADR-021 compliance — no out-of-band version strings, no `--no-verify` shortcuts.
+- NXTG.AI commit canon — no Claude attribution in trailer.
+- No production deploy from this directive — Fly deploy is a separate Asif-gated step (FLY_API_TOKEN paste).
+
+**Why this is XS, not S**: 4 file touches max (package.json + CHANGELOG.md + git tag + commit), all mechanical per your existing release runbook. Estimate <30 min agent-time.
+
+**Promise**: see promises.jsonl (auto-created or via promise-create.sh).
+
+**Response** (filled by team):
+**Started**: TBD | **Completed**: TBD | **Bump**: TBD | **Tag**: TBD | **Commit**: TBD
+
