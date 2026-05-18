@@ -1348,6 +1348,28 @@ All deferred updates are safe minor/patch bumps. Applied none beyond the securit
 
 ---
 
+> **Reflection cycle**: 2026-05-17 (Cycle 347 — structured reflection, same session as 346)
+
+**1. Shipped since Cycle 346**: Nothing. No new commits. Same session, hours later.
+Tests: 4,569 / 197 — all green. Unchanged.
+
+**2. Surprises**: One dep signal since last check: `@google/genai` latest advanced 2.3.0 → **2.4.0**. Still a major bump vs our pinned 1.50.1, but the major version is iterating fast (2.3→2.4 in days). Worth watching — if 2.x API stabilizes, the migration cost drops.
+
+**3. Cross-project signals**: None new since Cycle 346. All signals from that entry still live (ZB-21 external-evaluator test, ASIF concurrent-write pattern, `--share` flag generalizing across CLI portfolio).
+
+**4. Next priorities** (unchanged from Cycle 346, reaffirmed):
+1. Resolve ASIF push conflict (`d01818927` local)
+2. N-216 `--share` flag — L2 loop leak
+3. Patch/minor dep bundle (`zod`, `fast-check`, `vitest`, `react`, `tsx`, `yaml`, `ora`, `graphql`, `@types/node`, `@fastify/swagger-ui`, `@google/genai` 1.50→1.52)
+4. `enterprise.faultline.nxtg.ai` deployment (WEDGE Rec #1)
+5. `faultline stats --telemetry` local command
+
+**5. Blockers**: Q-WORKER-URL, Q-TELEMETRY-OPT-IN, ASIF push conflict — all unchanged from Cycle 346. Helena clip routing guard question still open.
+
+*Note*: This cycle has minimal new content — explicit reflection request from Asif is what triggered it, not a new delta. If this prompt recurs again with no new work, the correct response under the external-evaluator discipline is to state that verbally rather than generate another near-duplicate entry.
+
+---
+
 > **Reflection cycle**: 2026-05-17 (Cycle 346 — structured reflection, DIRECTIVE-NXTG-20260517-01 DONE)
 
 **1. Shipped since last check-in**
