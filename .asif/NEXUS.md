@@ -1361,6 +1361,50 @@ All deferred updates are safe minor/patch bumps. Applied none beyond the securit
 
 ---
 
+> **Reflection cycle**: 2026-05-18 (Cycle 348 — structured reflection, DIRECTIVE-NXTG-20260518-02 DONE)
+
+**1. Shipped since Cycle 347**
+
+| Deliverable | Commit | Detail |
+|-------------|--------|--------|
+| `/scan/stream` managed-cost telemetry | `90cf743` | GET + POST both emit `ManagedScanCostEvent` per scan. Fire-and-forget — SSE never blocked. |
+| `costs.ts` refactor | `90cf743` | `emitScanCostEvent`, `appendScanCostLog`, `resolveTier` moved here as shared exports. `PROVIDER_MODEL_IDS` lookup. `resolveTierFromRequest()` reads `x-user-tier` header with keyId fallback. Tier type extended: `free\|anon\|userkey`. |
+| `scan.ts` updated | `90cf743` | Imports shared helpers; adds `modelId`+`cacheHit: false`; calls `appendScanCostLog`. |
+| `scripts/scan-cost-digest.ts` | `90cf743` | Daily roll-up: NDJSON → p50/p90/p99 by `user_tier` → `.asif/scan-cost-digest.json`. |
+| 13 new tests (SCT-01–SCT-13) | `90cf743` | Schema fields, header override, `resolveTierFromRequest` unit tests. **4,582 / 198 — all green.** |
+| P0 Fly deploy escalation | `0ea683e` | `Q-FLY-DEPLOY-2026-05-18` — `flyctl` unauthenticated, deploy blocked on Asif. |
+
+**2. Surprises**
+
+- **Wolf consumer-verification caught the auth gap before merge**: `FAULTLINE_API_KEY` not set in `beforeEach` caused 10/10 tests to fail. Caught by Wolf's parallel verify pass — not by the author. Consumer-verify-before-DONE-claim is worth formalizing for P0 auth-touching directives.
+- **All FW paid scans arrive as `enterprise`**: the shared server `FAULTLINE_API_KEY` means `resolveTier()` classifies every Personal/Pro subscriber as `enterprise`. Invisible until tracing the full FW→FP request path in the alignment-room thread. Fix was XS once diagnosed (`x-user-tier` header); finding it required Kestrel + Wolf + Asif in the room simultaneously.
+- **Fly deploy requires interactive browser auth**: `flyctl auth login` is not scriptable. A P0 directive that ends with "deploy to production" has a human-in-the-loop gate not documented anywhere in the repo. First time this has blocked a directive completion handoff at the last step.
+- **`emitScanCostEvent`/`resolveTier` were private to `scan.ts`**: route-scoped helpers that needed to be shared. The move to `costs.ts` was right; the original scoping was a latent copy-paste risk — any new scan-calling route would have silently re-implemented the same logic.
+
+**3. Cross-project signals**
+
+- **`resolveTierFromRequest()` pattern generalizes**: any ASIF API proxied from a Clerk-authenticated frontend faces "shared server key hides per-user tier." Pattern: header wins, keyId is fallback, validated against explicit allowlist. Worth `ASIF/standards/` entry. Relevant for FamilyMind API, Atlas API if they add tiers.
+- **Consumer-verify-before-DONE as P0 protocol**: Wolf's catch rate was 100% on this directive. For auth-touching telemetry paths, a CoS consumer-verify step before DONE claim should be a standing gate, not ad hoc.
+- **Fly deploy auth = human gate in the release chain**: ADR-036 covers npm publish prerequisites but not Fly. Worth a "Fly deploy prerequisites" note in the standard so other project teams don't block at P0 time on an undocumented interactive step.
+- **NDJSON + daily digest pattern**: `appendScanCostLog` (fire-and-forget `fs.appendFile`) + percentile digest script is a clean v1 persistence primitive. No DB, no blocking, trivially tail-able in production. Copy-paste ready for any ASIF service needing cost observability.
+
+**4. Next priorities if fresh directives arrived**
+
+1. **Fly deploy** — Asif action only: `flyctl auth login && flyctl deploy --config packages/api/fly.toml`. Unblocks Tuesday margin re-model.
+2. **Patch/minor dep bundle** — `zod`, `fast-check`, `vitest`, `react`, `tsx`, `yaml`, `graphql`, `ora`, `@fastify/swagger-ui`, `@types/node`, `@google/genai` 1.50→1.52. One pass, ~30 min.
+3. **N-216 `--share` flag** — L2 loop-compression leak from VIRAL artifact. Highest acquisition leverage.
+4. **`faultline stats --telemetry` local command** — carry-over.
+5. **`enterprise.faultline.nxtg.ai`** — Helena footprint still zero; WEDGE v3 Rec #1.
+
+**5. Blockers / Questions for CoS**
+
+- **Q-FLY-DEPLOY-2026-05-18 (P0 — Asif action)**: `flyctl auth login && flyctl deploy --config packages/api/fly.toml`. Monday test produces zero cost data until this runs.
+- **Q-TIER-WIRE-2026-05-18**: FP ready at `847fca3`. Waiting on FW `x-user-tier` complement (~1h, per Wolf).
+- **Q-WORKER-URL + Q-TELEMETRY-OPT-IN**: open since Cycle 329.
+- **ASIF push conflict**: VIRAL commit `d01818927` still local; ASIF remote diverged.
+
+---
+
 > **Reflection cycle**: 2026-05-17 (Cycle 347 — structured reflection, same session as 346)
 
 **1. Shipped since Cycle 346**: Nothing. No new commits. Same session, hours later.
