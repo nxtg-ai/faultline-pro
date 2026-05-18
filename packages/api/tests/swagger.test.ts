@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { buildServer } from '../src/server.js';
+import { FAULTLINE_API_VERSION } from '../src/version.js';
 import type { FastifyInstance } from 'fastify';
 
 describe('D-155: Swagger UI', () => {
@@ -27,7 +28,7 @@ describe('D-155: Swagger UI', () => {
     const spec = res.json();
     expect(spec).toHaveProperty('openapi');
     expect(spec.info.title).toBe('Faultline API');
-    expect(spec.info.version).toBe('0.2.0');
+    expect(spec.info.version).toBe(FAULTLINE_API_VERSION);
   });
 
   it('SW3. OpenAPI spec includes server URLs', async () => {

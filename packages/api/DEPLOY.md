@@ -74,7 +74,7 @@ Expected response:
 {
   "status": "ok",
   "service": "faultline-api",
-  "version": "0.2.0",
+  "version": "0.7.0",
   "subsystems": { "...": "..." },
   "providers": { "...": "..." }
 }

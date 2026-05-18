@@ -1,4 +1,5 @@
 import { createHmac, randomBytes, randomUUID } from 'node:crypto';
+import { FAULTLINE_API_VERSION } from '../version.js';
 
 export type WebhookEvent = 'scan.complete' | 'scan.failed' | 'job.complete' | 'job.failed' | 'claim.verdict_changed' | 'compliance.deadline_approaching' | 'compliance.gate_failed';
 
@@ -422,7 +423,7 @@ export async function sendTestWebhook(
 
   const start = Date.now();
   try {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json', 'User-Agent': 'Faultline-Pro/0.2.0' };
+    const headers: Record<string, string> = { 'Content-Type': 'application/json', 'User-Agent': `Faultline-Pro/${FAULTLINE_API_VERSION}` };
     if (sig) headers['X-Faultline-Signature'] = sig;
 
     const res = await fetch(url, { method: 'POST', headers, body, signal: AbortSignal.timeout(10_000) });

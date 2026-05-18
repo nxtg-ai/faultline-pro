@@ -1,5 +1,5 @@
 // ── Faultline SDK — hand-crafted TypeScript client ───────────────────────────
-// Derived from packages/api/docs/openapi.yaml (Faultline API v0.2.0)
+// Derived from packages/api/docs/openapi.yaml (Faultline API v0.7.0)
 
 // ── Primitive enums ───────────────────────────────────────────────────────────
 

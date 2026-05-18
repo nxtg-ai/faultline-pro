@@ -5,6 +5,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [@nxtg/faultline-api v0.7.0] — 2026-05-18
+
+### Added
+
+- `/scan/stream` managed-inference cost telemetry (DIRECTIVE-NXTG-20260518-02): GET and POST handlers emit a `ManagedScanCostEvent` per scan — fire-and-forget, SSE never blocked. Schema: `scan_id`, `ts`, `user_tier`, `model_id`, `input_tokens`, `output_tokens`, `tool_call_count`, `wall_ms`, `usd_estimate`, `cache_hit`.
+- `resolveTierFromRequest()`: reads `x-user-tier` header (Clerk-authenticated, forwarded by Faultline Web) with keyId-inference fallback. Supports `personal | pro | enterprise | free | anon | userkey`.
+- `appendScanCostLog()`: fire-and-forget NDJSON append to `/var/log/faultline/scan-cost.jsonl`.
+- `scripts/scan-cost-digest.ts`: daily roll-up — reads NDJSON log, computes p50/p90/p99 by `user_tier`, writes `.asif/scan-cost-digest.json`.
+- `PROVIDER_MODEL_IDS` lookup: maps provider family → actual model ID (gemini→`gemini-2.0-flash`, claude→`claude-haiku-4-5-20251001`, openai→`gpt-4o-mini`, perplexity→`llama-3.1-sonar-small-128k-online`).
+- `src/version.ts`: reads `FAULTLINE_API_VERSION` from `package.json` — eliminates hardcoded `'0.2.0'` that caused months of production version drift.
+- 13 new tests (SCT-01–SCT-13): stream cost telemetry, header-tier override, `resolveTierFromRequest` unit tests.
+
+### Fixed
+
+- `GET /health`, OpenAPI info block, webhook `User-Agent`, static docs all hardcoded `version: "0.2.0"` — now read live from `package.json` via `FAULTLINE_API_VERSION`.
+
+### Ops
+
+- `.github/workflows/fly-deploy.yml`: auto-deploys `faultline-api` to Fly.io on push to main touching `packages/api/**`. Requires one-time `FLY_API_TOKEN` repo secret. Eliminates manual `flyctl deploy`.
+- `packages/api` manifest version synced to `0.7.0` (aligned with `@nxtg/faultline@0.7.0`).
+
 ## [v0.7.0] — 2026-05-08
 
 ### Added

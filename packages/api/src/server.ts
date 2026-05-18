@@ -76,6 +76,7 @@ import { getJobScheduler, resetJobScheduler } from './store/jobs.js';
 import { getNpmMetricsStore, resetNpmMetricsStore } from './store/npm-metrics.js';
 import { getAuditLogger, hashInput } from './store/audit.js';
 import { getUsageMeter } from './store/usage.js';
+import { FAULTLINE_API_VERSION } from './version.js';
 
 const MAX_FILE_SIZE = 10_485_760; // 10MB
 
@@ -121,7 +122,7 @@ export function buildServer() {
       info: {
         title: 'Faultline API',
         description: 'FM-agnostic AI claim verification platform',
-        version: '0.2.0',
+        version: FAULTLINE_API_VERSION,
       },
       servers: [{ url: 'https://faultline-api.fly.dev' }, { url: 'http://localhost:3000' }],
       components: {

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { buildServer } from '../src/server.js';
+import { FAULTLINE_API_VERSION } from '../src/version.js';
 import type { FastifyInstance } from 'fastify';
 
 describe('GET /health — subsystem info', () => {
@@ -21,7 +22,7 @@ describe('GET /health — subsystem info', () => {
     const body = JSON.parse(res.body);
     expect(body.status).toBe('ok');
     expect(body.service).toBe('faultline-api');
-    expect(body.version).toBe('0.2.0');
+    expect(body.version).toBe(FAULTLINE_API_VERSION);
     expect(body.subsystems).toBeDefined();
     expect(body.subsystems.keyStore).toBeDefined();
     expect(body.subsystems.scanEngine).toBeDefined();

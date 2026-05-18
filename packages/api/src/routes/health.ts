@@ -10,6 +10,7 @@ import {
   deriveIncidents,
   bucketResponseTimes,
 } from '../store/status.js';
+import { FAULTLINE_API_VERSION } from '../version.js';
 
 // ── /status.json shape ────────────────────────────────────────────────────────
 
@@ -308,7 +309,7 @@ export async function healthRoutes(fastify: FastifyInstance): Promise<void> {
     return {
       status: 'ok',
       service: 'faultline-api',
-      version: '0.2.0',
+      version: FAULTLINE_API_VERSION,
       subsystems: {
         keyStore:   { status: 'ok', activeKeys: keyCount },
         scanEngine: { status: anyProvider ? 'ok' : 'degraded', providersConfigured: Object.values(providers).filter(Boolean).length },

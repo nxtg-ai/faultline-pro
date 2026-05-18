@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: Faultline API
-  version: 0.2.0
+  version: 0.7.0
   description: >
     AI claim forensics API — verify AI-generated claims against live evidence.
 
