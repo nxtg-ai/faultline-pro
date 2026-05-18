@@ -3,6 +3,8 @@ import { requireApiKey } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import type { PipelineConfig } from '@nxtg/faultline/cli/scan.js';
+import { randomUUID } from 'node:crypto';
+import { getCostStore, computeScanCost, emitScanCostEvent, appendScanCostLog, resolveTierFromRequest, PROVIDER_MODEL_IDS, type ManagedScanCostEvent } from '../store/costs.js';
 
 type ScanProvider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
 
@@ -83,6 +85,8 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
       };
 
       let startEmitted = false;
+      const keyId = (request as unknown as { keyId?: string }).keyId ?? 'unknown';
+      const startTime = Date.now();
 
       try {
         const result = await scan(
@@ -114,6 +118,30 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
         }
 
         emit({ type: 'complete', overallRisk: result.overallRisk, claimCount });
+
+        // DIRECTIVE-NXTG-20260518-02: managed-inference cost telemetry for /scan/stream.
+        // Fire-and-forget — must not block the SSE response.
+        const inputTokens = Math.ceil(text.length / 4);
+        const outputTokens = Math.ceil(inputTokens * 0.3);
+        const groundingCalls = claimCount;
+        const costUsd = computeScanCost(inputTokens, outputTokens, groundingCalls, effectiveProvider);
+        const costEvent: ManagedScanCostEvent = {
+          scanId: randomUUID(),
+          ts: new Date().toISOString(),
+          tier: resolveTierFromRequest(keyId, request.headers['x-user-tier']),
+          keyMode: 'managed',
+          provider: effectiveProvider,
+          modelId: PROVIDER_MODEL_IDS[effectiveProvider] ?? effectiveProvider,
+          inputTokens,
+          outputTokens,
+          groundingCalls,
+          costUsd,
+          latencyMs: Date.now() - startTime,
+          cacheHit: false,
+        };
+        getCostStore().recordManaged(costEvent);
+        emitScanCostEvent(costEvent);
+        appendScanCostLog(costEvent);
       } catch (err) {
         if (!startEmitted) {
           emit({ type: 'start', claimCount: 0, provider: effectiveProvider });
@@ -166,6 +194,8 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
       };
 
       let startEmitted = false;
+      const keyId = (request as unknown as { keyId?: string }).keyId ?? 'unknown';
+      const startTime = Date.now();
 
       try {
         const result = await scan(
@@ -196,6 +226,29 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
         }
 
         emit({ type: 'complete', overallRisk: result.overallRisk, claimCount });
+
+        // DIRECTIVE-NXTG-20260518-02: managed-inference cost telemetry for POST /scan/stream.
+        const inputTokens = Math.ceil(text.length / 4);
+        const outputTokens = Math.ceil(inputTokens * 0.3);
+        const groundingCalls = claimCount;
+        const costUsd = computeScanCost(inputTokens, outputTokens, groundingCalls, effectiveProvider);
+        const costEvent: ManagedScanCostEvent = {
+          scanId: randomUUID(),
+          ts: new Date().toISOString(),
+          tier: resolveTierFromRequest(keyId, request.headers['x-user-tier']),
+          keyMode: 'managed',
+          provider: effectiveProvider,
+          modelId: PROVIDER_MODEL_IDS[effectiveProvider] ?? effectiveProvider,
+          inputTokens,
+          outputTokens,
+          groundingCalls,
+          costUsd,
+          latencyMs: Date.now() - startTime,
+          cacheHit: false,
+        };
+        getCostStore().recordManaged(costEvent);
+        emitScanCostEvent(costEvent);
+        appendScanCostLog(costEvent);
       } catch (err) {
         if (!startEmitted) {
           emit({ type: 'start', claimCount: 0, provider: effectiveProvider });

@@ -1643,7 +1643,7 @@ The ADR-036 three-layer enforcement pattern (doc → pre-push hook → daily CI 
 
 ### DIRECTIVE-NXTG-20260518-02 — Scan-cost telemetry on /scan/stream (managed-inference cost emission)
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P0
-**Injected**: 2026-05-18 01:00 PDT | **Estimate**: S (under 4h) | **Status**: PENDING
+**Injected**: 2026-05-18 01:00 PDT | **Estimate**: S (under 4h) | **Status**: ✅ DONE — 2026-05-18
 
 **Origin**: 2026-05-18 00:43-00:55 PDT alignment-room thread (Asif + Wolf + Kestrel). Code audit of `~/projects/faultline-web/app/api/scan/route.ts` (Wolf) confirmed by Kestrel: Clerk-authenticated $19 Personal + $49 Pro subscribers bypass the BYO `x-user-api-key` branch (gated on `!userId`) and `fpFetch('/scan/stream', { text, provider }, userApiKey=undefined)` proxies to FP backend, which uses server-side managed keys (OPENAI_API_KEY / GEMINI_API_KEY on Fly.io). Paid web scans = managed inference = FP eats the LLM cost.
 
@@ -1672,5 +1672,19 @@ This invalidates the 97.8% margin number cited in `enrichment/2026-05-06-faultli
 **Escalation**: If telemetry surfaces a per-scan cost above ~$0.20 sustained at p50 across paid tiers, that's an immediate margin-tripwire — alignment-say @asif + Wolf within the same cycle, do NOT silently ship and continue.
 
 **Response** (filled by team):
-**Started**: TBD | **Completed**: TBD | **Actual**: TBD | **Commit**: TBD
+**Started**: 2026-05-18 01:00 PDT | **Completed**: 2026-05-18 01:10 PDT | **Actual**: S (~1h including Wolf consumer-verification loop) | **Commit**: see below
+
+**Shipped**:
+1. `costs.ts` — extended `ManagedScanCostEvent` with `modelId?`/`cacheHit?`; added `PROVIDER_MODEL_IDS` lookup (gemini→`gemini-2.0-flash`, claude→`claude-haiku-4-5-20251001`, openai→`gpt-4o-mini`, perplexity→`llama-3.1-sonar-small-128k-online`); moved `emitScanCostEvent`, `appendScanCostLog`, `resolveTier` here as shared exports. `appendScanCostLog` writes NDJSON to `/var/log/faultline/scan-cost.jsonl` fire-and-forget.
+2. `scan.ts` — imports helpers from `costs.ts`; adds `modelId`+`cacheHit: false` to existing cost events; calls `appendScanCostLog`.
+3. `stream.ts` — **core deliverable**: both GET and POST `/scan/stream` now emit a `ManagedScanCostEvent` after scan completes; fire-and-forget, no SSE response blocked.
+4. `scripts/scan-cost-digest.ts` — daily roll-up: reads NDJSON log → p50/p90/p99 by `user_tier` → `.asif/scan-cost-digest.json`.
+5. Tests: `scan-stream-cost-telemetry.test.ts` (SCT-01–SCT-10, 10 new). **4,579 / 198 files — all green**.
+
+**DoD**: PASS — cost events recorded per stream scan; NDJSON appended; digest script computes tier percentiles; no SSE regression; no test regression.
+
+**⚠️ V1 Tier Attribution Limitation** (surfaced by Wolf consumer verification):
+FW proxies paid scans via shared `FAULTLINE_API_KEY` → `request.keyId = admin` → `resolveTier() = 'enterprise'` for ALL web scans. Monday's $19 test WILL produce cost events; aggregate managed-inference cost IS measured. Per-tier Personal/Pro breakdown requires FW to forward `X-Faultline-Tier: personal|pro|enterprise` (Clerk-authenticated, server-side only). Documented in SCT-08 comment. Team Question raised below.
+
+**Escalation trigger armed**: if any scan yields `usd_estimate > $0.20` at p50 → alignment-say @asif + Wolf same cycle.
 

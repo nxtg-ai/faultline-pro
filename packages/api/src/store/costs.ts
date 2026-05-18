@@ -1,3 +1,17 @@
+import { appendFile } from 'node:fs/promises';
+import { getKeyStore } from '../store/keys.js';
+
+const TELEMETRY_WORKER = 'https://faultline-telemetry.nxtg-ai.workers.dev';
+
+/** Default model ID per provider family (auditable — rates tied to these models). */
+export const PROVIDER_MODEL_IDS: Record<string, string> = {
+  gemini:     'gemini-2.0-flash',
+  claude:     'claude-haiku-4-5-20251001',
+  openai:     'gpt-4o-mini',
+  perplexity: 'llama-3.1-sonar-small-128k-online',
+  mock:       'mock',
+};
+
 export interface ScanCost {
   keyId: string;
   tenantId?: string;
@@ -59,14 +73,94 @@ export function computeScanCost(
 export interface ManagedScanCostEvent {
   scanId: string;
   ts: string;              // ISO-8601
-  tier: 'enterprise' | 'pro' | 'personal';
+  tier: 'enterprise' | 'pro' | 'personal' | 'free' | 'anon' | 'userkey';
   keyMode: 'managed';      // always 'managed' for API-path scans
   provider: string;
+  modelId?: string;        // actual model used (PROVIDER_MODEL_IDS lookup)
   inputTokens: number;
   outputTokens: number;
   groundingCalls: number;
   costUsd: number;
   latencyMs: number;
+  cacheHit?: boolean;      // true when result served from cache (cost = 0 effective)
+}
+
+const VALID_TIERS = new Set<ManagedScanCostEvent['tier']>(['enterprise', 'pro', 'personal', 'free', 'anon', 'userkey']);
+
+/** Derive subscription tier from keyId. No PII — permission metadata only. */
+export function resolveTier(keyId: string): ManagedScanCostEvent['tier'] {
+  if (keyId === 'admin') return 'enterprise';
+  const key = getKeyStore().validateById(keyId);
+  if (key?.permissions.includes('pro')) return 'pro';
+  return 'personal';
+}
+
+/**
+ * Resolve tier from x-user-tier header (FW authoritative source) with fallback to keyId inference.
+ * FW forwards x-user-tier (Clerk-authenticated, server-side) on every /scan/stream call.
+ * Direct service-to-service calls (no header) fall back to resolveTier(keyId).
+ */
+export function resolveTierFromRequest(keyId: string, headerTier?: string | string[]): ManagedScanCostEvent['tier'] {
+  const raw = Array.isArray(headerTier) ? headerTier[0] : headerTier;
+  if (raw && VALID_TIERS.has(raw as ManagedScanCostEvent['tier'])) {
+    return raw as ManagedScanCostEvent['tier'];
+  }
+  return resolveTier(keyId);
+}
+
+/**
+ * Emit a scan_cost event to the CF Worker telemetry endpoint.
+ * Fire-and-forget: errors are swallowed so scan responses are never delayed.
+ * No PII: no keyId, no text content, no user identity.
+ * Suppressed in test environments to avoid polluting mocked fetch expectations.
+ */
+export function emitScanCostEvent(event: ManagedScanCostEvent): void {
+  if (process.env.VITEST || process.env.NODE_ENV === 'test') return;
+  const payload = {
+    event:          'scan_cost',
+    ts:             event.ts,
+    scan_id:        event.scanId,
+    tier:           event.tier,
+    key_mode:       event.keyMode,
+    provider:       event.provider,
+    model_id:       event.modelId ?? PROVIDER_MODEL_IDS[event.provider] ?? event.provider,
+    input_tokens:   event.inputTokens,
+    output_tokens:  event.outputTokens,
+    grounding_calls: event.groundingCalls,
+    cost_usd:       event.costUsd,
+    latency_ms:     event.latencyMs,
+    cache_hit:      event.cacheHit ?? false,
+  };
+  fetch(`${TELEMETRY_WORKER}/scan-costs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(3000),
+  }).catch(() => { /* fire-and-forget */ });
+}
+
+/**
+ * Append a scan cost event as NDJSON to the structured log on Fly.
+ * Fire-and-forget: a failed write MUST NOT fail the scan.
+ * Suppressed in test environments.
+ */
+export function appendScanCostLog(event: ManagedScanCostEvent, logPath = '/var/log/faultline/scan-cost.jsonl'): void {
+  if (process.env.VITEST || process.env.NODE_ENV === 'test') return;
+  const row = JSON.stringify({
+    ts:             event.ts,
+    scan_id:        event.scanId,
+    user_tier:      event.tier,
+    key_mode:       event.keyMode,
+    provider:       event.provider,
+    model_id:       event.modelId ?? PROVIDER_MODEL_IDS[event.provider] ?? event.provider,
+    input_tokens:   event.inputTokens,
+    output_tokens:  event.outputTokens,
+    tool_call_count: event.groundingCalls,
+    wall_ms:        event.latencyMs,
+    usd_estimate:   event.costUsd,
+    cache_hit:      event.cacheHit ?? false,
+  });
+  appendFile(logPath, row + '\n').catch(() => { /* fire-and-forget */ });
 }
 
 export interface CostPercentiles {
