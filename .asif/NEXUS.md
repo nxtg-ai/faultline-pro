@@ -1536,7 +1536,7 @@ The ADR-036 three-layer enforcement pattern (doc → pre-push hook → daily CI 
 
 ### DIRECTIVE-NXTG-20260517-01 — Oracle/APEX Engine recommendation: 3_acquisition dispatch
 **From**: NXTG-AI CoS (Wolf, oracle-apex-engine) | **Priority**: P1
-**Injected**: 2026-05-17 20:42 PDT | **Estimate**: M (1-2d) | **Status**: PENDING
+**Injected**: 2026-05-17 20:42 PDT | **Estimate**: M (1-2d) | **Status**: ✅ DONE — 2026-05-17
 
 **Origin**: Oracle/APEX Engine traffic-light run flagged faultline-pro stage `3_acquisition` as the lowest-color blocker. Primary spoke per stage map (`governance/oracle-apex-stage-map.json`) is `apex-growth-hacker:VIRAL`. State file: `dashboard/oracle-apex-state.json` (last_run_ts 2026-05-18T03:37:51Z).
 
