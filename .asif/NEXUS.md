@@ -1361,6 +1361,45 @@ All deferred updates are safe minor/patch bumps. Applied none beyond the securit
 
 ---
 
+> **Reflection cycle**: 2026-05-18 (Cycle 349 — structured reflection, fly-deploy.yml landed)
+
+**1. Shipped since Cycle 348**
+
+| Deliverable | Commit | Detail |
+|-------------|--------|--------|
+| `.github/workflows/fly-deploy.yml` | `5d04004` | Auto-deploy `faultline-api` to Fly on push to main touching `packages/api/**`, `Dockerfile`, or `fly.toml`. Eliminates manual `flyctl deploy`. Path-filtered to avoid spurious runs on docs/test-only pushes. Includes a post-deploy version-match verify step. |
+
+Tests: **4,582 / 198 — unchanged.** No code changes this cycle.
+
+**2. Surprises**
+
+- **Production was months behind local**: the workflow comment documents the root cause — "2026-05-18 audit caught production at v0.2.0 while local was at v0.5.2." That's ~0.3 major versions and months of improvements absent from prod. Manual `flyctl deploy` as the only deploy path was the single point of failure. Nobody noticed because there was no automated check and no deploy gate in CI.
+- **The workflow is not live until `FLY_API_TOKEN` is set**: `fly-deploy.yml` exists on main but will fail on every qualifying push until Asif generates a token (`flyctl auth token`) and adds it as a GitHub repo secret. The Q-FLY-DEPLOY blocker has changed form — it's no longer "deploy this commit" but "one-time secret setup, then all future deploys are automatic."
+- **Path filter means `90cf743` would have triggered the workflow** (touches `packages/api/src/routes/stream.ts`): if the secret had been in place, telemetry would already be in production. The CI gap and the P0 directive arrived at exactly the same moment.
+
+**3. Cross-project signals**
+
+- **Every Fly-deployed ASIF project needs this workflow**: `fly-deploy.yml` is generic — swap `app = "faultline-api"` in `fly.toml` and the path filter, and it works for any project. Atlas, FamilyMind, any future Fly-hosted API should copy this pattern verbatim. The production-rot problem (local ahead of prod by months with no one noticing) is not unique to FP.
+- **Version-match verify step**: the post-deploy curl + version compare is a lightweight production-sanity check any project can adopt. It doesn't replace Kestrel-level verification but catches the most common class of "deploy appeared to succeed but didn't actually update" failures.
+- **Path-filtered CI deploy as ADR-036 complement**: ADR-036 covers npm publish prerequisites. Fly deploy now has a parallel automated gate. Worth noting in the standard that path-filtered GitHub Actions is the preferred pattern over manual deploy docs.
+
+**4. Next priorities if fresh directives arrived**
+
+1. **Add `FLY_API_TOKEN` GitHub secret** — Asif action, < 2 min: `flyctl auth token` → GitHub Settings → Secrets → `FLY_API_TOKEN`. After that, every `packages/api` push auto-deploys. This is the only remaining gap from Q-FLY-DEPLOY-2026-05-18.
+2. **Patch/minor dep bundle** — `zod`, `fast-check`, `vitest`, `react`, `tsx`, `yaml`, `graphql`, `ora`, `@fastify/swagger-ui`, `@types/node`, `@google/genai` 1.50→1.52. ~30 min.
+3. **N-216 `--share` flag** — L2 loop-compression leak from VIRAL artifact.
+4. **`faultline stats --telemetry` local command** — carry-over.
+5. **`enterprise.faultline.nxtg.ai`** — Helena footprint still zero.
+
+**5. Blockers / Questions for CoS**
+
+- **Q-FLY-API-TOKEN (replaces Q-FLY-DEPLOY-2026-05-18)**: fly-deploy.yml is on main but needs `FLY_API_TOKEN` secret. Asif: `flyctl auth token` (from any authenticated machine) → GitHub repo Settings → Secrets → Actions → `FLY_API_TOKEN`. One-time setup; all future deploys are then automatic.
+- **Q-TIER-WIRE-2026-05-18**: FP ready at `847fca3`; waiting on FW `x-user-tier` complement.
+- **Q-WORKER-URL + Q-TELEMETRY-OPT-IN**: open since Cycle 329.
+- **ASIF push conflict**: VIRAL commit `d01818927` still local.
+
+---
+
 > **Reflection cycle**: 2026-05-18 (Cycle 348 — structured reflection, DIRECTIVE-NXTG-20260518-02 DONE)
 
 **1. Shipped since Cycle 347**
