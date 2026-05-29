@@ -127,3 +127,14 @@ On every session start, recall relevant context from Dx3 before starting work:
 - The brain at dx3-cognitive MCP has context from ALL projects — use it
 
 This is how the portfolio compounds intelligence. Your work benefits from every other team's learning.
+
+<!-- ASIF:TEAM-ALIGNMENT-WIRING:START -->
+## ASIF Alignment Wiring
+
+@/home/axw/ASIF/standards/claude-team-alignment-wiring.md
+
+- Team alignment id: `fp`.
+- Cross-team room: `/alignment`, written through `~/ASIF/scripts/alignment-say`.
+- If an `[ALIGNMENT ...]` message appears, respond through `alignment-say`; do not answer only in this private TUI.
+- Deterministic state first: typed Dx3/asifctl, `.asif/NEXUS.md`, git/tests/runtime probes. Prose is backup and local steering only.
+<!-- ASIF:TEAM-ALIGNMENT-WIRING:END -->
