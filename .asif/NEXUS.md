@@ -347,7 +347,32 @@ The Kaggle version remains at  (tagged  at commit ).
 **DoD**: PASS when — (a) release tagged + GitHub release published + on origin, tests ≥ baseline; (b) ICP buyer profiles + platform-engagement strategy doc shipped; (c) buyer-finding workflow defined + ≥1 prospect batch with draft outreach QUEUED (not sent). FAIL if tests regress, release without tag, or any outreach sent without Asif consent.
 **Constraints**: Do NOT send outreach as Asif. Do NOT touch other product repos. Opus 4.8 only.
 **Escalation**: Surface buyer-list approval + any paid-channel spend to Asif (governance escalation).
-**Response** (filled by team): **Started** / **Completed** / **Actual** / **Commit** sha.
+**Response** (filled by team):
+**Started**: 2026-05-31 00:48 PDT | **Completed**: 2026-05-31 01:15 PDT | **Actual**: ~M (1.5h) | **Status**: ✅ DONE
+
+**Track A — api-v0.8.0 Release: SHIPPED**
+- Commit count since api-v0.7.0: **5** (not 20 — note: directive said 20, git shows 5 governance/ops commits; no api/* or cli/* code changes). Still cut per directive.
+- `packages/api/package.json` → `0.8.0`
+- `CHANGELOG.md` → `[@nxtg/faultline-api v0.8.0] — 2026-05-31` (Ops: ASIF alignment bridge, CI comment sync, GTM directive issued)
+- Tests: **4,582 GREEN** (198 files) — no regressions
+- Tag: `api-v0.8.0` pushed to `origin`
+- GH Release: https://github.com/nxtg-ai/faultline-pro/releases/tag/api-v0.8.0
+- Commit: `91a2578`
+
+**Track B — GTM Growth-Hack Playbook: SHIPPED**
+- `docs/gtm-growth-playbook.md` — merged with Wolf's 5-agent synthesis (`wf_da70ab92-865`, 301k tokens, `~/ASIF/enrichment/2026-05-31-faultline-growth-hack-playbook.md`)
+- KEY REFRAME incorporated: "questionnaire-unblock" NOT "deadline" (Digital Omnibus 16-24mo deferral)
+- 4 ICP segments ranked by ladder speed (Segment 1: deal-blocked AI builder = fastest $19 today)
+- 4 growth loops documented (CLI nudge, badge, shareable report URL, lead-magnet)
+- Channel strategy with cadence + CE companion reference (leverage `011ab71`, do NOT rebuild)
+- Buyer-finding workflow: 4 adapters + architectural no-send invariant
+- Outreach batch #1: 3 templates QUEUED in this doc — NOT sent; awaiting Asif consent
+- Blocked (non-blocking): Dx3 `icp_search`/`gtm_create` MCP not exposed to FP pane → Wolf/Dx3 to ingest via `gtm_create` next enrichment cycle
+- Commit: see final commit below
+
+**DoD check**: (a) ✅ api-v0.8.0 tagged + GH release + pushed; 4582 ≥ 4582 baseline; (b) ✅ ICP profiles + platform strategy in `docs/gtm-growth-playbook.md`; (c) ✅ buyer-finding workflow defined + batch #1 QUEUED (not sent). PASS.
+
+**Escalation**: Dx3 `gtm_create` ingest — Wolf/Dx3 pane. Asif: outreach batch #1 awaits your per-item review in `docs/gtm-growth-playbook.md` before any dispatch.
 
 
 ### DIRECTIVE-NXTG-20260506-04 — P1: Managed-key scan-cost telemetry instrumentation
@@ -1391,6 +1416,8 @@ All deferred updates are safe minor/patch bumps. Applied none beyond the securit
 
 | Deliverable | Commit | Detail |
 |-------------|--------|--------|
+| `@nxtg/faultline-api v0.8.0` release | `91a2578` | Ops/governance release on FIRST REVENUE milestone. `packages/api/package.json` `0.7.0` → `0.8.0`. CHANGELOG entry, tag `api-v0.8.0` pushed. GH Release: https://github.com/nxtg-ai/faultline-pro/releases/tag/api-v0.8.0 |
+| GTM Growth-Hack Playbook | `(see final commit)` | `docs/gtm-growth-playbook.md` — merged with Wolf's 5-agent synthesis. Questionnaire-reframe, 4 ICPs, 4 growth loops, buyer-finding workflow, batch #1 outreach QUEUED (not sent). |
 | `@nxtg/faultline-api v0.7.0` version bump | `b11cfe0` | `packages/api/package.json` `0.5.2` → `0.7.0`. ADR-021 compliant: CHANGELOG entry, conventional commit, tag `api-v0.7.0` pushed. |
 | `src/version.ts` | `b11cfe0` | Reads `FAULTLINE_API_VERSION` from `package.json` at runtime. Health endpoint, OpenAPI info, webhook `User-Agent` all now emit the correct version instead of hardcoded `"0.2.0"`. |
 | CHANGELOG entry | `b11cfe0` | `[@nxtg/faultline-api v0.7.0] — 2026-05-18` with grouped Added/Fixed/Ops covering all API changes since `0.5.2`. |
