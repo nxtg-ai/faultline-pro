@@ -39,7 +39,7 @@ import { statsCommand } from './stats.js';
 import { sendTelemetry, classifyError } from './telemetry.js';
 import { printConversionNudge } from './nudge.js';
 
-const VERSION = '0.7.0';
+const VERSION = '0.8.0';
 const PRICING_URL = 'https://faultline.nxtg.ai/pricing';
 
 /** Print once per invocation to stderr. Silenced by FAULTLINE_NO_BANNER=1 or test env. */

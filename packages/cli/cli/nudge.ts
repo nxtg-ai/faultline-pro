@@ -1,5 +1,5 @@
-// Copy is a single constant — swap this when final positioning lands (questionnaire-unblock vs deadline).
-export const NUDGE_COPY = 'Need an audit-ready report to unblock a deal?';
+// Positioning canon: questionnaire-unblock (NOT the EU AI Act deadline). Locked by Asif 2026-05-31.
+export const NUDGE_COPY = 'Closing a deal? Your buyer will ask how this AI is governed. Generate an audit-ready report to answer their questionnaire:';
 export const NUDGE_URL = 'https://faultline.nxtg.ai/pricing?src=cli-nudge';
 
 const HIGH_RISK_LEVELS = new Set(['critical', 'high']);

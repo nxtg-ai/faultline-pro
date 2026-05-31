@@ -1,6 +1,6 @@
 {
   "name": "@nxtg/faultline",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Agent governance for AI outputs. Verify claims, detect hallucinations, enforce compliance gates — provider-agnostic across Gemini, OpenAI, Claude, and Perplexity.",
   "type": "module",
   "bin": {

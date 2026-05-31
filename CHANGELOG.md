@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [v0.8.0] — 2026-05-31
+
+### Added
+
+- **Point-of-pain conversion nudge**: when `faultline scan` returns `critical` or `high` overall risk, prints one line to stderr — *"Closing a deal? Your buyer will ask how this AI is governed. Generate an audit-ready report to answer their questionnaire: https://faultline.nxtg.ai/pricing?src=cli-nudge"*. Copy lives in a single constant (`NUDGE_COPY`) for easy swap. Suppress via `FAULTLINE_NO_NUDGE=1` or `--no-nudge` flag. URL carries `?src=cli-nudge` attribution. Fires on single-file scan and batch scan. 8 new tests (PN1–PN8). Positioning canon: questionnaire-unblock (locked by Asif 2026-05-31).
+
 ## [@nxtg/faultline-api v0.8.0] — 2026-05-31
 
 ### Ops
