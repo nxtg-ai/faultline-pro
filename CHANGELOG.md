@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [@nxtg/faultline-api v0.8.0] — 2026-05-31
+
+### Ops
+
+- **ASIF alignment bridge + Dx3 brain hooks**: wired Claude Code session hooks for this repo — UserPromptSubmit alignment injection, Dx3 RAG recall, and opus model routing. Agents running in the Faultline Pro pane now carry full portfolio context automatically (`7cdc6dc`).
+- **CI comment sync**: Fly Deploy workflow header updated to reference current release version (was pinned to stale `v0.5.2` in comment; `29a192a`).
+- **DIRECTIVE-NXTG-20260531-01 issued**: P0 GTM growth engine + buyer-finding workflows + api-v0.8.0 release initiated on FIRST REVENUE event ($19 paid test, faultline-web).
+
 ## [@nxtg/faultline-api v0.7.0] — 2026-05-18
 
 ### Added
