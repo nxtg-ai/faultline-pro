@@ -841,6 +841,11 @@ packages/api/tests/release-prep.test.ts:107
 
 ## Team Questions
 
+**Q-PERSONAL-PRICING-MODE — 2026-05-31 (FP team)**:
+`faultline-web/lib/billing.ts:105` creates checkout sessions with `mode: 'subscription'` and `tiers.ts` shows `priceLabel: '$19/mo'`. The revenue model doc (`2026-05-31-faultline-revenue-model.md`) says "$19 one-time". These conflict. Building readiness landing page now with `$19/mo` (matching actual Stripe config). **Asif: confirm** — is Personal tier a recurring subscription at $19/mo OR a one-time payment? If one-time, billing.ts `mode` must change to `'payment'` and a separate script to keep Clerk metadata in sync is needed.
+
+---
+
 **Q-FLY-DEPLOY-2026-05-18 — P0 ASIF ACTION REQUIRED — deploy 90cf743 to Fly before Monday test**:
 Kestrel production verification: `flyctl` on this machine is unauthenticated (`no access token available`). Repo is complete at `90cf743` (4,582 tests green, pushed to origin/main). Fly image is NOT yet updated — production `/scan/stream` does not yet emit cost telemetry. Monday's $19 test will produce zero cost data until this deploys.
 
@@ -1418,6 +1423,8 @@ All deferred updates are safe minor/patch bumps. Applied none beyond the securit
 |-------------|--------|--------|
 | `@nxtg/faultline-api v0.8.0` release | `91a2578` | Ops/governance release on FIRST REVENUE milestone. `packages/api/package.json` `0.7.0` → `0.8.0`. CHANGELOG entry, tag `api-v0.8.0` pushed. GH Release: https://github.com/nxtg-ai/faultline-pro/releases/tag/api-v0.8.0 |
 | GTM Growth-Hack Playbook | `(see final commit)` | `docs/gtm-growth-playbook.md` — merged with Wolf's 5-agent synthesis. Questionnaire-reframe, 4 ICPs, 4 growth loops, buyer-finding workflow, batch #1 outreach QUEUED (not sent). |
+| `@nxtg/faultline v0.8.0` CLI nudge | `10a6bea` | `printConversionNudge()` → stderr on critical/high scans. Questionnaire-unblock copy locked by Asif. 8 tests. Tag `v0.8.0` pushed, GH release created. npm publish BLOCKED (token 401 — Asif to rotate). |
+| faultline-web readiness landing + funnel | `9b1c044` (fw) | `/readiness` page: questionnaire-unblock copy, 5 live compliance regimes. Funnel: `lib/funnel.ts` → `POST /api/funnel/event` → Vercel KV (lpush + incr per event+src). Attribution chain: `?src=cli-nudge` → sessionStorage → Stripe metadata → webhook → KV. Pricing page + results page instrumented. 899/899 tests green. |
 | `@nxtg/faultline-api v0.7.0` version bump | `b11cfe0` | `packages/api/package.json` `0.5.2` → `0.7.0`. ADR-021 compliant: CHANGELOG entry, conventional commit, tag `api-v0.7.0` pushed. |
 | `src/version.ts` | `b11cfe0` | Reads `FAULTLINE_API_VERSION` from `package.json` at runtime. Health endpoint, OpenAPI info, webhook `User-Agent` all now emit the correct version instead of hardcoded `"0.2.0"`. |
 | CHANGELOG entry | `b11cfe0` | `[@nxtg/faultline-api v0.7.0] — 2026-05-18` with grouped Added/Fixed/Ops covering all API changes since `0.5.2`. |
