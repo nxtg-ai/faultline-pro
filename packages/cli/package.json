@@ -1,7 +1,7 @@
 {
   "name": "@nxtg/faultline",
   "version": "0.8.0",
-  "description": "Agent governance for AI outputs. Verify claims, detect hallucinations, enforce compliance gates — provider-agnostic across Gemini, OpenAI, Claude, and Perplexity.",
+  "description": "AI claim verification CLI. Paste what an AI told you — Faultline extracts every claim, verifies against live sources, scores the risk, and generates audit evidence. Provider-agnostic: Gemini, OpenAI, Claude, Perplexity.",
   "type": "module",
   "bin": {
     "faultline": "./bin/faultline.js"
@@ -29,10 +29,9 @@
     "faultline": "tsx cli/index.ts"
   },
   "keywords": [
-    "agent-governance",
-    "ai-governance",
-    "claim-verification",
+    "ai-claim-verification",
     "hallucination-detection",
+    "claim-verification",
     "ai-forensics",
     "ai-audit",
     "llm-testing",
