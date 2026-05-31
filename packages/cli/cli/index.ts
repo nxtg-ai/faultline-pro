@@ -37,6 +37,7 @@ import { streamScan, formatStreamResult } from './stream-client.js';
 import { buildEuComplianceReport, renderComplianceReportJson, renderComplianceReportPdf, renderComplianceReportMarkdown, renderComplianceReportSarif, renderComplianceReportHtml, evaluateComplianceGate, renderCiGateOutput, diffComplianceReports, renderComplianceDiffOutput, loadComplianceConfig } from './compliance-report.js';
 import { statsCommand } from './stats.js';
 import { sendTelemetry, classifyError } from './telemetry.js';
+import { printConversionNudge } from './nudge.js';
 
 const VERSION = '0.7.0';
 const PRICING_URL = 'https://faultline.nxtg.ai/pricing';
@@ -147,7 +148,7 @@ For CI/testing without an API key, use --provider mock (returns synthetic result
 }
 
 // Boolean flags that take no value argument
-const BOOLEAN_FLAGS = new Set(['sarif', 'all', 'demo', 'confirm', 'ci', 'strict', 'costs', 'no-save']);
+const BOOLEAN_FLAGS = new Set(['sarif', 'all', 'demo', 'confirm', 'ci', 'strict', 'costs', 'no-save', 'no-nudge']);
 
 function parseArgs(args: string[]): { command: string; flags: Record<string, string> } {
   const command = args[0] || '';
@@ -758,6 +759,8 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
 
         const batchOutput = JSON.stringify(batchResult, null, 2);
 
+        printConversionNudge(batchResult.summary.highestRisk, flags['no-nudge'] === 'true');
+
         if (effectiveFailOn) {
           const totalCounts = { findings: 0, critical: 0, high: 0, medium: 0, low: 0 };
           for (const fr of batchResult.results) {
@@ -857,6 +860,8 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
       if (sarifShorthand) {
         writeFileSync(resolve('results.sarif'), scanOutput, 'utf-8');
       }
+
+      printConversionNudge(result.overallRisk, flags['no-nudge'] === 'true');
 
       if (effectiveFailOn) {
         const counts = countFromScanResult(result as unknown as Record<string, unknown>);
