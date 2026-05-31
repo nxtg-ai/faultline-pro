@@ -326,6 +326,30 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
+### DIRECTIVE-NXTG-20260531-01 — P0: Cut api-v0.8.0 + Oracle/Apex GTM engine + buyer-finding workflows
+**From**: Wolf (NXTG-AI CoS) | **Priority**: P0
+**Injected**: 2026-05-31 00:45 PDT | **Estimate**: M (1-2d agent-time) | **Status**: PENDING
+**Model**: Run on **Opus 4.8 (`claude-opus-4-8`)** — substantive GTM + release work, Asif-directed. Omit model param to inherit Opus; do NOT drop tier.
+
+**Context**: Faultline took **FIRST REVENUE** tonight (faultline-web $19 Personal tier, real paid test, end-to-end GREEN). Faultline-Pro has organic traction with ZERO marketing spend: **1,369 downloads in 35 days**, peak **331 on 2026-03-08** (HN/Reddit visibility). The wedge: the only mapping claiming **EU AI Act risk-tier compliance** ("the money is in compliance"). Asif's directive, verbatim: *"growth-hack the FUCK out of it so everyone and their mother knows about Faultline... run oracle/apex GTM research for platform engagement strategy that will win and spin up workflows on finding buyers."* 20 unreleased commits on main since `api-v0.7.0` (>15 = P0 per Hard Rule #4 / ADR-036).
+
+**Track A — Release (ship FIRST):**
+1. Review `git log api-v0.7.0..HEAD --oneline` (20 commits).
+2. Cut the release: SemVer bump (recommend `api-v0.8.0` given volume), CHANGELOG grouped by conventional-commit type, run full test suite (must NOT regress from current count), `git tag`, push tag, create GitHub release with CHANGELOG notes.
+3. Update NEXUS `## Releases` table.
+
+**Track B — Oracle/Apex GTM research → platform-engagement strategy that WINS:**
+4. Run Oracle/Apex ICP research via Dx3 MCP (`icp_search` / `icp_list` / `icp_insights` / `icp_generate_outreach`, `gtm_search`/`gtm_create`/`gtm_pipeline`) to profile Faultline buyers: EU AI Act compliance owners, AI trust/safety leads, ML platform teams, regulated-industry (finance/health/gov) AI-governance roles.
+5. Build the **platform-engagement strategy**: which channels win for a dev-tool + compliance product (HN, Reddit r/MachineLearning + r/compliance, LinkedIn, AI-safety/EU-AI-Act communities, dev.to, GitHub topics) — concrete content angles + cadence, with the Mar-8 HN/Reddit spike (331 dls) as proven signal. Tactics, not theory.
+6. Spin up **buyer-finding workflows**: a repeatable motion that surfaces real prospects + generates personalized outreach **DRAFTS** (`icp_generate_outreach`). **Outreach stays GATED on Asif's per-item consent — prepare + queue, do NOT send AS Asif to third parties (agent-hands boundary canon).**
+7. Land deliverables: a GTM growth-hack playbook doc in the repo + GTM intelligence into Dx3 (`gtm_create`) so it's queryable portfolio-wide.
+
+**DoD**: PASS when — (a) release tagged + GitHub release published + on origin, tests ≥ baseline; (b) ICP buyer profiles + platform-engagement strategy doc shipped; (c) buyer-finding workflow defined + ≥1 prospect batch with draft outreach QUEUED (not sent). FAIL if tests regress, release without tag, or any outreach sent without Asif consent.
+**Constraints**: Do NOT send outreach as Asif. Do NOT touch other product repos. Opus 4.8 only.
+**Escalation**: Surface buyer-list approval + any paid-channel spend to Asif (governance escalation).
+**Response** (filled by team): **Started** / **Completed** / **Actual** / **Commit** sha.
+
+
 ### DIRECTIVE-NXTG-20260506-04 — P1: Managed-key scan-cost telemetry instrumentation
 **From**: Wolf (NXTG-AI CoS) | **Priority**: P1
 **Injected**: 2026-05-06 01:25 PDT | **Estimate**: S (≤2h) | **Status**: ✅ DONE — 2026-05-06 01:33 PDT
