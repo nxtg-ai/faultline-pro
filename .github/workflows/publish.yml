@@ -1,0 +1,39 @@
+name: Publish @nxtg/faultline
+
+# Trusted Publishing (OIDC) — no npm token. npm verifies a short-lived GitHub
+# OIDC identity against the trusted-publisher rule configured on npmjs.com for
+# @nxtg/faultline (publisher: nxtg-ai/faultline-pro, workflow publish.yml).
+# Requires npm CLI >= 11.5.1 + Node >= 22.14.0. Manual-dispatch so publishes are
+# deliberate. No NODE_AUTH_TOKEN — npm auto-detects the OIDC environment.
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Reason for publishing"
+        required: false
+        default: "manual publish"
+
+permissions:
+  id-token: write   # required for OIDC trusted publishing
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Ensure npm >= 11.5.1 (OIDC trusted publishing)
+        run: |
+          npm install -g npm@latest
+          npm --version
+
+      - name: Publish @nxtg/faultline (scoped -> public, OIDC, no token)
+        working-directory: packages/cli
+        run: npm publish --access public
