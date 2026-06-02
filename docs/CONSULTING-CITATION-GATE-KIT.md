@@ -10,7 +10,15 @@
 
 A consulting firm is hours from sending a client deliverable full of AI-assisted citations; Faultline runs every citation against live web search and flags the fabricated ones **before** the report leaves the building — the exact failure EY Canada shipped and then had to publicly withdraw.
 
-**The anchor proof (public, real, dated):** EY Canada published a 44-page cybersecurity report with **16 of 27 citations hallucinated** (broken URLs, nonexistent Forbes/McKinsey/Gartner articles) and withdrew it after GPTZero flagged it 72% AI-generated — [goingconcern.com](https://www.goingconcern.com/ey-gets-busted-and-yeets-cybersecurity-report-littered-with-ai-hallucinations/).
+**The anchor proof — a verified Big-Four PATTERN, not a one-off (public, real, dated, with real money lost):**
+
+| Firm | Client / deal | What was fabricated | Outcome | Source |
+|---|---|---|---|---|
+| **EY Canada** (May 2026) | 44-page cybersecurity report | 16 of 27 citations hallucinated — broken URLs, nonexistent Forbes/McKinsey/Gartner articles; GPTZero flagged 72% AI | **Report withdrawn** | [goingconcern.com](https://www.goingconcern.com/ey-gets-busted-and-yeets-cybersecurity-report-littered-with-ai-hallucinations/) |
+| **Deloitte Canada** (Nov 2025) | Newfoundland & Labrador healthcare report, **~$1.6M**, 526 pages | False citations from made-up papers; real researchers (e.g. Gail Tomblin Murphy, Dalhousie) named on papers they never wrote; a Canadian Journal of Respiratory Therapy cite absent from the database | Citations revised under public scrutiny | [fortune.com](https://fortune.com/2025/11/25/deloitte-caught-fabricated-ai-generated-research-million-dollar-report-canada-government/) |
+| **Deloitte Australia** (Jul 2025) | Government report, **$290K** | Fabricated references + quotes from generative AI | **Partial refund** | [businessstandard.com](https://www.business-standard.com/technology/tech-news/deloitte-ai-hallucination-report-australia-gpt4o-fabricated-references-125100800915_1.html) |
+
+Two of the Big Four, three deliverables, government clients, a refund and a public withdrawal — the failure is systemic and it costs real money and reputation. That is the room the buyer lives in.
 
 **Why the engine genuinely fits:** the failure mode *is* the mechanic. A fabricated trade-press article returns nothing from live Google Search; "returns nothing" (`status: unverified`) is the engine's strongest, most demoable verdict. No incumbent owns this step in the consulting publish pipeline (unlike legal, where Westlaw/Lexis reach a corpus we can't).
 
@@ -72,15 +80,15 @@ For the validate-first test, hand-format the `claims[]` + `verifications{}` from
 **Target:** a risk / quality / brand-protection leader at a peer professional-services or consulting firm — **NOT** embarrassed EY.
 
 **Cold email (v1):**
-> Subject: the EY report that got withdrawn — a 5-minute check that catches it
+> Subject: EY pulled a report; Deloitte refunded one — a 10-min check that catches it
 >
 > Hi {Name},
 >
-> You probably saw EY Canada pull a 44-page client report after 16 of its 27 citations turned out to be AI-fabricated — nonexistent Forbes and Gartner articles, dead links. It became a public story.
+> In the last year EY Canada withdrew a cybersecurity report after 16 of its 27 citations turned out AI-fabricated, and Deloitte had to revise a $1.6M government healthcare report — and refund an Australian one — for the same reason: real-looking citations to papers and articles that don't exist.
 >
-> We built the check that catches that before it ships. Paste an AI-assisted deliverable in; every citation gets verified against live sources in seconds, and the fabricated ones get flagged — a pass/fail gate before anything reaches a client.
+> We built the check that catches that before it ships. Run an AI-assisted deliverable through it; every citation gets verified against live sources in seconds, and the fabricated ones get flagged — a pass/fail gate before anything reaches a client.
 >
-> Can I run it on one of your recent reports and show you exactly what it finds? No charge, 10 minutes. If it surfaces nothing, you've lost 10 minutes; if it surfaces one fabricated citation, you've seen the EY headline you'll never have.
+> Can I run it on one of your recent reports and show you exactly what it finds? No charge, 10 minutes. If it surfaces nothing, you've lost 10 minutes; if it surfaces one fabricated citation, you've seen the headline you'll never have.
 >
 > — {Asif}
 
