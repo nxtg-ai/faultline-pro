@@ -38,6 +38,20 @@ export interface ScanResult {
   overallRisk: AnalysisState['overallRisk'];
   complianceReport: ComplianceReport;
   ruleFindings: Finding[];
+  /**
+   * Count of claims whose verification FAILED to run due to a provider/API
+   * error (quota 429, model 503, network) — NOT a real verdict.
+   */
+  verificationErrors?: number;
+  /**
+   * True when one or more verifications could not be performed. A degraded scan
+   * is NOT trustworthy: 'unverified' results may mean "never checked", not
+   * "no support found". Surfaces LOUDLY so a paid/public surface never presents
+   * a confident scorecard built on un-run verifications (e.g. a quota-exhausted
+   * key returning all-'unverified'). Consumers should show a degraded banner
+   * and must not bill or consume quota for a fully-degraded scan.
+   */
+  degraded?: boolean;
 }
 
 function calculateRisk(
@@ -217,6 +231,8 @@ export async function scan(
     ? runRules(text, ruleNames)
     : runAllRules(text);
 
+  const verificationErrors = Object.values(verifications).filter((v) => v.apiError).length;
+
   return {
     input: text.substring(0, 200),
     provider: extractionProvider.name,
@@ -225,6 +241,8 @@ export async function scan(
     overallRisk,
     complianceReport,
     ruleFindings,
+    verificationErrors,
+    degraded: verificationErrors > 0,
   };
 }
 

@@ -1,0 +1,11 @@
+[SYNTHETIC DEMO FIXTURE — a representative AI-assisted consulting-report excerpt used to demonstrate Faultline's live citation verification. The TEXT below is a constructed test input; the engine's verdicts on it are real.]
+
+Executive Summary — Enterprise AI Security Posture, 2026
+
+The enterprise threat landscape has shifted decisively toward AI-targeted attacks. According to a 2024 McKinsey report titled "The State of Enterprise AI Security," 73% of Fortune 500 organizations experienced at least one model-targeted intrusion in the prior twelve months. This aligns with a 2023 Gartner study, "Quantifying Agentic Risk in the Modern SOC," which projected that autonomous-agent attack surfaces would triple by 2025.
+
+The regulatory backdrop reinforces the urgency. The European Union's AI Act entered into force in 2024, establishing the first comprehensive horizontal regulation of artificial intelligence. In the United States, the NIST AI Risk Management Framework, released in January 2023, provides a voluntary structure that many enterprises have adopted as a de facto baseline.
+
+Industry analysts have quantified the cost. A Forbes Insights survey from 2025 found that the average breach involving a compromised AI pipeline cost organizations $9.4 million, substantially above the cross-industry mean. Separately, the Ponemon Institute's "2024 Cost of AI Incidents Report" attributed 41% of these losses to undetected data-poisoning attacks.
+
+We recommend a three-tier mitigation program grounded in continuous model monitoring, supply-chain attestation, and pre-deployment red-teaming.

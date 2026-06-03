@@ -198,7 +198,12 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
       claimId: claim.id,
       status: 'unverified',
       explanation: `Verify failed: ${error instanceof Error ? error.message : String(error)}`,
-      sources: []
+      sources: [],
+      // The verification did NOT run (provider/API error — quota 429, model 503,
+      // network). 'unverified' here means "never checked", not "checked, no
+      // support found". apiError lets every consumer tell the two apart instead
+      // of silently reporting a confident-but-false 'unverified' verdict.
+      apiError: true,
     };
   }
 };

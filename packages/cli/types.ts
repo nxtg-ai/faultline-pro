@@ -20,6 +20,15 @@ export interface VerificationResult {
   status: ClaimStatus;
   explanation: string;
   sources: Array<{ title: string; uri: string }>;
+  /**
+   * True when verification could NOT be performed due to a provider/API error
+   * (quota 429, model 503, network) rather than a real grounding verdict.
+   * `status` will be 'unverified' in this case, but that 'unverified' means
+   * "we never checked", NOT "we checked and found no support". Consumers MUST
+   * distinguish the two — silently treating an API failure as an unsupported
+   * claim is the failure mode this flag exists to prevent.
+   */
+  apiError?: boolean;
 }
 
 export interface AnalysisState {
