@@ -1053,6 +1053,38 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ## Team Feedback
 
+> **Reflection cycle**: 2026-06-04 (post-pivot drive — honest-hero, demand-map, integrity P2)
+
+**1. Shipped since last check-in:**
+- **npm integrity**: `@nxtg/faultline@0.8.0` published (OIDC trusted-publishing, `fab9acf`); description + keywords de-veneered — dropped "agent governance"/"AI governance platform" → "AI claim verification / hallucination detection" (`8c260c2`). `@nxtg/faultline-sdk@0.5.0` (broken, src-not-dist publish) **unpublished** + `packages/sdk/` removed (`d6e782d`).
+- **Honest hero LIVE** (faultline-web `1f690de`, curl-verified x-vercel-cache MISS): "We check the receipts on AI output"; OG/Twitter/JSON-LD + keywords stripped of the compliance veneer. Earlier P0 integrity sweep cleared residual "Agent governance" from JSON-LD (`72e70a3`).
+- **Strategy**: 17-agent real-pain demand sweep → `~/ASIF/learning/faultine-fuckup/2026-06-01-faultline-real-pain-demand-map.md` (31 URL-verified painpoints / 24 dropped-as-fabricated). Verdict: lead with the **consulting pre-publish citation gate** (EY/Deloitte anchors), NOT compliance, NOT legal.
+- **Validate-first kit** (`9813b99`, `e1e1330`, `3cb9736`): offer one-pager + demo recipe (existing `scan --fail-on` engine) + leave-behind template + reachable targets. Built nothing new.
+- **Engine integrity fix** (`957439a`): `VerificationResult.apiError?` + `ScanResult.degraded?`/`verificationErrors?` — a transient provider error (429/503) no longer silently masquerades as an `unverified` verdict. **Purely additive** (optional fields, default-absent on healthy scans; no verdict/risk/enum logic touched). **Tests: 4,574 GREEN** (+3 new: `degraded-verification.test.ts`).
+- **NEXUS**: Q-PIVOT-CONSULTING-WEDGE recorded (`2efe5b7`).
+
+**2. Surprises:**
+- **The product wore the veneer in its own metadata** — default `scan` markdown/html output *still led with "EU AI Act Risk Tier"* and JSON-LD/keywords carried "agent governance" long after the web hero changed. Positioning debt hides in metadata, not just hero copy.
+- **A 429 silently became an `unverified` verdict** — the verify `catch` swallowed quota/API errors into `status:'unverified'`, so a transient failure read as a confident "we checked, no support found." That's presence≠truth living *inside* the product whose whole pitch is presence≠truth. Tech-debt class: silent-failure-to-default.
+- **My own false-RED**: I escalated "PROD-BROKEN, real users get garbage" off a service-key API curl that hit a transient 429 — without driving the real authenticated product. Asif's browser-UAT showed the engine works (Eiffel→Supported 85%, Great-Wall→Contradicted 15%). The 429 was the **service-key `/scan` path** (real P2), not the live UI path.
+
+**3. Cross-project signals (reusable / should-know):**
+- **API/health probe ≠ product UAT** — banked as canon (`feedback_api_probe_not_product_uat`; EmmaSoul filed `intelligence/freedom-mode-observatory.md` THE GROUND-TRUTH RULE). 5 agents escalated a P0 off probes; 0 opened a browser; Asif caught it in seconds. Same family as curl≠content, committed≠deployed. **Every team: drive the real product with hands before declaring broken/working.**
+- **Silent-failure-to-default is portfolio-wide** — any `catch → return <default verdict>` (or `|| 0`, `?? 'ok'`) that buries a provider/API error as a normal result will lie. The fix pattern: tag the error path (`apiError`/`degraded`) so callers distinguish "never checked" from "checked, negative." Worth a CRUCIBLE/lint sweep across FW/CE/dx3/geo.
+- **Deploy-truth holds for metadata too** — JSON-LD/OG strings render server-side into SSR HTML; a hero change isn't done until cache-busted curl confirms the *structured* data, not just the visible h1.
+
+**4. Next priorities if fresh directives arrived:**
+- **Fire the consulting validate-first test** — gated only on a named target + send approval (engine confirmed working; the right demo path is the live product, not the API). Hand-run a peer-firm AI report, show the per-citation demolition, ask "would you pay for a gate on every deliverable?" One paid commit → build/fold/kill.
+- **Service-key `/scan` 429 (P2)** — understand why the service-key path hit Gemini quota when the UI path didn't (separate bucket? no rate-limit guard? burst?). Surface `degraded` in faultline-web UI so a degraded scan shows a banner + doesn't consume quota/bill.
+- **Portfolio silent-failure sweep** — propose the `apiError`/degraded pattern as a shared standard.
+
+**5. Blockers / questions for CoS:**
+- **Q-PIVOT-CONSULTING-WEDGE** (open): proceed-on-consulting is reconciled (EmmaSoul adopted), but the validate-first *send* needs a named target + Asif's go (agent-hands boundary — I prep, I don't send as Asif to third parties).
+- **Q-PERSONAL-PRICING-MODE** (still open): billing.ts `mode:'subscription'` ($19/mo) vs revenue-model doc's "$19 one-time" — needs Asif's ruling.
+- No code/test blockers. Tree clean, 4,574 green, npm + live hero verified.
+
+---
+
 > **Reflection cycle**: 2026-05-08 (Cycle 383 — v0.7.0 release train verification)
 
 **1. Shipped** (Asif-initiated, team verified):
