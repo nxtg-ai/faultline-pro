@@ -60,7 +60,7 @@
     "@google/genai": "^1.32.0",
     "js-yaml": "^4.1.1",
     "ora": "^9.3.0",
-    "tsx": "^4.21.0"
+    "tsx": "^4.22.4"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
@@ -71,7 +71,7 @@
     "@vitest/coverage-v8": "^4.0.18",
     "jsdom": "^28.1.0",
     "typescript": "~5.8.2",
-    "vite": "^6.2.0",
+    "vite": "^8.0.16",
     "vitest": "^4.0.18"
   }
 }
