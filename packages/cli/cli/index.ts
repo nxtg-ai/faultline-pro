@@ -79,6 +79,34 @@ function checkApiKey(providerName: string | undefined): { exitCode: number; outp
   return { exitCode: 1, output: `No API key found for provider "${resolved}".\n\n  ${hint}\n\nFor CI/testing without an API key: --provider mock` };
 }
 
+/**
+ * Fail a `--fail-on` gate CLOSED when the scan was degraded.
+ *
+ * A degraded scan (transient provider errors — 429/503/network — left one or more
+ * claims unverified; see `ScanResult.degraded`) did NOT actually check every claim.
+ * A verification gate that returns exit 0 in that state would let an unchecked —
+ * possibly fabricated — claim pass as "clean", the precise failure this tool exists
+ * to prevent. Commit 957439a stopped degraded results masquerading in the display
+ * layer; this closes the same hole in the exit-code/gate layer. The gate fails
+ * closed.
+ *
+ * The diagnostic goes to STDERR so machine-readable stdout (the `--output-format
+ * json` consumed by CI gates) stays parseable. Returns a non-zero result for the
+ * caller to short-circuit on, or `null` when the scan was not degraded.
+ */
+function degradedGateFailure(
+  isDegraded: boolean,
+  output: string,
+): { exitCode: number; output: string } | null {
+  if (!isDegraded) return null;
+  process.stderr.write(
+    '✗ Faultline gate FAILED: verification was degraded — transient provider errors ' +
+    'left claims unverified, so the result cannot be trusted. Re-run when the provider ' +
+    'is healthy. (--fail-on fails closed on degraded scans.)\n',
+  );
+  return { exitCode: 1, output };
+}
+
 function usage(): string {
   return `Faultline CLI v${VERSION} — AI Claim Forensics
 
@@ -716,6 +744,11 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
         }, null, 2);
 
         if (effectiveFailOn) {
+          const degradedFail = degradedGateFailure(
+            templateResults.some(tr => tr.result.degraded === true),
+            templateOutput,
+          );
+          if (degradedFail) return degradedFail;
           // Aggregate counts across all template results
           const totalCounts = { findings: 0, critical: 0, high: 0, medium: 0, low: 0 };
           for (const tr of templateResults) {
@@ -762,6 +795,11 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
         printConversionNudge(batchResult.summary.highestRisk, flags['no-nudge'] === 'true');
 
         if (effectiveFailOn) {
+          const degradedFail = degradedGateFailure(
+            batchResult.results.some(fr => fr.result.degraded === true),
+            batchOutput,
+          );
+          if (degradedFail) return degradedFail;
           const totalCounts = { findings: 0, critical: 0, high: 0, medium: 0, low: 0 };
           for (const fr of batchResult.results) {
             const c = countFromScanResult(fr.result as unknown as Record<string, unknown>);
@@ -815,6 +853,8 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
         const fileOutput = renderReportAs(fileResult, outputFormat, fileSarifOptions);
 
         if (effectiveFailOn) {
+          const degradedFail = degradedGateFailure(fileResult.degraded === true, fileOutput);
+          if (degradedFail) return degradedFail;
           const counts = countFromScanResult(fileResult as unknown as Record<string, unknown>);
           const passed = checkThreshold(effectiveFailOn, counts);
           return { exitCode: passed ? 0 : 1, output: fileOutput };
@@ -864,6 +904,8 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
       printConversionNudge(result.overallRisk, flags['no-nudge'] === 'true');
 
       if (effectiveFailOn) {
+        const degradedFail = degradedGateFailure(result.degraded === true, scanOutput);
+        if (degradedFail) return degradedFail;
         const counts = countFromScanResult(result as unknown as Record<string, unknown>);
         const passed = checkThreshold(effectiveFailOn, counts);
         return { exitCode: passed ? 0 : 1, output: scanOutput };

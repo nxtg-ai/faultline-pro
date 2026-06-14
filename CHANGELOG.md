@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`--fail-on` gate now fails CLOSED on degraded scans (integrity)**: a `--fail-on` run is a pre-publish / CI verification gate (exit 0 = pass, exit 1 = block). Previously, when verification was degraded — transient provider errors (429/503/network) left claims unchecked, setting `ScanResult.degraded` (the contract added in `957439a` for the display layer) — those `unverified` claims counted only as `low`, which `--fail-on critical|high|medium` ignores. A fully-degraded scan (verifier down, nothing actually checked) therefore exited **0 = PASS**, letting an unchecked (possibly fabricated) claim through *exactly when the verifier could not run* — fail-open on the safety check. The gate now **fails closed (exit 1)** whenever a scan is degraded and a `--fail-on` threshold is active, across single-file, file-upload, directory/batch, and template-scan modes. The diagnostic is written to **stderr** so machine-readable JSON stdout stays parseable for the citation-gate recipe. This intentionally turns previously false-green CI gates red when the provider is unhealthy — re-run when it recovers. No behavior change when `--fail-on` is not set, and `--provider mock` (the keyless-CI escape hatch) is never degraded. 4 new tests (single fail-closed + JSON-stdout integrity, no-gate-no-change, healthy-still-passes, batch fail-closed).
+
 ## [v0.8.0] — 2026-05-31
 
 ### Added
