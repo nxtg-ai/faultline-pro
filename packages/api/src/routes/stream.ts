@@ -62,7 +62,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
           type: 'object',
           properties: {
             text:     { type: 'string', minLength: 1, maxLength: 50000, description: 'Text to scan' },
-            provider: { type: 'string', enum: ['gemini', 'openai', 'claude', 'perplexity', 'mock'], description: 'Provider (default: openai)' },
+            provider: { type: 'string', enum: ['gemini', 'openai', 'claude', 'perplexity', 'mock'], description: 'Provider (default: gemini — the grounded, web-sourced default)' },
           },
         },
         security: [{ apiKey: [] }],
@@ -77,7 +77,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
 
       const effectiveProvider: ScanProvider = VALID_PROVIDERS.has(provider as ScanProvider)
         ? (provider as ScanProvider)
-        : 'openai';
+        : 'gemini';
 
       const chunks: string[] = [];
       const emit = (data: Record<string, unknown>): void => {
@@ -186,7 +186,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
 
       const effectiveProvider: ScanProvider = VALID_PROVIDERS.has(provider as ScanProvider)
         ? (provider as ScanProvider)
-        : 'openai';
+        : 'gemini';
 
       const chunks: string[] = [];
       const emit = (data: Record<string, unknown>): void => {
