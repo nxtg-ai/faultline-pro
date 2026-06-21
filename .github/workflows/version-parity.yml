@@ -1,0 +1,48 @@
+name: Version Parity Gate
+
+# Proves the "shipped, coherent product" contract (alignment row faultline-version):
+# the DEPLOYED running instance, npm `latest`, and the in-repo published manifests
+# (cli + api) all report the same version. Honest "deployed-version == npm-latest" —
+# probes the live service, not just package.json. FAILS CLOSED on any unreachable
+# source (a degraded probe is RED, never green-on-missing-data).
+#
+# Network egress (npm registry + Fly /health) is why this is a dedicated CI job, not
+# part of the hermetic vitest suite.
+#
+# Override targets via repo variables / dispatch inputs:
+#   FAULTLINE_DEPLOYED_HEALTH_URL (default https://faultline-api.fly.dev/health)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 9 * * *'  # 09:00 UTC daily — catches post-deploy drift
+  workflow_dispatch:
+    inputs:
+      deployed_health_url:
+        description: 'Override deployed /health URL'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  parity:
+    name: Deployed == npm-latest == repo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Version parity gate
+        env:
+          FAULTLINE_DEPLOYED_HEALTH_URL: ${{ github.event.inputs.deployed_health_url || vars.FAULTLINE_DEPLOYED_HEALTH_URL || 'https://faultline-api.fly.dev/health' }}
+        run: node scripts/version-parity.mjs

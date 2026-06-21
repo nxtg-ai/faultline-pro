@@ -13,7 +13,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "scan": "tsx cli/index.ts scan",
-    "faultline": "tsx cli/index.ts"
+    "faultline": "tsx cli/index.ts",
+    "version-parity": "node scripts/version-parity.mjs"
   },
   "keywords": [
     "ai",
