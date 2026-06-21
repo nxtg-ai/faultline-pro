@@ -66,7 +66,7 @@
   },
   "dependencies": {
     "@google/genai": "^1.32.0",
-    "js-yaml": "^4.1.1",
+    "js-yaml": "^4.2.0",
     "ora": "^9.3.0",
     "pdf-parse": "^1.1.1",
     "pdfkit": "^0.18.0",
