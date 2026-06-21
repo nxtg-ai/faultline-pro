@@ -1,5 +1,6 @@
-import type { Claim, VerificationResult, ClaimStatus } from '../types';
+import type { Claim, VerificationResult, ClaimStatus, Source } from '../types';
 import type { LLMProvider, ImageInput, CritiqueResult, ProviderFactory } from './base_provider';
+import { buildGroundedPrompt } from './grounded_prompt';
 
 /**
  * OpenAI provider — implements the LLMProvider interface using OpenAI's API.
@@ -94,6 +95,19 @@ Return a JSON object:
       console.error(`Error verifying claim ${claim.id} (OpenAI):`, error);
       return { claimId: claim.id, status: 'unverified', explanation: `Verify failed: ${msg}`, sources: [] };
     }
+  }
+
+  async verifyClaimGrounded(claim: Claim, sources: Source[]): Promise<VerificationResult> {
+    const content = [{ type: 'text' as const, text: buildGroundedPrompt(claim, sources) }];
+    const response = await this.callAPI(content, 'user');
+    const resultJson = JSON.parse(response);
+    return {
+      claimId: claim.id,
+      status: (resultJson.status || 'unverified') as ClaimStatus,
+      explanation: resultJson.explanation || 'No structural analysis provided.',
+      // LOCK A: cite the SHARED retrieved set, not sources:[].
+      sources,
+    };
   }
 
   async generateCritiqueAndPrompt(

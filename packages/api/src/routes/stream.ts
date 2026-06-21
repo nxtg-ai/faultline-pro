@@ -23,6 +23,11 @@ const POST_STREAM_BODY_SCHEMA = {
         extractionProvider:   { type: 'string', enum: PROVIDER_ENUM },
         verificationProvider: { type: 'string', enum: PROVIDER_ENUM },
         synthesisProvider:    { type: 'string', enum: PROVIDER_ENUM },
+        // Grounded multi-model consensus (additive opt-in). When true, the
+        // verify stage fans out to consensusProviders over shared sources and
+        // claim_verified events carry the richer consensus verdict shape.
+        consensus:            { type: 'boolean' },
+        consensusProviders:   { type: 'array', items: { type: 'string', enum: PROVIDER_ENUM } },
       },
       additionalProperties: false,
     },

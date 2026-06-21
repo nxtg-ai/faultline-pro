@@ -141,6 +141,45 @@ describe('FR-1 — POST /scan/stream', () => {
     expect(events.some((e) => e.type === 'complete')).toBe(true);
   });
 
+  it('SPP11: consensus flag survives schema → claim_verified verdict carries consensus + providerVotes shape', async () => {
+    // pipelineConfig.consensus=true must pass the body schema (additionalProperties:false)
+    // and reach scan(). Using consensusProviders:['mock'] keeps it offline — the mock
+    // provider lacks verifyClaimGrounded, so it surfaces as an unavailable vote
+    // (providerCount 0), which still proves the richer verdict shape flows through.
+    const { statusCode, body } = await postStream(server, {
+      text: SCAN_TEXT,
+      provider: 'mock',
+      pipelineConfig: {
+        extractionProvider: 'mock',
+        consensus: true,
+        consensusProviders: ['mock'],
+      },
+    });
+    expect(statusCode).toBe(200);
+    const events = parseSSE(body);
+    const claimVerified = events.filter((e) => e.type === 'claim_verified');
+    expect(claimVerified.length).toBeGreaterThan(0);
+    const verdict = claimVerified[0]?.verdict as Record<string, unknown>;
+    // Richer consensus shape reached the wire (additive contract with fw).
+    expect(verdict.consensus).toBeDefined();
+    expect(Array.isArray(verdict.providerVotes)).toBe(true);
+    // LOCK B: mock has no grounded entry point → excluded from providerCount.
+    expect((verdict.consensus as Record<string, unknown>).providerCount).toBe(0);
+  });
+
+  it('SPP12: consensus=false / absent → single-provider verdict shape (no consensus fields)', async () => {
+    const { body } = await postStream(server, {
+      text: SCAN_TEXT,
+      provider: 'mock',
+      pipelineConfig: { verificationProvider: 'mock' },
+    });
+    const claimVerified = parseSSE(body).filter((e) => e.type === 'claim_verified');
+    expect(claimVerified.length).toBeGreaterThan(0);
+    const verdict = claimVerified[0]?.verdict as Record<string, unknown>;
+    expect(verdict.consensus).toBeUndefined();
+    expect(verdict.providerVotes).toBeUndefined();
+  });
+
   it('SPP10: scan error → error event emitted', async () => {
     // Trigger an error by mocking scan — use a provider that throws
     // The simplest way: pass a provider name that's valid in schema but has no key

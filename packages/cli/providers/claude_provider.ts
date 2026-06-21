@@ -1,13 +1,23 @@
-import type { Claim, VerificationResult, ClaimStatus } from '../types';
+import type { Claim, VerificationResult, ClaimStatus, Source } from '../types';
 import type { LLMProvider, ImageInput, CritiqueResult, ProviderFactory } from './base_provider';
+import { buildGroundedPrompt } from './grounded_prompt';
 
 /**
  * Claude provider — implements the LLMProvider interface using Anthropic's API.
  *
  * Uses the Anthropic Messages API to perform claim extraction, verification,
  * and critique generation. Designed to be a drop-in alternative to GeminiProvider.
+ *
+ * Model note: `claude-opus-4-8` is the current Opus-tier model id (verified
+ * against GET /v1/models). The prior default `claude-sonnet-4-6` is ALSO a valid
+ * id — the historical "HTTP 400 on every call" was NOT a model-id problem: the
+ * Anthropic billing check fires before model validation, so a credit-exhausted
+ * key returns `invalid_request_error: credit balance too low` for ANY model id
+ * (even a nonsense one). Bumping to opus-4-8 is canon hygiene for new code; it
+ * does not by itself restore verdicts — that requires API credits on the key.
+ * Override via FAULTLINE_CLAUDE_MODEL.
  */
-const DEFAULT_MODEL = 'claude-sonnet-4-6';
+const DEFAULT_MODEL = 'claude-opus-4-8';
 
 class ClaudeProvider implements LLMProvider {
   readonly name = 'Anthropic Claude';
@@ -91,6 +101,18 @@ Return strictly a JSON object:
       console.error(`Error verifying claim ${claim.id} (Claude):`, error);
       return { claimId: claim.id, status: 'unverified', explanation: `Verify failed: ${msg}`, sources: [] };
     }
+  }
+
+  async verifyClaimGrounded(claim: Claim, sources: Source[]): Promise<VerificationResult> {
+    const response = await this.callAPI([{ type: 'text', text: buildGroundedPrompt(claim, sources) }], 'user');
+    const resultJson = JSON.parse(this.extractJson(response));
+    return {
+      claimId: claim.id,
+      status: (resultJson.status || 'unverified') as ClaimStatus,
+      explanation: resultJson.explanation || 'No structural analysis provided.',
+      // LOCK A: cite the SHARED retrieved set, not sources:[].
+      sources,
+    };
   }
 
   async generateCritiqueAndPrompt(

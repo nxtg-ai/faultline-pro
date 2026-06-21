@@ -1,8 +1,10 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import type { Claim, VerificationResult, AnalysisState } from '../types.js';
-import type { LLMProvider } from '../providers/base_provider.js';
+import type { LLMProvider, Retriever } from '../providers/base_provider.js';
 import { getProvider } from '../providers/registry.js';
+import { GeminiGroundingRetriever } from '../providers/gemini_provider.js';
+import { consensusVerify, type NamedProvider } from '../consensus/consensus_engine.js';
 import { generateComplianceReport, type ComplianceReport } from '../compliance/report_generator.js';
 import { runAllRules, runRules, type Finding } from '../rules/index.js';
 
@@ -26,6 +28,19 @@ export interface PipelineConfig {
   extractionProvider?: ProviderName;    // provider for extractClaims()
   verificationProvider?: ProviderName;  // provider for verifyClaim()
   synthesisProvider?: ProviderName;     // reserved — no-op in current API pipeline
+  /**
+   * Opt-in grounded multi-model consensus for the VERIFY stage (additive).
+   * When true, each claim is verified by fanning out to multiple providers in
+   * parallel, all judging the SAME retrieved sources, then fusing the verdicts
+   * (see consensus_engine.ts). Extraction stays single-provider.
+   * When absent/false, the existing single-provider verify path runs UNCHANGED.
+   */
+  consensus?: boolean;
+  /**
+   * Provider names participating in consensus verify (default: gemini, openai,
+   * claude). Only used when `consensus` is true.
+   */
+  consensusProviders?: ProviderName[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -164,6 +179,41 @@ function resolveApiKey(name: string): string {
   return key;
 }
 
+const DEFAULT_CONSENSUS_PROVIDERS: ProviderName[] = ['gemini', 'openai', 'claude'];
+
+/**
+ * Build the consensus rig: a provider-agnostic Retriever plus the named
+ * providers to fan out to. A provider whose API key is missing is SKIPPED here
+ * rather than throwing — a missing key must not abort a consensus scan (it
+ * simply means one fewer voter). The Retriever defaults to gemini grounding but
+ * is selected behind the Retriever interface so a different backend can be
+ * swapped in by config.
+ */
+function buildConsensusRig(names: ProviderName[]): {
+  retriever: Retriever;
+  namedProviders: NamedProvider[];
+} {
+  const namedProviders: NamedProvider[] = [];
+  for (const name of names) {
+    try {
+      const apiKey = resolveApiKey(name);
+      namedProviders.push({ name, provider: getProvider(apiKey, name) });
+    } catch {
+      // Missing key → not a participant. Not fatal: consensus still runs with
+      // whatever providers ARE configured.
+    }
+  }
+  // Retriever uses the gemini key (the grounding backend). If gemini has no key,
+  // retrieval yields [] and providers judge from parametric knowledge.
+  let retrieverKey = '';
+  try {
+    retrieverKey = resolveApiKey('gemini');
+  } catch {
+    retrieverKey = '';
+  }
+  return { retriever: new GeminiGroundingRetriever(retrieverKey), namedProviders };
+}
+
 export async function scan(
   text: string,
   providerName?: string,
@@ -188,6 +238,13 @@ export async function scan(
     ? extractionProvider
     : getProvider(verificationApiKey, verificationName);
 
+  // Consensus mode (opt-in, additive). When off, the rig is never built and the
+  // single-provider verify path below runs unchanged.
+  const consensusEnabled = pipelineConfig?.consensus === true;
+  const consensusRig = consensusEnabled
+    ? buildConsensusRig(pipelineConfig?.consensusProviders ?? DEFAULT_CONSENSUS_PROVIDERS)
+    : null;
+
   onProgress?.('Extracting claims...');
   const rawClaims = await extractionProvider.extractClaims(text);
   const claims = guaranteeClaimPerSentence(text, rawClaims);
@@ -201,6 +258,18 @@ export async function scan(
       const i = cursor++;
       onProgress?.(`Verifying claim ${i + 1}/${toVerify.length}...`);
       let result: VerificationResult;
+
+      // Consensus branch: fan out to N providers over shared retrieved sources.
+      // consensusVerify is internally resilient (never throws), so it bypasses
+      // the single-provider retry ladder.
+      if (consensusRig) {
+        result = await consensusVerify(toVerify[i], consensusRig.retriever, consensusRig.namedProviders);
+        verifications[toVerify[i].id] = result;
+        completedCount++;
+        onClaimVerified?.(toVerify[i], result, i, toVerify.length);
+        continue;
+      }
+
       let delay = 1000;
       for (let attempt = 0; attempt < 3; attempt++) {
         try {

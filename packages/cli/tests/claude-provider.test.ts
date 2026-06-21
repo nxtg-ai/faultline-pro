@@ -49,7 +49,7 @@ describe('ClaudeProvider', () => {
 
     it('should expose correct model ID', () => {
       const provider = createClaudeProvider('test-key');
-      expect(provider.modelId).toBe('claude-sonnet-4-6');
+      expect(provider.modelId).toBe('claude-opus-4-8');
     });
 
     it('factory should satisfy ProviderFactory type', () => {
@@ -275,7 +275,7 @@ describe('ClaudeProvider', () => {
   describe('FAULTLINE_CLAUDE_MODEL env var', () => {
     it('should use default model when env var is not set', () => {
       const provider = createClaudeProvider('test-key');
-      expect(provider.modelId).toBe('claude-sonnet-4-6');
+      expect(provider.modelId).toBe('claude-opus-4-8');
     });
 
     it('should use custom model from FAULTLINE_CLAUDE_MODEL', () => {
@@ -298,14 +298,14 @@ describe('ClaudeProvider', () => {
     it('should fall back to default when env var is empty string', () => {
       process.env.FAULTLINE_CLAUDE_MODEL = '';
       const provider = createClaudeProvider('test-key');
-      expect(provider.modelId).toBe('claude-sonnet-4-6');
+      expect(provider.modelId).toBe('claude-opus-4-8');
     });
 
     it('different instances can have different models if env changes between constructions', () => {
       const p1 = createClaudeProvider('key-1');
       process.env.FAULTLINE_CLAUDE_MODEL = 'claude-opus-4-20250514';
       const p2 = createClaudeProvider('key-2');
-      expect(p1.modelId).toBe('claude-sonnet-4-6');
+      expect(p1.modelId).toBe('claude-opus-4-8');
       expect(p2.modelId).toBe('claude-opus-4-20250514');
     });
   });
@@ -336,7 +336,7 @@ describe('ClaudeProvider', () => {
       await provider.extractClaims('Test');
 
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(body.model).toBe('claude-sonnet-4-6');
+      expect(body.model).toBe('claude-opus-4-8');
     });
 
     it('should set max_tokens in request body', async () => {

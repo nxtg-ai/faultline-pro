@@ -208,6 +208,99 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
   }
 };
 
+/**
+ * Retrieve grounding sources for a claim using gemini's native googleSearch
+ * tool — the same grounding mechanism `verifyClaim` uses, but exposed as a
+ * pure retrieval primitive for the consensus engine's Retriever seam.
+ *
+ * Returns up to 3 de-duplicated sources. Returns [] on any API error (the
+ * consensus engine treats an empty retrieval as "no shared evidence", and
+ * every provider then judges from parametric knowledge against that empty set).
+ */
+export const retrieveSources = async (claimText: string, apiKey: string): Promise<Array<{ title: string; uri: string }>> => {
+  if (!apiKey || !claimText) return [];
+
+  const prompt = `Search the web for evidence relevant to this claim. Return a one-sentence summary of what you found.\n\nClaim: "${claimText}"`;
+
+  try {
+    const ai = getClient(apiKey);
+    const response = await ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: prompt,
+      config: { tools: [{ googleSearch: {} }] },
+    });
+
+    const sources: Array<{ title: string; uri: string }> = [];
+    const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+    if (chunks) {
+      chunks.forEach((chunk: any) => {
+        if (chunk.web) {
+          sources.push({ title: chunk.web.title || 'Source', uri: chunk.web.uri });
+        }
+      });
+    }
+    const uniqueSources = sources.filter((v, i, a) => a.findIndex(t => t.uri === v.uri) === i);
+    return uniqueSources.slice(0, 3);
+  } catch (error) {
+    console.error(`Error retrieving sources for claim:`, error);
+    return [];
+  }
+};
+
+/**
+ * Verify a claim AGAINST a shared, pre-retrieved set of sources.
+ * Unlike `verifyClaim` (which runs its own googleSearch), this judges using
+ * ONLY the supplied sources, so it can participate in a consensus fan-out where
+ * every provider reasons over identical evidence.
+ */
+export const verifyClaimGrounded = async (
+  claim: Claim,
+  sources: Array<{ title: string; uri: string }>,
+  apiKey: string,
+): Promise<VerificationResult> => {
+  if (!apiKey) throw new Error('API Key required');
+
+  const sourceBlock = sources.length > 0
+    ? sources.map((s, i) => `[${i + 1}] ${s.title} — ${s.uri}`).join('\n')
+    : '(no sources retrieved)';
+
+  const prompt = `
+    You are a structural engineer for information integrity.
+    Stress-test this claim using ONLY the retrieved sources below. Do not perform
+    your own search; judge against the shared evidence set.
+
+    Claim: "${claim.text}"
+
+    Retrieved sources:
+    ${sourceBlock}
+
+    Determine if the claim holds up ("supported"), fails ("contradicted"), or is
+    inconclusive ("mixed"). If the sources are empty or insufficient, judge from
+    your own knowledge and lean "mixed" when uncertain.
+
+    Return strictly a JSON object. No markdown, no preamble.
+    { "status": "supported" | "contradicted" | "mixed" | "unverified", "explanation": "Concise assessment (max 2 sentences)." }
+  `;
+
+  const ai = getClient(apiKey);
+  const response = await ai.models.generateContent({ model: GEMINI_MODEL, contents: prompt });
+
+  let resultJson: any = {};
+  try {
+    const cleaned = cleanJson(response.text || '{}');
+    if (cleaned && cleaned !== '{}') resultJson = JSON.parse(cleaned);
+  } catch {
+    if (response.text) resultJson = { status: 'mixed', explanation: response.text.substring(0, 150) };
+  }
+
+  return {
+    claimId: claim.id,
+    status: (resultJson.status || 'unverified') as ClaimStatus,
+    explanation: resultJson.explanation || 'No structural analysis provided.',
+    sources,
+  };
+};
+
 export const generateCritiqueAndPrompt = async (originalText: string, failedClaims: Claim[], apiKey: string): Promise<{ critique: string; improvedPrompt: string }> => {
   if (!apiKey) return { critique: "Auth Error", improvedPrompt: "Missing API Key" };
 

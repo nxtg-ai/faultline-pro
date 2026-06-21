@@ -1,6 +1,6 @@
-import type { Claim, VerificationResult } from '../types';
-import type { LLMProvider, ImageInput, CritiqueResult, ProviderFactory } from './base_provider';
-import { extractClaims, verifyClaim, generateCritiqueAndPrompt, GEMINI_MODEL } from '../services/geminiService';
+import type { Claim, VerificationResult, Source } from '../types';
+import type { LLMProvider, ImageInput, CritiqueResult, ProviderFactory, Retriever } from './base_provider';
+import { extractClaims, verifyClaim, verifyClaimGrounded, retrieveSources, generateCritiqueAndPrompt, GEMINI_MODEL } from '../services/geminiService';
 
 /**
  * Gemini provider — wraps the existing geminiService.ts functions
@@ -27,6 +27,10 @@ class GeminiProvider implements LLMProvider {
     return verifyClaim(claim, this.apiKey);
   }
 
+  async verifyClaimGrounded(claim: Claim, sources: Source[]): Promise<VerificationResult> {
+    return verifyClaimGrounded(claim, sources, this.apiKey);
+  }
+
   async generateCritiqueAndPrompt(originalText: string, failedClaims: Claim[]): Promise<CritiqueResult> {
     return generateCritiqueAndPrompt(originalText, failedClaims, this.apiKey);
   }
@@ -35,3 +39,18 @@ class GeminiProvider implements LLMProvider {
 export const createGeminiProvider: ProviderFactory = (apiKey: string): LLMProvider => {
   return new GeminiProvider(apiKey);
 };
+
+/**
+ * Default Retriever: reuses gemini's native googleSearch grounding to fetch
+ * sources for a claim. This is the DEFAULT retrieval backend, not the only
+ * possible one — a Tavily/Serper/Brave/Custom-Search Retriever can be dropped
+ * in as a separate impl selected by config (that seam is the whole point).
+ */
+export class GeminiGroundingRetriever implements Retriever {
+  readonly name = 'gemini-grounding';
+  constructor(private apiKey: string) {}
+
+  retrieve(claimText: string): Promise<Source[]> {
+    return retrieveSources(claimText, this.apiKey);
+  }
+}
