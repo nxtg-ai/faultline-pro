@@ -4,6 +4,7 @@ import type { Claim, VerificationResult, AnalysisState } from '../types.js';
 import type { LLMProvider, Retriever } from '../providers/base_provider.js';
 import { getProvider } from '../providers/registry.js';
 import { GeminiGroundingRetriever } from '../providers/gemini_provider.js';
+import { OpenAIWebSearchRetriever } from '../providers/openai_web_search_retriever.js';
 import { consensusVerify, type NamedProvider } from '../consensus/consensus_engine.js';
 import { generateComplianceReport, type ComplianceReport } from '../compliance/report_generator.js';
 import { runAllRules, runRules, type Finding } from '../rules/index.js';
@@ -203,15 +204,34 @@ function buildConsensusRig(names: ProviderName[]): {
       // whatever providers ARE configured.
     }
   }
-  // Retriever uses the gemini key (the grounding backend). If gemini has no key,
+  // PRIMARY retriever: OpenAI Responses API web_search (funded key, not throttled
+  // like the free-tier gemini native googleSearch). When the OpenAI key is absent
+  // we fall back to GeminiGroundingRetriever (alternate). If neither key exists,
   // retrieval yields [] and providers judge from parametric knowledge.
-  let retrieverKey = '';
+  const retriever = buildRetriever();
+  return { retriever, namedProviders };
+}
+
+/**
+ * Select the consensus retriever behind the provider-agnostic Retriever seam.
+ * OpenAI web search is primary; gemini grounding is the alternate fallback.
+ */
+function buildRetriever(): Retriever {
+  let openaiKey = '';
   try {
-    retrieverKey = resolveApiKey('gemini');
+    openaiKey = resolveApiKey('openai');
   } catch {
-    retrieverKey = '';
+    openaiKey = '';
   }
-  return { retriever: new GeminiGroundingRetriever(retrieverKey), namedProviders };
+  if (openaiKey) return new OpenAIWebSearchRetriever(openaiKey);
+
+  let geminiKey = '';
+  try {
+    geminiKey = resolveApiKey('gemini');
+  } catch {
+    geminiKey = '';
+  }
+  return new GeminiGroundingRetriever(geminiKey);
 }
 
 export async function scan(

@@ -42,6 +42,17 @@ vi.mock('../providers/gemini_provider.js', () => ({
   },
 }));
 
+// OpenAI web search is the PRIMARY retriever (selected when OPENAI_API_KEY is
+// set, as it is in every test here). Mock it onto the same shared mockRetrieve
+// so these tests exercise the active retrieval seam regardless of which backend
+// the rig selects.
+vi.mock('../providers/openai_web_search_retriever.js', () => ({
+  OpenAIWebSearchRetriever: class {
+    name = 'mock-openai-web-search';
+    retrieve = mockRetrieve;
+  },
+}));
+
 import { scan } from '../cli/scan.js';
 
 function claims(n: number): Claim[] {

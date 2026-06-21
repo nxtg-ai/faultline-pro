@@ -18,6 +18,13 @@ export interface Claim {
 export interface Source {
   title: string;
   uri: string;
+  /**
+   * The relevant span of evidence text for this source (additive, optional for
+   * backward-compat). Populated by retrievers that can map a quoted/cited span
+   * to each URL (e.g. OpenAIWebSearchRetriever via url_citation start/end index).
+   * Consumed by the inc-2 NLI gate; safe to omit elsewhere.
+   */
+  snippet?: string;
 }
 
 /**
