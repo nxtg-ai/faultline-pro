@@ -11,7 +11,6 @@ WORKDIR /build
 COPY package.json package-lock.json ./
 COPY packages/api/package.json ./packages/api/
 COPY packages/cli/package.json ./packages/cli/
-COPY packages/sdk/package.json ./packages/sdk/
 
 # Install all workspace deps (including devDeps for tsx)
 RUN npm ci --ignore-scripts
@@ -42,7 +41,6 @@ RUN addgroup -S faultline && adduser -S faultline -G faultline
 COPY package.json package-lock.json ./
 COPY packages/api/package.json ./packages/api/
 COPY packages/cli/package.json ./packages/cli/
-COPY packages/sdk/package.json ./packages/sdk/
 
 RUN npm ci --omit=dev --ignore-scripts && \
     # Re-install tsx (devDep, needed at runtime since we run TS source directly)
