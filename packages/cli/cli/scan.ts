@@ -180,7 +180,11 @@ function resolveApiKey(name: string): string {
   return key;
 }
 
-const DEFAULT_CONSENSUS_PROVIDERS: ProviderName[] = ['gemini', 'openai', 'claude'];
+// openai FIRST: it's the funded, non-throttled provider + the retriever, so it is
+// the reliable always-present voter. gemini (free-tier) + claude (credits) are bonus
+// voters when available. Order matters: a degraded bonus provider must never be the
+// sole/first dependency of a grounded scan.
+const DEFAULT_CONSENSUS_PROVIDERS: ProviderName[] = ['openai', 'gemini', 'claude'];
 
 /**
  * Build the consensus rig: a provider-agnostic Retriever plus the named
@@ -245,9 +249,16 @@ export async function scan(
 ): Promise<ScanResult> {
   const resolvedProvider = providerName || 'gemini';
 
-  // FR-3: per-stage provider names (fall back to resolvedProvider if not specified)
-  const extractionName = pipelineConfig?.extractionProvider ?? resolvedProvider;
-  const verificationName = pipelineConfig?.verificationProvider ?? resolvedProvider;
+  // Consensus mode defaults EVERY stage to the funded openai path so a grounded
+  // scan never depends on the free-tier gemini SPOF (extraction + verify + the
+  // web-search retriever all run on the funded OpenAI key; gemini is a bonus
+  // consensus voter when not throttled). Explicit pipelineConfig overrides win.
+  const consensusEnabled = pipelineConfig?.consensus === true;
+  const stageDefault = consensusEnabled ? 'openai' : resolvedProvider;
+
+  // FR-3: per-stage provider names (fall back to the stage default if not specified)
+  const extractionName = pipelineConfig?.extractionProvider ?? stageDefault;
+  const verificationName = pipelineConfig?.verificationProvider ?? stageDefault;
 
   const extractionApiKey = resolveApiKey(extractionName);
   const verificationApiKey = resolveApiKey(verificationName);
@@ -259,8 +270,7 @@ export async function scan(
     : getProvider(verificationApiKey, verificationName);
 
   // Consensus mode (opt-in, additive). When off, the rig is never built and the
-  // single-provider verify path below runs unchanged.
-  const consensusEnabled = pipelineConfig?.consensus === true;
+  // single-provider verify path below runs unchanged. (consensusEnabled computed above.)
   const consensusRig = consensusEnabled
     ? buildConsensusRig(pipelineConfig?.consensusProviders ?? DEFAULT_CONSENSUS_PROVIDERS)
     : null;
