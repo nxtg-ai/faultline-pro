@@ -253,8 +253,13 @@ export async function scan(
   // scan never depends on the free-tier gemini SPOF (extraction + verify + the
   // web-search retriever all run on the funded OpenAI key; gemini is a bonus
   // consensus voter when not throttled). Explicit pipelineConfig overrides win.
+  // EXCEPTION: `mock` is the offline/keyless sentinel — it must never be
+  // force-upgraded to a real API call. An explicit `provider: 'mock'` is honored
+  // across stages even under consensus (the openai-default is for real-provider
+  // resolution, not for overriding an explicit offline request).
   const consensusEnabled = pipelineConfig?.consensus === true;
-  const stageDefault = consensusEnabled ? 'openai' : resolvedProvider;
+  const stageDefault =
+    consensusEnabled && resolvedProvider !== 'mock' ? 'openai' : resolvedProvider;
 
   // FR-3: per-stage provider names (fall back to the stage default if not specified)
   const extractionName = pipelineConfig?.extractionProvider ?? stageDefault;
