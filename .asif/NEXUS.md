@@ -326,9 +326,34 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
+### DIRECTIVE-NXTG-20260626-01 — P1: Release-debt cut — 18 unreleased commits since v0.8.0 (>15 ADR-036)
+**From**: Wolf (NXTG-AI CoS) | **Priority**: P1
+**Injected**: 2026-06-26 12:27 PDT | **Estimate**: S (≤2h agent-time) | **Status**: PENDING
+**Threshold**: `git log v0.8.0..HEAD --oneline` = **18 commits** > 15 (Hard Rule #4 / ADR-036). Latest tag `v0.8.0`; npm-published surface is 18 commits stale on a paid product.
+**Promise**: PRM-NXTG-20260626-02 (due 48h).
+
+**Context**: The published `v0.8.0` lags main by 18 commits, including **security/trust-relevant** unshipped work — `d869b98 fix(gate): --fail-on fails CLOSED on degraded scans`, `29f7bb0 ci(version): deterministic 4-way version-parity gate`, and the grounded-consensus arc (`80b6ae6`/`f694dc4`/`928e388`). This is informing the team of the threshold crossing — **cut at the next stable commit**, not mid-feature.
+
+**Action Items**:
+1. Pick the next stable cut point on main (do NOT cut mid-feature if the consensus arc is incomplete — finish or fence it first).
+2. SemVer bump (recommend `v0.8.1` if patch/security-only, `v0.9.0` if the consensus feature ships in this cut). CHANGELOG grouped by conventional-commit type.
+3. Full test suite — must NOT regress from baseline (4582 per prior release DoD).
+4. `git tag`, push tag, GitHub release with CHANGELOG notes, `npm publish` per RP9. Honor CI gates — no `--no-verify`.
+5. Update NEXUS § Releases + post inline directive response (Started/Completed/Actual/version/test-count/release URL/tag SHA).
+
+**DoD**: PASS — release tagged + GH release + npm publish on origin, tests ≥ 4582, CHANGELOG enumerates the 18 commits by type. FAIL — tests regress, release without tag, or mid-feature cut that ships half-done consensus work.
+
+**Constraints**: Release-discipline only — NO new features on this directive. NO outbound dispatch (GTM batch stays Asif's one-click).
+
+**Escalation**: if the consensus arc (`80b6ae6`/`f694dc4`/`928e388`) is mid-flight and can't be cleanly fenced, surface inline — defer the cut to a stable point and note the rationale (the threshold-cross is logged either way).
+
+**Response** (filled by team): inline — Started / Completed / Actual / version / test-count / release URL / tag SHA.
+
+---
+
 ### DIRECTIVE-NXTG-20260531-01 — P0: Cut api-v0.8.0 + Oracle/Apex GTM engine + buyer-finding workflows
 **From**: Wolf (NXTG-AI CoS) | **Priority**: P0
-**Injected**: 2026-05-31 00:45 PDT | **Estimate**: M (1-2d agent-time) | **Status**: PENDING
+**Injected**: 2026-05-31 00:45 PDT | **Estimate**: M (1-2d agent-time) | **Status**: DONE (header synced 2026-06-26 Wolf — DoD-check below = PASS since 2026-05-31; header drift corrected)
 **Model**: Run on **Opus 4.8 (`claude-opus-4-8`)** — substantive GTM + release work, Asif-directed. Omit model param to inherit Opus; do NOT drop tier.
 
 **Context**: Faultline took **FIRST REVENUE** tonight (faultline-web $19 Personal tier, real paid test, end-to-end GREEN). Faultline-Pro has organic traction with ZERO marketing spend: **1,369 downloads in 35 days**, peak **331 on 2026-03-08** (HN/Reddit visibility). The wedge: the only mapping claiming **EU AI Act risk-tier compliance** ("the money is in compliance"). Asif's directive, verbatim: *"growth-hack the FUCK out of it so everyone and their mother knows about Faultline... run oracle/apex GTM research for platform engagement strategy that will win and spin up workflows on finding buyers."* 20 unreleased commits on main since `api-v0.7.0` (>15 = P0 per Hard Rule #4 / ADR-036).
