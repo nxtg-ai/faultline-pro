@@ -1,6 +1,6 @@
 {
   "name": "@nxtg/faultline",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "AI claim verification CLI. Paste what an AI told you — Faultline extracts every claim, verifies against live sources, scores the risk, and generates audit evidence. Provider-agnostic: Gemini, OpenAI, Claude, Perplexity.",
   "type": "module",
   "bin": {

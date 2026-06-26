@@ -5,9 +5,41 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [v0.9.0] — 2026-06-26
+
+Grounded **multi-model consensus verification** (opt-in, additive) lands, alongside
+release-train integrity work (deterministic 4-way version-parity gate, fail-closed
+citation gate, surfaced degraded verification) and the offline-mock consensus fix.
+`@nxtg/faultline` (CLI) and `@nxtg/faultline-api` both ship at v0.9.0. 18 commits
+since v0.8.0, grouped below by type.
+
+### Added
+
+- **Grounded multi-model consensus verify (`pipelineConfig.consensus`, opt-in)** — verification can fan out across multiple providers (`openai`, `gemini`, `claude`) over a shared grounded source set, returning a richer verdict shape (`consensus`, `providerVotes`, `providerCount`) on the wire — an additive contract; the single-provider path is unchanged when consensus is off (`80b6ae6`).
+- **`OpenAIWebSearchRetriever` as primary grounding** — OpenAI web-search retrieval is the primary grounding path, with a live Gate-9 (consuming-machine) proof script (`f694dc4`).
+- **Consensus-on defaults to the funded OpenAI path** — when `consensus=true` and a stage provider isn't explicitly set, extraction + verification + the web-search retriever default to the funded OpenAI key, so a grounded scan never depends on the free-tier gemini SPOF; gemini/claude are bonus voters when available (`928e388`).
+
 ### Fixed
 
-- **`--fail-on` gate now fails CLOSED on degraded scans (integrity)**: a `--fail-on` run is a pre-publish / CI verification gate (exit 0 = pass, exit 1 = block). Previously, when verification was degraded — transient provider errors (429/503/network) left claims unchecked, setting `ScanResult.degraded` (the contract added in `957439a` for the display layer) — those `unverified` claims counted only as `low`, which `--fail-on critical|high|medium` ignores. A fully-degraded scan (verifier down, nothing actually checked) therefore exited **0 = PASS**, letting an unchecked (possibly fabricated) claim through *exactly when the verifier could not run* — fail-open on the safety check. The gate now **fails closed (exit 1)** whenever a scan is degraded and a `--fail-on` threshold is active, across single-file, file-upload, directory/batch, and template-scan modes. The diagnostic is written to **stderr** so machine-readable JSON stdout stays parseable for the citation-gate recipe. This intentionally turns previously false-green CI gates red when the provider is unhealthy — re-run when it recovers. No behavior change when `--fail-on` is not set, and `--provider mock` (the keyless-CI escape hatch) is never degraded. 4 new tests (single fail-closed + JSON-stdout integrity, no-gate-no-change, healthy-still-passes, batch fail-closed).
+- **Consensus honors an explicit `provider: 'mock'`** — `mock` is the offline/keyless sentinel and is no longer force-upgraded to a real OpenAI call under consensus. The `928e388` openai-default now applies only to real/unspecified providers, so `provider: mock` + consensus stays fully offline (fixes a deterministic regression in the consensus arc; `76e31b9`).
+- **STEP 1 — grounded `/scan/stream` default** — default verification routing corrected toward the grounded provider and provider prose-overclaim removed from output (`5183db1`).
+- **Surfaced degraded verification** — transient provider errors (429/503/network) that leave claims unchecked now set `ScanResult.degraded` instead of masquerading as plain `unverified` (`957439a`).
+- **`--fail-on` gate now fails CLOSED on degraded scans (integrity)**: a `--fail-on` run is a pre-publish / CI verification gate (exit 0 = pass, exit 1 = block). Previously, when verification was degraded — transient provider errors (429/503/network) left claims unchecked, setting `ScanResult.degraded` (the contract added in `957439a` for the display layer) — those `unverified` claims counted only as `low`, which `--fail-on critical|high|medium` ignores. A fully-degraded scan (verifier down, nothing actually checked) therefore exited **0 = PASS**, letting an unchecked (possibly fabricated) claim through *exactly when the verifier could not run* — fail-open on the safety check. The gate now **fails closed (exit 1)** whenever a scan is degraded and a `--fail-on` threshold is active, across single-file, file-upload, directory/batch, and template-scan modes. The diagnostic is written to **stderr** so machine-readable JSON stdout stays parseable for the citation-gate recipe. This intentionally turns previously false-green CI gates red when the provider is unhealthy — re-run when it recovers. No behavior change when `--fail-on` is not set, and `--provider mock` (the keyless-CI escape hatch) is never degraded. 4 new tests (single fail-closed + JSON-stdout integrity, no-gate-no-change, healthy-still-passes, batch fail-closed) (`d869b98`).
+- **Docker**: drop stale `packages/sdk` COPY (sdk removed) + add preview fly config (`e5cc9e9`).
+- **npm metadata**: corrected package description + keywords; dropped agent-governance overclaim (`8c260c2`).
+
+### CI / Build
+
+- **Deterministic 4-way version-parity gate** (`scripts/version-parity.mjs`, `.github/workflows/version-parity.yml`) — proves `deployed == npm-latest == repo:cli == repo:api`; probes the live `/health` endpoint, fails CLOSED on any unreachable source (`29f7bb0`).
+- **OIDC trusted-publishing workflow** for `@nxtg/faultline` — token-less npm publish via GitHub OIDC (`fab9acf`).
+
+### Chore
+
+- Remove unpublished `packages/sdk` (`@nxtg/faultline-sdk`) (`d6e782d`).
+
+### Docs / Governance
+
+- Code-grounded engine reality-vs-vision note (`9e5ff55`); consulting citation-gate validate-first kit + leave-behind templates (`9813b99`, `e1e1330`, `3cb9736`); readiness landing + funnel tracking (`4d20df5`); NEXUS reflections, consulting-wedge pivot record, and the release-debt-cut directive (`da80caf`, `2efe5b7`, `b37abde`).
 
 ## [v0.8.0] — 2026-05-31
 
