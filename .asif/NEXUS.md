@@ -328,7 +328,7 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ### DIRECTIVE-NXTG-20260626-01 — P1: Release-debt cut — 18 unreleased commits since v0.8.0 (>15 ADR-036)
 **From**: Wolf (NXTG-AI CoS) | **Priority**: P1
-**Injected**: 2026-06-26 12:27 PDT | **Estimate**: S (≤2h agent-time) | **Status**: PENDING
+**Injected**: 2026-06-26 12:27 PDT | **Estimate**: S (≤2h agent-time) | **Status**: ✅ DONE — 2026-06-26 13:35 PDT (v0.9.0)
 **Threshold**: `git log v0.8.0..HEAD --oneline` = **18 commits** > 15 (Hard Rule #4 / ADR-036). Latest tag `v0.8.0`; npm-published surface is 18 commits stale on a paid product.
 **Promise**: PRM-NXTG-20260626-02 (due 48h).
 
@@ -347,7 +347,23 @@ The Kaggle version remains at  (tagged  at commit ).
 
 **Escalation**: if the consensus arc (`80b6ae6`/`f694dc4`/`928e388`) is mid-flight and can't be cleanly fenced, surface inline — defer the cut to a stable point and note the rationale (the threshold-cross is logged either way).
 
-**Response** (filled by team): inline — Started / Completed / Actual / version / test-count / release URL / tag SHA.
+**Response** (filled by team):
+**Started**: 2026-06-26 12:42 PDT | **Completed**: 2026-06-26 13:35 PDT | **Actual**: ~S (50m) | **Status**: ✅ DONE
+
+**Cut: v0.9.0 (NOT v0.8.1) — Wolf+Asif decision, consensus arc INCLUDED.**
+- **Cut-point correction**: directive implied "next stable commit on main", but the consensus arc + the directive itself lived only on feature branch `sota-engine-20260621` (main was 6 commits stale). I first scoped a v0.8.1-from-main cut (arc excluded); Wolf countermanded (twice) — Asif authorized **v0.9.0 AT HEAD** with the arc. Resolved via clean `git merge --ff-only sota-engine-20260621` → main (trunk-correct, ADR-021), main-only:0 / sota-only:6.
+- **Ship-blocker caught + fixed before tag** (per Wolf's broken-arc STOP condition): full suite found SPP11 FAIL — `928e388` forced consensus verify → openai, overriding explicit `provider: mock` → offline degrade → 0 `claim_verified`. Wolf-approved **Option A** code-fix (`76e31b9`): exempt `mock` (offline sentinel) from the openai-default. `928e388`'s "15/15" claim covered the CLI suite, not this API stream test.
+- **Version**: `v0.9.0` (cli `@nxtg/faultline` + api `@nxtg/faultline-api` both bumped). SemVer minor — consensus feature ships.
+- **CHANGELOG**: all 18 commits enumerated, grouped by conventional-commit type (Added/Fixed/CI/Chore/Docs).
+- **Tests**: **4606 GREEN** (203 files) — ≥ 4582 baseline, +24 from the arc, no regression.
+- **Tag SHA (on main)**: `91443e4` (`v0.9.0`).
+- **Release URL**: https://github.com/nxtg-ai/faultline-pro/releases/tag/v0.9.0
+- **npm**: `npm view @nxtg/faultline version` → **0.9.0** (published via `publish.yml` OIDC, Asif-authorized).
+- **Fly deploy**: `fly-deploy.yml` → `/health` reports **0.9.0**.
+- **4-way parity gate**: ✅ PASS — `repo:cli == repo:api == npm:latest == deployed:fly == 0.9.0`.
+- **CI gates honored** — no `--no-verify`; pre-push CI + Release-Protocol gates PASSED.
+
+**DoD check**: release tagged + GH release + npm publish on origin ✅; tests 4606 ≥ 4582 ✅; CHANGELOG enumerates the 18 commits by type ✅; consensus arc finished+green, not a mid-feature cut ✅. **PASS.** Promise PRM-NXTG-20260626-02 resolved.
 
 ---
 
