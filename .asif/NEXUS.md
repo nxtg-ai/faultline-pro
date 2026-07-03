@@ -326,6 +326,44 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
+### DIRECTIVE-NXTG-20260703-02 — P1: STATUS — multi-model-per-scan-stage redesign (FP-CORE + faultline-web), PROBE-GROUNDED
+**From**: Wolf (NXTG-AI CoS), routing Asif FP-row item 2 | **Priority**: P1 | **Injected**: 2026-07-03 13:26 PDT (alignment 20:26 UTC) | **Status**: ✅ REPORTED — 2026-07-03
+_(seq provisional — confirm canonical DIRECTIVE id with Wolf/Emma FP-row split; anchored to Asif FP-row item 2)_
+
+**Instruction**: report current state PROBE-GROUNDED (git tags/commits + live `faultline-api.fly.dev`, NOT a NEXUS-read — 3 phantom "blocked" P0s were found today from stale headers). Confirm gate-1 (Fly cost-telem) + gate-2 (gemini-wedge superseded by `928e388`).
+
+**Response (2026-07-03) — probe-grounded, not NEXUS-read**:
+
+**Parity (no drift, unlike the phantom P0s)**: live `GET faultline-api.fly.dev/health` → `version:0.9.0`, `providersConfigured:3`, `providers:{gemini:true, openai:true, claude:true, perplexity:false}`. Repo `packages/cli/package.json`=0.9.0, tag `v0.9.0` present, `git status` clean 0/0 vs origin/main. **LIVE == npm-repo == tag == v0.9.0.** No phantom.
+
+**Redesign state = SHIPPED in v0.9.0** (arc, git-probed): `80b6ae6` grounded multi-model consensus verify (STEP 2, additive opt-in) → `f694dc4` OpenAIWebSearchRetriever primary grounding + live Gate-9 proof → `928e388` funded-openai default under consensus → `76e31b9` honor explicit `provider:mock` (offline-degrade ship-blocker fix) → `91443e4` v0.9.0 → `e807baf` close (4-way parity green).
+
+**⚠️ NAMING-vs-CODE nuance (honest)**: the shipped design is multi-model consensus at the **VERIFY stage** — per claim: retrieve shared sources → fan out to N providers in parallel → fuse verdicts (`packages/cli/consensus/consensus_engine.ts`, LOCK-A shared sources / LOCK-B real-verdict count). It is **NOT per-pipeline-stage model routing** (extract/verify/synthesize each a different model) — that config does not exist (`grep perStage|stageModel|extractModel` = empty). "Multi-model-per-scan-stage" reads as the latter; code is the former, and it is **additive opt-in** (default grounded path is still single-provider). Flagging so canon matches code.
+
+**Gate-1 (Fly cost-telem) — CONFIRMED deployed**: `packages/api/src/store/costs.ts`, `routes/costs.ts`, `routes/scan.ts`, `routes/stream.ts`, `cli/stats.ts`. Live at v0.9.0. Wolf's "already DEPLOYED at v0.9.0" HOLDS.
+
+**Gate-2 (gemini-wedge superseded) — CONFIRMED**: `928e388` defaults the FUNDED openai path when consensus-on (no free-tier gemini SPOF); `f694dc4` makes OpenAIWebSearchRetriever the primary grounder. Gemini-as-sole-grounding wedge is superseded. Wolf's read HOLDS.
+
+**faultline-web (P-08c, fw's lane — state only, not my build)**: on feature branch `sota-step1-verify-honesty` (tip `08cfe1c`, pkg v0.1.0), NOT main. Consensus is WIRED as flag-gated passthrough (`f673c27` pipelineConfig passthrough, `b65022f` multi-provider render, `cedbf64` NLI-faithfulness render). Not released/tagged. fw owns the merge+release decision; flagging that the web consensus surface is branch-only.
+
+---
+
+### DIRECTIVE-NXTG-20260703-03 — P1: FPW1-4 four-UI-per-ICP review + consolidation PLAN (PLAN ONLY)
+**From**: Wolf (NXTG-AI CoS), routing Asif FP-row item 3 | **Priority**: P1 | **Injected**: 2026-07-03 13:26 PDT | **Status**: ✅ PLAN DELIVERED — 2026-07-03 (docs + plan; NO build, per instruction)
+_(seq provisional — confirm canonical DIRECTIVE id with Wolf/Emma FP-row split; anchored to Asif FP-row item 3)_
+
+**Instruction**: Asif flagged the four-UI-per-ICP set a "complete mess." Review the UIs, produce (a) docs of what each is, (b) a consolidation PLAN. **PLAN first, do NOT build** (plan-mode per execution-strategy).
+
+**Response (2026-07-03)** — full docs + plan: **`docs/fpw-ui-consolidation-plan-2026-07-03.md`** (git-durable). Probe-grounded (git ancestry, package identity, file presence), 4 deep-review probes + 2 read-only Explore agents.
+
+**Finding (one line)**: 6 "faultline UIs" = **1 canonical (`faultline-web`, P-08c)** + **1 stale same-name clone (`fpw4-builder`)** + **3 dead PTC template stubs (fpw1/2/3, 1-commit scaffolds)** + **1 separate GitHub Action (`faultline-action`, keep)**.
+
+**Crux settled deterministically**: `fpw4-builder` and `faultline-web` share package name `faultline-web`, all 6 body-kit files, and — decisively — **all 296 of fpw4-builder's commits are contained in faultline-web's 315** (`comm -12` = 296). faultline-web ⊇ fpw4-builder → **nothing unique to port; consolidation is ARCHIVAL, not a merge.**
+
+**Plan (Asif/fw-gated — `fp` does not own the faultline-web build)**: canonical = `faultline-web`; **Step-0 gating probe** = verify no live Vercel deploy still wired to `fpw4-builder` (its NEXUS claims Show-HN live) BEFORE archiving; then archive fpw4-builder (tag + move, no hard-delete) + fpw1/2/3 stubs; reconcile faultline-web NEXUS header (still mis-copied "FPW4 Builder"); ICP = a brand/theme/subdomain **config** dimension inside the one body-kit, not separate repos. Full steps in the doc.
+
+---
+
 ### DIRECTIVE-NXTG-20260626-01 — P1: Release-debt cut — 18 unreleased commits since v0.8.0 (>15 ADR-036)
 **From**: Wolf (NXTG-AI CoS) | **Priority**: P1
 **Injected**: 2026-06-26 12:27 PDT | **Estimate**: S (≤2h agent-time) | **Status**: ✅ DONE — 2026-06-26 13:35 PDT (v0.9.0)
