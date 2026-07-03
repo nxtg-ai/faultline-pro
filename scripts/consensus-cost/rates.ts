@@ -44,14 +44,34 @@ export const ENGINE_DEFAULT_MODELS = {
  * │ REFUSES to compute a measured $/scan while any value is `null`.          │
  * └─────────────────────────────────────────────────────────────────────────┘
  */
-export const LIVE_RATES_PINNED_ON: string | null = null; // e.g. '2026-07-03'
+export const LIVE_RATES_PINNED_ON: string | null = '2026-07-03';
 
 export const LIVE_RATES: Record<string, Rate | null> = {
-  // key = the engine default model above. Fill each on the run date.
-  'gemini-2.5-flash': null,   // TODO(operator): gemini flash input/output per-M on run date
-  'gpt-4o-mini':      null,   // TODO(operator): gpt-4o-mini input/output per-M on run date
-  'claude-opus-4-8':  null,   // TODO(operator): Opus-tier input/output per-M on run date (expensive — verify!)
-  'gpt-4o':           null,   // TODO(operator): gpt-4o + web_search tool call price on run date
+  // key = the engine default model above. Pinned 2026-07-03 from official pricing pages.
+  // gemini-2.5-flash: text input $0.30/M, output $2.50/M; grounding $35 / 1,000 grounded
+  //   prompts after the free tier ⇒ $0.035/call.
+  //   Source: https://ai.google.dev/gemini-api/docs/pricing (Gemini 2.5 Flash, Standard/Paid tier)
+  'gemini-2.5-flash': { inputPerM: 0.30, outputPerM: 2.50, groundingPerCall: 0.035 },
+  // gpt-4o-mini: $0.15/M input, $0.60/M output. PROVENANCE: gpt-4o / gpt-4o-mini are NOT
+  //   listed verbatim on the current official OpenAI pricing page (confirmed by direct fetch
+  //   2026-07-03 — GPT-4.1/5.x families replaced the 4o listing). These are the grandfathered
+  //   legacy GPT-4o rates still billed for existing 4o access, confirmed via web search of
+  //   pricing aggregators (pricepertoken.com, valueaddvc.com). Re-verify if a paid run depends
+  //   on exactness. NOT taken from a live official page.
+  'gpt-4o-mini':      { inputPerM: 0.15, outputPerM: 0.60, groundingPerCall: 0 },
+  // claude-opus-4-8: $5.00/M input, $25.00/M output. Confirmed verbatim on the LIVE Anthropic
+  //   models page (fetched 2026-07-03): "claude-opus-4-8 ... $5 / input MTok  $25 / output MTok".
+  //   Source: https://platform.claude.com/docs/en/about-claude/models/overview
+  //   (operator may still independently re-confirm before spend, as requested).
+  'claude-opus-4-8':  { inputPerM: 5.00, outputPerM: 25.00, groundingPerCall: 0 },
+  // gpt-4o: $2.50/M input, $10.00/M output (legacy grandfathered — same NOT-on-page provenance
+  //   as gpt-4o-mini above). web_search built-in tool = $10.00 / 1,000 calls ⇒ $0.010/call, per
+  //   the CURRENT OpenAI pricing page ("$10.00 / 1k calls", fetched 2026-07-03). CAVEATS: (1) that
+  //   $10/1k line is on the current GPT-5.x page — not confirmed to apply to legacy gpt-4o's tool
+  //   (historically $25-35/1k); (2) the tool also bills search-content tokens at model rate on top,
+  //   which this single per-call field does NOT model. Source (tool fee):
+  //   https://developers.openai.com/api/docs/pricing
+  'gpt-4o':           { inputPerM: 2.50, outputPerM: 10.00, groundingPerCall: 0.010 },
 };
 
 /**
