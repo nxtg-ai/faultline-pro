@@ -327,7 +327,9 @@ The Kaggle version remains at  (tagged  at commit ).
 ## CoS Directives
 
 ### DIRECTIVE-NXTG-20260703-04 — P1: MEASURED unit-economics table (v0.9.0 consensus cost/scan) — pricing-blocker
-**From**: Wolf (routing Asif-caught pricing gap) + Emma | **Priority**: P1 | **Injected**: 2026-07-03 20:42 UTC | **Status**: 🔄 DESIGN DELIVERED (pre-spend method-verify) — 2026-07-03
+**From**: Wolf (routing Asif-caught pricing gap) + Emma | **Priority**: P1 | **Injected**: 2026-07-03 20:42 UTC | **Status**: 🔄 HARNESS BUILT + FIDELITY VERIFIED — GATED on Asif key-safe keys + rate-pin (2026-07-03 21:11 UTC)
+
+**RESUME STATE (2026-07-03 21:11 UTC)**: Harness at `scripts/measure-consensus-cost.ts` (+`scripts/consensus-cost/`, `scripts/assert-prompt-fidelity.ts`), commit `7c505c5`. **G1 fidelity PASS 5/5 — verified by BOTH fp and Wolf independently** (ran exit-0, non-hollow). Wolf checkpoint-1 VERIFIED, **spend gate OPEN**. Design doc `docs/unit-economics-measurement-design-2026-07-03.md`. **BLOCKED on**: (1) local provider keys UNSET (OPENAI/GEMINI/ANTHROPIC) → Asif key-safe export in pane, then run `npx tsx scripts/measure-consensus-cost.ts --paid --confirm-spend`; (2) G2 live-rate pin in flight (bg agent, no-spend) — harness refuses paid run while any rate null. **3 telemetry defects found (fix-spec for Emma)**: text-length token est / single-provider ignores 1+K(1+N) fan-out / claude leg priced Haiku while calling opus-4-8 (~15-20×). On keys+rates: run ~18-scan matrix → table + gap + p50/90/99 → Wolf checkpoint-2 → Asif card (lead: $0.03/call → ~33 calls/scan).
 **Promise**: PRM-NXTG-20260703-04. **Instruction**: MEASURED (not projected) cost/scan under live v0.9.0 consensus; fan-out multiplier; vs old Gemini-Flash ~$0.03/call; $19/mo-vs-$19-one-time margin table. Wolf verifies measured==telemetry before it reaches Asif.
 
 **Response (2026-07-03)** — design doc: **`docs/unit-economics-measurement-design-2026-07-03.md`** (for Wolf method-verify BEFORE spend).
