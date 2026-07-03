@@ -326,6 +326,14 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
+### DIRECTIVE-NXTG-20260703-04 — P1: MEASURED unit-economics table (v0.9.0 consensus cost/scan) — pricing-blocker
+**From**: Wolf (routing Asif-caught pricing gap) + Emma | **Priority**: P1 | **Injected**: 2026-07-03 20:42 UTC | **Status**: 🔄 DESIGN DELIVERED (pre-spend method-verify) — 2026-07-03
+**Promise**: PRM-NXTG-20260703-04. **Instruction**: MEASURED (not projected) cost/scan under live v0.9.0 consensus; fan-out multiplier; vs old Gemini-Flash ~$0.03/call; $19/mo-vs-$19-one-time margin table. Wolf verifies measured==telemetry before it reaches Asif.
+
+**Response (2026-07-03)** — design doc: **`docs/unit-economics-measurement-design-2026-07-03.md`** (for Wolf method-verify BEFORE spend).
+**Critical instrument finding**: the deployed cost telemetry is **structurally wrong for consensus** — tokens estimated from text-length (not provider-reported), models ONE `effectiveProvider` (ignores the N-provider fan-out), grounding counts all claims not the verified ≤8. So "read the telemetry" = an under-count, not a measurement (the exact trap Emma caught). Fan-out = **1 + K·(1+N)** (default K=8, N=3 → 33 calls/scan). **Measurement captures REAL provider usage** (OpenAI `usage.*`, Gemini `usageMetadata`, Claude `usage.*`) via a faithful-prompt harness; telemetry kept only to quantify the estimate gap.
+**Next execution block**: build harness → run ~18-scan matrix (≤ low single-digit $, logged) → compose table. Teed for spend on Wolf's method-nod; one open input (avg-scans/license for the one-time row) — will bound (5/20/50) if not supplied.
+
 ### DIRECTIVE-NXTG-20260703-02 — P1: STATUS — multi-model-per-scan-stage redesign (FP-CORE + faultline-web), PROBE-GROUNDED
 **From**: Wolf (NXTG-AI CoS), routing Asif FP-row item 2 | **Priority**: P1 | **Injected**: 2026-07-03 13:26 PDT (alignment 20:26 UTC) | **Status**: ✅ REPORTED — 2026-07-03
 _(seq provisional — confirm canonical DIRECTIVE id with Wolf/Emma FP-row split; anchored to Asif FP-row item 2)_

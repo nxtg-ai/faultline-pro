@@ -1,0 +1,45 @@
+# v0.9.0 Consensus Unit-Economics — Measurement Design (for Wolf verify BEFORE spend)
+
+**Directive**: PRM-NXTG-20260703-04 (Asif-caught: pricing blocked on a MEASURED cost/scan under v0.9.0 consensus).
+**Author**: `fp` | **Date**: 2026-07-03 | **Status**: DESIGN — pre-spend, for Wolf's method-verify.
+**Deliverable**: MEASURED cost/scan, fan-out multiplier, vs old Gemini-Flash baseline, $19/mo-vs-$19-one-time margin table. Every number carries scan-id + real-usage + telemetry field.
+
+---
+
+## 1. Why "read the telemetry" fails (instrument findings — cited)
+The deployed cost telemetry is **not** a measurement of consensus cost — three structural defects (`packages/api/src/store/costs.ts`, `routes/stream.ts`):
+1. **Tokens estimated from text length**, not provider-reported: `stream.ts:129-131` `inputTokens=ceil(text.length/4)`, `outputTokens=ceil(input*0.3)`. `costs.ts:52-56` says verbatim "estimate, not a measured billing value."
+2. **Fan-out ignored**: the emitted `ManagedScanCostEvent` models ONE `effectiveProvider` — it does NOT multiply by the N consensus voters. Consensus cost is under-counted by ≈N×.
+3. **Grounding mis-counted**: `groundingCalls = result.claims.length` (ALL claims) not the ≤8 actually verified.
+→ Telemetry is kept only as a cross-check to quantify HOW wrong the estimate is; it is not the measured number.
+
+## 2. Fan-out model (the real cost driver) — cited
+`packages/cli/cli/scan.ts` + `consensus/consensus_engine.ts`:
+- Verified claims **K capped at 8** (`filterClaimsForVerification` slice(0,8), scan.ts:145).
+- Extraction = **1 call**, default `openai` gpt-4o-mini under consensus (scan.ts:261-284).
+- Per verified claim: **1 retrieval** (OpenAI Responses `web_search` if OPENAI key) + **N parallel verify votes** (`DEFAULT_CONSENSUS_PROVIDERS=['openai','gemini','claude']`, missing-key providers silently skipped, so N≤3).
+- **Formula: total LLM calls = 1 + K·(1 + N).** Default N=3, K=8 → **33 calls/scan**.
+- Reachable only via `POST /scan/stream` `pipelineConfig:{consensus:true}` (CLI doesn't wire it).
+- **Mock can't be used to count fan-out** — `mock_provider` has no `verifyClaimGrounded`, so consensus makes zero grounded calls under mock.
+
+## 3. Measurement method (real provider-reported usage, no product-code change)
+A standalone analysis harness (instrumentation, not product code) that reproduces the engine's exact fan-out and captures REAL usage:
+- **Faithful prompts**: lift the engine's actual templates verbatim — extraction prompt (`geminiService.ts`), grounded-verify prompt (`providers/grounded_prompt.ts`), web_search retrieval (`providers/openai_web_search_retriever.ts`). Fidelity is load-bearing: harness prompts must equal production prompts or the tokens don't reflect real scans.
+- **Capture real usage**: OpenAI `response.usage.{prompt_tokens,completion_tokens}`, Gemini `usageMetadata.{prompt,candidates}TokenCount`, Claude `usage.{input,output}_tokens`. (The engine discards these today — the harness is where they're read.)
+- **Representative matrix** (doc size × claim count K): SMALL (~150w, K≈3), MEDIUM (~600w, K≈6), LARGE (~1500w, K=8 cap). ≥3 reps each to average variance. Run consensus-ON (N=3) and single-model (N=1) for the multiplier.
+- **Composition**: measured_cost_scan = Σ over the 1+K(1+N) real calls of (real_input×inputRate + real_output×outputRate) + K×groundingRate. Rates from `MANAGED_PROVIDER_RATES` (costs.ts) — **sanity-checked against current published pricing before use** (gpt-4o-mini $0.15/$0.60 per M, gemini-flash $0.15/$0.60, claude-haiku $0.80/$4.00, web_search grounding per-call).
+- **Cross-check**: for each run, log scan-id + measured_cost + telemetry_estimate (via `/costs`) → quantifies the telemetry gap (a finding for Emma).
+- **Spend**: 3 sizes × ~3 reps × (consensus + single) ≈ 18 real scans, ≤33 calls each on cheap models → **est. low single-digit USD**; append-only logged; flag only if the matrix pushes toward tens.
+
+## 4. Baseline (apples-to-apples, per SCAN not per call)
+Old app = single-provider Gemini-Flash, ~$0.03/**call**. A scan is 1 extract + K verify (no fan-out, no per-claim web_search) → old cost/scan ≈ (1+K)×per-call. New cost/scan = the composed measured number above. Report BOTH as $/scan; the multiplier = new÷old.
+
+## 5. Margin table (method)
+- **$19/mo**: break-even scans/user/mo = 19 ÷ measured_cost_scan; show gross-margin curve at representative usage (e.g. 20/50/100 scans/mo).
+- **$19 one-time**: margin = 19 − (avg_scans_per_license × measured_cost_scan); needs an avg-scans/license assumption (flag as the one input Asif/Emma must supply, or bound it).
+- Both tables carry the measured cost/scan + its scan-id evidence so Wolf's spot-check (measured==provider-usage) is verifiable.
+
+## 6. Open method questions for Wolf/Emma (before spend)
+1. OK to run the ~18-scan matrix (~low single-digit $) once this design is verified?
+2. avg-scans-per-license figure for the one-time margin row — supplied, or shall I bound it (e.g. 5/20/50)?
+3. Rate table: use `MANAGED_PROVIDER_RATES` as-is, or re-pin to live published pricing on the measurement date?
