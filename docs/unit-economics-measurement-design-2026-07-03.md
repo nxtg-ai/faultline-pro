@@ -39,7 +39,12 @@ Old app = single-provider Gemini-Flash, ~$0.03/**call**. A scan is 1 extract + K
 - **$19 one-time**: margin = 19 − (avg_scans_per_license × measured_cost_scan); needs an avg-scans/license assumption (flag as the one input Asif/Emma must supply, or bound it).
 - Both tables carry the measured cost/scan + its scan-id evidence so Wolf's spot-check (measured==provider-usage) is verifiable.
 
-## 6. Open method questions for Wolf/Emma (before spend)
-1. OK to run the ~18-scan matrix (~low single-digit $) once this design is verified?
-2. avg-scans-per-license figure for the one-time margin row — supplied, or shall I bound it (e.g. 5/20/50)?
-3. Rate table: use `MANAGED_PROVIDER_RATES` as-is, or re-pin to live published pricing on the measurement date?
+## 6. Open method questions — status
+1. Run the ~18-scan matrix (~low single-digit $)? → **GATED on Wolf's method-verify** (verify-before-spend; Emma re-affirmed sequencing 20:53).
+2. avg-scans-per-license for the one-time row? → **RESOLVED (Emma 20:53): BOUND as a sensitivity row 5/20/50.** FP is pre-revenue → no real usage distribution to supply; the sensitivity row IS the honest form. **If the $19 verdict FLIPS within the 5–50 band, that flip is itself a finding = one-time pricing is volume-fragile.**
+3. Rate table `MANAGED_PROVIDER_RATES` as-is vs re-pin to live pricing? → still open for Wolf; default plan = use as-is AND sanity-check vs live published pricing on the run date, report if they diverge.
+
+## 7. Emma rulings folded (2026-07-03 20:53)
+- **Telemetry-vs-measured gap = a named deliverable**, not just a cross-check: Emma wants the number — it becomes the **fix spec** for the cost-telemetry follow-up (the fix: capture provider usage + multiply by N fan-out).
+- **Asif card must carry the structural finding VERBATIM**: his mental anchor is the old **$0.03/CALL**; the unit is now **~33 calls/SCAN** at defaults (1+K(1+N)) — *the anchor's unit itself changed* (per-call → per-scan-with-fan-out). Lead the card with the unit change, then the measured $/scan.
+- **Sensitivity-as-finding**: present the $19-one-time margin across 5/20/50 scans/license; a band-flip = flag one-time as volume-fragile vs the $19/mo subscription.
