@@ -43,10 +43,10 @@ The design intent (per fpw4-builder NEXUS) was a **"Multi-ICP Body-Kit Architect
 - Confirm `package.json` name/description reflect the canonical product, not the clone.
 
 ### Step 2 — Retire `fpw4-builder` (after Step 0 passes)
-- No cherry-pick needed (subset). Tag `archive/fpw4-builder-final` at `977f1a3` for history, then **remove from active `~/projects`** (or `git mv` to an `~/projects/_archive/`) to kill the same-name collision. Do **not** hard-delete; archive.
+- No cherry-pick needed (subset). Tag `archive/fpw4-builder-final` at `977f1a3` for history, then **remove from active `~/projects`** (or `git mv` to an `~/projects/_archive/`) to kill the same-name collision. Do **not** hard-delete; archive. _(fpw4-builder subset claim still holds — it has a remote (faultline-web) and is a strict git subset. Unchanged by the addendum below.)_
 
-### Step 3 — Retire `fpw1/fpw2/fpw3` stubs
-- Dead PTC scaffolds; the 4-ICP intent is served by the body-kit inside faultline-web. Archive the same way (tag + move to `_archive`), remove from active tree. Update the PTC/PORTFOLIO catalog rows to "archived — folded into P-08c body-kit".
+### Step 3 — ~~Retire `fpw1/fpw2/fpw3` stubs~~ **SUPERSEDED by ADDENDUM (2026-07-03) — see below**
+- > **SUPERSEDED.** This step called fpw1/2/3 "dead PTC scaffolds" and claimed zero-loss archival. Both were WRONG: (1) the zero-loss/subset math applied ONLY to fpw4-builder, never to fpw1/2/3 (separate disk-only repos, never in that ancestry); (2) functional probe shows they are hand-built ICP landing pages with real unique content, NOT scaffolds. Corrected sequencing + findings in the ADDENDUM.
 
 ### Step 4 — Keep `faultline-action` as its own product
 - Different form factor (CI action). Out of scope; leave as-is.
@@ -59,5 +59,43 @@ The design intent (per fpw4-builder NEXUS) was a **"Multi-ICP Body-Kit Architect
 
 ---
 
-## One-line summary for the room
-6 "faultline UIs" = **1 canonical (`faultline-web`, P-08c)** + **1 stale same-name clone (`fpw4-builder`, a strict git subset — archive)** + **3 dead template stubs (archive)** + **1 separate GitHub Action (keep)**. Consolidation is mostly **archival, not a merge** — git ancestry proves the clone has zero unique work. Only real risk: verify no live Vercel deploy is still wired to `fpw4-builder` before archiving it.
+## ADDENDUM (2026-07-03, 20:47 UTC) — Step-0a/0b reconcile vs Asif ground truth
+
+**Trigger**: Asif direct input (15:42 CDT, via Emma) — *"we have fully built out web POCs for each ICP"* — contradicts the original "3 dead stubs" premise. Emma's ssh probe (15:44) added: fpw1/2/3 are **disk-only, no remote, zero fpw repos in the org**. Wolf + Emma locked **durability-first** sequencing. This addendum reconciles the plan with probed ground truth. Neither Asif's claim nor my prior probe is an oracle — both were validated; both were partly wrong.
+
+### Correction I own
+My original Steps 2–3 said "archive 3 dead stubs, zero-loss (superset)." The zero-loss/subset proof (296⊂315) applied **only to fpw4-builder vs faultline-web** — I wrongly extended it to fpw1/2/3, which were **never in that ancestry** (separate disk-only repos). Archiving them on subset-math would have been **unrecoverable loss of real work**. Flaw acknowledged.
+
+### Step-0a — DURABILITY PUSH ✅ DONE + VERIFIED (2026-07-03 20:47 UTC)
+Pushed all three disk-only repos to the org AS-IS (pure durability, no judgment, no dir touched):
+| Repo | Remote | HEAD (local==remote) | Commits |
+|---|---|---|---|
+| `nxtg-ai/fpw1-enterprise` | created (private) | `1c7ea78` ✅ MATCH | 1 |
+| `nxtg-ai/fpw2-platform` | created (private) | `712f6ad` ✅ MATCH | 1 |
+| `nxtg-ai/fpw3-practitioner` | created (private) | `546e21c` ✅ MATCH | 3 |
+Verified via `git ls-remote` (remote HEAD == local HEAD, all commits present). **Unrecoverable-loss risk eliminated — nothing archives-destroys now.** (Wolf independently re-verifies via `git ls-remote` per his seat.)
+
+### Step-0b — FUNCTIONAL BUILD-OUT PROBE (incl. git history) — findings
+"Build-out hidden behind the PTC strip" hypothesis: **CHECKED, does not hold.** fpw1/fpw2 = 1 commit each (no history behind); fpw3's build-out (the "practitioner landing MVP," +6011 LOC) is **present in HEAD** — the strip only removed node_modules. Nothing valuable is buried. None are create-next-app scaffolds (my "dead template stub" call was wrong on that axis too).
+
+| Repo | Verdict | Routes | Scans engine? | ICP content |
+|---|---|---|---|---|
+| `fpw1-enterprise` | **PARTIAL-POC** | 1 (landing) | Client exists but **orphaned dead code** (renders mock-data) | Real: EU-AI-Act countdown, compliance widgets, procurement/SSO copy |
+| `fpw2-platform` | **MIS-SLOTTED** | 1 (landing) | No | **NOT Faultline — it's a "Dx3 \| Context Layer" landing** (0 faultline refs) |
+| `fpw3-practitioner` | **PARTIAL-POC (only one that scans)** | 1 (landing) | **Yes, end-to-end** (action→`/scan`→results) + test suite | Real: practitioner/solo framing, live demo, confetti UX |
+
+Reference: `faultline-web` (canonical) has 21+ routes (dashboard/scan/results/history/batch/pricing/admin). The three fpw repos are **single-route landing pages of uneven completeness.**
+
+### Reconciliation (the honest middle)
+Asif's *"fully built out POCs"* and my *"dead stubs"* are **both partly wrong**. Truth: **real, hand-built, ICP-specific landing pages of uneven completeness** — partial POCs / marketing surfaces, not full working ICP products, and one (fpw2) holds a **different product's page (Dx3)** entirely. Asif is right that real per-ICP web work exists; "fully built out working POCs" overstates it.
+
+### Revised plan (replaces Steps 2–3 for fpw1/2/3)
+1. **Step-0a DONE** — durability secured.
+2. **Reconcile card to Asif** — surface the middle-truth table above; his claim + the probe now *agree on the facts* (real work, uneven, one mis-slotted), disagree only on the word "full." Let him rule on intent: were these meant to be full POCs (→ resource to finish), or landing experiments (→ fold the good parts in)?
+3. **Plan flips ARCHIVE → CONSOLIDATE-PRESERVING-ICP-VARIANTS**: evaluate each for fold-in to the canonical body-kit — fpw1's compliance widgets + EU-AI-Act countdown, fpw3's working scan-demo + tests are **real unique assets** worth porting, not discarding.
+4. **fpw2 anomaly** — flag: the "platform ICP" slot contains a Dx3 landing. Either the real platform POC lives elsewhere (ask Asif) or the Dx3 page landed here by mistake. Do not treat fpw2 as the platform POC until resolved.
+5. **fpw4-builder** — subset claim intact (has remote, strict git subset of faultline-web); still archivable after the Step-0 live-Vercel check. Unchanged.
+6. **Nothing archives** until Asif's ruling + the probe agree AND the live-Vercel check passes.
+
+## One-line summary for the room _(revised per addendum)_
+6 "faultline UIs" = **1 canonical (`faultline-web`, P-08c)** + **1 stale same-name clone (`fpw4-builder`, strict git subset → archivable after live-Vercel check)** + **3 real-but-uneven ICP landing POCs (`fpw1/2/3`, now durability-pushed → CONSOLIDATE-PRESERVING, not archive; fpw2 is mis-slotted Dx3 content)** + **1 separate GitHub Action (keep)**. The clone is a merge-free archive; the three ICP landings hold **real unique work** (compliance widgets, working scan-demo+tests) → fold-in, not discard. Nothing archives until Asif's ruling + probe agree + live-Vercel check passes.
