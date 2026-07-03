@@ -50,6 +50,9 @@ Wolf spot-checked the load-bearing citations (scan.ts:145 K-cap, scan.ts:187 N=3
 - **G2 — re-pin rates to LIVE published pricing on the run date**; `MANAGED_PROVIDER_RATES` (costs.ts) kept only as a cross-check, not the source of truth (else stale-constant estimate-trap).
 - Q1 = YES (spend GO'd, logged). Q2 = bound 5/20/50. Gap-number + verbatim-into-card confirmed.
 
+## 6c. Wolf optional-accepted (2026-07-03 20:57) — cost DISTRIBUTION, dual-purpose
+Report measured cost/scan as **p50 / p90 / p99**, not just the mean. Near-zero marginal cost — the harness already records per-scan cost across the matrix; percentiles are a compose-step over those records (the telemetry even has a `/costs/percentiles` concept, costs.ts). Rationale (Wolf, recalling prior FP work — Kestrel Faultline Intelligence Loop + repricing record): Enterprise/managed-key tiers are margin-risk on **p90/p99** scan cost, so the SAME ~18-scan matrix serves BOTH the $19/mo consumer decision AND enterprise repricing at zero extra spend. The $19 table stays the committed deliverable; the distribution is an accepted add-on.
+
 ## 7. Emma rulings folded (2026-07-03 20:53)
 - **Telemetry-vs-measured gap = a named deliverable**, not just a cross-check: Emma wants the number — it becomes the **fix spec** for the cost-telemetry follow-up (the fix: capture provider usage + multiply by N fan-out).
 - **Asif card must carry the structural finding VERBATIM**: his mental anchor is the old **$0.03/CALL**; the unit is now **~33 calls/SCAN** at defaults (1+K(1+N)) — *the anchor's unit itself changed* (per-call → per-scan-with-fan-out). Lead the card with the unit change, then the measured $/scan.
