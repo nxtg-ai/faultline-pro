@@ -44,6 +44,12 @@ Old app = single-provider Gemini-Flash, ~$0.03/**call**. A scan is 1 extract + K
 2. avg-scans-per-license for the one-time row? → **RESOLVED (Emma 20:53): BOUND as a sensitivity row 5/20/50.** FP is pre-revenue → no real usage distribution to supply; the sensitivity row IS the honest form. **If the $19 verdict FLIPS within the 5–50 band, that flip is itself a finding = one-time pricing is volume-fragile.**
 3. Rate table `MANAGED_PROVIDER_RATES` as-is vs re-pin to live pricing? → still open for Wolf; default plan = use as-is AND sanity-check vs live published pricing on the run date, report if they diverge.
 
+## 6b. Wolf method-verify gates (2026-07-03 20:54 — method-nod GIVEN, grounded)
+Wolf spot-checked the load-bearing citations (scan.ts:145 K-cap, scan.ts:187 N=3 default set, ceil(len/4) token-estimate) — they HOLD. Two MANDATORY strengthenings before the matrix runs:
+- **G1 — PROVE prompt fidelity (CHECKED assertion, not a comment)**: before any matrix spend, assert `harness_prompt == engine_produced_prompt` for ≥1 sample per call-type (extraction / grounded-verify / web_search). Best realized by IMPORTING the engine's actual prompt-builder functions (not re-implementing) so equality holds by construction, then asserting the import identity. If any call-type fails equality → **STOP, no spend**, report. This is the single point the measurement can be silently wrong.
+- **G2 — re-pin rates to LIVE published pricing on the run date**; `MANAGED_PROVIDER_RATES` (costs.ts) kept only as a cross-check, not the source of truth (else stale-constant estimate-trap).
+- Q1 = YES (spend GO'd, logged). Q2 = bound 5/20/50. Gap-number + verbatim-into-card confirmed.
+
 ## 7. Emma rulings folded (2026-07-03 20:53)
 - **Telemetry-vs-measured gap = a named deliverable**, not just a cross-check: Emma wants the number — it becomes the **fix spec** for the cost-telemetry follow-up (the fix: capture provider usage + multiply by N fan-out).
 - **Asif card must carry the structural finding VERBATIM**: his mental anchor is the old **$0.03/CALL**; the unit is now **~33 calls/SCAN** at defaults (1+K(1+N)) — *the anchor's unit itself changed* (per-call → per-scan-with-fan-out). Lead the card with the unit change, then the measured $/scan.
