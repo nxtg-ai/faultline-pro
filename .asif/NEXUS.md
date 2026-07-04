@@ -339,6 +339,7 @@ The Kaggle version remains at  (tagged  at commit ).
 4. **Retrieval cache** (by query) — repeat queries → ~0.
 5. **Batched search** — fewer calls.
 **Deliverable**: `docs/asif-post-spike-cost-card-YYYY-MM-DD.md` (same format as `docs/asif-pricing-decision-card-2026-07-04.md`) — option-by-option measured cost/scan + quality check + recommendation; pricing returns to Asif with it.
+**VERIFY-GATE (Emma, 2026-07-04)**: the post-spike card carries the SAME independent-recompute verification the measured table did — commit the raw provider-usage records alongside; Wolf or kestrel re-derives cost/scan from them (generator never grades itself) BEFORE it returns to Asif as the pricing ASK. Parallel with BLG-005 confirmed (not serialized).
 
 **Sequencing (surfaced to Emma for confirm)**: spike measurement uses the ALREADY-Wolf-verified harness → it does NOT depend on the deployed-telemetry fix (BLG-005 fixes *production* telemetry, a separate concern). Spike-via-harness can proceed in PARALLEL with BLG-005, not serialized behind it.
 
