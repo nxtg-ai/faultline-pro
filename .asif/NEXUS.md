@@ -326,6 +326,22 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
+### DIRECTIVE-NXTG-20260704-01 — P1: RETRIEVAL-COST SPIKE (Asif ruled: fund-before-price-lock)
+**From**: Asif ruling 2026-07-04 05:28 CT (via Emma; `dashboard/action-responses.jsonl` 2026-07-04T10:28:14Z, commit `9f40462c3`) | **Status**: 🟢 GO — fp's ACTIVE workstream, checkpointed for a fresh fidelity-focused build (session-depth discipline; no urgency).
+**Ruling**: retrieval-cost spike BEFORE any price lock. Pricing ASK returns to Asif ONLY with a post-spike cost/scan table attached. **Keys KEPT** — the 3 measurement keys stay live (no rotation), so re-measurement needs no new key-relay.
+
+**Measured baseline (the target)**: web_search retrieval = **88–91% of consensus-scan cost** — gpt-4o, 51 calls, **886k input tokens (~17k/call)**, $3.08. That leg is the whole game.
+
+**Cost-reduction levers to implement + MEASURE (each: re-run the 18-scan matrix via the Wolf-verified harness `scripts/measure-consensus-cost.ts`, keys kept, compose in the card format):**
+1. **Cheaper retrieval model** — gpt-4o → gpt-4o-mini (or a cheaper search path). ~16× token-cost cut IF verdict quality holds (must check quality, not just cost). Likely biggest lever.
+2. **Cap/trim search-content tokens** — 17k tokens/call is the driver; limit results / `max_content_tokens`. ~linear cut.
+3. **Per-claim retrieval dedup / shared retrieval** — retrieve once per unique query, not per-claim K×.
+4. **Retrieval cache** (by query) — repeat queries → ~0.
+5. **Batched search** — fewer calls.
+**Deliverable**: `docs/asif-post-spike-cost-card-YYYY-MM-DD.md` (same format as `docs/asif-pricing-decision-card-2026-07-04.md`) — option-by-option measured cost/scan + quality check + recommendation; pricing returns to Asif with it.
+
+**Sequencing (surfaced to Emma for confirm)**: spike measurement uses the ALREADY-Wolf-verified harness → it does NOT depend on the deployed-telemetry fix (BLG-005 fixes *production* telemetry, a separate concern). Spike-via-harness can proceed in PARALLEL with BLG-005, not serialized behind it.
+
 ### BLG-CLX9-20260703-005 — P2: cost-telemetry fix (fp-owned) — GO'd, fp's NEXT focused build
 **From**: Emma (typed) + Wolf (GO 2026-07-04 02:47) | **Status**: 🟢 GO, QUEUED as fp's next build (checkpointed to fresh context for fidelity — deliberate, no urgency).
 **Fix the 3 measured defects in the deployed cost telemetry** (`packages/api/src/store/costs.ts` + `routes/stream.ts`): (1) capture REAL provider-reported usage (thread through the provider adapters — engine currently discards it) instead of the text-length estimate; (2) sum across the **1+K(1+N) fan-out** instead of modelling one `effectiveProvider`; (3) price the claude leg at its real model (opus-4-8 $5/$25, not haiku — 6.25×). **Reference impl** = `scripts/measure-consensus-cost.ts` + the measured numbers.
