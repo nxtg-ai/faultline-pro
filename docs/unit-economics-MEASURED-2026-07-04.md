@@ -22,15 +22,15 @@
 ## Where the cost actually is (real tokens — Wolf: measured==provider-usage)
 | Call-type | Model | Calls | Input tok | Output tok | Cost | Share |
 |---|---|---|---|---|---|---|
-| **web_search (retrieval)** | gpt-4o | 51 | **886,120** | 35,887 | **$3.08** | **84%** |
+| **web_search (retrieval)** | gpt-4o | 51 | **886,120** | 35,887 | **$3.08** | **~88% (low band) / ~91% (high band)** |
 | grounded-verify | claude-opus-4-8 | 50 | 31,469 | 8,949 | $0.38 | 10% |
 | grounded-verify + extraction | gpt-4o-mini | 120 | 34,652 | 11,741 | $0.012 | <1% |
 | grounded-verify | gemini-2.5-flash | 51 | 19,789 | 3,131 | $0.014 | <1% |
 
-**The cost is a RETRIEVAL problem, not a consensus-voting problem.** 84% is gpt-4o ingesting web-search content (~17k tokens/call). The multi-model voting Asif worried about (the Opus leg) is only ~10%. **Dropping consensus voters saves ~11%; optimizing retrieval (cheaper retrieval model, trim/cap search results, cache) is the real lever.**
+**The cost is a RETRIEVAL problem, not a consensus-voting problem.** ~88% (low band) / ~91% (high band) is gpt-4o ingesting web-search content (~17k tokens/call). The multi-model voting Asif worried about (the Opus leg) is only ~10%. **Dropping consensus voters saves ~11%; optimizing retrieval (cheaper retrieval model, trim/cap search results, cache) is the real lever.**
 
 ## Fan-out / consensus multiplier
-Consensus vs single-model: **~620–860× per scan** — but that gap is because consensus-mode ALSO turns on per-claim `web_search` grounding (the 84% leg); single-model here does no grounding. So the multiplier is a *grounding-retrieval* effect, not the N-provider vote fan-out. Vote fan-out alone ≈ +11%.
+Consensus vs single-model: **~620–860× per scan** — but that gap is because consensus-mode ALSO turns on per-claim `web_search` grounding (the ~88% (low band) / ~91% (high band) leg); single-model here does no grounding. So the multiplier is a *grounding-retrieval* effect, not the N-provider vote fan-out. Vote fan-out alone ≈ +11%.
 
 ## Telemetry gap (fix-spec quantification — BLG-CLX9-20260703-005)
 | Size | Measured | Deployed telemetry estimate | Undercount |
