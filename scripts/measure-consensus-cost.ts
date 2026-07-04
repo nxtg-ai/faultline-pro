@@ -76,6 +76,17 @@ function providerOf(url: string): UsageRecord['provider'] {
   return 'unknown';
 }
 
+/**
+ * Resolve the real model. openai/anthropic carry `model` in the request body;
+ * Gemini carries it in the URL path (`/v1beta/models/<model>:generateContent`),
+ * NOT the body — so `body.model` is undefined for gemini. Extract from the URL.
+ */
+function modelOf(url: string, body: any): string {
+  if (body?.model) return body.model;
+  const m = url.match(/\/models\/([^:?/]+)/); // gemini path model
+  return m ? m[1] : '?';
+}
+
 function callTypeOf(url: string, body: any): CallType | 'unknown' {
   if (url.includes('/v1/responses')) return 'web_search';
   if (url.includes('generativelanguage') || url.includes('googleapis')) {
@@ -160,7 +171,7 @@ async function runPaid(): Promise<void> {
         try { body = init?.body ? JSON.parse(init.body as string) : undefined; } catch { /* ignore */ }
         const callType = callTypeOf(url, body);
         const u = readUsage(provider, data);
-        records.push({ ...ctx, callType, provider, model: (body?.model ?? '?'), inputTokens: u.input, outputTokens: u.output, isGrounding: callType === 'web_search', ts: new Date().toISOString() });
+        records.push({ ...ctx, callType, provider, model: modelOf(url, body), inputTokens: u.input, outputTokens: u.output, isGrounding: callType === 'web_search', ts: new Date().toISOString() });
       }
     } catch { /* teeing must never break the real call */ }
     return res;
