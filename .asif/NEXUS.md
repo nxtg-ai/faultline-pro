@@ -326,6 +326,14 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
+### BLG-CLX9-20260703-005 — P2: cost-telemetry fix (fp-owned) — GO'd, fp's NEXT focused build
+**From**: Emma (typed) + Wolf (GO 2026-07-04 02:47) | **Status**: 🟢 GO, QUEUED as fp's next build (checkpointed to fresh context for fidelity — deliberate, no urgency).
+**Fix the 3 measured defects in the deployed cost telemetry** (`packages/api/src/store/costs.ts` + `routes/stream.ts`): (1) capture REAL provider-reported usage (thread through the provider adapters — engine currently discards it) instead of the text-length estimate; (2) sum across the **1+K(1+N) fan-out** instead of modelling one `effectiveProvider`; (3) price the claude leg at its real model (opus-4-8 $5/$25, not haiku — 6.25×). **Reference impl** = `scripts/measure-consensus-cost.ts` + the measured numbers.
+**Verify-gate (Wolf)**: the FIXED telemetry must reproduce the measured per-scan numbers (within the web_search sensitivity band) on a sample — cleanest = a deterministic unit test replaying `measured-usage.jsonl` records through the fixed cost path, assert == the composed per-scan cost (no re-spend). Build on a BRANCH; Wolf verifies before trust.
+**DEPLOY to faultline-api = Asif-gated** (prod change). Do not deploy on the build.
+
+
+
 ### DIRECTIVE-NXTG-20260703-04 — P1: MEASURED unit-economics table (v0.9.0 consensus cost/scan) — pricing-blocker
 **From**: Wolf (routing Asif-caught pricing gap) + Emma | **Priority**: P1 | **Injected**: 2026-07-03 20:42 UTC | **Status**: ✅ DELIVERED — MEASURED table + Asif card; Wolf checkpoint-2 GREEN (recomputed exact); PRM-NXTG-20260703-04 resolved (2026-07-04 02:44 UTC)
 **Deliverables**: `docs/unit-economics-MEASURED-2026-07-04.md` (evidence `scripts/consensus-cost/measured-usage.jsonl`, 272 real-usage records) + `docs/asif-pricing-decision-card-2026-07-04.md`. **Measured**: consensus $0.20–$0.71/scan (old ~$0.03/CALL); **~88–90% is gpt-4o web_search retrieval, NOT consensus voting** (Opus leg ~11%); telemetry undercount 11–16,000×; $19/mo break-even 27–95 scans/mo; $19 one-time volume-fragile (flips negative in 5–50 band). Follow-ups: BLG-CLX9-20260703-005 (telemetry fix, fp, event-gated) + Asif key-rotation (one-click).
