@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
@@ -39,6 +39,41 @@ interface StreamPostBody {
   text: string;
   provider?: ScanProvider;
   pipelineConfig?: PipelineConfig;
+}
+
+/**
+ * Build the SSE response headers for a hijacked stream.
+ *
+ * BLG-fp-20260713-A (Wolf cert refute of ac99226): after reply.hijack() neither
+ * reply.send() nor the onSend security-headers hook runs, so ANY header set via
+ * reply.header() — most critically the CORS access-control-* headers that
+ * @fastify/cors sets in its onRequest hook — never reaches the socket. Result:
+ * every server-side probe (curl/inject) passes, but the browser EventSource on
+ * faultline.nxtg.ai gets CORS-blocked and the prod web app breaks. We carry the
+ * reply's already-accumulated headers (CORS) onto writeHead, re-apply the
+ * security headers the onSend hook would have added, and let the SSE transport
+ * headers win.
+ */
+function sseHeaders(reply: FastifyReply): Record<string, string> {
+  const headers: Record<string, string> = {};
+  // Carry headers already set on the reply (CORS from @fastify/cors's onRequest
+  // hook lands here before the route handler runs).
+  for (const [key, value] of Object.entries(reply.getHeaders())) {
+    if (value == null) continue;
+    headers[key] = Array.isArray(value) ? value.join(', ') : String(value);
+  }
+  // Security headers normally added by server.ts onSend hook (skipped after hijack).
+  headers['X-Content-Type-Options'] = 'nosniff';
+  headers['X-Frame-Options'] = 'DENY';
+  headers['Referrer-Policy'] = 'strict-origin-when-cross-origin';
+  headers['X-XSS-Protection'] = '0';
+  headers['Content-Security-Policy'] = "default-src 'none'; frame-ancestors 'none'";
+  // SSE transport headers win over anything carried above.
+  headers['Content-Type'] = 'text/event-stream';
+  headers['Cache-Control'] = 'no-cache';
+  headers['Connection'] = 'keep-alive';
+  headers['X-Accel-Buffering'] = 'no';
+  return headers;
 }
 
 /**
@@ -86,12 +121,9 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
 
       // TRUE SSE — write each event to the socket as produced (see POST handler
       // note). hijack() + X-Accel-Buffering:no defeat Fastify + proxy buffering.
-      reply.raw.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-        'X-Accel-Buffering': 'no',
-      });
+      // sseHeaders() carries the CORS + security headers hijack would otherwise
+      // drop (BLG-fp-20260713-A).
+      reply.raw.writeHead(200, sseHeaders(reply));
       reply.hijack();
       const emit = (data: Record<string, unknown>): void => {
         reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
@@ -205,12 +237,9 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
       // UAT + fw streaming-truth probe, 2026-07-13). scan()'s onClaimVerified
       // already fires per claim; hijack() hands us the response lifecycle and
       // X-Accel-Buffering:no defeats Fly/proxy buffering so each write flushes.
-      reply.raw.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-        'X-Accel-Buffering': 'no',
-      });
+      // sseHeaders() carries the CORS + security headers hijack would otherwise
+      // drop (BLG-fp-20260713-A — Wolf cert refute).
+      reply.raw.writeHead(200, sseHeaders(reply));
       reply.hijack();
       const emit = (data: Record<string, unknown>): void => {
         reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
