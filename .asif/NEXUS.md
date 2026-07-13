@@ -1151,8 +1151,10 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 ## Backlog — error-hygiene residuals (from Wolf 8cdb69b re-cert, 2026-07-13)
 
 Out-of-scope of the prod-429 fix (`d436d39`+`8cdb69b`), not blocking, logged per gap-to-backlog:
-- **BLG-fp-20260713-A** (P2, sanitize candidate): `packages/api/src/routes/stream.ts:154,261` emit `type:error` SSE with raw `err.message` on request-terminating faults. Not a cacheable verdict (so not the incident class), but same raw-leak-to-client hygiene — route through `sanitizeVerifyError` or an equivalent client-safe message.
-- **BLG-fp-20260713-B** (P3, note-only): `packages/cli/providers/openai_web_search_retriever.ts:67` interpolates error into a stderr ops-log — fine as ops-only (not client-facing); documented so it's not mistaken for a leak.
+- **BLG-fp-20260713-A** ✅ **CLOSED** (`ac99226` + `7542f2f`): `/scan/stream` error path now emits a generic client-safe message + logs raw for ops; the streaming rewrite also carries CORS+security headers onto the hijacked response. Wolf non-author cert GREEN, fw served-truth GREEN both hops, merged to main via PR #30 (`0695988`), prod==main verified (`git merge-base --is-ancestor 7542f2f origin/main` = TRUE).
+- **BLG-fp-20260713-B** (P3, note-only, OPEN): `packages/cli/providers/openai_web_search_retriever.ts:67` interpolates error into a stderr ops-log — fine as ops-only (not client-facing); documented so it's not mistaken for a leak.
+
+**Frozen-scan + streaming arc — CLOSED 2026-07-13 ~21:49 UTC.** Full chain dual-instrumented in `/alignment`: leak sanitize + cache guards (`d436d39`) → consensus-path leak close (`8cdb69b`) → true incremental SSE (`ac99226`) → hijacked-path CORS/security-header carry (`7542f2f`). Wolf adversarial cert-first caught 3 pre-prod defects (latent consensus leak, dead-test count gap, hijack CORS drop). Pattern banked: `reference_fastify_hijack_drops_headers` (curl/inject false-green on hijack paths → cert on a live server).
 
 ## Self-Improvement Log
 
