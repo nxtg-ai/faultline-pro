@@ -1148,6 +1148,12 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 ---
 
 
+## Backlog — error-hygiene residuals (from Wolf 8cdb69b re-cert, 2026-07-13)
+
+Out-of-scope of the prod-429 fix (`d436d39`+`8cdb69b`), not blocking, logged per gap-to-backlog:
+- **BLG-fp-20260713-A** (P2, sanitize candidate): `packages/api/src/routes/stream.ts:154,261` emit `type:error` SSE with raw `err.message` on request-terminating faults. Not a cacheable verdict (so not the incident class), but same raw-leak-to-client hygiene — route through `sanitizeVerifyError` or an equivalent client-safe message.
+- **BLG-fp-20260713-B** (P3, note-only): `packages/cli/providers/openai_web_search_retriever.ts:67` interpolates error into a stderr ops-log — fine as ops-only (not client-facing); documented so it's not mistaken for a leak.
+
 ## Self-Improvement Log
 
 > Sessions where no directives were pending and the team executed idle-time protocol work.
