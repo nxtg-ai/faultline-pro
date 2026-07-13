@@ -1,5 +1,6 @@
 import type { Claim, VerificationResult, ClaimStatus } from '../types';
 import type { LLMProvider, ImageInput, CritiqueResult, ProviderFactory } from './base_provider';
+import { sanitizeVerifyError } from '../services/verify-error';
 
 /**
  * Perplexity provider — implements the LLMProvider interface using Perplexity's API.
@@ -83,7 +84,7 @@ Return a JSON object:
       const msg = error instanceof Error ? error.message : String(error);
       if (msg.includes('429')) throw error;
       console.error(`Error verifying claim ${claim.id} (Perplexity):`, error);
-      return { claimId: claim.id, status: 'unverified', explanation: `Verify failed: ${msg}`, sources: [] };
+      return { claimId: claim.id, status: 'unverified', explanation: sanitizeVerifyError(error), sources: [], apiError: true };
     }
   }
 

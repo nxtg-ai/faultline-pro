@@ -14,6 +14,28 @@ function cacheKey(text: string, provider: string): string {
   return createHash('sha256').update(`${text}\0${provider}`).digest('hex');
 }
 
+/**
+ * True if a scan result contains any verification that never ran (apiError).
+ * Mirrors packages/cli/services/verify-error.ts#hasUncheckedClaim — kept local
+ * so this store module has no cross-package dependency. Keep the two in sync.
+ */
+function hasUncheckedClaim(result: ScanResult): boolean {
+  if (!result || typeof result !== 'object') return false;
+  const verifications = (result as { verifications?: Record<string, unknown> }).verifications;
+  if (verifications && typeof verifications === 'object') {
+    for (const v of Object.values(verifications)) {
+      if (v && typeof v === 'object' && (v as { apiError?: unknown }).apiError === true) return true;
+    }
+  }
+  const claims = (result as { claims?: Array<Record<string, unknown>> }).claims;
+  if (Array.isArray(claims)) {
+    for (const c of claims) {
+      if (c && (c as { apiError?: unknown }).apiError === true) return true;
+    }
+  }
+  return false;
+}
+
 class ScanCache {
   private store = new Map<string, CacheEntry>();
   private _hits = 0;
@@ -38,6 +60,12 @@ class ScanCache {
   }
 
   set(text: string, provider: string, result: ScanResult): void {
+    // Never cache a scan whose verification did not run (provider quota/auth/5xx).
+    // A cached error report is a served defect that survives the key/config fix —
+    // it re-serves the raw failure for the full TTL. Origin: 2026-07-13 prod
+    // free-tier-gemini 429 report cached + re-served. `apiError:true` is the
+    // deterministic "not checked" flag every provider sets on verify failure.
+    if (hasUncheckedClaim(result)) return;
     const key = cacheKey(text, provider);
     const now = Date.now();
     this.store.set(key, { result, cachedAt: now, expiresAt: now + this.ttlMs });

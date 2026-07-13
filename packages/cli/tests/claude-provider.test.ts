@@ -182,7 +182,11 @@ describe('ClaudeProvider', () => {
 
       expect(result.claimId).toBe('c3');
       expect(result.status).toBe('unverified');
-      expect(result.explanation).toContain('Verify failed');
+      // Sanitized (2026-07-13 fix): customer-safe, no raw provider error leaked, apiError flag set.
+      expect(result.explanation).not.toContain('Verify failed');
+      expect(result.explanation).not.toContain('Rate limit');
+      expect(result.explanation.toLowerCase()).toContain('not checked');
+      expect(result.apiError).toBe(true);
     });
 
     it('should fallback to unverified on non-OK response', async () => {

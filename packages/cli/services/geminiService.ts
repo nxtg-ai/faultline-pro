@@ -1,6 +1,7 @@
 
 import { GoogleGenAI } from "@google/genai";
 import type { Claim, VerificationResult, ClaimStatus } from '../types';
+import { sanitizeVerifyError } from './verify-error';
 
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 
@@ -197,7 +198,7 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
     return {
       claimId: claim.id,
       status: 'unverified',
-      explanation: `Verify failed: ${error instanceof Error ? error.message : String(error)}`,
+      explanation: sanitizeVerifyError(error),
       sources: [],
       // The verification did NOT run (provider/API error — quota 429, model 503,
       // network). 'unverified' here means "never checked", not "checked, no
