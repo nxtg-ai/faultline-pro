@@ -84,9 +84,17 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
         ? (provider as ScanProvider)
         : 'gemini';
 
-      const chunks: string[] = [];
+      // TRUE SSE — write each event to the socket as produced (see POST handler
+      // note). hijack() + X-Accel-Buffering:no defeat Fastify + proxy buffering.
+      reply.raw.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      });
+      reply.hijack();
       const emit = (data: Record<string, unknown>): void => {
-        chunks.push(`data: ${JSON.stringify(data)}\n\n`);
+        reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
       };
 
       let startEmitted = false;
@@ -148,17 +156,15 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
         emitScanCostEvent(costEvent);
         appendScanCostLog(costEvent);
       } catch (err) {
+        // BLG-fp-20260713-A: log raw for ops, emit a generic client-safe message.
+        console.error(`/scan/stream GET failed for key ${keyId}:`, err);
         if (!startEmitted) {
           emit({ type: 'start', claimCount: 0, provider: effectiveProvider });
         }
-        emit({ type: 'error', message: err instanceof Error ? err.message : String(err) });
+        emit({ type: 'error', message: 'Scan failed — the verification service hit an error. Please retry.' });
+      } finally {
+        reply.raw.end();
       }
-
-      reply
-        .header('Content-Type', 'text/event-stream')
-        .header('Cache-Control', 'no-cache')
-        .header('Connection', 'keep-alive')
-        .send(chunks.join(''));
     },
   );
 
@@ -193,9 +199,21 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
         ? (provider as ScanProvider)
         : 'gemini';
 
-      const chunks: string[] = [];
+      // TRUE SSE: write each event to the socket as it is produced. Previously
+      // every event was pushed to an array and flushed in ONE .send() at scan
+      // end — the client saw a ~27s freeze then all events at once (Asif eyes-on
+      // UAT + fw streaming-truth probe, 2026-07-13). scan()'s onClaimVerified
+      // already fires per claim; hijack() hands us the response lifecycle and
+      // X-Accel-Buffering:no defeats Fly/proxy buffering so each write flushes.
+      reply.raw.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      });
+      reply.hijack();
       const emit = (data: Record<string, unknown>): void => {
-        chunks.push(`data: ${JSON.stringify(data)}\n\n`);
+        reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
       };
 
       let startEmitted = false;
@@ -255,17 +273,16 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
         emitScanCostEvent(costEvent);
         appendScanCostLog(costEvent);
       } catch (err) {
+        // BLG-fp-20260713-A: never leak the raw provider/engine error to the
+        // client — log it for ops, emit a generic client-safe message.
+        console.error(`/scan/stream POST failed for key ${keyId}:`, err);
         if (!startEmitted) {
           emit({ type: 'start', claimCount: 0, provider: effectiveProvider });
         }
-        emit({ type: 'error', message: err instanceof Error ? err.message : String(err) });
+        emit({ type: 'error', message: 'Scan failed — the verification service hit an error. Please retry.' });
+      } finally {
+        reply.raw.end();
       }
-
-      reply
-        .header('Content-Type', 'text/event-stream')
-        .header('Cache-Control', 'no-cache')
-        .header('Connection', 'keep-alive')
-        .send(chunks.join(''));
     },
   );
 }

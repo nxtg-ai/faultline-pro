@@ -191,7 +191,10 @@ describe('FR-1 — POST /scan/stream', () => {
     const events = parseSSE(body);
     expect(events.some((e) => e.type === 'error')).toBe(true);
     const errorEvent = events.find((e) => e.type === 'error');
-    expect(errorEvent?.message).toContain('forced test error');
+    // BLG-fp-20260713-A: the raw engine error is NOT leaked to the client — a
+    // generic client-safe message is emitted instead (raw goes to server logs).
+    expect(errorEvent?.message).not.toContain('forced test error');
+    expect(errorEvent?.message).toBeTruthy();
 
     spy.mockRestore();
   });
