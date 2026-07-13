@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
@@ -39,6 +39,41 @@ interface StreamPostBody {
   text: string;
   provider?: ScanProvider;
   pipelineConfig?: PipelineConfig;
+}
+
+/**
+ * Build the SSE response headers for a hijacked stream.
+ *
+ * BLG-fp-20260713-A (Wolf cert refute of ac99226): after reply.hijack() neither
+ * reply.send() nor the onSend security-headers hook runs, so ANY header set via
+ * reply.header() — most critically the CORS access-control-* headers that
+ * @fastify/cors sets in its onRequest hook — never reaches the socket. Result:
+ * every server-side probe (curl/inject) passes, but the browser EventSource on
+ * faultline.nxtg.ai gets CORS-blocked and the prod web app breaks. We carry the
+ * reply's already-accumulated headers (CORS) onto writeHead, re-apply the
+ * security headers the onSend hook would have added, and let the SSE transport
+ * headers win.
+ */
+function sseHeaders(reply: FastifyReply): Record<string, string> {
+  const headers: Record<string, string> = {};
+  // Carry headers already set on the reply (CORS from @fastify/cors's onRequest
+  // hook lands here before the route handler runs).
+  for (const [key, value] of Object.entries(reply.getHeaders())) {
+    if (value == null) continue;
+    headers[key] = Array.isArray(value) ? value.join(', ') : String(value);
+  }
+  // Security headers normally added by server.ts onSend hook (skipped after hijack).
+  headers['X-Content-Type-Options'] = 'nosniff';
+  headers['X-Frame-Options'] = 'DENY';
+  headers['Referrer-Policy'] = 'strict-origin-when-cross-origin';
+  headers['X-XSS-Protection'] = '0';
+  headers['Content-Security-Policy'] = "default-src 'none'; frame-ancestors 'none'";
+  // SSE transport headers win over anything carried above.
+  headers['Content-Type'] = 'text/event-stream';
+  headers['Cache-Control'] = 'no-cache';
+  headers['Connection'] = 'keep-alive';
+  headers['X-Accel-Buffering'] = 'no';
+  return headers;
 }
 
 /**
@@ -84,9 +119,14 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
         ? (provider as ScanProvider)
         : 'gemini';
 
-      const chunks: string[] = [];
+      // TRUE SSE — write each event to the socket as produced (see POST handler
+      // note). hijack() + X-Accel-Buffering:no defeat Fastify + proxy buffering.
+      // sseHeaders() carries the CORS + security headers hijack would otherwise
+      // drop (BLG-fp-20260713-A).
+      reply.raw.writeHead(200, sseHeaders(reply));
+      reply.hijack();
       const emit = (data: Record<string, unknown>): void => {
-        chunks.push(`data: ${JSON.stringify(data)}\n\n`);
+        reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
       };
 
       let startEmitted = false;
@@ -148,17 +188,15 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
         emitScanCostEvent(costEvent);
         appendScanCostLog(costEvent);
       } catch (err) {
+        // BLG-fp-20260713-A: log raw for ops, emit a generic client-safe message.
+        console.error(`/scan/stream GET failed for key ${keyId}:`, err);
         if (!startEmitted) {
           emit({ type: 'start', claimCount: 0, provider: effectiveProvider });
         }
-        emit({ type: 'error', message: err instanceof Error ? err.message : String(err) });
+        emit({ type: 'error', message: 'Scan failed — the verification service hit an error. Please retry.' });
+      } finally {
+        reply.raw.end();
       }
-
-      reply
-        .header('Content-Type', 'text/event-stream')
-        .header('Cache-Control', 'no-cache')
-        .header('Connection', 'keep-alive')
-        .send(chunks.join(''));
     },
   );
 
@@ -193,9 +231,18 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
         ? (provider as ScanProvider)
         : 'gemini';
 
-      const chunks: string[] = [];
+      // TRUE SSE: write each event to the socket as it is produced. Previously
+      // every event was pushed to an array and flushed in ONE .send() at scan
+      // end — the client saw a ~27s freeze then all events at once (Asif eyes-on
+      // UAT + fw streaming-truth probe, 2026-07-13). scan()'s onClaimVerified
+      // already fires per claim; hijack() hands us the response lifecycle and
+      // X-Accel-Buffering:no defeats Fly/proxy buffering so each write flushes.
+      // sseHeaders() carries the CORS + security headers hijack would otherwise
+      // drop (BLG-fp-20260713-A — Wolf cert refute).
+      reply.raw.writeHead(200, sseHeaders(reply));
+      reply.hijack();
       const emit = (data: Record<string, unknown>): void => {
-        chunks.push(`data: ${JSON.stringify(data)}\n\n`);
+        reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
       };
 
       let startEmitted = false;
@@ -255,17 +302,16 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
         emitScanCostEvent(costEvent);
         appendScanCostLog(costEvent);
       } catch (err) {
+        // BLG-fp-20260713-A: never leak the raw provider/engine error to the
+        // client — log it for ops, emit a generic client-safe message.
+        console.error(`/scan/stream POST failed for key ${keyId}:`, err);
         if (!startEmitted) {
           emit({ type: 'start', claimCount: 0, provider: effectiveProvider });
         }
-        emit({ type: 'error', message: err instanceof Error ? err.message : String(err) });
+        emit({ type: 'error', message: 'Scan failed — the verification service hit an error. Please retry.' });
+      } finally {
+        reply.raw.end();
       }
-
-      reply
-        .header('Content-Type', 'text/event-stream')
-        .header('Cache-Control', 'no-cache')
-        .header('Connection', 'keep-alive')
-        .send(chunks.join(''));
     },
   );
 }

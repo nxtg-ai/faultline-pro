@@ -313,3 +313,32 @@ describe('Cache — size tracking', () => {
     expect(body.size).toBe(2);
   });
 });
+
+// Guard: a scan whose verification never ran (apiError) must NOT be cached —
+// else the error report is re-served for the full TTL. Origin: 2026-07-13 prod
+// free-tier-gemini 429 report cached + re-served to a paying customer.
+describe('ScanCache — never caches unchecked/apiError results', () => {
+  beforeEach(() => resetCache());
+
+  it('caches a clean result (control)', () => {
+    const clean = { claims: [{ id: 'c1' }], verifications: { c1: { status: 'supported' } } };
+    getScanCache().set('doc', 'gemini', clean);
+    expect(getScanCache().get('doc', 'gemini')).toEqual(clean);
+    expect(getScanCache().stats().size).toBe(1);
+  });
+
+  it('refuses to cache a result with an apiError verification', () => {
+    const poisoned = {
+      claims: [{ id: 'c1' }],
+      verifications: { c1: { status: 'unverified', apiError: true, explanation: 'Verification temporarily unavailable' } },
+    };
+    getScanCache().set('doc429', 'gemini', poisoned);
+    expect(getScanCache().get('doc429', 'gemini')).toBeNull();
+    expect(getScanCache().stats().size).toBe(0);
+  });
+
+  it('refuses to cache when apiError is inline on a claim', () => {
+    getScanCache().set('doc2', 'openai', { claims: [{ id: 'c1', apiError: true }] });
+    expect(getScanCache().get('doc2', 'openai')).toBeNull();
+  });
+});

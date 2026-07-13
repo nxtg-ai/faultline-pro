@@ -7,6 +7,7 @@ import type {
   ConsensusMeta,
 } from '../types.js';
 import type { LLMProvider, Retriever } from '../providers/base_provider.js';
+import { sanitizeVerifyError } from '../services/verify-error.js';
 
 /**
  * Grounded multi-model consensus engine — "ground every claim by construction".
@@ -72,14 +73,21 @@ async function runProviderVote(
       // LOCK A: pin the SHARED retrieved set, ignore any per-provider sources.
       sources,
       explanation: result.explanation,
+      // Propagate a provider that self-reported a non-run (e.g. grounded gemini
+      // caught its own 429 and returned apiError) so fusion can flag it.
+      apiError: result.apiError,
     };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    // Provider's grounded verify threw (quota/auth/5xx). Sanitize — never leak
+    // the raw provider payload into a vote that can reach a customer report —
+    // and flag apiError so fusion/caches treat this vote as "not checked".
+    console.error(`Consensus provider ${name} grounded-verify failed for claim ${claim.id}:`, err);
     return {
       provider: name,
       status: 'unverified',
       sources,
-      explanation: `Provider unavailable: ${msg}`,
+      explanation: sanitizeVerifyError(err),
+      apiError: true,
     };
   }
 }
@@ -124,11 +132,17 @@ export function fuseVotes(
   // No real verdict from anyone (all dead/errored) → unverified, but sources
   // still = the shared retrieved set (grounded-by-construction holds).
   if (providerCount === 0) {
+    // Distinguish "all providers ERRORED" (not checked → apiError, must not be
+    // cached) from "all providers returned a real 'unverified' judgment"
+    // (checked, inconclusive). If any vote carried a provider error, the claim
+    // was never actually checked.
+    const anyError = votes.some((v) => v.apiError);
     return {
       claimId: claim.id,
       status: 'unverified',
       explanation: 'No provider returned a verdict; consensus unavailable.',
       sources,
+      ...(anyError ? { apiError: true } : {}),
       consensus: { agreement: 'split', providerCount: 0, dissenting: 0 },
       providerVotes: votes,
     };

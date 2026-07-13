@@ -3,7 +3,7 @@
 **Priority**: HIGH (highest ROI change in roadmap)  
 **Filed**: 2026-04-17  
 **Filed by**: faultline-web team (DIRECTIVE-NXTG-20260416-01)  
-**Status**: PENDING
+**Status**: SHIPPED (N-220, v0.5.3) — `d6a35b3` per-stage `PipelineConfig` routing; `0ecc198` first live FR-3 scan for FW integration. Impl: `packages/api/src/routes/scan.ts:89` (`pipelineConfig` path), `packages/api/src/routes/stream.ts`; tests `packages/api/tests/scan-pipeline-config.test.ts`. Stale-`PENDING` corrected 2026-07-08.
 
 ---
 

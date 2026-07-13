@@ -180,6 +180,104 @@ describe('FR-1 — POST /scan/stream', () => {
     expect(verdict.providerVotes).toBeUndefined();
   });
 
+  it('SPP13: CORS — hijacked stream carries access-control-* for an allowed browser Origin', async () => {
+    // BLG-fp-20260713-A regression guard. @fastify/cors sets ACAO/ACAC via
+    // reply.header() in an onRequest hook; after reply.hijack() those never
+    // flush unless we carry reply.getHeaders() onto writeHead. Without the fix
+    // curl/inject pass but the browser EventSource on faultline.nxtg.ai is
+    // CORS-blocked. Assert the streamed response actually carries ACAO.
+    const res = await server.inject({
+      method: 'POST',
+      url: '/scan/stream',
+      headers: {
+        'x-api-key': 'test-stream-key',
+        'content-type': 'application/json',
+        origin: 'https://faultline.nxtg.ai',
+      },
+      payload: JSON.stringify({ text: SCAN_TEXT, provider: 'mock' }),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(String(res.headers['content-type'])).toContain('text/event-stream');
+    expect(res.headers['access-control-allow-origin']).toBe('https://faultline.nxtg.ai');
+    expect(String(res.headers['access-control-allow-credentials'])).toBe('true');
+    // Security headers the onSend hook would have added are also present.
+    expect(res.headers['x-content-type-options']).toBe('nosniff');
+  });
+
+  it('SPP14: CORS — GET /scan/stream also carries access-control-* for an allowed Origin', async () => {
+    const res = await server.inject({
+      method: 'GET',
+      url: `/scan/stream?text=${encodeURIComponent(SCAN_TEXT)}&provider=mock`,
+      headers: { 'x-api-key': 'test-stream-key', origin: 'https://faultline.nxtg.ai' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['access-control-allow-origin']).toBe('https://faultline.nxtg.ai');
+  });
+
+  it('SPP15: incremental delivery — events flush as produced, not buffered to the end (real socket, timed)', async () => {
+    // inject() buffers the whole response, so it CANNOT distinguish "streamed
+    // per event" from "buffered then sent in one .send()" — the bytes are
+    // identical. Only a real socket with receive timestamps proves incremental
+    // delivery. We drive scan()'s onClaimVerified with a real delay between the
+    // two claims: if streaming works, the first claim_verified chunk arrives
+    // ~immediately and 'complete' arrives ~2 delays later (large gap). If the
+    // old buffered burst regressed back in, both arrive together at the end
+    // (gap ~0). Assert the gap is clearly non-zero.
+    const DELAY_MS = 80;
+    const scanModule = await import('@nxtg/faultline/cli/scan.js');
+    const mkClaim = (i: number) => ({ id: `c${i}`, text: `claim ${i}`, type: 'factual', importance: 'high' });
+    const mkVerdict = () => ({ status: 'supported', confidence: 0.9, reasoning: 'ok', sources: [] });
+    const spy = vi
+      .spyOn(scanModule, 'scan')
+      .mockImplementation((async (
+        _text: string,
+        _provider: unknown,
+        _minConf: unknown,
+        _rules: unknown,
+        _onProgress: unknown,
+        onClaimVerified?: (c: unknown, v: unknown, i: number, t: number) => void,
+      ) => {
+        onClaimVerified?.(mkClaim(0), mkVerdict(), 0, 2);
+        await new Promise((r) => setTimeout(r, DELAY_MS));
+        onClaimVerified?.(mkClaim(1), mkVerdict(), 1, 2);
+        await new Promise((r) => setTimeout(r, DELAY_MS));
+        return { claims: [mkClaim(0), mkClaim(1)], overallRisk: 'low' };
+      }) as unknown as typeof scanModule.scan);
+
+    await server.listen({ port: 0, host: '127.0.0.1' });
+    const addr = server.server.address();
+    const port = typeof addr === 'object' && addr ? addr.port : 0;
+
+    const res = await fetch(`http://127.0.0.1:${port}/scan/stream`, {
+      method: 'POST',
+      headers: { 'x-api-key': 'test-stream-key', 'content-type': 'application/json' },
+      body: JSON.stringify({ text: SCAN_TEXT, provider: 'mock' }),
+    });
+    expect(res.status).toBe(200);
+
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    const t0 = Date.now();
+    let firstClaimAt = -1;
+    let completeAt = -1;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value, { stream: true });
+      const now = Date.now() - t0;
+      if (firstClaimAt < 0 && chunk.includes('claim_verified')) firstClaimAt = now;
+      if (chunk.includes('"type":"complete"')) completeAt = now;
+    }
+
+    expect(firstClaimAt).toBeGreaterThanOrEqual(0);
+    expect(completeAt).toBeGreaterThanOrEqual(0);
+    // Streamed: first claim arrives early, complete ~2×DELAY later. Buffered
+    // regression would collapse this gap to ~0.
+    expect(completeAt - firstClaimAt).toBeGreaterThan(DELAY_MS);
+
+    spy.mockRestore();
+  });
+
   it('SPP10: scan error → error event emitted', async () => {
     // Trigger an error by mocking scan — use a provider that throws
     // The simplest way: pass a provider name that's valid in schema but has no key
@@ -191,7 +289,10 @@ describe('FR-1 — POST /scan/stream', () => {
     const events = parseSSE(body);
     expect(events.some((e) => e.type === 'error')).toBe(true);
     const errorEvent = events.find((e) => e.type === 'error');
-    expect(errorEvent?.message).toContain('forced test error');
+    // BLG-fp-20260713-A: the raw engine error is NOT leaked to the client — a
+    // generic client-safe message is emitted instead (raw goes to server logs).
+    expect(errorEvent?.message).not.toContain('forced test error');
+    expect(errorEvent?.message).toBeTruthy();
 
     spy.mockRestore();
   });

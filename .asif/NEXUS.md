@@ -330,6 +330,8 @@ The Kaggle version remains at  (tagged  at commit ).
 **From**: Asif ruling 2026-07-04 05:28 CT (via Emma; `dashboard/action-responses.jsonl` 2026-07-04T10:28:14Z, commit `9f40462c3`) | **Status**: 🟢 GO — fp's ACTIVE workstream, checkpointed for a fresh fidelity-focused build (session-depth discipline; no urgency).
 **Ruling**: retrieval-cost spike BEFORE any price lock. Pricing ASK returns to Asif ONLY with a post-spike cost/scan table attached. **Keys KEPT** — the 3 measurement keys stay live (no rotation), so re-measurement needs no new key-relay.
 
+**EARN-GATE TRIGGER (2026-07-08, Asif founder principle "earn \$300 before spend \$300"; Emma ruling `al:5aff094889eb0618`, Wolf `al:200552465034225b` thread)**: this spike is now the deterministic promotion trigger for the Faultline revenue lane. Faultline is Tier-B (code-ready, revenue-DARK — paid path wired in fw's `faultline-web/lib/billing.ts:84-134`, but no live paywall). Flip = TWO gates: (1) Asif prod Stripe env (DARK→live), (2) THIS spike landing a cheaper-retrieval COGS (fragile→profitable — charging at \$0.20–0.71/scan on a \$19 price is underwater = anti-earn). **fp owns the signal**: when the spike lands a Wolf-recomputed cheaper COGS, fp flags @emma-pm + @product-oracle with the instrument → Emma queues the Stripe-creds micro-gate → Faultline promotes Tier-A same cycle; PO MIRROR-verifies the checkout (real card→webhook→ledger) on flip. Until then FM+geo-grader carry the \$300; no rails-theater before the cut.
+
 **Measured baseline (the target)**: web_search retrieval = **88–91% of consensus-scan cost** — gpt-4o, 51 calls, **886k input tokens (~17k/call)**, $3.08. That leg is the whole game.
 
 **Cost-reduction levers to implement + MEASURE (each: re-run the 18-scan matrix via the Wolf-verified harness `scripts/measure-consensus-cost.ts`, keys kept, compose in the card format):**
@@ -1145,6 +1147,12 @@ Dependency scan (`npm outdated --workspaces`) — categorised:
 
 ---
 
+
+## Backlog — error-hygiene residuals (from Wolf 8cdb69b re-cert, 2026-07-13)
+
+Out-of-scope of the prod-429 fix (`d436d39`+`8cdb69b`), not blocking, logged per gap-to-backlog:
+- **BLG-fp-20260713-A** (P2, sanitize candidate): `packages/api/src/routes/stream.ts:154,261` emit `type:error` SSE with raw `err.message` on request-terminating faults. Not a cacheable verdict (so not the incident class), but same raw-leak-to-client hygiene — route through `sanitizeVerifyError` or an equivalent client-safe message.
+- **BLG-fp-20260713-B** (P3, note-only): `packages/cli/providers/openai_web_search_retriever.ts:67` interpolates error into a stderr ops-log — fine as ops-only (not client-facing); documented so it's not mistaken for a leak.
 
 ## Self-Improvement Log
 
