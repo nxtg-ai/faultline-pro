@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sanitizeVerifyError, hasUncheckedClaim } from './verify-error';
+import { sanitizeVerifyError, hasUncheckedClaim } from '../services/verify-error';
 
 // The EXACT raw blob that leaked into a paying customer's report on 2026-07-13.
 const PROD_429_LEAK =

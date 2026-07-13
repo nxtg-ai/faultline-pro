@@ -283,23 +283,37 @@ export const verifyClaimGrounded = async (
     { "status": "supported" | "contradicted" | "mixed" | "unverified", "explanation": "Concise assessment (max 2 sentences)." }
   `;
 
-  const ai = getClient(apiKey);
-  const response = await ai.models.generateContent({ model: GEMINI_MODEL, contents: prompt });
-
-  let resultJson: any = {};
   try {
-    const cleaned = cleanJson(response.text || '{}');
-    if (cleaned && cleaned !== '{}') resultJson = JSON.parse(cleaned);
-  } catch {
-    if (response.text) resultJson = { status: 'mixed', explanation: response.text.substring(0, 150) };
-  }
+    const ai = getClient(apiKey);
+    const response = await ai.models.generateContent({ model: GEMINI_MODEL, contents: prompt });
 
-  return {
-    claimId: claim.id,
-    status: (resultJson.status || 'unverified') as ClaimStatus,
-    explanation: resultJson.explanation || 'No structural analysis provided.',
-    sources,
-  };
+    let resultJson: any = {};
+    try {
+      const cleaned = cleanJson(response.text || '{}');
+      if (cleaned && cleaned !== '{}') resultJson = JSON.parse(cleaned);
+    } catch {
+      if (response.text) resultJson = { status: 'mixed', explanation: response.text.substring(0, 150) };
+    }
+
+    return {
+      claimId: claim.id,
+      status: (resultJson.status || 'unverified') as ClaimStatus,
+      explanation: resultJson.explanation || 'No structural analysis provided.',
+      sources,
+    };
+  } catch (error) {
+    // Grounded verify never ran (quota 429 / model 503 / network). Sanitize —
+    // never leak the raw provider payload into a customer report — and flag
+    // apiError so consensus fusion + caches treat it as "not checked".
+    console.error(`Error verifying claim ${claim.id} (grounded gemini):`, error);
+    return {
+      claimId: claim.id,
+      status: 'unverified',
+      explanation: sanitizeVerifyError(error),
+      sources,
+      apiError: true,
+    };
+  }
 };
 
 export const generateCritiqueAndPrompt = async (originalText: string, failedClaims: Claim[], apiKey: string): Promise<{ critique: string; improvedPrompt: string }> => {

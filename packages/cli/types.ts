@@ -59,6 +59,8 @@ export interface ProviderVote {
   status: ClaimStatus;
   sources: Source[];
   explanation?: string;
+  /** True when this provider's grounded verify never ran (quota/auth/5xx). */
+  apiError?: boolean;
 }
 
 export interface VerificationResult {

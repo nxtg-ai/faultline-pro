@@ -188,7 +188,11 @@ describe('consensusVerify — end to end (mocked)', () => {
     expect(r.providerVotes).toHaveLength(3);      // claude still listed
     const claudeVote = r.providerVotes?.find(v => v.provider === 'claude');
     expect(claudeVote?.status).toBe('unverified');
-    expect(claudeVote?.explanation).toContain('unavailable');
+    // Sanitized (2026-07-13 consensus-path fix): the raw provider error is NOT
+    // leaked into the vote, apiError flags it as "not checked", no '400' echoed.
+    expect(claudeVote?.apiError).toBe(true);
+    expect(claudeVote?.explanation).not.toContain('400');
+    expect((claudeVote?.explanation ?? '').toLowerCase()).toContain('not checked');
   });
 
   it('a provider without verifyClaimGrounded is treated as unavailable', async () => {
