@@ -1,0 +1,43 @@
+# docs-coverage.map — Faultline Pro docs coverage manifest (read by docs-drift-check.sh).
+#
+# FORMAT (one mapping per line):
+#   <code-glob> => <doc1.md>[,<doc2.md>,...]
+#
+#   - <code-glob> : shell glob matched against each git-changed path in the diff
+#                   range (case-style glob; ** matches across directories).
+#   - =>          : the required mapping operator.
+#   - <docN.md>   : one or more comma-separated doc paths that MUST also change in
+#                   the SAME range when any code file matches the glob, else RED.
+#   - '#'         : comment (whole-line or trailing). Blank lines ignored.
+#
+# DOC-CLASS is derived from the doc path (arch/design · consumer · changelog · api-ref).
+#
+# SCOPE: Faultline is a PRODUCT repo (SemVer applies — the code->docs->SemVer loop
+# runs here, unlike ASIF-the-knowledge-repo). Conventional-commit -> CHANGELOG.md
+# coupling is enforced by the GATE ITSELF (feat/fix/BREAKING in range must touch
+# CHANGELOG.md) — so CHANGELOG is intentionally NOT mapped here; do not duplicate it.
+#
+# DESIGN — conservative Phase-1 map (Gate-9 dogfood onboarding, 2026-07-14):
+#   Map only PUBLIC-SURFACE code->doc pairs where a doc is GENUINELY owed when the
+#   surface changes (provider set, HTTP API endpoints, compliance coverage, IaC
+#   provider). High-churn INTERNALS (scan pipeline, consensus voting math, lib,
+#   analysis, services, stores) are intentionally UNMAPPED — mapping them would
+#   RED-flag every ordinary refactor and block Phase-2 pre-commit wiring. Expand
+#   deliberately as doc<->surface couplings prove stable; start tight.
+
+# --- Provider surface: the installed/verifiable provider set is documented here ---
+packages/cli/providers/**              => docs/PROVIDERS.md
+packages/api/src/providers/**          => docs/PROVIDERS.md
+
+# --- HTTP API surface: routes ARE the public endpoint reference ---
+packages/api/src/routes/**             => packages/api/README.md
+
+# --- Compliance surface: EU AI Act code owes the coverage evidence doc ---
+packages/cli/compliance/**             => docs/eu-ai-act-coverage.md
+
+# --- IaC surface: the Terraform provider owes its own README ---
+packages/terraform-provider/**         => packages/terraform-provider/README.md
+
+# --- The manifest documents itself: coverage-map edits owe an ARCHITECTURE note ---
+# (keeps the onboarding self-describing; mirrors the ASIF dogfood pattern)
+docs-coverage.map                      => docs/ARCHITECTURE.md
