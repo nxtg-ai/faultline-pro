@@ -2,6 +2,7 @@ import type { Claim, VerificationResult, ClaimStatus, Source } from '../types';
 import type { LLMProvider, ImageInput, CritiqueResult, ProviderFactory } from './base_provider';
 import { buildGroundedPrompt } from './grounded_prompt';
 import { sanitizeVerifyError } from '../services/verify-error';
+import { recordUsage } from '../lib/usage-sink';
 
 /**
  * Claude provider — implements the LLMProvider interface using Anthropic's API.
@@ -165,6 +166,15 @@ Return JSON: { "critique": string, "improvedPrompt": string }`;
     }
 
     const data = await response.json() as any;
+    // BLG-005 defect-1+3: emit REAL usage priced at the real model (this.modelId
+    // = claude-opus-4-8, NOT the haiku the legacy table assumed).
+    recordUsage({
+      provider: 'anthropic',
+      model: this.modelId,
+      inputTokens: data.usage?.input_tokens ?? 0,
+      outputTokens: data.usage?.output_tokens ?? 0,
+      isGrounding: false,
+    });
     const textBlock = data.content?.find((b: any) => b.type === 'text');
     return textBlock?.text || '';
   }

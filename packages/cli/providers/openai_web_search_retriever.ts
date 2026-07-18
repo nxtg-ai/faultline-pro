@@ -1,5 +1,6 @@
 import type { Source } from '../types';
 import type { Retriever } from './base_provider';
+import { recordUsage } from '../lib/usage-sink';
 
 /**
  * OpenAIWebSearchRetriever — provider-agnostic grounding via OpenAI's Responses
@@ -96,7 +97,21 @@ export class OpenAIWebSearchRetriever implements Retriever {
       throw new Error(`OpenAI Responses API error: ${response.status} ${response.statusText}`);
     }
 
-    return (await response.json()) as ResponsesPayload;
+    const payload = (await response.json()) as ResponsesPayload;
+    // BLG-005 defect-1+2: the web_search retrieval leg is ~84–90% of per-scan
+    // cost and sits behind the Retriever seam (NOT the LLMProvider fan-out) —
+    // capture it here or production undercounts by ~10×. isGrounding bills the
+    // per-call web_search tool fee on top of the model's search-content tokens.
+    const usage = (payload as unknown as { usage?: { input_tokens?: number; output_tokens?: number } }).usage;
+    recordUsage({
+      provider: 'openai',
+      model: this.model,
+      callType: 'web_search',
+      inputTokens: usage?.input_tokens ?? 0,
+      outputTokens: usage?.output_tokens ?? 0,
+      isGrounding: true,
+    });
+    return payload;
   }
 }
 

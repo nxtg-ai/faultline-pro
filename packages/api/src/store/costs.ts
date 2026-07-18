@@ -1,5 +1,7 @@
 import { appendFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { getKeyStore } from '../store/keys.js';
+import { summarizeScanUsage, type UsageLeg } from './consensus-cost.js';
 
 const TELEMETRY_WORKER = 'https://faultline-telemetry.nxtg-ai.workers.dev';
 
@@ -67,6 +69,52 @@ export function computeScanCost(
     (outputTokens / 1_000_000) * rates.outputPerM +
     groundingCalls * rates.groundingPerCall
   );
+}
+
+/**
+ * Build the managed-key cost event from a scan's captured usage legs
+ * (BLG-CLX9-20260703-005). Uses REAL provider-reported usage composed across the
+ * fan-out (defects 1+2) priced at each leg's real model (defect 3). Falls back
+ * to the legacy text-length estimate ONLY when nothing was captured (mock /
+ * offline / cache / an all-error scan) so a real scan never silently emits $0.
+ */
+export function buildManagedCostEvent(
+  legs: UsageLeg[],
+  opts: {
+    text: string;
+    provider: string;
+    claimCount: number;
+    tier: ManagedScanCostEvent['tier'];
+    latencyMs: number;
+    cacheHit?: boolean;
+  },
+): ManagedScanCostEvent {
+  const hasLegs = legs.length > 0;
+  const usage = summarizeScanUsage(legs);
+  const estInput = Math.ceil(opts.text.length / 4);
+  const inputTokens = hasLegs ? usage.inputTokens : estInput;
+  const outputTokens = hasLegs ? usage.outputTokens : Math.ceil(estInput * 0.3);
+  const groundingCalls = hasLegs ? usage.groundingCalls : opts.claimCount;
+  const costUsd = hasLegs
+    ? usage.costUsd
+    : computeScanCost(inputTokens, outputTokens, groundingCalls, opts.provider);
+  const modelId = (hasLegs && usage.primaryModel)
+    ? usage.primaryModel
+    : (PROVIDER_MODEL_IDS[opts.provider] ?? opts.provider);
+  return {
+    scanId: randomUUID(),
+    ts: new Date().toISOString(),
+    tier: opts.tier,
+    keyMode: 'managed',
+    provider: opts.provider,
+    modelId,
+    inputTokens,
+    outputTokens,
+    groundingCalls,
+    costUsd,
+    latencyMs: opts.latencyMs,
+    cacheHit: opts.cacheHit ?? false,
+  };
 }
 
 /** One managed-key scan cost event (emitted per scan, no PII). */

@@ -148,3 +148,45 @@ export function composeConsensusCost(legs: UsageLeg[]): ScanCostComposition {
 
   return { costUsd, callCount: legs.length, unratedCalls, byModel };
 }
+
+export interface ScanUsageSummary {
+  /** Measured total USD for the scan (composed over the fan-out). */
+  costUsd: number;
+  /** Summed real input/output tokens across every leg. */
+  inputTokens: number;
+  outputTokens: number;
+  /** Count of grounding (web_search) legs. */
+  groundingCalls: number;
+  /** Highest-cost real model in the fan-out — a single-value label for the
+   *  (single-model-shaped) ManagedScanCostEvent, replacing the wrong provider
+   *  family default. Null when there were no priced legs. */
+  primaryModel: string | null;
+  /** Fan-out size (1 + K·(1+N)). */
+  callCount: number;
+  unratedCalls: number;
+}
+
+/**
+ * Summarize a scan's captured usage legs into the fields the managed-cost event
+ * carries. Used by the API routes (BLG-005 phase 2) to replace the text-length
+ * estimate with real measured numbers. When `legs` is empty (mock/offline/cache
+ * or an all-error scan that captured nothing) the caller keeps the legacy
+ * estimate rather than silently emitting $0.
+ */
+export function summarizeScanUsage(legs: UsageLeg[]): ScanUsageSummary {
+  const comp = composeConsensusCost(legs);
+  let primaryModel: string | null = null;
+  let max = -1;
+  for (const [model, b] of Object.entries(comp.byModel)) {
+    if (b.costUsd > max) { max = b.costUsd; primaryModel = model; }
+  }
+  return {
+    costUsd: comp.costUsd,
+    inputTokens: legs.reduce((s, l) => s + l.inputTokens, 0),
+    outputTokens: legs.reduce((s, l) => s + l.outputTokens, 0),
+    groundingCalls: legs.filter((l) => l.isGrounding).length,
+    primaryModel,
+    callCount: comp.callCount,
+    unratedCalls: comp.unratedCalls,
+  };
+}
