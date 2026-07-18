@@ -60,4 +60,33 @@ describe('buildManagedCostEvent', () => {
     // haiku (old MANAGED_PROVIDER_RATES.claude) would be 10k×0.80/M + 10k×4/M = 0.048 → 6.25× less
     expect(ev.costUsd).not.toBeCloseTo(0.048, 4);
   });
+
+  it('MCE-04: legs present but ZERO usage (provider omitted usage) → estimate fallback, never silent $0 (Wolf fold 1)', () => {
+    // A real scan whose captured legs carry no usage (?? 0) composes to $0.
+    // gating on legs.length would emit $0; gating on costUsd>0 falls back.
+    const legs: UsageLeg[] = [
+      { model: 'gpt-4o-mini', callType: 'grounded-verify:openai', inputTokens: 0, outputTokens: 0, isGrounding: false },
+      { model: 'claude-opus-4-8', callType: 'grounded-verify:claude', inputTokens: 0, outputTokens: 0, isGrounding: false },
+    ];
+    const ev = buildManagedCostEvent(legs, opts);
+    const estInput = Math.ceil(opts.text.length / 4);
+    // fell back to the estimate — NOT the $0 the composed legs would give
+    expect(ev.inputTokens).toBe(estInput);
+    expect(ev.costUsd).toBeCloseTo(computeScanCost(estInput, Math.ceil(estInput * 0.3), opts.claimCount, 'openai'), 10);
+    expect(ev.costUsd).toBeGreaterThan(0);
+    // provider-default model label, not a captured leg model
+    expect(ev.modelId).toBe('gpt-4o-mini');
+  });
+
+  it('MCE-05: a grounding leg with 0 tokens still bills the per-call fee → real path, not fallback', () => {
+    // isGrounding leg composes to groundingPerCall (>0) even at 0 tokens — this
+    // IS real usage (a search happened), so it must NOT fall back to the estimate.
+    const legs: UsageLeg[] = [
+      { model: 'gpt-4o', callType: 'web_search', inputTokens: 0, outputTokens: 0, isGrounding: true },
+    ];
+    const ev = buildManagedCostEvent(legs, opts);
+    expect(ev.costUsd).toBeCloseTo(0.010, 6); // gpt-4o web_search per-call fee
+    expect(ev.groundingCalls).toBe(1);
+    expect(ev.modelId).toBe('gpt-4o');
+  });
 });

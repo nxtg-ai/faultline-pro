@@ -89,16 +89,22 @@ export function buildManagedCostEvent(
     cacheHit?: boolean;
   },
 ): ManagedScanCostEvent {
-  const hasLegs = legs.length > 0;
   const usage = summarizeScanUsage(legs);
+  // Gate on real COMPOSED COST, not leg presence (Wolf BLG-005 Phase-2 fold 1).
+  // Legs whose provider omitted usage (?? 0 → 0-token) still count as legs but
+  // compose to $0 — gating on legs.length there would bypass the fallback and
+  // silently emit $0 for a REAL scan. costUsd>0 iff we captured real, priced
+  // usage; otherwise fall back to the estimate. (mock/offline compose to $0 and
+  // correctly take the estimate path, which prices mock at $0 anyway.)
+  const hasRealUsage = usage.costUsd > 0;
   const estInput = Math.ceil(opts.text.length / 4);
-  const inputTokens = hasLegs ? usage.inputTokens : estInput;
-  const outputTokens = hasLegs ? usage.outputTokens : Math.ceil(estInput * 0.3);
-  const groundingCalls = hasLegs ? usage.groundingCalls : opts.claimCount;
-  const costUsd = hasLegs
+  const inputTokens = hasRealUsage ? usage.inputTokens : estInput;
+  const outputTokens = hasRealUsage ? usage.outputTokens : Math.ceil(estInput * 0.3);
+  const groundingCalls = hasRealUsage ? usage.groundingCalls : opts.claimCount;
+  const costUsd = hasRealUsage
     ? usage.costUsd
     : computeScanCost(inputTokens, outputTokens, groundingCalls, opts.provider);
-  const modelId = (hasLegs && usage.primaryModel)
+  const modelId = (hasRealUsage && usage.primaryModel)
     ? usage.primaryModel
     : (PROVIDER_MODEL_IDS[opts.provider] ?? opts.provider);
   return {
