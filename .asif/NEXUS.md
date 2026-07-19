@@ -326,6 +326,28 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## CoS Directives
 
+### DIRECTIVE-NXTG-20260719-02 — P1: BL-Faultline-billing spec execution — PROBE-FIRST, audit-only until founder GO
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1 | **Wave**: W-NXTG-20260719-A
+**Injected**: 2026-07-19 12:40 PDT | **Estimate**: S-M | **Status**: PENDING
+
+**Context**: Certified Wave-2 slate build wave. Spec: `/home/axw/ASIF/initiatives/undeniable-portfolio/specs/BL-Faultline-billing.md` (drafted + adversarially refuted + gaps folded 2026-07-19). LESSON FROM BL-3 (same slate, this morning): the spec's ground-truth assumptions may be STALE — the FamilyMind sibling spec assumed "price not minted" and live probes refuted it. PROBE FIRST, then build only what the probes say is missing.
+
+**Action Items**:
+1. **Probe-first reconcile**: live Stripe state (products/prices existing? live vs test key in the prod env?), the price-source wiring (file/line in the billing path), webhook registration. Table: spec claim → CONFIRMED / REFUTED / RESIDUAL with instruments. Write `docs/bl-faultline-billing-reconcile-2026-07-19.md` (or your reports dir).
+2. Discharge the spec's audit/instrument-class gap-closes (the folded §Gap-Close items that need no revenue action).
+3. Stage the first-dollar path: test-mode/test-clock e2e verified; everything up to (but excluding) live price mint / live charge.
+4. Report inline below with **Started/Completed/Actual/Commit**. Wolf mints the founder GO card from your report (pricing — spec's $39/user/mo REC — is Asif's call; present options, don't decide).
+
+**Constraints**: AUDIT + STAGE ONLY — no live-mode price creation/modification, no live charges, no prod env writes, no GTM sends. Tests never decrease.
+**Escalation**: pricing + revenue-activation GO = Asif only (via Wolf's card).
+
+**Response (fp, 2026-07-19)** — **Status: RECEIVED → CHECKPOINTED for a fresh fidelity-focused session** (not executed this session).
+- **Why checkpointed, not executed now**: token-budget PREP gate — this pane is at **ctx39%** (past the 30% PREP threshold; `asifctl runtime diet --strict --local-only` = CAUTION "avoid new multi-step work"). The directive is a multi-step PROBE-FIRST audit, and its OWN core lesson (BL-3: "spec ground-truth may be STALE — probe first") demands fresh-context fidelity. Starting a rigor-critical reconcile deep-in-context risks the exact stale/rushed execution the directive warns against. Per canon + the NEXUS "checkpointed for fresh fidelity-focused context" pattern, deferring to a fresh session is the higher-fidelity call — NOT a punt (durable head-start captured below).
+- **Head-start probes DONE (read-only, this session)**: spec located `/home/axw/ASIF/initiatives/undeniable-portfolio/specs/BL-Faultline-billing.md` (28.6KB). Billing wiring = **`/home/axw/projects/faultline-web/lib/billing.ts`** — price-source is `priceEnvMap[plan]` (prices resolve from **ENV vars**, not hardcoded/minted-in-code; `[billing-diag]` logging present). **Faultline-Pro itself has NO billing code** (only an incidental stripe ref in `packages/api/src/routes/eu-report.ts`).
+- **⚠️ SCOPE FLAG (fresh session: confirm BEFORE staging)**: the billing surface is in **faultline-web (fw's lane/repo)**, not Faultline-Pro. Read-only AUDIT is fp-doable cross-repo; but STAGING test-clock e2e = a **cross-repo WRITE into fw's product repo** — confirm the fp-vs-fw ownership split with Wolf/Emma first (docs-sync mis-route lesson, 2026-07-14). Do not build test infra into fw's repo on assumption.
+- **Fresh-session plan** (probe-first, per action items): (1) read spec → extract testable claims; (2) reconcile table spec-claim → CONFIRMED/REFUTED/RESIDUAL + instrument — local price-source wiring (priceEnvMap, env vars, test-vs-live key selection), live Stripe state (NEEDS a Stripe key → RESIDUAL if creds absent), webhook registration; (3) write `docs/bl-faultline-billing-reconcile-2026-07-19.md`; (4) discharge audit/instrument-class gap-closes; (5) stage test-mode/test-clock e2e up to (EXCLUDING) live mint/charge — pending fw-scope confirm; (6) inline report → Wolf mints founder GO card. Constraints honored: audit+stage only, no live writes, pricing/revenue-GO = Asif.
+
+
 ### DIRECTIVE-NXTG-20260704-01 — P1: RETRIEVAL-COST SPIKE (Asif ruled: fund-before-price-lock)
 **From**: Asif ruling 2026-07-04 05:28 CT (via Emma; `dashboard/action-responses.jsonl` 2026-07-04T10:28:14Z, commit `9f40462c3`) | **Status**: 🟢 GO — fp's ACTIVE workstream, checkpointed for a fresh fidelity-focused build (session-depth discipline; no urgency).
 **Ruling**: retrieval-cost spike BEFORE any price lock. Pricing ASK returns to Asif ONLY with a post-spike cost/scan table attached. **Keys KEPT** — the 3 measurement keys stay live (no rotation), so re-measurement needs no new key-relay.
