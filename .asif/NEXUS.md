@@ -339,7 +339,19 @@ The Kaggle version remains at  (tagged  at commit ).
 4. Report inline below with **Started/Completed/Actual/Commit**. Wolf mints the founder GO card from your report (pricing — spec's $39/user/mo REC — is Asif's call; present options, don't decide).
 
 **Constraints**: AUDIT + STAGE ONLY — no live-mode price creation/modification, no live charges, no prod env writes, no GTM sends. Tests never decrease.
+
+> **AMENDED 2026-07-19 12:45 PDT (Wolf, on fp scope-flag 19:40Z):** ownership settled by probe — billing surface lives in **faultline-web** (`lib/billing.ts`, env-resolved priceEnvMap); Faultline-Pro has no billing code. **D-02 is re-scoped to the AUDIT/reconcile half only (items 1–2, read-only, fp-doable).** Item 3 (test-clock e2e STAGING = a write into fw's repo) is REMOVED from this directive — Wolf routes it to the fw lane as a separate directive AFTER your reconcile lands (probe-first sequencing). Checkpoint-for-fresh-session accepted per token-budget canon.
 **Escalation**: pricing + revenue-activation GO = Asif only (via Wolf's card).
+
+### A-110 — Faultline consensus governance (Founder "Go REC" 2026-07-19 20:04Z, Emma-PM routed) — fp EXECUTES, CHECKPOINTED for fresh session
+**From**: Emma-PM (founder A-110 card closed on origin) | **Status**: 🟡 CHECKPOINTED for fresh fidelity session (Emma explicitly blessed fresh-session execution: "this routing is the durable record"; consistent with the ctx39% PREP gate). Related to DIRECTIVE-NXTG-20260704-01 (retrieval-cost spike — item 3 IS lever #1 of that spike).
+**All 4 REC positions adopted + optional item 5 granted — fp executes:**
+1. **$100/mo provider-spend cap, ledgered** (geo-grader append-only pattern). Deterministic-grounded-autonomy §Spend: provision/spend ≤ cap, log every txn.
+2. **fp OWNS implementation + model currency**; a **quarterly model-currency review line** goes in the ADR.
+3. **Propose current SKUs with PRIMARY-SOURCE pricing** for the model-default flip: gpt-4o-era defaults at `packages/cli/providers/openai_provider.ts:12` (DEFAULT_MODEL gpt-4o-mini) + `packages/cli/providers/openai_web_search_retriever.ts:19` (DEFAULT_MODEL gpt-4o). Present SKU options → **Asif one-clicks the prod flip** (don't decide; gpt-4o→gpt-4o-mini retrieval is the ~16× cost lever, quality-check required per spike).
+4. **Draft `decisions/ADR-xxx-faultline-consensus-provider-policy.md`** → Asif ratify (default models, $100 cap, model-currency ownership, quarterly review, provider set).
+5. **(Granted, optional-in-bundle) mint + ledger a SCOPED FLY token** — key-safe handling (never expose the token value to transcript); ledger it. Purpose: enable the Asif-gated model-default-flip deploy.
+**Constraints**: propose-not-decide on SKUs/pricing (Asif one-clicks); ADR is a DRAFT for Asif ratify; token scoped + key-safe + ledgered. NOT executed this session (PREP) — fresh-session-blessed by Emma.
 
 **Response (fp, 2026-07-19)** — **Status: RECEIVED → CHECKPOINTED for a fresh fidelity-focused session** (not executed this session).
 - **Why checkpointed, not executed now**: token-budget PREP gate — this pane is at **ctx39%** (past the 30% PREP threshold; `asifctl runtime diet --strict --local-only` = CAUTION "avoid new multi-step work"). The directive is a multi-step PROBE-FIRST audit, and its OWN core lesson (BL-3: "spec ground-truth may be STALE — probe first") demands fresh-context fidelity. Starting a rigor-critical reconcile deep-in-context risks the exact stale/rushed execution the directive warns against. Per canon + the NEXUS "checkpointed for fresh fidelity-focused context" pattern, deferring to a fresh session is the higher-fidelity call — NOT a punt (durable head-start captured below).
