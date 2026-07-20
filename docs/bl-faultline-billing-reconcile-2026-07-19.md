@@ -37,3 +37,26 @@
 4. **Prod env (Vercel) is the real gate and is UNPROBED here** (claim 6) — the authoritative set/unset + live-vs-test state needs `vercel env ls` on the fw project.
 
 **Constraints honored:** audit + gap-close only; no live-mode price create/modify, no charges, no prod writes, no GTM. Pricing ($39/user/mo REC) + revenue-activation GO remain **Asif-only** (via Wolf's card). Staging (test-clock e2e) — removed from scope per the amendment.
+
+---
+
+## GC-3 slice (Wolf next-slice, 2026-07-19 — 5-component probe + read-only live Stripe)
+
+### CLAIM B evidence-pack: 5-component existence probe (file/line or to-BUILD)
+
+| Component | Verdict | Instrument |
+|---|---|---|
+| 1. Claim-forensics results (claims + verdicts + risk) | **CONFIRMED (live 0.9.0)** | `packages/cli/types.ts` (Claim/VerificationResult), `packages/cli/cli/scan.ts` (ScanResult.claims + verifications + overallRisk) |
+| 2. SHA-256 **chain** manifest | **to-BUILD** | Only `packages/cli/history/store.ts:29` `createHash('sha256')...substring(0,8)` — a **truncated 8-char hash used as an ID/nonce**, NOT a hash-linked chain (no prevHash/previous-linking anywhere). CLAIM B instrument (i) "chain manifest re-verifies via `sha256sum` chain check" is **NOT satisfied** by a real chain. |
+| 3. EU-AI-Act risk-tier mapping | **CONFIRMED (live, N-157/N-211)** | `packages/cli/compliance/eu_ai_act.ts`, `report_generator.ts` (euRiskSummary: unacceptable/high/limited/minimal) |
+| 4. SARIF / CI artifacts | **CONFIRMED (live)** | real SARIF generators: `packages/cli/cli/report.ts:718`, `packages/cli/cli/compliance-report.ts:1565`, `aggregate.ts:462` (tool.driver/runs) |
+| 5. Questionnaire-answer frame | **to-BUILD (copy only)** | `packages/cli/cli/nudge.ts:2` is the questionnaire POSITIONING copy (NUDGE_COPY), NOT a generated Q&A pack component. The deliverable frame is not built. |
+
+**GC-3 verdict:** CLAIM B's "assembly, not invention" is ~60% true — **3/5 components live, 2/5 to-BUILD** (chain-manifest + questionnaire deliverable). The pack can ship 3 real components today; the chain-manifest re-verification instrument and the questionnaire artifact are net-new builds (effort reflected → the spec's blanket "already exists" line is corrected here, per GC-3 acceptance).
+
+### Read-only live Stripe verification (Wolf-authorized, key-safe)
+
+- **Price-object mode/active + payment_intents (DARK-is-stale):** **RESIDUAL — the accessible key is EXPIRED.** Probed with the resident fw `.env.local` `STRIPE_SECRET_KEY` (key-safe, value never printed): key is **real** (107 chars, `sk_live` prefix, no placeholder word) but `GET /v1/balance` → `type=api_error, code=api_key_expired` ("Expired API Key"; Stripe auto-redacts value). All price + payment_intents calls returned the same. **Consequence:** cannot confirm/refute price mode/active or existing live conversions from this pane. The authoritative probe needs the **current Vercel-prod live key** (fw-lane; Wolf confirmed all 5 envs set in prod, al:09018b59) → `stripe payment_intents list --limit 5` (live) closes DARK-is-stale.
+- **Hygiene finding:** an **expired live secret** sits in fw `.env.local` — confirms a rotation happened (good) but the stale key should be scrubbed from the tree.
+
+**GC-3 constraints honored:** read-only only (GET /v1/prices, /v1/balance, /v1/payment_intents — no writes/charges), key-safe (value never in transcript; Stripe redacts on error). Live price + DARK verdicts pass to Wolf's card as RESIDUAL-with-named-instrument (current prod key).
