@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [v0.9.1] — 2026-07-21
+
+Real measured cost telemetry for the consensus fan-out (BLG-005). Telemetry-only,
+additive instrumentation — no CLI command/flag or API-contract change. `@nxtg/faultline`
+(CLI) and `@nxtg/faultline-api` both ship at v0.9.1, re-aligning npm == repo == deployed
+== content (the prior v0.9.0 npm tarball predated BLG-005 — a number-equal / content-drifted
+provenance gap this release clears).
+
 ### Fixed
 
 - **Managed-key cost telemetry now measures the real consensus fan-out (BLG-CLX9-20260703-005)** — the deployed `scan_cost` telemetry undercounted cost by 11–16,000× because it (1) estimated tokens from text length instead of reading provider-reported usage, (2) modelled a single `effectiveProvider` instead of summing the `1 + K·(1+N)` fan-out, and (3) priced the claude leg at Haiku rates while the engine calls `claude-opus-4-8` ($5/$25 — exactly 6.25× Haiku). Real provider-reported token usage is now captured through an `AsyncLocalStorage` per-scan sink (concurrency-safe for the API — no cross-attribution between simultaneous scans), composed across the fan-out and priced at each leg's **real** model via a single model-keyed rate table drift-guarded against the measurement source. The `~84–90%`-of-cost web_search retrieval leg (behind the `Retriever` seam) is captured too. Falls back to the legacy estimate only when nothing is captured (mock/offline/cache) so a real scan never silently emits `$0`. Telemetry-only — no scan-result or API-contract change; deploy remains operator-gated.
