@@ -2,12 +2,32 @@
 import { GoogleGenAI } from "@google/genai";
 import type { Claim, VerificationResult, ClaimStatus } from '../types';
 import { sanitizeVerifyError } from './verify-error';
+import { recordUsage } from '../lib/usage-sink';
 
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 
 /** Resolved Gemini model ID, overridable via FAULTLINE_GEMINI_MODEL env var. */
 export const GEMINI_MODEL: string =
   (typeof process !== 'undefined' ? process.env?.FAULTLINE_GEMINI_MODEL : undefined) || DEFAULT_GEMINI_MODEL;
+
+/**
+ * BLG-005 defect-1: emit real Gemini SDK usage to the active scan's usage sink.
+ * The SDK response carries usageMetadata (promptTokenCount/candidatesTokenCount);
+ * the engine previously discarded it. No-op outside a captureUsage() scope.
+ * `isGrounding` = true only when this call used the googleSearch tool (bills the
+ * per-grounded-prompt surcharge); false for extraction and shared-source verify.
+ */
+function recordGeminiUsage(response: any, isGrounding: boolean, callType: string): void {
+  const u = response?.usageMetadata ?? {};
+  recordUsage({
+    provider: 'gemini',
+    model: GEMINI_MODEL,
+    callType,
+    inputTokens: u.promptTokenCount ?? 0,
+    outputTokens: u.candidatesTokenCount ?? 0,
+    isGrounding,
+  });
+}
 
 // Helper to sanitize JSON strings by finding the first { or [ and last } or ]
 const cleanJson = (text: string): string => {
@@ -100,6 +120,7 @@ export const extractClaims = async (text: string, apiKey: string, image?: { data
       }
     });
 
+    recordGeminiUsage(response, false, 'extraction');
     const cleanedText = cleanJson(response.text || '[]');
     const result = JSON.parse(cleanedText);
     return Array.isArray(result) ? result : [];
@@ -153,6 +174,7 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
       }
     });
 
+    recordGeminiUsage(response, true, 'grounded-verify:gemini');
     let resultJson: any = {};
     try {
       const cleanedText = cleanJson(response.text || '{}');
@@ -231,6 +253,7 @@ export const retrieveSources = async (claimText: string, apiKey: string): Promis
       config: { tools: [{ googleSearch: {} }] },
     });
 
+    recordGeminiUsage(response, true, 'grounded-retrieve:gemini');
     const sources: Array<{ title: string; uri: string }> = [];
     const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
     if (chunks) {
@@ -287,6 +310,7 @@ export const verifyClaimGrounded = async (
     const ai = getClient(apiKey);
     const response = await ai.models.generateContent({ model: GEMINI_MODEL, contents: prompt });
 
+    recordGeminiUsage(response, false, 'grounded-verify:gemini');
     let resultJson: any = {};
     try {
       const cleaned = cleanJson(response.text || '{}');
@@ -340,6 +364,7 @@ export const generateCritiqueAndPrompt = async (originalText: string, failedClai
       contents: prompt,
       config: { responseMimeType: "application/json" }
     });
+    recordGeminiUsage(response, false, 'critique:gemini');
     const cleanedText = cleanJson(response.text || '{}');
     return JSON.parse(cleanedText);
   } catch (error) {

@@ -2,6 +2,7 @@ import type { Claim, VerificationResult, ClaimStatus, Source } from '../types';
 import type { LLMProvider, ImageInput, CritiqueResult, ProviderFactory } from './base_provider';
 import { buildGroundedPrompt } from './grounded_prompt';
 import { sanitizeVerifyError } from '../services/verify-error';
+import { recordUsage } from '../lib/usage-sink';
 
 /**
  * OpenAI provider — implements the LLMProvider interface using OpenAI's API.
@@ -162,6 +163,15 @@ Return a JSON object: { "critique": string, "improvedPrompt": string }`,
     }
 
     const data = await response.json() as any;
+    // BLG-005 defect-1: emit REAL provider-reported usage to the active scan's
+    // collector (no-op outside a captureUsage scope — hot path unchanged).
+    recordUsage({
+      provider: 'openai',
+      model: this.modelId,
+      inputTokens: data.usage?.prompt_tokens ?? 0,
+      outputTokens: data.usage?.completion_tokens ?? 0,
+      isGrounding: false,
+    });
     return data.choices?.[0]?.message?.content || '';
   }
 }

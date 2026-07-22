@@ -11,12 +11,12 @@ import { getAuditLogger } from '../store/audit.js';
 import { getScanCache } from '../store/cache.js';
 import { getTemplateStore } from '../store/templates.js';
 import { getClaimIndex } from '../store/claims.js';
-import { getCostStore, computeScanCost, emitScanCostEvent, appendScanCostLog, resolveTier, PROVIDER_MODEL_IDS, type ManagedScanCostEvent } from '../store/costs.js';
+import { getCostStore, emitScanCostEvent, appendScanCostLog, resolveTier, buildManagedCostEvent } from '../store/costs.js';
 import { getScanHistory, hashText } from '../store/scan-history.js';
 import { recordScanTelemetry } from '../store/telemetry.js';
 import { notifyScanFailed } from '../store/notifications.js';
 import { buildEuComplianceReport, evaluateComplianceGate } from '@nxtg/faultline/cli/compliance-report.js';
-import { randomUUID } from 'node:crypto';
+import { captureUsage } from '@nxtg/faultline/lib/usage-sink.js';
 
 
 const PROVIDER_ENUM = ['gemini', 'openai', 'claude', 'perplexity', 'mock'] as const;
@@ -173,31 +173,22 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
 
       for (const p of chain) {
         try {
-          const result = await scan(text, p);
+          const { result, legs } = await captureUsage(() => scan(text, p));
           cb.recordSuccess(p);
           getCostStore().record(keyId, p, text, resolveRequestTenantId(keyId));
 
           // Managed-key scan cost telemetry (N-227 / DIRECTIVE-NXTG-20260506-04).
-          // Tokens are estimated (scan() doesn't expose LLM-reported counts).
-          const inputTokens = Math.ceil(text.length / 4);
-          const outputTokens = Math.ceil(inputTokens * 0.3);
+          // BLG-CLX9-20260703-005: real measured usage composed across the fan-out
+          // (was a text-length estimate); legacy estimate is the no-legs fallback.
           const groundingCalls = typeof result.verifications === 'object' && result.verifications !== null
             ? Object.keys(result.verifications).length : 0;
-          const costUsd = computeScanCost(inputTokens, outputTokens, groundingCalls, p);
-          const costEvent: ManagedScanCostEvent = {
-            scanId: randomUUID(),
-            ts: new Date().toISOString(),
-            tier: resolveTier(keyId),
-            keyMode: 'managed',
+          const costEvent = buildManagedCostEvent(legs, {
+            text,
             provider: p,
-            modelId: PROVIDER_MODEL_IDS[p] ?? p,
-            inputTokens,
-            outputTokens,
-            groundingCalls,
-            costUsd,
+            claimCount: groundingCalls,
+            tier: resolveTier(keyId),
             latencyMs: Date.now() - startTime,
-            cacheHit: false,
-          };
+          });
           getCostStore().recordManaged(costEvent);
           emitScanCostEvent(costEvent);
           appendScanCostLog(costEvent);
