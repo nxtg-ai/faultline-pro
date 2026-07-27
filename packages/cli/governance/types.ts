@@ -60,6 +60,69 @@ export interface ActionPolicy {
   rules: ActionRule[];
 }
 
+/**
+ * Delegation-scoped authority (I2 — the exceed vector).
+ *
+ * A {@link DelegationGrant} is a typed, revocable authorization object: it lets a
+ * `grantee` act on behalf of a `principal`, but ONLY within a declared scope. An
+ * action the policy would permit is still HELD (not executed) unless a valid,
+ * unexpired, unrevoked grant covers it. Externally this is research/spec-only
+ * (SPIFFE, OAuth RFC 8693 `act` claims); shipping it working is category-leading.
+ */
+export interface DelegationScope {
+  /** Action verbs this grant authorizes — exact or glob (e.g. ['read.*', 'file.write']). */
+  actions: string[];
+  /** Optional resource matchers — exact or glob. Omitted = any resource in-scope. */
+  resources?: string[];
+  /**
+   * Optional ceiling on the decision this grant can authorize. E.g. a grant with
+   * maxDecision 'require_approval' cannot green-light an 'allow' action outright.
+   * Omitted = no ceiling (authorizes up to 'allow').
+   */
+  maxDecision?: PolicyDecision;
+}
+
+/** A typed, revocable authorization for a grantee to act on a principal's behalf. */
+export interface DelegationGrant {
+  /** Unique grant identifier. */
+  id: string;
+  /** The authority-holder delegating (e.g. 'principal:asif'). */
+  principal: string;
+  /** The agent authorized to act within the scope (matched against AgentAction.actor). */
+  grantee: string;
+  /** What the grantee may do. */
+  scope: DelegationScope;
+  /** ISO-8601 issue time. */
+  issuedAt: string;
+  /** ISO-8601 expiry; omitted = no expiry. */
+  expiresAt?: string;
+  /** True once revoked — a revoked grant never authorizes (revocation wins immediately). */
+  revoked: boolean;
+}
+
+/** The result of checking an action against the active delegation grants. */
+export interface AuthorizationResult {
+  /** True when a valid grant covers the action. */
+  authorized: boolean;
+  /** The id of the covering grant, when authorized. */
+  grantId?: string;
+  /** Why the action was authorized or held. */
+  reason: string;
+}
+
+/** The combined verdict: 'held' means policy-permitted but not authorized by any grant. */
+export type EffectiveDecision = PolicyDecision | 'held';
+
+/** The full governance verdict combining the policy decision and delegation authority. */
+export interface GovernanceVerdict {
+  /** allow / deny / require_approval / held. 'held' = permitted by policy, no covering grant. */
+  effectiveDecision: EffectiveDecision;
+  /** The underlying policy evaluation. */
+  policy: PolicyEvaluation;
+  /** The authorization result, when delegation was enforced. */
+  authorization?: AuthorizationResult;
+}
+
 /** The deterministic result of evaluating one action against one or more policies. */
 export interface PolicyEvaluation {
   /** The terminal decision. */

@@ -1,4 +1,4 @@
-import type { AgentAction, PolicyDecision } from './types.js';
+import type { AgentAction, PolicyDecision, EffectiveDecision, GovernanceVerdict } from './types.js';
 import type { PolicyEvaluation } from './types.js';
 
 /**
@@ -25,6 +25,14 @@ export interface GovernanceRecord {
   reason: string;
   /** Evaluation latency in nanoseconds. */
   latencyNs: number;
+  /**
+   * The combined effective decision when delegation was in force (I2): may be
+   * 'held' when policy permitted the action but no grant authorized it. Absent on
+   * pure policy records (I1), where `decision` is authoritative.
+   */
+  effectiveDecision?: EffectiveDecision;
+  /** The id of the authorizing grant, when the action was authorized by delegation. */
+  grantId?: string;
 }
 
 /**
@@ -54,6 +62,22 @@ export class ProvenanceLedger {
     };
     this.records.push(record);
     return record;
+  }
+
+  /**
+   * Append a record from a combined {@link GovernanceVerdict} (I2). Captures the
+   * effective decision (which may be 'held') and the authorizing grant id, on top
+   * of the underlying policy evaluation.
+   */
+  appendVerdict(verdict: GovernanceVerdict): GovernanceRecord {
+    const base = this.append(verdict.policy);
+    const enriched: GovernanceRecord = {
+      ...base,
+      effectiveDecision: verdict.effectiveDecision,
+      grantId: verdict.authorization?.grantId,
+    };
+    this.records[this.records.length - 1] = enriched;
+    return enriched;
   }
 
   /** All records in append order (defensive copy). */

@@ -1,11 +1,14 @@
+import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   governAction,
+  govern,
   loadPoliciesFromDir,
   ProvenanceLedger,
   type ActionPolicy,
   type AgentAction,
+  type DelegationGrant,
 } from '../governance/index.js';
 
 /**
@@ -45,7 +48,15 @@ export function loadGovernPolicies(opts: { policyDir?: string; policyId?: string
 function glyph(decision: string): string {
   if (decision === 'allow') return '[allow]';
   if (decision === 'deny') return '[DENY ]';
+  if (decision === 'held') return '[HELD ]';
   return '[gate ]';
+}
+
+/** Load delegation grants from a JSON file (an array of DelegationGrant). */
+function loadGrants(path: string): DelegationGrant[] {
+  const raw = JSON.parse(readFileSync(resolve(path), 'utf-8'));
+  if (!Array.isArray(raw)) throw new Error('grants file must contain a JSON array of grants');
+  return raw as DelegationGrant[];
 }
 
 /**
@@ -98,8 +109,37 @@ export function governCommand(
       correlationId: flags['correlation-id'],
     };
 
-    const evaln = governAction(agentAction, policies);
     const ledger = new ProvenanceLedger();
+
+    // Delegation-enforced path (I2): when --grants is supplied, the combined verdict
+    // HOLDS a policy-permitted action unless a valid grant authorizes it.
+    if (flags['grants']) {
+      let grants: DelegationGrant[];
+      try {
+        grants = loadGrants(flags['grants']);
+      } catch (err) {
+        return { exitCode: 1, output: `Error loading grants: ${(err as Error).message}` };
+      }
+      const verdict = govern(agentAction, { policies, grants, enforceDelegation: true });
+      const record = ledger.appendVerdict(verdict);
+
+      if (flags['json'] === 'true') {
+        return { exitCode: 0, output: JSON.stringify({ verdict, record }, null, 2) };
+      }
+      const d = verdict.effectiveDecision;
+      const lines = [
+        `${glyph(d)} ${agentAction.actor} -> ${agentAction.action}${agentAction.resource ? ` (${agentAction.resource})` : ''}`,
+        `  decision:  ${d}`,
+        `  policy:    ${verdict.policy.decision} (${verdict.policy.policyId})`,
+        `  authority: ${verdict.authorization?.authorized ? `grant ${verdict.authorization.grantId}` : 'no covering grant'}`,
+        `  reason:    ${verdict.authorization?.reason ?? verdict.policy.reason}`,
+      ];
+      // deny -> 2 (hard block), held -> 3 (unauthorized), else 0.
+      const exitCode = d === 'deny' ? 2 : d === 'held' ? 3 : 0;
+      return { exitCode, output: lines.join('\n') };
+    }
+
+    const evaln = governAction(agentAction, policies);
     ledger.append(evaln);
 
     if (flags['json'] === 'true') {

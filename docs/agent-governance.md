@@ -1,6 +1,6 @@
 # Agent Governance (A-260) — Increment 1: Deterministic Action-Gating
 
-**Status**: Increment 1 SHIPPED (deterministic action-gating core + provenance seed + `govern` CLI).
+**Status**: Increments 1–2 SHIPPED (deterministic action-gating core + delegation-scoped authority + provenance + `govern` CLI).
 **Tracking**: PRM-CLX9-20260726-01. Spec: `~/ASIF/initiatives/faultline-agent-governance/BUILD-SPEC-PLAN.md`.
 **Decision**: A-260 = BUILD ("Built to earn it!").
 
@@ -70,11 +70,31 @@ provenance ledger (monotonic seq, injectable clock, decision filter, JSONL expor
 copy), and the full `govern` CLI through its dispatch shape (allow/deny/gate exit codes, `--json`,
 error paths). No mocks; the CLI tests run the real policy files off disk.
 
+## Increment 2 — Delegation-scoped authority (the exceed vector) — SHIPPED
+
+The policy engine (I1) answers *"does policy permit this action?"* Delegation answers
+*"is this actor AUTHORIZED to take it?"* — via typed, revocable `DelegationGrant`s. A
+policy-permitted action is **HELD** (not executed) unless a valid grant covers it.
+Externally this is research/spec-only (SPIFFE, OAuth RFC 8693 `act` claims); shipping it
+working is category-leading.
+
+- `governance/delegation.ts` — `DelegationGrant` (principal → grantee, typed scope, expiry,
+  revocable), `DelegationStore` (issue/revoke/get/activeFor), `checkAuthorization`, and
+  `govern()` — the combined verdict.
+- **Combined-verdict precedence**: policy `deny` is a hard block (stays deny); else if
+  delegation is enforced and no active grant covers the action → **`held`**; else the
+  (ceiling-adjusted) policy decision. A grant's optional `maxDecision` ceiling can only make
+  a decision *more* restrictive (allow → require_approval), never more permissive.
+- **Revocation wins immediately**; expiry is `<= now` (an expiry exactly at now is expired).
+- `EffectiveDecision = allow | deny | require_approval | held`. Provenance records the
+  `effectiveDecision` + authorizing `grantId` via `ProvenanceLedger.appendVerdict`.
+- **CLI**: `faultline govern eval … --grants <grants.json>` switches to the delegation-enforced
+  verdict. Exit codes: `deny` → 2, `held` → 3, else 0 — usable as a pre-execution authority gate.
+- Tests: `tests/governance-delegation.test.ts` — 33 cases (grant lifecycle, scope matching,
+  authorization, combined-verdict precedence, ceiling, store, provenance verdict, CLI `--grants`).
+
 ## Roadmap
 
-- **I2 — Delegation-scoped authority** (sharpest exceed): typed, revocable `DelegationGrant`;
-  an action carries an authorization scope; out-of-scope actions are *held*, not executed.
-  Externally this is research/spec-only (SPIFFE, OAuth RFC 8693 `act` claims).
 - **I3 — Tamper-evident provenance**: hash-chain the ledger (each record commits to its
   predecessor), matching MS-Toolkit crypto-audit chains.
 - **I4 — Population-replay proof**: replay a real multi-agent run where the gate *held* a
