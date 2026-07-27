@@ -1,0 +1,46 @@
+id: fleet-baseline
+name: Fleet Baseline Governance
+description: >
+  Default-deny action policy for an autonomous multi-agent population. Read-only
+  and internal actions are allowed; source writes require approval; irreversible
+  outbound and destructive actions are denied outright. Mirrors the reversible-vs-
+  irreversible line: reversible/internal -> allow, source mutation -> gate,
+  irreversible-outbound/destructive -> deny.
+default: deny
+rules:
+  # Reversible, internal, read-only work flows freely.
+  - action: read.*
+    decision: allow
+    reason: read-only actions are reversible and internal
+  - action: search.*
+    decision: allow
+    reason: search/query actions are read-only
+  - action: git.status
+    decision: allow
+    reason: repo status is read-only
+
+  # Source mutation is reversible but high-consequence -> human/authority gate.
+  - action: file.write
+    decision: require_approval
+    reason: source writes are reversible but gated to a review authority
+  - action: git.commit
+    decision: require_approval
+    reason: commits enter durable history; gated to a review authority
+
+  # Irreversible outbound as the principal to third parties -> hard deny at baseline.
+  - action: email.send
+    decision: deny
+    reason: outbound as principal to a third party is irreversible; requires an explicit grant
+  - action: http.post
+    resource: "https://api.*"
+    decision: deny
+    reason: outbound writes to external APIs are irreversible at baseline
+
+  # Destructive infrastructure actions -> hard deny.
+  - action: shell.exec
+    resource: "*rm -rf*"
+    decision: deny
+    reason: destructive shell command
+  - action: db.drop
+    decision: deny
+    reason: destructive database action

@@ -38,6 +38,7 @@ import { buildEuComplianceReport, renderComplianceReportJson, renderComplianceRe
 import { statsCommand } from './stats.js';
 import { sendTelemetry, classifyError } from './telemetry.js';
 import { printConversionNudge } from './nudge.js';
+import { governCommand } from './govern.js';
 
 const VERSION = '0.8.0';
 const PRICING_URL = 'https://faultline.nxtg.ai/pricing';
@@ -176,7 +177,7 @@ For CI/testing without an API key, use --provider mock (returns synthetic result
 }
 
 // Boolean flags that take no value argument
-const BOOLEAN_FLAGS = new Set(['sarif', 'all', 'demo', 'confirm', 'ci', 'strict', 'costs', 'no-save', 'no-nudge']);
+const BOOLEAN_FLAGS = new Set(['sarif', 'all', 'demo', 'confirm', 'ci', 'strict', 'costs', 'no-save', 'no-nudge', 'json']);
 
 function parseArgs(args: string[]): { command: string; flags: Record<string, string> } {
   const command = args[0] || '';
@@ -329,6 +330,12 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
         lines.push(`  ${rule.id.padEnd(12)} ${rule.name} — ${rule.description}`);
       }
       return { exitCode: 0, output: lines.join('\n') };
+    }
+
+    case 'govern': {
+      // Agent-governance surface (A-260, Increment 1): deterministic action-gating.
+      const subcommand = args[1] && !args[1].startsWith('--') ? args[1] : 'list';
+      return governCommand(subcommand, flags);
     }
 
     case 'templates': {

@@ -1,0 +1,14 @@
+id: read-only
+name: Read-Only Sandbox
+description: >
+  Strictest policy for an untrusted or evaluation agent: only explicitly read-only
+  action verbs are allowed; everything else is denied. Useful for sandboxing a new
+  or third-party agent while its behavior is being observed.
+default: deny
+rules:
+  - action: read.*
+    decision: allow
+    reason: read-only action permitted in sandbox
+  - action: search.*
+    decision: allow
+    reason: read-only search permitted in sandbox

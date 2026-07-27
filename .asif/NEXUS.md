@@ -25,6 +25,7 @@
 
 | ID | Initiative | Pillar | Status | Priority | Last Touched |
 |----|-----------|--------|--------|----------|-------------|
+| N-227 | Agent Governance (A-260) I1 — deterministic action-gating core (`governance/`: policy_engine + provenance ledger + `govern` CLI); allow/deny/require-approval on a declared AgentAction, non-LLM, ~0.06ms/eval (under MS-Toolkit <0.1ms bar); fail-closed, most-restrictive-wins; 54 tests; 2 built-in policies. I2 delegation-scoped authority next. Tracking PRM-CLX9-20260726-01. Docs: `docs/agent-governance.md` | AGENT-GOVERNANCE | SHIPPED | P1 | 2026-07-26 |
 | N-01 | Multi-Provider Pipeline | PROVIDER | SHIPPED | P0 | 2026-02 |
 | N-02 | CLI Tool (scan/report/watch/critique) | DEVELOPER-X | SHIPPED | P0 | 2026-02 |
 | N-03 | EU AI Act Compliance Module | COMPLIANCE | SHIPPED | P1 | 2026-02 |
