@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey, resolveRequestTenantId } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
+import { enforceMonthlyCap } from '../plugins/usage-cap.js';
+import { getUsageMeter } from '../store/usage.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { getAnalyticsStore } from '../store/analytics.js';
 import type { RiskLevel } from '../store/analytics.js';
@@ -77,7 +79,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: ScanBody }>(
     '/scan',
     {
-      preHandler: [requireApiKey, rateLimitScan],
+      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap],
       schema: { tags: ['Scan'], summary: 'Scan text for claim verification', body: BODY_SCHEMA },
     },
     async (request, reply) => {
@@ -192,6 +194,10 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
           getCostStore().recordManaged(costEvent);
           emitScanCostEvent(costEvent);
           appendScanCostLog(costEvent);
+          // NOTE: POST /scan usage is incremented by the server.ts onResponse hook
+          // (isScanPost && 200) — do NOT increment here or it double-counts. The
+          // stream + template routes below DO increment locally (the hook doesn't
+          // cover /scan/stream or /scan/template).
 
           getScanHistory().record({
             textHash: hashText(text),
@@ -275,7 +281,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Params: { id: string }; Body: ScanTemplateBody }>(
     '/scan/template/:id',
     {
-      preHandler: [requireApiKey, rateLimitScan],
+      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap],
       schema: {
         tags: ['Scan'],
         summary: 'Scan text using a saved template',
@@ -300,6 +306,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
 
       const keyId = request.keyId ?? 'unknown';
       getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
+      getUsageMeter().increment(keyId); // count toward monthly cap (item 1)
       fireWebhookEvent('scan.complete', result);
 
       return reply.status(200).send(result);

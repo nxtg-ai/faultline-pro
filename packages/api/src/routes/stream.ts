@@ -4,6 +4,8 @@ import { rateLimitScan } from '../plugins/ratelimit.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import type { PipelineConfig } from '@nxtg/faultline/cli/scan.js';
 import { getCostStore, emitScanCostEvent, appendScanCostLog, resolveTierFromRequest, buildManagedCostEvent } from '../store/costs.js';
+import { enforceMonthlyCap } from '../plugins/usage-cap.js';
+import { getUsageMeter } from '../store/usage.js';
 import { captureUsage } from '@nxtg/faultline/lib/usage-sink.js';
 
 type ScanProvider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
@@ -93,7 +95,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: { text?: string; provider?: string } }>(
     '/scan/stream',
     {
-      preHandler: [requireApiKey, rateLimitScan],
+      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap],
       schema: {
         tags: ['Scan'],
         summary: 'Stream scan results via Server-Sent Events (progressive per-claim delivery)',
@@ -176,6 +178,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
         getCostStore().recordManaged(costEvent);
         emitScanCostEvent(costEvent);
         appendScanCostLog(costEvent);
+        getUsageMeter().increment(keyId); // count toward monthly cap (item 1)
       } catch (err) {
         // BLG-fp-20260713-A: log raw for ops, emit a generic client-safe message.
         console.error(`/scan/stream GET failed for key ${keyId}:`, err);
@@ -204,7 +207,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: StreamPostBody }>(
     '/scan/stream',
     {
-      preHandler: [requireApiKey, rateLimitScan],
+      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap],
       schema: {
         tags: ['Scan'],
         summary: 'Stream scan results via SSE (POST — no URL length ceiling)',
@@ -280,6 +283,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
         getCostStore().recordManaged(costEvent);
         emitScanCostEvent(costEvent);
         appendScanCostLog(costEvent);
+        getUsageMeter().increment(keyId); // count toward monthly cap (item 1)
       } catch (err) {
         // BLG-fp-20260713-A: never leak the raw provider/engine error to the
         // client — log it for ops, emit a generic client-safe message.
