@@ -317,6 +317,27 @@ The Kaggle version remains at  (tagged  at commit ).
 
 ## Asif Responses
 
+### 2026-07-26 22:30–22:32 CDT — THREE FOUNDER GOs (routed by Wolf 2026-07-27; recovered after a 5-day handoff loss)
+
+> **Provenance note:** these three responses were entered by Asif on the dashboard 2026-07-26 22:30–22:32 and were LOST in a shared-tree stash wipe (recovered by emma-pm, origin `f1a560134`). They never reached Wolf until 2026-07-27 boot. Executing now — **the delay was ours, not a founder hold.**
+
+**1 · 💰 Faultline revenue — open acquisition for customer #1**
+- **Asif decision: "Go"**
+- Context: all 3 active Stripe subs were probe-verified as Asif's own accounts → **$0 EXTERNAL MRR**. Pay rails verified LIVE (faultline.nxtg.ai 200, faultline-api.fly.dev /health 0.9.1, all 3 prices active+livemode).
+- **Team action:** open acquisition. Promote the live $19/$49/$99 ladder. Nothing to build for first-dollar — checkout integrity is not the bottleneck, distribution is. Per the card's REC (3): build the 2 evidence-pack components (re-verifiable SHA-256 chain manifest; questionnaire frame beyond copy-only) **in parallel** — they affect Pro/Enterprise deliverable depth, not checkout.
+
+**2 · [A-260] ⚖️ Faultline "agent governance" — BUILD to earn it, or RETRACT?**
+- **Asif decision: "1" → "Built to earn it!"**
+- **Team action:** **BUILD**, do not retract, do not soften. This is the meet-and-exceed canon applied verbatim (`~/ASIF/standards/meet-and-exceed-overclaims.md`): build reality up to MEET AND EXCEED the claim. A reposition/backlog entry is a BACKTRACK and is rejected. Name the external SOTA bar for agent governance and build past it.
+
+**3 · [A-104] ⚖️ Faultline GTM gate #2 — outbound positioning**
+- **Asif decision: "1. Go"**
+- **Team action:** outbound opens on **AI trust / eval / safety value positioning**. The **EU-AI-Act compliance-claim hold REMAINS IN FORCE** — no EU-compliance claims in any outbound asset. Re-verify every reused marketing asset against this hold before send (prior wedge/clip assets predate it and carry prohibited claims).
+
+**Cross-cutting constraint:** no fabricated metrics, testimonials, or customer counts in any acquisition asset. We have $0 external MRR today — say nothing that implies otherwise.
+
+---
+
 ### 2026-04-30 17:57 PDT — Telemetry Worker `wrangler deploy`
 
 **Item**: Faultline Pro telemetry Worker — `wrangler deploy`
