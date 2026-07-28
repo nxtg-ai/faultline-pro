@@ -12,6 +12,8 @@
     "lib/",
     "analysis/",
     "compliance/",
+    "consensus/",
+    "governance/",
     "history/",
     "plugins/",
     "providers/",

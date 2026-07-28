@@ -11,6 +11,7 @@
 import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { execSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { scan, batchScan } from './scan.js';
 import { renderReport, renderReportAs, type OutputFormat, type SarifOptions } from './report.js';
 import { listRules, getRule } from '../rules/index.js';
@@ -42,7 +43,24 @@ import { governCommand } from './govern.js';
 import { evaluateGuard, formatGuardReport, formatGuardJson, readStdin, isFailOn, FAIL_ON_VALUES } from './guard.js';
 import { resolveTransport, runScan, isGrounded } from './transport.js';
 
-const VERSION = '0.8.0';
+/**
+ * Read from package.json rather than hardcoded.
+ *
+ * A hardcoded copy drifts silently: 0.9.1 shipped to npm with this constant
+ * still reading '0.8.0', so `faultline version` misreported the tool, and that
+ * wrong version was stamped into telemetry and compliance reports — artefacts
+ * whose entire purpose is to say which tool produced them. The version-parity
+ * gate could not catch it either, because it compares manifests and the
+ * deployed API, never the binary's own output.
+ */
+const VERSION: string = (() => {
+  try {
+    const require = createRequire(import.meta.url);
+    return (require('../package.json') as { version: string }).version;
+  } catch {
+    return '0.0.0-unknown';
+  }
+})();
 const PRICING_URL = 'https://faultline.nxtg.ai/pricing';
 
 /** Print once per invocation to stderr. Silenced by FAULTLINE_NO_BANNER=1 or test env. */
