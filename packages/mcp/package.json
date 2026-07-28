@@ -1,0 +1,58 @@
+{
+  "name": "@nxtg/faultline-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for Faultline claim verification. Your AI says 'done' — Faultline checks what it told you. Verifies factual claims in agent output against live sources, inside Claude Code, Cursor, and any MCP client.",
+  "type": "module",
+  "bin": {
+    "faultline-mcp": "./bin/faultline-mcp.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "README.md"
+  ],
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "claude-code",
+    "cursor",
+    "ai-claim-verification",
+    "hallucination-detection",
+    "claim-verification",
+    "agent-verification",
+    "ai-safety",
+    "ai-trust",
+    "llm",
+    "agent-guardrail"
+  ],
+  "author": "Asif Waliuddin",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nxtg-ai/faultline-pro.git",
+    "directory": "packages/mcp"
+  },
+  "homepage": "https://faultline.nxtg.ai/docs/agent-guard",
+  "bugs": {
+    "url": "https://github.com/nxtg-ai/faultline-pro/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@nxtg/faultline": "^0.10.0",
+    "tsx": "^4.21.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "typescript": "~5.8.2",
+    "vitest": "^4.0.18"
+  }
+}

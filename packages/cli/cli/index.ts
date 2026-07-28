@@ -11,6 +11,7 @@
 import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { execSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { scan, batchScan } from './scan.js';
 import { renderReport, renderReportAs, type OutputFormat, type SarifOptions } from './report.js';
 import { listRules, getRule } from '../rules/index.js';
@@ -39,8 +40,27 @@ import { statsCommand } from './stats.js';
 import { sendTelemetry, classifyError } from './telemetry.js';
 import { printConversionNudge } from './nudge.js';
 import { governCommand } from './govern.js';
+import { evaluateGuard, formatGuardReport, formatGuardJson, readStdin, isFailOn, FAIL_ON_VALUES } from './guard.js';
+import { resolveTransport, runScan, isGrounded } from './transport.js';
 
-const VERSION = '0.8.0';
+/**
+ * Read from package.json rather than hardcoded.
+ *
+ * A hardcoded copy drifts silently: 0.9.1 shipped to npm with this constant
+ * still reading '0.8.0', so `faultline version` misreported the tool, and that
+ * wrong version was stamped into telemetry and compliance reports — artefacts
+ * whose entire purpose is to say which tool produced them. The version-parity
+ * gate could not catch it either, because it compares manifests and the
+ * deployed API, never the binary's own output.
+ */
+const VERSION: string = (() => {
+  try {
+    const require = createRequire(import.meta.url);
+    return (require('../package.json') as { version: string }).version;
+  } catch {
+    return '0.0.0-unknown';
+  }
+})();
 const PRICING_URL = 'https://faultline.nxtg.ai/pricing';
 
 /** Print once per invocation to stderr. Silenced by FAULTLINE_NO_BANNER=1 or test env. */
@@ -127,6 +147,7 @@ Example output:
     Annex III §4: Employment and recruitment AI (affects: c2)
 
 Usage:
+  <agent output> | faultline guard [--fail-on refuted|unsupported] [--json] [--provider gemini]   Check piped text; advisory unless --fail-on
   faultline scan --demo                                               Run interactive demo (no API key required)
   faultline scan --input <file> [--provider gemini|claude|openai|perplexity|mock] [--min-confidence 0.0-1.0] [--output-format json|markdown|html|sarif] [--sarif] [--rules pii,bias,toxicity] [--fail-on critical|high|medium|low]
   faultline scan --dir <path> [--glob "*.txt"] [--provider gemini] [--output-format sarif] [--fail-on high]
@@ -167,6 +188,8 @@ Config:
   Reads .faultlinerc.json from cwd (walks up). CLI flags override config values.
 
 Environment:
+  FAULTLINE_API_KEY    Hosted API key — scans run on our servers, no provider key needed
+  FAULTLINE_API_URL    Hosted API base URL (default: https://faultline-api.fly.dev)
   GEMINI_API_KEY       API key for Gemini provider (free: https://aistudio.google.com/apikey)
   ANTHROPIC_API_KEY    API key for Claude provider
   OPENAI_API_KEY       API key for OpenAI provider
@@ -556,6 +579,79 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
 
       const graphOutput = graphFormat === 'dot' ? renderDot(claimGraph) : renderMermaid(claimGraph);
       return { exitCode: 0, output: graphOutput };
+    }
+
+    case 'guard': {
+      // Reads the agent's output from stdin. Everything human-readable goes to
+      // stderr so stdout stays clean for `--json` consumers piping onward.
+      const failOnRaw = flags['fail-on'];
+      if (failOnRaw !== undefined && !isFailOn(failOnRaw)) {
+        return {
+          exitCode: 1,
+          output: `Error: --fail-on must be one of ${FAIL_ON_VALUES.join('|')}. Got "${failOnRaw}".`,
+        };
+      }
+      const failOn = failOnRaw as import('./guard.js').FailOn | undefined;
+
+      const guardText = (await readStdin()).trim();
+      if (!guardText) {
+        return {
+          exitCode: 1,
+          output:
+            'Error: guard reads the text to check from stdin, and nothing was piped in.\n\n' +
+            '  Example:\n' +
+            '    claude -p "summarise the release" | npx @nxtg/faultline guard --fail-on refuted\n' +
+            '    cat report.md | npx @nxtg/faultline guard --json',
+        };
+      }
+
+      const guardTransport = resolveTransport(process.env, flags['api-url']);
+      const guardConfig = loadConfig();
+      const { provider: guardProviderFlag } = mergeFlags(guardConfig, flags);
+
+      // In hosted mode the server holds the provider keys, so no local key is
+      // needed and the provider stays unset unless explicitly chosen. Locally
+      // we resolve one the same way `scan` does.
+      const guardProvider =
+        guardTransport.mode === 'hosted'
+          ? guardProviderFlag
+          : guardProviderFlag || autoDetectProvider();
+
+      if (guardTransport.mode === 'local' && guardProvider === 'mock') {
+        process.stderr.write(
+          'faultline guard: no provider key found — running the "mock" provider, which returns ' +
+            'SYNTHETIC results and verifies nothing. Set GEMINI_API_KEY (free: ' +
+            'https://aistudio.google.com/apikey), or FAULTLINE_API_KEY to use the hosted API.\n',
+        );
+      } else if (!isGrounded(guardProvider)) {
+        process.stderr.write(
+          `faultline guard: provider "${guardProvider}" does not retrieve sources — verdicts ` +
+            'will carry no evidence. Use gemini for source-backed verification.\n',
+        );
+      }
+
+      let guardResult;
+      try {
+        guardResult = await runScan(guardText, guardProvider, guardTransport);
+      } catch (err) {
+        // A transport failure is not a verdict. Say so, and fail closed only if
+        // the caller asked for a gate.
+        const detail = err instanceof Error ? err.message : String(err);
+        return {
+          exitCode: failOn ? 1 : 0,
+          output:
+            `faultline guard: verification could not run — ${detail}\n` +
+            'No claims were checked. This is not a pass and not a failure of the text.',
+        };
+      }
+
+      const guardReport = evaluateGuard(guardResult, failOn);
+      const guardOutput =
+        flags['json'] === 'true'
+          ? formatGuardJson(guardReport, failOn)
+          : formatGuardReport(guardReport, failOn);
+
+      return { exitCode: guardReport.exitCode, output: guardOutput };
     }
 
     case 'critique': {

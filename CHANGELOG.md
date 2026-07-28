@@ -5,6 +5,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [v0.10.0] — 2026-07-28
+
+**v0.9.1 could not run.** Every command in the published tarball — including
+`faultline version` and the README's own no-API-key `faultline scan --demo` —
+failed at import. This release fixes that, and adds `faultline guard`, the
+subcommand that puts claim verification in the pipe an agent's output flows
+through. MINOR rather than PATCH: the packaging fix is a bug fix, but `guard` is
+a new backward-compatible capability.
+
+### Added
+
+- **`faultline guard` — check piped text, gate on the verdict.** `claude -p "..." | faultline guard --fail-on refuted`. Reads stdin (an agent's final message, a PR body, a report), runs the same extraction + verification pipeline, prints a verdict table or `--json`. **Advisory by default**: with no `--fail-on` it always exits 0, because a checker that blocks by default gets uninstalled the first time it is wrong, and then it protects nothing. With `--fail-on` it gates — and fails **closed** on a degraded scan, reusing the reasoning in `degradedGateFailure()`: claims that were never checked are not claims that passed. `--fail-on unsupported` is a strict superset of `refuted` (adds `UNSUPPORTED` and `MIXED`).
+- **Hosted-or-local transport (`cli/transport.ts`)** — selected by credential, not by flag. `FAULTLINE_API_KEY` runs the scan on the hosted API with server-side provider keys (default `https://faultline-api.fly.dev`); no key runs it in-process against the caller's own provider key. Shared by `guard` and by `@nxtg/faultline-mcp`.
+- **Verdict vocabulary (`cli/verdict.ts`)** — one definition shared by `guard` and the MCP server, so a gate's exit code and a tool's output cannot drift on what an engine status means. Five values, not three: `UNCHECKED` is deliberately distinct from `UNSUPPORTED`, because "we never checked" and "we checked and found nothing" are opposite statements, and collapsing them makes a rate limit or an expired key look like a caught hallucination.
+
+### Fixed
+
+- **`@nxtg/faultline@0.9.1` was unrunnable on npm (P0).** `package.json` `files` listed every source directory except `consensus/` and `governance/`, both of which the shipped code imports, so the tarball had been missing them since 0.9.1 published on 2026-07-22. A clean install failed with `ERR_MODULE_NOT_FOUND: .../consensus/consensus_engine.js` on **every** command. Nothing caught it: the whole suite ran against the working tree, where those directories exist, so 2357 green tests coexisted with a package that was dead on arrival, and the version-parity gate compared manifests and the deployed API without ever installing or executing the tarball. `tests/packaging.test.ts` now asserts against the **published file list** rather than the tree, and is mutation-checked — restoring the 0.9.1 manifest fails it.
+- **The CLI misreported its own version.** `cli/index.ts` hardcoded `VERSION = '0.8.0'` while the package shipped as 0.9.1, so `faultline version` was wrong and that wrong number was stamped into telemetry and into compliance reports — artefacts whose entire purpose is to record which tool produced them. `VERSION` now reads `package.json`, and the packaging tests assert the **binary's own output** matches the manifest, which is the check the parity gate was missing.
+
+### Notes
+
+- Found by the `faultline-action` CI, which installs the **published** CLI rather than the workspace one and so was the first thing in the estate to exercise what a customer actually receives.
+- `@nxtg/faultline-api` moves to 0.10.0 alongside the CLI to keep the four-way version-parity gate (repo:cli · repo:api · npm:latest · deployed:fly) coherent; the deployed instance must be redeployed at this version for that gate to pass.
+
 ## [v0.9.1] — 2026-07-21
 
 Real measured cost telemetry for the consensus fan-out (BLG-005). Telemetry-only,
