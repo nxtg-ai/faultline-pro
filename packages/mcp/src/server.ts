@@ -16,7 +16,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { verifyClaims, autoDetectProvider, isGroundedProvider } from './verify.js';
+import { verifyClaims, autoDetectProvider, isGrounded, resolveTransport } from './verify.js';
 
 export const VERSION = '0.1.0';
 
@@ -106,24 +106,38 @@ export function buildServer(): McpServer {
   return server;
 }
 
-export async function main(): Promise<void> {
-  const provider = autoDetectProvider();
-  if (provider === 'mock') {
-    process.stderr.write(
-      'faultline-mcp: no provider key found — running with the "mock" provider, which returns ' +
-        'SYNTHETIC results and verifies nothing. Set GEMINI_API_KEY (free: ' +
-        'https://aistudio.google.com/apikey) for real verification.\n',
+/** Startup banner. Says what mode we are in and, when it matters, what is wrong with it. */
+export function startupNotice(env: NodeJS.ProcessEnv = process.env): string {
+  const transport = resolveTransport(env);
+
+  if (transport.mode === 'hosted') {
+    return (
+      `faultline-mcp v${VERSION} ready — hosted API at ${transport.apiUrl} ` +
+      '(server-side provider keys, grounded by default).\n'
     );
-  } else if (!isGroundedProvider(provider)) {
-    process.stderr.write(
-      `faultline-mcp v${VERSION} ready — provider: ${provider} (NOT GROUNDED). This provider ` +
-        'judges claims from model knowledge without retrieving sources, so verdicts carry no ' +
-        'evidence. Set GEMINI_API_KEY (free: https://aistudio.google.com/apikey) for ' +
-        'source-backed verification.\n',
-    );
-  } else {
-    process.stderr.write(`faultline-mcp v${VERSION} ready — provider: ${provider} (grounded)\n`);
   }
+
+  const provider = autoDetectProvider(env);
+  if (provider === 'mock') {
+    return (
+      'faultline-mcp: no provider key and no FAULTLINE_API_KEY found — running the "mock" ' +
+      'provider, which returns SYNTHETIC results and verifies nothing. Set GEMINI_API_KEY ' +
+      '(free: https://aistudio.google.com/apikey) for real verification.\n'
+    );
+  }
+  if (!isGrounded(provider)) {
+    return (
+      `faultline-mcp v${VERSION} ready — provider: ${provider} (NOT GROUNDED). This provider ` +
+      'judges claims from model knowledge without retrieving sources, so verdicts carry no ' +
+      'evidence. Set GEMINI_API_KEY (free: https://aistudio.google.com/apikey) for ' +
+      'source-backed verification.\n'
+    );
+  }
+  return `faultline-mcp v${VERSION} ready — provider: ${provider} (grounded)\n`;
+}
+
+export async function main(): Promise<void> {
+  process.stderr.write(startupNotice());
 
   const server = buildServer();
   const transport = new StdioServerTransport();

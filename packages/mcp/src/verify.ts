@@ -8,35 +8,18 @@
  * not trustworthy).
  */
 
-import { scan, type ScanResult } from '@nxtg/faultline/cli/scan.js';
+import type { scan, ScanResult } from '@nxtg/faultline/cli/scan.js';
 import type { Claim } from '@nxtg/faultline/types.js';
+import {
+  resolveTransport,
+  runScan,
+  isGrounded,
+  type Transport,
+} from '@nxtg/faultline/cli/transport.js';
 import { toClaimVerdict, toRiskScore, isRealVerdict, type ClaimVerdict } from './verdict.js';
 import { writeAuditRecord } from './audit.js';
 
-/**
- * Providers whose single-provider verify path retrieves live sources.
- *
- * Only the gemini path calls a search tool during verification
- * (packages/cli/services/geminiService.ts:172 `tools: [{ googleSearch: {} }]`,
- * sources read from `groundingMetadata.groundingChunks`). The other providers
- * judge from parametric knowledge on this path and return verdicts with no
- * evidence. That distinction is invisible in the verdict itself — a claim can
- * come back VERIFIED with nothing behind it — so it is surfaced explicitly
- * rather than left for the caller to infer from an empty array.
- */
-const GROUNDED_PROVIDERS = ['gemini'];
-
-/**
- * True when this provider retrieves sources during verification.
- *
- * Matches on substring so both the flag form ('gemini') and the engine's
- * display form ('Google Gemini') resolve identically — the two names reach
- * this function from different call sites.
- */
-export function isGroundedProvider(provider: string): boolean {
-  const p = (provider ?? '').toLowerCase();
-  return GROUNDED_PROVIDERS.some((g) => p.includes(g));
-}
+export { isGrounded, resolveTransport };
 
 /**
  * Provider auto-detection.
@@ -78,6 +61,8 @@ export interface VerifyClaimsOutput {
    * them — usable as a signal, not as evidence.
    */
   grounded: boolean;
+  /** Whether the scan ran on the hosted API or the local engine. */
+  mode: 'hosted' | 'local';
   /** Claims that got a real verdict but carry no supporting source URL. */
   unsourced_count: number;
   claims: ClaimVerdict[];
@@ -137,17 +122,47 @@ function buildSummary(o: Omit<VerifyClaimsOutput, 'summary'>): string {
  * `scanFn` is injectable so tests exercise the mapping without burning provider
  * quota; production always uses the real engine `scan`.
  */
+export interface VerifyDeps {
+  /** Local engine override. Production uses the real `scan`. */
+  scanFn?: typeof scan;
+  /** Hosted-path fetch override. Production uses global fetch. */
+  fetchImpl?: typeof fetch;
+  /** Transport override. Production resolves from the environment. */
+  transport?: Transport;
+}
+
 export async function verifyClaims(
   input: VerifyClaimsInput,
-  scanFn: typeof scan = scan,
+  deps: VerifyDeps = {},
 ): Promise<VerifyClaimsOutput> {
+  // `deps` used to be a bare scanFn. Passing a function here now would be
+  // silently ignored and the call would run a REAL scan against a real
+  // provider — billing tokens and, in tests, quietly asserting against the
+  // wrong data. Fail loudly instead of doing something expensive and wrong.
+  if (typeof deps === 'function') {
+    throw new TypeError(
+      'verifyClaims(input, deps) takes a deps object, not a function. ' +
+        'Pass { scanFn } instead of a bare scan function.',
+    );
+  }
+
   const text = (input.text ?? '').trim();
   if (!text) {
     throw new Error('verify_claims requires non-empty `text`.');
   }
 
-  const provider = input.provider || autoDetectProvider();
-  const result: ScanResult = await scanFn(text, provider);
+  const transport = deps.transport ?? resolveTransport();
+
+  // Hosted scans run on server-side provider keys, so no local key is needed
+  // and the provider stays unset unless the caller names one — letting the
+  // server apply its own (grounded) default. Locally we must resolve one.
+  const provider =
+    transport.mode === 'hosted' ? input.provider : input.provider || autoDetectProvider();
+
+  const result: ScanResult = await runScan(text, provider, transport, {
+    scanFn: deps.scanFn,
+    fetchImpl: deps.fetchImpl,
+  });
 
   const allClaims = [...(result.claims ?? [])].sort(byImportanceDesc);
   const limit =
@@ -182,8 +197,9 @@ export async function verifyClaims(
   const partial: Omit<VerifyClaimsOutput, 'summary'> = {
     risk_score: realVerdictCount === 0 ? null : toRiskScore(result.overallRisk),
     overall_risk: result.overallRisk,
-    provider: result.provider ?? provider,
-    grounded: isGroundedProvider(provider),
+    provider: result.provider ?? provider ?? 'default',
+    grounded: isGrounded(provider),
+    mode: transport.mode,
     unsourced_count: unsourcedCount,
     claims,
     claims_total: allClaims.length,
