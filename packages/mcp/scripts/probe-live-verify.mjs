@@ -42,22 +42,30 @@ function fail(msg) {
   process.exit(1);
 }
 
-const resolvedProvider =
-  provider ||
-  (process.env.GEMINI_API_KEY && 'gemini') ||
-  (process.env.OPENAI_API_KEY && 'openai') ||
-  (process.env.ANTHROPIC_API_KEY && 'claude') ||
-  (process.env.PERPLEXITY_API_KEY && 'perplexity');
+// Hosted mode needs no local provider key — the server holds them, and its
+// /scan default is the grounded gemini path.
+const hosted = Boolean(process.env.FAULTLINE_API_KEY);
 
-if (!resolvedProvider || resolvedProvider === 'mock') {
+const resolvedProvider = hosted
+  ? provider // usually undefined: let the server apply its grounded default
+  : provider ||
+    (process.env.GEMINI_API_KEY && 'gemini') ||
+    (process.env.OPENAI_API_KEY && 'openai') ||
+    (process.env.ANTHROPIC_API_KEY && 'claude') ||
+    (process.env.PERPLEXITY_API_KEY && 'perplexity');
+
+if (!hosted && (!resolvedProvider || resolvedProvider === 'mock')) {
   fail(
-    'no real provider key in the environment. This probe requires live verification; ' +
-      'mock returns synthetic results and cannot satisfy the DoD. ' +
-      'Set GEMINI_API_KEY (free: https://aistudio.google.com/apikey).',
+    'no FAULTLINE_API_KEY and no real provider key in the environment. This probe requires ' +
+      'live verification; mock returns synthetic results and cannot satisfy the DoD. ' +
+      'Set FAULTLINE_API_KEY for the hosted path, or GEMINI_API_KEY (free: ' +
+      'https://aistudio.google.com/apikey) for the local path.',
   );
 }
 
-process.stderr.write(`DoD §4.2 probe — provider: ${resolvedProvider}\n`);
+process.stderr.write(
+  `DoD §4.2 probe — mode: ${hosted ? 'hosted' : 'local'}, provider: ${resolvedProvider ?? '(server default)'}\n`,
+);
 process.stderr.write(`Seeded text: ${SEEDED_TEXT}\n\n`);
 
 const child = spawn(process.execPath, [BIN], { stdio: ['pipe', 'pipe', 'pipe'] });
