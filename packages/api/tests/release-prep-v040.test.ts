@@ -133,22 +133,58 @@ describe('CHANGELOG.md — v0.4.0 release validation', () => {
 // ── package.json version validation (RP26–RP27) ────────────────────────────────
 
 describe('package.json — v0.4.0 version validation', () => {
+  /**
+   * Compare two semver strings numerically.
+   *
+   * These assertions used to be the regex /^0\.[4-9]\.\d+$/, described in a
+   * comment as "forward-compatible". It was not: [4-9] matches ONE digit, so
+   * the first two-digit minor — 0.10.0 — failed a check whose stated intent it
+   * satisfies comfortably. A version gate that blocks a legitimate release is a
+   * false negative, and it would have blocked every 0.10.x, 0.11.x and beyond.
+   */
+  function gte(actual: string, minimum: string): boolean {
+    const parse = (v: string): number[] =>
+      v
+        .split('-')[0]
+        .split('.')
+        .map((n) => Number.parseInt(n, 10));
+
+    const a = parse(actual);
+    const b = parse(minimum);
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+      const x = a[i] ?? 0;
+      const y = b[i] ?? 0;
+      if (x !== y) return x > y;
+    }
+    return true;
+  }
+
+  // Guard the comparator itself — the bug being fixed was in the comparison.
+  it('the version comparator orders two-digit minors correctly', () => {
+    expect(gte('0.10.0', '0.4.0')).toBe(true);
+    expect(gte('0.9.1', '0.4.0')).toBe(true);
+    expect(gte('0.4.0', '0.4.0')).toBe(true);
+    expect(gte('1.0.0', '0.4.0')).toBe(true);
+    expect(gte('0.3.9', '0.4.0')).toBe(false);
+    expect(gte('0.10.0', '0.11.0')).toBe(false);
+  });
+
   // RP26: @nxtg/faultline (cli) is version >= 0.4.0
-  // Regex accepts 0.4.x through 0.9.x (forward-compatible; bumped to 0.5.0 in N-204 prep)
   it('RP26: @nxtg/faultline package version is >= 0.4.0', () => {
     const pkg = JSON.parse(
       readFileSync(resolve(ROOT, 'packages/cli/package.json'), 'utf-8'),
     ) as { version: string };
-    expect(pkg.version).toMatch(/^0\.[4-9]\.\d+$/);
+    expect(pkg.version).toMatch(/^\d+\.\d+\.\d+/);
+    expect(gte(pkg.version, '0.4.0'), `cli version ${pkg.version} is below 0.4.0`).toBe(true);
   });
 
   // RP27: @nxtg/faultline-api is version >= 0.4.0
-  // Regex accepts 0.4.x through 0.9.x (forward-compatible)
   it('RP27: @nxtg/faultline-api package version is >= 0.4.0', () => {
     const pkg = JSON.parse(
       readFileSync(resolve(ROOT, 'packages/api/package.json'), 'utf-8'),
     ) as { version: string };
-    expect(pkg.version).toMatch(/^0\.[4-9]\.\d+$/);
+    expect(pkg.version).toMatch(/^\d+\.\d+\.\d+/);
+    expect(gte(pkg.version, '0.4.0'), `api version ${pkg.version} is below 0.4.0`).toBe(true);
   });
 });
 
