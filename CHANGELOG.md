@@ -5,6 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [v0.10.1] — 2026-07-28
+
+Launch blocker: the first thing a new user saw was a fabricated verdict.
+
+### Fixed
+
+- **No provider key no longer produces an invented verdict.** With no key configured, the CLI fell back to the `mock` provider, which returns `supported` for every claim. A first-time user running `echo "Chocolate cures cancer and the Earth is flat." | faultline guard` was told **`VERIFIED`**, **risk LOW** — a confident answer with nothing behind it, from a tool whose entire purpose is catching exactly that. `scan` had the same hole. Both now refuse: they report that nothing was checked and point at a free Gemini key, rather than inventing a result. Under `--fail-on`, "could not check" fails **closed**, consistent with degraded scans.
+
+  Explicit `--provider mock` is unchanged — it is the documented keyless CI path and `faultline-action` depends on it. Only the *implicit* fallback is refused, and the two are now distinguished.
+
+  Input validation still runs first: a mistyped filename reports the missing file, not a missing key.
+
 ## [v0.10.0] — 2026-07-28
 
 **v0.9.1 could not run.** Every command in the published tarball — including

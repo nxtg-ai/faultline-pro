@@ -89,6 +89,42 @@ function autoDetectProvider(): string {
   return 'mock';
 }
 
+/**
+ * True when we fell back to `mock` because no key was configured, as opposed to
+ * the caller asking for it.
+ *
+ * The distinction matters more than it looks. The mock provider returns
+ * `supported` for EVERY claim (providers/mock_provider.ts), so an implicit
+ * fallback hands a first-time user a fabricated verdict: run the guard with no
+ * key on "Chocolate cures cancer and the Earth is flat" and it answers
+ * VERIFIED, risk LOW. That is the exact failure this tool exists to catch,
+ * produced by the tool itself, on someone's first contact with it.
+ *
+ * Explicitly asking for `--provider mock` stays supported — it is the
+ * documented keyless CI path and faultline-action depends on it.
+ */
+function isImplicitMock(explicitProvider: string | undefined, resolved: string): boolean {
+  return resolved === 'mock' && !explicitProvider;
+}
+
+/**
+ * What to say instead of a fabricated verdict. Actionable, not just a refusal.
+ */
+function noProviderKeyOutput(command: string): { exitCode: number; output: string } {
+  return {
+    exitCode: 0,
+    output:
+      `faultline ${command}: no provider key found — NOTHING WAS CHECKED.\n\n` +
+      'Faultline verifies claims against live sources, which needs a provider key.\n' +
+      'It will not invent verdicts without one.\n\n' +
+      '  Free Gemini key:  https://aistudio.google.com/apikey\n' +
+      '    export GEMINI_API_KEY="your-key"\n\n' +
+      '  Or use the hosted API:\n' +
+      '    export FAULTLINE_API_KEY="your-key"\n\n' +
+      'For keyless CI wiring, --provider mock returns synthetic results that verify nothing.',
+  };
+}
+
 function checkApiKey(providerName: string | undefined): { exitCode: number; output: string } | null {
   const resolved = providerName || 'gemini';
   if (resolved === 'mock') return null;
@@ -593,18 +629,6 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
       }
       const failOn = failOnRaw as import('./guard.js').FailOn | undefined;
 
-      const guardText = (await readStdin()).trim();
-      if (!guardText) {
-        return {
-          exitCode: 1,
-          output:
-            'Error: guard reads the text to check from stdin, and nothing was piped in.\n\n' +
-            '  Example:\n' +
-            '    claude -p "summarise the release" | npx @nxtg/faultline guard --fail-on refuted\n' +
-            '    cat report.md | npx @nxtg/faultline guard --json',
-        };
-      }
-
       const guardTransport = resolveTransport(process.env, flags['api-url']);
       const guardConfig = loadConfig();
       const { provider: guardProviderFlag } = mergeFlags(guardConfig, flags);
@@ -617,11 +641,31 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
           ? guardProviderFlag
           : guardProviderFlag || autoDetectProvider();
 
+      // Checked BEFORE reading stdin: there is no reason to consume the
+      // caller's piped input when we already know we cannot check it, and
+      // blocking on a pipe we will never use is its own bug.
+      if (guardTransport.mode === 'local' && isImplicitMock(guardProviderFlag, guardProvider)) {
+        const noKey = noProviderKeyOutput('guard');
+        // Under a gate, "could not check" fails closed, same as a degraded scan.
+        return failOn ? { exitCode: 1, output: noKey.output } : noKey;
+      }
+
+      const guardText = (await readStdin()).trim();
+      if (!guardText) {
+        return {
+          exitCode: 1,
+          output:
+            'Error: guard reads the text to check from stdin, and nothing was piped in.\n\n' +
+            '  Example:\n' +
+            '    claude -p "summarise the release" | npx @nxtg/faultline guard --fail-on refuted\n' +
+            '    cat report.md | npx @nxtg/faultline guard --json',
+        };
+      }
+
       if (guardTransport.mode === 'local' && guardProvider === 'mock') {
         process.stderr.write(
-          'faultline guard: no provider key found — running the "mock" provider, which returns ' +
-            'SYNTHETIC results and verifies nothing. Set GEMINI_API_KEY (free: ' +
-            'https://aistudio.google.com/apikey), or FAULTLINE_API_KEY to use the hosted API.\n',
+          'faultline guard: --provider mock returns SYNTHETIC results and verifies nothing. ' +
+            'Use it for CI wiring only.\n',
         );
       } else if (!isGrounded(guardProvider)) {
         process.stderr.write(
@@ -759,9 +803,24 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
       }
 
       // Auto-detect provider from env if not explicitly specified
-      if (!flags['provider'] && !config.provider) {
+      const scanProviderExplicit = flags['provider'] || config.provider;
+      if (!scanProviderExplicit) {
         providerName = autoDetectProvider();
       }
+
+      /**
+       * Refuse to fabricate: an implicit mock fallback reports every claim
+       * "supported" and bands the scan LOW, which reads as a clean bill of
+       * health on a document nobody checked.
+       *
+       * Evaluated lazily at each scan site rather than here, so that input
+       * validation still runs first — a user with a typo'd filename should be
+       * told the file does not exist, not asked for an API key.
+       */
+      const noKeyGuard = (): { exitCode: number; output: string } | null =>
+        isImplicitMock(scanProviderExplicit, providerName ?? 'mock')
+          ? { ...noProviderKeyOutput('scan'), exitCode: 1 }
+          : null;
 
       // --sarif shorthand: sets format to sarif and writes results.sarif
       const sarifShorthand = flags['sarif'] === 'true';
@@ -829,6 +888,8 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
 
         const templateResults: Array<{ templateId: string; category: string; severity: string; prompt: string; result: import('./scan.js').ScanResult }> = [];
         for (const tmpl of templates) {
+          const tmplNoKey = noKeyGuard();
+          if (tmplNoKey) return tmplNoKey;
           const result = await scan(tmpl.prompt_text, providerName, minConfidence, ruleNames);
           templateResults.push({
             templateId: tmpl.id,
@@ -887,6 +948,8 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
         if (apiKeyErrBatch) return apiKeyErrBatch;
 
         const globPattern = flags['glob'] || undefined;
+        const batchNoKey = noKeyGuard();
+        if (batchNoKey) return batchNoKey;
         const batchResult = await batchScan(resolvedDir, providerName, minConfidence, globPattern);
 
         if (batchResult.filesScanned === 0) {
@@ -945,6 +1008,8 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
         const fileSpinner = await createScanSpinner(outputFormat);
         let fileResult;
         try {
+          const fileNoKey = noKeyGuard();
+          if (fileNoKey) return fileNoKey;
           fileResult = await scan(extractedText, providerName, minConfidence, ruleNames, fileSpinner.onProgress);
           fileSpinner.succeed('Scan complete');
         } catch (err) {
@@ -983,6 +1048,8 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
       const spinner = await createScanSpinner(outputFormat);
       let result;
       try {
+        const inputNoKey = noKeyGuard();
+        if (inputNoKey) return inputNoKey;
         result = await scan(text, providerName, minConfidence, ruleNames, spinner.onProgress);
         spinner.succeed('Scan complete');
         sendTelemetry({ version: VERSION, provider: result.provider, exit_status: 0, eval_count: result.claims.length });

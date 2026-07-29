@@ -46,7 +46,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "@nxtg/faultline": "^0.10.0",
+    "@nxtg/faultline": "^0.10.1",
     "tsx": "^4.21.0",
     "zod": "^4.3.6"
   },
