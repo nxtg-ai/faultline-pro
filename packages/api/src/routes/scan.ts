@@ -2,6 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { requireApiKey, resolveRequestTenantId } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
+import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
+import { recordProviderSpend } from '../store/provider-spend.js';
 import { getUsageMeter } from '../store/usage.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { getAnalyticsStore } from '../store/analytics.js';
@@ -79,7 +81,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: ScanBody }>(
     '/scan',
     {
-      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap],
+      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap],
       schema: { tags: ['Scan'], summary: 'Scan text for claim verification', body: BODY_SCHEMA },
     },
     async (request, reply) => {
@@ -194,6 +196,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
           getCostStore().recordManaged(costEvent);
           emitScanCostEvent(costEvent);
           appendScanCostLog(costEvent);
+          recordProviderSpend(costEvent); // A-110 item 1 — append-only provider-spend ledger
           // NOTE: POST /scan usage is incremented by the server.ts onResponse hook
           // (isScanPost && 200) — do NOT increment here or it double-counts. The
           // stream + template routes below DO increment locally (the hook doesn't
@@ -281,7 +284,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Params: { id: string }; Body: ScanTemplateBody }>(
     '/scan/template/:id',
     {
-      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap],
+      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap],
       schema: {
         tags: ['Scan'],
         summary: 'Scan text using a saved template',

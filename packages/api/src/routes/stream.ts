@@ -5,6 +5,8 @@ import { scan } from '@nxtg/faultline/cli/scan.js';
 import type { PipelineConfig } from '@nxtg/faultline/cli/scan.js';
 import { getCostStore, emitScanCostEvent, appendScanCostLog, resolveTierFromRequest, buildManagedCostEvent } from '../store/costs.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
+import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
+import { recordProviderSpend } from '../store/provider-spend.js';
 import { getUsageMeter } from '../store/usage.js';
 import { captureUsage } from '@nxtg/faultline/lib/usage-sink.js';
 
@@ -95,7 +97,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: { text?: string; provider?: string } }>(
     '/scan/stream',
     {
-      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap],
+      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap],
       schema: {
         tags: ['Scan'],
         summary: 'Stream scan results via Server-Sent Events (progressive per-claim delivery)',
@@ -178,6 +180,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
         getCostStore().recordManaged(costEvent);
         emitScanCostEvent(costEvent);
         appendScanCostLog(costEvent);
+        recordProviderSpend(costEvent); // A-110 item 1 — append-only provider-spend ledger
         getUsageMeter().increment(keyId); // count toward monthly cap (item 1)
       } catch (err) {
         // BLG-fp-20260713-A: log raw for ops, emit a generic client-safe message.
@@ -207,7 +210,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: StreamPostBody }>(
     '/scan/stream',
     {
-      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap],
+      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap],
       schema: {
         tags: ['Scan'],
         summary: 'Stream scan results via SSE (POST — no URL length ceiling)',
@@ -283,6 +286,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
         getCostStore().recordManaged(costEvent);
         emitScanCostEvent(costEvent);
         appendScanCostLog(costEvent);
+        recordProviderSpend(costEvent); // A-110 item 1 — append-only provider-spend ledger
         getUsageMeter().increment(keyId); // count toward monthly cap (item 1)
       } catch (err) {
         // BLG-fp-20260713-A: never leak the raw provider/engine error to the
