@@ -20,9 +20,18 @@ import type { ManagedScanCostEvent } from './costs.js';
  *   usage cap      → "has THIS KEY used more scans than its tier includes?"  → 402
  *   provider-spend → "has FAULTLINE spent more than $100 at providers this month?" → 503
  *
- * BYOK CARVE-OUT: a `userkey`-tier scan burns the CUSTOMER's provider key, not
- * ours, so it is neither ledgered nor gated here. Only managed-key spend counts
- * against our budget.
+ * EVERY API-PATH SCAN IS OUR SPEND. There is no BYOK path through this API:
+ * provider credentials come only from server env (`GEMINI_API_KEY`,
+ * `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`), never from a request. So nothing a
+ * caller can say exempts a scan from the ledger or the cap.
+ *
+ * In particular the `userkey` tier label does NOT exempt spend. `x-user-tier` is
+ * a caller-supplied header (FW forwards it for telemetry classification) — an
+ * authenticated caller can set it to anything in `VALID_TIERS`. Keying a money
+ * decision off it would let a request opt out of the budget by spoofing a label,
+ * and would leave real spend UNLEDGERED, which is precisely what the A-110
+ * ruling forbids. `tier` is recorded as a LABEL for analytics and is never read
+ * as a spend decision.
  *
  * THE LEDGER IS THE AUTHORITY, memory is the index. The in-process month total is
  * lazily HYDRATED by summing the ledger file, so a restart/redeploy does not
@@ -87,11 +96,6 @@ export function isProviderSpendCapEnabled(): boolean {
   return raw === 'on' || raw === '1' || raw === 'true' || raw === 'enabled';
 }
 
-/** Scans whose provider cost is the CUSTOMER's, not ours — excluded from our budget. */
-export function isOwnSpend(tier: string): boolean {
-  return tier !== 'userkey';
-}
-
 class ProviderSpendLedger {
   /** month → USD spent, hydrated from the ledger then kept live in-process. */
   private totals = new Map<string, number>();
@@ -135,11 +139,11 @@ class ProviderSpendLedger {
 
   /**
    * Append one spend transaction and advance the month total.
-   * Returns the event that was ledgered, or `null` when the spend is not ours
-   * (BYOK) or carries no real cost (cache hit, mock, $0 leg) — nothing to ledger.
+   * Returns the event that was ledgered, or `null` when there is no real cost to
+   * record (cache hit, mock, $0 leg, or a non-finite/negative figure).
+   * The `tier` label is NEVER a reason to skip — see the header note.
    */
   record(event: ProviderSpendEvent): ProviderSpendEvent | null {
-    if (!isOwnSpend(event.tier)) return null;
     if (!Number.isFinite(event.costUsd) || event.costUsd <= 0) return null;
 
     this.ensureHydrated(event.month);

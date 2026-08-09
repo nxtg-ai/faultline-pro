@@ -10,7 +10,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { buildServer } from '../src/server.js';
@@ -21,7 +21,6 @@ import {
   getMonthlyCapUsd,
   getProviderSpendLedger,
   getProviderSpendStatus,
-  isOwnSpend,
   isProviderSpendCapEnabled,
   ledgerPath,
   recordProviderSpend,
@@ -123,10 +122,6 @@ describe('provider-spend config', () => {
     expect(currentMonth(new Date('2027-01-01T00:00:01Z'))).toBe('2027-01');
   });
 
-  it('treats every managed tier as our spend and userkey (BYOK) as the customer’s', () => {
-    for (const t of ['pro', 'personal', 'free', 'anon', 'enterprise']) expect(isOwnSpend(t)).toBe(true);
-    expect(isOwnSpend('userkey')).toBe(false);
-  });
 });
 
 // =========================================================================
@@ -201,10 +196,14 @@ describe('provider-spend ledger', () => {
     expect(getProviderSpendLedger().monthTotalUsd()).toBeCloseTo(4, 6);
   });
 
-  it('does NOT ledger BYOK spend — a userkey scan burns the customer’s key', () => {
-    expect(recordProviderSpend(costEvent({ tier: 'userkey', costUsd: 5 }))).toBeNull();
-    expect(existsSync(tmpLedger)).toBe(false);
-    expect(getProviderSpendLedger().monthTotalUsd()).toBe(0);
+  it('LEDGERS spend regardless of the tier label — a userkey label is not an exemption', () => {
+    // `x-user-tier` is caller-supplied and drives this label. There is no BYOK
+    // path through the API (provider creds come only from server env), so a
+    // `userkey` label on a real scan is either FW telemetry noise or a spoof —
+    // either way the dollars were ours and must be recorded.
+    expect(recordProviderSpend(costEvent({ tier: 'userkey', costUsd: 5 }))).not.toBeNull();
+    expect(getProviderSpendLedger().monthTotalUsd()).toBeCloseTo(5, 6);
+    expect(JSON.parse(readFileSync(tmpLedger, 'utf8').trim()).tier).toBe('userkey'); // label kept, not obeyed
   });
 
   it('does NOT ledger a zero-cost scan (cache hit, mock, all-error)', () => {
@@ -313,17 +312,22 @@ describe('enforceProviderSpendCap — integration through /scan', () => {
     expect(res.statusCode).toBe(200);
   });
 
-  it('never blocks a BYOK caller — their scan does not spend our budget', async () => {
+  it('CANNOT be bypassed by spoofing x-user-tier — a caller-supplied header buys no exemption', async () => {
+    // Regression: the header is set by the caller and `userkey` is a VALID_TIERS
+    // member, so keying the gate off it would let any authenticated caller opt
+    // out of the budget for the price of one header.
     exhaustBudget();
     process.env.FAULTLINE_PROVIDER_SPEND_CAP = 'on';
     const created = getKeyStore().create('Pro Key', ['pro', 'scan']);
-    const res = await server.inject({
-      method: 'POST',
-      url: '/scan',
-      headers: { 'x-api-key': created.key, 'content-type': 'application/json', 'x-user-tier': 'userkey' },
-      payload: { text: 'The sky is blue.', provider: 'mock' },
-    });
-    expect(res.statusCode).toBe(200);
+    for (const spoof of ['userkey', 'enterprise', 'anon']) {
+      const res = await server.inject({
+        method: 'POST',
+        url: '/scan',
+        headers: { 'x-api-key': created.key, 'content-type': 'application/json', 'x-user-tier': spoof },
+        payload: { text: 'The sky is blue.', provider: 'mock' },
+      });
+      expect(res.statusCode, `spoofed x-user-tier: ${spoof}`).toBe(503);
+    }
   });
 
   it('gates the streaming route too (GET /scan/stream)', async () => {

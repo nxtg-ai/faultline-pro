@@ -30,14 +30,14 @@ Three gates now run in front of a scan. They answer different questions and all 
 | Wired on all scan routes | `routes/scan.ts` (`/scan`, `/scan/template`), `routes/stream.ts` (`/scan/stream` GET+POST) |
 | Spend recorded from the real composed cost | `recordProviderSpend(costEvent)` beside `emitScanCostEvent` / `appendScanCostLog` |
 | Budget surface (ADMIN only) | `GET /usage` → `providerBudget: { month, enforced, capUsd, spentUsd, remainingUsd, exhausted }` |
-| Tests (28) | `packages/api/tests/provider-spend-cap.test.ts` |
+| Tests (27) | `packages/api/tests/provider-spend-cap.test.ts` |
 
 ## Semantics
 
 - **The ledger is the authority; memory is the index.** The in-process month total is lazily **hydrated by summing the ledger file**, so a restart/redeploy does not silently reset the budget to $0 — the known in-memory limitation `docs/usage-cap.md` flags for `UsageMeter`. Hydration runs once per month-key per process and always precedes the first in-process increment, so a row is never double-counted.
 - **Append-only, synchronous, guarded.** A spend row is money: read-after-write must hold within a process, so the write is `appendFileSync`. It is wrapped — **a failed ledger write never fails a scan**; the in-memory total still moves (the cap still holds) and `getWriteFailures()` surfaces the drift instead of hiding it.
 - **Single source of cost.** The ledger records the `ManagedScanCostEvent` the BLG-005 cost path already composes (real provider-reported usage, priced per real model). No second estimate, so no third-parallel-table drift.
-- **BYOK carve-out.** A `userkey`-tier scan burns the **customer's** provider key, so it is neither ledgered nor gated. The gate resolves the tier through `resolveTierFromRequest` — the same path the cost event uses — so gate and ledger cannot disagree about which scans are ours.
+- **No per-request exemption — every API scan is our spend.** Provider credentials come only from server env (`GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`); **there is no BYOK path through this API**, so nothing a caller can say exempts a scan from the ledger or the cap. In particular the `userkey` tier label does **not**: `x-user-tier` is a caller-supplied header (FW forwards it for telemetry classification) and `userkey` is a valid value, so keying a money decision off it would let any authenticated caller opt out of the budget for the price of one header — and leave real spend unledgered, which is exactly what the A-110 ruling forbids. `tier` is ledgered as a **label** for analytics and never read as a spend decision. Regression-tested: a spoofed `x-user-tier` still gets 503, and a `userkey`-labelled cost event is still ledgered.
 - **Zero-cost scans are not ledgered.** Cache hits, `mock`, and all-error scans compose to $0; a non-finite or negative cost is rejected rather than poisoning the total.
 - **No PII.** A row is `{ ts, scanId, month, tier, provider, modelId, costUsd }` — no keyId, no text.
 - **Deny-path headers only.** `/scan/stream` hijacks the reply for SSE, which drops every `reply.header()` (see `reference_fastify_hijack_drops_headers`), so allow-path budget headers would be a lie on the streaming routes. Read the position from `GET /usage` instead.

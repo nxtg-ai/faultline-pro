@@ -1,6 +1,5 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { resolveTierFromRequest } from '../store/costs.js';
-import { getProviderSpendStatus, isOwnSpend, isProviderSpendCapEnabled } from '../store/provider-spend.js';
+import { getProviderSpendStatus, isProviderSpendCapEnabled } from '../store/provider-spend.js';
 import { nextMonthResetEpoch } from './usage-cap.js';
 
 /**
@@ -29,13 +28,10 @@ import { nextMonthResetEpoch } from './usage-cap.js';
 export async function enforceProviderSpendCap(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (!isProviderSpendCapEnabled()) return; // dormant — ledger on, gate inactive
 
-  // BYOK scans spend the customer's key, not our budget — never gated by it.
-  // Resolved through the SAME path the cost event uses (`x-user-tier`, FW's
-  // authoritative header) so the gate and the ledger cannot disagree on which
-  // scans are ours.
-  const tier = resolveTierFromRequest(request.keyId ?? 'unknown', request.headers['x-user-tier']);
-  if (!isOwnSpend(tier)) return;
-
+  // NO PER-REQUEST EXEMPTION. Every scan on this API spends OUR env-configured
+  // provider keys (there is no BYOK path through it), so no caller-supplied
+  // value — least of all the spoofable `x-user-tier` header — may buy a way past
+  // the budget. The gate is unconditional once enforcement is on.
   const status = getProviderSpendStatus();
   if (!status.exhausted) return;
 
