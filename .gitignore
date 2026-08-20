@@ -31,7 +31,13 @@ dist-ssr
 
 # Generated compliance report artifacts
 eu-compliance-report-*.html
-.claude/worktrees/
+
+# Private local agent/runtime context
+.claude/
+.asif/
+
+# Internal GTM and generated portfolio artifacts
+docs/*growth-playbook*.md
 
 # Stryker mutation testing
 .stryker-tmp/
