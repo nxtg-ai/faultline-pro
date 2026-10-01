@@ -51,6 +51,8 @@ A change is not done until, in the same commit or PR: `CHANGELOG.md` `[Unrelease
 
 - Consensus gate: `POST https://faultline-api.fly.dev/scan/stream` with the server key, `x-user-tier: pro`, body `{"text":"…","provider":"mock","pipelineConfig":{"extractionProvider":"mock","consensus":true,"consensusProviders":["mock"]}}` → `403 consensus_not_in_plan`; `x-user-tier: enterprise` → 200.
 - Spend cap state: `GET /usage` with the server key → `providerBudget.enforced` (false = dormant).
+- Ledger health: `GET /usage` → `providerBudget.ledgerWriteFailures` and `groundingAllowance.ledgerWriteFailures` must be 0. Above 0 means the ledger file is not being written and the count lives only in memory.
+- Gemini grounding allowance (N-230): `GET /usage` with the server key → `groundingAllowance` (`groundedPrompts` today, Pacific day, vs `alertThreshold` 1200 and `freeDailyLimit` 1500). The count restarts at 0 on every Fly deploy (no volume); `processStartedAt` shows when. Hourly cron on NXTG-AI: `/home/axw/.cache/faultline-pro/grounding-check-cron.sh`, log `/home/axw/.cache/faultline-pro/grounding-check.log`, rows in `~/ASIF/governance/spend-monitor/faultline-pro-grounding.jsonl`, Telegram once per day at 1,200 and past 1,500. Run it by hand: `node scripts/grounding-allowance-check.mjs` (exit 0 OK, 1 ALERT, 2 probe failure). Details: `docs/grounding-allowance-alert.md`.
 - Web critique gate: `POST https://faultline.nxtg.ai/api/critique` with no `x-critique-token` → `401 critique_token_required`.
 - Vercel runtime logs: free-text `query` times out on this project. Use `deploymentId` plus `statusCode`, `level: ["error"]` or `group_by` instead.
 

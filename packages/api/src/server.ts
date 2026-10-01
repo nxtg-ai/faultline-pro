@@ -22,6 +22,7 @@ import { reportRoutes } from './routes/report.js';
 import { uploadRoutes } from './routes/upload.js';
 import { keysRoutes } from './routes/keys.js';
 import { usageRoutes } from './routes/usage.js';
+import { installGroundingCounter } from './store/grounding-allowance.js';
 import { dashboardRoutes } from './routes/dashboard.js';
 import { webhookRoutes } from './routes/webhooks.js';
 import { batchRoutes } from './routes/batch.js';
@@ -85,6 +86,9 @@ const MAX_FILE_SIZE = 10_485_760; // 10MB
  * Exported as a factory so tests can create isolated instances with inject().
  */
 export function buildServer() {
+  // N-230: count every Gemini grounded prompt this process sends (idempotent).
+  installGroundingCounter();
+
   const fastify = Fastify({
     logger: false,
   });

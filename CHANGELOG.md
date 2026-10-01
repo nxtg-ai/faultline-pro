@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Gemini grounding allowance meter and alert** (N-230, Asif ruling 2026-10-01). The API counts every successful Gemini request it sends with the `googleSearch` tool, per Pacific allowance-day (Google resets RPD quotas at midnight Pacific), in an append-only ledger. `GET /usage` with the admin key returns `groundingAllowance` (`groundedPrompts`, `freeDailyLimit: 1500`, `alertThreshold: 1200`, `overThreshold`, `resetsAt`, `processStartedAt`, `ledgerWriteFailures`). Counting hooks a new process-wide observer on the engine's usage sink, so batch, bulk, schedules and the scan queue are counted too. `scripts/grounding-allowance-check.mjs` runs hourly from cron on NXTG-AI and sends one Telegram alert per day at 1,200, and another past 1,500. Docs: `docs/grounding-allowance-alert.md`.
+
+### Fixed
+
+- **Ledger directory was not writable in the container.** The image runs as the non-root `faultline` user and never created `/var/log/faultline`, so the provider-spend, grounding and scan-cost ledgers most likely failed every write and lived only in memory. The Dockerfile now creates the directory for that user. `providerBudget.ledgerWriteFailures` on `GET /usage` is the check.
+
 ### Docs
 
 - Personal plan limit shown as 100 scans a month in README, llms.txt, the CLI and MCP READMEs, CLAUDE.md and the prod-default economics doc, after Asif's 2026-10-01 re-ruling superseded A-264's 25 (faultline-web PR 56).

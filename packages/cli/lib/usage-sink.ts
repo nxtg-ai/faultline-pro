@@ -54,6 +54,37 @@ export async function captureUsage<T>(
 export function recordUsage(leg: UsageLeg): void {
   const legs = storage.getStore();
   if (legs) legs.push(leg);
+  notifyObservers(leg);
+}
+
+/** A process-wide listener that sees every recorded leg, in or out of a scope. */
+export type UsageObserver = (leg: UsageLeg) => void;
+
+const observers = new Set<UsageObserver>();
+
+/**
+ * Observe EVERY leg this process records, whether or not a `captureUsage()`
+ * scope is active. Capture scopes exist only on the routes that price a scan;
+ * an observer is how a process-wide meter (e.g. the API's daily Gemini
+ * grounded-prompt count, N-230) sees calls made by uncaptured paths too.
+ * Returns an unsubscribe function. With no observers the hot path is unchanged.
+ */
+export function subscribeUsage(observer: UsageObserver): () => void {
+  observers.add(observer);
+  return () => {
+    observers.delete(observer);
+  };
+}
+
+/** An observer failure must never fail the provider call that produced the leg. */
+function notifyObservers(leg: UsageLeg): void {
+  for (const observer of observers) {
+    try {
+      observer(leg);
+    } catch {
+      // Swallowed by design: metering is not allowed to break a scan.
+    }
+  }
 }
 
 /** True when a capture scope is currently active (diagnostic / testing). */

@@ -53,6 +53,12 @@ COPY --from=builder /build/packages ./packages
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -qO- http://localhost:${PORT:-3001}/health || exit 1
 
+# Ledger directory for the append-only provider-spend, grounding-prompt and
+# scan-cost logs. /var/log is root-owned, so without this the non-root process
+# cannot create it and every ledger write fails (N-230 instrument:
+# GET /usage -> ledgerWriteFailures).
+RUN mkdir -p /var/log/faultline && chown faultline:faultline /var/log/faultline
+
 # Drop to non-root
 USER faultline
 
