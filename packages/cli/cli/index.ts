@@ -165,7 +165,7 @@ function degradedGateFailure(
 }
 
 function usage(): string {
-  return `Faultline CLI v${VERSION} — AI Claim Forensics
+  return `Faultline CLI v${VERSION} — We check the receipts on AI output.
 
 Quick start (free Gemini key: https://aistudio.google.com/apikey):
   export GEMINI_API_KEY="your-key"

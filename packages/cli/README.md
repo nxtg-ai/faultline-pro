@@ -1,4 +1,4 @@
-# Faultline Pro — AI Claim Forensics
+# Faultline Pro — We check the receipts on AI output.
 
 [![npm version](https://img.shields.io/npm/v/@nxtg/faultline.svg)](https://www.npmjs.com/package/@nxtg/faultline)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)

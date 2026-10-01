@@ -1,4 +1,4 @@
-# Faultline — AI Claim Forensics
+# Faultline — We check the receipts on AI output.
 # https://github.com/nxtg-ai/faultline-pro
 # npm: @nxtg/faultline | @nxtg/faultline-api
 # Last updated: 2026-04-04 (N-213)

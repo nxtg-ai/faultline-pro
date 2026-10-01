@@ -1,4 +1,4 @@
-# Faultline — Agent Governance for AI Outputs
+# Faultline — We check the receipts on AI output.
 
 **Future-proof your agent stack. The only governance CLI not owned by an AI lab.**
 

@@ -14,7 +14,9 @@
  *
  * Resolution is by credential, not by flag, so the common case needs no
  * configuration: set an API key and you are hosted, set a provider key and you
- * are local, set neither and you get `mock` with a warning.
+ * are local. Set neither and nothing is checked: the CLI says so and refuses to
+ * invent verdicts (see noProviderKeyOutput in index.ts). Synthetic results come
+ * only from an explicit `--provider mock`, and they are labelled SYNTHETIC.
  */
 
 import { scan, type ScanResult } from './scan.js';
