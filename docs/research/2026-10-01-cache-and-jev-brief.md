@@ -6,7 +6,7 @@
 
 ## Bottom line
 
-1. **A shared cache of verdicts is not allowed with Google grounding.** Google's terms forbid caching grounded answers and showing them to anyone but the user who asked. The cost lever that *is* allowed is **batching**: Gemini 2.5 bills grounding per prompt, and Faultline sends one prompt per claim. A 6-claim scan buys 6 prompts today. Batched, it would buy 1. Modelled, not measured: about $0.05 a scan past the free allowance instead of $0.22.
+1. **A shared cache of verdicts is not allowed with Google grounding, as the terms are written.** Google's terms forbid caching grounded answers and showing them to anyone but the user who asked. The cost lever that *is* allowed is **batching**: Gemini 2.5 bills grounding per prompt, and Faultline sends one prompt per claim. A 6-claim scan buys 6 prompts today. Batched, it would buy 1. Modelled, not measured: about $0.05 a scan past the free allowance instead of $0.22.
 2. **Jev cannot cut the main cost.** About 95% of a paid scan is the search fee, and Jev, Laya and every judge model only decide; they do not search. Their value is quality: a calibrated "how sure are we" per claim, so Faultline can say "unverified" instead of guessing. Faultline has never measured its own verdict accuracy, so step one is a baseline.
 3. **The terms reading also touches today's product (four leads, below).** That matters more than either lever. It is my reading of the terms, not a legal opinion.
 4. **Money saved today is about $0.** Production ran 5 grounded prompts on 2026-10-01 after the 22:44Z restart, against 1,500 free a day. Batching buys headroom: about 250 six-claim scans a day fit in the free allowance today, and about 1,500 batched.
@@ -94,7 +94,7 @@ Pick any; each is one line.
 
 ## Sources
 
-Research notes with quotes: written to the session scratchpad and summarised here. Primary pages read directly by fp:
+Research notes with quotes and URLs: `docs/research/2026-10-01-notes-grounding-cost-sources.md` and `docs/research/2026-10-01-notes-verdict-calibration-sources.md` (gathered by research agents; the claims this brief relies on were re-read by fp in the primary pages listed next). Primary pages read directly by fp:
 - https://ai.google.dev/gemini-api/terms
 - https://cloud.google.com/terms/service-terms
 - https://ai.google.dev/gemini-api/docs/google-search
