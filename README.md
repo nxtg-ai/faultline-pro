@@ -23,7 +23,7 @@ Faultline ships Art. 9 (risk register), Art. 12 (tamper-evident audit log), and 
 | CLI on npm | `@nxtg/faultline` 0.11.0 | `npm view @nxtg/faultline version` |
 | Hosted API | `https://faultline-api.fly.dev`, version 0.11.0 | `curl https://faultline-api.fly.dev/health` |
 | Web app | https://faultline.nxtg.ai (separate repo, `faultline-web`, on Vercel) | live pricing page read 2026-10-01 |
-| Plans | Free 5 scans/month. Personal $19/mo, 25 scans. Pro $49/mo, 500 scans. Enterprise: custom, scan allowance set in the contract | https://faultline.nxtg.ai/pricing |
+| Plans | Free 5 scans/month. Personal $19/mo, 100 scans. Pro $49/mo, 500 scans. Enterprise: custom, scan allowance set in the contract | https://faultline.nxtg.ai/pricing |
 | Multi-model consensus | **Enterprise only.** The API returns `403 consensus_not_in_plan` to any caller below Enterprise, before the stream opens | `packages/api/src/plugins/consensus-entitlement.ts`; live check by fp 2026-10-01 (pro, personal and free 403, enterprise 200, mock provider) |
 | `POST /critique` | Needs an API key. Rate limited. Covered by the provider-spend cap and written to the spend ledger | `packages/api/src/routes/critique.ts` |
 | Provider-spend cap | $100/month. The ledger records every managed scan and critique. **Enforcement ships dormant** (`FAULTLINE_PROVIDER_SPEND_CAP=on` turns it on) and is off in production | `docs/provider-spend-cap.md`; `GET /usage` showed `providerBudget.enforced=false` on 2026-10-01 |

@@ -63,7 +63,7 @@ The API wraps the same engine and adds gates in front of a scan. They are differ
 | `enforceProviderSpendCap`, fleet $100/month at providers (`FAULTLINE_PROVIDER_SPEND_CAP`) | 503 | **dormant in prod** (`GET /usage` showed `providerBudget.enforced=false`, 2026-10-01); the ledger records regardless |
 | `enforceConsensusEntitlement`, `pipelineConfig.consensus:true` | 403 `consensus_not_in_plan` | **enforced**, Enterprise only (live-verified 2026-10-01) |
 
-`POST /critique` sits behind the API key, the burst limiter and the spend cap, and its usage is ledgered (b33acff). Plan limits shown to customers (Free 5, Personal 25, Pro 500 scans per month, Enterprise custom) live in `faultline-web` and are read from https://faultline.nxtg.ai/pricing.
+`POST /critique` sits behind the API key, the burst limiter and the spend cap, and its usage is ledgered (b33acff). Plan limits shown to customers (Free 5, Personal 100, Pro 500 scans per month, Enterprise custom) live in `faultline-web` and are read from https://faultline.nxtg.ai/pricing.
 
 ## Key Files
 

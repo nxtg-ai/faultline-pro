@@ -124,7 +124,7 @@ Each verification writes a JSON record to `.faultline/history/` (override with `
 ## Related
 
 - [`@nxtg/faultline`](https://www.npmjs.com/package/@nxtg/faultline) — the CLI, including `faultline guard` for piping agent output through the same check
-- [faultline.nxtg.ai](https://faultline.nxtg.ai): hosted scanning (plans: Free 5, Personal 25, Pro 500 scans per month; read 2026-10-01)
+- [faultline.nxtg.ai](https://faultline.nxtg.ai): hosted scanning (plans: Free 5, Personal 100, Pro 500 scans per month; Personal set to 100 on 2026-10-01)
 
 ## Not affiliated with fltln.io
 

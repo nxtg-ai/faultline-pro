@@ -231,7 +231,7 @@ Read from https://faultline.nxtg.ai/pricing on 2026-10-01. That page is the sour
 | | Free | Personal | Pro | Enterprise |
 |---|---|---|---|---|
 | **Price** | $0 | **$19/mo** | **$49/mo** | Custom |
-| Scans per month | 5 | 25 | 500 | Set in your contract |
+| Scans per month | 5 | 100 | 500 | Set in your contract |
 | Export | JSON and SARIF | Markdown and all export formats | PDF export | PDF export |
 | Providers | Default provider | Default provider | All providers | All providers |
 | Batch scan, team workspaces, notifications, API access | -- | -- | Yes | Yes |

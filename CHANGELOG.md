@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Docs
+
+- Personal plan limit shown as 100 scans a month in README, llms.txt, the CLI and MCP READMEs, CLAUDE.md and the prod-default economics doc, after Asif's 2026-10-01 re-ruling superseded A-264's 25 (faultline-web PR 56).
+
 ## [v0.11.0] — 2026-10-01
 
 

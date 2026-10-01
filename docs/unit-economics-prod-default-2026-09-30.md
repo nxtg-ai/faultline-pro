@@ -33,7 +33,7 @@ Over the same equal-weight 3-size matrix as 07-04, with paid grounding: **p50 â‰
 
 | Plan | Price | Break-even at p50 / p90 | Live monthly scan limit (https://faultline.nxtg.ai/pricing, read 2026-10-01) |
 |---|---|---|---|
-| Personal | $19 | 86 / 65 scans | 25 |
+| Personal | $19 | 86 / 65 scans | 100 (Asif re-ruling 2026-10-01, superseding A-264's 25; above break-even at paid grounding, so a full-usage Personal customer costs about $22 to $29 against $19 once the free grounding allowance is exceeded) |
 | Pro | $49 | 223 / 169 scans | 500 |
 
 The free allowance is 1,500 grounded prompts/day per Google project, about 45,000/month across ALL users, which is about 5,600 LARGE scans a month. Below that volume, the marginal grounding cost is $0 and a scan costs about a cent. Above it, the table applies.

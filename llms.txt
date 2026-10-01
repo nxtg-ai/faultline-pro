@@ -113,7 +113,7 @@ There is no TypeScript SDK package (`@nxtg/faultline-sdk` returned 404 on npm, 2
 
 ## Plans (https://faultline.nxtg.ai/pricing, read 2026-10-01)
 
-Free: 5 scans/month. Personal: $19/mo, 25 scans/month. Pro: $49/mo, 500 scans/month. Enterprise: custom, scan allowance set in the contract; multi-model consensus is included only here.
+Free: 5 scans/month. Personal: $19/mo, 100 scans/month. Pro: $49/mo, 500 scans/month. Enterprise: custom, scan allowance set in the contract; multi-model consensus is included only here.
 
 ## Competitive Position
 
