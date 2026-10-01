@@ -4,6 +4,7 @@
 **Founder ruling**: A-110 REC position 1 adopted 2026-07-19 (Emma-PM routed) — *"$100/mo provider-spend cap, ledgered (geo-grader append-only pattern)."*
 **Canon**: `~/.claude/rules/deterministic-grounded-autonomy.md` §GROUNDED — *provision/spend freely up to a standing per-scope cap, no per-item ask; log every transaction. Only crossing the cap escalates.*
 **Tracking**: NEXUS N-230.
+**Production state (2026-10-01)**: the ledger is recording and the gate is **dormant**. `GET /usage` with an admin key returned `providerBudget.enforced=false` on 2026-10-01 (observed by fp during the N-230 `/critique` deploy check; not re-probed while writing this doc, because no admin key is available in the doc-sweep session).
 
 ## Why this exists
 
@@ -28,9 +29,20 @@ Three gates now run in front of a scan. They answer different questions and all 
 | Append-only USD ledger + monthly rollup + cap config | `packages/api/src/store/provider-spend.ts` |
 | Enforcement prehandler (503 + budget headers) | `packages/api/src/plugins/provider-spend-cap.ts` — `enforceProviderSpendCap` |
 | Wired on all scan routes | `routes/scan.ts` (`/scan`, `/scan/template`), `routes/stream.ts` (`/scan/stream` GET+POST) |
+| Wired on `POST /critique` (b33acff) | `routes/critique.ts`: `preHandler: [requireApiKey, rateLimitScan, enforceProviderSpendCap]`, and the call's real usage is priced and ledgered |
 | Spend recorded from the real composed cost | `recordProviderSpend(costEvent)` beside `emitScanCostEvent` / `appendScanCostLog` |
 | Budget surface (ADMIN only) | `GET /usage` → `providerBudget: { month, enforced, capUsd, spentUsd, remainingUsd, exhausted }` |
-| Tests (27) | `packages/api/tests/provider-spend-cap.test.ts` |
+| Tests | `packages/api/tests/provider-spend-cap.test.ts` (27, run 2026-10-01), `packages/api/tests/critique-spend-cap.test.ts` (6, run 2026-10-01) |
+
+## `POST /critique` is covered (b33acff, N-230)
+
+`/critique` makes a paid LLM call on our provider keys. Before b33acff it sat behind the API key only, so the cap could neither see nor stop its spend.
+
+- It runs the same per-minute burst limiter (`rateLimitScan`, shared bucket with scans) and `enforceProviderSpendCap` as a scan. With enforcement on and the budget exhausted it returns 503 and never calls the provider.
+- The call's reported usage is priced and appended to the ledger through `recordProviderSpend`, so critique spend counts toward the monthly total even while the gate is dormant.
+- A request with no failed claims makes no LLM call and writes no ledger row.
+- It does **not** run `enforceMonthlyCap`. A critique is not a scan, so it does not use up a customer's monthly scan quota.
+- `provider` is limited to the `/scan` allowlist (`gemini`, `openai`, `claude`, `perplexity`, `mock`). An unknown name returns 400, not 500. The default when omitted is `openai`.
 
 ## Semantics
 

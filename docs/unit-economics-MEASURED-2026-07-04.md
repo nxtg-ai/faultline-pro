@@ -1,5 +1,8 @@
 # v0.9.0 Consensus Unit-Economics — MEASURED Results (for Wolf checkpoint-2)
 
+> **Status note (2026-10-01):** this is the 2026-07-04 measurement and is kept as written. Since then, multi-model consensus became Enterprise only (server-enforced, `403 consensus_not_in_plan` below Enterprise), so the consensus cost range here applies to Enterprise scans only. The default path for Free, Personal and Pro is non-consensus: see `docs/unit-economics-prod-default-2026-09-30.md`. Live plan limits (Free 5, Personal 25, Pro 500 scans/month, read from https://faultline.nxtg.ai/pricing on 2026-10-01) differ from the plan numbers discussed below.
+
+
 **Directive**: DIRECTIVE-NXTG-20260703-04 / PRM-NXTG-20260703-04 (pricing blocked on a MEASURED cost/scan).
 **Author**: `fp` | **Run**: 2026-07-04 02:30–02:34 UTC | **Status**: MEASURED — awaiting Wolf checkpoint-2, then Asif card.
 **Method**: real provider-reported token usage teed off the wire on 18 live scans (design: `docs/unit-economics-measurement-design-2026-07-03.md`). Raw per-call: `scripts/consensus-cost/measured-usage.jsonl` (272 records). Rates: `scripts/consensus-cost/rates.ts` (pinned 2026-07-03; opus $5/$25 verified vs canonical claude-api ref).

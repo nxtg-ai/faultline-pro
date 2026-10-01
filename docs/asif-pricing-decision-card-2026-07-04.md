@@ -1,5 +1,8 @@
 # Asif Pricing Decision Card — Faultline v0.9.0 (MEASURED)
 
+> **Status note (2026-10-01):** this is the 2026-07-04 measurement and is kept as written. Since then, multi-model consensus became Enterprise only (server-enforced, `403 consensus_not_in_plan` below Enterprise), so the consensus cost range here applies to Enterprise scans only. The default path for Free, Personal and Pro is non-consensus: see `docs/unit-economics-prod-default-2026-09-30.md`. Live plan limits (Free 5, Personal 25, Pro 500 scans/month, read from https://faultline.nxtg.ai/pricing on 2026-10-01) differ from the plan numbers discussed below.
+
+
 **For**: Asif | **From**: fp | **Date**: 2026-07-04 | **Status**: decision-ready. Measured + Wolf-verified (recomputed exact from raw usage). Full table: `docs/unit-economics-MEASURED-2026-07-04.md`.
 
 ## The one thing that changed

@@ -298,6 +298,12 @@ data: {"type":"complete","overallRisk":"medium","claimCount":3}
 data: {"type":"error","message":"Provider unavailable"}
 ```
 
+### POST `/scan/stream` and multi-model consensus
+
+`POST /scan/stream` accepts `pipelineConfig.consensus: true` to run grounded multi-model consensus. **Consensus is Enterprise only, enforced by the server.** Any caller below Enterprise gets `403` with `{"error":"consensus_not_in_plan",...}` before the stream opens. The server refuses rather than downgrading, so you never receive a single-model result in place of the consensus you asked for.
+
+The plan is read from the `x-user-tier` header only when the request carries the server's own `FAULTLINE_API_KEY` (this is how faultline-web forwards the signed-in user's plan). For any other API key the header is ignored, so setting it does nothing. Source: `packages/api/src/plugins/consensus-entitlement.ts`.
+
 **TypeScript client example**:
 
 ```typescript
@@ -488,6 +494,8 @@ Rate limits are applied per API key, per minute, on scan endpoints only.
 | `pro` | 100 req/min | Key with `pro` permission |
 | `admin` | 10,000 req/min | Key with `admin` permission |
 
+**Other gates in front of a scan.** Rate limiting above is per minute. Two more gates exist and ship **dormant** (they do nothing until an operator turns them on): a per-key monthly scan quota (`FAULTLINE_USAGE_CAP`, `402`, see `docs/usage-cap.md`) and a fleet-wide provider-spend cap (`FAULTLINE_PROVIDER_SPEND_CAP`, `503`, see `docs/provider-spend-cap.md`). The spend ledger records every managed scan and every `/critique` call whether or not the gate is on.
+
 **Alert threshold**: The server emits an internal alert when a key reaches 80% of its limit. Rate limit headers are present on every scan response for proactive checking.
 
 **Custom limits**: Admins can set per-key overrides via `setCustomLimit` (internal store API, not exposed over HTTP currently).
@@ -670,7 +678,8 @@ These are available if your UI needs them.
 | `GET /status.json` | None | Machine-readable uptime, incidents, stats |
 | `GET /metrics` | None | Prometheus-format metrics |
 | `GET /dashboard` | Admin | Scan counts, risk distribution, provider status |
-| `GET /usage` | API key | Per-day scan counts for your key |
+| `GET /usage` | API key | Per-day scan counts for your key, and `quota` (monthly scan cap position). Admin keys also get `providerBudget` (the fleet provider-spend position) |
+| `POST /critique` | API key | Critique plus improved prompt for failed claims. Makes a paid LLM call, so it is rate limited and covered by the provider-spend cap and ledger. `provider` must be one of the `/scan` providers (unknown name: `400`). See `docs/provider-spend-cap.md` |
 | `GET /claims` | None | Claim database (searchable, filterable) |
 | `GET /claims/trending` | None | Trending + emerging claims |
 | `GET /claims/stats` | None | Accuracy rate, verdict distribution |

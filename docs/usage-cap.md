@@ -1,6 +1,7 @@
 # Monthly Usage Cap — Paid-Tier Margin Protection (COGS gate, item 1)
 
 **Status**: MECHANISM SHIPPED, **DORMANT by default**. Activation + the cap NUMBER are Asif's pricing call.
+**Status note (2026-10-01)**: the numbers in this doc are the placeholder defaults in `packages/api/src/store/entitlements.ts` (free 10, pro 25, admin unlimited), not the plan limits customers see. The live limits are on https://faultline.nxtg.ai/pricing (Free 5, Personal 25, Pro 500 scans per month; read 2026-10-01) and are enforced by faultline-web. This API-side gate is still dormant. Multi-model consensus is now Enterprise only (`packages/api/src/plugins/consensus-entitlement.ts`), so the consensus cost range below applies to Enterprise scans. Free, Personal and Pro run the non-consensus default, costed in `docs/unit-economics-prod-default-2026-09-30.md`.
 **Tracking**: unblocks Wolf's A-104 Faultline paid-conversion push. NEXUS N-228.
 **Why**: `docs/unit-economics-MEASURED-2026-07-04.md` — a consensus scan costs **$0.20–0.71** (~88–91% is web-search retrieval). A flat $19/mo tier goes **gross-margin-negative above ~27–95 scans/mo**. This cap bounds a paid user's monthly scans so the tier stays margin-positive.
 
