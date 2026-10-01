@@ -1,5 +1,8 @@
 # Provider-Spend Cap — $100/mo, Ledgered (A-110 item 1)
 
+> **Asif ruling 2026-10-01 (verbatim): "no spend cap.. if we are making money.. we can afford it".** The cap stays dormant (`FAULTLINE_PROVIDER_SPEND_CAP` unset). The ledger keeps recording, and the grounding-allowance alert (docs/grounding-allowance-alert.md) is the cost signal instead. Known limit: ledger and grounding counts reset on each deploy until a Fly volume is mounted.
+
+
 **Status**: MECHANISM + LEDGER SHIPPED. **Enforcement DORMANT by default** — flipping the gate on is Asif's one-env-var call.
 **Founder ruling**: A-110 REC position 1 adopted 2026-07-19 (Emma-PM routed) — *"$100/mo provider-spend cap, ledgered (geo-grader append-only pattern)."*
 **Canon**: `~/.claude/rules/deterministic-grounded-autonomy.md` §GROUNDED — *provision/spend freely up to a standing per-scope cap, no per-item ask; log every transaction. Only crossing the cap escalates.*
