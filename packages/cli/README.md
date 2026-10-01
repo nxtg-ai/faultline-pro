@@ -7,7 +7,7 @@
 
 Forensic verification of AI-generated claims. Extract atomic facts, verify against live web data, risk-score your AI outputs.
 
-Current npm version: 0.10.1 (`npm view @nxtg/faultline version`, 2026-10-01).
+Current npm version: 0.11.0 (`npm view @nxtg/faultline version`, 2026-10-01).
 
 ---
 

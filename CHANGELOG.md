@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [v0.11.0] — 2026-10-01
+
+
 Covers every commit after v0.10.1: ddd7bd6, c89caa4, ae4987a, 732f7dc, a22d009, 678fb7c, 2173888, b33acff, dd4998f. State below was checked on 2026-10-01 (see each entry for how).
 
 ### Added

@@ -20,8 +20,8 @@ Faultline ships Art. 9 (risk register), Art. 12 (tamper-evident audit log), and 
 
 | Item | State | How checked |
 |---|---|---|
-| CLI on npm | `@nxtg/faultline` 0.10.1 | `npm view @nxtg/faultline version` |
-| Hosted API | `https://faultline-api.fly.dev`, version 0.10.1 | `curl https://faultline-api.fly.dev/health` |
+| CLI on npm | `@nxtg/faultline` 0.11.0 | `npm view @nxtg/faultline version` |
+| Hosted API | `https://faultline-api.fly.dev`, version 0.11.0 | `curl https://faultline-api.fly.dev/health` |
 | Web app | https://faultline.nxtg.ai (separate repo, `faultline-web`, on Vercel) | live pricing page read 2026-10-01 |
 | Plans | Free 5 scans/month. Personal $19/mo, 25 scans. Pro $49/mo, 500 scans. Enterprise: custom, scan allowance set in the contract | https://faultline.nxtg.ai/pricing |
 | Multi-model consensus | **Enterprise only.** The API returns `403 consensus_not_in_plan` to any caller below Enterprise, before the stream opens | `packages/api/src/plugins/consensus-entitlement.ts`; live check by fp 2026-10-01 (pro, personal and free 403, enterprise 200, mock provider) |
@@ -295,7 +295,7 @@ Input: AI-generated text / PDF / image
 
 ```
 packages/
-├── cli/                  # @nxtg/faultline (npm 0.10.1): CLI + scan engine
+├── cli/                  # @nxtg/faultline (npm 0.11.0): CLI + scan engine
 │   ├── cli/              # Commands: scan, guard, report, watch, critique, graph, weakest, compare…
 │   ├── providers/        # Gemini, Claude, OpenAI, Perplexity, Mock adapters
 │   ├── compliance/       # EU AI Act risk categories (Articles 5–7, Annex III)

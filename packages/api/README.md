@@ -4,7 +4,7 @@ REST API service for Faultline Pro — AI claim forensics and EU AI Act complian
 
 ## Overview
 
-Fastify v5 service, deployed on Fly.io as `faultline-api`. Hosted at `https://faultline-api.fly.dev` (version 0.10.1 on 2026-10-01, from `GET /health`). The package is not published to npm. The server registers about 190 routes (188 method+path pairs in `src/`, counted 2026-10-01). This README documents the scan, streaming, critique, usage and gating behavior in detail, then lists route groups. Other routes are listed by group only.
+Fastify v5 service, deployed on Fly.io as `faultline-api`. Hosted at `https://faultline-api.fly.dev` (version 0.11.0 on 2026-10-01, from `GET /health`). The package is not published to npm. The server registers about 190 routes (188 method+path pairs in `src/`, counted 2026-10-01). This README documents the scan, streaming, critique, usage and gating behavior in detail, then lists route groups. Other routes are listed by group only.
 
 | Endpoint | Method | Description |
 |---|---|---|
@@ -53,7 +53,7 @@ Health check. No authentication required.
 {
   "status": "ok",
   "service": "faultline-api",
-  "version": "0.10.1",
+  "version": "0.11.0",
   "subsystems": { "keyStore": { "status": "ok", "activeKeys": 0 }, "scanEngine": { "status": "ok", "providersConfigured": 3 } },
   "providers": { "gemini": true, "openai": true, "claude": true, "perplexity": false }
 }
