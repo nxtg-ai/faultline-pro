@@ -6,6 +6,7 @@ import type { PipelineConfig } from '@nxtg/faultline/cli/scan.js';
 import { getCostStore, emitScanCostEvent, appendScanCostLog, resolveTierFromRequest, buildManagedCostEvent } from '../store/costs.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
+import { enforceConsensusEntitlement } from '../plugins/consensus-entitlement.js';
 import { recordProviderSpend } from '../store/provider-spend.js';
 import { getUsageMeter } from '../store/usage.js';
 import { captureUsage } from '@nxtg/faultline/lib/usage-sink.js';
@@ -30,6 +31,7 @@ const POST_STREAM_BODY_SCHEMA = {
         // Grounded multi-model consensus (additive opt-in). When true, the
         // verify stage fans out to consensusProviders over shared sources and
         // claim_verified events carry the richer consensus verdict shape.
+        // Enterprise only — enforceConsensusEntitlement refuses the rest.
         consensus:            { type: 'boolean' },
         consensusProviders:   { type: 'array', items: { type: 'string', enum: PROVIDER_ENUM } },
       },
@@ -210,7 +212,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: StreamPostBody }>(
     '/scan/stream',
     {
-      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap],
+      preHandler: [requireApiKey, enforceConsensusEntitlement, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap],
       schema: {
         tags: ['Scan'],
         summary: 'Stream scan results via SSE (POST — no URL length ceiling)',

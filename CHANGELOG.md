@@ -7,6 +7,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **Multi-model consensus is Enterprise-only, enforced server-side.** `POST /scan/stream` with `pipelineConfig.consensus: true` now returns `403 consensus_not_in_plan` for any caller below Enterprise, before the stream opens. It refuses rather than downgrading, so a single-model scan is never served as the consensus the caller asked for. Previously any key could set the flag, and a consensus scan costs $0.20–0.71 against a sub-cent single-model scan. The plan comes from `x-user-tier` only when the caller holds the server's own key (faultline-web). For any keystore key the header is ignored, so a spoofed `enterprise` buys nothing. Asif ruling 2026-09-30, re-ruled to Enterprise only.
+
 - **Provider-spend budget: a $100/month cap with an append-only USD ledger** (A-110 item 1). Every managed scan's real composed cost is appended to `provider-spend.jsonl`, and the month total is **hydrated from that file** rather than held only in memory — so a redeploy cannot silently reset the budget to zero. This is not a restriction but the thing that makes autonomous scanning legitimate: spend runs freely under a mechanical ceiling with a complete record, and only crossing it escalates.
 
   Distinct from the monthly usage cap: that bounds a **customer's** scans to protect margin (402); this bounds **Faultline's** dollars at providers to protect runway (503 — the budget is ours, so there is nothing for the caller to buy and `Retry-After` points at the month boundary).
