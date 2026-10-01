@@ -15,9 +15,17 @@
  *                          (the engine discards it; we read it). Requires G1 PASS
  *                          and G2 live rates pinned. Logs append-only per scan-id.
  *
+ *   --paid --confirm-spend --prod-default
+ *                          PAID, PROD DEFAULT (non-consensus) mode: provider
+ *                          gemini, consensus:false — what /scan/stream serves
+ *                          every plan below Enterprise. Gemini verify runs its own
+ *                          googleSearch per claim, billed per grounded prompt.
+ *                          6 reps per size (18 scans).
+ *
  * Run:
  *   npx tsx scripts/measure-consensus-cost.ts               # dry structural
  *   npx tsx scripts/measure-consensus-cost.ts --paid --confirm-spend
+ *   npx tsx scripts/measure-consensus-cost.ts --paid --confirm-spend --prod-default
  */
 
 import { randomUUID } from 'node:crypto';
@@ -27,6 +35,9 @@ import { captureAll, extractPrompt, type CallType } from './consensus-cost/captu
 import { LIVE_RATES, LIVE_RATES_PINNED_ON, ENGINE_DEFAULT_MODELS, MANAGED_RATES_MIRROR, liveRatesReady, type Rate } from './consensus-cost/rates';
 
 const LOG_PATH = `${process.cwd()}/scripts/consensus-cost/measured-usage.jsonl`;
+// --prod-default runs log separately: measured-usage.jsonl is the pinned 07-04
+// consensus evidence that tests/consensus-cost-replay.test.ts replays.
+const PROD_DEFAULT_LOG_PATH = `${process.cwd()}/scripts/consensus-cost/prod-default-usage.jsonl`;
 const DEFAULT_N = 3; // DEFAULT_CONSENSUS_PROVIDERS = [openai, gemini, claude] (scan.ts:187)
 const K_CAP = 8;     // filterClaimsForVerification .slice(0,8) (scan.ts:145)
 
@@ -66,6 +77,7 @@ interface UsageRecord {
   inputTokens: number;
   outputTokens: number;
   isGrounding: boolean;
+  httpStatus?: number;
   ts: string;
 }
 
@@ -102,7 +114,13 @@ function callTypeOf(url: string, body: any): CallType | 'unknown' {
 function readUsage(provider: UsageRecord['provider'], data: any): { input: number; output: number } {
   if (provider === 'gemini') {
     const u = data?.usageMetadata ?? {};
-    return { input: u.promptTokenCount ?? 0, output: u.candidatesTokenCount ?? 0 };
+    // Thinking tokens bill at the output rate (2.5 Flash thinks by default);
+    // tool-use prompt tokens bill at the input rate. Both were missed before
+    // 2026-09-30, an immaterial undercount while gemini was <1% of consensus cost.
+    return {
+      input: (u.promptTokenCount ?? 0) + (u.toolUsePromptTokenCount ?? 0),
+      output: (u.candidatesTokenCount ?? 0) + (u.thoughtsTokenCount ?? 0),
+    };
   }
   if (provider === 'anthropic') {
     const u = data?.usage ?? {};
@@ -146,7 +164,13 @@ async function runDry(): Promise<void> {
 }
 
 // ── PAID mode ────────────────────────────────────────────────────────────────
-async function runPaid(): Promise<void> {
+/** A Gemini request that carries the googleSearch tool is a billed grounded prompt. */
+function isGeminiGrounded(body: any): boolean {
+  const s = JSON.stringify(body ?? {});
+  return s.includes('googleSearch') || s.includes('google_search');
+}
+
+async function runPaid(prodDefault: boolean, throttleMs: number): Promise<void> {
   const models = Object.values(ENGINE_DEFAULT_MODELS);
   const { ready, missing } = liveRatesReady(models);
   if (!ready) {
@@ -159,8 +183,17 @@ async function runPaid(): Promise<void> {
   let ctx: { scanId: string; size: string; rep: number } = { scanId: '', size: '', rep: 0 };
 
   const realFetch = globalThis.fetch;
+  // --throttle-ms: space provider calls out so a rate-limited key measures real
+  // usage instead of 429s (2026-09-30: an unthrottled run got 111/120 429s).
+  let gate: Promise<void> = Promise.resolve();
+  const waitTurn = (): Promise<void> => {
+    const turn = gate.then(() => new Promise<void>((r) => setTimeout(r, throttleMs)));
+    gate = turn;
+    return turn;
+  };
   globalThis.fetch = (async (input: any, init?: RequestInit): Promise<Response> => {
     const url = typeof input === 'string' ? input : (input?.url ?? String(input));
+    if (throttleMs > 0 && providerOf(url) !== 'unknown') await waitTurn();
     const res = await realFetch(input, init);
     try {
       const provider = providerOf(url);
@@ -171,7 +204,9 @@ async function runPaid(): Promise<void> {
         try { body = init?.body ? JSON.parse(init.body as string) : undefined; } catch { /* ignore */ }
         const callType = callTypeOf(url, body);
         const u = readUsage(provider, data);
-        records.push({ ...ctx, callType, provider, model: modelOf(url, body), inputTokens: u.input, outputTokens: u.output, isGrounding: callType === 'web_search', ts: new Date().toISOString() });
+        // A failed call (429, 5xx) is not billed: no tokens, no grounding fee.
+        const isGrounding = res.ok && (callType === 'web_search' || (provider === 'gemini' && isGeminiGrounded(body)));
+        records.push({ ...ctx, callType, provider, model: modelOf(url, body), inputTokens: u.input, outputTokens: u.output, isGrounding, httpStatus: res.status, ts: new Date().toISOString() });
       }
     } catch { /* teeing must never break the real call */ }
     return res;
@@ -179,6 +214,14 @@ async function runPaid(): Promise<void> {
 
   try {
     for (const m of MATRIX) {
+      if (prodDefault) {
+        for (let rep = 1; rep <= 6; rep++) {
+          ctx = { scanId: randomUUID(), size: `${m.size}:prod-gemini`, rep };
+          console.error(`[paid] ${ctx.size} rep${rep} scan=${ctx.scanId}`);
+          await scan(m.text, 'gemini', undefined, undefined, undefined, undefined, { consensus: false });
+        }
+        continue;
+      }
       for (let rep = 1; rep <= m.reps; rep++) {
         for (const consensus of [true, false]) {
           ctx = { scanId: randomUUID(), size: `${m.size}${consensus ? '' : ':single'}`, rep };
@@ -192,21 +235,29 @@ async function runPaid(): Promise<void> {
   }
 
   // Compose measured cost per scan from LIVE rates + persist append-only.
-  mkdirSync(dirname(LOG_PATH), { recursive: true });
-  for (const r of records) appendFileSync(LOG_PATH, JSON.stringify(r) + '\n');
+  const logPath = prodDefault ? PROD_DEFAULT_LOG_PATH : LOG_PATH;
+  mkdirSync(dirname(logPath), { recursive: true });
+  for (const r of records) appendFileSync(logPath, JSON.stringify(r) + '\n');
 
-  const byScan = new Map<string, { size: string; usd: number }>();
+  const byScan = new Map<string, { size: string; usd: number; grounded: number; calls: number }>();
   for (const r of records) {
     const rate: Rate | null = LIVE_RATES[r.model] ?? null;
     if (!rate) { console.error(`WARN: no live rate for model ${r.model} — scan ${r.scanId} incomplete`); continue; }
     const usd = (r.inputTokens / 1e6) * rate.inputPerM + (r.outputTokens / 1e6) * rate.outputPerM + (r.isGrounding ? rate.groundingPerCall : 0);
-    const agg = byScan.get(r.scanId) ?? { size: r.size, usd: 0 };
+    const agg = byScan.get(r.scanId) ?? { size: r.size, usd: 0, grounded: 0, calls: 0 };
     agg.usd += usd;
+    agg.calls += 1;
+    if (r.isGrounding) agg.grounded += 1;
     byScan.set(r.scanId, agg);
   }
   console.log('\nMEASURED $/scan (live-rate composed, real provider usage):');
-  for (const [scanId, v] of byScan) console.log(`  ${v.size.padEnd(14)} ${scanId}  $${v.usd.toFixed(6)}`);
-  console.log(`\nRaw per-call usage: ${LOG_PATH}`);
+  for (const [scanId, v] of byScan) console.log(`  ${v.size.padEnd(20)} ${scanId}  $${v.usd.toFixed(6)}  calls=${v.calls} grounded=${v.grounded}`);
+  const failed = records.filter((r) => r.httpStatus !== undefined && r.httpStatus >= 400).length;
+  console.log(`\nprovider calls: ${records.length}, failed (not billed): ${failed}`);
+  const sorted = [...byScan.values()].map((v) => v.usd).sort((a, b) => a - b);
+  const pct = (p: number): number => sorted[Math.min(sorted.length - 1, Math.ceil((p / 100) * sorted.length) - 1)] ?? 0;
+  if (sorted.length) console.log(`\nALL ${sorted.length} scans: p50 $${pct(50).toFixed(6)}  p90 $${pct(90).toFixed(6)}  max $${sorted[sorted.length - 1].toFixed(6)}`);
+  console.log(`\nRaw per-call usage: ${logPath}`);
 }
 
 async function main(): Promise<void> {
@@ -216,7 +267,8 @@ async function main(): Promise<void> {
     console.error('REFUSED: --paid requires --confirm-spend (this makes real, billed API calls).');
     process.exit(2);
   }
-  if (paid) await runPaid();
+  const throttleArg = process.argv.find((a) => a.startsWith('--throttle-ms='));
+  if (paid) await runPaid(args.has('--prod-default'), throttleArg ? Number(throttleArg.split('=')[1]) : 0);
   else await runDry();
 }
 
