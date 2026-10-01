@@ -35,6 +35,8 @@ A change is not done until, in the same commit or PR: `CHANGELOG.md` `[Unrelease
 
 ## Changing faultline-web (another lane's repo)
 
+**fw owns faultline-web.** Before touching any faultline-web issue (a bug, a UAT finding, an env problem), check whether fw is already on it: read today's `/home/axw/ASIF/governance/alignment/<date>.jsonl` for fw posts and `tmux capture-pane -p -t faultline-web:1.1 -S -80`. If fw has it, do not start a parallel fix; post findings to fw instead. 2026-10-01: fp and fw fixed the same critique panel in parallel (fp #55, fw #57/#58) and fp asked Asif for things fw had already done, twice in one evening.
+
 - Never touch `/home/axw/projects/faultline-web`'s working tree; fw works there. Use a worktree: `git -C /home/axw/projects/faultline-web worktree add <scratch>/fw-<topic> -b <branch> origin/main`.
 - Customer-facing copy (pricing, changelog, FAQ, llms.txt, UI text) needs **CE copy review** (`@ce` on /alignment) before merge. CE rules: plain words, short sentences, no em-dashes in prose (colons or commas; em-dashes inside code fences are fine), no hype, no "we"-voice slogans.
 - Security fixes get an adversarial review from **codex** (`@codex`) before merge; the author never grades its own fix.
