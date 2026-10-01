@@ -6,13 +6,28 @@ Faultline decomposes AI-generated output into atomic claims, verifies each again
 
 [![CI](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@nxtg/faultline.svg)](https://www.npmjs.com/package/@nxtg/faultline)
-[![Tests](https://img.shields.io/badge/tests-4553%20passing-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-4909%20passing-brightgreen)](#tests-and-quality)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 
 ### Audit-grade governance infrastructure
 
 Faultline ships Art. 9 (risk register), Art. 12 (tamper-evident audit log), and Art. 14 (human sign-off) as verifiable code paths — not marketing copy. Auditors validate the SHA-256 chain manifest with only `openssl dgst -sha256`, no Faultline tooling required. These capabilities map to the EU AI Act, NIST AI RMF, and ISO 42001 — whichever framework applies to your stack.
+
+---
+
+## Current Status (checked 2026-10-01)
+
+| Item | State | How checked |
+|---|---|---|
+| CLI on npm | `@nxtg/faultline` 0.10.1 | `npm view @nxtg/faultline version` |
+| Hosted API | `https://faultline-api.fly.dev`, version 0.10.1 | `curl https://faultline-api.fly.dev/health` |
+| Web app | https://faultline.nxtg.ai (separate repo, `faultline-web`, on Vercel) | live pricing page read 2026-10-01 |
+| Plans | Free 5 scans/month. Personal $19/mo, 25 scans. Pro $49/mo, 500 scans. Enterprise: custom, scan allowance set in the contract | https://faultline.nxtg.ai/pricing |
+| Multi-model consensus | **Enterprise only.** The API returns `403 consensus_not_in_plan` to any caller below Enterprise, before the stream opens | `packages/api/src/plugins/consensus-entitlement.ts`; live check by fp 2026-10-01 (pro, personal and free 403, enterprise 200, mock provider) |
+| `POST /critique` | Needs an API key. Rate limited. Covered by the provider-spend cap and written to the spend ledger | `packages/api/src/routes/critique.ts` |
+| Provider-spend cap | $100/month. The ledger records every managed scan and critique. **Enforcement ships dormant** (`FAULTLINE_PROVIDER_SPEND_CAP=on` turns it on) and is off in production | `docs/provider-spend-cap.md`; `GET /usage` showed `providerBudget.enforced=false` on 2026-10-01 |
+| Per-key monthly scan cap (API side) | Dormant (`FAULTLINE_USAGE_CAP`). Plan limits above are enforced by faultline-web | `docs/usage-cap.md` |
 
 ---
 
@@ -29,11 +44,11 @@ Faultline ships Art. 9 (risk register), Art. 12 (tamper-evident audit log), and 
 | Claim dependency graph | Mermaid and Graphviz DOT visualizations grouping claims by risk tier |
 | Rules engine | YAML-defined rules; built-in PII, bias, toxicity rulesets |
 | CI gate | `--fail-on high` returns exit code 1; SARIF output for GitHub Code Scanning |
-| Enterprise API | REST API with key management, audit trail, rate limiting, webhooks, batch scanning, caching |
+| Enterprise API | REST API (about 190 routes) with key management, audit trail, rate limiting, webhooks, batch scanning, caching |
 | Provider failover | Automatic chain Gemini → OpenAI → Claude → Perplexity; circuit breaker with 5-min cooldown |
 | Monitoring | `GET /health/deep`, `GET /metrics` (Prometheus), `GET /status` (HTML dashboard) |
 | Scheduled jobs | `POST /jobs` — recurring scans on a cron schedule with webhook delivery |
-| Multi-SDK | TypeScript SDK (`@nxtg/faultline-sdk`), Python SDK (`faultline-sdk`), GitHub Action |
+| Integrations | Python client source in `sdks/python`, MCP server `packages/mcp`, Terraform provider `packages/terraform-provider`, GitHub Action `nxtg-ai/faultline-action` (see [SDKs](#sdks-and-integrations)) |
 | Multi-tenant | Tenant CRUD, API key association, per-tenant usage aggregation |
 | Cost tracking | Per-scan token/cost estimation; `GET /costs` with provider/tenant/date filters |
 | Scan history | `GET /scans/search` — full-text across all past scans, cursor pagination |
@@ -47,8 +62,10 @@ Faultline ships Art. 9 (risk register), Art. 12 (tamper-evident audit log), and 
 | i18n | `Accept-Language: es/fr/en` — localized error messages and report labels (EN/ES/FR) |
 | Property-based tests | `fast-check` oracle coverage: confidence bounds, dedup invariants, cost aggregation, sort stability |
 | GDPR compliance | Article 15 export (`GET /tenants/:id/export` → ZIP) + Article 17 erasure (`DELETE /tenants/:id/data`) covering scan history, audit log, notifications, webhooks, costs, schedules |
+| Multi-model consensus | `POST /scan/stream` with `pipelineConfig.consensus: true`. Enterprise only, enforced server-side (403 below Enterprise) |
+| Claim critique | `POST /critique`: critique plus improved prompt for failed claims; API key, rate limit and provider-spend cap apply |
 | Real-time scan streaming | `GET /scan/stream?text=...&provider=mock` — Server-Sent Events; progressive per-claim delivery via `onClaimVerified` callback; streams `start` → `claim_verified` × N → `complete`; no polling required |
-| Mutation-tested core | Stryker gate: claim forensics 75.31%, webhook store 91.45%, GDPR stores (costs 96.81%, notifications 92.12%, schedules 80.94%); CRUCIBLE Protocol Gate 6 |
+| Mutation-tested core | Stryker gate (CRUCIBLE Gate 6, threshold 80%): `cli/scan.ts` 81.97%, `stream.ts` 88.64%, `compliance-report.ts` 80.81%, GDPR stores 80.94% to 96.81%. Last measured 2026-03-21 to 2026-04-17 per `docs/mutation-testing.md`; not re-run since |
 
 ---
 
@@ -62,9 +79,9 @@ Faultline ships Art. 9 (risk register), Art. 12 (tamper-evident audit log), and 
 | Perplexity | `PERPLEXITY_API_KEY` | Real-time search-native verification |
 | OpenAI | `OPENAI_API_KEY` | Training-data verification, GPT ecosystem |
 | Claude | `ANTHROPIC_API_KEY` | Training-data verification, reasoning-heavy docs |
-| Mock | None | CI pipelines, unit tests, offline development |
+| Mock | None | CI pipelines, unit tests, offline development. Returns synthetic verdicts and verifies nothing; the CLI never falls back to it silently |
 
-Switch providers with `--provider <name>`. No code changes required.
+Switch providers with `--provider <name>`. No code changes required. With no provider key and no `FAULTLINE_API_KEY`, the CLI says nothing was checked and exits instead of inventing a verdict (since v0.10.1). With `FAULTLINE_API_KEY` set, `guard` and the MCP server run the scan on the hosted API with server-side provider keys.
 
 ### Document Ingestion
 - **PDF + image upload with OCR** — `faultline scan --file document.pdf` or `POST /scan/upload`; powered by `pdf-parse` + `tesseract.js`
@@ -86,8 +103,9 @@ Switch providers with `--provider <name>`. No code changes required.
 - **API key management** — full lifecycle: `POST /keys`, `GET /keys`, `GET /keys/:id`, `PATCH /keys/:id`, `DELETE /keys/:id`; soft-disable/enable; scoped permissions (scan / report / upload / admin / pro)
 - **Key hygiene** — dormant key detection (`GET /keys/dormant`), expiry notifications (7d/1d thresholds), bulk delete/disable/enable, usage analytics (`GET /keys/usage`), hygiene dashboard (`GET /keys/usage/view`)
 - **Audit trail** — SHA-256 input hash logged on every request; `GET /audit/log` (query + filter), `GET /audit/log/stats`, `GET /audit/log/export` (NDJSON); tenant-scoped view
-- **Usage metering** — per-key daily scan counts via `GET /usage`
+- **Usage metering**: per-key daily scan counts and monthly quota position via `GET /usage` (admin keys also see the provider-spend budget)
 - **Rate limiting** — per-tier per-minute limits: free 10/min, pro 100/min, admin 10,000/min; `X-RateLimit-*` headers
+- **Spend and quota gates**: a per-key monthly scan quota (`402`) and a fleet provider-spend cap (`503`), both dormant until switched on; the spend ledger records every managed scan and `/critique` call either way
 - **Multi-tenant** — tenant CRUD (`POST /tenants`); all resources scoped by tenant: scan history, notifications, webhooks, audit log; `GET /tenants/:id/usage`
 - **Cost tracking** — per-scan token/cost estimates by provider rate; `GET /costs` (keyId/provider/date filters + aggregate)
 - **Usage dashboard** — `GET /dashboard`: live scan feed, provider health, active keys, scan counts (today/week/month), risk distribution
@@ -160,11 +178,18 @@ npx @nxtg/faultline scan --file report.pdf --provider gemini
 npx @nxtg/faultline scan --file screenshot.png --provider gemini
 ```
 
-**CI gate (no API key required):**
+**Check piped agent output:**
+
+```bash
+claude -p "..." | npx @nxtg/faultline guard --fail-on refuted
+```
+
+**CI gate (no API key required, synthetic verdicts, wiring test only):**
 
 ```bash
 npx @nxtg/faultline scan --input doc.txt --provider mock --fail-on high
 # exit 0 = pass, exit 1 = HIGH or CRITICAL findings found
+# --provider mock verifies nothing; use a real provider for a real gate
 ```
 
 ---
@@ -176,13 +201,13 @@ Start the server:
 ```bash
 cd packages/api
 FAULTLINE_API_KEY=your-key npm run dev
-# Server listening on http://localhost:3000
+# Server listening on http://localhost:3010
 ```
 
 Scan a text payload:
 
 ```bash
-curl -X POST http://localhost:3000/scan \
+curl -X POST http://localhost:3010/scan \
   -H "x-api-key: your-key" \
   -H "Content-Type: application/json" \
   -d '{"text": "GPT-4 has 1 trillion parameters.", "provider": "mock"}'
@@ -191,7 +216,7 @@ curl -X POST http://localhost:3000/scan \
 Upload a PDF or image for OCR scanning:
 
 ```bash
-curl -X POST http://localhost:3000/scan/upload \
+curl -X POST http://localhost:3010/scan/upload \
   -H "x-api-key: your-key" \
   -F "file=@report.pdf"
 ```
@@ -199,7 +224,7 @@ curl -X POST http://localhost:3000/scan/upload \
 Generate a compliance report (PDF):
 
 ```bash
-curl -X POST http://localhost:3000/scan/report \
+curl -X POST http://localhost:3010/scan/report \
   -H "x-api-key: your-key" \
   -H "Content-Type: application/json" \
   -d '{"text": "AI system processes medical records.", "provider": "mock"}' \
@@ -209,7 +234,7 @@ curl -X POST http://localhost:3000/scan/report \
 Create an API key:
 
 ```bash
-curl -X POST http://localhost:3000/keys \
+curl -X POST http://localhost:3010/keys \
   -H "x-api-key: your-admin-key" \
   -H "Content-Type: application/json" \
   -d '{"name": "ci-pipeline", "tier": "pro", "permissions": ["scan", "report"]}'
@@ -218,7 +243,7 @@ curl -X POST http://localhost:3000/keys \
 Register a webhook:
 
 ```bash
-curl -X POST http://localhost:3000/webhooks \
+curl -X POST http://localhost:3010/webhooks \
   -H "x-api-key: your-admin-key" \
   -H "Content-Type: application/json" \
   -d '{"url": "https://your-service.example.com/hooks/faultline", "events": ["scan.complete"]}'
@@ -227,10 +252,21 @@ curl -X POST http://localhost:3000/webhooks \
 View the usage dashboard:
 
 ```bash
-curl http://localhost:3000/dashboard -H "x-api-key: your-key"
+curl http://localhost:3010/dashboard -H "x-api-key: your-key"
 ```
 
-Full API reference: [`packages/api/docs/openapi.yaml`](packages/api/docs/openapi.yaml)
+Hosted API: `https://faultline-api.fly.dev` (`GET /health` needs no key). Interactive docs at `GET /docs` on a running server.
+
+Check consensus gating (needs an API key; the mock provider spends nothing):
+
+```bash
+curl -X POST http://localhost:3010/scan/stream \
+  -H "x-api-key: your-key" -H "Content-Type: application/json" \
+  -d '{"text": "x", "provider": "mock", "pipelineConfig": {"consensus": true}}'
+# below Enterprise: 403 {"error":"consensus_not_in_plan", ...}
+```
+
+Route reference: [`packages/api/README.md`](packages/api/README.md). The spec at [`packages/api/docs/openapi.yaml`](packages/api/docs/openapi.yaml) declares version 0.7.0 and has 48 paths, so it covers only part of the current routes.
 
 ---
 
@@ -259,24 +295,28 @@ Input: AI-generated text / PDF / image
 
 ```
 packages/
-├── cli/                  # @nxtg/faultline — published CLI + scan engine
-│   ├── cli/              # Commands: scan, report, watch, critique, graph, weakest…
+├── cli/                  # @nxtg/faultline (npm 0.10.1): CLI + scan engine
+│   ├── cli/              # Commands: scan, guard, report, watch, critique, graph, weakest, compare…
 │   ├── providers/        # Gemini, Claude, OpenAI, Perplexity, Mock adapters
 │   ├── compliance/       # EU AI Act risk categories (Articles 5–7, Annex III)
-│   ├── rules/            # YAML rule engine (PII, bias, toxicity)
+│   ├── rules/            # Rule engine (PII, bias, shell injection…)
 │   ├── analysis/         # Weakest-link scoring, claim graph
-│   ├── history/          # Scan history + trend analysis
+│   ├── history/          # Scan history store
+│   ├── consensus/        # Multi-model consensus engine
 │   └── templates/        # Red-team prompt template library
-├── api/                  # @nxtg/faultline-api — Fastify v5 REST API
-│   ├── routes/           # /scan, /batch, /compare, /upload, /report, /keys, /jobs, /cache, /metrics…
-│   ├── store/            # KeyStore, AuditLogger, CircuitBreaker, ScanCache, JobScheduler…
-│   ├── plugins/          # Auth, rate limiting
-│   └── docs/             # OpenAPI 3.1 spec (openapi.yaml)
-├── sdk/                  # @nxtg/faultline-sdk — TypeScript client SDK
-└── web/                  # @nxtg/faultline-web — React visualization dashboard
+├── api/                  # @nxtg/faultline-api (not published to npm): Fastify v5 REST API, deployed on Fly
+│   ├── src/routes/       # /scan, /scan/stream, /critique, /keys, /usage, /jobs…
+│   ├── src/store/        # KeyStore, AuditLogger, CircuitBreaker, ScanCache, provider-spend ledger…
+│   ├── src/plugins/      # Auth, rate limit, usage cap, provider-spend cap, consensus entitlement
+│   └── docs/             # openapi.yaml (partial, version 0.7.0)
+├── mcp/                  # @nxtg/faultline-mcp 0.1.0: MCP server (not on npm as of 2026-10-01)
+├── terraform-provider/   # Go Terraform provider
+└── web/                  # @nxtg/faultline-web: original React/Vite visualization app (Kaggle origin)
 sdks/
-└── python/               # faultline-sdk — Python client (PyPI-ready, zero runtime deps)
+└── python/               # Python client source (pyproject name faultline-sdk 0.5.0; not confirmed on PyPI, see SDKs)
 ```
+
+The production web app at https://faultline.nxtg.ai is a separate repo (`faultline-web`, Next.js on Vercel). It is not in this monorepo.
 
 **Stores (API layer):**
 
@@ -286,13 +326,14 @@ sdks/
 | `AuditLogger` | SHA-256 request hashing, append-only log |
 | `UsageMeter` | Per-key daily scan counts |
 | `ScanAnalytics` | Aggregated risk distribution, trend data |
-| `RateLimiter` | Per-tier daily limits with midnight UTC rollover |
+| `RateLimiter` | Per-tier per-minute limits |
 | `WebhookStore` | Endpoint registration, HMAC secret management |
 | `ScanCache` | SHA-256 content-hash cache, configurable TTL, hit-rate stats |
 | `CircuitBreaker` | Per-provider failure counting, cooldown management |
 | `JobStore` + `JobScheduler` | Recurring scan job CRUD, cron-based background execution |
 | `TenantStore` | Tenant CRUD, API key → tenant association |
 | `CostStore` | Per-scan token/cost recording, provider rate table, aggregate queries |
+| `ProviderSpend` (`store/provider-spend.ts`) | Append-only USD ledger and monthly rollup behind the $100/month provider-spend cap |
 | `ScanHistoryStore` | Last 1000 scans (newest-first), full-text + filter search, cursor pagination |
 | `ComplianceTemplateStore` | HIPAA/SOX/FERPA/Gov templates + custom template registry |
 | `BulkJobStore` | Async ZIP scan jobs: progress tracking, per-file results, summary report |
@@ -319,6 +360,9 @@ faultline weakest  --input doc.txt --provider gemini   # weakest-link claim
 faultline graph    --input doc.txt --format mermaid    # claim dependency graph
 faultline critique --input doc.txt --provider gemini   # critique + improved prompt
 
+# Agent output
+claude -p "..." | faultline guard --fail-on refuted    # verify piped text, gate on the verdict
+
 # Red-team
 faultline scan --templates injection,bias              # template library
 faultline templates list --category injection
@@ -329,7 +373,7 @@ faultline trend --file doc.txt
 
 # Utilities
 faultline stats                                      # npm download stats
-faultline stats --costs --api-url http://localhost:3000 --api-key <key>
+faultline stats --costs --api-url http://localhost:3010 --api-key <key>
 faultline rules                                        # list detection rules
 faultline init                                         # generate .faultlinerc.json
 faultline --version
@@ -338,52 +382,55 @@ faultline --help
 
 ---
 
-## SDKs
+## SDKs and Integrations
 
 ### TypeScript / Node.js
 
-```bash
-npm install @nxtg/faultline-sdk
-```
+There is no TypeScript SDK package in this repo and `@nxtg/faultline-sdk` is not on npm (`npm view` returned 404 on 2026-10-01). Call the REST API directly, or use the CLI (`@nxtg/faultline`).
 
 ```typescript
-import { FaultlineClient } from '@nxtg/faultline-sdk';
-
-const client = new FaultlineClient({ apiKey: 'your-key', baseUrl: 'http://localhost:3000' });
-
-const result = await client.scan('GPT-4 has 1 trillion parameters.');
+const res = await fetch('https://faultline-api.fly.dev/scan', {
+  method: 'POST',
+  headers: { 'x-api-key': process.env.FAULTLINE_API_KEY!, 'Content-Type': 'application/json' },
+  body: JSON.stringify({ text: 'GPT-4 has 1 trillion parameters.', provider: 'gemini' }),
+});
+const result = await res.json();
 console.log(result.overallRisk); // 'low' | 'medium' | 'high' | 'critical'
-
-const batch = await client.scanBatch(['claim one', 'claim two'], 'gemini');
-console.log(batch.succeeded, '/', batch.total);
 ```
 
 ### Python
 
+Source is in [`sdks/python`](sdks/python) (pyproject name `faultline-sdk`, version 0.5.0, zero runtime dependencies). Install from a checkout:
+
 ```bash
-pip install faultline-sdk
+pip install ./sdks/python
 ```
+
+Do not run `pip install faultline-sdk`. On 2026-10-01 that name on PyPI (version 0.24.0) is an unrelated project (ML training checkpoints for "Faultline Cloud"). Whether this package was ever published to PyPI under a different name was not verified.
 
 ```python
 from faultline_sdk import FaultlineClient
 
-client = FaultlineClient(api_key="your-key", base_url="http://localhost:3000")
+client = FaultlineClient(api_key="your-key", base_url="http://localhost:3010")
 result = client.scan("GPT-4 has 1 trillion parameters.")
 print(result.overall_risk)  # 'low' | 'medium' | 'high' | 'critical'
 ```
 
+### MCP server
+
+`packages/mcp` (`@nxtg/faultline-mcp` 0.1.0) exposes a `verify_claims` tool to Claude Code, Cursor and other MCP clients. It was not published to npm as of 2026-10-01 (`npm view` returned 404), so run it from a checkout. See [`packages/mcp/README.md`](packages/mcp/README.md).
+
 ### GitHub Action
 
+The action lives in its own repo, `nxtg-ai/faultline-action` (tag `v1` exists).
+
 ```yaml
-- uses: nxtg-ai/faultline-pro/packages/cli@main
+- uses: nxtg-ai/faultline-action@v1
   with:
-    input-file: docs/release-notes.md
-    provider: gemini
+    input: docs/release-notes.md
     fail-on: high
-    upload-sarif: 'true'
   env:
     GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-    FAULTLINE_API_KEY: ${{ secrets.FAULTLINE_API_KEY }}
 ```
 
 ---
@@ -429,7 +476,7 @@ Promptfoo tests your prompts. DeepEval scores your RAG pipeline. **Faultline aud
 | FM-agnostic (Gemini / Claude / OpenAI / Perplexity) | Yes | Yes | No (Python) |
 | Provider auto-failover + circuit breaker | Yes | No | No |
 | Enterprise API with audit trail + caching | Yes | No | No |
-| TypeScript + Python SDK | Yes | No | No |
+| Python client + MCP server | Yes | No | No |
 
 ---
 
@@ -455,6 +502,23 @@ EU AI Act Article 12 requires that audit logs for high-risk AI systems be tamper
 ### Art. 14 — Human Sign-Off Record (`POST /scans/:id/approve`)
 
 EU AI Act Article 14 requires meaningful human oversight of high-risk AI system outputs before deployment. Faultline's approval endpoints let a named reviewer formally approve or reject any scan result — recording the reviewer identity (API key), decision (`approved` / `rejected`), optional note, and UTC timestamp. All approvals are queryable via `GET /scans/:id/approvals` and are immutable once recorded, providing a durable audit trail of human sign-off prior to production use.
+
+---
+
+## Tests and Quality
+
+Measured 2026-10-01 with `npx vitest run` in each package (all passing):
+
+| Package | Test files | Tests |
+|---|---|---|
+| `packages/api` | 137 | 2,450 |
+| `packages/cli` | 83 | 2,371 |
+| `packages/mcp` | 3 | 49 |
+| `packages/web` | 1 | 39 |
+| Root `npm test` (all of the above) | 224 | 4,909 |
+| `sdks/python` (`pytest`) | n/a | 100 |
+
+Mutation scores are listed in the feature table above and were not re-measured on 2026-10-01.
 
 ---
 

@@ -1,7 +1,7 @@
 # Faultline — We check the receipts on AI output.
 # https://github.com/nxtg-ai/faultline-pro
-# npm: @nxtg/faultline | @nxtg/faultline-api
-# Last updated: 2026-04-04 (N-213)
+# npm: @nxtg/faultline (0.10.1 on 2026-10-01). @nxtg/faultline-api is not published to npm.
+# Last updated: 2026-10-01
 
 > **The only AI safety CLI not owned by an AI lab.** Forensic verification for AI-generated text. Decomposes AI output into atomic claims, verifies each against live evidence, and maps findings to EU AI Act risk tiers. Provider-agnostic: Gemini, OpenAI, Claude, Perplexity — runtime switching, no code changes.
 
@@ -36,10 +36,12 @@ No API key required for the `mock` provider. Real verification uses:
 - **Weakest-link detection** — Finds the single claim that most undermines the argument's credibility
 - **Provider-agnostic** — 5 providers; runtime switching with `--provider`; auto-failover with circuit breaker
 - **SARIF output** — Native GitHub Code Scanning integration; both scan findings and compliance violations appear as code annotations
+- **Multi-model consensus is Enterprise only**: `POST /scan/stream` with `pipelineConfig.consensus: true` returns `403 consensus_not_in_plan` below Enterprise (server-enforced)
+- **Spend controls**: a $100/month provider-spend cap with an append-only ledger (enforcement ships dormant, off in production on 2026-10-01); `POST /critique` is rate limited and covered by it
 - **Enterprise API** — REST + GraphQL; API key management; multi-tenant; GDPR Article 15/17; audit trail; webhooks
-- **GitHub Actions** — `faultline-scan` composite action with compliance gate, SARIF upload, threshold/strict configuration
-- **Mutation-tested** — CRUCIBLE Protocol Gate 6: claim forensics 81.97%; compliance-report 80.81%; eu_ai_act fn 100%; GDPR stores 80.94%–96.81%
-- **4,492 tests** across CLI, API, Python SDK, GDPR, mutation hardening, property-based, contract, integration
+- **GitHub Actions**: `nxtg-ai/faultline-action@v1` (separate repo) with compliance gate and SARIF upload
+- **Mutation-tested**: CRUCIBLE Protocol Gate 6: claim forensics 81.97%; compliance-report 80.81%; eu_ai_act fn 100%; GDPR stores 80.94%–96.81% (last measured 2026-03-21 to 2026-04-17, not re-run since)
+- **4,909 JavaScript/TypeScript tests** (api 2,450; cli 2,371; mcp 49; web 39; run 2026-10-01) plus 100 Python SDK tests
 - **npm adoption metrics** — npmjs.org download tracking, Prometheus export, weekly trend analysis
 
 ## Use Cases
@@ -57,6 +59,7 @@ No API key required for the `mock` provider. Real verification uses:
 faultline scan --input <file>         # Full forensic scan (JSON output)
 faultline scan --input <file> --output-format markdown  # Human-readable report
 faultline scan --demo                 # No API key — shows full product experience
+claude -p "..." | faultline guard --fail-on refuted   # verify piped agent output, gate on the verdict
 faultline scan --fail-on high         # CI gate (exit 1 on High/Critical)
 faultline weakest --input <file>      # Find weakest claim only
 faultline compare --before a.txt --after b.txt  # Diff two scans
@@ -75,7 +78,9 @@ Full integration guide: `docs/INTEGRATION.md`
 Key endpoints:
 - `POST /scan` — scan text, returns claims + verdicts + risk scorecard + inline complianceScore/compliancePass
 - `POST /scan/deep` — multi-provider chain with evidence linking
-- `POST /scan/stream` (SSE) — progressive per-claim streaming
+- `POST /scan/stream` (SSE): progressive per-claim streaming; `pipelineConfig.consensus` is Enterprise only
+- `POST /critique`: critique and improved prompt for failed claims (API key, rate limit, provider-spend cap)
+- `GET /usage`: per-key usage and monthly quota; admin keys also see the provider-spend budget
 - `POST /scan/batch` — scan multiple texts
 - `POST /scan/diff` — compare two texts
 - `POST /scan/compliance-gate` — scan text + evaluate EU AI Act compliance (200=pass, 422=fail)
@@ -96,12 +101,19 @@ Key endpoints:
 
 ## Packages
 
-| Package | npm | Description |
-|---------|-----|-------------|
-| `@nxtg/faultline` | CLI | Command-line forensics tool |
-| `@nxtg/faultline-api` | API server | Fastify REST + GraphQL |
-| `@nxtg/faultline-sdk` | SDK | TypeScript library for embedding |
-| `faultline-sdk` | PyPI | Python SDK |
+| Package | Where | Description |
+|---------|-------|-------------|
+| `@nxtg/faultline` | npm (0.10.1) | CLI and scan engine |
+| `@nxtg/faultline-api` | repo only, deployed on Fly (https://faultline-api.fly.dev) | Fastify REST + GraphQL |
+| `@nxtg/faultline-mcp` | repo only (not on npm as of 2026-10-01) | MCP server, `verify_claims` tool |
+| Python client | `sdks/python` in the repo | Not confirmed on PyPI: the PyPI name `faultline-sdk` is an unrelated project |
+| `terraform-provider` | `packages/terraform-provider` | Go Terraform provider |
+
+There is no TypeScript SDK package (`@nxtg/faultline-sdk` returned 404 on npm, 2026-10-01).
+
+## Plans (https://faultline.nxtg.ai/pricing, read 2026-10-01)
+
+Free: 5 scans/month. Personal: $19/mo, 25 scans/month. Pro: $49/mo, 500 scans/month. Enterprise: custom, scan allowance set in the contract; multi-model consensus is included only here.
 
 ## Competitive Position
 
@@ -120,10 +132,12 @@ Faultline is not a substitute for Promptfoo (red-teaming, adversarial inputs) or
 packages/
   cli/          — CLI tool (@nxtg/faultline), providers, scan pipeline
   api/          — Fastify REST + GraphQL API (@nxtg/faultline-api)
-  sdk/          — TypeScript SDK (@nxtg/faultline-sdk)
-  web/          — Kaggle origin (P-08, frozen)
+  mcp/         : MCP server (@nxtg/faultline-mcp)
+  terraform-provider/: Go Terraform provider
+  web/         : original React/Vite app (Kaggle origin)
+sdks/python/   : Python client source
 docs/
-  INTEGRATION.md         — Full API integration guide (763 lines)
+  INTEGRATION.md        : Full API integration guide
   PROVIDERS.md           — Provider comparison + configuration
   ARCHITECTURE.md        — System design, store architecture, data flow
   GTM-PLAN.md            — Go-to-market strategy
@@ -133,14 +147,13 @@ docs/
 
 ## Project Status
 
-- **215 initiatives SHIPPED** (N-01 through N-215)
-- **4,492 tests** (CLI + API + Python SDK + integration + property-based + contract + mutation)
-- **8/8 CRUCIBLE gates PASS** (example, property, contract, integration oracles)
-- **EU AI Act enforcement-deadline ready** — Full compliance reporting (Art. 5/6/9/10/11/12/13/14/15/50/52/53), evidence strength scoring, Annex III conformity checklist, gating, SARIF, 5 output formats
-- **GDPR compliant** — Article 15 export + Article 17 erasure implemented
-- **Mutation-tested** — claim forensics critical path above 80% threshold
-- **Security hardened** — security headers (CSP, X-Frame-Options, nosniff), timing-safe auth, GraphQL query bounds, Mermaid XSS sanitization
-- **Version**: 0.5.0 (published 2026-04-15)
+- **Versions (2026-10-01)**: CLI 0.10.1 on npm; hosted API 0.10.1 (`GET https://faultline-api.fly.dev/health`)
+- **Tests (run 2026-10-01)**: 4,909 JavaScript/TypeScript (api 2,450; cli 2,371; mcp 49; web 39) plus 100 Python SDK tests, all passing
+- **CRUCIBLE Gate 6 mutation scores**: last measured 2026-03-21 to 2026-04-17 (`docs/mutation-testing.md`), not re-run since
+- **EU AI Act reporting**: Art. 5/6/9/10/11/12/13/14/15/50/52/53 evidence mapping, evidence strength scoring, Annex III conformity checklist, gating, SARIF, 5 output formats
+- **GDPR**: Article 15 export + Article 17 erasure implemented
+- **Security**: security headers (CSP, X-Frame-Options, nosniff), timing-safe auth, GraphQL query bounds, Mermaid XSS sanitization
+- **Web app**: https://faultline.nxtg.ai (separate repo, `faultline-web`)
 
 ## License
 

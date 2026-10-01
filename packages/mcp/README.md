@@ -10,6 +10,8 @@ Agents assert things that aren't true, confidently, in the exact register that r
 
 ## Install
 
+> **Not on npm yet.** As of 2026-10-01 `npm view @nxtg/faultline-mcp` returns 404, so `npx -y @nxtg/faultline-mcp` fails. Until it is published, run it from a checkout of this repo: after `npm install` at the repo root, use `node /absolute/path/to/packages/mcp/bin/faultline-mcp.js` where the commands below say `npx -y @nxtg/faultline-mcp`. Package version in the repo: 0.1.0.
+
 **Claude Code**
 
 ```bash
@@ -32,7 +34,10 @@ claude mcp add faultline -- npx -y @nxtg/faultline-mcp
 
 ## Provider key
 
-Verification runs against a model provider using **your own key** — nothing is proxied through a hosted service.
+There are two ways to run a check, chosen by credential:
+
+- **Local engine (default).** Verification runs in-process against a model provider using **your own key**. Nothing is proxied.
+- **Hosted API.** Set `FAULTLINE_API_KEY` and the scan runs on `https://faultline-api.fly.dev` (override with `FAULTLINE_API_URL`) using Faultline's server-side provider keys.
 
 ```bash
 export GEMINI_API_KEY="..."   # free key: https://aistudio.google.com/apikey
@@ -47,7 +52,7 @@ from model knowledge without retrieving sources, so verdicts carry no evidence.
 
 Provider precedence: `FAULTLINE_PROVIDER` → `GEMINI_API_KEY` → `OPENAI_API_KEY` → `ANTHROPIC_API_KEY` → `PERPLEXITY_API_KEY` → `mock`.
 
-With no key at all the server runs the `mock` provider, which returns **synthetic results and verifies nothing**. It exists for CI wiring, not for use.
+With no provider key and no `FAULTLINE_API_KEY` the server runs the `mock` provider, which returns **synthetic results and verifies nothing**. It exists for CI wiring, not for use. (The `faultline` CLI is stricter: since v0.10.1 it refuses to run with no key instead of falling back to `mock`. The MCP server still falls back and says so on startup.)
 
 ## Tool: `verify_claims`
 
@@ -119,7 +124,7 @@ Each verification writes a JSON record to `.faultline/history/` (override with `
 ## Related
 
 - [`@nxtg/faultline`](https://www.npmjs.com/package/@nxtg/faultline) — the CLI, including `faultline guard` for piping agent output through the same check
-- [faultline.nxtg.ai](https://faultline.nxtg.ai) — hosted scanning
+- [faultline.nxtg.ai](https://faultline.nxtg.ai): hosted scanning (plans: Free 5, Personal 25, Pro 500 scans per month; read 2026-10-01)
 
 ## Not affiliated with fltln.io
 
