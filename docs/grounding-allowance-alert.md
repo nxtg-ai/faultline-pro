@@ -52,7 +52,7 @@ Two mitigations are in place:
 
 The real fix is a Fly volume: about 1 GB, `[mounts]` in `fly.toml`, and both ledger paths pointed at it. fp has no `fly auth` on NXTG-AI, so this needs Asif or a lane with Fly access.
 
-**Tier check needed.** The 1,500 a day is the **paid**-tier allowance. On the free tier the allowance is 500 a day and excess calls fail with 429 instead of billing. Nothing here proves which tier the production key's Google Cloud project is on.
+**Tier: paid (confirmed by Asif 2026-10-01, "paid tier bro").** The production Gemini project is on the paid tier, so 1,500 grounded prompts a day are free, then $0.035 each, and the 1,200 alert threshold is correct. Not checked: whether other Gemini traffic shares the same Google project and its daily allowance.
 
 ## The alert
 

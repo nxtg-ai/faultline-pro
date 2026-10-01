@@ -39,7 +39,7 @@ Over the same equal-weight 3-size matrix as 07-04, with paid grounding: **p50 â‰
 The free allowance is 1,500 grounded prompts/day per Google project, about 45,000/month across ALL users, which is about 5,600 LARGE scans a month. Below that volume, the marginal grounding cost is $0 and a scan costs about a cent. Above it, the table applies.
 
 ## Not checked (leads)
-- Whether the prod key on Fly (`faultline-api`) is in a billing-enabled project and the same project as any other Gemini traffic that shares the 1,500/day allowance. flyctl is not authenticated on NXTG-AI, and Fly billing is overdue (deploys 403).
+- ~~Whether the prod key on Fly is billing-enabled~~ RESOLVED 2026-10-01: Asif confirmed the production Gemini project is on the paid tier. Still unchecked: whether other Gemini traffic shares that project's 1,500/day grounding allowance.
 - Real claim-count distribution in prod (K). The matrix fixes K at 3/6/8; K is capped at 8 (`scan.ts:145`).
 - A clean 18-scan end-to-end run needs a key with daily quota. Rerun: `npx tsx scripts/measure-consensus-cost.ts --paid --confirm-spend --prod-default --throttle-ms=7000`.
 
