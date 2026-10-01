@@ -1,5 +1,9 @@
 # CLAUDE.md — Faultline
 
+## Operating Runbook (read first)
+
+Deploy, release, cross-repo PR, secrets, live probes and UAT steps: **`docs/runbooks/fp-operating-runbook.md`**. Read it before shipping, deploying or releasing; update it in the same change when you learn something new.
+
 ## Voice Identity
 **Voice**: `bm_fable`
 **Service**: http://100.123.83.34:8880/v1/audio/speech
@@ -140,7 +144,7 @@ Current oracle coverage (re-measured 2026-10-01): example-based: 4,909 JS/TS tes
 When you bump the version in `packages/cli/package.json` (the published `@nxtg/faultline`):
 1. **Tag**: `git tag vX.Y.Z && git push origin vX.Y.Z`
 2. **GH Release**: `gh release create vX.Y.Z --notes-from-tag` (or with CHANGELOG section)
-3. **Publish**: `cd packages/cli && npm publish` — verify with `npm view @nxtg/faultline version`
+3. **Publish**: `gh workflow run publish.yml --ref vX.Y.Z` (GitHub OIDC trusted publishing; never `npm publish` locally) — verify with `npm view @nxtg/faultline version`
 4. **CHANGELOG**: roll `[Unreleased]` → `[vX.Y.Z] — YYYY-MM-DD` in CHANGELOG.md
 5. **Docs**: update any pinned version references in README.md / docs
 
