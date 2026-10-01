@@ -5,21 +5,40 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-### Fixed
-
-- **`POST /critique` is now covered by the provider-spend cap and ledger** (N-230). The route makes a paid LLM call on our provider keys but sat behind auth only, so the $100/month fleet cap could not see or stop it. It now runs the same per-minute burst limiter and spend-cap gate as a scan (503 when the budget is exhausted, provider never called), and the call's real reported usage is priced and appended to `provider-spend.jsonl`. A request with no failed claims makes no LLM call and writes no row. `provider` is now limited to the `/scan` allowlist, so an unknown name is a 400 instead of a 500.
+Covers every commit after v0.10.1: ddd7bd6, c89caa4, ae4987a, 732f7dc, a22d009, 678fb7c, 2173888, b33acff, dd4998f. State below was checked on 2026-10-01 (see each entry for how).
 
 ### Added
 
-- **Multi-model consensus is Enterprise-only, enforced server-side.** `POST /scan/stream` with `pipelineConfig.consensus: true` now returns `403 consensus_not_in_plan` for any caller below Enterprise, before the stream opens. It refuses rather than downgrading, so a single-model scan is never served as the consensus the caller asked for. Previously any key could set the flag, and a consensus scan costs $0.20–0.71 against a sub-cent single-model scan. The plan comes from `x-user-tier` only when the caller holds the server's own key (faultline-web). For any keystore key the header is ignored, so a spoofed `enterprise` buys nothing. Asif ruling 2026-09-30, re-ruled to Enterprise only.
+- **Multi-model consensus is Enterprise-only, enforced server-side** (N-231, 678fb7c). `POST /scan/stream` with `pipelineConfig.consensus: true` returns `403 consensus_not_in_plan` for any caller below Enterprise, before the stream opens. It refuses rather than downgrading, so a single-model scan is never served as the consensus the caller asked for. Before this, any key could set the flag, and a consensus scan costs $0.20 to $0.71 against well under a cent for a single-model scan with no grounding. The plan comes from `x-user-tier` only when the caller holds the server's own `FAULTLINE_API_KEY` (faultline-web). For any keystore key the header is ignored, so a spoofed `enterprise` buys nothing. Asif ruling 2026-09-30, re-ruled to Enterprise only. **Deployed and verified live 2026-10-01** (Fly deploy run 36897898999) with the mock provider and no provider spend: pro, personal and free callers got 403 `consensus_not_in_plan`, an enterprise caller got 200.
 
-- **Provider-spend budget: a $100/month cap with an append-only USD ledger** (A-110 item 1). Every managed scan's real composed cost is appended to `provider-spend.jsonl`, and the month total is **hydrated from that file** rather than held only in memory — so a redeploy cannot silently reset the budget to zero. This is not a restriction but the thing that makes autonomous scanning legitimate: spend runs freely under a mechanical ceiling with a complete record, and only crossing it escalates.
+- **Provider-spend budget: a $100/month cap with an append-only USD ledger** (A-110 item 1, N-230, ddd7bd6). Every managed scan's real composed cost is appended to `provider-spend.jsonl`. The month total is hydrated from that file, so a redeploy cannot silently reset the budget to zero. Spend runs under a mechanical ceiling with a complete record, and only crossing it escalates.
 
-  Distinct from the monthly usage cap: that bounds a **customer's** scans to protect margin (402); this bounds **Faultline's** dollars at providers to protect runway (503 — the budget is ours, so there is nothing for the caller to buy and `Retry-After` points at the month boundary).
+  This is separate from the per-customer monthly usage cap. That one bounds a customer's scans to protect margin (402). This one bounds Faultline's dollars at providers to protect runway (503, because the budget is ours and there is nothing for the caller to buy; `Retry-After` points at the month boundary).
 
-  **Enforcement ships dormant** (`FAULTLINE_PROVIDER_SPEND_CAP=on`). Ledgering is reversible and on from day one; refusing production scans is a deliberate flip. No caller-supplied value can exempt a scan — notably not the `x-user-tier` header, which is set by the caller and would otherwise sell a budget bypass for the price of one header. Admin keys can read the position from `GET /usage`.
+  **Enforcement is dormant in production.** It turns on only with `FAULTLINE_PROVIDER_SPEND_CAP=on`. Ledgering is on from day one. Production state was read on 2026-10-01 from `GET /usage` with an admin key: `providerBudget.enforced=false`. Admin keys can read `providerBudget` from `GET /usage`; other keys cannot. Docs: `docs/provider-spend-cap.md`.
 
-  Docs: `docs/provider-spend-cap.md`.
+- **`scripts/measure-consensus-cost.ts --prod-default`** (2173888). Measures the non-consensus production path (provider `gemini`, `consensus:false`), bills the Google Search grounding fee per grounded prompt, counts thinking tokens at the output rate, adds `--throttle-ms`, logs `httpStatus`, and writes to `scripts/consensus-cost/prod-default-usage.jsonl` so the pinned 2026-07-04 consensus evidence is untouched. Failed calls (429, 5xx) are no longer billed.
+
+### Changed
+
+- **Positioning line is now "We check the receipts on AI output."** (a22d009). Applied to the README headline, `llms.txt`, `packages/cli/README.md`, `examples/ci-integration.yml` and the CLI help banner (`faultline --help`).
+- **Project model pin moved to `claude-opus-5`** and the Aug-7 hook budget and timeout drift landed (732f7dc, `.claude/settings.json` only; no product code).
+
+### Fixed
+
+- **`POST /critique` is now covered by the provider-spend cap and ledger** (N-230, b33acff). The route makes a paid LLM call on our provider keys but sat behind the API key only, so the cap could not see or stop it. It now runs the same per-minute burst limiter and spend-cap gate as a scan (503 when the budget is exhausted, provider never called). The call's real reported usage is priced and appended to `provider-spend.jsonl`. A request with no failed claims makes no LLM call and writes no row. `provider` is limited to the `/scan` allowlist, so an unknown name is now a 400 instead of a 500. It does not use the per-key monthly scan quota, because a critique is not a scan. **Deployed and live 2026-10-01** (Fly deploy run 36898935959). Because enforcement is dormant, today this means `/critique` spend is ledgered and the burst limit applies; the 503 gate activates with the flag above.
+- **Stale transport comment** in `packages/cli/cli/transport.ts` (a22d009). It said that with no key you get `mock`. Since v0.10.1 the CLI reports that nothing was checked and refuses to invent verdicts; synthetic results come only from an explicit `--provider mock`.
+
+### Security
+
+- **A caller-supplied header can no longer exempt provider spend** (ae4987a). The first cut of the spend cap (ddd7bd6) skipped `userkey`-tier scans as if they were bring-your-own-key. That was wrong twice. `x-user-tier` is set by the caller, so one header bypassed the gate and, on the stream routes, left real spend unledgered. And there is no bring-your-own-key path through this API at all: provider keys come only from server env, so a `userkey`-labelled scan still spends our keys. The carve-out is removed from both the gate and the ledger. Every API scan is ledgered and gated, and `tier` is recorded as a label only. Regression tests cover a spoofed `x-user-tier` (`userkey`, `enterprise`, `anon`) still getting 503. Found on adversarial review before enforcement was ever enabled; no production exposure, since enforcement was dormant.
+
+### Docs
+
+- `docs/asif-consensus-sku-proposal-2026-08-09.md` (c89caa4): SKU proposal and ADR draft. The "about 16x" cost lever does not survive arithmetic, because the web_search fee is a fixed $10 per 1,000 calls that no model swap touches. Propose-only; no model default was changed.
+- `docs/unit-economics-prod-default-2026-09-30.md` (2173888): cost of a non-consensus production scan, derived from measured calls. Corrected after the commit: it is built from 24 token-bearing calls, not 15, and the per-scan max moved from $0.31 to $0.32. The corrections log in that file lists every change.
+- `docs/uat/UAT_GUIDE-2026-10-01-scan-limit-and-critique.md` (dd4998f): founder UAT guide for the Personal 25-scan limit and the critique fix.
+- README, API README, CLI README, MCP README, `llms.txt`, `CLAUDE.md`, `docs/INTEGRATION.md`, `docs/provider-spend-cap.md` and `docs/usage-cap.md` were brought in line with the code and production as of 2026-10-01. Notable corrections: the CLI README pricing table (Personal 25 scans, Free 5, Enterprise custom, matching the live pricing page), the API README (it listed 2 endpoints and version 0.1.0), and removal of links to packages that do not exist (`packages/sdk`, `@nxtg/faultline-sdk` on npm).
 
 ## [v0.10.1] — 2026-07-28
 
