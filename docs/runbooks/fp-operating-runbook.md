@@ -44,7 +44,7 @@ A change is not done until, in the same commit or PR: `CHANGELOG.md` `[Unrelease
 ## Environment and secrets
 
 - Server key for live engine probes: `FAULTLINE_API_KEY` in `/home/axw/projects/faultline-web/.env.local` (same value as `packages/api/.env`). Read it into a shell variable; never print it.
-- faultline-web needs **unprefixed** `KV_REST_API_URL` and `KV_REST_API_TOKEN` (Upstash Redis via the Vercel Marketplace). A Vercel storage connection made with a custom prefix (it was `fp_kv_`) leaves them unset, and the rate limiters, anon quota and shared scans fail open. That was the state from at least 2026-05-18 until 2026-10-01; the old store was also later uninstalled. fp's Vercel token gets 403 on env vars and integrations: Asif or fw change those.
+- faultline-web needs **unprefixed** `KV_REST_API_URL` and `KV_REST_API_TOKEN` (Upstash Redis via the Vercel Marketplace). A Vercel storage connection made with a custom prefix (it was `fp_kv_`) leaves them unset, and the rate limiters, anon quota and shared scans fail open. That was the state from at least 2026-05-18 until 2026-10-01 (the old store was also later uninstalled). fw restored it 2026-10-01 (faultline-web PR 52): store faultline-web-kv, no prefix, daily spend alert. **Before calling a cross-repo item open, read /alignment (`~/ASIF/governance/alignment/<date>.jsonl`) for the owning lane's posts; the owner may already have closed it.** fp's Vercel token gets 403 on env vars and integrations: Asif or fw change those.
 - Git under conda: `env -u LD_LIBRARY_PATH PATH=/usr/bin:/bin /usr/bin/git`.
 
 ## Live probes (zero or near-zero spend)
