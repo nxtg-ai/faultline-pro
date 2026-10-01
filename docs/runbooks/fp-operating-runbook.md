@@ -57,3 +57,12 @@ A change is not done until, in the same commit or PR: `CHANGELOG.md` `[Unrelease
 ## Founder UAT
 
 Write the guide to `docs/uat/`, give the absolute path. For plan limits, seed Clerk metadata (public `plan`, private `scanUsage.{YYYY-MM}`) instead of running real scans, and tell the tester to keep the other private keys (`stripeCustomerId`, `stripeSubscriptionId`) and to restore the count afterwards.
+
+## Security advisories (GitHub)
+
+Precedent: GHSA-mxc3-4648-6p7x on nxtg-ai/faultline-action, published 2026-10-01.
+
+1. Verify the facts first: the affected tag's commit, the fix commit is in the patched tag and not in the affected one (`git merge-base --is-ancestor`), and the exact vulnerable code at the affected tag.
+2. Create a draft: `gh api -X POST repos/<owner>/<repo>/security-advisories --input <json>` with `summary`, `description`, `cvss_vector_string` (or `severity`), `cwe_ids`, `vulnerabilities[{package:{ecosystem,name}, vulnerable_version_range, patched_versions}]`. GitHub Actions use ecosystem `actions`, name `owner/repo`.
+3. Wording: the vulnerability class, the impact, who is and is not affected, the upgrade step, a workaround. No payload, no step-by-step exploit, no em-dashes, no we/our. CE copy-reviews the text before publishing.
+4. Publish: `gh api -X PATCH .../security-advisories/<GHSA> -f state=published`. Request a CVE: `gh api -X POST .../security-advisories/<GHSA>/cve` (returns `{}` when accepted; the CVE id appears later). Confirm the public page returns 200, then send CE the URL.
