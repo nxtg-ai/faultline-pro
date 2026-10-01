@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`POST /critique` is now covered by the provider-spend cap and ledger** (N-230). The route makes a paid LLM call on our provider keys but sat behind auth only, so the $100/month fleet cap could not see or stop it. It now runs the same per-minute burst limiter and spend-cap gate as a scan (503 when the budget is exhausted, provider never called), and the call's real reported usage is priced and appended to `provider-spend.jsonl`. A request with no failed claims makes no LLM call and writes no row. `provider` is now limited to the `/scan` allowlist, so an unknown name is a 400 instead of a 500.
+
 ### Added
 
 - **Multi-model consensus is Enterprise-only, enforced server-side.** `POST /scan/stream` with `pipelineConfig.consensus: true` now returns `403 consensus_not_in_plan` for any caller below Enterprise, before the stream opens. It refuses rather than downgrading, so a single-model scan is never served as the consensus the caller asked for. Previously any key could set the flag, and a consensus scan costs $0.20–0.71 against a sub-cent single-model scan. The plan comes from `x-user-tier` only when the caller holds the server's own key (faultline-web). For any keystore key the header is ignored, so a spoofed `enterprise` buys nothing. Asif ruling 2026-09-30, re-ruled to Enterprise only.
