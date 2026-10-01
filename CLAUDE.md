@@ -84,7 +84,6 @@ The API wraps the same engine and adds gates in front of a scan. They are differ
 - **Consensus is Enterprise only.** Free, Personal and Pro run the non-consensus default (provider `gemini`, `consensus:false`); cost in `docs/unit-economics-prod-default-2026-09-30.md`.
 - **The npm version is the CLI's.** Bumping `packages/cli/package.json` triggers the Release Protocol section below.
 - **Deploy**: API deploys to Fly through GitHub Actions. Do not tag, publish or roll CHANGELOG `[Unreleased]` outside a release.
-- **faultline-web production KV was misconfigured** (`fp_kv_` prefix) since at least 2026-05-18 and the store was later uninstalled, so web rate limits and the anonymous cap failed open. Owner: fw and Asif. The fail-open logging fix is faultline-web `eac625d`. Not verified by this repo.
 
 ## ASIF Governance
 
@@ -134,7 +133,7 @@ Rules that apply to this project (Critical tier — claim forensics is safety-cr
 - **Gate 7**: Spec-test traceability — new integration/E2E tests must cite a NEXUS acceptance criterion via `// Validates: N-NN (...)` or `// NEXUS:` comment. **Denominator = integration/E2E test files only** (not all test files). Re-counted 2026-10-01 by filename (`*e2e*`, `*integration*`, `integration/*`): 9 files, 9 of 9 contain a `Validates:` or `NEXUS:` line. This checks that a reference line exists, not that it names the right criterion. Not enforced by hook; tracked manually.
 - **Oracle tier: CRITICAL** — all 4 oracle types required on claim forensics (example-based, property-based, contract, integration).
 
-Current oracle coverage (re-measured 2026-10-01): example-based — 4,909 JS/TS tests passing across 224 files (api 2,450; cli 2,371; mcp 49; web 39), plus 100 Python SDK tests; property-based — 29 `fc.assert` calls in 2 files (`packages/cli/tests/property-based.test.ts` 19, `packages/api/tests/property.test.ts` 10); contract — `packages/cli/tests/contract.test.ts`, 39 static `it(` declarations (the older figure of 43 Zod tests was not reproduced); integration — 9 integration/E2E files, 115 static `it(`/`test(` declarations. Static counts are declarations, not run counts.
+Current oracle coverage (re-measured 2026-10-01): example-based: 4,909 JS/TS tests passing across 224 files (api 2,450; cli 2,371; mcp 49; web 39), plus 100 Python SDK tests; property-based: 29 `fc.assert` calls in 2 files (`packages/cli/tests/property-based.test.ts` 19, `packages/api/tests/property.test.ts` 10); contract: `packages/cli/tests/contract.test.ts`, 39 static `it(` declarations (the older figure of 43 Zod tests was not reproduced); integration: 9 integration/E2E files, 115 static `it(`/`test(` declarations. Static counts are declarations, not run counts.
 
 ## Release Protocol Enforcement (ASIF Standard, ADR-036)
 
