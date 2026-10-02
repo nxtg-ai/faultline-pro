@@ -25,6 +25,14 @@ primary_region = "lax"
     path = "/health"
     timeout = "5s"
 
+# Append-only ledgers (provider spend, grounding allowance, scan cost) live on
+# this volume so a deploy does not reset them. One volume means one machine:
+# keep `flyctl scale count 1`, or each machine keeps its own diverging ledger
+# (docs/ledger-volume.md, GoPMO 1.18.7.3.2).
+[mounts]
+  source = "faultline_ledgers"
+  destination = "/var/log/faultline"
+
 [[vm]]
   cpu_kind = "shared"
   cpus = 1

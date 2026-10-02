@@ -53,7 +53,7 @@ If the recovery message fails to send, the state stays down so the next healthy 
 
 The wrapper is `/home/axw/.cache/faultline-pro/api-health-cron.sh`. It runs Node 22 (`/home/axw/.nvm/versions/node/v22.21.1/bin/node`) on `/home/axw/.cache/faultline-pro/api-health-check.mjs`.
 
-**For now that file is a copy of this branch's `scripts/api-health-check.mjs`** (branch `api-health-alert`, not yet merged). After the branch merges to `main`, switch the wrapper to the `grounding-check-cron.sh` shape: `git fetch -q origin`, then `git show origin/main:scripts/api-health-check.mjs > "$OUT"` (with the conda-safe `env -u LD_LIBRARY_PATH PATH=/usr/bin:/bin /usr/bin/git`), so cron always runs the merged version.
+The wrapper fetches `origin` and writes `git show origin/main:scripts/api-health-check.mjs` to that file on every run (the `grounding-check-cron.sh` shape, with the conda-safe `env -u LD_LIBRARY_PATH PATH=/usr/bin:/bin /usr/bin/git`), so cron always runs the merged version. Switched 2026-10-02 after the merge.
 
 ## How to test
 
