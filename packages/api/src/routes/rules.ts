@@ -201,6 +201,7 @@ export async function rulesRoutes(fastify: FastifyInstance): Promise<void> {
       const rule = getRuleStore().get(request.params.id);
       if (!rule) return reply.status(404).send({ error: 'Rule not found.' });
       const { violations, skipped } = evaluateRuleDetailed(rule, request.body.claims);
+      if (skipped.length > 0) request.log.warn({ skipped }, 'custom rule skipped during evaluation');
       return reply.send({
         ruleId:     rule.id,
         ruleName:   rule.name,
@@ -235,6 +236,7 @@ export async function rulesRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request, reply) => {
       const { violations, skipped, summary } = getRuleStore().applyAll(request.body.claims);
+      if (skipped.length > 0) request.log.warn({ skipped }, 'custom rules skipped during evaluation');
       return reply.send({ claimCount: request.body.claims.length, summary, violations, skipped });
     },
   );
