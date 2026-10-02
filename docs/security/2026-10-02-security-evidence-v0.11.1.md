@@ -179,7 +179,7 @@ Result: **0 live secrets** found in the tracked tree. The history scan in CI (se
 2. **FIXED 2026-10-02 (fastify 5.12.5, applied on main in place of PR #57): fastify 5.8.5 on the live API.** It carries an auth-bypass advisory (GHSA-p68q-wchp-6fh7) plus 3 more high validation and header-bypass advisories. Fix is in range (5.12.5). Action: merge Dependabot PR #57 after CI passes.
 3. **RED: adm-zip 0.5.17 parses customer ZIPs.** Upload path is `routes/bulk.ts:25`, `:90`, behind `requireApiKey`. It carries 5 high decompression and memory advisories. Action: PR #54 (0.6.1, semver-major) plus a test on the bulk route.
 4. **RED: the `fast-uri` override pins a vulnerable version.** Root `package.json:58` sets `"fast-uri": "3.1.2"`, which has 7 high advisories (SSRF and host confusion). `npm audit fix` and Dependabot cannot move it while the override stands. Action: raise the override to >=3.1.8 or remove it.
-5. **RED: security-scan.yml is green regardless of findings.** Every scanner is `|| true`, `--exit-zero`, `continue-on-error` or `--exit-code 0`. Run 37054437598 is "success" with Semgrep 74, Gitleaks 33, Bearer 96 and Bandit 301 findings. Action: fail on high-severity Semgrep and on new Gitleaks hits, and add `workflow_dispatch`.
+5. **RED, fix in PR #59 (not merged): security-scan.yml is green regardless of findings.** See §8 for the ratchet. Every scanner is `|| true`, `--exit-zero`, `continue-on-error` or `--exit-code 0`. Run 37054437598 is "success" with Semgrep 74, Gitleaks 33, Bearer 96 and Bandit 301 findings. Action: fail on high-severity Semgrep and on new Gitleaks hits, and add `workflow_dispatch`.
 6. **AMBER: 101 open Dependabot alerts and 11 open Dependabot PRs**, the oldest from 2026-09-03; 74 alerts are runtime-scope. Production npm audit: 10 high and 6 moderate packages. Other runtime highs: js-yaml (PR #53), protobufjs and ws via `@google/genai`, `@fastify/static` via swagger-ui (semver-major), and brace-expansion.
 7. **AMBER: 2 CodeQL critical and 13 high alerts open.** Beyond #5: #4 is admin-only SSRF, #6/#7 are regex injection and ReDoS on user rule patterns (`store/rules.ts`), #8 is resource exhaustion in `pdf-report.ts`, and #9 is clear-text logging in `cli/index.ts:1446`.
 8. **AMBER: 43 stale code-scanning alerts** from Semgrep, Gitleaks and Faultline uploads (2026-04). They never auto-close because the workflow no longer uploads. Action: dismiss them, or re-enable SARIF upload so they track reality.
@@ -241,3 +241,62 @@ Test seams, none of which the production path sets: `setOutboundFetch` (`:290`) 
 - **FIXED 2026-10-02: `store/schedules.ts` fetched `schedule.url`** (set through the `url` field of `POST /schedules`, `requireApiKey`). The body feeds the scan, so any key holder could read an internal URL back. The run now uses `fetchOutboundFollow` (`lib/outbound-url.ts`): the URL and every redirect hop (at most 3) go through the guard, and a redirect to a private address is refused, not followed. `POST /schedules` refuses a private `url` or `webhookUrl` with 400, and `PATCH /schedules/:id` refuses a private `webhookUrl`. Tests: `packages/api/tests/schedules-outbound-url.test.ts`, 8 tests. Mutation check: with the run-time guard removed 4 fail, with the route check removed 2 fail, restored 8 pass.
 - **FIXED 2026-10-02 (was OPEN, admin only): `store/providers.ts:92`** POSTed to `plugin.endpoint`, set only through `POST /providers/register` (`routes/providers.ts:38`, `requireAdmin`). Registration now refuses a private endpoint with 400 `endpoint: Outbound URL blocked: ...` (`routes/providers.ts:51-52`), and `verify` sends through `fetchOutbound` (`store/providers.ts:95`): guarded on every call, connect-time lookup, `redirect: 'manual'`. Tests: `packages/api/tests/providers-outbound-url.test.ts`, 6 tests (registration 400 for the metadata IP and for a name resolving into `fdaa::/16`; verify refused when the endpoint turns private after registration, with no fetch; a real-socket rebinding verify gets 0 connections). Correction kept from earlier: `routes/plugins.ts` (`/plugins/publish`) only stores a marketplace listing and never fetches (`store/plugin-registry.ts` has no `fetch`). This was CodeQL #4.
 - `lib/url-validator.ts:21` sends HEAD requests to source URIs that a model returned (`routes/deep.ts`). It returns the status code, so it is a blind probe that prompt injection can steer.
+
+## 8. Security gate (ratchet)
+
+Branch `security-gate`, PR https://github.com/nxtg-ai/faultline-pro/pull/59 (not merged). `.github/workflows/security-scan.yml` can now fail. Findings that existed on 2026-10-02 are baselined with a reason. Any new blocking finding fails the run, and so does a scanner that cannot run.
+
+### What blocks
+
+| Job | Fails when | Accepted list |
+|---|---|---|
+| Semgrep `--config auto` + `gate` | a result at level `error` (resolved from the rule's `defaultConfiguration`, since results carry no level) is not in the baseline | `security/baseline.json`: **0** semgrep entries |
+| Bearer 2.1.1 (pinned) + `gate` | a level `error` result is not in the baseline | `security/baseline.json`: **99** bearer entries |
+| Gitleaks 8.30.1 (pinned URL plus checksum), full history | any leak not in `.gitleaksignore` (`--exit-code 1`) | `.gitleaksignore`: 33 fingerprints, each group commented |
+| Bandit 1.9.4 | any HIGH severity AND HIGH confidence result (`-lll -iii`) | none; 0 such results on 2026-10-02 (local run) |
+| `npm-audit` | a high or critical GHSA in `npm audit --omit=dev --json --package-lock-only` is not accepted, or an accepted entry is past `review_by` | `security/accepted-advisories.json`: empty |
+
+A crash fails the job, never passes it. Semgrep runs without `--error`, so it exits 0 on findings and non-zero on failure. Bearer's `exit-code: 0` covers only "findings reported"; a scan error still exits non-zero (`pkg/commands/artifact/run.go`, Bearer 2.1.1). `scripts/security-gate.mjs` exits **2** when a SARIF file is missing, empty, unparseable, from the wrong tool, lists no rules, or reports `executionSuccessful: false`, and when the npm report is an error report, not version 2, or audited zero production dependencies.
+
+The fingerprint is tool + ruleId + file + Bearer's `primaryLocationLineHash`. Semgrep OSS gives none (its `matchBasedId` is the constant `requires login`), so semgrep falls back to sha256 of the whitespace-collapsed message. The line number is not part of it, so a finding that moves keeps its entry. The baseline is a multiset: a second copy of a baselined finding is new. Entries no longer found print as `STALE` and do not fail.
+
+### The 5 semgrep errors from run 37062617182
+
+- `release-protocol-check.yml:46` run-shell-injection: every expression inside `run:` in that workflow (16, the only workflow that had any) moved to step `env:` and is read as `"$VAR"`.
+- `fly-deploy.yml:52` and `release-protocol-check.yml:109` gha-curl-pipe-shell: download to a file with `curl -fsS -o`, then parse the file.
+- `Dockerfile` missing-user-entrypoint: by design (the entrypoint chowns the Fly volume as root, then drops to `faultline` with su-exec). `# nosemgrep: dockerfile.security.missing-user-entrypoint.missing-user-entrypoint` on the line above `ENTRYPOINT`, with the reason on the line above that. A trailing comment on the exec-form line would break its JSON. The gate treats a SARIF `suppressions` entry as not blocking.
+- `.asif/NEXUS-archive-20260429.md` detect-insecure-websocket: prose. `.semgrepignore` excludes `.asif/`. A `.semgrepignore` replaces semgrep's built-in list, so the file restates it (node_modules, dist, build, vendor, test/tests, and more) and adds coverage, `.stryker-tmp`, reports and `.claude`.
+
+### Bearer baseline triage (99 entries)
+
+91 are `accepted-pre-existing` (81 javascript logger_leak, 4 manual_html_sanitization, 3 insufficiently_random_values, 1 dynamic_regex, 1 observable_timing, 1 go logger_leak). The other 8 were opened and carry their own reason:
+
+| Rule | Location | Disposition |
+|---|---|---|
+| hardcoded_secret | `packages/api/benchmarks/run.ts:287` | false positive: the benchmark sets the placeholder `FAULTLINE_API_KEY='bench-key'` in its own process |
+| hardcoded_secret | `packages/cli/lib/i18n.ts:39` | false positive: the message `err.no_api_key` |
+| dangerous_insert_html | `packages/web/components/InputSection.tsx:186`, `Tour.tsx:81` | false positive: `React.createElement` of an icon from the static `FEATURES` constant |
+| raw_html_using_user_input | `packages/api/src/routes/scans.ts:138`, `:177` | **OPEN.** `GET /scans/stale/view` needs only `requireApiKey` and calls `getScanUsageStats(staleDays)` with no tenant id. At `scans.ts:129` it writes `textPreview`, the first 100 characters of any caller's scan input (`routes/scan.ts:207`), unescaped into a `title` attribute and a cell. Any key holder can store script that runs for any other key holder who opens the page, and every key holder sees other tenants' input. Fix: `esc()` from `src/lib/html.ts` plus a tenant scope |
+| raw_html_using_user_input | `packages/api/src/routes/keys.ts:126`, `:167` | **OPEN, low.** `GET /keys/usage/view` writes `k.name` unescaped (`keys.ts:118`). Admin sets it (max 100 chars) and admin views it. Fix: `esc()` |
+
+Fixing an OPEN item removes its finding, so the gate prints that entry as STALE. Delete the entry in the same change.
+
+### How to accept or baseline
+
+- **Bearer or Semgrep:** a failing gate prints a JSON stub per new finding. Fix the code, or paste the stub into `security/baseline.json` `entries` with a `disposition` (`accepted-pre-existing`, `false-positive`, `open`) and a one-line `reason`. An entry without a reason fails with exit 2. For a semgrep finding that is by design, prefer `# nosemgrep: <rule id>` beside the code with the reason.
+- **Gitleaks:** add the `Fingerprint:` line from the job log (`commit:file:rule:line`) to `.gitleaksignore` under a comment saying why it is not a secret. A real secret is rotated, not ignored. Comments in `.gitleaksignore` must not quote the fake key: gitleaks scans that file too (it flagged its own comment on the first run).
+- **npm audit:** the job prints a stub per unaccepted GHSA. Upgrade, or add `{ghsa, package, severity, disposition, reason, review_by}` to `security/accepted-advisories.json`. After `review_by` the entry fails the job until it is reviewed again.
+- **Bandit:** no baseline. A HIGH/HIGH result is fixed, or suppressed in place with `# nosec <test id>` and a reason.
+
+### Proof in CI
+
+| Run | Head | Conclusion | Why |
+|---|---|---|---|
+| 37065802290 | `a0a7335` (temporary probe commit) | **failure**, `gate` job | `NEW BLOCKING: bearer javascript_lang_logger scripts/ratchet-probe.mjs:5`. The commit added a file that logs `user.email` |
+| 37066020388 | `a2ac8ef` (revert of the probe) | **success**, all 6 jobs | `semgrep: 0 blocking findings`, `bearer: 99 blocking findings`, `PASS ... (99 baseline entries, 0 stale)`, gitleaks `no leaks found`, `npm audit: 0 high/critical advisories` |
+
+Two earlier runs also went red on their own: 37064869158 failed because Bearer flagged two lines in the new `security-gate.mjs` and gitleaks flagged a fake key quoted in a `.gitleaksignore` comment. Both were fixed in the code and that commit was rewritten, so the gate was never baselined against its own findings. 37065316131 failed on one remaining Bearer line in the script.
+
+The npm job is green because `ecb507f` (2026-10-02) cleared every high production advisory: the lockfile audit reports 0 high/critical with 308 production dependencies. With dev dependencies included, `npm audit --package-lock-only` reports 5 high (browserslist, nanoid, postcss, undici, vite). The gate does not count those (local run, 2026-10-02).
+
+Tests: `packages/api/tests/security-gate.test.ts`, 29 tests. Mutation check, each change made alone and then restored: with the baseline comparison removed 7 fail; with levels read only from results 8 fail; with expiry ignored 1 fails; with unaccepted advisories ignored 3 fail; with invalid input passing 9 fail; restored 29 pass.
