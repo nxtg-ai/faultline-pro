@@ -80,8 +80,22 @@ function statusLabel(status: string): string {
   return (status ?? 'unverified').toUpperCase();
 }
 
-function importanceStars(n: number): string {
-  return '★'.repeat(Math.min(5, Math.max(1, n))) + '☆'.repeat(5 - Math.min(5, n));
+/**
+ * Clamp a claim's importance to an integer 1..5. Importance comes from scan
+ * data the caller submits, so it can be negative, huge, fractional or NaN;
+ * unclamped, `'☆'.repeat(5 - n)` allocates without bound or throws RangeError
+ * (CodeQL js/resource-exhaustion).
+ */
+export function clampImportance(n: unknown): number {
+  const value = typeof n === 'number' ? n : Number(n);
+  if (!Number.isFinite(value)) return 1;
+  return Math.min(5, Math.max(1, Math.trunc(value)));
+}
+
+/** Five-character star rating, e.g. `★★★☆☆` for importance 3. */
+export function importanceStars(n: unknown): string {
+  const filled = clampImportance(n);
+  return '★'.repeat(filled) + '☆'.repeat(5 - filled);
 }
 
 // ── Main entry point ──────────────────────────────────────────────────────────

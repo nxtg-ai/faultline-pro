@@ -45,6 +45,14 @@ describe('Provider Registry', () => {
       expect(() => getProvider('test-key', 'gpt-5')).toThrow('Unknown provider "gpt-5"');
     });
 
+    // CodeQL #2: prototype members must not resolve as providers.
+    it.each([['constructor'], ['__proto__'], ['toString'], ['hasOwnProperty'], ['valueOf']])(
+      'should throw the unknown-provider error for %s',
+      (name) => {
+        expect(() => getProvider('test-key', name)).toThrow(`Unknown provider "${name}". Available:`);
+      },
+    );
+
     it('should include available providers in error message', () => {
       expect(() => getProvider('test-key', 'nonexistent')).toThrow(/Available:.*gemini.*claude/);
     });

@@ -7,13 +7,17 @@ import { createMockProvider } from './mock_provider';
 
 const DEFAULT_PROVIDER = 'gemini';
 
-const factories: Record<string, ProviderFactory> = {
-  gemini: createGeminiProvider,
-  claude: createClaudeProvider,
-  openai: createOpenAIProvider,
-  perplexity: createPerplexityProvider,
-  mock: createMockProvider,
-};
+// A Map, not an object literal: on a plain object `constructor`, `toString`
+// and `__proto__` resolve through the prototype and pass a truthiness check,
+// and registerProvider('__proto__', f) would rewrite the prototype
+// (CodeQL js/unvalidated-dynamic-method-call).
+const factories = new Map<string, ProviderFactory>([
+  ['gemini', createGeminiProvider],
+  ['claude', createClaudeProvider],
+  ['openai', createOpenAIProvider],
+  ['perplexity', createPerplexityProvider],
+  ['mock', createMockProvider],
+]);
 
 /**
  * Get a provider instance by name.
@@ -26,9 +30,9 @@ export function getProvider(apiKey: string, name?: string): LLMProvider {
     ?? (typeof process !== 'undefined' ? process.env?.FAULTLINE_PROVIDER : undefined)
     ?? DEFAULT_PROVIDER;
 
-  const factory = factories[providerName];
+  const factory = factories.get(providerName);
   if (!factory) {
-    const available = Object.keys(factories).join(', ');
+    const available = listProviders().join(', ');
     throw new Error(`Unknown provider "${providerName}". Available: ${available}`);
   }
 
@@ -39,12 +43,12 @@ export function getProvider(apiKey: string, name?: string): LLMProvider {
  * Register a custom provider factory at runtime.
  */
 export function registerProvider(name: string, factory: ProviderFactory): void {
-  factories[name] = factory;
+  factories.set(name, factory);
 }
 
 /**
  * List all registered provider names.
  */
 export function listProviders(): string[] {
-  return Object.keys(factories);
+  return [...factories.keys()];
 }

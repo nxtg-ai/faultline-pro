@@ -3,7 +3,7 @@ import { requireApiKey } from '../plugins/auth.js';
 import {
   getRuleStore,
   validateRuleInput,
-  evaluateRule,
+  evaluateRuleDetailed,
 } from '../store/rules.js';
 import type { ClaimLike } from '../store/rules.js';
 
@@ -129,7 +129,12 @@ export async function rulesRoutes(fastify: FastifyInstance): Promise<void> {
       },
     },
     async (request, reply) => {
-      const updated = getRuleStore().update(request.params.id, request.body as Record<string, unknown>);
+      let updated;
+      try {
+        updated = getRuleStore().update(request.params.id, request.body as Record<string, unknown>);
+      } catch (err) {
+        return reply.status(400).send({ error: err instanceof Error ? err.message : String(err) });
+      }
       if (!updated) return reply.status(404).send({ error: 'Rule not found.' });
       return reply.send(updated);
     },
@@ -195,13 +200,14 @@ export async function rulesRoutes(fastify: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const rule = getRuleStore().get(request.params.id);
       if (!rule) return reply.status(404).send({ error: 'Rule not found.' });
-      const violations = evaluateRule(rule, request.body.claims);
+      const { violations, skipped } = evaluateRuleDetailed(rule, request.body.claims);
       return reply.send({
         ruleId:     rule.id,
         ruleName:   rule.name,
         claimCount: request.body.claims.length,
         violations,
         matched:    violations.length,
+        skipped,
       });
     },
   );
@@ -228,8 +234,8 @@ export async function rulesRoutes(fastify: FastifyInstance): Promise<void> {
       },
     },
     async (request, reply) => {
-      const { violations, summary } = getRuleStore().applyAll(request.body.claims);
-      return reply.send({ claimCount: request.body.claims.length, summary, violations });
+      const { violations, skipped, summary } = getRuleStore().applyAll(request.body.claims);
+      return reply.send({ claimCount: request.body.claims.length, summary, violations, skipped });
     },
   );
 
