@@ -1,6 +1,6 @@
 # Faultline — We check the receipts on AI output.
 # https://github.com/nxtg-ai/faultline-pro
-# npm: @nxtg/faultline (0.11.0 on 2026-10-01). @nxtg/faultline-api is not published to npm.
+# npm: @nxtg/faultline (0.11.1 on 2026-10-02). @nxtg/faultline-api is not published to npm.
 # Release stage: alpha (usable today, with sharp edges; verdict accuracy not yet measured; anything may change before 1.0)
 # Last updated: 2026-10-02
 
@@ -104,7 +104,7 @@ Key endpoints:
 
 | Package | Where | Description |
 |---------|-------|-------------|
-| `@nxtg/faultline` | npm (0.11.0) | CLI and scan engine |
+| `@nxtg/faultline` | npm (0.11.1) | CLI and scan engine |
 | `@nxtg/faultline-api` | repo only, deployed on Fly (https://faultline-api.fly.dev) | Fastify REST + GraphQL |
 | `@nxtg/faultline-mcp` | repo only (not on npm as of 2026-10-01) | MCP server, `verify_claims` tool |
 | Python client | `sdks/python` in the repo | Not confirmed on PyPI: the PyPI name `faultline-sdk` is an unrelated project |
@@ -148,7 +148,7 @@ docs/
 
 ## Project Status
 
-- **Versions (2026-10-01)**: CLI 0.11.0 on npm; hosted API 0.11.0 (`GET https://faultline-api.fly.dev/health`)
+- **Versions (2026-10-02)**: CLI 0.11.1 on npm; hosted API 0.11.1 (`GET https://faultline-api.fly.dev/health`)
 - **Tests (run 2026-10-01)**: 4,909 JavaScript/TypeScript (api 2,450; cli 2,371; mcp 49; web 39) plus 100 Python SDK tests, all passing
 - **CRUCIBLE Gate 6 mutation scores**: last measured 2026-03-21 to 2026-04-17 (`docs/mutation-testing.md`), not re-run since
 - **EU AI Act reporting**: Art. 5/6/9/10/11/12/13/14/15/50/52/53 evidence mapping, evidence strength scoring, Annex III conformity checklist, gating, SARIF, 5 output formats

@@ -17,7 +17,7 @@ Faultline is a forensic AI claim verification product. It extracts atomic claims
 
 This repo is the **monorepo** (`faultline-pro`, workspaces `packages/*`). It began as a Kaggle entry (React + Vite, Gemini only). That app survives as `packages/web`. The product is now the CLI, the API and the MCP server.
 
-**NEXUS**: `.asif/NEXUS.md`. **State checked 2026-10-01**: CLI `@nxtg/faultline` 0.11.0 on npm; hosted API `https://faultline-api.fly.dev` reports 0.11.0; web app https://faultline.nxtg.ai is a **separate repo** (`faultline-web`, Next.js on Vercel).
+**NEXUS**: `.asif/NEXUS.md`. **State checked 2026-10-02**: CLI `@nxtg/faultline` 0.11.1 on npm, release stage **alpha** (`packages/cli/cli/release-stage.ts`, dx3-pm owns the value); hosted API `https://faultline-api.fly.dev` reports 0.11.1 and `stage`; web app https://faultline.nxtg.ai is a **separate repo** (`faultline-web`, Next.js on Vercel).
 
 ## Packages
 

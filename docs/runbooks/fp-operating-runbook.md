@@ -2,7 +2,7 @@
 
 How the fp lane ships, deploys, releases and verifies Faultline. Read this before doing any of those things. Every item here was rediscovered at least once; if you learn a new one, add it here in the same change.
 
-Last verified: 2026-10-01 (v0.11.0 release).
+Last verified: 2026-10-02 (v0.11.1 release).
 
 ## Topology
 
@@ -23,7 +23,9 @@ npm publishing runs in GitHub Actions with OIDC trusted publishing (npm retired 
 3. Update pinned versions in `README.md`, `CLAUDE.md`, `packages/*/README.md` (`grep -rn "<old version>"`).
 4. Run `packages/api` and `packages/cli` vitest; commit `release: vX.Y.Z`; push `main` (the api `package.json` change triggers the Fly deploy).
 5. `git tag -a vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z`.
-6. `gh release create vX.Y.Z --title vX.Y.Z --notes-file <the CHANGELOG section>`.
+6. `gh release create vX.Y.Z --title vX.Y.Z --notes-file <the CHANGELOG section> --prerelease`. Keep `--prerelease` while the release stage is alpha or beta (release-stage skill §3.7).
+
+**Release stage** (dx3-pm owns the value; registry `~/ASIF/governance/product-maturity-registry.yml`): Faultline is **alpha**. The one constant is `packages/cli/cli/release-stage.ts`; it drives `faultline version` and `GET /health` `stage`. `packages/cli/tests/release-stage.test.ts` fails until README, npm README, llms.txt and the CHANGELOG stage line match it. Never put the stage in the SemVer string. On a promotion: registry first (dx3-pm, founder rules beta and up), then flip the constant, fix what the test names, release.
 7. `gh workflow run publish.yml --ref vX.Y.Z`, then `gh run watch`.
 8. Verify all four agree: `npm view @nxtg/faultline version`, `/health` version, tag, then `gh workflow run version-parity.yml` must pass.
 

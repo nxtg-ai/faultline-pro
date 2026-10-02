@@ -7,6 +7,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [v0.11.1] — 2026-10-02
+
 ### Added
 
 - **Release stage on every fp surface: alpha** (dx3-pm ruling 2026-10-02, al:2e447ee3a26d6ed9). One value, `packages/cli/cli/release-stage.ts`, drives `faultline version` (`Faultline v0.11.0 (alpha)`) and a new `stage` field on `GET /health`. The README, npm README, llms.txt and this file carry the same stage, pinned by `packages/cli/tests/release-stage.test.ts`, so promotion is a one-value edit. The stage is not a SemVer suffix; 0.x stays plain so npm `latest` keeps working. Also fixes llms.txt still naming 0.10.1.

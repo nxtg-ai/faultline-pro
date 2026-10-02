@@ -10,7 +10,7 @@ Forensic verification of AI-generated claims. Extract atomic facts, verify again
 
 > **Release stage: alpha.** Usable today, with sharp edges. Verdict accuracy has not yet been measured on a labelled test set, and anything may change before 1.0.
 
-Current npm version: 0.11.0 (`npm view @nxtg/faultline version`, 2026-10-01).
+Current npm version: 0.11.1 (`npm view @nxtg/faultline version`, 2026-10-02).
 
 ---
 
