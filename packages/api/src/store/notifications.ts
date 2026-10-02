@@ -23,6 +23,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { getTenantStore } from './tenants.js';
+import { fetchOutbound } from '../lib/outbound-url.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -202,7 +203,8 @@ class NotificationStore {
 
     if (webhookUrl) {
       try {
-        const res = await fetch(webhookUrl, {
+        // Guarded at send time: covers per-key URLs (DNS may have changed) and FAULTLINE_NOTIFY_WEBHOOK.
+        const res = await fetchOutbound(webhookUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ event: eventType, keyId, ...payload }),

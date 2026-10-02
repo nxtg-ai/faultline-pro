@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { getJobStore } from '../store/jobs.js';
 import type { Provider } from '../store/jobs.js';
+import { outboundUrlRefusal } from '../lib/outbound-url.js';
 
 const POST_SCHEMA = {
   type: 'object',
@@ -31,6 +32,8 @@ export async function jobRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request, reply) => {
       const { text, provider, schedule, webhookUrl } = request.body;
+      const refusal = webhookUrl === undefined ? null : await outboundUrlRefusal(webhookUrl);
+      if (refusal) return reply.status(400).send({ error: refusal });
       const job = getJobStore().create({ text, provider, schedule, webhookUrl });
       return reply.status(201).send(job);
     },

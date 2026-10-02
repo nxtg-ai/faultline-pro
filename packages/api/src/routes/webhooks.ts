@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { requireAdmin, requireApiKey, resolveRequestTenantId } from '../plugins/auth.js';
 import { getWebhookStore, getWebhookTestHistory, getWebhookDeliveryLog, sendTestWebhook, SAMPLE_PAYLOADS } from '../store/webhooks.js';
 import type { WebhookEvent } from '../store/webhooks.js';
+import { outboundUrlRefusal } from '../lib/outbound-url.js';
 
 const VALID_EVENTS: WebhookEvent[] = ['scan.complete', 'scan.failed', 'claim.verdict_changed', 'compliance.deadline_approaching'];
 
@@ -36,6 +37,8 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     { preHandler: requireAdmin, schema: { tags: ['Webhooks'], summary: 'Register a new webhook endpoint and event subscription', body: CREATE_BODY_SCHEMA } },
     async (request, reply) => {
       const { url, events, secret, maxAttempts, retryDelayMs } = request.body;
+      const refusal = await outboundUrlRefusal(url);
+      if (refusal) return reply.status(400).send({ error: refusal });
       const tenantId = resolveRequestTenantId(request.keyId);
       const entry = getWebhookStore().create(url, events, secret, tenantId, maxAttempts, retryDelayMs);
       return reply.status(201).send(entry);
@@ -99,6 +102,8 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const { url, event = 'scan.complete', secret = null } = request.body;
       try { new URL(url); } catch { return reply.status(400).send({ error: 'url must be a valid URL.' }); }
+      const refusal = await outboundUrlRefusal(url);
+      if (refusal) return reply.status(400).send({ error: refusal });
       const result = await sendTestWebhook(url, event, secret ?? null);
       return reply.status(200).send(result);
     },
@@ -423,18 +428,11 @@ function renderResult(containerId, data) {
     '<span class="latency">' + data.latencyMs + 'ms</span>' +
     '</div>' +
     (errMsg ? '<div class="note" style="color:#f85149;margin-bottom:8px">' + escHtml(errMsg) + '</div>' : '') +
+    '<div class="note">The target\\'s response body and headers are not returned; only the status code.</div>' +
     '<div class="tabs">' +
-    '<div class="tab active" onclick="switchTab(this, \\'body-' + containerId + '\\')">Response Body</div>' +
-    '<div class="tab" onclick="switchTab(this, \\'headers-' + containerId + '\\')">Response Headers</div>' +
-    '<div class="tab" onclick="switchTab(this, \\'sent-' + containerId + '\\')">Sent Payload</div>' +
+    '<div class="tab active" onclick="switchTab(this, \\'sent-' + containerId + '\\')">Sent Payload</div>' +
     '</div>' +
-    '<div class="tab-content active" id="body-' + containerId + '">' +
-    '<pre>' + escHtml(data.responseBody ?? '(no response body)') + '</pre>' +
-    '</div>' +
-    '<div class="tab-content" id="headers-' + containerId + '">' +
-    '<pre>' + escHtml(JSON.stringify(data.responseHeaders, null, 2)) + '</pre>' +
-    '</div>' +
-    '<div class="tab-content" id="sent-' + containerId + '">' +
+    '<div class="tab-content active" id="sent-' + containerId + '">' +
     '<pre>' + escHtml(JSON.stringify({ url: data.url, event: data.event, signature: data.signatureHeader }, null, 2)) + '</pre>' +
     '</div>';
   el.classList.add('visible');

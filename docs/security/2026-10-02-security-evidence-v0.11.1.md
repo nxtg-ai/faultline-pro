@@ -186,4 +186,41 @@ Result: **0 live secrets** found in the tracked tree. The history scan in CI (se
 9. **GREEN: GHSA-mxc3-4648-6p7x.** No CVE assigned yet (`cve_id` null). faultline-pro does not use the action, and `@v1` resolves to the patched v1.1.1 (`f41f650`).
 10. **GREEN: secrets.** 0 live secrets in the tracked tree. The 18 tree hits are placeholders and detection-test fixtures. Optional: add a `.gitleaksignore` for the fixtures so the history count means something.
 
-Not done here, by scope: no dependency upgrades, no source edits, and no live probes against `faultline-api.fly.dev`.
+Not done in the audit above, by scope: no dependency upgrades, no source edits, and no live probes against `faultline-api.fly.dev`.
+
+---
+
+## Fix: outbound URL guard (CodeQL #5)
+
+Branch `fix/outbound-url-ssrf`, not deployed. Closes finding 1 in section 7.
+
+**The guard.** `packages/api/src/lib/outbound-url.ts`. `assertSafeOutboundUrl` (`:179`) refuses, with `OutboundUrlBlockedError`: a URL that does not parse; any scheme other than http and https; embedded credentials; the names `localhost`, `internal`, `flycast`, `local` and any subdomain of them (trailing dot stripped); and any address in 0/8, 10/8, 100.64/10, 127/8, 169.254/16, 172.16/12, 192.0.0/24, 192.168/16, 198.18/15, 224/4, 240/4, 255.255.255.255, `::`, `::1`, `::ffff:0:0/96`, `64:ff9b::/96`, fc00::/7 (covers Fly 6PN `fdaa::/16`), fe80::/10 and ff00::/8 (`:47-76`). An IP literal is checked directly. A name is resolved with `dns.promises.lookup(host, { all: true })` (`:33`) and is refused if ANY answer is private. IPv4-mapped and NAT64 IPv6 are refused as whole ranges, so a public IPv4 written as `::ffff:a.b.c.d` is refused too; the plain IPv4 form works. IPv4 and IPv6 use separate `BlockList`s because Node's `BlockList` also tests an IPv4 address against IPv6 rules in its `::ffff:` form: one shared list refused every IPv4 address. The range-edge tests caught that before commit.
+
+**Every sink, checked at registration and again at send.** `fetchOutbound` (`:209-212`) runs the guard and then calls fetch with `redirect: 'manual'`, so a 3xx is recorded as the status and the Location is never requested.
+
+| Sink | Send-time guard | Registration 400 |
+|---|---|---|
+| `POST /webhooks/test` | `store/webhooks.ts:436` | `routes/webhooks.ts:105` |
+| `POST /webhooks/test/:id` | `store/webhooks.ts:436` | via `POST /webhooks` |
+| Registered webhook delivery | `store/webhooks.ts:290`, per attempt; a refusal is not retried | `routes/webhooks.ts:40` |
+| Job `webhookUrl` | `store/jobs.ts:148` | `routes/jobs.ts:35` |
+| Notification `webhookUrl` and `FAULTLINE_NOTIFY_WEBHOOK` | `store/notifications.ts:207` | `routes/notifications.ts:130` |
+| `FAULTLINE_ALERT_WEBHOOK` (operator env) | `store/rate-alerts.ts:71` | n/a |
+
+The two operator env URLs are guarded too, so an operator cannot point alerts at a private host.
+
+**No read-back.** `sendTestWebhook` no longer returns the target's body or headers. `responseBody` is always `null` and `responseHeaders` always `{}`, so the response shape is unchanged. The HTML tester shows the status and the sent payload only.
+
+**Test escape hatch.** `FAULTLINE_OUTBOUND_ALLOW_PRIVATE=1` skips the name and address checks (scheme and credentials are still enforced), and only when `NODE_ENV=test` or `VITEST` is set (`:107`). `packages/api/vitest.config.ts` sets it for the existing suites, which use fake hosts and loopback servers. The guard's own tests remove it.
+
+**Tests.** `packages/api/tests/outbound-url.test.ts` covers each range with edges on both sides, IPv4-mapped in dotted and hex form, NAT64, names, schemes, credentials, mixed DNS answers, resolver failure, and the override's production refusal. All DNS goes through an injected resolver. `packages/api/tests/outbound-url-sinks.test.ts` covers the registration 400s, send-time refusal with no fetch at every sink, and real loopback servers proving a 302 is not followed and the body and headers are not returned. Non-hollow check: with the guard removed at `store/webhooks.ts:290`, 3 tests failed. With `redirect: 'manual'` removed, 6 failed. Both were restored.
+
+### Residual: DNS rebinding (not solved)
+
+The guard resolves the name, and then fetch resolves it again on connect (`lib/outbound-url.ts:179-187`, then `:211`). A DNS server with a short TTL can answer public to the guard and private to the connect. The full fix is to connect to the address the guard validated: an undici `Agent` with a `connect.lookup` that re-applies `isBlockedAddress` (`:91`), or pinning the vetted IP and sending the original Host and SNI. Until then the send-time re-check narrows the window but does not close it.
+
+### Found, not fixed (same class, outside this change)
+
+- `store/schedules.ts:325` fetches `schedule.url` (set through the `url` field, `routes/schedules.ts:35`, `requireApiKey`). The body feeds the scan, so this is a read-back SSRF.
+- `store/providers.ts:92` POSTs to `plugin.endpoint` from plugin registration (`routes/plugins.ts`, `requireApiKey`).
+- `lib/url-validator.ts:21` sends HEAD requests to source URIs that a model returned (`routes/deep.ts`). It returns the status code, so it is a blind probe that prompt injection can steer.

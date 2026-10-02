@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Security
+
+- **SSRF fixed in outbound webhooks (CodeQL #5).** `POST /webhooks/test`, webhook delivery, job and notification webhooks, and the alert env URLs now refuse private, loopback, link-local, metadata and Fly-internal targets, both at registration (400) and at send time. They no longer follow redirects, and the test tool no longer returns the target's response body or headers. DNS rebinding remains open: `docs/security/2026-10-02-security-evidence-v0.11.1.md`.
+
 ## [v0.11.1] — 2026-10-02
 
 ### Added

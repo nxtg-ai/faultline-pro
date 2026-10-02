@@ -14,6 +14,8 @@
  * the same window that stay above the threshold do not re-fire the alert.
  */
 
+import { fetchOutbound } from '../lib/outbound-url.js';
+
 export const ALERT_THRESHOLD_PCT = 80;
 const MAX_ALERTS = 1_000;
 
@@ -65,7 +67,8 @@ class RateLimitAlertStore {
     const webhookUrl = process.env.FAULTLINE_ALERT_WEBHOOK;
     if (webhookUrl) {
       try {
-        const res = await fetch(webhookUrl, {
+        // Operator-set, but guarded like every other outbound URL: a private target is refused.
+        const res = await fetchOutbound(webhookUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

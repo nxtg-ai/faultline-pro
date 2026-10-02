@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { fireWebhookEvent } from './webhooks.js';
 import { getAuditLogger } from './audit.js';
+import { fetchOutbound } from '../lib/outbound-url.js';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -143,11 +144,12 @@ class JobScheduler {
         runCount: job.runCount + 1,
       });
       if (job.webhookUrl) {
-        void fetch(job.webhookUrl, {
+        // Guarded at send time too: the host's DNS may have changed since the job was created.
+        void fetchOutbound(job.webhookUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ event: 'job.complete', jobId: job.id, result }),
-        }).catch(() => { /* non-fatal */ });
+        }).catch(() => { /* non-fatal, including a blocked target */ });
       } else {
         fireWebhookEvent('job.complete', { jobId: job.id, result });
       }

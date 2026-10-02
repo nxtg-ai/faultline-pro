@@ -7,6 +7,7 @@ import {
 } from '../store/notifications.js';
 import type { NotificationEventType } from '../store/notifications.js';
 import { getAnalyticsStore } from '../store/analytics.js';
+import { outboundUrlRefusal } from '../lib/outbound-url.js';
 
 // ── Validation ────────────────────────────────────────────────────────────────
 
@@ -126,6 +127,8 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
         } catch {
           return reply.status(400).send({ error: 'webhookUrl must be a valid http/https URL.' });
         }
+        const refusal = await outboundUrlRefusal(webhookUrl);
+        if (refusal) return reply.status(400).send({ error: refusal });
       }
 
       const existing = getNotificationStore().getPrefs(keyId);

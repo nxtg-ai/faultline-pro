@@ -1,5 +1,6 @@
 import { createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { FAULTLINE_API_VERSION } from '../version.js';
+import { fetchOutbound, OutboundUrlBlockedError } from '../lib/outbound-url.js';
 
 export type WebhookEvent = 'scan.complete' | 'scan.failed' | 'job.complete' | 'job.failed' | 'claim.verdict_changed' | 'compliance.deadline_approaching' | 'compliance.gate_failed';
 
@@ -282,9 +283,11 @@ export async function dispatchWebhook(
     let statusCode: number | null = null;
     let delivered = false;
     let error: string | null = null;
+    let blocked = false;
 
     try {
-      const res = await fetch(webhook.url, {
+      // Guarded per attempt: DNS can change between registration and each retry.
+      const res = await fetchOutbound(webhook.url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -296,6 +299,7 @@ export async function dispatchWebhook(
       delivered  = res.ok;
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
+      blocked = err instanceof OutboundUrlBlockedError;
     }
 
     const latencyMs = Date.now() - start;
@@ -315,6 +319,7 @@ export async function dispatchWebhook(
     });
 
     if (delivered) { succeeded = true; break; }
+    if (blocked) break; // a blocked target stays blocked; retrying only repeats the refusal
   }
 
   // Update circuit breaker with outcome
@@ -335,8 +340,10 @@ export interface WebhookTestResult {
   latencyMs:   number;
   statusCode:  number | null;
   statusText:  string | null;
-  responseBody: string | null;
-  responseHeaders: Record<string, string>;
+  /** Always null. The target's body is never returned to the caller (SSRF read-back, CodeQL #5). */
+  responseBody: null;
+  /** Always empty, for the same reason as responseBody. Kept for response-shape compatibility. */
+  responseHeaders: Record<string, never>;
   delivered:   boolean;
   error:       string | null;
   signatureHeader: string | null;
@@ -426,15 +433,12 @@ export async function sendTestWebhook(
     const headers: Record<string, string> = { 'Content-Type': 'application/json', 'User-Agent': `Faultline-Pro/${FAULTLINE_API_VERSION}` };
     if (sig) headers['X-Faultline-Signature'] = sig;
 
-    const res = await fetch(url, { method: 'POST', headers, body, signal: AbortSignal.timeout(10_000) });
+    const res = await fetchOutbound(url, { method: 'POST', headers, body, signal: AbortSignal.timeout(10_000) });
     result.latencyMs = Date.now() - start;
     result.statusCode = res.status;
     result.statusText = res.statusText;
     result.delivered  = res.ok;
-    result.responseBody = (await res.text()).slice(0, 4096); // cap at 4KB
-    for (const [k, v] of res.headers.entries()) {
-      result.responseHeaders[k] = v;
-    }
+    await res.body?.cancel(); // status only: the body and headers stay server-side
   } catch (err) {
     result.latencyMs = Date.now() - start;
     result.error = err instanceof Error ? err.message : String(err);
