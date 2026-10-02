@@ -52,6 +52,12 @@ const FULL_SCAN = {
 // ── generatePdfReport (unit) ──────────────────────────────────────────────────
 
 describe('generatePdfReport', () => {
+  it('a claim with no type still renders (was a 500 from type.toUpperCase)', async () => {
+    const scan = { ...MINIMAL_SCAN, claims: [{ id: 'c1', text: 'Revenue grew 40% in Q3.', importance: 4 }] } as unknown as typeof MINIMAL_SCAN;
+    const buf = await generatePdfReport(scan);
+    expect(buf.length).toBeGreaterThan(0);
+  });
+
   it('returns a Buffer', async () => {
     const buf = await generatePdfReport(MINIMAL_SCAN);
     expect(buf).toBeInstanceOf(Buffer);

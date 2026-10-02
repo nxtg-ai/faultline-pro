@@ -29,7 +29,7 @@ function timed<T>(fn: () => T): { result: T; ms: number } {
 
 /** Simulates a rule persisted before the guard: create() itself does not validate. */
 function storeUnvalidatedRegexRule(pattern: string) {
-  return getRuleStore().create({ name: 'legacy', description: 'd', condition: 'regex_match', params: { pattern } });
+  return getRuleStore().create({ name: 'legacy', description: 'd', condition: 'regex_match', params: { pattern } }, 'admin');
 }
 
 describe('regex_match guard at creation (CodeQL #6)', () => {
@@ -62,7 +62,7 @@ describe('regex_match guard at creation (CodeQL #6)', () => {
   });
 
   it('PATCH /rules/:id answers 400 for a catastrophic pattern and keeps the old one', async () => {
-    const rule = getRuleStore().create({ name: 'R', description: 'd', condition: 'regex_match', params: { pattern: '\\bbest\\b' } });
+    const rule = getRuleStore().create({ name: 'R', description: 'd', condition: 'regex_match', params: { pattern: '\\bbest\\b' } }, 'admin');
     const res = await server.inject({
       method: 'PATCH', url: `/rules/${rule.id}`, headers: HEADERS, payload: { params: { pattern: EVIL } },
     });
@@ -72,7 +72,7 @@ describe('regex_match guard at creation (CodeQL #6)', () => {
   });
 
   it('PATCH /rules/:id answers 400 for an invalid severity', async () => {
-    const rule = getRuleStore().create({ name: 'R', description: 'd', condition: 'missing_source' });
+    const rule = getRuleStore().create({ name: 'R', description: 'd', condition: 'missing_source' }, 'admin');
     const res = await server.inject({
       method: 'PATCH', url: `/rules/${rule.id}`, headers: HEADERS, payload: { severity: 'critical' },
     });
@@ -122,7 +122,7 @@ describe('regex_match guard at evaluation, for rules stored before the fix', () 
 
   it('POST /rules/apply returns promptly and lists the skipped rule', FAST, async () => {
     const evil = storeUnvalidatedRegexRule(EVIL);
-    getRuleStore().create({ name: 'kw', description: 'd', condition: 'contains_keyword', params: { keywords: ['aaa'] } });
+    getRuleStore().create({ name: 'kw', description: 'd', condition: 'contains_keyword', params: { keywords: ['aaa'] } }, 'admin');
     const start = performance.now();
     const res = await server.inject({
       method: 'POST', url: '/rules/apply', headers: HEADERS, payload: { claims: [{ text: EVIL_INPUT }] },
@@ -135,7 +135,7 @@ describe('regex_match guard at evaluation, for rules stored before the fix', () 
   });
 
   it('stops regex rules once the shared evaluation budget is spent', () => {
-    const rule = getRuleStore().create({ name: 'R', description: 'd', condition: 'regex_match', params: { pattern: 'a' } });
+    const rule = getRuleStore().create({ name: 'R', description: 'd', condition: 'regex_match', params: { pattern: 'a' } }, 'admin');
     const result = evaluateRuleDetailed(rule, [{ text: 'a' }, { text: 'a' }], createEvaluationBudget(-1));
     expect(result.violations).toEqual([]);
     expect(result.skipped).toHaveLength(1);
@@ -143,7 +143,7 @@ describe('regex_match guard at evaluation, for rules stored before the fix', () 
   });
 
   it('a fresh budget evaluates every claim', () => {
-    const rule = getRuleStore().create({ name: 'R', description: 'd', condition: 'regex_match', params: { pattern: 'a' } });
+    const rule = getRuleStore().create({ name: 'R', description: 'd', condition: 'regex_match', params: { pattern: 'a' } }, 'admin');
     const result = evaluateRuleDetailed(rule, [{ text: 'a' }, { text: 'a' }], createEvaluationBudget());
     expect(result.violations).toHaveLength(2);
     expect(result.skipped).toEqual([]);
@@ -153,7 +153,7 @@ describe('regex_match guard at evaluation, for rules stored before the fix', () 
 describe('bounded regex input (CodeQL #7 and the #6 text cap)', () => {
   beforeEach(() => resetRuleStore());
 
-  const dateRule = () => getRuleStore().create({ name: 'D', description: 'd', condition: 'missing_date_citation' });
+  const dateRule = () => getRuleStore().create({ name: 'D', description: 'd', condition: 'missing_date_citation' }, 'admin');
 
   it('missing_date_citation is fast on a long run of digits', FAST, () => {
     // The original /\d+%|\d+\s*(...)/ took 4.6 s on 50,000 digits (2026-10-02).
@@ -175,14 +175,14 @@ describe('bounded regex input (CodeQL #7 and the #6 text cap)', () => {
   });
 
   it('a user pattern with one unbounded quantifier is fast on long text', FAST, () => {
-    const rule = getRuleStore().create({ name: 'U', description: 'd', condition: 'regex_match', params: { pattern: '\\d+x' } });
+    const rule = getRuleStore().create({ name: 'U', description: 'd', condition: 'regex_match', params: { pattern: '\\d+x' } }, 'admin');
     const { result, ms } = timed(() => evaluateRule(rule, [{ text: '1'.repeat(60_000) }]));
     expect(ms).toBeLessThan(1_000);
     expect(result).toEqual([]);
   });
 
   it('a user pattern sees only the first MAX_MATCH_TEXT_LENGTH characters', () => {
-    const rule = getRuleStore().create({ name: 'T', description: 'd', condition: 'regex_match', params: { pattern: 'needle' } });
+    const rule = getRuleStore().create({ name: 'T', description: 'd', condition: 'regex_match', params: { pattern: 'needle' } }, 'admin');
     const late = 'x'.repeat(MAX_MATCH_TEXT_LENGTH) + 'needle';
     const early = 'x'.repeat(MAX_MATCH_TEXT_LENGTH - 6) + 'needle';
     expect(evaluateRule(rule, [{ text: late }])).toEqual([]);

@@ -56,7 +56,7 @@ export async function rulesRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.status(400).send({ error: err instanceof Error ? err.message : String(err) });
       }
 
-      const rule = getRuleStore().create(validated);
+      const rule = getRuleStore().create(validated, request.keyId ?? 'unknown');
       return reply.status(201).send(rule);
     },
   );
@@ -72,8 +72,8 @@ export async function rulesRoutes(fastify: FastifyInstance): Promise<void> {
         security: [{ apiKey: [] }],
       },
     },
-    async (_request, reply) => {
-      const rules = getRuleStore().list();
+    async (request, reply) => {
+      const rules = getRuleStore().list(request.keyId ?? 'unknown');
       return reply.send({ total: rules.length, rules });
     },
   );
@@ -96,7 +96,8 @@ export async function rulesRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request, reply) => {
       const rule = getRuleStore().get(request.params.id);
-      if (!rule) return reply.status(404).send({ error: 'Rule not found.' });
+      // Another key's rule reads as not found, so ids cannot be probed.
+      if (!rule || !getRuleStore().ownedBy(rule.id, request.keyId ?? 'unknown')) return reply.status(404).send({ error: 'Rule not found.' });
       return reply.send(rule);
     },
   );
@@ -129,6 +130,7 @@ export async function rulesRoutes(fastify: FastifyInstance): Promise<void> {
       },
     },
     async (request, reply) => {
+      if (!getRuleStore().ownedBy(request.params.id, request.keyId ?? 'unknown')) return reply.status(404).send({ error: 'Rule not found.' });
       let updated;
       try {
         updated = getRuleStore().update(request.params.id, request.body as Record<string, unknown>);
@@ -157,6 +159,7 @@ export async function rulesRoutes(fastify: FastifyInstance): Promise<void> {
       },
     },
     async (request, reply) => {
+      if (!getRuleStore().ownedBy(request.params.id, request.keyId ?? 'unknown')) return reply.status(404).send({ error: 'Rule not found.' });
       const deleted = getRuleStore().delete(request.params.id);
       if (!deleted) return reply.status(404).send({ error: 'Rule not found.' });
       return reply.status(204).send();
@@ -199,7 +202,7 @@ export async function rulesRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request, reply) => {
       const rule = getRuleStore().get(request.params.id);
-      if (!rule) return reply.status(404).send({ error: 'Rule not found.' });
+      if (!rule || !getRuleStore().ownedBy(rule.id, request.keyId ?? 'unknown')) return reply.status(404).send({ error: 'Rule not found.' });
       const { violations, skipped } = evaluateRuleDetailed(rule, request.body.claims);
       if (skipped.length > 0) request.log.warn({ skipped }, 'custom rule skipped during evaluation');
       return reply.send({
@@ -235,7 +238,7 @@ export async function rulesRoutes(fastify: FastifyInstance): Promise<void> {
       },
     },
     async (request, reply) => {
-      const { violations, skipped, summary } = getRuleStore().applyAll(request.body.claims);
+      const { violations, skipped, summary } = getRuleStore().applyAll(request.body.claims, undefined, request.keyId ?? 'unknown');
       if (skipped.length > 0) request.log.warn({ skipped }, 'custom rules skipped during evaluation');
       return reply.send({ claimCount: request.body.claims.length, summary, violations, skipped });
     },

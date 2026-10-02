@@ -155,11 +155,11 @@ describe('RuleStore.applyAll', () => {
     getRuleStore().create({
       name: 'E', description: 'd', condition: 'contains_keyword',
       params: { keywords: ['revenue'] }, severity: 'error',
-    });
+    }, 'admin');
     getRuleStore().create({
       name: 'W', description: 'd', condition: 'contains_keyword',
       params: { keywords: ['revenue'] }, severity: 'warning',
-    });
+    }, 'admin');
     const { summary } = getRuleStore().applyAll([{ text: 'Revenue up.' }]);
     expect(summary.error).toBe(1);
     expect(summary.warning).toBe(1);
@@ -224,8 +224,8 @@ describe('GET /rules', () => {
   });
 
   it('lists created rules', async () => {
-    getRuleStore().create({ name: 'R1', description: 'd', condition: 'missing_source' });
-    getRuleStore().create({ name: 'R2', description: 'd', condition: 'missing_source' });
+    getRuleStore().create({ name: 'R1', description: 'd', condition: 'missing_source' }, 'admin');
+    getRuleStore().create({ name: 'R2', description: 'd', condition: 'missing_source' }, 'admin');
     const res = await server.inject({
       method: 'GET', url: '/rules',
       headers: { 'x-api-key': 'admin-secret' },
@@ -251,7 +251,7 @@ describe('PATCH /rules/:id', () => {
   });
 
   it('updates enabled field', async () => {
-    const rule = getRuleStore().create({ name: 'R', description: 'd', condition: 'missing_source' });
+    const rule = getRuleStore().create({ name: 'R', description: 'd', condition: 'missing_source' }, 'admin');
     const res = await server.inject({
       method: 'PATCH', url: `/rules/${rule.id}`,
       headers: { 'x-api-key': 'admin-secret' },
@@ -278,7 +278,7 @@ describe('DELETE /rules/:id', () => {
   });
 
   it('returns 204 and removes rule', async () => {
-    const rule = getRuleStore().create({ name: 'R', description: 'd', condition: 'missing_source' });
+    const rule = getRuleStore().create({ name: 'R', description: 'd', condition: 'missing_source' }, 'admin');
     const res = await server.inject({
       method: 'DELETE', url: `/rules/${rule.id}`,
       headers: { 'x-api-key': 'admin-secret' },
@@ -308,7 +308,7 @@ describe('POST /rules/:id/test', () => {
     const rule = getRuleStore().create({
       name: 'Revenue', description: 'd', condition: 'contains_keyword',
       params: { keywords: ['revenue'] },
-    });
+    }, 'admin');
     const res = await server.inject({
       method: 'POST', url: `/rules/${rule.id}/test`,
       headers: { 'x-api-key': 'admin-secret' },
@@ -336,7 +336,7 @@ describe('POST /rules/apply', () => {
     getRuleStore().create({
       name: 'Keyword check', description: 'd', condition: 'contains_keyword',
       params: { keywords: ['best'] }, severity: 'info',
-    });
+    }, 'admin');
     const res = await server.inject({
       method: 'POST', url: '/rules/apply',
       headers: { 'x-api-key': 'admin-secret' },

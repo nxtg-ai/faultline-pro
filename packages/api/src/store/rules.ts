@@ -256,9 +256,25 @@ const MAX_RULES = 500;
 
 class RuleStore {
   private rules: Map<string, CustomRule> = new Map();
+  /**
+   * Rule id -> the API key id that created it. Kept beside the rule, not on it,
+   * so responses do not change shape. The routes pass the caller's key id and
+   * only ever see, change, delete or apply that key's rules (one store serves
+   * every key; before 2026-10-02 any key could edit any other key's rules).
+   */
+  private owners: Map<string, string> = new Map();
 
-  create(input: CreateRuleInput): CustomRule {
-    if (this.rules.size >= MAX_RULES) {
+  /** True when `ownerKeyId` is absent (store-level callers) or owns the rule. */
+  ownedBy(id: string, ownerKeyId?: string): boolean {
+    if (ownerKeyId === undefined) return this.rules.has(id);
+    return this.rules.has(id) && this.owners.get(id) === ownerKeyId;
+  }
+
+  create(input: CreateRuleInput, ownerKeyId?: string): CustomRule {
+    const count = ownerKeyId === undefined
+      ? this.rules.size
+      : Array.from(this.owners.values()).filter(o => o === ownerKeyId).length;
+    if (count >= MAX_RULES) {
       throw new Error(`Rule limit reached (max ${MAX_RULES}).`);
     }
     const now = new Date().toISOString();
@@ -274,6 +290,7 @@ class RuleStore {
       updatedAt:   now,
     };
     this.rules.set(rule.id, rule);
+    if (ownerKeyId !== undefined) this.owners.set(rule.id, ownerKeyId);
     return rule;
   }
 
@@ -281,8 +298,9 @@ class RuleStore {
     return this.rules.get(id);
   }
 
-  list(): CustomRule[] {
+  list(ownerKeyId?: string): CustomRule[] {
     return Array.from(this.rules.values())
+      .filter(r => ownerKeyId === undefined || this.owners.get(r.id) === ownerKeyId)
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }
 
@@ -310,13 +328,14 @@ class RuleStore {
   }
 
   delete(id: string): boolean {
+    this.owners.delete(id);
     return this.rules.delete(id);
   }
 
   /**
    * Apply all enabled rules to a set of claims. Returns violations grouped by severity.
    */
-  applyAll(claims: ClaimLike[], budget: EvaluationBudget = createEvaluationBudget()): {
+  applyAll(claims: ClaimLike[], budget: EvaluationBudget = createEvaluationBudget(), ownerKeyId?: string): {
     violations: RuleViolation[];
     skipped: SkippedRule[];
     summary: { error: number; warning: number; info: number; total: number };
@@ -324,6 +343,7 @@ class RuleStore {
     const violations: RuleViolation[] = [];
     const skipped: SkippedRule[] = [];
     for (const rule of this.rules.values()) {
+      if (ownerKeyId !== undefined && this.owners.get(rule.id) !== ownerKeyId) continue;
       const result = evaluateRuleDetailed(rule, claims, budget);
       violations.push(...result.violations);
       skipped.push(...result.skipped);
@@ -339,6 +359,7 @@ class RuleStore {
 
   reset(): void {
     this.rules = new Map();
+    this.owners.clear();
   }
 }
 

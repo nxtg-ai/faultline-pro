@@ -442,7 +442,7 @@ function drawClaimAnalysis(
       .text(`Claim ${i + 1} · ${statusLabel(status)}`, COLORS.pageGutter + 6, barY + 6, { continued: true })
       .font('Helvetica')
       .fillColor(COLORS.muted)
-      .text(`  ${claim.type.toUpperCase()}  ${importanceStars(claim.importance)}`, { continued: false })
+      .text(`  ${String(claim.type ?? 'claim').toUpperCase()}  ${importanceStars(claim.importance)}`, { continued: false })
       .restore();
     doc.y = barY + 26;
 
