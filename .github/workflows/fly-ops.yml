@@ -1,0 +1,61 @@
+# Fly operations for faultline-api that need FLY_API_TOKEN but not a deploy.
+# The token lives only in this repo's secrets, so these run here instead of
+# from a workstation. Fixed actions only: no free-form command input.
+#
+#   inspect                 machines, volumes and status (read-only)
+#   create-ledger-volume    one 1 GB volume `faultline_ledgers` in lax, only if
+#                           fewer volumes exist than machines (idempotent)
+#
+# Why the ledger volume: /var/log/faultline holds the append-only provider-spend,
+# grounding-allowance and scan-cost ledgers. Without a volume every deploy
+# starts them at zero (GoPMO 1.18.7.3.2, docs/ledger-volume.md).
+name: Fly ops
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'What to run'
+        required: true
+        type: choice
+        options:
+          - inspect
+          - create-ledger-volume
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fly-ops
+  cancel-in-progress: false
+
+jobs:
+  ops:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      APP: faultline-api
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Inspect
+        run: |
+          flyctl status -a "$APP"
+          echo "--- machines"
+          flyctl machines list -a "$APP"
+          echo "--- volumes"
+          flyctl volumes list -a "$APP"
+
+      - name: Create ledger volume
+        if: inputs.action == 'create-ledger-volume'
+        run: |
+          machines=$(flyctl machines list -a "$APP" --json | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
+          volumes=$(flyctl volumes list -a "$APP" --json | python3 -c "import sys,json; print(len([v for v in json.load(sys.stdin) if v.get('name')=='faultline_ledgers']))")
+          echo "machines=$machines faultline_ledgers volumes=$volumes"
+          if [ "$volumes" -ge 1 ]; then
+            echo "Ledger volume already exists; nothing to create."
+          else
+            flyctl volumes create faultline_ledgers -a "$APP" --region lax --size 1 --yes
+          fi
+          flyctl volumes list -a "$APP"
