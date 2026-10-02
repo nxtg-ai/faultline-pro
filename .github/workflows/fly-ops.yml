@@ -3,8 +3,12 @@
 # from a workstation. Fixed actions only: no free-form command input.
 #
 #   inspect                 machines, volumes and status (read-only)
+#   secrets-list            secret NAMES and digests only (flyctl never shows values)
+#   scale-to-one            run exactly one machine: the ledgers are append-only
+#                           files, so a second machine would keep a second,
+#                           diverging copy of the spend and grounding totals
 #   create-ledger-volume    one 1 GB volume `faultline_ledgers` in lax, only if
-#                           fewer volumes exist than machines (idempotent)
+#                           none exists (idempotent)
 #
 # Why the ledger volume: /var/log/faultline holds the append-only provider-spend,
 # grounding-allowance and scan-cost ledgers. Without a volume every deploy
@@ -20,6 +24,8 @@ on:
         type: choice
         options:
           - inspect
+          - secrets-list
+          - scale-to-one
           - create-ledger-volume
 
 permissions:
@@ -46,6 +52,16 @@ jobs:
           flyctl machines list -a "$APP"
           echo "--- volumes"
           flyctl volumes list -a "$APP"
+
+      - name: Secrets (names only)
+        if: inputs.action == 'secrets-list'
+        run: flyctl secrets list -a "$APP"
+
+      - name: Scale to one machine
+        if: inputs.action == 'scale-to-one'
+        run: |
+          flyctl scale count 1 -a "$APP" --yes
+          flyctl machines list -a "$APP"
 
       - name: Create ledger volume
         if: inputs.action == 'create-ledger-volume'
