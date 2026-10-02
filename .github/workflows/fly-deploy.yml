@@ -51,7 +51,11 @@ jobs:
       - name: Verify release
         run: |
           sleep 10
-          VERSION=$(curl -s https://faultline-api.fly.dev/health | python3 -c "import sys,json; print(json.load(sys.stdin).get('version','unknown'))")
+          # Download to a file, then parse it: never pipe a download into an interpreter.
+          VERSION=unknown
+          if curl -fsS -o health.json https://faultline-api.fly.dev/health; then
+            VERSION=$(python3 -c "import json; print(json.load(open('health.json')).get('version','unknown'))")
+          fi
           echo "Production version after deploy: $VERSION"
           LOCAL_VERSION=$(python3 -c "import json; print(json.load(open('packages/api/package.json'))['version'])")
           echo "Local package version: $LOCAL_VERSION"

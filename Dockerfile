@@ -76,4 +76,7 @@ ENV NODE_ENV=production \
     FAULTLINE_PROVIDER=mock
 
 # Entry point — run the TypeScript source directly via tsx
+# Semgrep wants a USER line; by design there is none (see above): the entrypoint
+# chowns the Fly volume as root, then execs the app as faultline via su-exec.
+# nosemgrep: dockerfile.security.missing-user-entrypoint.missing-user-entrypoint
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh", "node_modules/.bin/tsx", "packages/api/src/index.ts"]
