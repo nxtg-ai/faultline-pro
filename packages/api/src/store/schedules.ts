@@ -14,6 +14,7 @@
 import { randomUUID } from 'node:crypto';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { getNotificationStore, type NotificationEventType } from './notifications.js';
+import { fetchOutboundFollow } from '../lib/outbound-url.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -322,7 +323,10 @@ class ScheduleRunner {
     try {
       // Fetch URL content if url-based schedule
       if (schedule.url) {
-        const res = await fetch(schedule.url, {
+        // Guarded on every run, every redirect hop included: the fetched body
+        // feeds the scan, so an unguarded fetch would read internal URLs back
+        // to the caller (SSRF, same class as CodeQL #5).
+        const res = await fetchOutboundFollow(schedule.url, {
           signal: AbortSignal.timeout(30_000),
           headers: { 'User-Agent': 'Faultline-Pro/2.0 scan-scheduler' },
         });

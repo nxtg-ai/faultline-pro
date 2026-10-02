@@ -13,6 +13,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
+import { outboundUrlRefusal } from '../lib/outbound-url.js';
 import {
   getScheduleStore,
   getScheduleRunner,
@@ -74,6 +75,12 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request, reply) => {
       const keyId = request.keyId ?? 'unknown';
+      for (const field of ['url', 'webhookUrl'] as const) {
+        const value = request.body[field];
+        if (!value) continue;
+        const refusal = await outboundUrlRefusal(value);
+        if (refusal) return reply.status(400).send({ error: `${field}: ${refusal}` });
+      }
       try {
         const schedule = getScheduleStore().create(request.body, keyId);
         return reply.status(201).send(schedule);
@@ -156,6 +163,11 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
       if (!schedule) return reply.status(404).send({ error: 'Schedule not found.' });
       if (schedule.keyId !== (request.keyId ?? 'unknown')) {
         return reply.status(403).send({ error: 'Forbidden.' });
+      }
+      const patchedWebhook = (request.body as { webhookUrl?: unknown }).webhookUrl;
+      if (typeof patchedWebhook === 'string' && patchedWebhook) {
+        const refusal = await outboundUrlRefusal(patchedWebhook);
+        if (refusal) return reply.status(400).send({ error: `webhookUrl: ${refusal}` });
       }
       try {
         const updated = getScheduleStore().update(request.params.id, request.body as unknown as Parameters<ReturnType<typeof getScheduleStore>['update']>[1]);

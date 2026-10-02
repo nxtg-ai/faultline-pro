@@ -230,8 +230,8 @@ Deployed as `743e855` (fly-deploy run 37060898078). `POST https://faultline-api.
 
 The guard resolves the name, and then fetch resolves it again on connect (`lib/outbound-url.ts:179-187`, then `:211`). A DNS server with a short TTL can answer public to the guard and private to the connect. The full fix is to connect to the address the guard validated: an undici `Agent` with a `connect.lookup` that re-applies `isBlockedAddress` (`:91`), or pinning the vetted IP and sending the original Host and SNI. Until then the send-time re-check narrows the window but does not close it.
 
-### Found, not fixed (same class, outside this change)
+### Same class, found after the guard landed
 
-- `store/schedules.ts:325` fetches `schedule.url` (set through the `url` field, `routes/schedules.ts:35`, `requireApiKey`). The body feeds the scan, so this is a read-back SSRF.
-- `store/providers.ts:92` POSTs to `plugin.endpoint` from plugin registration (`routes/plugins.ts`, `requireApiKey`).
+- **FIXED 2026-10-02: `store/schedules.ts` fetched `schedule.url`** (set through the `url` field of `POST /schedules`, `requireApiKey`). The body feeds the scan, so any key holder could read an internal URL back. The run now uses `fetchOutboundFollow` (`lib/outbound-url.ts`): the URL and every redirect hop (at most 3) go through the guard, and a redirect to a private address is refused, not followed. `POST /schedules` refuses a private `url` or `webhookUrl` with 400, and `PATCH /schedules/:id` refuses a private `webhookUrl`. Tests: `packages/api/tests/schedules-outbound-url.test.ts`, 8 tests. Mutation check: with the run-time guard removed 4 fail, with the route check removed 2 fail, restored 8 pass.
+- **OPEN, admin only: `store/providers.ts:92`** POSTs to `plugin.endpoint`. The only way to set it is `POST /providers/register` (`routes/providers.ts:38`, `requireAdmin`). Correction: an earlier line here said `routes/plugins.ts` with `requireApiKey`. That route (`/plugins/publish`) only stores a marketplace listing and never fetches (`store/plugin-registry.ts` has no `fetch`). This is CodeQL #4, admin-only SSRF.
 - `lib/url-validator.ts:21` sends HEAD requests to source URIs that a model returned (`routes/deep.ts`). It returns the status code, so it is a blind probe that prompt injection can steer.

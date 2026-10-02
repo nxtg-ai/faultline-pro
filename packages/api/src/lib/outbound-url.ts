@@ -210,3 +210,24 @@ export async function fetchOutbound(raw: string, init: RequestInit): Promise<Res
   await assertSafeOutboundUrl(raw);
   return fetch(raw, { ...init, redirect: 'manual' });
 }
+
+/**
+ * GET-style fetch of caller-supplied content (scheduled URL scans): guard the
+ * URL, then follow at most `maxRedirects` redirects, guarding every Location
+ * before it is requested. A redirect to a private address is refused, not
+ * followed, so a public URL cannot bounce the server onto its own network.
+ *
+ * @throws OutboundUrlBlockedError when the URL or any redirect target is unsafe.
+ */
+export async function fetchOutboundFollow(raw: string, init: RequestInit, maxRedirects = 3): Promise<Response> {
+  let current = raw;
+  for (let hop = 0; ; hop++) {
+    await assertSafeOutboundUrl(current);
+    const res = await fetch(current, { ...init, redirect: 'manual' });
+    const location = res.headers.get('location');
+    if (res.status < 300 || res.status >= 400 || !location) return res;
+    await res.body?.cancel();
+    if (hop >= maxRedirects) throw new Error(`Too many redirects (more than ${maxRedirects}) from ${raw}`);
+    current = new URL(location, current).toString();
+  }
+}

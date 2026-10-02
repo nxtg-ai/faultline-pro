@@ -218,6 +218,8 @@ describe('ScheduleRunner.runSchedule() — URL-based schedule', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
+      // The run follows redirects itself (fetchOutboundFollow), so it reads headers.
+      headers: new Headers(),
       text: vi.fn().mockResolvedValue('Content from the fetched URL.'),
     }));
   });

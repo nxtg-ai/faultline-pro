@@ -184,7 +184,9 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
         throw new Error("Empty JSON");
       }
     } catch (e) {
-      console.warn("Failed to parse JSON from verification response", response.text);
+      // Length only: the reply can quote the submitted claim, and stdout is kept
+      // as operational logs on the hosted API (faultline-web privacy page, PR 61).
+      console.warn(`Failed to parse JSON from verification response (${response.text?.length ?? 0} chars)`);
       // Fallback: If text exists but isn't JSON, assume it's the explanation
       if (response.text) {
           resultJson = { status: 'mixed', explanation: response.text.substring(0, 150) + '...' };
