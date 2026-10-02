@@ -66,6 +66,11 @@ COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 # No USER line: the entrypoint starts as root, chowns the ledger directory, then
 # drops to the faultline user with su-exec before the app starts.
 
+# The commit this image was built from, echoed by GET /health as `commit`
+# (fly-deploy.yml passes --build-arg FAULTLINE_GIT_SHA=<sha>). Empty means unknown.
+ARG FAULTLINE_GIT_SHA=""
+ENV FAULTLINE_GIT_SHA=${FAULTLINE_GIT_SHA}
+
 # Expose default port (override with PORT env var)
 EXPOSE 3001
 

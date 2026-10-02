@@ -3,6 +3,7 @@ import { join, relative } from 'node:path';
 import type { Claim, VerificationResult, AnalysisState } from '../types.js';
 import type { LLMProvider, Retriever } from '../providers/base_provider.js';
 import { getProvider } from '../providers/registry.js';
+import { DEFAULT_SCAN_PROVIDER, resolveApiKey } from './provider-keys.js';
 import { GeminiGroundingRetriever } from '../providers/gemini_provider.js';
 import { OpenAIWebSearchRetriever } from '../providers/openai_web_search_retriever.js';
 import { consensusVerify, type NamedProvider } from '../consensus/consensus_engine.js';
@@ -156,30 +157,6 @@ export type ScanClaimCallback = (
   total: number,
 ) => void;
 
-/**
- * Resolve the API key for a given provider name.
- * Returns '' for 'mock' (no key required).
- * Throws if the required env var is missing.
- */
-function resolveApiKey(name: string): string {
-  if (name === 'mock') return '';
-  const keyMap: Record<string, string> = {
-    claude: 'ANTHROPIC_API_KEY',
-    openai: 'OPENAI_API_KEY',
-    gemini: 'GEMINI_API_KEY',
-    perplexity: 'PERPLEXITY_API_KEY',
-  };
-  const envVar = keyMap[name] || 'GEMINI_API_KEY';
-  const key = process.env[envVar] || '';
-  if (!key) {
-    const hint = name === 'gemini'
-      ? `Get a free key at https://aistudio.google.com/apikey → export GEMINI_API_KEY=your-key`
-      : `Set ${envVar} in your environment`;
-    throw new Error(`No API key found for "${name}". ${hint}`);
-  }
-  return key;
-}
-
 // openai FIRST: it's the funded, non-throttled provider + the retriever, so it is
 // the reliable always-present voter. gemini (free-tier) + claude (credits) are bonus
 // voters when available. Order matters: a degraded bonus provider must never be the
@@ -247,7 +224,7 @@ export async function scan(
   onClaimVerified?: ScanClaimCallback,
   pipelineConfig?: PipelineConfig,
 ): Promise<ScanResult> {
-  const resolvedProvider = providerName || 'gemini';
+  const resolvedProvider = providerName || DEFAULT_SCAN_PROVIDER;
 
   // Consensus mode defaults EVERY stage to the funded openai path so a grounded
   // scan never depends on the free-tier gemini SPOF (extraction + verify + the

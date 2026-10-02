@@ -78,6 +78,13 @@ export interface VerificationResult {
    */
   apiError?: boolean;
   /**
+   * True when the model's reply was not parseable JSON and the engine fell back
+   * to status 'mixed' (geminiService.verifyClaim). Absent otherwise. It lets a
+   * consumer tell an "inconclusive" verdict from an "unparseable" one; it never
+   * changes the status (verdict-accuracy prereg G0 §3).
+   */
+  parseFallback?: boolean;
+  /**
    * Consensus metadata — present only on fused multi-provider verdicts emitted
    * by the consensus engine. Absent on the single-provider path (additive,
    * backward-compatible).

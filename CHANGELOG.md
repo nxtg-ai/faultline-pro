@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`POST /admin/verify-claims` (admin key only)** verifies up to 25 claims as given, with no re-extraction, through the same `verifyClaim` a scan uses, behind the burst limiter and the provider-spend cap, with usage priced into the same spend and grounding ledgers. It returns status labels and flags only (`status`, `apiError`, `parseFallback`, `model`), never explanations or sources. It exists for the pre-registered verdict-accuracy run (`docs/research/accuracy-g0-harness.md`); `GET /health` now also reports the build `commit` so that run can show the engine did not change.
+
 ### Security
 
 - **Scan history is now private to the API key that submitted the scans, and stored XSS is fixed.** Before this change, any key could read every other key's scan previews and hashes through `/scans/usage`, `/scans/stale`, `/scans/stale/view`, `/scans/search`, `/scans/timeline`, `POST /export` and `/analytics/overview`, and `?tenantId=` could select another tenant. `/scans/stale/view` also rendered a submitted `<script>` unescaped. Admin keys keep fleet-wide reads, and `/scans/stale/view` and `/keys/usage/view` now escape every value. Evidence: `docs/security/2026-10-02-security-evidence-v0.11.1.md`.

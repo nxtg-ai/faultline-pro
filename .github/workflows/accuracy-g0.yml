@@ -1,0 +1,115 @@
+# Pre-registered verdict-accuracy run (G0) against the hosted API.
+# Spec: docs/research/2026-10-02-prereg-verdict-accuracy-g0-v1.md (§6, §7, §8, A1).
+# How to run and read it: docs/research/accuracy-g0-harness.md
+#
+# Dispatch only. Two fixed inputs, nothing free-form:
+#   full              all 661 gold items
+#   verify-subsample  the 100 committed ids (prereg §8 re-run by a lane that did
+#                     not gather the evidence); paired against the committed full
+#                     run when exactly one is in docs/research/data/
+#
+# Every item is a real grounded Gemini prompt on production's key, counted by
+# production's grounding-allowance and spend ledgers. The runner stops itself
+# before the day's grounded prompts would pass 1,000 (exit 3) and can be
+# re-dispatched the next Pacific day; it starts a new out file each dispatch.
+#
+# Needs the repo secret FAULTLINE_ADMIN_KEY (the hosted API's admin key). It is
+# never printed. The job fails at the first step if the secret is missing.
+name: Accuracy G0
+
+on:
+  workflow_dispatch:
+    inputs:
+      set:
+        description: 'Which items to run'
+        required: true
+        type: choice
+        options:
+          - full
+          - verify-subsample
+
+permissions:
+  contents: read
+
+# Two dispatches at once would double-spend the grounding allowance.
+concurrency:
+  group: accuracy-g0
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      SET: ${{ inputs.set }}
+      FAULTLINE_ADMIN_KEY: ${{ secrets.FAULTLINE_ADMIN_KEY }}
+    steps:
+      - name: Require the admin key secret
+        run: |
+          if [ -z "$FAULTLINE_ADMIN_KEY" ]; then
+            echo "::error::Repo secret FAULTLINE_ADMIN_KEY is not set. fp sets it (prereg A1); nothing was sent."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # numpy pinned to the version that drew the committed subsample.
+      - name: Install scorer dependencies
+        run: pip install numpy==2.3.5 pytest
+
+      - name: Scorer self-test (it must be able to fail)
+        run: python3 -m pytest scripts/tests -q
+
+      - name: Run
+        id: runner
+        run: |
+          mkdir -p out
+          OUT="out/accuracy-g0-${SET}-${GITHUB_RUN_ID}.jsonl"
+          echo "out=$OUT" >> "$GITHUB_OUTPUT"
+          set +e
+          node scripts/accuracy-g0.mjs --set "$SET" --out "$OUT"
+          rc=$?
+          set -e
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          echo "Runner exit $rc (0 done, 2 refused, 3 allowance stop, 4 INVALID, 5 spend cap)"
+
+      - name: Score
+        if: steps.runner.outputs.rc == '0'
+        env:
+          OUT: ${{ steps.runner.outputs.out }}
+        run: |
+          PAIRED=()
+          if [ "$SET" = "verify-subsample" ]; then
+            mapfile -t originals < <(ls docs/research/data/accuracy-g0-full-*.jsonl 2>/dev/null || true)
+            if [ "${#originals[@]}" -eq 1 ]; then
+              PAIRED=(--paired "${originals[0]}")
+            else
+              echo "No single committed full run to pair with (found ${#originals[@]}); scoring the re-run alone."
+            fi
+          fi
+          python3 scripts/accuracy-g0-score.py "$OUT" --set "$SET" --json "${OUT%.jsonl}.score.json" "${PAIRED[@]}" \
+            | tee "${OUT%.jsonl}.readout.txt"
+
+      - name: Upload outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: accuracy-g0-${{ inputs.set }}-${{ github.run_id }}
+          path: out/
+          if-no-files-found: warn
+
+      - name: Fail unless the run completed
+        if: steps.runner.outputs.rc != '0'
+        env:
+          RC: ${{ steps.runner.outputs.rc }}
+        run: |
+          echo "::error::Runner exit ${RC}. See the log; exit 3 and 5 are resumable stops."
+          exit 1
