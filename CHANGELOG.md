@@ -9,6 +9,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Security
 
+- **Production dependencies: no high or critical advisory left** (`npm audit --omit=dev`, 2026-10-02). adm-zip 0.5.17 → 0.6.1 (it parses customer ZIP uploads on `/scan/bulk`), the root `fast-uri` override raised from 3.1.2 to ^3.1.8, `@fastify/swagger-ui` 5 → 6 (pulls the patched `@fastify/static` 10.1.5), and in-range fixes for js-yaml, protobufjs, ws and brace-expansion.
 - **fastify 5.8.5 → 5.12.5** on the API (auth-bypass advisory GHSA-p68q-wchp-6fh7 and three more high advisories). fastify now resolves its own patched `fast-uri` 4.2.1.
 - **SSRF fixed in scheduled URL scans.** A schedule's `url` is fetched through the same guard on every run, and every redirect hop (at most 3) is checked; `POST /schedules` and `PATCH /schedules/:id` refuse private URLs with 400.
 - **The engine no longer logs the model's raw reply** when a verification reply is not valid JSON. It logs the length only, because the reply can quote the submitted claim.
