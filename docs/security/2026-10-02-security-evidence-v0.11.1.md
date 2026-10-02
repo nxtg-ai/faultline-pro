@@ -1,6 +1,6 @@
 # Security evidence: engine and API at v0.11.1 (2026-10-02)
 
-GoPMO 1.18.7.3.6. Evidence only: no dependency or source change was made in this task.
+GoPMO 1.18.7.3.6. Sections 1–7 are the evidence as collected at ~20:00 UTC, before any change. Section 0 is the disposition of every High and Critical after the fixes made the same day.
 
 | Field | Value |
 |---|---|
@@ -11,6 +11,56 @@ GoPMO 1.18.7.3.6. Evidence only: no dependency or source change was made in this
 | What ships where | Fly API image: root `Dockerfile:45` runs `npm ci --omit=dev` from the root lockfile, so the `--omit=dev` audit set is what runs on `faultline-api`. npm CLI (`@nxtg/faultline`): the repo lockfile does not ship; `npm i @nxtg/faultline` resolves its semver ranges fresh, so a lockfile finding on a CLI dependency means "pinned in our lockfile", not "on every user's machine" |
 
 Every number below sits next to the command that produced it.
+
+---
+
+## 0. Dispositions: every High and Critical (2026-10-02, after fixes)
+
+Format from `~/ASIF/standards/gate-evidence-security.md`: every item is **fixed**, **accepted** or **mitigated**, with the reason for any deferral. Each row names its instrument.
+
+### Dependencies
+
+| Source | Instrument (re-run) | critical | high | Disposition |
+|---|---|---|---|---|
+| npm audit, production (`--omit=dev`, what the Fly image installs) | `npm audit --omit=dev` at `c552401` | 0 | 0 | **fixed**: adm-zip 0.6.1, fast-uri ^3.1.8 (override raised), @fastify/static 10.1.5 via @fastify/swagger-ui 6, fastify 5.12.5, js-yaml / protobufjs / ws / brace-expansion in range (`ecb507f`, `43a4129`). The CI job `npm audit` in `security-scan.yml` now fails on any unaccepted high or critical (`security/accepted-advisories.json` is `[]`) |
+| Dependabot, open | `gh api repos/nxtg-ai/faultline-pro/dependabot/alerts?state=open` (high/critical filter) | 0 | 4 | **accepted**: browserslist, nanoid, postcss, vite, all `scope: development` in `package-lock.json`. They are build tooling for `packages/web` (the Kaggle-era Vite app). The Fly image runs `npm ci --omit=dev`, so none of them is installed in production, and the npm CLI package does not depend on them. Review when `packages/web` is next built for release |
+
+### Named items (dx3-pm, al:1c79898f4d631cd1)
+
+| Item | Disposition | Instrument |
+|---|---|---|
+| adm-zip (customer ZIPs on `/scan/bulk`, any key) | **fixed**, 0.5.17 → 0.6.1 | `ecb507f`; 135 bulk and GDPR-export tests pass; image builds and serves |
+| fast-uri pinned by the root override | **fixed**, override 3.1.2 → ^3.1.8; top-level resolves 3.1.8, fastify's own copy 4.2.1 | `ecb507f`; `npm audit --omit=dev` shows no fast-uri advisory |
+| DNS rebinding on the SSRF guard | **fixed**: guarded requests run on undici with a connect-time lookup that refuses any private address, so the address checked is the address connected | `9212a26`; 7 rebinding tests on real sockets; mutation: connect-time check removed → 4 fail |
+| Admin-only SSRF in provider plugins (CodeQL #4) | **fixed**: endpoint refused at `POST /providers/register` (400) and every plugin call goes through the guard, no redirects | `9212a26`; 6 tests |
+| faultline-action GHSA-mxc3-4648-6p7x | **fixed**: the advisory lists vulnerable `= 1.0.0`, patched `1.1.0` (`gh api repos/nxtg-ai/faultline-action/security-advisories`). `v1.1.0` is an ancestor of `v1.1.1` (`git merge-base --is-ancestor`), and `v1` resolves to `v1.1.1` (`f41f650`). Every `inputs.*` in `action.yml` sits in an `env:` or `with:` block, none inside a `run:` script. No CVE assigned yet | as listed |
+| `security-scan.yml` could not fail | **fixed**: ratchet gate, §8. Red run 37065802290 (planted finding), green run 37066020388 | PR #59, merged `c552401` |
+
+### Code scanning (CodeQL), open High and Critical
+
+Before: 2 critical, 13 high (`gh api .../code-scanning/alerts?state=open`). Each was opened at its line before a disposition was recorded. Dismissals are recorded in GitHub with the reason.
+
+| Alert | Disposition |
+|---|---|
+| #5 SSRF `/webhooks/test` (critical) | **fixed** `743e855`, live-probed |
+| #4 SSRF provider plugins (critical) | **fixed** `9212a26` |
+| #6 regex injection, #7 polynomial ReDoS (`store/rules.ts`) | **fixed** `37e6360`: pattern safety check at create and at PATCH (the PATCH path had no check), 256-char cap, text cap, 1 s evaluation budget; mutation-checked |
+| #8 resource exhaustion (`pdf-report.ts`) | **fixed** `37e6360`: importance clamped to 1..5 |
+| #2 dynamic method call (`providers/registry.ts`) | **fixed** `37e6360`: factories are a `Map` |
+| #62, #63, #64, #65 (re-raised on the fixed code) | **dismissed, false positive**: CodeQL does not recognise our sanitisers. #62 is the guard itself; #63/#64 compile a pattern only after the safety check or only to validate syntax; #65 is after the clamp |
+| #9 clear-text logging (`cli/index.ts:1446`) | **dismissed, won't fix**: the CLI prints command output to the user's own terminal by design |
+| #3 incomplete sanitisation (`providers/wikipedia.ts:41`) | **dismissed, false positive**: tags are stripped only to lowercase-match words; never rendered |
+| #53–#58 (`scripts/measure-consensus-cost.ts`, `scripts/consensus-cost/capture.ts`) | **dismissed, won't fix**: developer measurement scripts, not in the API image or the npm package |
+| #59 (`tests/consensus-usage-e2e.test.ts`) | **dismissed, used in tests** |
+
+### Found during the fixes (not in the scanners' High list)
+
+| Item | Disposition |
+|---|---|
+| SSRF in scheduled URL scans (body read back to the caller) | **fixed** `3ef0ecd`, live-probed |
+| Custom rules shared across every API key (any key could read, change, delete or apply another's) | **fixed** `d2cae2e`: rules are private to the creating key; 6 tests, mutation-checked |
+| Scan history readable across API keys, and stored XSS in `/scans/stale/view` (Bearer) | **in progress**: see the last section of this doc when it lands |
+| `lib/url-validator.ts` HEAD probes to model-returned source URLs | **mitigated, accepted for beta**: the request returns only a status code to the scan (no body), it targets URLs a model cited, and prompt injection steering it gains a blind reachability probe at most. Route it through the guard when the url-validator is next changed |
 
 ---
 
