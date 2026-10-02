@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAdmin } from '../plugins/auth.js';
+import { esc } from '../lib/html.js';
 import { getKeyStore, ROTATION_GRACE_HOURS } from '../store/keys.js';
 import type { Permission } from '../store/keys.js';
 import { getNotificationStore } from '../store/notifications.js';
@@ -114,13 +115,13 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
         ? '<tr><td colspan="7" style="text-align:center;padding:32px;color:#9ca3af;">No API keys found.</td></tr>'
         : keys.map((k) => `
           <tr style="border-bottom:1px solid #1f2937;">
-            <td style="padding:10px 12px;font-family:monospace;font-size:.85em;">${k.id.slice(0, 8)}</td>
-            <td style="padding:10px 12px;">${k.name}</td>
+            <td style="padding:10px 12px;font-family:monospace;font-size:.85em;">${esc(k.id.slice(0, 8))}</td>
+            <td style="padding:10px 12px;">${esc(k.name)}</td>
             <td style="padding:10px 12px;">${statusChip(k)}</td>
-            <td style="padding:10px 12px;color:#9ca3af;font-size:.85em;">${k.daysSinceLastUse !== null ? `${k.daysSinceLastUse}d ago` : '—'}</td>
-            <td style="padding:10px 12px;color:#9ca3af;font-size:.85em;">${k.daysSinceLastRotation !== null ? `${k.daysSinceLastRotation}d ago` : '—'}</td>
-            <td style="padding:10px 12px;color:#9ca3af;font-size:.85em;">${k.expiresAt ? k.expiresAt.slice(0, 10) : '—'}</td>
-            <td style="padding:10px 12px;color:#9ca3af;font-size:.85em;">${k.permissions.join(', ')}</td>
+            <td style="padding:10px 12px;color:#9ca3af;font-size:.85em;">${k.daysSinceLastUse !== null ? `${esc(k.daysSinceLastUse)}d ago` : '—'}</td>
+            <td style="padding:10px 12px;color:#9ca3af;font-size:.85em;">${k.daysSinceLastRotation !== null ? `${esc(k.daysSinceLastRotation)}d ago` : '—'}</td>
+            <td style="padding:10px 12px;color:#9ca3af;font-size:.85em;">${k.expiresAt ? esc(k.expiresAt.slice(0, 10)) : '—'}</td>
+            <td style="padding:10px 12px;color:#9ca3af;font-size:.85em;">${esc(k.permissions.join(', '))}</td>
           </tr>`).join('');
 
       const html = `<!DOCTYPE html>

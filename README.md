@@ -54,7 +54,7 @@ Faultline ships Art. 9 (risk register), Art. 12 (tamper-evident audit log), and 
 | Integrations | Python client source in `sdks/python`, MCP server `packages/mcp`, Terraform provider `packages/terraform-provider`, GitHub Action `nxtg-ai/faultline-action` (see [SDKs](#sdks-and-integrations)) |
 | Multi-tenant | Tenant CRUD, API key association, per-tenant usage aggregation |
 | Cost tracking | Per-scan token/cost estimation; `GET /costs` with provider/tenant/date filters |
-| Scan history | `GET /scans/search` — full-text across all past scans, cursor pagination |
+| Scan history | `GET /scans/search` — full-text across your API key's past scans (admin key: all), cursor pagination |
 | Industry compliance | HIPAA / SOX / FERPA / Gov templates; `POST /scan/compliance/:template` |
 | Bulk import | `POST /scan/bulk` — ZIP of documents, async job, `GET /jobs/:id/progress` |
 | Swagger UI | `GET /docs` — interactive OpenAPI 3.0 spec with Try-it for every endpoint |
@@ -118,7 +118,7 @@ Switch providers with `--provider <name>`. No code changes required. With no pro
 - **Caching** — SHA-256 content-hash cache; 24h TTL (env `FAULTLINE_CACHE_TTL_MS`); `X-Cache: HIT/MISS` header; `GET /cache/stats`, `DELETE /cache`
 - **Scheduled jobs** — `POST /jobs`: recurring scans on a `*/N * * * *` cron schedule; results dispatched to `webhookUrl`
 - **Provider failover** — automatic chain Gemini → OpenAI → Claude → Perplexity → Mock; circuit breaker trips after 5 failures, resets after 5 minutes; `503` when all providers down
-- **Scan history** — `GET /scans/search?q=` full-text; stale scan detection (`GET /scans/stale`); usage analytics (`GET /scans/usage`); bulk pruning (`DELETE /scans/stale`); hygiene dashboard; `faultline scans` CLI
+- **Scan history** — private per API key (the admin key sees all); `GET /scans/search?q=` full-text; stale scan detection (`GET /scans/stale`); usage analytics (`GET /scans/usage`); bulk pruning (`DELETE /scans/stale`); hygiene dashboard; `faultline scans` CLI
 - **Industry compliance templates** — HIPAA / SOX+FINRA / FERPA / Government; `POST /scan/compliance/:template`; custom template upload
 - **Bulk import** — `POST /scan/bulk` (ZIP of documents → async job); `GET /jobs/:id/progress` (percentage + per-file status + summary)
 - **Monitoring** — `GET /health/deep` (subsystem status + provider config flags), `GET /metrics` (Prometheus text), `GET /status` (HTML)
