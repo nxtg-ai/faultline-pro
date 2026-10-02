@@ -48,6 +48,13 @@ export const BATCH_SIZE = 25;
 /** Prereg §6: retry any apiError item up to 3 times. */
 export const MAX_RETRIES = 3;
 const REQUEST_TIMEOUT_MS = 10 * 60_000;
+/** Fixed location of the hosted admin key; never derived from input. */
+const KEY_FILE = `${homedir()}/.config/faultline/hosted-api-key.env`;
+
+/** Progress and stop lines. They never contain the key: it only goes into a header. */
+function writeLine(stream, line) {
+  stream.write(`${line}\n`);
+}
 
 export const EXIT = Object.freeze({
   OK: 0, ERROR: 1, REFUSED: 2, ALLOWANCE_STOP: 3, INVALID: 4, SPEND_CAP: 5,
@@ -106,10 +113,9 @@ function defaultRunId(set, now = new Date()) {
 // ── Inputs ───────────────────────────────────────────────────────────────────
 
 /** The admin key, from env or the hosted-api-key file. Never logged. */
-export function readAdminKey(env = process.env, home = homedir()) {
+export function readAdminKey(env = process.env, file = KEY_FILE) {
   const fromEnv = (env.FAULTLINE_ADMIN_KEY ?? '').trim();
   if (fromEnv) return fromEnv;
-  const file = path.join(home, '.config/faultline/hosted-api-key.env');
   if (!existsSync(file)) return '';
   for (const line of readFileSync(file, 'utf8').split('\n')) {
     const match = /^\s*(?:export\s+)?FAULTLINE_API_KEY\s*=\s*(.*)$/.exec(line);
@@ -339,7 +345,7 @@ function summarize(file, expected, log) {
  * contains the key, because the key only ever goes into a request header.
  */
 export async function runAccuracy(options, deps = {}) {
-  const log = deps.log ?? ((line) => console.log(line));
+  const log = deps.log ?? ((line) => writeLine(process.stdout, line));
   const key = deps.key ?? readAdminKey();
   try {
     const actual = sha256File(options.gold);
@@ -379,7 +385,7 @@ export async function main(argv = process.argv.slice(2)) {
   try {
     options = parseArgs(argv);
   } catch (error) {
-    console.error(`REFUSED: ${error.message}`);
+    writeLine(process.stderr, `REFUSED: ${error.message}`);
     return EXIT.REFUSED;
   }
   return runAccuracy(options);
