@@ -1,0 +1,802 @@
+{
+  "schema": "faultline.security-baseline.v1",
+  "about": "Blocking (level error) semgrep and bearer findings that existed when the ratchet was installed. scripts/security-gate.mjs fails on any blocking finding not listed here. Fingerprint = tool + ruleId + uri + fp (bearer primaryLocationLineHash, else sha256 of the message); no line numbers. Docs: docs/security/2026-10-02-security-evidence-v0.11.1.md §8.",
+  "sources": {
+    "bearer": "run 37062617182 (main, 2026-10-02) bearer.sarif",
+    "semgrep": "none: the 5 errors in run 37062617182 were fixed, suppressed in source, or ignored (.semgrepignore) on branch security-gate"
+  },
+  "entries": [
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "infra/telemetry-worker/src/index.ts",
+      "fp": "4237cf5c049aa9650016ca043a553030_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "infra/telemetry-worker/src/index.ts",
+      "fp": "4237cf5c049aa9650016ca043a553030_1",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_hardcoded_secret",
+      "uri": "packages/api/benchmarks/run.ts",
+      "fp": "44e1718cb08d5e4f1e9848f86e648085_0",
+      "disposition": "false-positive",
+      "reason": "benchmark harness sets a placeholder FAULTLINE_API_KEY ('bench-key') in its own process for in-process inject(); not a credential"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/api/benchmarks/run.ts",
+      "fp": "ae240af172ed8a0e3cacf622c33a29e2_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/api/benchmarks/run.ts",
+      "fp": "ae240af172ed8a0e3cacf622c33a29e2_1",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/api/benchmarks/run.ts",
+      "fp": "ae240af172ed8a0e3cacf622c33a29e2_2",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/api/src/index.ts",
+      "fp": "375a3fc994a00e99e881dea48fdde48a_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/api/src/index.ts",
+      "fp": "375a3fc994a00e99e881dea48fdde48a_1",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_manual_html_sanitization",
+      "uri": "packages/api/src/lib/html.ts",
+      "fp": "589ed3034131ee8768066b13f7c83e4b_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_raw_html_using_user_input",
+      "uri": "packages/api/src/routes/keys.ts",
+      "fp": "58d7fa568ad8c5a43a586fe5fed70d58_0",
+      "disposition": "open",
+      "reason": "OPEN: GET /keys/usage/view interpolates k.name (admin-set, maxLength 100) unescaped into HTML at keys.ts:118; wrap in esc() from src/lib/html.ts. Admin-only route, low"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_raw_html_using_user_input",
+      "uri": "packages/api/src/routes/keys.ts",
+      "fp": "58d7fa568ad8c5a43a586fe5fed70d58_1",
+      "disposition": "open",
+      "reason": "OPEN: GET /keys/usage/view interpolates k.name (admin-set, maxLength 100) unescaped into HTML at keys.ts:118; wrap in esc() from src/lib/html.ts. Admin-only route, low"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_raw_html_using_user_input",
+      "uri": "packages/api/src/routes/scans.ts",
+      "fp": "b83631f74251e7a29672faa07c0ff274_0",
+      "disposition": "open",
+      "reason": "OPEN: GET /scans/stale/view (requireApiKey, not admin, no tenant filter) renders textPreview, the first 100 chars of ANY caller's scan input, unescaped into a title attribute and a cell at scans.ts:129: stored XSS and cross-tenant disclosure; esc() + tenant scope"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_raw_html_using_user_input",
+      "uri": "packages/api/src/routes/scans.ts",
+      "fp": "b83631f74251e7a29672faa07c0ff274_1",
+      "disposition": "open",
+      "reason": "OPEN: GET /scans/stale/view (requireApiKey, not admin, no tenant filter) renders textPreview, the first 100 chars of ANY caller's scan input, unescaped into a title attribute and a cell at scans.ts:129: stored XSS and cross-tenant disclosure; esc() + tenant scope"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/api/src/routes/stream.ts",
+      "fp": "1e218ea589a3580c34f2ceb973fb0d36_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/api/src/routes/stream.ts",
+      "fp": "1e218ea589a3580c34f2ceb973fb0d36_1",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/api/src/store/rate-alerts.ts",
+      "fp": "c30babc03be438fbb47aba7eaefd7699_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_dynamic_regex",
+      "uri": "packages/api/src/store/rules.ts",
+      "fp": "4ce05d0cd4c37f504a007a9af281369a_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_observable_timing",
+      "uri": "packages/api/src/store/scan-history.ts",
+      "fp": "628c297c9551a4f68d7203bc2a833dff_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_manual_html_sanitization",
+      "uri": "packages/cli/cli/aggregate.ts",
+      "fp": "b79011e7ac1fb595285fd64bdfa229e0_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_manual_html_sanitization",
+      "uri": "packages/cli/cli/compliance-report.ts",
+      "fp": "3f6dddf56de9872e7e27b78664afa69d_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/cli/index.ts",
+      "fp": "2abfe6ecf9455426db963bc44ea258dd_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_manual_html_sanitization",
+      "uri": "packages/cli/cli/report.ts",
+      "fp": "6e177e0d61d4c27f72b87052b1fa2ce3_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_insufficiently_random_values",
+      "uri": "packages/cli/cli/scan.ts",
+      "fp": "b88f6db9bcaae6e40b4f9ed91d430ff4_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/cli/watch.ts",
+      "fp": "ad7eb825e0c095a721891ae01b918ab2_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/cli/watch.ts",
+      "fp": "ad7eb825e0c095a721891ae01b918ab2_1",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/consensus/consensus_engine.ts",
+      "fp": "38af70f89e9c08cc3e9d7172c5b368ba_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/governance/policy_engine.ts",
+      "fp": "06f8b48775aa50d89eb4443ecf865fff_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_hardcoded_secret",
+      "uri": "packages/cli/lib/i18n.ts",
+      "fp": "bf73a3f968743b90f9901f9fcc64bbfe_0",
+      "disposition": "false-positive",
+      "reason": "i18n message 'err.no_api_key' (user-facing text about a missing key); no secret value"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/providers/claude_provider.ts",
+      "fp": "9873b3de8f228a4ff437e980ff905a06_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/providers/claude_provider.ts",
+      "fp": "9873b3de8f228a4ff437e980ff905a06_1",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/providers/openai_provider.ts",
+      "fp": "195085d4162ddbfff995c5c9c8a80990_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/providers/openai_provider.ts",
+      "fp": "195085d4162ddbfff995c5c9c8a80990_1",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/providers/perplexity_provider.ts",
+      "fp": "114b12933db40e5d92136e3450e87317_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/providers/perplexity_provider.ts",
+      "fp": "114b12933db40e5d92136e3450e87317_1",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/rules/engine.ts",
+      "fp": "5bb3cffbaf5bc8cd155d8cfec5559ec5_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/scripts/live-consensus-proof.ts",
+      "fp": "695dc514c09b66f83cfd518066af8698_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/scripts/live-consensus-proof.ts",
+      "fp": "695dc514c09b66f83cfd518066af8698_1",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/scripts/live-consensus-proof.ts",
+      "fp": "695dc514c09b66f83cfd518066af8698_10",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/scripts/live-consensus-proof.ts",
+      "fp": "695dc514c09b66f83cfd518066af8698_11",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/scripts/live-consensus-proof.ts",
+      "fp": "695dc514c09b66f83cfd518066af8698_12",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/scripts/live-consensus-proof.ts",
+      "fp": "695dc514c09b66f83cfd518066af8698_2",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/scripts/live-consensus-proof.ts",
+      "fp": "695dc514c09b66f83cfd518066af8698_3",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/scripts/live-consensus-proof.ts",
+      "fp": "695dc514c09b66f83cfd518066af8698_4",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/scripts/live-consensus-proof.ts",
+      "fp": "695dc514c09b66f83cfd518066af8698_5",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/scripts/live-consensus-proof.ts",
+      "fp": "695dc514c09b66f83cfd518066af8698_6",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/scripts/live-consensus-proof.ts",
+      "fp": "695dc514c09b66f83cfd518066af8698_7",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/scripts/live-consensus-proof.ts",
+      "fp": "695dc514c09b66f83cfd518066af8698_8",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/scripts/live-consensus-proof.ts",
+      "fp": "695dc514c09b66f83cfd518066af8698_9",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/services/geminiService.ts",
+      "fp": "550bb744ee3e4d762b6d880be9c180b4_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/services/geminiService.ts",
+      "fp": "550bb744ee3e4d762b6d880be9c180b4_1",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/services/geminiService.ts",
+      "fp": "550bb744ee3e4d762b6d880be9c180b4_2",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/services/geminiService.ts",
+      "fp": "550bb744ee3e4d762b6d880be9c180b4_3",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/services/geminiService.ts",
+      "fp": "550bb744ee3e4d762b6d880be9c180b4_4",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "go_lang_logger_leak",
+      "uri": "packages/terraform-provider/main.go",
+      "fp": "405b3f6b0ddde3de821dd15452659b2e_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/web/App.tsx",
+      "fp": "c4ca314977bcaa78d46a6382097b0ece_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_insufficiently_random_values",
+      "uri": "packages/web/components/Dashboard.tsx",
+      "fp": "dea11edf167070bf4e2dac9a9ef226cf_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_insufficiently_random_values",
+      "uri": "packages/web/components/Dashboard.tsx",
+      "fp": "dea11edf167070bf4e2dac9a9ef226cf_1",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/web/components/Dashboard.tsx",
+      "fp": "55f05fc48a7eb293f7f4815d2eb52bd2_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_dangerous_insert_html",
+      "uri": "packages/web/components/InputSection.tsx",
+      "fp": "b37d40c17e086b3570654b20b7e02e1c_0",
+      "disposition": "false-positive",
+      "reason": "React.createElement of an icon component taken from the static FEATURES constant; no HTML string is inserted"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_dangerous_insert_html",
+      "uri": "packages/web/components/Tour.tsx",
+      "fp": "f02bcfd0bdb6d769dedffa68b094a507_0",
+      "disposition": "false-positive",
+      "reason": "React.createElement of an icon component taken from the static FEATURES constant; no HTML string is inserted"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/web/index.tsx",
+      "fp": "837832b38a142fbfc218b543ca069d53_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/web/services/geminiService.ts",
+      "fp": "5d026c2e7fe1574ca4723ff14891a6fb_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/web/services/geminiService.ts",
+      "fp": "5d026c2e7fe1574ca4723ff14891a6fb_1",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/web/services/geminiService.ts",
+      "fp": "5d026c2e7fe1574ca4723ff14891a6fb_2",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/api-health-check.mjs",
+      "fp": "b4277517d8ccf7391cc7dc87c5fc720e_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/api-health-check.mjs",
+      "fp": "b4277517d8ccf7391cc7dc87c5fc720e_1",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/api-health-check.mjs",
+      "fp": "b4277517d8ccf7391cc7dc87c5fc720e_2",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/assert-prompt-fidelity.ts",
+      "fp": "fea3dd4d84fe0c5cb2b8dc2f24732c27_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/assert-prompt-fidelity.ts",
+      "fp": "fea3dd4d84fe0c5cb2b8dc2f24732c27_1",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/assert-prompt-fidelity.ts",
+      "fp": "fea3dd4d84fe0c5cb2b8dc2f24732c27_2",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/assert-prompt-fidelity.ts",
+      "fp": "fea3dd4d84fe0c5cb2b8dc2f24732c27_3",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/grounding-allowance-check.mjs",
+      "fp": "937cc6b29ffdba51be8a432f143c6644_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/grounding-allowance-check.mjs",
+      "fp": "937cc6b29ffdba51be8a432f143c6644_1",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/grounding-allowance-check.mjs",
+      "fp": "937cc6b29ffdba51be8a432f143c6644_2",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/grounding-allowance-check.mjs",
+      "fp": "937cc6b29ffdba51be8a432f143c6644_3",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/measure-consensus-cost.ts",
+      "fp": "ce1f4d45544b57b89d05ec29b6529455_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/measure-consensus-cost.ts",
+      "fp": "ce1f4d45544b57b89d05ec29b6529455_1",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/measure-consensus-cost.ts",
+      "fp": "ce1f4d45544b57b89d05ec29b6529455_10",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/measure-consensus-cost.ts",
+      "fp": "ce1f4d45544b57b89d05ec29b6529455_11",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/measure-consensus-cost.ts",
+      "fp": "ce1f4d45544b57b89d05ec29b6529455_12",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/measure-consensus-cost.ts",
+      "fp": "ce1f4d45544b57b89d05ec29b6529455_13",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/measure-consensus-cost.ts",
+      "fp": "ce1f4d45544b57b89d05ec29b6529455_14",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/measure-consensus-cost.ts",
+      "fp": "ce1f4d45544b57b89d05ec29b6529455_2",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/measure-consensus-cost.ts",
+      "fp": "ce1f4d45544b57b89d05ec29b6529455_3",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/measure-consensus-cost.ts",
+      "fp": "ce1f4d45544b57b89d05ec29b6529455_4",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/measure-consensus-cost.ts",
+      "fp": "ce1f4d45544b57b89d05ec29b6529455_5",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/measure-consensus-cost.ts",
+      "fp": "ce1f4d45544b57b89d05ec29b6529455_6",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/measure-consensus-cost.ts",
+      "fp": "ce1f4d45544b57b89d05ec29b6529455_7",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/measure-consensus-cost.ts",
+      "fp": "ce1f4d45544b57b89d05ec29b6529455_8",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/measure-consensus-cost.ts",
+      "fp": "ce1f4d45544b57b89d05ec29b6529455_9",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/scan-cost-digest.ts",
+      "fp": "67f1bc29cc34018f89922b638dc61ae2_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/scan-cost-digest.ts",
+      "fp": "67f1bc29cc34018f89922b638dc61ae2_1",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/scan-cost-digest.ts",
+      "fp": "67f1bc29cc34018f89922b638dc61ae2_2",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/version-parity.mjs",
+      "fp": "5cec027aadc9518791cbbf4f53f3ebe2_0",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/version-parity.mjs",
+      "fp": "5cec027aadc9518791cbbf4f53f3ebe2_1",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/version-parity.mjs",
+      "fp": "5cec027aadc9518791cbbf4f53f3ebe2_2",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/version-parity.mjs",
+      "fp": "5cec027aadc9518791cbbf4f53f3ebe2_3",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/version-parity.mjs",
+      "fp": "5cec027aadc9518791cbbf4f53f3ebe2_4",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/version-parity.mjs",
+      "fp": "5cec027aadc9518791cbbf4f53f3ebe2_5",
+      "disposition": "accepted-pre-existing",
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    }
+  ]
+}

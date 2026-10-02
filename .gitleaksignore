@@ -1,0 +1,52 @@
+# Gitleaks ignore list for .github/workflows/security-scan.yml (gitleaks detect --exit-code 1).
+# Format: <commit>:<file>:<rule>:<line> as gitleaks prints in "Fingerprint:".
+# Every entry below was reviewed 2026-10-02: each value is a documentation
+# placeholder or a test fixture, never a live credential. A new leak (any
+# other fingerprint) fails the job. Docs: docs/security/2026-10-02-security-evidence-v0.11.1.md §8.
+
+# docs/uat/asif-uat-eu-ai-act-compliance-layer-v1.0.0.md (24): UAT script curl examples: the bearer value is the literal placeholder "admin-secret" (a local test admin key, never a deployed one).
+85ac69e269f1da934794a05b09ce43e892c55bfc:docs/uat/asif-uat-eu-ai-act-compliance-layer-v1.0.0.md:curl-auth-header:107
+85ac69e269f1da934794a05b09ce43e892c55bfc:docs/uat/asif-uat-eu-ai-act-compliance-layer-v1.0.0.md:curl-auth-header:110
+85ac69e269f1da934794a05b09ce43e892c55bfc:docs/uat/asif-uat-eu-ai-act-compliance-layer-v1.0.0.md:curl-auth-header:163
+85ac69e269f1da934794a05b09ce43e892c55bfc:docs/uat/asif-uat-eu-ai-act-compliance-layer-v1.0.0.md:curl-auth-header:166
+85ac69e269f1da934794a05b09ce43e892c55bfc:docs/uat/asif-uat-eu-ai-act-compliance-layer-v1.0.0.md:curl-auth-header:169
+85ac69e269f1da934794a05b09ce43e892c55bfc:docs/uat/asif-uat-eu-ai-act-compliance-layer-v1.0.0.md:curl-auth-header:172
+85ac69e269f1da934794a05b09ce43e892c55bfc:docs/uat/asif-uat-eu-ai-act-compliance-layer-v1.0.0.md:curl-auth-header:62
+85ac69e269f1da934794a05b09ce43e892c55bfc:docs/uat/asif-uat-eu-ai-act-compliance-layer-v1.0.0.md:curl-auth-header:65
+85ac69e269f1da934794a05b09ce43e892c55bfc:docs/uat/asif-uat-eu-ai-act-compliance-layer-v1.0.0.md:curl-auth-header:68
+afb3384f6413e0fe193a235b5674d0e30b2294f9:docs/uat/asif-uat-eu-ai-act-compliance-layer-v1.0.0.md:curl-auth-header:114
+afb3384f6413e0fe193a235b5674d0e30b2294f9:docs/uat/asif-uat-eu-ai-act-compliance-layer-v1.0.0.md:curl-auth-header:115
+afb3384f6413e0fe193a235b5674d0e30b2294f9:docs/uat/asif-uat-eu-ai-act-compliance-layer-v1.0.0.md:curl-auth-header:118
+afb3384f6413e0fe193a235b5674d0e30b2294f9:docs/uat/asif-uat-eu-ai-act-compliance-layer-v1.0.0.md:curl-auth-header:122
+afb3384f6413e0fe193a235b5674d0e30b2294f9:docs/uat/asif-uat-eu-ai-act-compliance-layer-v1.0.0.md:curl-auth-header:176
+afb3384f6413e0fe193a235b5674d0e30b2294f9:docs/uat/asif-uat-eu-ai-act-compliance-layer-v1.0.0.md:curl-auth-header:182
+afb3384f6413e0fe193a235b5674d0e30b2294f9:docs/uat/asif-uat-eu-ai-act-compliance-layer-v1.0.0.md:curl-auth-header:188
+afb3384f6413e0fe193a235b5674d0e30b2294f9:docs/uat/asif-uat-eu-ai-act-compliance-layer-v1.0.0.md:curl-auth-header:192
+afb3384f6413e0fe193a235b5674d0e30b2294f9:docs/uat/asif-uat-eu-ai-act-compliance-layer-v1.0.0.md:curl-auth-header:64
+afb3384f6413e0fe193a235b5674d0e30b2294f9:docs/uat/asif-uat-eu-ai-act-compliance-layer-v1.0.0.md:curl-auth-header:70
+afb3384f6413e0fe193a235b5674d0e30b2294f9:docs/uat/asif-uat-eu-ai-act-compliance-layer-v1.0.0.md:curl-auth-header:76
+b5ac1a03d7c608d48b9e8495d21ae1c084662b84:docs/uat/asif-uat-eu-ai-act-compliance-layer-v1.0.0.md:curl-auth-header:112
+b5ac1a03d7c608d48b9e8495d21ae1c084662b84:docs/uat/asif-uat-eu-ai-act-compliance-layer-v1.0.0.md:curl-auth-header:113
+dd43eecf7e3b5db5bd9f4a7ca836cf97b2f44e61:docs/uat/asif-uat-eu-ai-act-compliance-layer-v1.0.0.md:curl-auth-header:112
+dd43eecf7e3b5db5bd9f4a7ca836cf97b2f44e61:docs/uat/asif-uat-eu-ai-act-compliance-layer-v1.0.0.md:curl-auth-header:113
+
+# docs/plugins/tutorial.md (2): Tutorial curl examples: the bearer value is the literal placeholder "YOUR_API_KEY".
+77ad6a91ec3138067a6a3710a3571f2a306fbb59:docs/plugins/tutorial.md:curl-auth-header:236
+77ad6a91ec3138067a6a3710a3571f2a306fbb59:docs/plugins/tutorial.md:curl-auth-header:277
+
+# README.md (2): README curl examples: the bearer value is the placeholder "your-admin-key".
+78ce06275752d2fc9ed34256fc6cc7cfa0c9f9fc:README.md:curl-auth-header:140
+898dbf36579de83726859aa2550a91f84ebe9ad6:README.md:curl-auth-header:180
+
+# sdks/python/tests/test_client.py (2): Python SDK test fixture: a made-up key echoed by a mocked HTTP response.
+3ee8e437f097f2c73ec213a4e3baaceb140649ae:sdks/python/tests/test_client.py:generic-api-key:112
+3ee8e437f097f2c73ec213a4e3baaceb140649ae:sdks/python/tests/test_client.py:generic-api-key:233
+
+# packages/sdk/tests/client.test.ts (1): TypeScript SDK test fixture: a placeholder test key passed to a client talking to a mocked fetch.
+e1f03a39c416e3c0e8d3ecadfdedaf0d066b6e0e:packages/sdk/tests/client.test.ts:generic-api-key:81
+
+# packages/cli/tests/yaml-engine.test.ts (1): YAML rule-engine test input: a fake Stripe-shaped live key (live prefix plus 16 obvious hex digits) that the secret-detection rule under test must flag.
+073078878ea570c60c66eccee16df9afe06b2617:packages/cli/tests/yaml-engine.test.ts:stripe-access-token:499
+
+# tests/yaml-engine.test.ts (1): Same yaml-engine fixture before the N-18 workspace split moved it to packages/cli/tests.
+65eb5894e19d2bd1b7196dcb28e746e0f2e78cb9:tests/yaml-engine.test.ts:stripe-access-token:499
