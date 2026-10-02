@@ -57,10 +57,14 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 # scan-cost logs. /var/log is root-owned, so without this the non-root process
 # cannot create it and every ledger write fails (N-230 instrument:
 # GET /usage -> ledgerWriteFailures).
-RUN mkdir -p /var/log/faultline && chown faultline:faultline /var/log/faultline
+# On Fly this path is the `faultline_ledgers` volume (packages/api/fly.toml), which
+# mounts root-owned over this chown; docker-entrypoint.sh fixes the owner at start.
+RUN apk add --no-cache su-exec && \
+    mkdir -p /var/log/faultline && chown faultline:faultline /var/log/faultline
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
-# Drop to non-root
-USER faultline
+# No USER line: the entrypoint starts as root, chowns the ledger directory, then
+# drops to the faultline user with su-exec before the app starts.
 
 # Expose default port (override with PORT env var)
 EXPOSE 3001
@@ -72,4 +76,4 @@ ENV NODE_ENV=production \
     FAULTLINE_PROVIDER=mock
 
 # Entry point — run the TypeScript source directly via tsx
-ENTRYPOINT ["node_modules/.bin/tsx", "packages/api/src/index.ts"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh", "node_modules/.bin/tsx", "packages/api/src/index.ts"]
