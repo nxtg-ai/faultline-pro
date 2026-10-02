@@ -1,11 +1,14 @@
 # Faultline Pro — We check the receipts on AI output.
 
+[![Release stage: alpha](https://img.shields.io/badge/stage-alpha-orange.svg)](https://github.com/nxtg-ai/faultline-pro/blob/main/CHANGELOG.md)
 [![npm version](https://img.shields.io/npm/v/@nxtg/faultline.svg)](https://www.npmjs.com/package/@nxtg/faultline)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 [![CI](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 
 Forensic verification of AI-generated claims. Extract atomic facts, verify against live web data, risk-score your AI outputs.
+
+> **Release stage: alpha.** Usable today, with sharp edges. Verdict accuracy has not yet been measured on a labelled test set, and anything may change before 1.0.
 
 Current npm version: 0.11.0 (`npm view @nxtg/faultline version`, 2026-10-01).
 

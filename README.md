@@ -4,11 +4,14 @@
 
 Faultline decomposes AI-generated output into atomic claims, verifies each against live evidence, and enforces a CI gate before hallucinations reach production. Built for teams governing LLM agents at scale — provider-agnostic across Gemini, OpenAI, Claude, Perplexity, and local models.
 
+[![Release stage: alpha](https://img.shields.io/badge/stage-alpha-orange.svg)](https://github.com/nxtg-ai/faultline-pro/blob/main/CHANGELOG.md)
 [![CI](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@nxtg/faultline.svg)](https://www.npmjs.com/package/@nxtg/faultline)
 [![Tests](https://img.shields.io/badge/tests-4909%20passing-brightgreen)](#tests-and-quality)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
+
+> **Release stage: alpha.** Usable today, with sharp edges. Verdict accuracy has not yet been measured on a labelled test set, and anything may change before 1.0.
 
 ### Audit-grade governance infrastructure
 

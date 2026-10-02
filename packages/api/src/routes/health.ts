@@ -11,6 +11,7 @@ import {
   bucketResponseTimes,
 } from '../store/status.js';
 import { FAULTLINE_API_VERSION } from '../version.js';
+import { RELEASE_STAGE } from '@nxtg/faultline/cli/release-stage.js';
 
 // ── /status.json shape ────────────────────────────────────────────────────────
 
@@ -310,6 +311,7 @@ export async function healthRoutes(fastify: FastifyInstance): Promise<void> {
       status: 'ok',
       service: 'faultline-api',
       version: FAULTLINE_API_VERSION,
+      stage: RELEASE_STAGE,
       subsystems: {
         keyStore:   { status: 'ok', activeKeys: keyCount },
         scanEngine: { status: anyProvider ? 'ok' : 'degraded', providersConfigured: Object.values(providers).filter(Boolean).length },

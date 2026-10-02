@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { buildServer } from '../src/server.js';
 import { FAULTLINE_API_VERSION } from '../src/version.js';
+import { RELEASE_STAGE } from '@nxtg/faultline/cli/release-stage.js';
 import type { FastifyInstance } from 'fastify';
 
 describe('GET /health — subsystem info', () => {
@@ -23,6 +24,9 @@ describe('GET /health — subsystem info', () => {
     expect(body.status).toBe('ok');
     expect(body.service).toBe('faultline-api');
     expect(body.version).toBe(FAULTLINE_API_VERSION);
+    // dx3-pm ruling 2026-10-02: stage is its own field, read from the CLI's one value.
+    expect(body.stage).toBe(RELEASE_STAGE);
+    expect(['internal', 'dogfood', 'alpha', 'beta', 'rc', 'ga']).toContain(body.stage);
     expect(body.subsystems).toBeDefined();
     expect(body.subsystems.keyStore).toBeDefined();
     expect(body.subsystems.scanEngine).toBeDefined();

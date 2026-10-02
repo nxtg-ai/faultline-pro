@@ -3,9 +3,13 @@
 All notable changes to Faultline Pro are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+> **Release stage: alpha.** Usable today, with sharp edges. Verdict accuracy has not yet been measured on a labelled test set, and anything may change before 1.0.
+
 ## [Unreleased]
 
 ### Added
+
+- **Release stage on every fp surface: alpha** (dx3-pm ruling 2026-10-02, al:2e447ee3a26d6ed9). One value, `packages/cli/cli/release-stage.ts`, drives `faultline version` (`Faultline v0.11.0 (alpha)`) and a new `stage` field on `GET /health`. The README, npm README, llms.txt and this file carry the same stage, pinned by `packages/cli/tests/release-stage.test.ts`, so promotion is a one-value edit. The stage is not a SemVer suffix; 0.x stays plain so npm `latest` keeps working. Also fixes llms.txt still naming 0.10.1.
 
 - **Gemini grounding allowance meter and alert** (N-230, Asif ruling 2026-10-01). The API counts every successful Gemini request it sends with the `googleSearch` tool, per Pacific allowance-day (Google resets RPD quotas at midnight Pacific), in an append-only ledger. `GET /usage` with the admin key returns `groundingAllowance` (`groundedPrompts`, `freeDailyLimit: 1500`, `alertThreshold: 1200`, `overThreshold`, `resetsAt`, `processStartedAt`, `ledgerWriteFailures`). Counting hooks a new process-wide observer on the engine's usage sink, so batch, bulk, schedules and the scan queue are counted too. `scripts/grounding-allowance-check.mjs` runs hourly from cron on NXTG-AI and sends one Telegram alert per day at 1,200, and another past 1,500. Docs: `docs/grounding-allowance-alert.md`.
 

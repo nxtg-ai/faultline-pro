@@ -39,6 +39,7 @@ import { buildEuComplianceReport, renderComplianceReportJson, renderComplianceRe
 import { statsCommand } from './stats.js';
 import { sendTelemetry, classifyError } from './telemetry.js';
 import { printConversionNudge } from './nudge.js';
+import { RELEASE_STAGE } from './release-stage.js';
 import { governCommand } from './govern.js';
 import { evaluateGuard, formatGuardReport, formatGuardJson, readStdin, isFailOn, FAIL_ON_VALUES } from './guard.js';
 import { resolveTransport, runScan, isGrounded } from './transport.js';
@@ -270,7 +271,7 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
     case 'version':
     case '--version':
     case '-v':
-      return { exitCode: 0, output: `Faultline v${VERSION}` };
+      return { exitCode: 0, output: `Faultline v${VERSION} (${RELEASE_STAGE})` };
 
     case 'stats': {
       // N-214: npm download metrics — fetch last-week counts, persist snapshot, show trend
