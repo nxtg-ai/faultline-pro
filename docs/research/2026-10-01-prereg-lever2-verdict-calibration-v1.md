@@ -1,6 +1,6 @@
 # Lever 2 (Jev and typed decisions): pre-registration v1
 
-**Backlog:** BLG-NXTG-20261001-001 · **GoPMO:** 1.18.6.1.2 · **Owner:** fp · **Status:** REGISTERED, NOT RUN. Nothing here runs until Asif rules on the brief (`docs/research/2026-10-01-cache-and-jev-brief.md`).
+**Backlog:** BLG-NXTG-20261001-001 · **GoPMO:** 1.18.6.1.2 · **Owner:** fp · **Status:** DEFERRED by Asif 2026-10-02 ("BLG it for another time"; reason: Jev saves no money, since it cannot touch the search fee). Registered, not run. Nothing here runs until Asif reopens it; see the brief (`docs/research/2026-10-01-cache-and-jev-brief.md`).
 **Registered:** 2026-10-01. The commit that lands this file on `origin/main` is the registration timestamp. Shape follows `~/ASIF/enrichment/2026-09-29-jev-calibration-eval-prereg-v1.md`.
 **Canon constraint (Dx3 e2b770ad, 2026-09-20):** the logical component is a vendor-neutral `SemanticDecisionProvider`. Open, self-hosted models are the primary candidates. Jev is a comparator only and never an architectural dependency.
 
@@ -126,4 +126,17 @@ A missed bar is reported as a miss, with its numbers, and never moved after data
 
 ## 9. Amendments
 
-None.
+- **2026-10-02, prior work disclosed by emma-soul (al:03674ca570bf7fab), before any run.**
+  - **No overlap.** No ASIF eval has judged a claim against evidence text, and none has measured Laya. The harness is plain Python (`~/ASIF/evals/jev-calibration/jevcal/`), not Langflow.
+  - **Nearest prior.** Part 1 S1-noul: a CUAD yes/no question over a contract excerpt, n=83.
+    - Every arm was at least 0.87 accurate.
+    - Jev's ECE was 0.077 to 0.102 across three draws.
+    - Jev reached 0.81 coverage at 95% precision.
+  - **Carry into H2.1/H2.2.** In Part 2 (`~/ASIF/enrichment/2026-10-02-jev-context-eval-results.md`), adding retrieved context raised Jev's mean confidence 25 points on S2c but its accuracy only 4, and ECE went from 0.171 to 0.335. More evidence in the prompt is not assumed to improve calibration.
+  - **Reuse when reopened.**
+    - Paired bootstrap: 2,000 resamples, seed 20260929, items sorted by id.
+    - "CI entirely above 0" is read strictly.
+    - Comparators run concurrently, not across runs, because Opus changes its answer on 21% of items when re-asked.
+    - `asifctl eval certify`.
+    - An independent reproduction before any public claim.
+  - Public items and reproducer: https://github.com/nxtg-ai/jev-calibration-eval.

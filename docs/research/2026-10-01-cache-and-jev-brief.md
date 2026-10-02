@@ -1,6 +1,6 @@
 # Faultline Pro: cache and Jev, research brief
 
-**Backlog:** BLG-NXTG-20261001-001 (P1, revisit 2026-10-15) · **GoPMO:** 1.18.6.1 · **Owner:** fp · **Written:** 2026-10-01 · **Status:** for Asif's ruling. Nothing is built.
+**Backlog:** BLG-NXTG-20261001-001 (P1, revisit 2026-10-15) · **GoPMO:** 1.18.6.1 · **Owner:** fp · **Written:** 2026-10-01 · **Status:** for Asif's ruling. Nothing is built. **Lever 2 (Jev) DEFERRED by Asif 2026-10-02** ("BLG it for another time"): Jev cannot cut the search fee, so it saves no money. Option A is parked with it; options B to E stand.
 **Asked (Asif, verbatim):** "a deep dive for FaultlinePro SOTA Architecture enhancement to research the power of cache and Jev on enhancing / elevating the product."
 **Plans (pre-registered, not run):** `docs/research/2026-10-01-prereg-lever1-grounding-cost-v1.md` and `docs/research/2026-10-01-prereg-lever2-verdict-calibration-v1.md`.
 
