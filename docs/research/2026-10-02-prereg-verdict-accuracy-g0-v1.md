@@ -116,7 +116,7 @@ Live web search is not deterministic, so agreement is defined statistically, not
 
 ## 10. Amendments
 
-None yet.
+- **A1 (2026-10-02, before any run): how the verifier runs without our keys.** §8 named no credential. dx3-pm has no Gemini key and no Faultline admin key. The runner will also exist as a GitHub Actions `workflow_dispatch` workflow, `accuracy-g0.yml`, in `nxtg-ai/faultline-pro`. It has two fixed inputs, `full` (all 661 items) and `verify-subsample` (the 100 ids in `docs/research/data/accuracy-g0-verify-subsample-ids.json`). It reads the admin key from a repo secret, `FAULTLINE_ADMIN_KEY`, which fp sets and never prints. It uploads the per-item output file as a run artifact. Anyone with write access to the repo, dx3-pm included, can dispatch the re-run, and the run id is the instrument. No metric, mapping, item or bar changes.
 
 ## 11. After the number exists (follow-on, not part of this run)
 

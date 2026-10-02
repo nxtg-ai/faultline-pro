@@ -33,7 +33,7 @@ This repo is the **monorepo** (`faultline-pro`, workspaces `packages/*`). It beg
 ## Tech Stack
 
 - TypeScript (ESM), Node, `tsx` at runtime (the published CLI ships TypeScript sources)
-- API: Fastify v5, Fly.io (`packages/api/fly.toml`, app `faultline-api`, region `lax`)
+- API: Fastify v5, Fly.io (`packages/api/fly.toml`, app `faultline-api`, region `lax`). **One machine plus the `faultline_ledgers` volume at `/var/log/faultline`** so the spend and grounding ledgers survive deploys (`docs/ledger-volume.md`). No `flyctl` login on NXTG-AI: Fly changes go through `.github/workflows/fly-ops.yml`
 - Providers: Gemini (grounded with googleSearch), OpenAI, Claude, Perplexity, Mock
 - Tests: Vitest (root `npm test` runs all packages), fast-check, Stryker; `pytest` for the Python SDK
 - Web app (separate repo): Next.js, Clerk, Stripe, Vercel
@@ -42,7 +42,7 @@ This repo is the **monorepo** (`faultline-pro`, workspaces `packages/*`). It beg
 
 ```bash
 npm install                      # install all workspaces
-npm test                         # vitest run, everything (4,909 tests, 224 files, 2026-10-01)
+npm test                         # vitest run, everything (5,053 tests, 230 files, 2026-10-02; root vitest.config.ts lists the 4 package projects)
 npx vitest run                   # inside a package dir to run just that package
 npm run version-parity           # 4-way version gate: repo:cli, repo:api, npm:latest, deployed:fly
 npm run dev --workspace=packages/api   # API on http://localhost:3010 (PORT default 3010; fly.toml sets 3000)
@@ -137,7 +137,7 @@ Rules that apply to this project (Critical tier — claim forensics is safety-cr
 - **Gate 7**: Spec-test traceability — new integration/E2E tests must cite a NEXUS acceptance criterion via `// Validates: N-NN (...)` or `// NEXUS:` comment. **Denominator = integration/E2E test files only** (not all test files). Re-counted 2026-10-01 by filename (`*e2e*`, `*integration*`, `integration/*`): 9 files, 9 of 9 contain a `Validates:` or `NEXUS:` line. This checks that a reference line exists, not that it names the right criterion. Not enforced by hook; tracked manually.
 - **Oracle tier: CRITICAL** — all 4 oracle types required on claim forensics (example-based, property-based, contract, integration).
 
-Current oracle coverage (re-measured 2026-10-01): example-based: 4,909 JS/TS tests passing across 224 files (api 2,450; cli 2,371; mcp 49; web 39), plus 100 Python SDK tests; property-based: 29 `fc.assert` calls in 2 files (`packages/cli/tests/property-based.test.ts` 19, `packages/api/tests/property.test.ts` 10); contract: `packages/cli/tests/contract.test.ts`, 39 static `it(` declarations (the older figure of 43 Zod tests was not reproduced); integration: 9 integration/E2E files, 115 static `it(`/`test(` declarations. Static counts are declarations, not run counts.
+Current oracle coverage (re-measured 2026-10-01): example-based: 5,053 JS/TS tests passing across 230 files (api 2,586; cli 2,379; mcp 49; web 39; re-measured 2026-10-02), plus 100 Python SDK tests; property-based: 29 `fc.assert` calls in 2 files (`packages/cli/tests/property-based.test.ts` 19, `packages/api/tests/property.test.ts` 10); contract: `packages/cli/tests/contract.test.ts`, 39 static `it(` declarations (the older figure of 43 Zod tests was not reproduced); integration: 9 integration/E2E files, 115 static `it(`/`test(` declarations. Static counts are declarations, not run counts.
 
 ## Release Protocol Enforcement (ASIF Standard, ADR-036)
 
