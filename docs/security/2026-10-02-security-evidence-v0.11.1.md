@@ -215,6 +215,17 @@ The two operator env URLs are guarded too, so an operator cannot point alerts at
 
 **Tests.** `packages/api/tests/outbound-url.test.ts` covers each range with edges on both sides, IPv4-mapped in dotted and hex form, NAT64, names, schemes, credentials, mixed DNS answers, resolver failure, and the override's production refusal. All DNS goes through an injected resolver. `packages/api/tests/outbound-url-sinks.test.ts` covers the registration 400s, send-time refusal with no fetch at every sink, and real loopback servers proving a 302 is not followed and the body and headers are not returned. Non-hollow check: with the guard removed at `store/webhooks.ts:290`, 3 tests failed. With `redirect: 'manual'` removed, 6 failed. Both were restored.
 
+### Live probe after deploy (2026-10-02 20:30Z)
+
+Deployed as `743e855` (fly-deploy run 37060898078). `POST https://faultline-api.fly.dev/webhooks/test` with the admin key:
+
+| Target | Response |
+|---|---|
+| `http://169.254.169.254/latest/meta-data/` | `{"error":"Outbound URL blocked: host 169.254.169.254 resolves to a private or reserved address (169.254.169.254)"}` |
+| `http://127.0.0.1:3000/health` | `{"error":"Outbound URL blocked: host 127.0.0.1 resolves to a private or reserved address (127.0.0.1)"}` |
+| `http://[fdaa::3]/` (Fly private network) | `{"error":"Outbound URL blocked: host fdaa::3 resolves to a private or reserved address (fdaa::3)"}` |
+| `https://example.com/` (control) | sent, `statusCode` returned, no body |
+
 ### Residual: DNS rebinding (not solved)
 
 The guard resolves the name, and then fetch resolves it again on connect (`lib/outbound-url.ts:179-187`, then `:211`). A DNS server with a short TTL can answer public to the guard and private to the connect. The full fix is to connect to the address the guard validated: an undici `Agent` with a `connect.lookup` that re-applies `isBlockedAddress` (`:91`), or pinning the vetted IP and sending the original Host and SNI. Until then the send-time re-check narrows the window but does not close it.

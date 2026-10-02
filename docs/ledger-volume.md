@@ -35,4 +35,20 @@ Trade-offs, accepted while the product is alpha:
 
 ## Evidence
 
-See "Evidence 2026-10-02" below: `GET /usage` counts before and after a redeploy.
+### Evidence 2026-10-02
+
+Instrument: admin `GET /usage` (`providerBudget`, `groundingAllowance`), read with the server key. The probe prints counts only, never the key.
+
+| Step | Time (UTC) | `processStartedAt` | `groundedPrompts` | `spentUsd` | `ledgerWriteFailures` |
+|---|---|---|---|---|---|
+| Before the change: 2 machines, no volume | 20:0x | 19:10:58.439 | 0 | 0 | 0 |
+| Deploy with the new entrypoint, no volume (run 37059141375) | 20:14 | 20:13:44.039 | 0 | 0 | 0 |
+| Deploy with `[mounts]` (run 37060417958). This first mounted deploy starts from an empty volume, as expected | 20:26 | 20:25:59.697 | 0 | 0 | 0 |
+| One real hosted scan, provider gemini, 2 claims | 20:27:00 | 20:25:59.697 | **2** | **0.0710461** | 0 |
+| Redeploy, no code change (`fly-deploy.yml` dispatch, run 37060661819) | 20:28:01 | **20:27:34.904** | **2** | **0.0710461** | 0 |
+
+The process changed (20:25:59 to 20:27:34) and the counts did not. Before the volume, the same redeploy would have reset both counts to 0. `fly-ops` inspect (run after the mount) shows `vol_vz8lw92mj65jymqv` `faultline_ledgers` attached to machine `801e00c6973668`, the only machine.
+
+`ledgerWriteFailures` 0 after a real write confirms the entrypoint handed the root-owned mount to the `faultline` user. Locally, the same image on a root-owned docker volume showed the directory owned by `faultline`, `node` running as `faultline`, and `/health` 200.
+
+The 5-minute health alert stayed UP across these deploys (`~/.cache/faultline-pro/api-health.log`, 20:20:02 and 20:25:02 UP). The restarts fell between its checks, so they did not test the alert.
