@@ -4,7 +4,7 @@
  * fetch, notify, sleep and the state file are injected, so these tests never
  * touch the network, Telegram or ~/.cache.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -19,8 +19,8 @@ const healthy = () => jsonResponse(200, { status: 'ok', version: '0.11.1', stage
 
 let dir: string;
 let stateFile: string;
-let notify: ReturnType<typeof vi.fn>;
-let sleep: ReturnType<typeof vi.fn>;
+let notify: Mock<(message: string) => boolean>;
+let sleep: Mock<(ms: number) => Promise<void>>;
 let lines: string[];
 
 beforeEach(() => {
@@ -50,7 +50,7 @@ describe('api-health-check', () => {
     const r = await run(fetchImpl);
     expect(r.exitCode).toBe(0);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(fetchImpl.mock.calls[0][0]).toBe(URL);
+    expect((fetchImpl.mock.calls[0] as unknown[])[0]).toBe(URL);
     expect(notify).not.toHaveBeenCalled();
     expect(sleep).not.toHaveBeenCalled();
     expect(lines).toHaveLength(1);
