@@ -337,7 +337,21 @@ describe('security-gate CLI and committed files', () => {
     }
     const specific = baseline.entries.filter((e: { disposition: string }) => e.disposition !== 'accepted-pre-existing');
     expect(specific).toHaveLength(8);
-    expect(specific.filter((e: { reason: string }) => e.reason.startsWith('OPEN:'))).toHaveLength(4);
+    // The 4 raw_html_using_user_input entries (scans.ts, keys.ts) were OPEN until the
+    // fix/scan-history-tenant-scope change escaped them. Bearer 2.1.1 still reports them
+    // (it does not recognise esc()), so they stay baselined as false positives marked FIXED.
+    expect(specific.filter((e: { disposition: string }) => e.disposition === 'open')).toHaveLength(0);
+    const xss = specific.filter((e: { ruleId: string }) => e.ruleId === 'javascript_lang_raw_html_using_user_input');
+    expect(xss.map((e: { uri: string }) => e.uri).sort()).toEqual([
+      'packages/api/src/routes/keys.ts',
+      'packages/api/src/routes/keys.ts',
+      'packages/api/src/routes/scans.ts',
+      'packages/api/src/routes/scans.ts',
+    ]);
+    for (const e of xss) {
+      expect(e.disposition).toBe('false-positive');
+      expect(e.reason.startsWith('FIXED 2026-10-02')).toBe(true);
+    }
   });
 
   it('SG-43 security/accepted-advisories.json is a valid (empty) list', () => {

@@ -9,7 +9,7 @@ import type { FastifyInstance } from 'fastify';
 import { getScanHistory } from '../store/scan-history.js';
 import { getScanCache } from '../store/cache.js';
 import { getClaimIndex } from '../store/claims.js';
-import { requireApiKey } from '../plugins/auth.js';
+import { requireApiKey, scanHistoryKeyScope } from '../plugins/auth.js';
 
 // ── Aggregation helpers ───────────────────────────────────────────────────────
 
@@ -34,12 +34,15 @@ function lastNDays(n: number): string[] {
 
 // ── Overview computation ──────────────────────────────────────────────────────
 
-function computeOverview() {
+/**
+ * @param keyId scan-history key scope: the caller's keyId, or undefined for admin (fleet-wide).
+ */
+function computeOverview(keyId?: string) {
   const DAYS = 30;
   const window = lastNDays(DAYS);
   const windowSet = new Set(window);
 
-  const entries = getScanHistory().getRecent(1000);
+  const entries = getScanHistory().getRecent(1000, keyId);
   const inWindow = entries.filter(e => windowSet.has(toDay(e.timestamp)));
 
   // Scan volume per day
@@ -443,8 +446,8 @@ export async function analyticsRoutes(fastify: FastifyInstance): Promise<void> {
         summary: 'Aggregate analytics data for dashboard charts',
       },
     },
-    async (_request, reply) => {
-      return reply.send(computeOverview());
+    async (request, reply) => {
+      return reply.send(computeOverview(scanHistoryKeyScope(request)));
     },
   );
 

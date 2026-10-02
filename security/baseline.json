@@ -83,32 +83,32 @@
       "ruleId": "javascript_lang_raw_html_using_user_input",
       "uri": "packages/api/src/routes/keys.ts",
       "fp": "58d7fa568ad8c5a43a586fe5fed70d58_0",
-      "disposition": "open",
-      "reason": "OPEN: GET /keys/usage/view interpolates k.name (admin-set, maxLength 100) unescaped into HTML at keys.ts:118; wrap in esc() from src/lib/html.ts. Admin-only route, low"
+      "disposition": "false-positive",
+      "reason": "FIXED 2026-10-02 (fix/scan-history-tenant-scope): GET /keys/usage/view escapes k.name, id, dates and permissions with esc(). Bearer 2.1.1 still reports the template: it taints request-derived dormantDays/expiringSoonDays through getUsageStats() and does not recognise esc(); the fingerprint is path+rule+index, so it did not change. Proof: tests/scan-history-tenant-scope.test.ts SHX4; evidence doc section 'Fix: scan history scoped per API key'"
     },
     {
       "tool": "bearer",
       "ruleId": "javascript_lang_raw_html_using_user_input",
       "uri": "packages/api/src/routes/keys.ts",
       "fp": "58d7fa568ad8c5a43a586fe5fed70d58_1",
-      "disposition": "open",
-      "reason": "OPEN: GET /keys/usage/view interpolates k.name (admin-set, maxLength 100) unescaped into HTML at keys.ts:118; wrap in esc() from src/lib/html.ts. Admin-only route, low"
+      "disposition": "false-positive",
+      "reason": "FIXED 2026-10-02 (fix/scan-history-tenant-scope): GET /keys/usage/view escapes k.name, id, dates and permissions with esc(). Bearer 2.1.1 still reports the template: it taints request-derived dormantDays/expiringSoonDays through getUsageStats() and does not recognise esc(); the fingerprint is path+rule+index, so it did not change. Proof: tests/scan-history-tenant-scope.test.ts SHX4; evidence doc section 'Fix: scan history scoped per API key'"
     },
     {
       "tool": "bearer",
       "ruleId": "javascript_lang_raw_html_using_user_input",
       "uri": "packages/api/src/routes/scans.ts",
       "fp": "b83631f74251e7a29672faa07c0ff274_0",
-      "disposition": "open",
-      "reason": "OPEN: GET /scans/stale/view (requireApiKey, not admin, no tenant filter) renders textPreview, the first 100 chars of ANY caller's scan input, unescaped into a title attribute and a cell at scans.ts:129: stored XSS and cross-tenant disclosure; esc() + tenant scope"
+      "disposition": "false-positive",
+      "reason": "FIXED 2026-10-02 (fix/scan-history-tenant-scope): GET /scans/stale/view escapes every interpolated value with esc() and reads only the caller's own scans. Bearer 2.1.1 still reports the template: it taints request-derived values (staleDays, the key scope) through the store call and does not recognise esc() as a sanitizer; the fingerprint is path+rule+index, so it did not change. Proof: tests/scan-history-tenant-scope.test.ts SHX1-SHX3; evidence doc section 'Fix: scan history scoped per API key'"
     },
     {
       "tool": "bearer",
       "ruleId": "javascript_lang_raw_html_using_user_input",
       "uri": "packages/api/src/routes/scans.ts",
       "fp": "b83631f74251e7a29672faa07c0ff274_1",
-      "disposition": "open",
-      "reason": "OPEN: GET /scans/stale/view (requireApiKey, not admin, no tenant filter) renders textPreview, the first 100 chars of ANY caller's scan input, unescaped into a title attribute and a cell at scans.ts:129: stored XSS and cross-tenant disclosure; esc() + tenant scope"
+      "disposition": "false-positive",
+      "reason": "FIXED 2026-10-02 (fix/scan-history-tenant-scope): GET /scans/stale/view escapes every interpolated value with esc() and reads only the caller's own scans. Bearer 2.1.1 still reports the template: it taints request-derived values (staleDays, the key scope) through the store call and does not recognise esc() as a sanitizer; the fingerprint is path+rule+index, so it did not change. Proof: tests/scan-history-tenant-scope.test.ts SHX1-SHX3; evidence doc section 'Fix: scan history scoped per API key'"
     },
     {
       "tool": "bearer",

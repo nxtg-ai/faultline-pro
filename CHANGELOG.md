@@ -9,6 +9,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Security
 
+- **Scan history is now private to the API key that submitted the scans, and stored XSS is fixed.** Before this change, any key could read every other key's scan previews and hashes through `/scans/usage`, `/scans/stale`, `/scans/stale/view`, `/scans/search`, `/scans/timeline`, `POST /export` and `/analytics/overview`, and `?tenantId=` could select another tenant. `/scans/stale/view` also rendered a submitted `<script>` unescaped. Admin keys keep fleet-wide reads, and `/scans/stale/view` and `/keys/usage/view` now escape every value. Evidence: `docs/security/2026-10-02-security-evidence-v0.11.1.md`.
 - **Custom rules are now private to the API key that created them.** One rule store serves every key, and before this change any key could list, change, delete, test or apply another key's rules. Another key's rule now reads as 404, and the rule limit counts per key.
 - **`GET /scans/:id/pdf` no longer fails with a 500 on a claim with no `type`.**
 - **DNS rebinding closed on every guarded outbound request, and provider plugin endpoints guarded (CodeQL #4).** Requests now run on undici with a connect-time lookup that re-resolves the host, refuses the socket if any address is private, and connects only to the vetted addresses; `POST /providers/register` refuses a private `endpoint` with 400 and plugin calls go through the same guard. Evidence: `docs/security/2026-10-02-security-evidence-v0.11.1.md`.

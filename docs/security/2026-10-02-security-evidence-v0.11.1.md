@@ -326,10 +326,10 @@ The fingerprint is tool + ruleId + file + Bearer's `primaryLocationLineHash`. Se
 | hardcoded_secret | `packages/api/benchmarks/run.ts:287` | false positive: the benchmark sets the placeholder `FAULTLINE_API_KEY='bench-key'` in its own process |
 | hardcoded_secret | `packages/cli/lib/i18n.ts:39` | false positive: the message `err.no_api_key` |
 | dangerous_insert_html | `packages/web/components/InputSection.tsx:186`, `Tour.tsx:81` | false positive: `React.createElement` of an icon from the static `FEATURES` constant |
-| raw_html_using_user_input | `packages/api/src/routes/scans.ts:138`, `:177` | **OPEN.** `GET /scans/stale/view` needs only `requireApiKey` and calls `getScanUsageStats(staleDays)` with no tenant id. At `scans.ts:129` it writes `textPreview`, the first 100 characters of any caller's scan input (`routes/scan.ts:207`), unescaped into a `title` attribute and a cell. Any key holder can store script that runs for any other key holder who opens the page, and every key holder sees other tenants' input. Fix: `esc()` from `src/lib/html.ts` plus a tenant scope |
-| raw_html_using_user_input | `packages/api/src/routes/keys.ts:126`, `:167` | **OPEN, low.** `GET /keys/usage/view` writes `k.name` unescaped (`keys.ts:118`). Admin sets it (max 100 chars) and admin views it. Fix: `esc()` |
+| raw_html_using_user_input | `packages/api/src/routes/scans.ts:138`, `:177` | **FIXED 2026-10-02, kept as false-positive** (see "Fix: scan history scoped per API key" below). Was OPEN: `GET /scans/stale/view` needs only `requireApiKey` and calls `getScanUsageStats(staleDays)` with no tenant id. At `scans.ts:129` it writes `textPreview`, the first 100 characters of any caller's scan input (`routes/scan.ts:207`), unescaped into a `title` attribute and a cell. Any key holder can store script that runs for any other key holder who opens the page, and every key holder sees other tenants' input. Fix: `esc()` from `src/lib/html.ts` plus a tenant scope |
+| raw_html_using_user_input | `packages/api/src/routes/keys.ts:126`, `:167` | **FIXED 2026-10-02, kept as false-positive** (see below). Was OPEN, low: `GET /keys/usage/view` writes `k.name` unescaped (`keys.ts:118`). Admin sets it (max 100 chars) and admin views it. Fix: `esc()` |
 
-Fixing an OPEN item removes its finding, so the gate prints that entry as STALE. Delete the entry in the same change.
+Fixing an OPEN item removes its finding only if the scanner stops reporting it; then the gate prints the entry as STALE and the entry is deleted in the same change. That did not happen for the two `raw_html_using_user_input` sites: Bearer 2.1.1 keeps reporting them after the fix, under the same fingerprint, so their entries stay with a `FIXED` reason (measured 2026-10-02, see the section below).
 
 ### How to accept or baseline
 
@@ -350,3 +350,85 @@ Two earlier runs also went red on their own: 37064869158 failed because Bearer f
 The npm job is green because `ecb507f` (2026-10-02) cleared every high production advisory: the lockfile audit reports 0 high/critical with 308 production dependencies. With dev dependencies included, `npm audit --package-lock-only` reports 5 high (browserslist, nanoid, postcss, undici, vite). The gate does not count those (local run, 2026-10-02).
 
 Tests: `packages/api/tests/security-gate.test.ts`, 29 tests. Mutation check, each change made alone and then restored: with the baseline comparison removed 7 fail; with levels read only from results 8 fail; with expiry ignored 1 fails; with unaccepted advisories ignored 3 fail; with invalid input passing 9 fail; restored 29 pass.
+
+---
+
+## Fix: scan history scoped per API key, and HTML escaping (Bearer XSS findings)
+
+Branch `fix/scan-history-tenant-scope`, 2026-10-02.
+
+### Defect
+
+`store/scan-history.ts` keeps one in-memory list of every scan from every key. Each entry holds `keyId`, `tenantId`, `textHash` and `textPreview` (the first 100 characters of the submitted text, `routes/scan.ts:207`). Readers behind `requireApiKey` returned every key's entries. A caller-supplied `tenantId` could select another tenant's entries. `GET /scans/stale/view` also wrote `textPreview` into HTML unescaped, so any key holder could store script that ran for every other viewer of that page.
+
+### Rule
+
+A non-admin caller only reads, prunes or deletes entries whose `keyId` equals its own `request.keyId`. Admin callers keep fleet-wide reads. Admin here means the same callers `requireAdmin` accepts: the env `FAULTLINE_API_KEY` (keyId `admin`) or a keystore key with the `admin` permission (`plugins/auth.ts:110`). A `tenantId` query param is applied on top of the key scope, so it can only narrow.
+
+- Store: one private `scoped(keyId?)` view (`store/scan-history.ts:59`), used by `getRecent` (`:70`), `search` (`:88`, applied before the cursor), `getTimeline` (`:115`), `getScanUsageStats` (`:140`), `getStaleScanGroups` (`:228`) and `pruneStaleGroups` (`:209`). When it prunes with a keyId, prune judges staleness on that key's entries and deletes only that key's entries (`:214`). Two keys can scan the same text, so pruning by hash alone would delete the other key's history.
+- Routes: `scanHistoryKeyScope(request)` (`plugins/auth.ts:123`) returns `undefined` for admin and the caller's keyId otherwise. A request with no keyId gets a scope that matches nothing.
+
+### Per route, before and after
+
+| Route | Gate | Before | After |
+|---|---|---|---|
+| `GET /scans/usage` (`routes/scans.ts:81`) | requireApiKey | every key's previews and hashes. `?tenantId=` selected any tenant | caller's own entries. `tenantId` narrows within them |
+| `GET /scans/stale/view` (`scans.ts:102`, HTML `:128-136`) | requireApiKey | every key's previews, unescaped in a `title` attribute and a cell | caller's own entries; every interpolated value goes through `esc()` (preview, hash, risk, providers, counts) |
+| `GET /scans/stale` (`scans.ts:225`) | requireApiKey | every key's stale documents, `?tenantId=` any tenant | caller's own |
+| `GET /scans/search` (`scans.ts:268`) | requireApiKey | full-text search over every key's previews | caller's own; `q`, `tenantId`, `cursor` stay inside the scope |
+| `GET /scans/timeline` (`scans.ts:35`) | requireApiKey | `?text=` told any key whether anyone had scanned a given text, and returned their scans | caller's own scans. Two keys that scan the same text get separate timelines |
+| `POST /export` (`routes/export.ts:151`) | requireApiKey | CSV/JSON/NDJSON of every key's history, including `keyId` and `tenantId` columns | caller's own |
+| `GET /analytics/overview` (`routes/analytics.ts:450`) | requireApiKey | scan volume, provider mix, risk and latency trends over every key | the same aggregates over the caller's scans |
+| `GET /keys/usage/view` (`routes/keys.ts:118-124`) | requireAdmin | `k.name` unescaped | `esc()` on name, id, dates, permissions |
+| `DELETE /scans/stale`, `/dashboard`, `/mission-control*`, cache-warmup, `/risk-register`, `/tenants/:id` erase, `/tenants/:id/export` | requireAdmin | fleet-wide | unchanged, by design |
+
+Response shapes are unchanged.
+
+### Tests
+
+`packages/api/tests/scan-history-tenant-scope.test.ts`, 27 tests. The setup uses two keystore keys A and B, the env admin key, and a tenant that holds key A. Entries are seeded with `getScanHistory().record(...)`.
+
+- SHS1-SHS9 cover the store: every read method honours the key scope, a foreign `tenantId` cannot widen it, and prune with a keyId leaves the other key's entries for a shared hash.
+- SHR1-SHR14 cover every `requireApiKey` reader above. B sees none of A's previews or hashes, A sees its own and admin sees both. `?tenantId=<A's tenant>` as B returns nothing. A keystore key with `admin` keeps fleet-wide reads. `DELETE /scans/stale` stays 403 for a scan key.
+- SHX1-SHX4 cover escaping. `<script>alert(1)</script>` in a preview, and `<img onerror>` in a provider, render as `&lt;…&gt;` on `/scans/stale/view` with no raw tag, the title attribute cannot be broken out of, and a `<script>` key name is escaped on `/keys/usage/view`.
+
+`security-gate.test.ts` SG-42 used to pin 4 `OPEN:` baseline reasons. It now pins 0 `open` entries and the 4 XSS entries as `false-positive` with a `FIXED` reason.
+
+API suite: 2,703 tests in 148 files before, 2,730 in 149 files after, all passing. Root `npx tsc --noEmit` is clean. No existing fixture had to change, because every existing reader test uses the env admin key.
+
+### Mutation check
+
+Each mutant was applied alone, then `tests/scan-history-tenant-scope.test.ts` was run and the source restored. All 14 mutants were killed:
+
+| Mutant | Red |
+|---|---|
+| store `search()` reads `this.entries` instead of the key scope | SHS7 SHR7 SHR8 SHR10 SHR14 (5) |
+| store `scoped()` ignores keyId | 17 tests |
+| store `pruneStaleGroups` deletes across keys | SHS8 |
+| route `/scans/usage` drops the key scope | SHR1 SHR2 SHR14 |
+| route `/scans/stale/view` drops the key scope | SHR3 SHR14 |
+| route `/scans/stale` drops the key scope | SHR5 SHR6 SHR14 |
+| route `/scans/timeline` drops the key scope | SHR9 |
+| route `/export` drops the key scope | SHR10 |
+| route `/analytics/overview` drops the key scope | SHR11 SHR14 |
+| `scanHistoryKeyScope` treats every caller as admin | 11 tests |
+| `isAdminKeyId` ignores the keystore `admin` permission | SHR12 |
+| `/scans/stale/view` un-escapes `textPreview` | SHX1 SHX2 |
+| `/scans/stale/view` un-escapes providers | SHX3 |
+| `/keys/usage/view` un-escapes `k.name` | SHX4 |
+
+### Bearer baseline: entries kept, re-dispositioned
+
+The plan was to delete the 4 baseline entries once the sites were fixed, so the gate would print them as STALE. A local run of the pinned scanner (Bearer 2.1.1, the CI version, on `scans.ts` and `keys.ts` at their repo paths) showed that plan would turn the gate red:
+
+- Bearer still reports `javascript_lang_raw_html_using_user_input` at the same 4 sites after the fix. It taints any request-derived value that reaches the HTML (`staleDays`, `dormantDays`, the key scope passed into the store) and does not treat `esc()` as a sanitizer. A probe file showed `esc()`, `escapeHtml()`, `escape-html`, `parseInt`, `Number()` and `Math.min` all still flagged.
+- The fingerprint is path + rule + index and does not depend on content. Before the fix it was `58d7fa56…_0/_1` (keys.ts) and `b83631f7…_0/_1` (scans.ts), and after the fix it is the same. These equal the baseline entries.
+- `node scripts/security-gate.mjs --sarif bearer=<post-fix sarif>` gives `PASS` with the entries kept. With the 4 entries deleted it gives `FAIL: 4 new blocking finding(s)` and exit 1.
+
+So the 4 entries stay in `security/baseline.json`, with `disposition: false-positive` and a reason that starts `FIXED 2026-10-02`. The tests above (SHX1-SHX4) are the proof that the sites are escaped. Bearer does not prove it.
+
+### Left open
+
+- `/analytics/overview` still returns `cacheStats` and `claimCategories` from the process-wide scan cache and claim index. Those aggregates are counts with no text, but they are not per key.
+- The `/scans/timeline/view` client script writes `e.provider` and `e.overallRisk` via `innerHTML`. These values are set by the engine, not by the caller, and the page is static server-side. Not changed here.
+- Tenants: the scope is per key, not per tenant. Two keys in the same tenant do not see each other's history. That follows the rule above. If the product wants tenant-wide history for non-admin keys, that is a separate decision.

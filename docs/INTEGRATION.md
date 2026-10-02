@@ -683,8 +683,8 @@ These are available if your UI needs them.
 | `GET /claims` | None | Claim database (searchable, filterable) |
 | `GET /claims/trending` | None | Trending + emerging claims |
 | `GET /claims/stats` | None | Accuracy rate, verdict distribution |
-| `GET /scans/timeline` | None | Re-scan history for a given text |
-| `GET /scans/search` | None | Full-text search over scan history |
+| `GET /scans/timeline` | API key | Re-scan history for a given text, from your key's scans only (admin: all keys) |
+| `GET /scans/search` | API key | Full-text search over your key's scan history (admin: all keys). `tenantId` narrows, never widens |
 | `GET /scan/:id/graph` | None | Mermaid claim graph for a scan |
 | `GET /providers/health` | API key | Circuit breaker state + error rates per provider |
 | `GET /templates` | API key | List saved scan templates |

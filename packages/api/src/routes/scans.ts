@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { getScanHistory, hashText } from '../store/scan-history.js';
-import { requireApiKey, requireAdmin } from '../plugins/auth.js';
+import { requireApiKey, requireAdmin, scanHistoryKeyScope } from '../plugins/auth.js';
+import { esc } from '../lib/html.js';
 
 export async function scansRoutes(fastify: FastifyInstance): Promise<void> {
 
@@ -31,7 +32,7 @@ export async function scansRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.status(400).send({ error: 'Provide text_hash or text.' });
       }
       const limitNum = limit ? Math.min(parseInt(limit, 10) || 50, 200) : 50;
-      const timeline = getScanHistory().getTimeline(hash, limitNum);
+      const timeline = getScanHistory().getTimeline(hash, limitNum, scanHistoryKeyScope(request));
       return reply.send({
         textHash:  hash,
         scanCount: timeline.length,
@@ -76,7 +77,8 @@ export async function scansRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request, reply) => {
       const staleDays = Math.min(365, Math.max(1, parseInt(request.query.staleDays ?? '30', 10)));
-      const stats     = getScanHistory().getScanUsageStats(staleDays, request.query.tenantId);
+      // tenantId narrows within the caller's own entries; it can never widen past the key scope.
+      const stats     = getScanHistory().getScanUsageStats(staleDays, request.query.tenantId, scanHistoryKeyScope(request));
 
       const summary = {
         total:            stats.length,
@@ -97,7 +99,7 @@ export async function scansRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request, reply) => {
       const staleDays = Math.min(365, Math.max(1, parseInt(request.query.staleDays ?? '30', 10)));
-      const stats     = getScanHistory().getScanUsageStats(staleDays);
+      const stats     = getScanHistory().getScanUsageStats(staleDays, undefined, scanHistoryKeyScope(request));
 
       const staleCount       = stats.filter((s) => s.isStale).length;
       const riskDriftedCount = stats.filter((s) => s.riskDrifted).length;
@@ -123,15 +125,15 @@ export async function scansRoutes(fastify: FastifyInstance): Promise<void> {
             const driftChip = s.riskDrifted
               ? '<span style="background:#7c3aed;color:#fff;border-radius:4px;padding:2px 6px;font-size:.75em;margin-left:4px;">DRIFT</span>'
               : '';
-            const riskBadge = `<span style="color:${riskColour(s.latestRisk)};font-weight:600;">${s.latestRisk}</span>`;
+            const riskBadge = `<span style="color:${riskColour(s.latestRisk)};font-weight:600;">${esc(s.latestRisk)}</span>`;
             return `<tr style="border-bottom:1px solid #1f2937;">
-              <td style="padding:10px 12px;font-family:monospace;font-size:.8em;color:#64748b;">${s.textHash.slice(0, 8)}</td>
-              <td style="padding:10px 12px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${s.textPreview}">${s.textPreview.slice(0, 60)}…</td>
+              <td style="padding:10px 12px;font-family:monospace;font-size:.8em;color:#64748b;">${esc(s.textHash.slice(0, 8))}</td>
+              <td style="padding:10px 12px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(s.textPreview)}">${esc(s.textPreview.slice(0, 60))}…</td>
               <td style="padding:10px 12px;">${riskBadge}${staleChip}${driftChip}</td>
-              <td style="padding:10px 12px;text-align:center;">${s.scanCount}</td>
-              <td style="padding:10px 12px;color:#9ca3af;font-size:.85em;">${s.daysSinceLastScan}d ago</td>
-              <td style="padding:10px 12px;color:#9ca3af;font-size:.85em;">${s.providers.join(', ')}</td>
-              <td style="padding:10px 12px;color:#9ca3af;font-size:.85em;">${s.avgLatencyMs}ms</td>
+              <td style="padding:10px 12px;text-align:center;">${esc(s.scanCount)}</td>
+              <td style="padding:10px 12px;color:#9ca3af;font-size:.85em;">${esc(s.daysSinceLastScan)}d ago</td>
+              <td style="padding:10px 12px;color:#9ca3af;font-size:.85em;">${esc(s.providers.join(', '))}</td>
+              <td style="padding:10px 12px;color:#9ca3af;font-size:.85em;">${esc(s.avgLatencyMs)}ms</td>
             </tr>`;
           }).join('');
 
@@ -220,7 +222,7 @@ export async function scansRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request, reply) => {
       const days  = Math.min(365, Math.max(1, parseInt(request.query.days ?? '30', 10)));
-      const scans = getScanHistory().getStaleScanGroups(days, request.query.tenantId);
+      const scans = getScanHistory().getStaleScanGroups(days, request.query.tenantId, scanHistoryKeyScope(request));
       return reply.status(200).send({ days, count: scans.length, scans });
     },
   );
@@ -262,7 +264,9 @@ export async function scansRoutes(fastify: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const { q, from, to, provider, risk, cursor, limit, tenantId } = request.query;
       const limitNum = limit ? Math.min(parseInt(limit, 10) || 20, 100) : 20;
-      const result = getScanHistory().search({ q, from, to, provider, risk, cursor, limit: limitNum, tenantId });
+      const result = getScanHistory().search({
+        q, from, to, provider, risk, cursor, limit: limitNum, tenantId, keyId: scanHistoryKeyScope(request),
+      });
       return reply.status(200).send({
         scans: result.entries,
         nextCursor: result.nextCursor,
