@@ -10,6 +10,7 @@ import { requireApiKey } from '../plugins/auth.js';
 import { requireAdmin } from '../plugins/auth.js';
 import { getProviderRegistry } from '../store/providers.js';
 import { getCircuitBreaker, PROVIDER_CHAIN } from '../store/circuit-breaker.js';
+import { outboundUrlRefusal } from '../lib/outbound-url.js';
 
 const REGISTER_SCHEMA = {
   type: 'object',
@@ -46,6 +47,9 @@ export async function providerRoutes(fastify: FastifyInstance): Promise<void> {
       if (PROVIDER_CHAIN.includes(name as Parameters<typeof PROVIDER_CHAIN['includes']>[0])) {
         return reply.status(409).send({ error: `Provider name "${name}" is reserved.` });
       }
+
+      const refusal = await outboundUrlRefusal(endpoint);
+      if (refusal) return reply.status(400).send({ error: `endpoint: ${refusal}` });
 
       const registry = getProviderRegistry();
       registry.registerPlugin({ name, endpoint, authHeader });

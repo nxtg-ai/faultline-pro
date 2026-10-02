@@ -21,7 +21,8 @@
     "fastify": "^5.12.5",
     "graphql": "^16.9.0",
     "mercurius": "^16.0.0",
-    "pdfkit": "^0.18.0"
+    "pdfkit": "^0.18.0",
+    "undici": "^7.30.0"
   },
   "devDependencies": {
     "@stryker-mutator/core": "^9.6.0",

@@ -3,16 +3,25 @@
  *
  * Registration routes must answer 400 for a private target, and every send path
  * must re-check at send time (DNS can change after registration) without calling
- * fetch. The redirect and read-back tests use real loopback servers with the
- * test-only override on, because a mocked fetch cannot prove undici's
- * redirect: 'manual' behaviour.
+ * fetch. The redirect and read-back tests use real loopback servers on the
+ * production undici path (override off; only the blocked-address policy admits
+ * 127.0.0.1), because a mocked fetch cannot prove redirect: 'manual' behaviour.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.js';
-import { resetOutboundResolver, setOutboundResolver, type ResolvedAddress } from '../src/lib/outbound-url.js';
+import {
+  resetBlockedAddressPolicy,
+  resetOutboundFetch,
+  resetOutboundResolver,
+  setBlockedAddressPolicy,
+  setOutboundFetch,
+  type OutboundFetch,
+  setOutboundResolver,
+  type ResolvedAddress,
+} from '../src/lib/outbound-url.js';
 import {
   dispatchWebhook,
   getWebhookDeliveryLog,
@@ -39,7 +48,7 @@ const ADMIN = 'admin-secret';
 const METADATA_URL = 'http://169.254.169.254/latest/meta-data/';
 const JSON_HEADERS = { 'x-api-key': ADMIN, 'content-type': 'application/json' };
 
-let fetchSpy: ReturnType<typeof vi.fn>;
+let fetchSpy: Mock<OutboundFetch>;
 
 /** Every hostname resolves to the given address. */
 function resolveAllTo(address: string): void {
@@ -49,8 +58,8 @@ function resolveAllTo(address: string): void {
 function guardOn(): void {
   vi.stubEnv('FAULTLINE_OUTBOUND_ALLOW_PRIVATE', '');
   resolveAllTo('93.184.216.34');
-  fetchSpy = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
-  vi.stubGlobal('fetch', fetchSpy);
+  fetchSpy = vi.fn<OutboundFetch>().mockResolvedValue(new Response(null, { status: 200 }));
+  setOutboundFetch(fetchSpy);
 }
 
 function resetStores(): void {
@@ -70,7 +79,8 @@ function resetStores(): void {
 
 function cleanUp(): void {
   vi.unstubAllEnvs();
-  vi.unstubAllGlobals();
+  resetOutboundFetch();
+  resetBlockedAddressPolicy();
   resetOutboundResolver();
   delete process.env.FAULTLINE_API_KEY;
 }
@@ -278,11 +288,14 @@ function close(server: Server): Promise<void> {
   return new Promise((resolve) => server.close(() => resolve()));
 }
 
-describe('real loopback servers (override on: loopback allowed)', () => {
+describe('real loopback servers (guard on, policy admits 127.0.0.1, real undici path)', () => {
   let pair: LoopbackPair;
   beforeEach(async () => {
     resetStores();
-    vi.stubEnv('FAULTLINE_OUTBOUND_ALLOW_PRIVATE', '1');
+    // Override off and no fetch seam: requests go through the production undici
+    // Agent. Only the blocked-address policy is relaxed, and only for 127.0.0.1.
+    vi.stubEnv('FAULTLINE_OUTBOUND_ALLOW_PRIVATE', '');
+    setBlockedAddressPolicy((address) => address !== '127.0.0.1');
     pair = await startLoopbackPair();
   });
   afterEach(async () => {

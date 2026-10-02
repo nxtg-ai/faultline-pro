@@ -13,7 +13,9 @@ import {
   isPrivateOverrideActive,
   outboundUrlRefusal,
   OutboundUrlBlockedError,
+  resetOutboundFetch,
   resetOutboundResolver,
+  setOutboundFetch,
   setOutboundResolver,
   type ResolvedAddress,
 } from '../src/lib/outbound-url.js';
@@ -41,7 +43,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
-  vi.unstubAllGlobals();
+  resetOutboundFetch();
   resetOutboundResolver();
 });
 
@@ -231,14 +233,14 @@ describe('outboundUrlRefusal', () => {
 describe('fetchOutbound', () => {
   it('never calls fetch for a refused URL', async () => {
     const fetchSpy = vi.fn();
-    vi.stubGlobal('fetch', fetchSpy);
+    setOutboundFetch(fetchSpy);
     await expect(fetchOutbound('http://169.254.169.254/', { method: 'POST' })).rejects.toBeInstanceOf(OutboundUrlBlockedError);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('calls fetch with the original URL and redirect: manual for a safe URL', async () => {
     const fetchSpy = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
-    vi.stubGlobal('fetch', fetchSpy);
+    setOutboundFetch(fetchSpy);
     await fetchOutbound('https://hooks.example.com', { method: 'POST', redirect: 'follow' });
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const [calledUrl, init] = fetchSpy.mock.calls[0] as [string, RequestInit];

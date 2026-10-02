@@ -7,12 +7,16 @@
  * public and one private A/AAAA record is rejected, because the connect may pick
  * either.
  *
- * Residual (documented, not solved): the check resolves DNS, then fetch resolves
- * again. A rebinding DNS server can answer public to the check and private to the
- * connect. See docs/security/2026-10-02-security-evidence-v0.11.1.md.
+ * DNS rebinding: the guarded fetch runs on undici with an Agent whose
+ * connect-time `lookup` resolves the host again, refuses the connect when ANY
+ * answer is blocked, and hands the socket only the vetted addresses. The address
+ * that is checked is the address that is connected, so a resolver that answers
+ * public to the pre-check and private to the connect gets no socket. See
+ * docs/security/2026-10-02-security-evidence-v0.11.1.md.
  */
 import { lookup } from 'node:dns/promises';
-import { BlockList, isIP } from 'node:net';
+import { BlockList, isIP, type LookupFunction } from 'node:net';
+import { Agent, fetch as undiciFetch, type RequestInit as UndiciRequestInit } from 'undici';
 
 /** Thrown when a URL must not be fetched. The message is safe to return to a caller. */
 export class OutboundUrlBlockedError extends Error {
@@ -89,6 +93,24 @@ function buildBlockList(subnets: ReadonlyArray<[string, number]>, family: 'ipv4'
 
 /** True when an IP literal falls in a private, loopback, link-local, multicast or reserved range. */
 export function isBlockedAddress(address: string): boolean {
+  return blockedAddressPolicy(address);
+}
+
+/** Decides whether a resolved address may be connected to. Injectable so tests can admit a loopback server. */
+export type BlockedAddressPolicy = (address: string) => boolean;
+
+let blockedAddressPolicy: BlockedAddressPolicy = isInBlockedRange;
+
+/** Test seam: replace the blocked-address decision (pre-check and connect-time lookup). */
+export function setBlockedAddressPolicy(fn: BlockedAddressPolicy): void {
+  blockedAddressPolicy = fn;
+}
+
+export function resetBlockedAddressPolicy(): void {
+  blockedAddressPolicy = isInBlockedRange;
+}
+
+function isInBlockedRange(address: string): boolean {
   const family = isIP(address);
   if (family === 4) return ipv4BlockList.check(address, 'ipv4');
   if (family === 6) return ipv6BlockList.check(stripZone(address), 'ipv6');
@@ -156,13 +178,55 @@ async function resolveAll(host: string): Promise<ResolvedAddress[]> {
   return addresses;
 }
 
-async function assertAddressesPublic(host: string): Promise<void> {
-  const addresses = isIP(host) !== 0 ? [{ address: host, family: isIP(host) }] : await resolveAll(host);
+function assertNoneBlocked(host: string, addresses: ResolvedAddress[]): void {
   const blocked = addresses.find((entry) => isBlockedAddress(entry.address));
   if (blocked) {
     throw new OutboundUrlBlockedError(`host ${host} resolves to a private or reserved address (${blocked.address})`);
   }
 }
+
+async function assertAddressesPublic(host: string): Promise<void> {
+  const addresses = isIP(host) !== 0 ? [{ address: host, family: isIP(host) }] : await resolveAll(host);
+  assertNoneBlocked(host, addresses);
+}
+
+/**
+ * Resolve a host at connect time and return only addresses that passed the
+ * block check. Refuses the whole answer set when any address is blocked, for
+ * the same reason as the pre-check: the socket may try any of them.
+ */
+async function resolveVetted(hostname: string, family: number | undefined): Promise<ResolvedAddress[]> {
+  const host = hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname;
+  const addresses = isIP(host) !== 0 ? [{ address: host, family: isIP(host) }] : await resolveAll(host);
+  assertNoneBlocked(host, addresses);
+  const wanted = family === 4 || family === 6 ? addresses.filter((entry) => entry.family === family) : addresses;
+  if (wanted.length === 0) throw new OutboundUrlBlockedError(`host ${host} has no IPv${family} address`);
+  return wanted;
+}
+
+/**
+ * `lookup` for net/tls.connect. Node calls it with `all: true` when
+ * autoSelectFamily is on (the default since Node 20) and expects an array;
+ * otherwise it expects a single address and family.
+ */
+const vettedLookup: LookupFunction = (hostname, options, callback) => {
+  const family = typeof options.family === 'number' ? options.family : undefined;
+  resolveVetted(hostname, family).then(
+    (addresses) => {
+      if (options.all) callback(null, addresses);
+      else callback(null, addresses[0].address, addresses[0].family);
+    },
+    (err: unknown) => callback(toErrnoException(err), []),
+  );
+};
+
+function toErrnoException(err: unknown): NodeJS.ErrnoException {
+  return err instanceof Error ? err : new Error(String(err));
+}
+
+// One shared pool. The lookup reads the module's current resolver and policy on
+// every connect, so the test seams steer it without rebuilding the Agent.
+const guardedAgent = new Agent({ connect: { lookup: vettedLookup } });
 
 /**
  * Validate a caller-supplied URL before any outbound request.
@@ -200,15 +264,58 @@ export async function outboundUrlRefusal(raw: string): Promise<string | null> {
   }
 }
 
+/** The fetch the guarded helpers call. Same shape as global fetch. */
+export type OutboundFetch = (url: string, init: RequestInit) => Promise<Response>;
+
+/**
+ * Production path: undici's own fetch on the guarded Agent. Node's global fetch
+ * is never given this Agent, because its bundled undici is a different copy.
+ */
+const guardedFetch: OutboundFetch = async (url, init) => {
+  try {
+    const res = await undiciFetch(url, { ...(init as UndiciRequestInit), dispatcher: guardedAgent });
+    // undici's Response is the WHATWG Response the callers already use; only the TS types differ.
+    return res as unknown as Response;
+  } catch (err) {
+    // A connect-time refusal surfaces as TypeError('fetch failed', { cause }).
+    const cause = (err as { cause?: unknown }).cause;
+    if (cause instanceof OutboundUrlBlockedError) throw cause;
+    throw err;
+  }
+};
+
+let fetchOverride: OutboundFetch | null = null;
+
+/** Test seam: route guarded requests to `fn` instead of the network. */
+export function setOutboundFetch(fn: OutboundFetch): void {
+  fetchOverride = fn;
+}
+
+export function resetOutboundFetch(): void {
+  fetchOverride = null;
+}
+
+/**
+ * The fetch for this call. Under the test-only private override every check is
+ * already off, so suites that stub global fetch keep working; production has
+ * neither seam set and always gets the guarded undici path.
+ */
+function selectFetch(): OutboundFetch {
+  if (fetchOverride) return fetchOverride;
+  if (isPrivateOverrideActive()) return (url, init) => globalThis.fetch(url, init);
+  return guardedFetch;
+}
+
 /**
  * POST-style fetch to a caller-supplied URL: guard first, never follow redirects.
  * A 3xx comes back as the response status; the Location is not requested.
  *
- * @throws OutboundUrlBlockedError before any network I/O when the URL is unsafe.
+ * @throws OutboundUrlBlockedError before any network I/O when the URL is unsafe,
+ *   or at connect time when the host now resolves to a blocked address.
  */
 export async function fetchOutbound(raw: string, init: RequestInit): Promise<Response> {
   await assertSafeOutboundUrl(raw);
-  return fetch(raw, { ...init, redirect: 'manual' });
+  return selectFetch()(raw, { ...init, redirect: 'manual' });
 }
 
 /**
@@ -223,7 +330,7 @@ export async function fetchOutboundFollow(raw: string, init: RequestInit, maxRed
   let current = raw;
   for (let hop = 0; ; hop++) {
     await assertSafeOutboundUrl(current);
-    const res = await fetch(current, { ...init, redirect: 'manual' });
+    const res = await selectFetch()(current, { ...init, redirect: 'manual' });
     const location = res.headers.get('location');
     if (res.status < 300 || res.status >= 400 || !location) return res;
     await res.body?.cancel();

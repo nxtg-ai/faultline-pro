@@ -4,10 +4,17 @@
  * as CodeQL #5). Validates: GoPMO 1.18.7.3.6 (security evidence, fix for the
  * schedules sink found after 743e855).
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.js';
-import { resetOutboundResolver, setOutboundResolver, type ResolvedAddress } from '../src/lib/outbound-url.js';
+import {
+  resetOutboundFetch,
+  resetOutboundResolver,
+  setOutboundFetch,
+  type OutboundFetch,
+  setOutboundResolver,
+  type ResolvedAddress,
+} from '../src/lib/outbound-url.js';
 import { getScheduleRunner, getScheduleStore, resetScheduleRunner, resetScheduleStore } from '../src/store/schedules.js';
 import { resetKeyStore } from '../src/store/keys.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
@@ -21,7 +28,7 @@ const HEADERS = { 'x-api-key': ADMIN, 'content-type': 'application/json' };
 const METADATA_URL = 'http://169.254.169.254/latest/meta-data/';
 const PUBLIC_IP = '93.184.216.34';
 
-let fetchSpy: ReturnType<typeof vi.fn>;
+let fetchSpy: Mock<OutboundFetch>;
 
 /** Hostnames resolve by table; anything unlisted resolves to the public address. */
 function resolveBy(table: Record<string, string>): void {
@@ -42,14 +49,14 @@ beforeEach(() => {
   resetScheduleRunner();
   vi.stubEnv('FAULTLINE_OUTBOUND_ALLOW_PRIVATE', '');
   resolveBy({});
-  fetchSpy = vi.fn().mockResolvedValue(new Response('Public page text.', { status: 200 }));
-  vi.stubGlobal('fetch', fetchSpy);
+  fetchSpy = vi.fn<OutboundFetch>().mockResolvedValue(new Response('Public page text.', { status: 200 }));
+  setOutboundFetch(fetchSpy);
   vi.mocked(scan).mockClear();
 });
 
 afterEach(() => {
   vi.unstubAllEnvs();
-  vi.unstubAllGlobals();
+  resetOutboundFetch();
   resetOutboundResolver();
   delete process.env.FAULTLINE_API_KEY;
 });
