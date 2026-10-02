@@ -41,6 +41,23 @@ jobs:
       - name: Build
         run: npm run build
 
+  accuracy-g0-scorer:
+    name: Accuracy G0 scorer tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install numpy and pytest
+        run: pip install numpy==2.3.5 pytest
+
+      - name: Run tests
+        run: python3 -m pytest scripts/tests -v
+
   python-sdk:
     name: Python SDK Tests
     runs-on: ubuntu-latest

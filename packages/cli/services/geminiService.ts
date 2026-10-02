@@ -176,6 +176,7 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
 
     recordGeminiUsage(response, true, 'grounded-verify:gemini');
     let resultJson: any = {};
+    let parseFallback = false;
     try {
       const cleanedText = cleanJson(response.text || '{}');
       if (cleanedText && cleanedText !== '{}') {
@@ -190,6 +191,7 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
       // Fallback: If text exists but isn't JSON, assume it's the explanation
       if (response.text) {
           resultJson = { status: 'mixed', explanation: response.text.substring(0, 150) + '...' };
+          parseFallback = true;
       }
     }
 
@@ -214,7 +216,10 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
       claimId: claim.id,
       status: (resultJson.status || 'unverified') as ClaimStatus,
       explanation: resultJson.explanation || 'No structural analysis provided.',
-      sources: uniqueSources.slice(0, 3)
+      sources: uniqueSources.slice(0, 3),
+      // Set only on the non-JSON fallback above, so every other result keeps
+      // its exact previous shape (prereg G0 §3: the `mixed` confound).
+      ...(parseFallback ? { parseFallback: true } : {}),
     };
 
   } catch (error) {

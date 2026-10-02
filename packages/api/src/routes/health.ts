@@ -295,6 +295,17 @@ startCountdown();
 </body>
 </html>`;
 
+/**
+ * The commit this image was built from, or null when the build did not record
+ * one. fly-deploy.yml passes it as the FAULTLINE_GIT_SHA build arg; the
+ * verdict-accuracy runner reads it to show the engine did not change mid-run
+ * (prereg G0 §5). Only a hex sha is echoed, never an arbitrary env string.
+ */
+export function engineCommit(): string | null {
+  const raw = (process.env.FAULTLINE_GIT_SHA ?? '').trim().toLowerCase();
+  return /^[0-9a-f]{7,40}$/.test(raw) ? raw : null;
+}
+
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 export async function healthRoutes(fastify: FastifyInstance): Promise<void> {
@@ -312,6 +323,7 @@ export async function healthRoutes(fastify: FastifyInstance): Promise<void> {
       service: 'faultline-api',
       version: FAULTLINE_API_VERSION,
       stage: RELEASE_STAGE,
+      commit: engineCommit(),
       subsystems: {
         keyStore:   { status: 'ok', activeKeys: keyCount },
         scanEngine: { status: anyProvider ? 'ok' : 'degraded', providersConfigured: Object.values(providers).filter(Boolean).length },

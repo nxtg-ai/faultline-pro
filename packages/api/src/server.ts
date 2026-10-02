@@ -67,6 +67,7 @@ import { riskRegisterRoutes } from './routes/risk-register.js';
 import { approvalsRoutes } from './routes/approvals.js';
 import { weakestRoutes } from './routes/weakest.js';
 import { critiqueRoutes } from './routes/critique.js';
+import { adminVerifyRoutes } from './routes/admin-verify.js';
 import { getNotificationStore } from './store/notifications.js';
 import { getKeyExpiryNotifier } from './store/key-expiry-notifier.js';
 import { getKeyRotationNotifier } from './store/key-rotation-notifier.js';
@@ -203,6 +204,7 @@ export function buildServer() {
   fastify.register(approvalsRoutes);
   fastify.register(weakestRoutes);
   fastify.register(critiqueRoutes);
+  fastify.register(adminVerifyRoutes);
 
   fastify.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
     if (request.url === '/graphql' && request.method === 'POST') {
