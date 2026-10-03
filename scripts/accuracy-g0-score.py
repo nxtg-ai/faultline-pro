@@ -2,7 +2,8 @@
 """Scorer for the pre-registered verdict-accuracy baseline (G0).
 
 Spec: docs/research/2026-10-02-prereg-verdict-accuracy-g0-v1.md, sections 3, 4,
-5 and 8, plus amendment A2 (the choices that section leaves open).
+5 and 8, plus amendments A2 (the choices those sections leave open) and A3 (the
+section 8 agreement rule: a per-item floor AND an equivalence margin).
 
     python3 scripts/accuracy-g0-score.py RUN.jsonl [--set full|verify-subsample]
         [--json OUT.json] [--paired OTHER.jsonl]
@@ -41,6 +42,11 @@ GOLD_CLASSES = ("true", "false", "not_enough_evidence")
 BINARY = ("true", "false")
 
 EXIT_OK, EXIT_REFUSED, EXIT_INVALID = 0, 2, 4
+
+# Prereg A3 (section 8 agreement). Both must hold; each is fixed before any run.
+STATUS_AGREEMENT_FLOOR = 0.85   # at most 15 of 100 verdicts may differ on a re-run
+EQUIVALENCE_MARGIN = 0.10       # the 95% CI of (re-run BA - original BA) inside [-0.10, +0.10]
+AGREEMENT, NOT_REPRODUCED = "AGREEMENT", "NOT REPRODUCED"
 
 # Prereg section 4. A2.1: "a 4-digit year from 2019 on" is read as 2019 to 2099,
 # not touching another digit (so "2020s" matches and "12020" does not).
@@ -300,33 +306,67 @@ def evaluate(run_path: Path, gold: list[dict], set_name: str | None, subsample_p
 
 # ── Paired comparison (prereg section 8) ─────────────────────────────────────
 
+def same_status(left: dict, right: dict) -> bool:
+    """A3 (i): the same Faultline status on the same id. A failure on either side
+    is a disagreement, even when both sides failed."""
+    if left.get("apiError") is True or right.get("apiError") is True:
+        return False
+    return left.get("status") == right.get("status")
+
+
+def a3_verdict(status_agreement_rate: float, ci95: list[float | None]) -> dict:
+    """Prereg A3: AGREEMENT only when (i) per-item status agreement >= 0.85 AND
+    (ii) the 95% CI of the BA difference lies wholly inside [-0.10, +0.10]
+    (closed). An undefined CI cannot show (ii), so it is NOT REPRODUCED."""
+    lo, hi = ci95
+    floor_met = status_agreement_rate >= STATUS_AGREEMENT_FLOOR
+    ci_within_margin = lo is not None and hi is not None and -EQUIVALENCE_MARGIN <= lo and hi <= EQUIVALENCE_MARGIN
+    agreement = floor_met and ci_within_margin
+    return {
+        "status_agreement_floor": STATUS_AGREEMENT_FLOOR,
+        "status_agreement_met": floor_met,
+        "equivalence_margin": EQUIVALENCE_MARGIN,
+        "ci_within_margin": ci_within_margin,
+        "agreement": agreement,
+        "verdict": AGREEMENT if agreement else NOT_REPRODUCED,
+    }
+
+
 def paired(primary: list[dict], other: list[dict]) -> dict:
-    """Paired bootstrap of BA(primary) - BA(other) on shared binary ids (A2.5)."""
+    """Paired comparison on shared binary ids (A2.5), judged by A3.
+
+    The difference is BA(primary) - BA(other), paired-bootstrapped as in
+    section 4. `ci_contains_zero` is the superseded section 8 rule, kept as
+    information only: it is not a verdict.
+    """
     left = {item["id"]: item for item in primary if item["gold"] in BINARY}
     right = {item["id"]: item for item in other if item["gold"] in BINARY}
     shared = sorted(set(left) & set(right))
     n = len(shared)
     if n == 0:
         return {"n": 0}
+    rate = float(np.mean([same_status(left[i], right[i]) for i in shared]))
     a_left = _arrays([left[i] for i in shared])
     a_right = _arrays([right[i] for i in shared])
     identity = np.arange(n)[None, :]
-    idx = bootstrap_index(n)
     point = binary_metrics(a_left, identity)["balanced_accuracy"][0] - binary_metrics(a_right, identity)["balanced_accuracy"][0]
+    idx = bootstrap_index(n)  # one matrix for both runs: the resample is paired by item
     diffs = binary_metrics(a_left, idx)["balanced_accuracy"] - binary_metrics(a_right, idx)["balanced_accuracy"]
     diffs = diffs[~np.isnan(diffs)]
-    agree = float(np.mean([outcome(left[i]) == outcome(right[i]) for i in shared]))
     if diffs.size == 0 or math.isnan(point):
         # Balanced accuracy needs both gold classes among the shared ids.
-        return {"n": n, "ba_difference": {"value": None, "ci95": [None, None]},
-                "agreement": None, "status_agreement_rate": agree}
-    lo, hi = np.percentile(diffs, [2.5, 97.5])
+        difference = {"value": None, "ci95": [None, None]}
+        contains_zero = None
+    else:
+        lo, hi = (float(x) for x in np.percentile(diffs, [2.5, 97.5]))
+        difference = {"value": float(point), "ci95": [lo, hi], "undefinedResamples": int(RESAMPLES - diffs.size)}
+        contains_zero = bool(lo <= 0 <= hi)
     return {
         "n": n,
-        "ba_difference": {"value": float(point), "ci95": [float(lo), float(hi)],
-                          "undefinedResamples": int(RESAMPLES - diffs.size)},
-        "agreement": bool(lo <= 0 <= hi),
-        "status_agreement_rate": agree,
+        "status_agreement_rate": rate,
+        "ba_difference": difference,
+        "ci_contains_zero": contains_zero,
+        **a3_verdict(rate, difference["ci95"]),
     }
 
 
@@ -364,13 +404,24 @@ def readout(report: dict) -> str:
 
 
 def paired_readout(p: dict, other_name: str) -> str:
-    head = f"PAIRED (this run - {other_name}) on {p['n']} shared binary ids: "
-    if p.get("agreement") is None:
-        return head + "balanced accuracy undefined (both gold classes are needed); no agreement verdict."
-    diff = p["ba_difference"]
-    verdict = "AGREEMENT" if p["agreement"] else "NO AGREEMENT"
-    return (head + f"BA difference {diff['value']:.4f} [{diff['ci95'][0]:.4f}, {diff['ci95'][1]:.4f}] -> {verdict}; "
-            f"per-item status agreement {p['status_agreement_rate']:.4f}")
+    head = f"PAIRED (this run - {other_name}) on {p['n']} shared binary ids, prereg A3:"
+    if p["n"] == 0:
+        return f"{head} no shared binary ids; no comparison."
+    rate, diff = p["status_agreement_rate"], p["ba_difference"]
+    lo, hi = diff["ci95"]
+    floor = "met" if p["status_agreement_met"] else "NOT met"
+    margin = "met" if p["ci_within_margin"] else "NOT met"
+    ci = "undefined (both gold classes are needed)" if diff["value"] is None else \
+        f"{diff['value']:.4f} [{lo:.4f}, {hi:.4f}]"
+    lines = [
+        head,
+        f"  (i)  per-item status agreement {rate:.4f} (floor {STATUS_AGREEMENT_FLOOR:.2f}): {floor}",
+        f"  (ii) BA difference {ci}, CI inside [-{EQUIVALENCE_MARGIN:.2f}, +{EQUIVALENCE_MARGIN:.2f}]: {margin}",
+        f"  VERDICT: {p['verdict']}",
+    ]
+    if p["ci_contains_zero"] is not None:
+        lines.append(f"  information only (superseded section 8 rule): CI contains 0: {p['ci_contains_zero']}")
+    return "\n".join(lines)
 
 
 def main(argv: list[str] | None = None) -> int:

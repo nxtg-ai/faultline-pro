@@ -38,6 +38,10 @@ interface FakeState {
   attemptsById: Map<number, number>;
   verifyStatus: number;
   verifyBody?: unknown;
+  /** When set, /usage reports the day full (1,000) once this many verify calls happened in the current process. */
+  capAfterCallsThisRun?: number;
+  /** verifyCalls when the current runner process started. */
+  runStartCalls: number;
 }
 
 let dir: string;
@@ -57,6 +61,7 @@ function freshState(): FakeState {
     seenKeys: new Set(),
     attemptsById: new Map(),
     verifyStatus: 200,
+    runStartCalls: 0,
   };
 }
 
@@ -78,9 +83,10 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     return send(res, 200, { status: 'ok', version: state.version, commit: state.commit });
   }
   if (req.method === 'GET' && req.url === '/usage') {
+    const full = state.capAfterCallsThisRun !== undefined && state.verifyCalls - state.runStartCalls >= state.capAfterCallsThisRun;
     return send(res, 200, {
       keyId: 'admin',
-      groundingAllowance: { day: '2026-10-02', groundedPrompts: state.groundedPrompts, resetsAt: '2026-10-03T07:00:00.000Z' },
+      groundingAllowance: { day: '2026-10-02', groundedPrompts: full ? 1000 : state.groundedPrompts, resetsAt: '2026-10-03T07:00:00.000Z' },
     });
   }
   if (req.method === 'POST' && req.url === '/admin/verify-claims') {
@@ -105,6 +111,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
 interface RunResult { code: number | null; out: string }
 
 function run(args: string[], env: Record<string, string> = { FAULTLINE_ADMIN_KEY: KEY }): Promise<RunResult> {
+  state.runStartCalls = state.verifyCalls;
   return new Promise((resolvePromise) => {
     const child = spawn(process.execPath, [SCRIPT, '--api', api, '--retry-base-ms', '1', ...args], {
       env: { PATH: process.env.PATH ?? '', HOME: dir, ...env },
@@ -219,6 +226,81 @@ describe('accuracy-g0 runner: retries (prereg §6)', () => {
     expect(byId.get(neverRecovers)).toMatchObject({ apiError: true, status: 'unverified', attempts: 4, model: null });
     expect(state.attemptsById.get(neverRecovers)).toBe(4);
     expect(byId.get(SUBSAMPLE_IDS[2])).toMatchObject({ attempts: 1 });
+  });
+});
+
+describe('accuracy-g0 runner: the four-call ceiling holds across --resume (A2.7)', () => {
+  // Reviewer scenario (codex, al:d9dff4d8f98c5bc2): the allowance guard stops the
+  // run after one failed attempt, it is resumed four times, and the provider
+  // would succeed on a fifth call. Before the attempt ledger, the counts lived in
+  // memory only: the provider was called 5 times and the row said attempts=1.
+  it('makes at most 4 calls for an item over 5 processes, and the row records the real count', async () => {
+    const target = SUBSAMPLE_IDS[0];
+    state.failFirst.set(target, 4); // calls 1-4 fail; a 5th call would succeed
+    state.capAfterCallsThisRun = 1; // each process: one batch, then the guard stops it
+    const out = join(dir, 'sub.jsonl');
+    const codes: Array<number | null> = [];
+    let lastRunCalls = -1;
+    codes.push((await run(['--set', 'verify-subsample', '--out', out])).code);
+    for (let resume = 1; resume <= 4; resume += 1) {
+      const before = state.attemptsById.get(target) ?? 0;
+      codes.push((await run(['--set', 'verify-subsample', '--out', out, '--resume'])).code);
+      if (resume === 4) lastRunCalls = (state.attemptsById.get(target) ?? 0) - before;
+    }
+    expect(codes).toEqual([3, 3, 3, 3, 0]);
+    expect(state.attemptsById.get(target)).toBe(4);
+    expect(lastRunCalls).toBe(0); // the 5th call never happens
+    const written = rows(out);
+    expect(written).toHaveLength(100);
+    expect(written.find((row) => row.id === target)).toMatchObject({ apiError: true, status: 'unverified', attempts: 4, model: null });
+    // Every row's attempts equals the calls the provider actually received for it.
+    for (const row of written) expect(row.attempts).toBe(state.attemptsById.get(row.id as number));
+    const ledger = rows(`${out}.attempts.jsonl`).filter((line) => line.id === target);
+    expect(ledger.map((line) => line.attempt)).toEqual([1, 2, 3, 4]);
+  });
+
+  it('writes an item whose ledger already holds 4 calls as a failure, without calling it again', async () => {
+    const out = join(dir, 'sub.jsonl');
+    const target = SUBSAMPLE_IDS[5];
+    const earlier = SUBSAMPLE_IDS[0];
+    writeFileSync(out, JSON.stringify({ id: earlier, gold: 'true', status: 'supported', apiError: false, parseFallback: false, attempts: 1, model: 'gemini-2.5-flash', engineSha: state.commit, ts: 'x' }) + '\n');
+    const ledgerLines = [{ id: earlier, attempt: 1 }, ...[1, 2, 3, 4].map((attempt) => ({ id: target, attempt }))];
+    writeFileSync(`${out}.attempts.jsonl`, ledgerLines.map((line) => JSON.stringify({ ...line, ts: 'x' })).join('\n') + '\n');
+    const r = await run(['--set', 'verify-subsample', '--out', out, '--resume']);
+    expect(r.code).toBe(0);
+    expect(state.attemptsById.get(target)).toBeUndefined();
+    expect(state.attemptsById.get(earlier)).toBeUndefined();
+    const byId = new Map(rows(out).map((row) => [row.id, row]));
+    expect(byId.size).toBe(100);
+    expect(byId.get(target)).toMatchObject({ apiError: true, attempts: 4, model: null });
+  });
+
+  it('refuses a fresh run when an attempt ledger already exists (exit 2, no verify call)', async () => {
+    const out = join(dir, 'sub.jsonl');
+    writeFileSync(`${out}.attempts.jsonl`, JSON.stringify({ id: SUBSAMPLE_IDS[0], attempt: 1, ts: 'x' }) + '\n');
+    const r = await run(['--set', 'verify-subsample', '--out', out]);
+    expect(r.code).toBe(2);
+    expect(r.out).toMatch(/attempt ledger exists/);
+    expect(state.verifyCalls).toBe(0);
+  });
+
+  it('refuses to resume rows that have no attempt ledger (exit 2, no verify call)', async () => {
+    const out = join(dir, 'sub.jsonl');
+    writeFileSync(out, JSON.stringify({ id: SUBSAMPLE_IDS[0], gold: 'true', status: 'supported', apiError: false, parseFallback: false, attempts: 1, model: 'gemini-2.5-flash', engineSha: state.commit, ts: 'x' }) + '\n');
+    const r = await run(['--set', 'verify-subsample', '--out', out, '--resume']);
+    expect(r.code).toBe(2);
+    expect(r.out).toMatch(/no attempt ledger/);
+    expect(state.verifyCalls).toBe(0);
+  });
+
+  it('writes one ledger line per call, before the call, matching what the provider received', async () => {
+    state.failFirst.set(SUBSAMPLE_IDS[3], 2);
+    const out = join(dir, 'sub.jsonl');
+    expect((await run(['--set', 'verify-subsample', '--out', out])).code).toBe(0);
+    const ledger = rows(`${out}.attempts.jsonl`);
+    const calls = [...state.attemptsById.values()].reduce((a, b) => a + b, 0);
+    expect(ledger).toHaveLength(calls);
+    expect(ledger.filter((line) => line.id === SUBSAMPLE_IDS[3]).map((line) => line.attempt)).toEqual([1, 2, 3]);
   });
 });
 

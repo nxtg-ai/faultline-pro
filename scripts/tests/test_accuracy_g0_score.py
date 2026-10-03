@@ -144,8 +144,9 @@ class TestPaired:
         assert p["n"] == 10
         assert p["ba_difference"]["value"] == 0
         assert p["ba_difference"]["ci95"] == [0.0, 0.0]
-        assert p["agreement"] is True
-        assert p["status_agreement_rate"] == 1.0
+        # A3: item 5 failed in both runs, and a failure is a disagreement, so 9 of 10.
+        assert p["status_agreement_rate"] == pytest.approx(0.9)
+        assert p["agreement"] is True and p["verdict"] == "AGREEMENT"
 
     def test_very_different_runs_do_not_agree(self):
         binary = [item(g["id"], g["gold"], "supported" if g["gold"] == "true" else "contradicted")
@@ -161,10 +162,111 @@ class TestPaired:
         p = scorer.paired(FIXTURE, FIXTURE[:8])
         assert p["n"] == 8
 
-    def test_one_gold_class_only_leaves_agreement_undefined(self):
+    def test_one_gold_class_only_cannot_show_agreement(self):
         p = scorer.paired(FIXTURE, FIXTURE[:4])   # ids 0-3 are all gold 'true'
         assert p["n"] == 4
-        assert p["agreement"] is None and p["ba_difference"]["value"] is None
+        assert p["ba_difference"]["value"] is None and p["ci_contains_zero"] is None
+        # A3 (ii) cannot be shown without a CI, so the verdict is NOT REPRODUCED.
+        assert p["ci_within_margin"] is False
+        assert p["agreement"] is False and p["verdict"] == "NOT REPRODUCED"
+
+
+# ── Prereg A3: the section 8 agreement rule ─────────────────────────────────
+
+SUB_GOLD = {g["id"]: g["gold"] for g in GOLD if g["id"] in set(SUBSAMPLE)}
+SUB_TRUE = [i for i in SUBSAMPLE if SUB_GOLD[i] == "true"]     # 79
+SUB_FALSE = [i for i in SUBSAMPLE if SUB_GOLD[i] == "false"]   # 21
+RIGHT = {"true": "supported", "false": "contradicted"}
+WRONG = {"true": "contradicted", "false": "supported"}
+
+
+def sub_run(correct_ids):
+    return [item(i, SUB_GOLD[i], RIGHT[SUB_GOLD[i]] if i in correct_ids else WRONG[SUB_GOLD[i]]) for i in SUBSAMPLE]
+
+
+def flipped(run, ids):
+    swap = {"supported": "contradicted", "contradicted": "supported"}
+    return [dict(r, status=swap[r["status"]]) if r["id"] in ids else r for r in run]
+
+
+# A realistic original: 1 in 5 true items wrong (16), about half the false items right (11).
+WRONG_TRUE = SUB_TRUE[::5]
+RIGHT_TRUE = [i for i in SUB_TRUE if i not in set(WRONG_TRUE)]
+RIGHT_FALSE = SUB_FALSE[::2]
+ORIGINAL = sub_run(set(RIGHT_TRUE) | set(RIGHT_FALSE))
+
+
+def balanced_true_flips(k):
+    """k flips on true items, half right->wrong and half wrong->right, so the BA
+    point difference stays near 0 and the CI sits well inside +/-0.10: only the
+    per-item floor can separate these cases."""
+    return set(RIGHT_TRUE[: k - k // 2]) | set(WRONG_TRUE[: k // 2])
+
+
+class TestA3Agreement:
+    def test_fixture_shape(self):
+        assert len(SUB_TRUE) == 79 and len(SUB_FALSE) == 21
+        assert len(WRONG_TRUE) == 16 and len(RIGHT_FALSE) == 11
+
+    def test_codex_all_opposite_runs_are_not_reproduced(self):
+        """Reviewer fixture (codex, al:d9dff4d8f98c5bc2): every prediction opposite.
+        The old rule (CI contains 0) called this AGREEMENT."""
+        original = sub_run(set(SUB_TRUE[1::2]) | set(SUB_FALSE[1::2]))
+        rerun = flipped(original, set(SUBSAMPLE))
+        p = scorer.paired(rerun, original)
+        assert p["n"] == 100
+        assert p["ba_difference"]["value"] == pytest.approx(0.0301, abs=5e-5)
+        assert p["ba_difference"]["ci95"] == pytest.approx([-0.2075, 0.2832], abs=5e-5)
+        assert p["status_agreement_rate"] == 0.0
+        assert p["ci_contains_zero"] is True          # what the shipped rule judged on
+        assert p["status_agreement_met"] is False and p["ci_within_margin"] is False
+        assert p["verdict"] == "NOT REPRODUCED" and p["agreement"] is False
+
+    def test_identical_subsample_runs_agree(self):
+        p = scorer.paired(ORIGINAL, ORIGINAL)
+        assert p["status_agreement_rate"] == 1.0
+        assert p["ba_difference"]["ci95"] == [0.0, 0.0]
+        assert p["verdict"] == "AGREEMENT"
+
+    def test_ten_flips_inside_the_margin_agree(self):
+        p = scorer.paired(flipped(ORIGINAL, balanced_true_flips(10)), ORIGINAL)
+        assert p["status_agreement_rate"] == pytest.approx(0.90)
+        lo, hi = p["ba_difference"]["ci95"]
+        assert -0.10 <= lo < 0 < hi <= 0.10
+        assert p["verdict"] == "AGREEMENT"
+
+    def test_fifteen_flips_is_exactly_the_floor_and_agrees(self):
+        p = scorer.paired(flipped(ORIGINAL, balanced_true_flips(15)), ORIGINAL)
+        assert p["status_agreement_rate"] == pytest.approx(0.85)
+        assert p["ci_within_margin"] is True
+        assert p["verdict"] == "AGREEMENT"
+
+    def test_sixteen_flips_fail_the_floor_even_with_the_ci_inside(self):
+        p = scorer.paired(flipped(ORIGINAL, balanced_true_flips(16)), ORIGINAL)
+        assert p["status_agreement_rate"] == pytest.approx(0.84)
+        assert p["ci_within_margin"] is True          # (ii) holds; only (i) fails
+        assert p["status_agreement_met"] is False
+        assert p["verdict"] == "NOT REPRODUCED"
+
+    def test_high_agreement_but_ci_outside_the_margin_is_not_reproduced(self):
+        ten_false = set(RIGHT_FALSE[:10])             # right -> wrong, all one way
+        p = scorer.paired(flipped(ORIGINAL, ten_false), ORIGINAL)
+        assert p["status_agreement_rate"] == pytest.approx(0.90)
+        assert p["status_agreement_met"] is True      # (i) holds; only (ii) fails
+        lo, hi = p["ba_difference"]["ci95"]
+        assert lo < -0.10
+        assert p["ci_within_margin"] is False
+        assert p["verdict"] == "NOT REPRODUCED"
+
+    def test_a_failure_in_both_runs_is_a_disagreement(self):
+        original = [dict(r, apiError=True, status="unverified") if r["id"] == SUBSAMPLE[0] else r for r in ORIGINAL]
+        p = scorer.paired(original, original)
+        assert p["status_agreement_rate"] == pytest.approx(0.99)
+
+    def test_ci_on_the_margin_counts_as_inside(self):
+        assert scorer.a3_verdict(0.85, [-0.10, 0.10])["verdict"] == "AGREEMENT"
+        assert scorer.a3_verdict(0.85, [-0.1001, 0.0])["verdict"] == "NOT REPRODUCED"
+        assert scorer.a3_verdict(0.8499, [0.0, 0.0])["verdict"] == "NOT REPRODUCED"
 
 
 # ── CLI: validity (prereg section 5) on files ───────────────────────────────
@@ -244,6 +346,17 @@ class TestCli:
         p = json.loads(out.read_text())["paired"]
         lo, hi = p["ba_difference"]["ci95"]
         assert lo <= 0 <= hi and p["agreement"] is True and p["n"] == 100
+        assert p["verdict"] == "AGREEMENT"
+        assert "VERDICT: AGREEMENT" in r.stdout
+
+    def test_paired_readout_prints_both_components_and_not_reproduced(self, tmp_path):
+        a = write_run(tmp_path / "a.jsonl", SUBSAMPLE, status="supported")
+        b = write_run(tmp_path / "b.jsonl", SUBSAMPLE, status="contradicted")
+        r = cli(a, "--paired", b)
+        assert r.returncode == 0, r.stdout + r.stderr   # a verdict, not an invalid run
+        assert "(i)  per-item status agreement 0.0000" in r.stdout
+        assert "(ii) BA difference" in r.stdout
+        assert "VERDICT: NOT REPRODUCED" in r.stdout
 
     def test_paired_against_full_run_uses_the_shared_ids(self, tmp_path):
         sub = write_run(tmp_path / "sub.jsonl", SUBSAMPLE)
