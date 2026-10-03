@@ -11,7 +11,8 @@
 # Every item is a real grounded Gemini prompt on production's key, counted by
 # production's grounding-allowance and spend ledgers. The runner stops itself
 # before the day's grounded prompts would pass 1,000 (exit 3) and can be
-# re-dispatched the next Pacific day; it starts a new out file each dispatch.
+# re-dispatched the next Pacific day; it starts a new out file and a new attempt
+# ledger each dispatch, so a dispatch never resumes an earlier one.
 #
 # Needs the repo secret FAULTLINE_ADMIN_KEY (the hosted API's admin key). It is
 # never printed. The job fails at the first step if the secret is missing.
@@ -88,7 +89,8 @@ jobs:
         run: |
           PAIRED=()
           if [ "$SET" = "verify-subsample" ]; then
-            mapfile -t originals < <(ls docs/research/data/accuracy-g0-full-*.jsonl 2>/dev/null || true)
+            # The attempt ledger (<out>.attempts.jsonl) also matches the glob; it is not a run.
+            mapfile -t originals < <(ls docs/research/data/accuracy-g0-full-*.jsonl 2>/dev/null | grep -v '\.attempts\.jsonl$' || true)
             if [ "${#originals[@]}" -eq 1 ]; then
               PAIRED=(--paired "${originals[0]}")
             else

@@ -16,6 +16,9 @@
  *   - before the run and before every batch, GET /usage: stop if today's
  *     grounded prompts + the batch would pass 1,000                  (§7)
  *   - apiError items are retried up to 3 times with backoff          (§6)
+ *   - at most 4 provider calls per item across every process: each call
+ *     is appended to <out>.attempts.jsonl and flushed BEFORE it is made,
+ *     and --resume restores the counts from that ledger              (A2.7)
  *   - the engine model or commit changing mid-run stops the run      (§5)
  *
  * The admin key comes from FAULTLINE_ADMIN_KEY, else the FAULTLINE_API_KEY= line
@@ -29,7 +32,9 @@
  *   4 INVALID run: model or engine commit changed (prereg §5)
  *   5 provider-spend cap reached (503), resumable with --resume
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import {
+  appendFileSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, writeSync,
+} from 'node:fs';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import path from 'node:path';
@@ -47,6 +52,8 @@ export const DAILY_GROUNDED_CAP = 1000;
 export const BATCH_SIZE = 25;
 /** Prereg §6: retry any apiError item up to 3 times. */
 export const MAX_RETRIES = 3;
+/** A2.7: "up to 3 times" is at most 4 provider calls per item, across every process. */
+export const MAX_CALLS = MAX_RETRIES + 1;
 const REQUEST_TIMEOUT_MS = 10 * 60_000;
 /** Fixed location of the hosted admin key; never derived from input. */
 const KEY_FILE = `${homedir()}/.config/faultline/hosted-api-key.env`;
@@ -163,6 +170,44 @@ export function readDone(file) {
     done.set(row.id, row);
   }
   return done;
+}
+
+// ── Attempt ledger (A2.7 across --resume) ────────────────────────────────────
+
+/**
+ * The attempt ledger sits beside the out file. One line per provider call,
+ * `{id, attempt, ts}`, appended and fsynced BEFORE the call is made, so a call
+ * that happened is never missing from it, whichever way the process ends.
+ */
+export function ledgerPath(out) {
+  return `${out}.attempts.jsonl`;
+}
+
+/** Calls already made per id, restored from the ledger. Refuses a gap or repeat. */
+export function readLedger(file) {
+  const counts = new Map();
+  if (!existsSync(file)) return counts;
+  for (const line of readFileSync(file, 'utf8').split('\n')) {
+    if (line.trim() === '') continue;
+    const { id, attempt } = JSON.parse(line);
+    const expected = (counts.get(id) ?? 0) + 1;
+    if (attempt !== expected) throw new Error(`attempt ledger ${file}: id ${id} has attempt ${attempt} where ${expected} was due`);
+    counts.set(id, attempt);
+  }
+  return counts;
+}
+
+/** Append one call per item and flush it to disk before the request goes out. */
+function recordCalls(file, entries) {
+  const ts = new Date().toISOString();
+  const text = entries.map(({ id, attempt }) => JSON.stringify({ id, attempt, ts })).join('\n') + '\n';
+  const fd = openSync(file, 'a');
+  try {
+    writeSync(fd, text);
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 // ── HTTP ─────────────────────────────────────────────────────────────────────
@@ -290,27 +335,44 @@ function buildRow(item, result, attempts, engineSha) {
  * Run the batches. Rows are appended as soon as an item is final, so a stop at
  * any point leaves a file `--resume` can continue from the next unanswered id.
  */
-async function runBatches({ request, options, pending, engine, done, log }) {
+function appendRows(file, rows) {
+  if (rows.length > 0) appendFileSync(file, rows.map((row) => JSON.stringify(row)).join('\n') + '\n');
+}
+
+/**
+ * Items whose ledger already holds MAX_CALLS calls get no fifth call: they are
+ * written as failures with attempts = MAX_CALLS, the calls actually made.
+ */
+function closeExhausted(pending, attempts, options, engine, log) {
+  const exhausted = pending.filter((item) => (attempts.get(item.id) ?? 0) >= MAX_CALLS);
+  appendRows(options.out, exhausted.map((item) => buildRow(item, null, MAX_CALLS, engine.engineSha)));
+  if (exhausted.length > 0) log(`${exhausted.length} item(s) already had ${MAX_CALLS} calls in the ledger: written as failures, not called again`);
+  return pending.filter((item) => (attempts.get(item.id) ?? 0) < MAX_CALLS);
+}
+
+async function runBatches({ request, options, pending, engine, done, attempts, log }) {
   let model = [...done.values()].find((row) => row.model)?.model ?? null;
-  const attempts = new Map();
-  const queue = [...pending];
+  const queue = closeExhausted(pending, attempts, options, engine, log);
+  const ledger = ledgerPath(options.out);
   let retryRound = 0;
   while (queue.length > 0) {
     const batch = queue.splice(0, BATCH_SIZE);
     await guardAllowance(request, batch.length, log);
     await guardEngine(request, engine);
+    const calls = batch.map((item) => ({ id: item.id, attempt: (attempts.get(item.id) ?? 0) + 1 }));
+    recordCalls(ledger, calls);
+    for (const { id, attempt } of calls) attempts.set(id, attempt);
     const results = await postBatch(request, batch);
     const rows = [];
     const retry = [];
     for (const item of batch) {
       const result = results?.get(item.id) ?? null;
-      const tries = (attempts.get(item.id) ?? 0) + 1;
-      attempts.set(item.id, tries);
+      const tries = attempts.get(item.id);
       const failed = !result || result.apiError === true;
-      if (failed && tries <= MAX_RETRIES) retry.push(item);
+      if (failed && tries < MAX_CALLS) retry.push(item);
       else rows.push(buildRow(item, result, tries, engine.engineSha));
     }
-    if (rows.length > 0) appendFileSync(options.out, rows.map((row) => JSON.stringify(row)).join('\n') + '\n');
+    appendRows(options.out, rows);
     log(`batch ${batch[0].id}..${batch[batch.length - 1].id}: ${rows.length} written, ${retry.length} to retry`);
     const seen = [...new Set(rows.map((row) => row.model).filter(Boolean))];
     for (const current of seen) {
@@ -354,8 +416,9 @@ export async function runAccuracy(options, deps = {}) {
     }
     if (!key) throw new RunStop(EXIT.REFUSED, 'REFUSED: no admin key (set FAULTLINE_ADMIN_KEY or ~/.config/faultline/hosted-api-key.env)');
     const items = selectItems(options.set, loadGold(options.gold), options.subsample);
-    if (!options.resume && existsSync(options.out)) {
-      throw new RunStop(EXIT.REFUSED, `REFUSED: ${options.out} exists; pass --resume to continue it`);
+    const ledger = ledgerPath(options.out);
+    if (!options.resume && (existsSync(options.out) || existsSync(ledger))) {
+      throw new RunStop(EXIT.REFUSED, `REFUSED: ${options.out} or its attempt ledger exists; pass --resume to continue it`);
     }
     mkdirSync(path.dirname(options.out), { recursive: true });
     const done = readDone(options.out);
@@ -365,9 +428,13 @@ export async function runAccuracy(options, deps = {}) {
     }
     const request = makeClient(options.api, key);
     const engine = await resolveEngine(request, options, done);
+    const attempts = readLedger(ledger);
+    if (done.size > 0 && !existsSync(ledger)) {
+      throw new RunStop(EXIT.REFUSED, `REFUSED: ${options.out} has rows but no attempt ledger (${ledger}); the call counts cannot be restored`);
+    }
     const pending = items.filter((item) => !done.has(item.id));
     log(`set ${options.set}: ${items.length} items, ${done.size} already written, ${pending.length} to run; engine ${engine.engineSha}; out ${options.out}`);
-    await runBatches({ request, options, pending, engine, done, log });
+    await runBatches({ request, options, pending, engine, done, attempts, log });
     summarize(options.out, items.length, log);
     return EXIT.OK;
   } catch (error) {

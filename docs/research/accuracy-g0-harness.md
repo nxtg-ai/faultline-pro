@@ -1,15 +1,15 @@
 # Accuracy G0 harness
 
-How to run and score the pre-registered verdict-accuracy baseline. The spec is `docs/research/2026-10-02-prereg-verdict-accuracy-g0-v1.md` (§2 to §8, amendments A1 and A2). This page does not change it; where they differ, the prereg wins.
+How to run and score the pre-registered verdict-accuracy baseline. The spec is `docs/research/2026-10-02-prereg-verdict-accuracy-g0-v1.md` (§2 to §8, amendments A1, A2 and A3). This page does not change it; where they differ, the prereg wins.
 
-**Status (2026-10-02): built and tested against fakes only. No run has been made.** The real run waits for the independent design review named in the prereg header. Every test uses the mock provider, a mocked Gemini SDK or a fake HTTP server on 127.0.0.1. None calls the hosted API or a real provider.
+**Status (2026-10-03): built and tested against fakes only. No run has been made.** The independent review (codex, `al:d9dff4d8f98c5bc2`) found two blockers, both fixed before any run: the §8 agreement rule (now A3) and retry counts lost across `--resume` (now the attempt ledger). The real run waits for the independent design review named in the prereg header. Every test uses the mock provider, a mocked Gemini SDK or a fake HTTP server on 127.0.0.1. None calls the hosted API or a real provider.
 
 ## Parts
 
 | Part | Path | What it does |
 |---|---|---|
 | Route | `packages/api/src/routes/admin-verify.ts` | `POST /admin/verify-claims`, admin key only. Verifies 1 to 25 claims as given. |
-| Runner | `scripts/accuracy-g0.mjs` | Checks the gold hash, sends batches, applies the guards, writes one JSONL row per item. Node 20, no dependencies. |
+| Runner | `scripts/accuracy-g0.mjs` | Checks the gold hash, sends batches, applies the guards, writes one JSONL row per item and one attempt-ledger line per provider call. Node 20, no dependencies. |
 | Scorer | `scripts/accuracy-g0-score.py` | Computes the §4 metrics with bootstrap CIs, checks §5 validity, compares two runs for §8. Python 3 and numpy. |
 | Workflow | `.github/workflows/accuracy-g0.yml` | `workflow_dispatch` with `set: full | verify-subsample` (A1). Runs the scorer tests, the runner, then the scorer, and uploads the outputs. |
 | Engine commit | `GET /health` → `commit` | The git sha the deployed image was built from (`FAULTLINE_GIT_SHA`, passed by `fly-deploy.yml`). `null` until the first deploy after this change. |
@@ -69,14 +69,15 @@ Through GitHub Actions (A1): dispatch **Accuracy G0** with `set`. It needs the r
 | Admin key | Must be present | Exit 2 before any request |
 | Engine identity | `/health.commit`, else `--engine-sha` (A2.6) | Exit 2 if neither, or if they disagree |
 | Allowance | Before each batch, admin `GET /usage` → `groundingAllowance.groundedPrompts`; stop if count + batch > 1,000 (§7) | Exit 3, rows so far kept, resume with `--resume` after `resetsAt` |
-| Retries | `apiError` items retried up to 3 times with exponential backoff (§6) | After 4 calls the item is written as a failure |
+| Retries | `apiError` items retried up to 3 times with exponential backoff (§6, A2.7): at most 4 calls per item **across every process**, counted in the attempt ledger | After 4 calls the item is written as a failure with `attempts: 4`; an item whose ledger already holds 4 calls is written that way with no further call |
+| Attempt ledger | `<out>.attempts.jsonl` must not exist on a fresh run; on `--resume` it must exist whenever the out file has rows | Exit 2 before any verify call |
 | Model change | The engine's model string differs from earlier rows (§5) | Exit 4, INVALID, do not score |
 | Engine change | `/health` commit (or version) changes before a batch, or a resumed file has another engine sha (§5) | Exit 4, INVALID, do not score |
 | Spend cap | The route answers 503 budget exhausted | Exit 5, resumable |
 
 Exit codes: 0 done, 1 error, 2 refused, 3 allowance stop, 4 INVALID, 5 spend cap.
 
-Two operating limits. A `full` dispatch through the workflow that stops with exit 3 cannot resume in a later dispatch, because each dispatch starts a new file; a run that may need two days is run locally with `--resume`. Each batch of 25 at concurrency 4 is a single HTTP request that can take a minute or more; the runner waits up to 10 minutes for it.
+Two operating limits. A `full` dispatch through the workflow that stops with exit 3 cannot resume in a later dispatch, because each dispatch starts a new out file **and a new attempt ledger**; a run that may need two days is run locally with `--resume`, which is the only path on which the four-call ceiling carries across processes. The ledger is written into `out/` and uploaded with the run artifact. Each batch of 25 at concurrency 4 is a single HTTP request that can take a minute or more; the runner waits up to 10 minutes for it.
 
 ## Output rows
 
@@ -94,7 +95,16 @@ One JSON object per item, written as soon as the item is final:
 | `engineSha` | The deployed commit |
 | `ts` | When the row was written |
 
-Nothing grounded is stored. Commit the output as `docs/research/data/accuracy-g0-<runid>.jsonl` (prereg §6).
+Nothing grounded is stored. Commit the output as `docs/research/data/accuracy-g0-<runid>.jsonl` (prereg §6), with its attempt ledger beside it.
+
+## Attempt ledger
+
+`<out>.attempts.jsonl`, beside the out file. One line per provider call, `{"id", "attempt", "ts"}`, appended and fsynced **before** the request is sent, so a call that happened is in the ledger however the process ends (an allowance stop, a crash, a killed job).
+
+- On `--resume` the runner restores every id's call count from the ledger. The next call for an item that waited for a retry is numbered from there, and an item that already has 4 calls gets no fifth: it is written as a failure with `attempts: 4`.
+- A row's `attempts` therefore equals the calls actually made for that item across all processes. Before the ledger, the counts lived in memory only: the reviewer forced an allowance stop after one failed attempt, resumed four times, and the provider was called 5 times while the row said `attempts: 1`. That scenario is now a test (at most 4 calls, the 5th never made, `attempts` exact).
+- The runner refuses (exit 2) a fresh run when a ledger exists, a resume whose out file has rows but no ledger, and a ledger whose attempt numbers skip or repeat.
+- The ledger matches the workflow's `accuracy-g0-full-*.jsonl` glob, so the workflow skips `*.attempts.jsonl` when it looks for the committed full run to pair with.
 
 ## Scoring
 
@@ -105,11 +115,21 @@ python3 scripts/accuracy-g0-score.py docs/research/data/accuracy-g0-full-<runid>
 python3 scripts/accuracy-g0-score.py <rerun>.jsonl --paired docs/research/data/accuracy-g0-full-<runid>.jsonl
 ```
 
+The paired readout applies **A3** and prints both components and a verdict:
+
+- (i) per-item status agreement on the shared ids (a failure on either side is a disagreement), against the floor 0.85;
+- (ii) the BA difference and its 95% paired-bootstrap CI, which must lie wholly inside [−0.10, +0.10];
+- `VERDICT: AGREEMENT` only when both hold, else `VERDICT: NOT REPRODUCED`. Whether the CI contains 0 (the superseded §8 rule) is still printed, as information only.
+
+A NOT REPRODUCED verdict is a result, not an invalid run: the exit code stays 0 and the number is published with that label (A3).
+
 It prints a readout and, with `--json`, writes every number. Headline: balanced accuracy on the binary items, abstentions and failures counted wrong, with its 95% bootstrap CI. Also: plain accuracy, recall on false and on true claims, the false-claim flag rate, coverage and selective accuracy, the full confusion matrix, the NEE share, the time-sensitive split and the `mixed` parse-failure split. A2 fixes the details the prereg left open.
 
 An INVALID run (§5: more than 2% failures, a model or engine change, a missing or repeated id, or a gold label that differs from the file) prints its reasons and no metric, and exits 4. A gold file with the wrong hash exits 2.
 
 The scorer can fail: `scripts/tests/test_accuracy_g0_score.py` checks that all-`supported` scores exactly 0.50, that flipping one gold label moves the number, and the numbers of a fixture computed by hand. With the abstention rule mutated (`mixed` scored as predicting `false`), two of those tests went red; restored, all passed (2026-10-02).
+
+A3 is tested on the committed 100 ids: the reviewer's all-opposite fixture (reproduced to the digit: BA difference 0.0301, CI [−0.2075, 0.2832], agreement 0.0000) is NOT REPRODUCED; identical runs, 10 and 15 balanced flips agree; 16 flips fail the floor with the CI inside the margin; 10 one-way flips on false items keep agreement at 0.90 but put the CI outside the margin. With component (i) removed, 3 tests went red; with component (ii) removed, 3 others went red; restored, all passed (2026-10-03).
 
 ## Tests
 
