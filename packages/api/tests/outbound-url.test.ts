@@ -107,6 +107,94 @@ describe('assertSafeOutboundUrl — blocked IPv6 literals', () => {
   });
 });
 
+// IANA special-purpose registries (updated 2025-10-09), codex al:d9dff4d8f98c5bc2 finding 3.
+// One address inside each added block and, where meaningful, one just outside it.
+describe('isBlockedAddress — IANA special-purpose blocks (inside)', () => {
+  const inside: Array<[string, string]> = [
+    ['192.0.2.0/24 TEST-NET-1 (codex)', '192.0.2.1'],
+    ['192.0.2.0/24 TEST-NET-1 last', '192.0.2.255'],
+    ['198.51.100.0/24 TEST-NET-2 (codex)', '198.51.100.1'],
+    ['198.51.100.0/24 TEST-NET-2 last', '198.51.100.255'],
+    ['203.0.113.0/24 TEST-NET-3 (codex)', '203.0.113.1'],
+    ['203.0.113.0/24 TEST-NET-3 last', '203.0.113.255'],
+    ['192.88.99.0/24 6to4 relay anycast', '192.88.99.1'],
+    ['192.88.99.2/32 6a44 relay', '192.88.99.2'],
+    ['192.0.0.0/24 non-exception .11', '192.0.0.11'],
+    ['192.0.0.170 NAT64 discovery', '192.0.0.170'],
+    ['192.0.0.171 NAT64 discovery', '192.0.0.171'],
+    ['0.0.0.0/32 this host', '0.0.0.0'],
+    ['2001:db8::/32 documentation (codex)', '2001:db8::1'],
+    ['2001:db8::/32 documentation last', '2001:db8:ffff:ffff:ffff:ffff:ffff:ffff'],
+    ['64:ff9b:1::/48 local-use NAT64', '64:ff9b:1::1'],
+    ['64:ff9b:1::/48 local-use NAT64 last', '64:ff9b:1:ffff:ffff:ffff:ffff:ffff'],
+    ['100::/64 discard-only', '100::1'],
+    ['100:0:0:1::/64 dummy prefix', '100:0:0:1::1'],
+    ['2001::/32 TEREDO', '2001::1'],
+    ['2001::/32 TEREDO embedding 127.0.0.1', '2001:0:4136:e378:8000:63bf:80ff:fffe'],
+    ['2001:1::4 (not one of the three anycast exceptions)', '2001:1::4'],
+    ['2001:2::/48 benchmarking', '2001:2::1'],
+    ['2001:4:113:: next to AS112-v6', '2001:4:113::1'],
+    ['2001:10::/28 deprecated ORCHID', '2001:10::1'],
+    ['2001:40:: after DETs', '2001:40::1'],
+    ['2001::/23 last address', '2001:1ff:ffff:ffff:ffff:ffff:ffff:ffff'],
+    ['2002::/16 6to4 embedding 127.0.0.1', '2002:7f00:1::1'],
+    ['2002::/16 6to4 embedding metadata', '2002:a9fe:a9fe::1'],
+    ['3fff::/20 documentation', '3fff::1'],
+    ['3fff::/20 documentation last', '3fff:fff:ffff:ffff:ffff:ffff:ffff:ffff'],
+    ['5f00::/16 SRv6 SIDs', '5f00::1'],
+  ];
+  it.each(inside)('%s (%s) is blocked', (_label, ip) => {
+    expect(isBlockedAddress(ip)).toBe(true);
+  });
+
+  it.each([
+    ['192.0.2.1'],
+    ['198.51.100.1'],
+    ['203.0.113.1'],
+    ['[2001:db8::1]'],
+  ])('codex finding: URL with %s is refused before DNS', async (host) => {
+    const resolver = resolveTo(PUBLIC_V4);
+    await expectBlocked(`http://${host}/`, /private or reserved address/);
+    expect(resolver).not.toHaveBeenCalled();
+  });
+});
+
+describe('isBlockedAddress — just outside the added blocks, and registry exceptions (allowed)', () => {
+  const outside: Array<[string, string]> = [
+    ['before 192.0.2.0/24', '192.0.1.255'],
+    ['after 192.0.2.0/24', '192.0.3.0'],
+    ['before 198.51.100.0/24', '198.51.99.255'],
+    ['after 198.51.100.0/24', '198.51.101.0'],
+    ['before 203.0.113.0/24', '203.0.112.255'],
+    ['after 203.0.113.0/24', '203.0.114.0'],
+    ['before 192.88.99.0/24', '192.88.98.255'],
+    ['after 192.88.99.0/24', '192.88.100.0'],
+    ['registry GR: 192.0.0.9 PCP anycast', '192.0.0.9'],
+    ['registry GR: 192.0.0.10 TURN anycast', '192.0.0.10'],
+    ['registry GR: 192.31.196.0/24 AS112-v4', '192.31.196.1'],
+    ['before 2001:db8::/32', '2001:db7:ffff:ffff:ffff:ffff:ffff:ffff'],
+    ['after 2001:db8::/32', '2001:db9::1'],
+    ['after 64:ff9b:1::/48', '64:ff9b:2::1'],
+    ['after 100:0:0:1::/64', '100:0:0:2::1'],
+    ['after 2001::/23', '2001:200::1'],
+    ['registry GR: 2001:1::1 PCP anycast', '2001:1::1'],
+    ['registry GR: 2001:1::2 TURN anycast', '2001:1::2'],
+    ['registry GR: 2001:1::3 DNS-SD SRP anycast', '2001:1::3'],
+    ['registry GR: 2001:3::/32 AMT', '2001:3::1'],
+    ['registry GR: 2001:4:112::/48 AS112-v6', '2001:4:112::1'],
+    ['registry GR: 2001:20::/28 ORCHIDv2', '2001:20::1'],
+    ['registry GR: 2001:30::/28 DETs', '2001:3f:ffff::1'],
+    ['registry GR: 2620:4f:8000::/48 AS112', '2620:4f:8000::1'],
+    ['before 2002::/16', '2001:ffff::1'],
+    ['after 2002::/16', '2003::1'],
+    ['after 3fff::/20', '3fff:1000::1'],
+    ['after 5f00::/16', '5f01::1'],
+  ];
+  it.each(outside)('%s (%s) is allowed', (_label, ip) => {
+    expect(isBlockedAddress(ip)).toBe(false);
+  });
+});
+
 describe('assertSafeOutboundUrl — private host names', () => {
   const names = ['localhost', 'LOCALHOST', 'localhost.', 'api.localhost', 'faultline-api.internal', 'internal', 'my-app.flycast', 'printer.local', 'Printer.Local.'];
   it.each(names)('%s is refused before DNS', async (host) => {
@@ -201,6 +289,35 @@ describe('test-only override', () => {
     vi.stubEnv('VITEST', '');
     expect(isPrivateOverrideActive()).toBe(false);
     await expectBlocked('http://169.254.169.254/');
+  });
+
+  it('codex al:d9dff4d8f98c5bc2: NODE_ENV=production + VITEST=false is not a test runner', async () => {
+    vi.stubEnv('FAULTLINE_OUTBOUND_ALLOW_PRIVATE', '1');
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('VITEST', 'false');
+    expect(isPrivateOverrideActive()).toBe(false);
+    await expectBlocked('http://127.0.0.1/');
+  });
+
+  it.each(['0', '1', 'TRUE', 'yes', ' true'])('VITEST=%j outside NODE_ENV=test does not activate it', (value) => {
+    vi.stubEnv('FAULTLINE_OUTBOUND_ALLOW_PRIVATE', '1');
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('VITEST', value);
+    expect(isPrivateOverrideActive()).toBe(false);
+  });
+
+  it('VITEST=true (what Vitest sets) activates it even when NODE_ENV is not test', () => {
+    vi.stubEnv('FAULTLINE_OUTBOUND_ALLOW_PRIVATE', '1');
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('VITEST', 'true');
+    expect(isPrivateOverrideActive()).toBe(true);
+  });
+
+  it('NODE_ENV=test activates it without VITEST', () => {
+    vi.stubEnv('FAULTLINE_OUTBOUND_ALLOW_PRIVATE', '1');
+    vi.stubEnv('NODE_ENV', 'test');
+    vi.stubEnv('VITEST', '');
+    expect(isPrivateOverrideActive()).toBe(true);
   });
 
   it('is ignored for any value other than 1', () => {

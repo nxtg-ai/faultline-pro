@@ -44,7 +44,7 @@ describe('url-validator — default _fetcher (lines 20-30)', () => {
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
       status: 200,
-      headers: { forEach: vi.fn() },
+      headers: { forEach: vi.fn(), get: () => null },
     } as unknown as Response);
 
     const result = await validateSourceUrl('https://example.com/study', 'Study', 'test claim');
@@ -57,7 +57,7 @@ describe('url-validator — default _fetcher (lines 20-30)', () => {
     vi.mocked(fetch).mockResolvedValue({
       ok: false,
       status: 404,
-      headers: { forEach: vi.fn() },
+      headers: { forEach: vi.fn(), get: () => null },
     } as unknown as Response);
 
     const result = await validateSourceUrl('https://example.com/missing', 'Missing', 'test');
@@ -83,7 +83,7 @@ describe('url-validator — default _fetcher (lines 20-30)', () => {
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
       status: 200,
-      headers: { forEach: vi.fn() },
+      headers: { forEach: vi.fn(), get: () => null },
     } as unknown as Response);
 
     const result = await validateSourceUrl('https://example.com', 'Example', 'test');
