@@ -1,3 +1,5 @@
+import { fetchOutboundFollow } from './outbound-url.js';
+
 export interface SourceValidation {
   uri: string;
   title: string;
@@ -13,16 +15,30 @@ export interface EvidenceLink {
   overallEvidenceScore: number; // 0–100, average of source scores
 }
 
-// Injectable fetcher — default uses global fetch, can be swapped in tests
+// Injectable fetcher — default runs through the outbound URL guard, can be swapped in tests
 type FetchFn = (uri: string) => Promise<{ status: number; headers: Record<string, string> }>;
 
-let _fetcher: FetchFn = async (uri: string) => {
+/** Redirect hops followed when probing a source; each hop is guarded before it is requested. */
+const MAX_SOURCE_REDIRECTS = 3;
+
+/**
+ * HEAD-probe a source URI that a model returned. The URI is untrusted, so the
+ * request goes through the outbound URL guard: connect-time-checked undici, no
+ * automatic redirects, at most MAX_SOURCE_REDIRECTS guarded hops. Every failure,
+ * a blocked target included, reports the source as unreachable (status 0) and
+ * never throws, so a hostile source cannot turn a scan into a 500.
+ */
+const defaultFetcher: FetchFn = async (uri: string) => {
   try {
-    const res = await fetch(uri, {
-      method: 'HEAD',
-      signal: AbortSignal.timeout(5000),
-      headers: { 'user-agent': 'Faultline-EvidenceBot/1.0' },
-    });
+    const res = await fetchOutboundFollow(
+      uri,
+      {
+        method: 'HEAD',
+        signal: AbortSignal.timeout(5000),
+        headers: { 'user-agent': 'Faultline-EvidenceBot/1.0' },
+      },
+      MAX_SOURCE_REDIRECTS,
+    );
     const headers: Record<string, string> = {};
     res.headers.forEach((v, k) => { headers[k] = v; });
     return { status: res.status, headers };
@@ -31,25 +47,14 @@ let _fetcher: FetchFn = async (uri: string) => {
   }
 };
 
+let _fetcher: FetchFn = defaultFetcher;
+
 export function setUrlFetcher(fn: FetchFn): void {
   _fetcher = fn;
 }
 
 export function resetUrlFetcher(): void {
-  _fetcher = async (uri: string) => {
-    try {
-      const res = await fetch(uri, {
-        method: 'HEAD',
-        signal: AbortSignal.timeout(5000),
-        headers: { 'user-agent': 'Faultline-EvidenceBot/1.0' },
-      });
-      const headers: Record<string, string> = {};
-      res.headers.forEach((v, k) => { headers[k] = v; });
-      return { status: res.status, headers };
-    } catch {
-      return { status: 0, headers: {} };
-    }
-  };
+  _fetcher = defaultFetcher;
 }
 
 function scoreSource(
