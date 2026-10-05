@@ -23,6 +23,9 @@ import sys
 from email.header import decode_header, make_header
 
 WATCH_DOMAINS = ("ceramic.ai", "exa.ai")
+# Founder ruling 2026-10-05 (al:481a87a5d0db81cc): Faultline Pro vendor, licensing and research
+# mail goes from faultline.pro@nxtg.ai, so any mail TO it is a reply this watch must see too.
+WATCH_TO = ("faultline.pro@nxtg.ai",)
 SINCE = "05-Oct-2026"  # the requests were sent on this day; older Exa mail is the 2026-10-02 thread
 CREDS = os.path.expanduser("~/.secrets/geo-stripe.env")
 STATE_DIR = os.path.expanduser("~/.cache/faultline-pro")
@@ -68,8 +71,10 @@ def main():
         print(f"vendor-consent-watch: mailbox unreachable: {type(e).__name__}")
         return 1
     found = []
-    for domain in WATCH_DOMAINS:
-        _, data = m.uid("SEARCH", None, f'(SINCE {SINCE} FROM "{domain}")')
+    searches = [(d, f'(SINCE {SINCE} FROM "{d}")') for d in WATCH_DOMAINS]
+    searches += [(t, f'(SINCE {SINCE} TO "{t}")') for t in WATCH_TO]
+    for domain, criteria in searches:
+        _, data = m.uid("SEARCH", None, criteria)
         for uid in data[0].split():
             u = uid.decode()
             if u in seen:
@@ -83,7 +88,7 @@ def main():
     for f in found:
         with open(LEDGER, "a") as fh:
             fh.write(json.dumps(f) + "\n")
-        say(f"@fp VENDOR REPLY ({f['domain']}) to the Faultline consent request: "
+        say(f"@fp VENDOR REPLY ({f['domain']} match) to the Faultline consent request: "
             f"from {f['from']}, subject '{f['subject']}', {f['date']}. Read it in the engage@/axw Zoho inbox; "
             f"prereg A1 arms stay SUSPENDED until written consent is confirmed.")
     json.dump({"seen_uids": sorted(seen)}, open(STATE, "w"))

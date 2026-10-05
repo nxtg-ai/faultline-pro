@@ -85,3 +85,27 @@ The form showed no acknowledgement. It opened an optional "Talk to Exa (15 mins)
 
 Fact for the opening line: the 2026-10-02 storage-rights note was sent on 2026-10-02 at 11:08 CDT, to sales@exa.ai from axw@nxtg.ai. An Exa account rep replied the same day. Checked from mailbox headers only.
 
+**Replies (watch, 2026-10-05):**
+- Ceramic Legal <legal+noreply@ceramic.ai>, 20:15:33Z: an auto-acknowledgement ("Thank you for reaching out. We'll get back to you as soon as we can."). Not consent.
+- Alina Chen (Growth, Exa) <alina@exa.ai> to engage@, 13:16 PDT: "Saw you were looking to connect with us but didn't find a time to chat. Was there anything in particular you were looking to chat about / solve with Exa?" This confirms the form reached Exa. The message text did not reach her.
+
+## 2b. Exa, in-thread answer to Alina Chen
+
+Sent from "Faultline Pro <faultline.pro@nxtg.ai>" (founder ruling 2026-10-05, `al:481a87a5d0db81cc`), in reply to her message. It carries the same request as section 2. No new ask is added.
+
+**Subject:** Re: reaching out from exa
+
+Hi Alina,
+
+Thank you for following up. We do not need a call; the form carried a written request, so here it is in full.
+
+[Section 2 text from "We plan a small, pre-registered research comparison" through the two questions, verbatim.]
+
+Thank you,
+The Faultline team, NXTG.AI
+faultline.pro@nxtg.ai
+
+**Send record:** SENT 2026-10-05 20:21:51Z, from Faultline Pro <faultline.pro@nxtg.ai> to alina@exa.ai, In-Reply-To her message.
+- Message-ID `<179123171082.4097582.15509703900616363352@nxtg.ai>`, 1,231 characters.
+- SMTP refused none. Zoho Sent holds exactly 1 message with that Message-ID.
+
