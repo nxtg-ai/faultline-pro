@@ -323,7 +323,7 @@ describe('accuracy-g0 runner: grounding allowance guard (prereg §7)', () => {
     expect(state.attemptsById.get(0)).toBe(1); // not re-sent on resume
     expect(state.attemptsById.get(50)).toBe(1);
     expect(first.out + resumed.out).not.toContain(KEY);
-  });
+  }, 30_000); // two real runner processes over all 661 items: past the 5 s default under load (timed out at load avg 39, 2026-10-05)
 
   it('refuses to start when the day is already at the cap (zero verify calls)', async () => {
     state.groundedPrompts = 990;
