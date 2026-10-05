@@ -1,0 +1,32 @@
+G0 verdict accuracy: out/accuracy-g0-verify-subsample-37353154690.jsonl  (set verify-subsample, models ['gemini-2.5-flash'], engine ['47b72f099eda5c75dd2f7a7019ec8dde007b50ac'])
+binary items n=100, failures=0, unknown statuses=0
+HEADLINE balanced accuracy (abstention wrong): 0.7987  [0.6925, 0.8906]
+  accuracy             0.8200  [0.7400, 0.8900]
+  recall_false         0.7619  [0.5556, 0.9375]
+  recall_true          0.8354  [0.7531, 0.9125]
+  false_flag_rate      0.8571  [0.6842, 1.0000]
+  coverage             0.8600  [0.7900, 0.9300]
+  selective_accuracy   0.9535  [0.9059, 0.9891]
+time-sensitive inside n=4: BA 1.0000  [1.0000, 1.0000]
+time-sensitive outside n=96: BA 0.7778  [0.6525, 0.8889]
+confusion: {"true": {"supported": 66, "contradicted": 1, "mixed": 11, "unverified": 1, "failure": 0}, "false": {"supported": 3, "contradicted": 16, "mixed": 2, "unverified": 0, "failure": 0}, "not_enough_evidence": {"supported": 0, "contradicted": 0, "mixed": 0, "unverified": 0, "failure": 0}}
+mixed split: {"true": {"mixed_parse_fallback": 0, "mixed_inconclusive": 11}, "false": {"mixed_parse_fallback": 0, "mixed_inconclusive": 2}, "not_enough_evidence": {"mixed_parse_fallback": 0, "mixed_inconclusive": 0}}
+G0 verdict accuracy: docs/research/data/accuracy-g0-full-20261005T174223Z.jsonl  (set full, models ['gemini-2.5-flash'], engine ['47b72f099eda5c75dd2f7a7019ec8dde007b50ac'])
+binary items n=631, failures=0, unknown statuses=0
+HEADLINE balanced accuracy (abstention wrong): 0.7633  [0.7223, 0.8020]
+  accuracy             0.7987  [0.7670, 0.8288]
+  recall_false         0.6918  [0.6178, 0.7597]
+  recall_true          0.8347  [0.8008, 0.8695]
+  false_flag_rate      0.8050  [0.7407, 0.8625]
+  coverage             0.9033  [0.8811, 0.9271]
+  selective_accuracy   0.8842  [0.8576, 0.9099]
+NEE n=30: unverified-or-mixed share 0.1333  [0.0333, 0.2667]
+time-sensitive inside n=20: BA 1.0000  [1.0000, 1.0000]
+time-sensitive outside n=611: BA 0.7483  [0.7059, 0.7904]
+confusion: {"true": {"supported": 394, "contradicted": 36, "mixed": 42, "unverified": 0, "failure": 0}, "false": {"supported": 30, "contradicted": 110, "mixed": 18, "unverified": 1, "failure": 0}, "not_enough_evidence": {"supported": 13, "contradicted": 13, "mixed": 4, "unverified": 0, "failure": 0}}
+mixed split: {"true": {"mixed_parse_fallback": 2, "mixed_inconclusive": 40}, "false": {"mixed_parse_fallback": 0, "mixed_inconclusive": 18}, "not_enough_evidence": {"mixed_parse_fallback": 1, "mixed_inconclusive": 3}}
+PAIRED (this run - accuracy-g0-full-20261005T174223Z.jsonl) on 100 shared binary ids, prereg A3:
+  (i)  per-item status agreement 0.9200 (floor 0.85): met
+  (ii) BA difference -0.0301 [-0.0933, 0.0127], CI inside [-0.10, +0.10]: met
+  VERDICT: AGREEMENT
+  information only (superseded section 8 rule): CI contains 0: True
