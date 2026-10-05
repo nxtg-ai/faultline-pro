@@ -44,7 +44,7 @@ Thank you,
 The Faultline team, NXTG.AI
 engage@nxtg.ai
 
-**Send record:** NOT SENT. Zoho SMTP refused `From: engage@nxtg.ai` with `553 Sender is not allowed to relay emails` (internal probe, 2026-10-05). engage@ receives into the axw Zoho mailbox but is not a send-as identity there. Adding it needs a Zoho web login that fp does not hold. Sending from axw@ is the founder's personal line, which is out of scope. Waiting on a one-time "Send mail as engage@nxtg.ai" setup, or a ruling on another channel.
+**Send record:** NOT SENT. Zoho SMTP refused `From: engage@nxtg.ai` with `553 Sender is not allowed to relay emails` (internal probe, 2026-10-05). engage@ receives into the axw Zoho mailbox but is not a send-as identity there. Adding it needs a Zoho web login that fp does not hold. Sending from axw@ is the founder's personal line, which is out of scope. Waiting on a one-time "Send mail as engage@nxtg.ai" setup, or a ruling on another channel. EMMA-SOUL then ruled (`al:9b3c4ed2b2019603`) to use Ceramic's own web form at https://ceramic.ai/contact. Checked 2026-10-05 ~20:10Z with browser hands: the page has no message form, only the addresses info@, support@ and sales@ceramic.ai, plus a newsletter Subscribe form (email and terms checkbox). Per the ruling, nothing was submitted, and axw@ was not used. Ceramic waits for engage@ send-as, which EMMA-SOUL is taking to the founder.
 
 ---
 
