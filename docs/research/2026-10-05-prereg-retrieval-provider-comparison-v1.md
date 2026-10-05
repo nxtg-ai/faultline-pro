@@ -199,4 +199,25 @@ Why these margins:
 
 ## 11. Amendments
 
-None. Any amendment is committed before the call it affects, says what changed and why, and keeps this text unchanged above it.
+Any amendment is committed before the call it affects, says what changed and why, and keeps this text unchanged above it.
+
+### A1 (2026-10-05, before any Web Search call): two arms suspended on terms
+
+The §7 terms read (`2026-10-05-retrieval-terms.md`) found contract terms that bind this run. Cloudflare's Service-Specific Terms for the Developer Platform §3 say: "by using such Third-Party Products, you agree to comply with all restrictions ... in the standard terms of the model or search service provider". fp re-read the decisive clauses on the primary pages on 2026-10-05.
+
+- **Arm C (Ceramic) is SUSPENDED until Ceramic consents in writing.** Ceramic Terms of Service (Last Modified February 27, 2026) §7 forbid using the Services:
+  - (g) "for competitive analysis, benchmarking, or to build competitive products or services";
+  - (h) to "publicly disseminate information regarding the performance of the Services without Ceramic's prior written consent".
+
+  This run is a benchmark whose results are published.
+- **Arm E (Exa) is SUSPENDED until Exa gives written permission.** Exa Terms of Service §4.2 forbid, "unless ... you have our written permission": (a) to "download, modify, copy, distribute, transmit, display, perform, reproduce, duplicate, publish ... any information contained on, or obtained from or through, the Services". The run copies result URLs into committed rows and publishes measurements derived from them. There is no benchmarking clause.
+- **Arm L (Linkup) proceeds.** The Linkup Terms of Use (August 2025) have no benchmarking or performance-publication clause found. §4.1 limits Open Web Content to "reproduction and extraction for the sole purpose of text and data mining" and to retaining it "for as long as is necessary for the purposes of text and data mining only". This run is text and data mining. It stores only URLs, statuses and counts, and no title or description.
+- **Requests to Ceramic and Exa** are drafted for Asif to send (`2026-10-05-search-vendor-consent-drafts.md`). An arm resumes only by a further amendment that cites the written consent. Each resumed arm runs inside the §5 72-hour window of whatever is then run, with its own Arm G anchor if the window has passed.
+- **What A1 does not change:** metrics, decision rule, seeds, ceiling. With one arm the spend estimate falls to about $8.
+
+**What the terms mean for §8 condition 5 (recorded now, before any data).** All three providers restrict storing results beyond real-time display or text and data mining:
+- Ceramic §7(p);
+- Exa §4.2(a);
+- Linkup §4.1, for title and description.
+
+Faultline keeps scan history. So no arm can meet condition 5 on its standard terms. A CANDIDATE verdict would need a negotiated order form or written permission, and the readout will say so.
