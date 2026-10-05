@@ -46,6 +46,11 @@ engage@nxtg.ai
 
 **Send record:** NOT SENT. Zoho SMTP refused `From: engage@nxtg.ai` with `553 Sender is not allowed to relay emails` (internal probe, 2026-10-05). engage@ receives into the axw Zoho mailbox but is not a send-as identity there. Adding it needs a Zoho web login that fp does not hold. Sending from axw@ is the founder's personal line, which is out of scope. Waiting on a one-time "Send mail as engage@nxtg.ai" setup, or a ruling on another channel. EMMA-SOUL then ruled (`al:9b3c4ed2b2019603`) to use Ceramic's own web form at https://ceramic.ai/contact. Checked 2026-10-05 ~20:10Z with browser hands: the page has no message form, only the addresses info@, support@ and sales@ceramic.ai, plus a newsletter Subscribe form (email and terms checkbox). Per the ruling, nothing was submitted, and axw@ was not used. Ceramic waits for engage@ send-as, which EMMA-SOUL is taking to the founder.
 
+**SENT 2026-10-05 20:15:29Z** after EMMA-SOUL added engage@ as an alias of the axw mailbox (`al:70bd40e2e617f67d`).
+- From "NXTG.AI <engage@nxtg.ai>", to legal@ceramic.ai, cc sales@ceramic.ai, Reply-To engage@nxtg.ai.
+- The committed text above, word for word (1,577 characters).
+- Message-ID `<179123132831.4043584.2246987421039214643@nxtg.ai>`. SMTP refused no recipient. Zoho Sent holds exactly 1 message with that Message-ID (IMAP header search, 20:15Z).
+
 ---
 
 ## 2. Exa (https://exa.ai/contact/sales)
