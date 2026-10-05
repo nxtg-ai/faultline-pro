@@ -2,7 +2,7 @@
 
 How to run and score the pre-registered verdict-accuracy baseline. The spec is `docs/research/2026-10-02-prereg-verdict-accuracy-g0-v1.md` (§2 to §8, amendments A1, A2 and A3). This page does not change it; where they differ, the prereg wins.
 
-**Status (2026-10-03): built and tested against fakes only. No run has been made.** The independent review (codex, `al:d9dff4d8f98c5bc2`) found two blockers, both fixed before any run: the §8 agreement rule (now A3) and retry counts lost across `--resume` (now the attempt ledger). The real run waits for the independent design review named in the prereg header. Every test uses the mock provider, a mocked Gemini SDK or a fake HTTP server on 127.0.0.1. None calls the hosted API or a real provider.
+**Status (2026-10-05): the full run was made on 2026-10-05 after codex PASS (`al:6794f91790683de4`); results in `2026-10-05-accuracy-g0-results.md`.** Before that (2026-10-03): built and tested against fakes only. The independent review (codex, `al:d9dff4d8f98c5bc2`) found two blockers, both fixed before any run: the §8 agreement rule (now A3) and retry counts lost across `--resume` (now the attempt ledger). The real run waits for the independent design review named in the prereg header. Every test uses the mock provider, a mocked Gemini SDK or a fake HTTP server on 127.0.0.1. None calls the hosted API or a real provider.
 
 ## Parts
 
