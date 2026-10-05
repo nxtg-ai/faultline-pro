@@ -1,6 +1,8 @@
-# Search vendor consent requests: drafts for Asif to send
+# Search vendor consent requests
 
-**Status:** DRAFTS. Nothing has been sent. Each message goes out as Asif, so Asif sends it.
+**Status:** AUTHORIZED TO SEND by EMMA-SOUL as principal (`al:f24b3825e397565d`, 2026-10-05). fp sends, from the company address engage@nxtg.ai, signed "The Faultline team, NXTG.AI". The send record is below each message.
+
+~~Each message goes out as Asif, so Asif sends it.~~ Struck 2026-10-05 per the same ruling: this is the retired pattern, and nothing goes to the founder to send.
 
 **Why:** prereg amendment A1 (`2026-10-05-prereg-retrieval-provider-comparison-v1.md` §11) suspends two arms of the retrieval comparison until the vendor agrees in writing:
 - **Ceramic:** Terms §7(g) and (h) forbid benchmarking and publishing performance without prior written consent.
@@ -23,7 +25,7 @@ Terms quoted in `2026-10-05-retrieval-terms.md`.
 
 Hello,
 
-I run Faultline (https://faultline.nxtg.ai), which checks the claims in AI-generated text against evidence from the web. We plan a small, pre-registered research comparison of search sources for claim verification. Ceramic would be used through Cloudflare's Web Search API, alongside Exa, Linkup and Google grounding.
+Faultline (https://faultline.nxtg.ai), from NXTG.AI, checks the claims in AI-generated text against evidence from the web. We plan a small, pre-registered research comparison of search sources for claim verification. Ceramic would be used through Cloudflare's Web Search API, alongside Exa, Linkup and Google grounding.
 
 Your Terms of Service (last modified February 27, 2026) §7(g) and (h) restrict benchmarking and publishing performance information without your prior written consent. So we are asking for that consent before we make any call.
 
@@ -39,8 +41,10 @@ Could you confirm in writing whether Ceramic consents to this use and publicatio
 Separately: if the results are good, we would want to keep cited URLs and short snippets in each user's own scan history. That goes beyond §7(p)'s real-time display. What would an order form for that look like?
 
 Thank you,
-Asif Waliuddin
-Faultline, NXTG.AI
+The Faultline team, NXTG.AI
+engage@nxtg.ai
+
+**Send record:** NOT SENT. Zoho SMTP refused `From: engage@nxtg.ai` with `553 Sender is not allowed to relay emails` (internal probe, 2026-10-05). engage@ receives into the axw Zoho mailbox but is not a send-as identity there. Adding it needs a Zoho web login that fp does not hold. Sending from axw@ is the founder's personal line, which is out of scope. Waiting on a one-time "Send mail as engage@nxtg.ai" setup, or a ruling on another channel.
 
 ---
 
@@ -50,7 +54,7 @@ Faultline, NXTG.AI
 
 Hello,
 
-This follows our earlier note about storage rights for Faultline (https://faultline.nxtg.ai).
+This follows our note of 2 October 2026 to sales@exa.ai about storage rights for Faultline (https://faultline.nxtg.ai).
 
 We plan a small, pre-registered research comparison of search sources for claim verification. It would use Exa through Cloudflare's Web Search API, alongside other providers and Google grounding. Your Terms §4.2(a) restrict copying and publishing information obtained from the Services without written permission. So we are asking for that permission before we make any call.
 
@@ -64,5 +68,15 @@ Two questions:
 2. Does Zero Data Retention apply to Exa requests made through Cloudflare? Cloudflare's providers page lists Exa as not ZDR, while its changelog says all three providers are.
 
 Thank you,
-Asif Waliuddin
-Faultline, NXTG.AI
+The Faultline team, NXTG.AI
+engage@nxtg.ai
+
+**Send record:** SUBMITTED 2026-10-05 19:59:44Z through https://exa.ai/contact/sales, by fp with browser hands.
+- First name "Faultline", last name "Team (NXTG.AI)", email engage@nxtg.ai.
+- "How did you hear": Other, "Cloudflare Web Search API providers page".
+- Message: the text above, with its subject line prepended (the form has no subject field).
+
+The form showed no acknowledgement. It opened an optional "Talk to Exa (15 mins)" booking window, which fp closed without booking, because a call is outside the authorization. Delivery is unconfirmed, and the form was not resubmitted, to avoid a duplicate.
+
+Fact for the opening line: the 2026-10-02 storage-rights note was sent on 2026-10-02 at 11:08 CDT, to sales@exa.ai from axw@nxtg.ai. An Exa account rep replied the same day. Checked from mailbox headers only.
+
