@@ -9,13 +9,17 @@
  * env or the key file, so "never prints the key" is checked on real stdout and
  * stderr.
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { spawn } from 'node:child_process';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+
+// Every test here spawns the runner as a real child process. Under machine load (load avg 35-39,
+// 2026-10-05 and 2026-10-07) the 5 s default timed out and blocked the pre-push gate.
+vi.setConfig({ testTimeout: 30_000 });
 
 const REPO_ROOT = resolve(__dirname, '../../..');
 const SCRIPT = join(REPO_ROOT, 'scripts/accuracy-g0.mjs');
