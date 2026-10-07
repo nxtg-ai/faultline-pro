@@ -22,11 +22,15 @@ import subprocess
 import sys
 from email.header import decode_header, make_header
 
-WATCH_DOMAINS = ("ceramic.ai", "exa.ai")
+# Every search vendor we have written to about Faultline Pro, matched by SENDER domain, so a reply
+# is caught whichever of our addresses it is sent to (axw@, engage@, faultline.pro@). The 2026-10-02
+# licensing mails went out from axw@ and their Brave/Tavily replies sat unseen until 2026-10-07
+# because the first version of this watch listed only ceramic.ai and exa.ai (emma-soul al:b99ad2cfa4620eeb).
+WATCH_DOMAINS = ("ceramic.ai", "exa.ai", "brave.com", "tavily.com", "linkup.so")
 # Founder ruling 2026-10-05 (al:481a87a5d0db81cc): Faultline Pro vendor, licensing and research
 # mail goes from faultline.pro@nxtg.ai, so any mail TO it is a reply this watch must see too.
 WATCH_TO = ("faultline.pro@nxtg.ai",)
-SINCE = "05-Oct-2026"  # the requests were sent on this day; older Exa mail is the 2026-10-02 thread
+SINCE = "01-Oct-2026"  # covers the 2026-10-02 licensing mails as well as the 2026-10-05 consent requests
 CREDS = os.path.expanduser("~/.secrets/geo-stripe.env")
 STATE_DIR = os.path.expanduser("~/.cache/faultline-pro")
 STATE = os.path.join(STATE_DIR, "vendor-consent-watch-state.json")
@@ -73,6 +77,21 @@ def main():
     found = []
     searches = [(d, f'(SINCE {SINCE} FROM "{d}")') for d in WATCH_DOMAINS]
     searches += [(t, f'(SINCE {SINCE} TO "{t}")') for t in WATCH_TO]
+    # Replies to anything we sent to a watched domain, matched by threading headers, so a reply from
+    # an address on another domain (a reseller, a personal address) is still caught.
+    ours = set()
+    m.select("Sent", readonly=True)
+    for d in WATCH_DOMAINS:
+        _, data = m.uid("SEARCH", None, f'(SINCE {SINCE} TO "{d}")')
+        for uid in data[0].split():
+            _, dd = m.uid("FETCH", uid, "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")
+            mid = email.message_from_bytes(dd[0][1])["Message-ID"]
+            if mid:
+                ours.add(mid.strip())
+    m.select("INBOX", readonly=True)
+    for mid in ours:
+        searches.append(("thread", f'(SINCE {SINCE} HEADER References "{mid}")'))
+        searches.append(("thread", f'(SINCE {SINCE} HEADER In-Reply-To "{mid}")'))
     for domain, criteria in searches:
         _, data = m.uid("SEARCH", None, criteria)
         for uid in data[0].split():

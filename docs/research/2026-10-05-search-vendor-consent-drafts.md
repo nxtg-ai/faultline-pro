@@ -86,8 +86,8 @@ The form showed no acknowledgement. It opened an optional "Talk to Exa (15 mins)
 Fact for the opening line: the 2026-10-02 storage-rights note was sent on 2026-10-02 at 11:08 CDT, to sales@exa.ai from axw@nxtg.ai. An Exa account rep replied the same day. Checked from mailbox headers only.
 
 **Replies (watch, 2026-10-05):**
-- Ceramic Legal <legal+noreply@ceramic.ai>, 20:15:33Z: an auto-acknowledgement ("Thank you for reaching out. We'll get back to you as soon as we can."). Not consent.
-- Alina Chen (Growth, Exa) <alina@exa.ai> to engage@, 13:16 PDT: "Saw you were looking to connect with us but didn't find a time to chat. Was there anything in particular you were looking to chat about / solve with Exa?" This confirms the form reached Exa. The message text did not reach her.
+- Ceramic Legal <legal+noreply@ceramic.ai>, 2026-10-05 20:15:33Z: an automatic acknowledgement, not consent.
+- Alina Chen (Growth, Exa) <alina@exa.ai> to engage@, 2026-10-05 13:16 PDT: asked what we wanted to discuss, since no call was booked. So the form reached Exa, but its text did not reach her.
 
 ## 2b. Exa, in-thread answer to Alina Chen
 
@@ -109,3 +109,76 @@ faultline.pro@nxtg.ai
 - Message-ID `<179123171082.4097582.15509703900616363352@nxtg.ai>`, 1,231 characters.
 - SMTP refused none. Zoho Sent holds exactly 1 message with that Message-ID.
 
+## 3. Answers to the unanswered vendor replies (2026-10-07)
+
+These answer EMMA-SOUL's ruling `al:b99ad2cfa4620eeb`. Each goes from Faultline Pro <faultline.pro@nxtg.ai>, in the vendor's own thread.
+
+The vendor replies being answered (per sender and date):
+- Autumn Yuan, Ceramic, 2026-10-05: asked when the benchmark runs and when results are published, before confirming.
+- Igor Netto, Brave, 2026-10-02: standard terms forbid retaining results; storage rights are a priced add-on.
+- Zoe Medina, Tavily, 2026-10-05: offered a call with Brendan Chang.
+
+EMMA-SOUL later confirmed that lanes read replies to program mail directly and answer them (`al:3970fb54072f9214`, `al:d50e0575195721db`). Email bodies are summarized here, not pasted.
+
+The Exa reply of 2026-10-02 (Isabelle Shen-Bradford) is NOT unanswered: axw@ replied on 2026-10-03 11:47 CDT (from Sent).
+
+### Ceramic (Autumn Yuan)
+
+To: Autumn Yuan <autumn@ceramic.ai> · Cc: legal@ceramic.ai, sales@ceramic.ai
+
+Hi Autumn,
+
+Thank you, and sorry for the slow reply.
+
+Timeline:
+- Run: within two weeks of your written consent. The Ceramic part is about 661 searches and takes under a day.
+- Publication: about two weeks after the run, in our research notes, as aggregate measures only (verdict accuracy, citation rates, latency, cost per check), with the method so it can be reproduced.
+- Before publishing, we send you the Ceramic results and the draft text at least five business days ahead.
+
+Nothing runs before your consent, and if you decline, Ceramic is left out.
+
+Thank you,
+The Faultline team, NXTG.AI
+faultline.pro@nxtg.ai
+
+
+### Brave (Igor Netto)
+
+To: Igor Netto <inetto@brave.com>
+
+Hi Igor,
+
+Thank you for the clear answer, and sorry for the slow reply. We now handle this from faultline.pro@nxtg.ai.
+
+We have noted it as: the standard terms do not allow retaining Search Results; storage rights are a premium add-on at a $10 CPM, with a $25,000 non-refundable prepayment, or a $10,000 minimum if storage rights are accepted through the website's clickthrough terms; and ZDR covers Brave's retention of our requests.
+
+We are measuring evidence sources for claim verification now and will come back to you if storage rights become the route we take. We have no open question for you today.
+
+Thank you,
+The Faultline team, NXTG.AI
+faultline.pro@nxtg.ai
+
+
+### Tavily (Zoe Medina)
+
+To: Zoe Medina <zoe.medina@tavily.com>
+
+Hi Zoe,
+
+Thank you, and sorry for the slow reply. We now handle this from faultline.pro@nxtg.ai.
+
+We would rather settle this in writing than on a call. Our note of 2 October asked three things:
+1. Is it permitted, on a standard or enterprise plan, to store each query's result URLs, titles and snippets for 30 days to 12 months, store our own verdict per claim, and show the stored verdict and source links to other Faultline customers who check the same claim? No model training on the results.
+2. What is the longest retention allowed, and are there attribution requirements?
+3. Pricing at 50,000, 250,000 and 1,000,000 searches a month.
+
+If Brendan can answer these by email, that would be ideal.
+
+Thank you,
+The Faultline team, NXTG.AI
+faultline.pro@nxtg.ai
+
+**Send records (2026-10-07), each from Faultline Pro <faultline.pro@nxtg.ai> with In-Reply-To the vendor's message. SMTP refused none, and Zoho Sent holds exactly 1 of each:**
+- Ceramic (Autumn Yuan): 2026-10-07T18:47:55Z, Message-ID `<179139887393.1523574.4377599618964728046@nxtg.ai>`.
+- Brave (Igor Netto): 2026-10-07T18:49:06Z, Message-ID `<179139894564.1523574.1503397831677675597@nxtg.ai>`.
+- Tavily (Zoe Medina): 2026-10-07T18:50:17Z, Message-ID `<179139901646.1523574.9396987085869350465@nxtg.ai>`.
