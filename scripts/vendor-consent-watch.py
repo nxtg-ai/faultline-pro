@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""vendor-consent-watch.py: alert on any reply from Ceramic or Exa.
+"""vendor-consent-watch.py: alert on any reply from a search vendor Faultline Pro has written to.
 
 Prereg amendment A1 (docs/research/2026-10-05-prereg-retrieval-provider-comparison-v1.md)
 suspends the Ceramic and Exa arms until each vendor answers the consent request in
@@ -12,6 +12,9 @@ Read-only on the mailbox (readonly select, BODY.PEEK, headers only). The credent
 come from ~/.secrets/geo-stripe.env and are never printed. Each message alerts once:
 seen UIDs are kept in the state file.
 
+Each new reply gets a typed Dx3 handoff (hf-fp-vendor-reply-<uid>), a direct paste into the fp
+tmux pane, Telegram, and a bare /alignment post.
+
 Cron: */15 * * * *. Exit 0 always, unless the mailbox cannot be reached (exit 1).
 """
 import email
@@ -20,6 +23,8 @@ import json
 import os
 import subprocess
 import sys
+import time
+import urllib.request
 from email.header import decode_header, make_header
 
 # Every search vendor we have written to about Faultline Pro, matched by SENDER domain, so a reply
@@ -36,6 +41,11 @@ STATE_DIR = os.path.expanduser("~/.cache/faultline-pro")
 STATE = os.path.join(STATE_DIR, "vendor-consent-watch-state.json")
 LEDGER = os.path.join(STATE_DIR, "vendor-consent-replies.jsonl")
 ASIF = os.path.expanduser("~/ASIF")
+DX3 = os.environ.get("DX3_API_URL", "http://100.123.83.34:8004").rstrip("/")
+# The fp pane. An alert must reach it directly: alignment-say skips a mention of the author's own
+# lane, so the first version's "@fp" post from --as fp woke nobody (DRYRUN wakes=[]), and Ceramic's
+# 2026-10-05 reply sat 43 h unanswered although this watch had seen it.
+FP_SESSION = os.environ.get("FP_TMUX_SESSION", "faultline-pro")
 
 
 def load_creds():
@@ -49,12 +59,58 @@ def load_creds():
 
 
 def say(msg):
+    """Telegram plus a bare /alignment post (no @fp: a self-mention wakes nobody)."""
     for cmd in ([os.path.join(ASIF, "scripts", "notify-telegram.sh"), msg],
                 [os.path.join(ASIF, "scripts", "alignment-say"), "--as", "fp", msg]):
         try:
             subprocess.run(cmd, timeout=30, capture_output=True)
         except Exception:
             pass
+
+
+def mint_handoff(f):
+    """Typed Dx3 handoff per reply, so it survives an idle pane. The id comes from the mailbox UID,
+    so a re-run updates the same row. Returns the record_id, or None (logged, never fatal)."""
+    body = {
+        "handoff_id": f"hf-fp-vendor-reply-{f['uid']}",
+        "content": (f"From fp vendor-consent-watch: vendor reply in a Faultline Pro thread. From {f['from']}, "
+                    f"subject '{f['subject']}', {f['date']} (Zoho INBOX uid {f['uid']}). fp reads it in full, "
+                    f"answers in-thread from faultline.pro@nxtg.ai, posts a one-line receipt, then acks this "
+                    f"handoff. Prereg A1 arms stay SUSPENDED until written consent is confirmed."),
+        "handoff_status": "OPEN", "from_machine": "NXTG-AI", "to_machine": "NXTG-AI",
+        "subject": f"[fp] VENDOR REPLY {f['domain']}: {f['from'][:60]}", "priority": "P1",
+        "project_ids": ["P-08"], "source_ref": LEDGER,
+        "reason": "vendor-consent-watch: durable alert for an unanswered vendor reply",
+    }
+    try:
+        req = urllib.request.Request(DX3 + "/api/cognitive/upsert_handoff", data=json.dumps(body).encode(),
+                                     headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return json.loads(r.read()).get("record_id")
+    except Exception as e:
+        print(f"vendor-consent-watch: handoff mint failed for uid {f['uid']}: {type(e).__name__}")
+        return None
+
+
+def wake_fp(msg):
+    """Paste the alert into the fp pane and press Enter, the same path alignment-say uses for a
+    mention. Returns True when the keys were sent (a nudge, not proof the pane read it)."""
+    try:
+        panes = subprocess.run(["tmux", "list-panes", "-a", "-F", "#{session_name}:#{window_index}.#{pane_index}"],
+                               capture_output=True, text=True, timeout=10).stdout.split()
+        target = next((p for p in panes if p.split(":")[0] == FP_SESSION), None)
+        if not target:
+            print(f"vendor-consent-watch: no live tmux session {FP_SESSION}")
+            return False
+        subprocess.run(["tmux", "load-buffer", "-b", "fp-vendor-reply", "-"], input=msg, text=True,
+                       check=True, timeout=10)
+        subprocess.run(["tmux", "paste-buffer", "-b", "fp-vendor-reply", "-d", "-t", target], check=True, timeout=10)
+        time.sleep(0.3)
+        subprocess.run(["tmux", "send-keys", "-t", target, "Enter"], check=True, timeout=10)
+        return True
+    except Exception as e:
+        print(f"vendor-consent-watch: pane wake failed: {type(e).__name__}")
+        return False
 
 
 def text(h):
@@ -105,11 +161,14 @@ def main():
             seen.add(u)
     m.logout()
     for f in found:
+        f["handoff_record_id"] = mint_handoff(f)
+        line = (f"VENDOR REPLY ({f['domain']} match) in a Faultline Pro thread: from {f['from']}, "
+                f"subject '{f['subject']}', {f['date']}. Dx3 handoff hf-fp-vendor-reply-{f['uid']}.")
+        f["pane_woken"] = wake_fp(f"[vendor-consent-watch] {line} Read it in the Zoho inbox, answer in-thread "
+                                  f"from faultline.pro@, post a receipt, ack the handoff.")
         with open(LEDGER, "a") as fh:
             fh.write(json.dumps(f) + "\n")
-        say(f"@fp VENDOR REPLY ({f['domain']} match) to the Faultline consent request: "
-            f"from {f['from']}, subject '{f['subject']}', {f['date']}. Read it in the engage@/axw Zoho inbox; "
-            f"prereg A1 arms stay SUSPENDED until written consent is confirmed.")
+        say(line + " fp answers in-thread from faultline.pro@; prereg A1 arms stay SUSPENDED until written consent.")
     json.dump({"seen_uids": sorted(seen)}, open(STATE, "w"))
     print(f"vendor-consent-watch: {len(found)} new")
     return 0
