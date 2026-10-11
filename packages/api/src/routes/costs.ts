@@ -11,6 +11,7 @@ interface CostsQuery {
 
 interface PercentilesQuery {
   days?: string;
+  tier?: 'enterprise' | 'pro' | 'personal' | 'free' | 'anon' | 'userkey';
 }
 
 export async function costsRoutes(fastify: FastifyInstance): Promise<void> {
@@ -49,11 +50,12 @@ export async function costsRoutes(fastify: FastifyInstance): Promise<void> {
       preHandler: requireApiKey,
       schema: {
         tags: ['Analytics'],
-        summary: 'p50/p90/p99 cost_usd per managed-key scan over the last N days',
+        summary: 'p50/p90/p99 cost_usd and wall latency per managed-key scan over the last N days, optionally for one tier',
         querystring: {
           type: 'object',
           properties: {
             days: { type: 'string' },
+            tier: { type: 'string', enum: ['enterprise', 'pro', 'personal', 'free', 'anon', 'userkey'] },
           },
           additionalProperties: false,
         },
@@ -61,7 +63,7 @@ export async function costsRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request, reply) => {
       const days = parseInt(request.query.days ?? '30', 10);
-      const result = getCostStore().getPercentiles(isNaN(days) || days <= 0 ? 30 : days);
+      const result = getCostStore().getPercentiles(isNaN(days) || days <= 0 ? 30 : days, request.query.tier);
       return reply.status(200).send(result);
     },
   );

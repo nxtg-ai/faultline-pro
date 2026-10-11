@@ -1,4 +1,5 @@
 import { appendFile } from 'node:fs/promises';
+import { existsSync, readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { getKeyStore } from '../store/keys.js';
 import { summarizeScanUsage, type UsageLeg } from './consensus-cost.js';
@@ -7,7 +8,7 @@ const TELEMETRY_WORKER = 'https://faultline-telemetry.nxtg-ai.workers.dev';
 
 /** Default model ID per provider family (auditable — rates tied to these models). */
 export const PROVIDER_MODEL_IDS: Record<string, string> = {
-  gemini:     'gemini-2.0-flash',
+  gemini:     'gemini-2.5-flash',
   claude:     'claude-haiku-4-5-20251001',
   openai:     'gpt-4o-mini',
   perplexity: 'llama-3.1-sonar-small-128k-online',
@@ -200,7 +201,9 @@ export function emitScanCostEvent(event: ManagedScanCostEvent): void {
  * Fire-and-forget: a failed write MUST NOT fail the scan.
  * Suppressed in test environments.
  */
-export function appendScanCostLog(event: ManagedScanCostEvent, logPath = '/var/log/faultline/scan-cost.jsonl'): void {
+export const SCAN_COST_LOG_PATH = '/var/log/faultline/scan-cost.jsonl';
+
+export function appendScanCostLog(event: ManagedScanCostEvent, logPath = SCAN_COST_LOG_PATH): void {
   if (process.env.VITEST || process.env.NODE_ENV === 'test') return;
   const row = JSON.stringify({
     ts:             event.ts,
@@ -224,6 +227,10 @@ export interface CostPercentiles {
   p90: number;
   p99: number;
   count: number;
+  /** Wall-clock scan latency over the same events, in ms. */
+  latencyMs: { p50: number; p90: number; p99: number };
+  /** Set when the result is filtered to one tier. */
+  tier?: ManagedScanCostEvent['tier'];
   windowDays: number;
 }
 
@@ -321,16 +328,24 @@ class CostStore {
     return this.managedData.filter((e) => e.ts >= cutoff);
   }
 
-  getPercentiles(days = 30): CostPercentiles {
-    const events = this.getManagedEvents(days);
+  getPercentiles(days = 30, tier?: ManagedScanCostEvent['tier']): CostPercentiles {
+    const events = this.getManagedEvents(days).filter((e) => !tier || e.tier === tier);
     const costs = events.map((e) => e.costUsd).sort((a, b) => a - b);
+    const walls = events.map((e) => e.latencyMs).sort((a, b) => a - b);
     return {
       p50: percentile(costs, 50),
       p90: percentile(costs, 90),
       p99: percentile(costs, 99),
       count: costs.length,
+      latencyMs: { p50: percentile(walls, 50), p90: percentile(walls, 90), p99: percentile(walls, 99) },
+      ...(tier ? { tier } : {}),
       windowDays: days,
     };
+  }
+
+  /** Load events written by appendScanCostLog before this process started. */
+  hydrate(events: ManagedScanCostEvent[]): void {
+    this.managedData.unshift(...events);
   }
 
   reset(): void {
@@ -341,11 +356,60 @@ class CostStore {
 
 let instance: CostStore | null = null;
 
+/**
+ * Read the scan-cost NDJSON log back into events. The in-memory store starts empty
+ * on every process start, so without this /costs/percentiles forgot every scan at
+ * each Fly deploy (product-oracle read the 2026-10-02..10 history off the volume by
+ * hand instead). Malformed rows are skipped; a missing or unreadable file gives [].
+ */
+export function loadScanCostLog(logPath = SCAN_COST_LOG_PATH): ManagedScanCostEvent[] {
+  let raw: string;
+  try {
+    if (!existsSync(logPath)) return [];
+    raw = readFileSync(logPath, 'utf8');
+  } catch {
+    return [];
+  }
+  const events: ManagedScanCostEvent[] = [];
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      const r = JSON.parse(line) as Record<string, unknown>;
+      const tier = r.user_tier as ManagedScanCostEvent['tier'];
+      if (typeof r.ts !== 'string' || !VALID_TIERS.has(tier)) continue;
+      const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+      events.push({
+        scanId: String(r.scan_id ?? ''),
+        ts: r.ts,
+        tier,
+        keyMode: 'managed',
+        provider: String(r.provider ?? ''),
+        modelId: typeof r.model_id === 'string' ? r.model_id : undefined,
+        inputTokens: num(r.input_tokens),
+        outputTokens: num(r.output_tokens),
+        groundingCalls: num(r.tool_call_count),
+        costUsd: num(r.usd_estimate),
+        latencyMs: num(r.wall_ms),
+        cacheHit: r.cache_hit === true,
+      });
+    } catch {
+      /* skip a malformed row */
+    }
+  }
+  return events;
+}
+
 export function getCostStore(): CostStore {
-  if (!instance) instance = new CostStore();
+  if (!instance) {
+    instance = new CostStore();
+    // Same guard as appendScanCostLog: tests never read the production log.
+    if (!process.env.VITEST && process.env.NODE_ENV !== 'test') {
+      instance.hydrate(loadScanCostLog(process.env.FAULTLINE_SCAN_COST_LOG ?? SCAN_COST_LOG_PATH));
+    }
+  }
   return instance;
 }
 
 export function resetCostStore(): void {
-  instance = new CostStore();
+  instance = null; // the next getCostStore() builds a fresh store (and hydrates, outside tests)
 }
