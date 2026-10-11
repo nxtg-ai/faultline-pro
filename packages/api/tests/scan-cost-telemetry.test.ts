@@ -21,9 +21,9 @@ describe('computeScanCost()', () => {
   });
 
   it('SC-02: zero output tokens — only input cost applies', () => {
-    // gemini: $0.15 / 1M input = $0.00000015 per token
+    // gemini 2.5 Flash: $0.30 / 1M input
     const cost = computeScanCost(1_000_000, 0, 0, 'gemini');
-    expect(cost).toBeCloseTo(0.15, 6);
+    expect(cost).toBeCloseTo(0.30, 6);
   });
 
   it('SC-03: grounding=0 — no grounding surcharge', () => {
@@ -48,18 +48,19 @@ describe('computeScanCost()', () => {
   });
 
   it('SC-07: claude rates — higher output rate than gemini', () => {
-    // claude: $4.00/M output vs gemini $0.60/M output
+    // claude: $4.00/M output vs gemini 2.5 Flash $2.50/M output
     const claude = computeScanCost(0, 1_000_000, 0, 'claude');
     const gemini = computeScanCost(0, 1_000_000, 0, 'gemini');
     expect(claude).toBeCloseTo(4.0, 4);
-    expect(gemini).toBeCloseTo(0.6, 4);
+    expect(gemini).toBeCloseTo(2.5, 4);
     expect(claude).toBeGreaterThan(gemini);
   });
 
-  it('SC-08: openai and gemini have same rates per directive spec', () => {
+  it('SC-08: gemini is priced at 2.5 Flash, not the old shared $0.15/$0.60 row', () => {
     const openai = computeScanCost(500_000, 150_000, 0, 'openai');
     const gemini = computeScanCost(500_000, 150_000, 0, 'gemini');
-    expect(openai).toBeCloseTo(gemini, 8);
+    expect(openai).toBeCloseTo(500_000 / 1e6 * 0.15 + 150_000 / 1e6 * 0.60, 8);
+    expect(gemini).toBeCloseTo(500_000 / 1e6 * 0.30 + 150_000 / 1e6 * 2.50, 8);
   });
 });
 

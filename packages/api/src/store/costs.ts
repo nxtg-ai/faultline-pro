@@ -33,7 +33,9 @@ const PROVIDER_RATES: Record<string, { inputPer1k: number; outputPer1k: number }
 
 // ── Managed-key scan cost telemetry ──────────────────────────────────────────
 // Rates per 1M tokens (directive-specified). Provider family → model assumed:
-//   gemini   → Gemini Flash   ($0.15 input / $0.60 output)
+//   gemini   → Gemini 2.5 Flash ($0.30 input / $2.50 output incl. thinking; paid tier,
+//              https://ai.google.dev/gemini-api/docs/pricing, re-read 2026-09-30; was
+//              $0.15/$0.60, the 2.0 Flash rate, flagged by product-oracle 2026-10-11)
 //   claude   → Claude Haiku   ($0.80 input / $4.00 output)
 //   openai   → GPT-4o mini    ($0.15 input / $0.60 output)
 //   perplexity → Perplexity sonar ($1.00 input / $1.00 output, no grounding surcharge)
@@ -44,7 +46,7 @@ const MANAGED_PROVIDER_RATES: Record<string, {
   outputPerM: number;
   groundingPerCall: number;
 }> = {
-  gemini:     { inputPerM: 0.15,  outputPerM: 0.60,  groundingPerCall: 0.035 },
+  gemini:     { inputPerM: 0.30,  outputPerM: 2.50,  groundingPerCall: 0.035 },
   claude:     { inputPerM: 0.80,  outputPerM: 4.00,  groundingPerCall: 0 },
   openai:     { inputPerM: 0.15,  outputPerM: 0.60,  groundingPerCall: 0 },
   perplexity: { inputPerM: 1.00,  outputPerM: 1.00,  groundingPerCall: 0 },
