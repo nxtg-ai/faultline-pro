@@ -10,8 +10,13 @@
  *           dashboards correctly escape dangerous content.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { esc, escHtml } from '../src/lib/html.js';
+
+// The route tests import the whole server inside the test. Under the pre-push suite at
+// load average ~45 on NXTG-AI that first import alone passed the 5 s default (ET13 timed
+// out twice on 2026-10-12 and passed 3/3 alone). Same fix as accuracy-g0-runner.test.ts.
+vi.setConfig({ testTimeout: 30_000 });
 
 // ── esc() unit tests ──────────────────────────────────────────────────────────
 
