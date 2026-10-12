@@ -11,6 +11,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - **`POST /admin/verify-claims` (admin key only)** verifies up to 25 claims as given, with no re-extraction, through the same `verifyClaim` a scan uses, behind the burst limiter and the provider-spend cap, with usage priced into the same spend and grounding ledgers. It returns status labels and flags only (`status`, `apiError`, `parseFallback`, `model`), never explanations or sources. It exists for the pre-registered verdict-accuracy run (`docs/research/accuracy-g0-harness.md`); `GET /health` now also reports the build `commit` so that run can show the engine did not change.
 
+### Fixed
+
+- **A scan no longer cuts a sentence at the period in a case citation or abbreviation.** The step that makes sure every sentence gets at least one claim split text at every ". ", so "Delmont v. Arcadia Freight Systems, Inc., 947 F.3d 1182 (9th Cir. 2020)" became fragments, and the fragment ending "in Delmont v." was verified on its own and came back supported against an unrelated case. Sentences now end only before a capital letter, and not after "v.", "Inc.", "Cir.", "Supp.", other common abbreviations, initials or "U.S.". Reported by ce from an Evidence Watch proof run.
+- **Gemini scan cost is priced at Gemini 2.5 Flash rates** ($0.30 input, $2.50 output per million tokens) in the provider-spend ledger and cost telemetry, the model the engine calls. It was priced at $0.15/$0.60.
+- **`GET /costs/percentiles` keeps its history across deploys and reports latency.** It reloads the scan-cost log at startup, adds `latencyMs` p50/p90/p99, and takes `?tier=` to read one plan's scans.
+
 ### Security
 
 - **`/scan/deep` source checks now go through the outbound URL guard, and the guard blocks every IANA special-use range.** Source URLs a model returned were HEAD-probed with plain `fetch`, which could reach loopback and private addresses; they now use the guarded fetch (connect-time check, at most 3 guarded redirects) and a blocked source reads as unavailable. The guard now also refuses documentation, benchmarking, 6to4 and other non-globally-reachable blocks (for example 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24, 2001:db8::/32), and its test-only override turns on only when `VITEST` is exactly `true` or `NODE_ENV` is `test`. Evidence: `docs/security/2026-10-02-security-evidence-v0.11.1.md`.

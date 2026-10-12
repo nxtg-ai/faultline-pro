@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { scan } from '../cli/scan.js';
-import { guaranteeClaimPerSentence } from '../cli/scan.js';
+import { guaranteeClaimPerSentence, splitSentences } from '../cli/scan.js';
 import type { Claim } from '../types.js';
 
 // ── Acceptance test (CoS UAT scenario) ───────────────────────────────────────
@@ -129,5 +129,66 @@ describe('guaranteeClaimPerSentence', () => {
     // "OK. Yes. No." — all fragments, none qualify as sentence candidates
     const result = guaranteeClaimPerSentence('OK. Yes. No.', claims);
     expect(result).toHaveLength(0);
+  });
+});
+
+// ── Abbreviation-aware splitting (ce proof run, al:4e0038613d2563e1, 2026-10-12) ──
+// The splitter used to cut at every ". ", so a case caption became fragments and
+// "The Ninth Circuit later reached a similar result in Delmont v." was verified on
+// its own and came back SUPPORTED against an unrelated case.
+
+const CE_RUN2 =
+  'In Park v. Kim, 91 F.4th 610 (2d Cir. 2024), the Second Circuit referred an attorney to its Grievance Panel ' +
+  'after her brief cited a nonexistent case that she had obtained from ChatGPT. The Ninth Circuit later reached a ' +
+  'similar result in Delmont v. Arcadia Freight Systems, Inc., 947 F.3d 1182 (9th Cir. 2020), holding that an ' +
+  'attorney who files AI-generated citations without reading them violates Rule 11 even if a paralegal prepared the brief.';
+
+describe('splitSentences(): case citations and abbreviations', () => {
+  it('splits the ce run-2 input into its two whole sentences', () => {
+    const s = splitSentences(CE_RUN2);
+    expect(s).toHaveLength(2);
+    expect(s[0]).toMatch(/^In Park v\. Kim, .* from ChatGPT\.$/);
+    expect(s[1]).toMatch(/^The Ninth Circuit later .*Delmont v\. Arcadia Freight Systems, Inc\., 947 F\.3d 1182 \(9th Cir\. 2020\), holding .* the brief\.$/);
+  });
+
+  it('never yields a fragment ending in a caption "v." or starting at a year', () => {
+    for (const s of splitSentences(CE_RUN2)) {
+      expect(s).not.toMatch(/\bv\.$/);
+      expect(s).not.toMatch(/^\d{4}\)/);
+    }
+  });
+
+  it('keeps initials, dotted abbreviations and titles inside the sentence', () => {
+    expect(splitSentences('John F. Kennedy was president. The U.S. Supreme Court ruled on it. Dr. Smith of Acme Corp. agreed with that.'))
+      .toEqual(['John F. Kennedy was president.', 'The U.S. Supreme Court ruled on it.', 'Dr. Smith of Acme Corp. agreed with that.']);
+  });
+
+  it('a lower-case word or a digit after a period continues the sentence', () => {
+    expect(splitSentences('The rate fell to 3.5 percent in Jan. 2024 and then rose. It rose again in spring.'))
+      .toEqual(['The rate fell to 3.5 percent in Jan. 2024 and then rose.', 'It rose again in spring.']);
+  });
+
+  it('still splits at ! and ? and at a closing quote', () => {
+    expect(splitSentences('GPT-5 has 98% accuracy! Is that really true? He said it was "final." Then it ended there.'))
+      .toEqual(['GPT-5 has 98% accuracy!', 'Is that really true?', 'He said it was "final."', 'Then it ended there.']);
+  });
+
+  it('guaranteeClaimPerSentence adds no caption fragment for the ce run-2 claims', () => {
+    // c1..c6 exactly as the extractor returned them in ce run 2.
+    const extracted: Claim[] = [
+      { id: 'c1', type: 'fact', importance: 5, text: 'In Park v. Kim, 91 F.4th 610 (2d Cir. 2024), the Second Circuit referred an attorney to its Grievance Panel.' },
+      { id: 'c2', type: 'fact', importance: 4, text: "The attorney's brief cited a nonexistent case." },
+      { id: 'c3', type: 'fact', importance: 4, text: 'The nonexistent case was obtained from ChatGPT.' },
+      { id: 'c4', type: 'fact', importance: 5, text: 'The Ninth Circuit reached a similar result in Delmont v. Arcadia Freight Systems, Inc., 947 F.3d 1182 (9th Cir. 2020).' },
+      { id: 'c5', type: 'fact', importance: 5, text: 'The Ninth Circuit held that an attorney who files AI-generated citations without reading them violates Rule 11.' },
+      { id: 'c6', type: 'fact', importance: 4, text: 'This violation of Rule 11 occurs even if a paralegal prepared the brief.' },
+    ];
+    const synthetic = guaranteeClaimPerSentence(CE_RUN2, extracted).filter(c => c.id.startsWith('s'));
+    for (const c of synthetic) {
+      expect(c.text).not.toMatch(/\bv\.$/);
+      expect(c.text).not.toMatch(/^\d{4}\)/);
+      // A backstop claim is a whole sentence, so it carries the citation it is about.
+      if (/Ninth Circuit/.test(c.text)) expect(c.text).toContain('Delmont v. Arcadia Freight Systems');
+    }
   });
 });

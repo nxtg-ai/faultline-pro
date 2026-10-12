@@ -86,12 +86,55 @@ function calculateRisk(
 // ── Sentence-level claim coverage guarantee ───────────────────────────────────
 
 /**
+ * Words that end in a period without ending a sentence: case captions ("Park v. Kim"),
+ * reporters and courts ("F. Supp.", "9th Cir."), company suffixes, titles, months.
+ * Splitting at them cut "...in Delmont v. Arcadia Freight Systems, Inc., 947 F.3d 1182
+ * (9th Cir. 2020), holding..." into fragments, and the fragment naming only "Delmont v."
+ * was then verified on its own and came back SUPPORTED against an unrelated case
+ * (ce proof run, al:4e0038613d2563e1, 2026-10-12).
+ */
+const NON_TERMINAL_ABBREVIATIONS = new Set([
+  'v', 'vs', 'inc', 'corp', 'co', 'ltd', 'llc', 'llp', 'plc', 'cir', 'fed', 'supp', 'app', 'cal', 'ct',
+  'no', 'nos', 'cf', 'al', 'mr', 'mrs', 'ms', 'dr', 'prof', 'st', 'jr', 'sr', 'gen', 'gov', 'sen', 'rep',
+  'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'oct', 'nov', 'dec',
+  'dept', 'univ', 'vol', 'pp', 'para', 'art', 'sec', 'ch', 'fig', 'approx',
+]);
+
+/** True when the text ending in `lastWord` + punctuation really ends a sentence before `next`. */
+function isSentenceBoundary(lastWord: string, punct: string, next: string): boolean {
+  // A sentence starts with a capital letter (or a quote/bracket before one). A lower-case
+  // word or a digit after the period continues the sentence ("Cir. 2020)").
+  if (!/^[A-Z]/.test(next)) return false;
+  if (!punct.startsWith('.')) return true;
+  const word = lastWord.replace(/^[("'\[\u201c\u2018]+/, '');
+  if (/^[A-Z]$/.test(word)) return false;                    // an initial: "John F. Kennedy"
+  if (/^(?:[A-Za-z]\.)+[A-Za-z]$/.test(word)) return false;  // "U.S", "e.g", "i.e"
+  return !NON_TERMINAL_ABBREVIATIONS.has(word.toLowerCase());
+}
+
+/**
  * Split text into independently verifiable sentence candidates.
  * Filters out fragments shorter than 3 words (not verifiable on their own).
  */
-function splitSentences(text: string): string[] {
-  return text
-    .split(/(?<=[.!?])\s+|(?<=[.!?])$/)
+export function splitSentences(text: string): string[] {
+  const sentences: string[] = [];
+  const boundary = /([.!?]+)(["'\)\]\u201d\u2019]*)\s+(["'\(\[\u201c\u2018]*)(\S?)/g;
+  let start = 0;
+  let m: RegExpExecArray | null;
+  while ((m = boundary.exec(text)) !== null) {
+    const head = text.slice(start, m.index);
+    const lastWord = head.slice(head.search(/\S+$/) >= 0 ? head.search(/\S+$/) : head.length);
+    if (!isSentenceBoundary(lastWord, m[1]!, m[4] ?? '')) {
+      boundary.lastIndex = m.index + m[1]!.length; // keep scanning past this period
+      continue;
+    }
+    const end = m.index + m[1]!.length + m[2]!.length;
+    sentences.push(text.slice(start, end));
+    start = end;
+    boundary.lastIndex = end;
+  }
+  sentences.push(text.slice(start));
+  return sentences
     .map(s => s.trim())
     .filter(s => s.length > 0 && /[a-zA-Z]/.test(s) && s.split(/\s+/).length >= 3);
 }
