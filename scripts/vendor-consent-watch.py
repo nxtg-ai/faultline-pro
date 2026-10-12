@@ -21,6 +21,7 @@ import email
 import imaplib
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -73,12 +74,12 @@ def mint_handoff(f):
     so a re-run updates the same row. Returns the record_id, or None (logged, never fatal)."""
     body = {
         "handoff_id": f"hf-fp-vendor-reply-{f['uid']}",
-        "content": (f"From fp vendor-consent-watch: vendor reply in a Faultline Pro thread. From {f['from']}, "
-                    f"subject '{f['subject']}', {f['date']} (Zoho INBOX uid {f['uid']}). fp reads it in full, "
+        "content": (f"From fp vendor-consent-watch: vendor reply in a Faultline Pro thread, sender domain "
+                    f"{f['sender_domain']} (watch match {f['domain']}), Zoho INBOX uid {f['uid']}. fp reads it in full, "
                     f"answers in-thread from faultline.pro@nxtg.ai, posts a one-line receipt, then acks this "
                     f"handoff. Prereg A1 arms stay SUSPENDED until written consent is confirmed."),
         "handoff_status": "OPEN", "from_machine": "NXTG-AI", "to_machine": "NXTG-AI",
-        "subject": f"[fp] VENDOR REPLY {f['domain']}: {f['from'][:60]}", "priority": "P1",
+        "subject": f"[fp] VENDOR REPLY {f['domain']}: sender domain {f['sender_domain']}", "priority": "P1",
         "project_ids": ["P-08"], "source_ref": LEDGER,
         "reason": "vendor-consent-watch: durable alert for an unanswered vendor reply",
     }
@@ -115,6 +116,14 @@ def wake_fp(msg):
 
 def text(h):
     return str(make_header(decode_header(h or "")))
+
+
+def sender_domain(from_header):
+    """The sender's email domain, or "unknown". Only this, never the display name or the subject,
+    leaves the ledger: alert text is pasted into an agent pane and posted to /alignment, and a
+    From or Subject line is written by whoever sent the mail."""
+    m = re.search(r"@([A-Za-z0-9.-]{1,253})>?\s*$", from_header or "")
+    return m.group(1).lower() if m else "unknown"
 
 
 def main():
@@ -161,9 +170,11 @@ def main():
             seen.add(u)
     m.logout()
     for f in found:
+        f["sender_domain"] = sender_domain(f["from"])
         f["handoff_record_id"] = mint_handoff(f)
-        line = (f"VENDOR REPLY ({f['domain']} match) in a Faultline Pro thread: from {f['from']}, "
-                f"subject '{f['subject']}', {f['date']}. Dx3 handoff hf-fp-vendor-reply-{f['uid']}.")
+        # No From or Subject text here: these lines reach an agent pane and /alignment (see sender_domain).
+        line = (f"VENDOR REPLY ({f['domain']} match) in a Faultline Pro thread: sender domain {f['sender_domain']}, "
+                f"Zoho INBOX uid {f['uid']}. Dx3 handoff hf-fp-vendor-reply-{f['uid']}.")
         f["pane_woken"] = wake_fp(f"[vendor-consent-watch] {line} Read it in the Zoho inbox, answer in-thread "
                                   f"from faultline.pro@, post a receipt, ack the handoff.")
         with open(LEDGER, "a") as fh:

@@ -797,6 +797,54 @@
       "fp": "5cec027aadc9518791cbbf4f53f3ebe2_5",
       "disposition": "accepted-pre-existing",
       "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "python_lang_insecure_http",
+      "uri": "scripts/vendor-consent-watch.py",
+      "fp": "3e35ca249f68fa15ad7808175c24fc3d_0",
+      "disposition": "false-positive",
+      "reason": "false-positive, triaged 2026-10-12 (fp): the only http:// target is the Dx3 REST API at its Tailscale address (100.123.83.34:8004), reached over the WireGuard-encrypted tailnet; that API serves no TLS. The request carries no credential, and since 2026-10-12 no sender-controlled mail text, only a mailbox UID and domains"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "python_lang_insecure_http",
+      "uri": "scripts/vendor-consent-watch.py",
+      "fp": "3e35ca249f68fa15ad7808175c24fc3d_1",
+      "disposition": "false-positive",
+      "reason": "false-positive, triaged 2026-10-12 (fp): the only http:// target is the Dx3 REST API at its Tailscale address (100.123.83.34:8004), reached over the WireGuard-encrypted tailnet; that API serves no TLS. The request carries no credential, and since 2026-10-12 no sender-controlled mail text, only a mailbox UID and domains"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "python_lang_os_command_injection",
+      "uri": "scripts/vendor-consent-watch.py",
+      "fp": "75510a1c43fe37d0600a86726a388e76_0",
+      "disposition": "false-positive",
+      "reason": "false-positive, triaged 2026-10-12 (fp): every subprocess.run takes an argv list (no shell). The tmux target is a pane id read back from tmux list-panes; the pasted text goes through tmux load-buffer stdin, not argv. The real risk was sender-controlled From/Subject text pasted into the agent pane; removed 2026-10-12 (only UID and domains are pasted now)"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "python_lang_path_traversal",
+      "uri": "scripts/stripe-revenue-evidence.py",
+      "fp": "8c71f549e17414d9b6e6361176af7d01_0",
+      "disposition": "false-positive",
+      "reason": "false-positive, triaged 2026-10-12 (fp): open() reads paths the local operator passes on the command line or by env (the Stripe key file and the internal-payer list) in a CLI run by hand on our own machine; no remote input reaches a path"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "python_lang_path_traversal",
+      "uri": "scripts/stripe-revenue-evidence.py",
+      "fp": "8c71f549e17414d9b6e6361176af7d01_1",
+      "disposition": "false-positive",
+      "reason": "false-positive, triaged 2026-10-12 (fp): open() reads paths the local operator passes on the command line or by env (the Stripe key file and the internal-payer list) in a CLI run by hand on our own machine; no remote input reaches a path"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "python_lang_path_traversal",
+      "uri": "scripts/stripe-revenue-evidence.py",
+      "fp": "8c71f549e17414d9b6e6361176af7d01_2",
+      "disposition": "false-positive",
+      "reason": "false-positive, triaged 2026-10-12 (fp): open() reads paths the local operator passes on the command line or by env (the Stripe key file and the internal-payer list) in a CLI run by hand on our own machine; no remote input reaches a path"
     }
   ]
 }
