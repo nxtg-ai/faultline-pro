@@ -21,6 +21,10 @@ on:
     branches: [main]
     paths:
       - 'packages/api/**'
+      # The API image builds the scan engine from packages/cli (Dockerfile COPY packages/),
+      # so an engine fix only reaches production through this deploy.
+      - 'packages/cli/**'
+      - 'package-lock.json'
       - 'Dockerfile'
       - 'packages/api/fly.toml'
       - '.github/workflows/fly-deploy.yml'
