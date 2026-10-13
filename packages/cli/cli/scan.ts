@@ -9,6 +9,15 @@ import { OpenAIWebSearchRetriever } from '../providers/openai_web_search_retriev
 import { consensusVerify, type NamedProvider } from '../consensus/consensus_engine.js';
 import { generateComplianceReport, type ComplianceReport } from '../compliance/report_generator.js';
 import { runAllRules, runRules, type Finding } from '../rules/index.js';
+import {
+  DEFAULT_VERIFY_CAP,
+  resolveVerifyCap,
+  rankEligibleClaims,
+  buildVerificationSummary,
+  type VerificationSummary,
+} from './verify-cap.js';
+
+export { DEFAULT_VERIFY_CAP, resolveVerifyCap, type VerificationSummary };
 
 const VERIFY_CONCURRENCY = 8;
 
@@ -45,6 +54,18 @@ export interface PipelineConfig {
   consensusProviders?: ProviderName[];
 }
 
+/**
+ * Server-side scan options. Deliberately separate from PipelineConfig, which
+ * the API accepts from the request body: nothing here may come from a caller.
+ */
+export interface ScanOptions {
+  /**
+   * Maximum claims sent to verification (default DEFAULT_VERIFY_CAP = 8).
+   * Normalised by resolveVerifyCap, so an invalid value falls back to 8.
+   */
+  verifyCap?: number;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface ScanResult {
@@ -69,6 +90,12 @@ export interface ScanResult {
    * and must not bill or consume quota for a fully-degraded scan.
    */
   degraded?: boolean;
+  /**
+   * What the verify cap did to this scan: how many eligible claims went
+   * unchecked, and which. scan() always sets it; it is optional because results
+   * read back from history files or an older hosted API do not carry it.
+   */
+  verification?: VerificationSummary;
 }
 
 function calculateRisk(
@@ -182,11 +209,12 @@ export function guaranteeClaimPerSentence(text: string, claims: Claim[]): Claim[
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function filterClaimsForVerification(claims: Claim[]): Claim[] {
-  return claims
-    .filter((c) => c.type === 'fact' && c.importance >= 2)
-    .sort((a, b) => b.importance - a.importance)
-    .slice(0, 8);
+/**
+ * Pick the claims to verify: facts of importance >= 2, most important first,
+ * at most `cap` of them. An invalid cap falls back to DEFAULT_VERIFY_CAP.
+ */
+export function filterClaimsForVerification(claims: Claim[], cap: number = DEFAULT_VERIFY_CAP): Claim[] {
+  return rankEligibleClaims(claims).slice(0, resolveVerifyCap(cap));
 }
 
 /** Callback for reporting scan progress to the caller (e.g., a CLI spinner). */
@@ -266,6 +294,7 @@ export async function scan(
   onProgress?: ScanProgressCallback,
   onClaimVerified?: ScanClaimCallback,
   pipelineConfig?: PipelineConfig,
+  options?: ScanOptions,
 ): Promise<ScanResult> {
   const resolvedProvider = providerName || DEFAULT_SCAN_PROVIDER;
 
@@ -303,7 +332,9 @@ export async function scan(
   onProgress?.('Extracting claims...');
   const rawClaims = await extractionProvider.extractClaims(text);
   const claims = guaranteeClaimPerSentence(text, rawClaims);
-  const toVerify = filterClaimsForVerification(claims);
+  const verifyCap = resolveVerifyCap(options?.verifyCap);
+  const rankedEligible = rankEligibleClaims(claims);
+  const toVerify = rankedEligible.slice(0, verifyCap);
 
   const verifications: Record<string, VerificationResult> = {};
   let completedCount = 0;
@@ -367,6 +398,7 @@ export async function scan(
     ruleFindings,
     verificationErrors,
     degraded: verificationErrors > 0,
+    verification: buildVerificationSummary(rankedEligible, toVerify, verifyCap),
   };
 }
 

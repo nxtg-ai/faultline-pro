@@ -11,6 +11,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - **`POST /admin/verify-claims` (admin key only)** verifies up to 25 claims as given, with no re-extraction, through the same `verifyClaim` a scan uses, behind the burst limiter and the provider-spend cap, with usage priced into the same spend and grounding ledgers. It returns status labels and flags only (`status`, `apiError`, `parseFallback`, `model`), never explanations or sources. It exists for the pre-registered verdict-accuracy run (`docs/research/accuracy-g0-harness.md`); `GET /health` now also reports the build `commit` so that run can show the engine did not change.
 
+### Changed
+
+- **The verification cap is a per-plan server-side setting, 8 on every plan, so results and cost per scan are unchanged.** A scan still verifies at most 8 claims (facts of importance 2 or higher, most important first). The cap is now read from a server-side table by the plan the request is entitled to (the forwarded plan is trusted only from the server's own key); no request field can set it, and the scan cache keeps results for different caps apart. `POST /scan`, `POST /scan/template/:id` and the `complete` event of `GET`/`POST /scan/stream` now report `verification` `{tier, cap, eligibleClaims, verifiedClaims, uncheckedClaims, uncheckedClaimIds}`, so a caller can see which eligible claims the cap left unchecked. Engine results from `scan()` carry the same summary without `tier`; the CLI default stays 8. (GoPMO 1.18.11.3.5)
+
 ### Fixed
 
 - **A scan no longer cuts a sentence at the period in a case citation or abbreviation.** The step that makes sure every sentence gets at least one claim split text at every ". ", so "Delmont v. Arcadia Freight Systems, Inc., 947 F.3d 1182 (9th Cir. 2020)" became fragments, and the fragment ending "in Delmont v." was verified on its own and came back supported against an unrelated case. Sentences now end only before a capital letter, and not after "v.", "Inc.", "Cir.", "Supp.", other common abbreviations, initials or "U.S.". Reported by ce from an Evidence Watch proof run.

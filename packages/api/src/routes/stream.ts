@@ -10,6 +10,7 @@ import { enforceConsensusEntitlement } from '../plugins/consensus-entitlement.js
 import { recordProviderSpend } from '../store/provider-spend.js';
 import { getUsageMeter } from '../store/usage.js';
 import { captureUsage } from '@nxtg/faultline/lib/usage-sink.js';
+import { resolveVerifyPolicy, withVerificationTier } from '../plugins/verify-cap.js';
 
 type ScanProvider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
 
@@ -92,7 +93,7 @@ function sseHeaders(reply: FastifyReply): Record<string, string> {
  * Event sequence:
  *   data: {"type":"start","claimCount":N,"provider":"mock"}        ← on first claim verified
  *   data: {"type":"claim_verified","index":0,"claim":{...},"verdict":{...}}  × N
- *   data: {"type":"complete","overallRisk":"low","claimCount":N}
+ *   data: {"type":"complete","overallRisk":"low","claimCount":N,"verification":{tier,cap,eligibleClaims,verifiedClaims,uncheckedClaims,uncheckedClaimIds}}
  *   data: {"type":"error","message":"..."}  (on failure only)
  */
 export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
@@ -138,6 +139,8 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
       let startEmitted = false;
       const keyId = (request as unknown as { keyId?: string }).keyId ?? 'unknown';
       const startTime = Date.now();
+      // Server-side only: the cap comes from the entitled plan, never the request.
+      const verifyPolicy = resolveVerifyPolicy(keyId, request.headers['x-user-tier']);
 
       try {
         const { result, legs } = await captureUsage(() => scan(
@@ -159,6 +162,8 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
               verdict: verdict as unknown as Record<string, unknown>,
             });
           },
+          /* pipelineConfig */ undefined,
+          { verifyCap: verifyPolicy.cap },
         ));
 
         const claimCount = Array.isArray(result.claims) ? result.claims.length : 0;
@@ -168,7 +173,12 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
           emit({ type: 'start', claimCount, provider: effectiveProvider });
         }
 
-        emit({ type: 'complete', overallRisk: result.overallRisk, claimCount });
+        emit({
+          type: 'complete',
+          overallRisk: result.overallRisk,
+          claimCount,
+          verification: withVerificationTier(result, verifyPolicy.tier).verification,
+        });
 
         // BLG-CLX9-20260703-005: real measured fan-out cost (was a text-length
         // estimate priced on one effectiveProvider). Fire-and-forget — never blocks SSE.
@@ -206,7 +216,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
    * Event sequence:
    *   data: {"type":"start","claimCount":N,"provider":"..."}
    *   data: {"type":"claim_verified","index":N,"claim":{...},"verdict":{...}}  × N
-   *   data: {"type":"complete","overallRisk":"low|medium|high|critical","claimCount":N}
+   *   data: {"type":"complete","overallRisk":"low|medium|high|critical","claimCount":N,"verification":{...}}
    *   data: {"type":"error","message":"..."}  (on failure only)
    */
   fastify.post<{ Body: StreamPostBody }>(
@@ -245,6 +255,8 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
       let startEmitted = false;
       const keyId = (request as unknown as { keyId?: string }).keyId ?? 'unknown';
       const startTime = Date.now();
+      // Server-side only: the cap comes from the entitled plan, never the request.
+      const verifyPolicy = resolveVerifyPolicy(keyId, request.headers['x-user-tier']);
 
       try {
         const { result, legs } = await captureUsage(() => scan(
@@ -266,6 +278,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
             });
           },
           pipelineConfig,
+          { verifyCap: verifyPolicy.cap },
         ));
 
         const claimCount = Array.isArray(result.claims) ? result.claims.length : 0;
@@ -274,7 +287,12 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
           emit({ type: 'start', claimCount, provider: effectiveProvider });
         }
 
-        emit({ type: 'complete', overallRisk: result.overallRisk, claimCount });
+        emit({
+          type: 'complete',
+          overallRisk: result.overallRisk,
+          claimCount,
+          verification: withVerificationTier(result, verifyPolicy.tier).verification,
+        });
 
         // BLG-CLX9-20260703-005: real measured fan-out cost (was a text-length
         // estimate priced on one effectiveProvider). Fire-and-forget — never blocks SSE.

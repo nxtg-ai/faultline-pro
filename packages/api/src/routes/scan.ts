@@ -21,6 +21,7 @@ import { recordScanTelemetry } from '../store/telemetry.js';
 import { notifyScanFailed } from '../store/notifications.js';
 import { buildEuComplianceReport, evaluateComplianceGate } from '@nxtg/faultline/cli/compliance-report.js';
 import { captureUsage } from '@nxtg/faultline/lib/usage-sink.js';
+import { resolveVerifyPolicy, withVerificationTier } from '../plugins/verify-cap.js';
 
 
 const PROVIDER_ENUM = ['gemini', 'openai', 'claude', 'perplexity', 'mock'] as const;
@@ -89,6 +90,10 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
 
       const keyId = request.keyId ?? 'unknown';
       const effectiveProvider = provider ?? 'gemini';
+      // Server-side only: the cap comes from the entitled plan, never the body
+      // (BODY_SCHEMA strips unknown fields, and ScanOptions is not PipelineConfig).
+      const verifyPolicy = resolveVerifyPolicy(keyId, request.headers['x-user-tier']);
+      const scanOptions = { verifyCap: verifyPolicy.cap };
 
       // FR-3: pipelineConfig path — bypass cache and circuit breaker, use explicit providers
       if (pipelineConfig) {
@@ -102,6 +107,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
             /* onProgress */ undefined,
             /* onClaimVerified */ undefined,
             pipelineConfig,
+            scanOptions,
           );
           getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
           recordScanTelemetry({
@@ -119,11 +125,11 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
           });
           const compReport = buildEuComplianceReport(result, {});
           const compGate = evaluateComplianceGate(compReport);
-          const enriched = {
+          const enriched = withVerificationTier({
             ...result,
             complianceScore: compReport.complianceScore,
             compliancePass: compGate.pass,
-          };
+          }, verifyPolicy.tier);
           fireWebhookEvent('scan.complete', enriched);
           return reply.status(200).send(enriched);
         } catch (err) {
@@ -137,7 +143,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
         }
       }
 
-      const cached = getScanCache().get(text, effectiveProvider);
+      const cached = getScanCache().get(text, effectiveProvider, verifyPolicy.cap);
       if (cached) {
         reply.header('X-Cache', 'HIT');
         getAnalyticsStore().record(keyId, (cached as { overallRisk: string }).overallRisk as RiskLevel);
@@ -153,11 +159,11 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
         // Compute compliance for cached result too
         const cachedCompReport = buildEuComplianceReport(cached as unknown as Parameters<typeof buildEuComplianceReport>[0], {});
         const cachedCompGate = evaluateComplianceGate(cachedCompReport);
-        const cachedEnriched = {
+        const cachedEnriched = withVerificationTier({
           ...cached,
           complianceScore: cachedCompReport.complianceScore,
           compliancePass: cachedCompGate.pass,
-        };
+        }, verifyPolicy.tier);
         fireWebhookEvent('scan.complete', cachedEnriched);
         return reply.status(200).send(cachedEnriched);
       }
@@ -177,7 +183,9 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
 
       for (const p of chain) {
         try {
-          const { result, legs } = await captureUsage(() => scan(text, p));
+          const { result, legs } = await captureUsage(() => scan(
+            text, p, undefined, undefined, undefined, undefined, undefined, scanOptions,
+          ));
           cb.recordSuccess(p);
           getCostStore().record(keyId, p, text, resolveRequestTenantId(keyId));
 
@@ -227,7 +235,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
             });
           }
 
-          getScanCache().set(text, effectiveProvider, result as unknown as Record<string, unknown>);
+          getScanCache().set(text, effectiveProvider, result as unknown as Record<string, unknown>, verifyPolicy.cap);
           const scanId = `scan-${Date.now()}`;
           getClaimIndex().ingest(
             Array.isArray(result.claims) ? (result.claims as Array<{ id: string; text: string; type?: string }>) : [],
@@ -251,11 +259,11 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
           // Inline compliance score — EU AI Act readiness without separate API call
           const compReport = buildEuComplianceReport(result, {});
           const compGate = evaluateComplianceGate(compReport);
-          const enriched = {
+          const enriched = withVerificationTier({
             ...result,
             complianceScore: compReport.complianceScore,
             compliancePass: compGate.pass,
-          };
+          }, verifyPolicy.tier);
           fireWebhookEvent('scan.complete', enriched);
           return reply.status(200).send(enriched);
         } catch (err) {
@@ -305,9 +313,14 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
       const { text, provider } = request.body;
       const effectiveProvider = (provider ?? template.provider ?? 'openai') as ScanProvider;
 
-      const result = await scan(text, effectiveProvider);
-
       const keyId = request.keyId ?? 'unknown';
+      const verifyPolicy = resolveVerifyPolicy(keyId, request.headers['x-user-tier']);
+      const scanned = await scan(
+        text, effectiveProvider, undefined, undefined, undefined, undefined, undefined,
+        { verifyCap: verifyPolicy.cap },
+      );
+      const result = withVerificationTier(scanned, verifyPolicy.tier);
+
       getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
       getUsageMeter().increment(keyId); // count toward monthly cap (item 1)
       fireWebhookEvent('scan.complete', result);

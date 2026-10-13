@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { DEFAULT_VERIFY_CAP, resolveVerifyCap } from '@nxtg/faultline/cli/verify-cap.js';
 
 type ScanResult = Record<string, unknown>; // opaque — cache stores whatever scan() returns
 
@@ -10,8 +11,15 @@ interface CacheEntry {
 
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-function cacheKey(text: string, provider: string): string {
-  return createHash('sha256').update(`${text}\0${provider}`).digest('hex');
+/**
+ * The verify cap is part of the key: a result verified under one plan's cap
+ * must never be served to a plan with a different cap. The cap is normalised
+ * the way the engine normalises it, so 8 and an invalid value share an entry.
+ */
+function cacheKey(text: string, provider: string, verifyCap: number): string {
+  return createHash('sha256')
+    .update(`${text}\0${provider}\0cap=${resolveVerifyCap(verifyCap)}`)
+    .digest('hex');
 }
 
 /**
@@ -46,8 +54,9 @@ class ScanCache {
     this.ttlMs = ttlMs;
   }
 
-  get(text: string, provider: string): ScanResult | null {
-    const key = cacheKey(text, provider);
+  /** `verifyCap` defaults to the engine default, the cap a scan() without options runs at. */
+  get(text: string, provider: string, verifyCap: number = DEFAULT_VERIFY_CAP): ScanResult | null {
+    const key = cacheKey(text, provider, verifyCap);
     const entry = this.store.get(key);
     if (!entry) { this._misses++; return null; }
     if (Date.now() > entry.expiresAt) {
@@ -59,14 +68,14 @@ class ScanCache {
     return entry.result;
   }
 
-  set(text: string, provider: string, result: ScanResult): void {
+  set(text: string, provider: string, result: ScanResult, verifyCap: number = DEFAULT_VERIFY_CAP): void {
     // Never cache a scan whose verification did not run (provider quota/auth/5xx).
     // A cached error report is a served defect that survives the key/config fix —
     // it re-serves the raw failure for the full TTL. Origin: 2026-07-13 prod
     // free-tier-gemini 429 report cached + re-served. `apiError:true` is the
     // deterministic "not checked" flag every provider sets on verify failure.
     if (hasUncheckedClaim(result)) return;
-    const key = cacheKey(text, provider);
+    const key = cacheKey(text, provider, verifyCap);
     const now = Date.now();
     this.store.set(key, { result, cachedAt: now, expiresAt: now + this.ttlMs });
   }

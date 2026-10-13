@@ -224,8 +224,8 @@ describe('Failover — integration', () => {
 
     expect(res.statusCode).toBe(200);
     // Verify gemini was not called (first call should be openai)
-    expect(mockScan).toHaveBeenCalledWith('test', 'openai');
-    expect(mockScan).not.toHaveBeenCalledWith('test', 'gemini');
+    expect(mockScan).toHaveBeenCalledWith('test', 'openai', undefined, undefined, undefined, undefined, undefined, { verifyCap: 8 });
+    expect(mockScan).not.toHaveBeenCalledWith('test', 'gemini', undefined, undefined, undefined, undefined, undefined, { verifyCap: 8 });
   });
 
   it('Circuit breaker: after 5 failures, provider marked down', async () => {
@@ -256,7 +256,7 @@ describe('Failover — integration', () => {
 
     expect(res.statusCode).toBe(200);
     // Should have been called with claude (first non-down provider after gemini+openai)
-    expect(mockScan).toHaveBeenCalledWith('test', 'claude');
+    expect(mockScan).toHaveBeenCalledWith('test', 'claude', undefined, undefined, undefined, undefined, undefined, { verifyCap: 8 });
   });
 
   it('POST /scan/batch with working scan → 200', async () => {
