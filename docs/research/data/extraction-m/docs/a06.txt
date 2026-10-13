@@ -1,0 +1,15 @@
+The 2008 financial crisis, also known as the Global Financial Crisis, was caused by a combination of factors, including:
+
+1. **Housing Bubble and Subprime Mortgages:** Leading up to the crisis, there was a significant boom in housing prices fueled by easy credit and low interest rates. Lenders extended mortgages to borrowers with poor credit (subprime borrowers), often with little verification of income or ability to repay.
+
+2. **Securitization and Risky Financial Products:** Banks bundled these risky mortgages into complex financial products called mortgage-backed securities (MBS) and collateralized debt obligations (CDOs). These products were sold to investors worldwide, spreading the risk but also making it less transparent.
+
+3. **Poor Regulation and Oversight:** Regulatory agencies failed to adequately oversee lending practices, mortgage standards, and the growing shadow banking system. Financial institutions took on excessive leverage and risk without sufficient capital buffers.
+
+4. **Rating Agencies' Failures:** Credit rating agencies gave high ratings to risky mortgage-backed securities, misleading investors about their true risk.
+
+5. **Financial Institution Failures:** When housing prices began to fall and mortgage defaults increased, financial institutions holding large amounts of these risky assets faced huge losses. This led to the failure or bailout of major institutions like Lehman Brothers, Bear Stearns, and AIG.
+
+6. **Credit Crunch and Economic Downturn:** The losses and uncertainty caused banks to tighten lending, leading to a credit crunch. This restricted access to capital for businesses and consumers, triggering a severe economic recession globally.
+
+In summary, the 2008 financial crisis was caused by a mix of risky lending practices, complex and opaque financial products, regulatory failures, and a collapse in housing prices that together destabilized the global financial system.

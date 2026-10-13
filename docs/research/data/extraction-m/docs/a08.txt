@@ -1,0 +1,22 @@
+A Roth IRA and a traditional IRA are both individual retirement accounts that offer tax advantages, but they differ primarily in how and when you get tax benefits:
+
+1. **Tax Treatment of Contributions:**
+   - **Traditional IRA:** Contributions are often tax-deductible in the year you make them (depending on your income and participation in an employer retirement plan). This means you get an immediate tax benefit by reducing your taxable income.
+   - **Roth IRA:** Contributions are made with after-tax dollars and are not tax-deductible. You pay taxes on the money before you contribute.
+
+2. **Tax Treatment of Withdrawals:**
+   - **Traditional IRA:** Withdrawals in retirement are taxed as ordinary income because the contributions were made pre-tax or were tax-deductible.
+   - **Roth IRA:** Qualified withdrawals (generally, those made after age 59½ and after the account has been open at least 5 years) are tax-free, including both contributions and earnings.
+
+3. **Required Minimum Distributions (RMDs):**
+   - **Traditional IRA:** Required minimum distributions must start at age 73 (as of 2024).
+   - **Roth IRA:** There are no RMDs during the original account holder's lifetime, allowing the money to grow tax-free for a longer period.
+
+4. **Eligibility and Income Limits:**
+   - **Traditional IRA:** Anyone with earned income can contribute, but deductibility of contributions may be limited based on income and participation in employer plans.
+   - **Roth IRA:** There are income limits that restrict or prohibit contributions if your income is above certain thresholds.
+
+**Summary:**
+- Traditional IRA offers upfront tax deductions but taxes withdrawals later.
+- Roth IRA offers no upfront deduction but tax-free withdrawals later.
+- Roth IRAs don’t have required minimum distributions, whereas traditional IRAs do.

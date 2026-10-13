@@ -1,0 +1,10 @@
+The person most widely credited with inventing the telephone is **Alexander Graham Bell**.
+
+He was granted the first U.S. patent for the telephone on **March 7, 1876**.
+
+However, the story of the telephone's invention is quite complex and involves several other key figures:
+
+*   **Antonio Meucci:** An Italian immigrant, Meucci demonstrated a voice communication device as early as 1860 and filed a caveat (an intention to file a patent) in 1871. He couldn't afford to renew it, and his original designs were lost. In 2002, the U.S. House of Representatives passed a resolution acknowledging Meucci's pioneering work.
+*   **Elisha Gray:** An American electrical engineer, Gray filed a patent caveat for a telephone design on the *very same day* as Bell's patent application, just hours apart on February 14, 1876. There was a significant legal battle over who invented it first.
+
+While Meucci and Gray made significant contributions and were working on similar technologies, **Alexander Graham Bell** is historically recognized as the inventor because he was the first to secure a patent and successfully commercialize the device.
