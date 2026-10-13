@@ -845,6 +845,46 @@
       "fp": "8c71f549e17414d9b6e6361176af7d01_2",
       "disposition": "false-positive",
       "reason": "false-positive, triaged 2026-10-12 (fp): open() reads paths the local operator passes on the command line or by env (the Stripe key file and the internal-payer list) in a CLI run by hand on our own machine; no remote input reaches a path"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_path_traversal",
+      "uri": "packages/cli/scripts-extraction-m.ts",
+      "fp": "2546660e6ed51a87e70e63a4538b6242_0",
+      "disposition": "false-positive",
+      "reason": "false-positive, triaged 2026-10-13 (fp): readFileSync joins a directory the local operator passes on the command line with file names from readdirSync of that same directory, in a research script run by hand; not in the published package (files list) and no remote input reaches a path"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "python_lang_path_traversal",
+      "uri": "scripts/extraction-m-generate.py",
+      "fp": "7bb9989031cb52200532c6541c55b9d1_0",
+      "disposition": "false-positive",
+      "reason": "false-positive, triaged 2026-10-13 (fp): open() writes to a fixed repo directory with file names built from ids in the committed prompts.json; run by hand, no remote input reaches a path"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/scripts-extraction-m.ts",
+      "fp": "3f5dfefad68f66720a3c882478096755_0",
+      "disposition": "false-positive",
+      "reason": "false-positive, triaged 2026-10-13 (fp): logs a document id and claim counts only; no key, prompt text or user data"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/scripts-extraction-m.ts",
+      "fp": "3f5dfefad68f66720a3c882478096755_1",
+      "disposition": "false-positive",
+      "reason": "false-positive, triaged 2026-10-13 (fp): logs a document id and the first 200 characters of a provider error from a local research run; the Gemini key travels in a request header, not in error text"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/measure-verify-cost.mjs",
+      "fp": "2d62362db4f30c8b8ba7b82931ac037c_0",
+      "disposition": "false-positive",
+      "reason": "false-positive, triaged 2026-10-13 (fp): logs the cost report (ledger totals, counts, claim ids, engine commit); the admin key is sent only as the x-api-key header and is never in the report"
     }
   ]
 }
