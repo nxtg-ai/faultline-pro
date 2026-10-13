@@ -185,10 +185,10 @@
     {
       "tool": "bearer",
       "ruleId": "javascript_lang_insufficiently_random_values",
-      "uri": "packages/cli/cli/scan.ts",
-      "fp": "b88f6db9bcaae6e40b4f9ed91d430ff4_0",
+      "uri": "packages/cli/cli/verify-runner.ts",
+      "fp": "2b7f0bd4c005cc01f1bab025e228839e_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block; moved 2026-10-13 (fp) with the verify loop from scan.ts to verify-runner.ts (GoPMO 1.18.11.3.12): Math.random jitter on the retry backoff, not a security value"
     },
     {
       "tool": "bearer",

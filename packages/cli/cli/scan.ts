@@ -1,12 +1,6 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import type { Claim, VerificationResult, AnalysisState } from '../types.js';
-import type { LLMProvider, Retriever } from '../providers/base_provider.js';
-import { getProvider } from '../providers/registry.js';
-import { DEFAULT_SCAN_PROVIDER, resolveApiKey } from './provider-keys.js';
-import { GeminiGroundingRetriever } from '../providers/gemini_provider.js';
-import { OpenAIWebSearchRetriever } from '../providers/openai_web_search_retriever.js';
-import { consensusVerify, type NamedProvider } from '../consensus/consensus_engine.js';
 import { generateComplianceReport, type ComplianceReport } from '../compliance/report_generator.js';
 import { runAllRules, runRules, type Finding } from '../rules/index.js';
 import {
@@ -16,43 +10,41 @@ import {
   buildVerificationSummary,
   type VerificationSummary,
 } from './verify-cap.js';
+import {
+  resolveScanProviders,
+  resolveExtractionProvider,
+  resolveVerifier,
+  runVerification,
+  type PipelineConfig,
+  type ScanProgressCallback,
+  type ScanClaimCallback,
+  type Verifier,
+} from './verify-runner.js';
+import {
+  partitionForFullScan,
+  unitsForFullScan,
+  buildFullVerificationSummary,
+  type FullVerificationSummary,
+  type ScanMode,
+} from './full-scan.js';
 
 export { DEFAULT_VERIFY_CAP, resolveVerifyCap, type VerificationSummary };
-
-const VERIFY_CONCURRENCY = 8;
-
-// ── FR-3: Per-stage model routing ─────────────────────────────────────────────
-
-/** Provider names supported by the Faultline provider registry. */
-export type ProviderName = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
-
-/**
- * Optional per-stage provider overrides.
- * Each field defaults to the top-level `provider` if absent.
- *
- * Note: `synthesisProvider` is accepted for forward compatibility but is a
- * no-op in the current API pipeline (complianceReport is a pure function).
- * It will be wired up when `generateCritiqueAndPrompt` migrates to the API
- * (requires FR-1 POST /scan/stream).
- */
-export interface PipelineConfig {
-  extractionProvider?: ProviderName;    // provider for extractClaims()
-  verificationProvider?: ProviderName;  // provider for verifyClaim()
-  synthesisProvider?: ProviderName;     // reserved — no-op in current API pipeline
-  /**
-   * Opt-in grounded multi-model consensus for the VERIFY stage (additive).
-   * When true, each claim is verified by fanning out to multiple providers in
-   * parallel, all judging the SAME retrieved sources, then fusing the verdicts
-   * (see consensus_engine.ts). Extraction stays single-provider.
-   * When absent/false, the existing single-provider verify path runs UNCHANGED.
-   */
-  consensus?: boolean;
-  /**
-   * Provider names participating in consensus verify (default: gemini, openai,
-   * claude). Only used when `consensus` is true.
-   */
-  consensusProviders?: ProviderName[];
-}
+export {
+  VERIFY_CONCURRENCY,
+  type ProviderName,
+  type PipelineConfig,
+  type ScanProgressCallback,
+  type ScanClaimCallback,
+} from './verify-runner.js';
+export {
+  CLAIMS_PER_UNIT,
+  unitsForFullScan,
+  unitAccounting,
+  partitionForFullScan,
+  type FullVerificationSummary,
+  type ScanMode,
+  type UnitAccounting,
+} from './full-scan.js';
 
 /**
  * Server-side scan options. Deliberately separate from PipelineConfig, which
@@ -62,8 +54,16 @@ export interface ScanOptions {
   /**
    * Maximum claims sent to verification (default DEFAULT_VERIFY_CAP = 8).
    * Normalised by resolveVerifyCap, so an invalid value falls back to 8.
+   * Ignored in `full` mode.
    */
   verifyCap?: number;
+  /**
+   * `quick` (default): verify the top `verifyCap` facts of importance >= 2.
+   * `full`: verify every fact claim, any importance, in extraction order, and
+   * report opinions and interpretations as not checkable. Any value other than
+   * 'full' runs quick, so a bad value can never lift the cost bound.
+   */
+  mode?: ScanMode;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -91,11 +91,47 @@ export interface ScanResult {
    */
   degraded?: boolean;
   /**
-   * What the verify cap did to this scan: how many eligible claims went
-   * unchecked, and which. scan() always sets it; it is optional because results
-   * read back from history files or an older hosted API do not carry it.
+   * What the verify stage did to this scan. Quick mode: what the cap left
+   * unchecked (VerificationSummary, no `mode` field). Full mode: the
+   * FullVerificationSummary (`mode: 'full'`). scan() always sets it; it is
+   * optional because results read back from history files or an older hosted
+   * API do not carry it.
    */
-  verification?: VerificationSummary;
+  verification?: VerificationSummary | FullVerificationSummary;
+}
+
+/** The result of a full scan run: a ScanResult with the full-mode summary. */
+export interface FullScanResult extends ScanResult {
+  verification: FullVerificationSummary;
+  /** Fact claims never started because the run was stopped (same as verification.uncheckedClaimIds). */
+  notAttemptedClaimIds: string[];
+}
+
+/** The estimate of a full scan: extraction only, no verification. */
+export interface FullScanEstimate {
+  /** The claims a full scan of this text checks, after the per-sentence guarantee. */
+  claims: Claim[];
+  /** Claims of type `fact`: the ones that will be verified. */
+  factClaims: number;
+  /** Opinions and interpretations: reported as not checkable. */
+  notCheckable: number;
+  /** Units charged: ceil(factClaims / CLAIMS_PER_UNIT), 0 when there are no facts. */
+  units: number;
+}
+
+/** Options for verifyFullScan. */
+export interface VerifyFullScanOptions {
+  providerName?: string;
+  pipelineConfig?: PipelineConfig;
+  /** Fired once per verified fact claim, with its index among the facts and the fact total. */
+  onClaim?: ScanClaimCallback;
+  onProgress?: ScanProgressCallback;
+  /** Stops starting new claims; claims never started are reported as not attempted. */
+  signal?: AbortSignal;
+  /** The scanned text, when available: sets `input` and runs the local rules (no provider call). */
+  text?: string;
+  minConfidence?: number;
+  ruleNames?: string[];
 }
 
 function calculateRisk(
@@ -217,73 +253,14 @@ export function filterClaimsForVerification(claims: Claim[], cap: number = DEFAU
   return rankEligibleClaims(claims).slice(0, resolveVerifyCap(cap));
 }
 
-/** Callback for reporting scan progress to the caller (e.g., a CLI spinner). */
-export type ScanProgressCallback = (message: string) => void;
-
-/** Fired after each claim is verified, enabling progressive streaming. */
-export type ScanClaimCallback = (
-  claim: Claim,
-  verdict: VerificationResult,
-  index: number,
-  total: number,
-) => void;
-
-// openai FIRST: it's the funded, non-throttled provider + the retriever, so it is
-// the reliable always-present voter. gemini (free-tier) + claude (credits) are bonus
-// voters when available. Order matters: a degraded bonus provider must never be the
-// sole/first dependency of a grounded scan.
-const DEFAULT_CONSENSUS_PROVIDERS: ProviderName[] = ['openai', 'gemini', 'claude'];
-
-/**
- * Build the consensus rig: a provider-agnostic Retriever plus the named
- * providers to fan out to. A provider whose API key is missing is SKIPPED here
- * rather than throwing — a missing key must not abort a consensus scan (it
- * simply means one fewer voter). The Retriever defaults to gemini grounding but
- * is selected behind the Retriever interface so a different backend can be
- * swapped in by config.
- */
-function buildConsensusRig(names: ProviderName[]): {
-  retriever: Retriever;
-  namedProviders: NamedProvider[];
-} {
-  const namedProviders: NamedProvider[] = [];
-  for (const name of names) {
-    try {
-      const apiKey = resolveApiKey(name);
-      namedProviders.push({ name, provider: getProvider(apiKey, name) });
-    } catch {
-      // Missing key → not a participant. Not fatal: consensus still runs with
-      // whatever providers ARE configured.
-    }
-  }
-  // PRIMARY retriever: OpenAI Responses API web_search (funded key, not throttled
-  // like the free-tier gemini native googleSearch). When the OpenAI key is absent
-  // we fall back to GeminiGroundingRetriever (alternate). If neither key exists,
-  // retrieval yields [] and providers judge from parametric knowledge.
-  const retriever = buildRetriever();
-  return { retriever, namedProviders };
+/** Rule findings for the scanned text (local pattern rules, no provider call). */
+function findRules(text: string, ruleNames?: string[]): Finding[] {
+  return ruleNames ? runRules(text, ruleNames) : runAllRules(text);
 }
 
-/**
- * Select the consensus retriever behind the provider-agnostic Retriever seam.
- * OpenAI web search is primary; gemini grounding is the alternate fallback.
- */
-function buildRetriever(): Retriever {
-  let openaiKey = '';
-  try {
-    openaiKey = resolveApiKey('openai');
-  } catch {
-    openaiKey = '';
-  }
-  if (openaiKey) return new OpenAIWebSearchRetriever(openaiKey);
-
-  let geminiKey = '';
-  try {
-    geminiKey = resolveApiKey('gemini');
-  } catch {
-    geminiKey = '';
-  }
-  return new GeminiGroundingRetriever(geminiKey);
+/** Count of verifications that ran into a provider/API error instead of a verdict. */
+function countVerificationErrors(verifications: Record<string, VerificationResult>): number {
+  return Object.values(verifications).filter((v) => v.apiError).length;
 }
 
 export async function scan(
@@ -296,97 +273,27 @@ export async function scan(
   pipelineConfig?: PipelineConfig,
   options?: ScanOptions,
 ): Promise<ScanResult> {
-  const resolvedProvider = providerName || DEFAULT_SCAN_PROVIDER;
-
-  // Consensus mode defaults EVERY stage to the funded openai path so a grounded
-  // scan never depends on the free-tier gemini SPOF (extraction + verify + the
-  // web-search retriever all run on the funded OpenAI key; gemini is a bonus
-  // consensus voter when not throttled). Explicit pipelineConfig overrides win.
-  // EXCEPTION: `mock` is the offline/keyless sentinel — it must never be
-  // force-upgraded to a real API call. An explicit `provider: 'mock'` is honored
-  // across stages even under consensus (the openai-default is for real-provider
-  // resolution, not for overriding an explicit offline request).
-  const consensusEnabled = pipelineConfig?.consensus === true;
-  const stageDefault =
-    consensusEnabled && resolvedProvider !== 'mock' ? 'openai' : resolvedProvider;
-
-  // FR-3: per-stage provider names (fall back to the stage default if not specified)
-  const extractionName = pipelineConfig?.extractionProvider ?? stageDefault;
-  const verificationName = pipelineConfig?.verificationProvider ?? stageDefault;
-
-  const extractionApiKey = resolveApiKey(extractionName);
-  const verificationApiKey = resolveApiKey(verificationName);
-
-  const extractionProvider: LLMProvider = getProvider(extractionApiKey, extractionName);
-  // Reuse the same instance when both stages use the same provider
-  const verificationProvider: LLMProvider = extractionName === verificationName
-    ? extractionProvider
-    : getProvider(verificationApiKey, verificationName);
-
-  // Consensus mode (opt-in, additive). When off, the rig is never built and the
-  // single-provider verify path below runs unchanged. (consensusEnabled computed above.)
-  const consensusRig = consensusEnabled
-    ? buildConsensusRig(pipelineConfig?.consensusProviders ?? DEFAULT_CONSENSUS_PROVIDERS)
-    : null;
+  const { extractionProvider, verifier } = resolveScanProviders(providerName, pipelineConfig);
 
   onProgress?.('Extracting claims...');
   const rawClaims = await extractionProvider.extractClaims(text);
   const claims = guaranteeClaimPerSentence(text, rawClaims);
+
+  if (options?.mode === 'full') {
+    return runFullVerification(claims, verifier, {
+      provider: extractionProvider.name, text, minConfidence, ruleNames, onProgress, onClaim: onClaimVerified,
+    });
+  }
+
   const verifyCap = resolveVerifyCap(options?.verifyCap);
   const rankedEligible = rankEligibleClaims(claims);
   const toVerify = rankedEligible.slice(0, verifyCap);
-
-  const verifications: Record<string, VerificationResult> = {};
-  let completedCount = 0;
-  let cursor = 0;
-  const runSlot = async (): Promise<void> => {
-    while (cursor < toVerify.length) {
-      const i = cursor++;
-      onProgress?.(`Verifying claim ${i + 1}/${toVerify.length}...`);
-      let result: VerificationResult;
-
-      // Consensus branch: fan out to N providers over shared retrieved sources.
-      // consensusVerify is internally resilient (never throws), so it bypasses
-      // the single-provider retry ladder.
-      if (consensusRig) {
-        result = await consensusVerify(toVerify[i], consensusRig.retriever, consensusRig.namedProviders);
-        verifications[toVerify[i].id] = result;
-        completedCount++;
-        onClaimVerified?.(toVerify[i], result, i, toVerify.length);
-        continue;
-      }
-
-      let delay = 1000;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          result = await verificationProvider.verifyClaim(toVerify[i]);
-          break;
-        } catch (err) {
-          if (attempt < 2) {
-            await new Promise(r => setTimeout(r, delay + Math.floor(Math.random() * 500)));
-            delay *= 2;
-          } else {
-            const isRateLimit = err instanceof Error && (err.message.includes('429') || err.message.toLowerCase().includes('rate limit'));
-            result = { claimId: toVerify[i].id, status: 'unverified', explanation: isRateLimit ? 'Rate limit reached. Upgrade for higher limits: https://faultline.nxtg.ai/pricing' : 'Verify failed after retries.', sources: [] };
-          }
-        }
-      }
-      verifications[toVerify[i].id] = result!;
-      completedCount++;
-      onClaimVerified?.(toVerify[i], result!, i, toVerify.length);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(VERIFY_CONCURRENCY, toVerify.length) }, runSlot));
+  const { verifications } = await runVerification(toVerify, verifier, { onProgress, onClaimVerified });
 
   onProgress?.('Generating report...');
   const overallRisk = calculateRisk(verifications);
   const complianceReport = generateComplianceReport(toVerify, verifications, overallRisk, minConfidence);
-
-  const ruleFindings = ruleNames
-    ? runRules(text, ruleNames)
-    : runAllRules(text);
-
-  const verificationErrors = Object.values(verifications).filter((v) => v.apiError).length;
+  const verificationErrors = countVerificationErrors(verifications);
 
   return {
     input: text.substring(0, 200),
@@ -395,10 +302,95 @@ export async function scan(
     verifications,
     overallRisk,
     complianceReport,
-    ruleFindings,
+    ruleFindings: findRules(text, ruleNames),
     verificationErrors,
     degraded: verificationErrors > 0,
     verification: buildVerificationSummary(rankedEligible, toVerify, verifyCap),
+  };
+}
+
+// --- Full scan ---
+
+/**
+ * Extract the claims a full scan would check and price it, without verifying.
+ * Makes one extraction call and no verify or grounding call.
+ *
+ * @example
+ *   const est = await extractForFullScan(text, 'gemini');
+ *   // est.units === Math.ceil(est.factClaims / 8)
+ */
+export async function extractForFullScan(
+  text: string,
+  providerName?: string,
+  pipelineConfig?: PipelineConfig,
+): Promise<FullScanEstimate> {
+  const extractionProvider = resolveExtractionProvider(providerName, pipelineConfig);
+  const claims = guaranteeClaimPerSentence(text, await extractionProvider.extractClaims(text));
+  const { facts, notCheckable } = partitionForFullScan(claims);
+  return {
+    claims,
+    factClaims: facts.length,
+    notCheckable: notCheckable.length,
+    units: unitsForFullScan(facts.length),
+  };
+}
+
+/**
+ * Verify every fact claim in `claims` (typically from extractForFullScan), with
+ * no second extraction, so the run checks exactly the claims the estimate priced.
+ * Opinions and interpretations are reported as not checkable, never verified.
+ */
+export async function verifyFullScan(
+  claims: Claim[],
+  opts: VerifyFullScanOptions = {},
+): Promise<FullScanResult> {
+  const verifier = resolveVerifier(opts.providerName, opts.pipelineConfig);
+  return runFullVerification(claims, verifier, { ...opts, provider: verifier.provider.name });
+}
+
+interface FullVerificationContext {
+  provider: string;
+  text?: string;
+  minConfidence?: number;
+  ruleNames?: string[];
+  onProgress?: ScanProgressCallback;
+  onClaim?: ScanClaimCallback;
+  signal?: AbortSignal;
+}
+
+/** The full-scan core shared by scan(mode 'full') and verifyFullScan. */
+async function runFullVerification(
+  claims: Claim[],
+  verifier: Verifier,
+  context: FullVerificationContext,
+): Promise<FullScanResult> {
+  const partition = partitionForFullScan(claims);
+  const run = await runVerification(partition.facts, verifier, {
+    onProgress: context.onProgress,
+    onClaimVerified: context.onClaim,
+    signal: context.signal,
+    flagExhaustedRetries: true,
+  });
+
+  context.onProgress?.('Generating report...');
+  const overallRisk = calculateRisk(run.verifications);
+  const complianceReport = generateComplianceReport(run.attempted, run.verifications, overallRisk, context.minConfidence);
+  const verification = buildFullVerificationSummary(partition, run.results);
+  // Positional, like the summary: an id-keyed count would lose a failure behind a duplicate id.
+  const verificationErrors = verification.unservedClaimIds.length;
+
+  return {
+    input: context.text?.substring(0, 200) ?? '',
+    provider: context.provider,
+    claims,
+    verifications: run.verifications,
+    overallRisk,
+    complianceReport,
+    ruleFindings: context.text !== undefined ? findRules(context.text, context.ruleNames) : [],
+    verificationErrors,
+    degraded: verificationErrors > 0,
+    verification,
+    notAttemptedClaimIds: verification.uncheckedClaimIds,
   };
 }
 
