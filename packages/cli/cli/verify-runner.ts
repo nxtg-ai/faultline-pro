@@ -214,9 +214,11 @@ export interface RunVerificationOptions {
   /** When aborted, no further claim is started; claims already running finish. */
   signal?: AbortSignal;
   /**
-   * Mark a claim whose provider threw on every retry as `apiError: true`.
-   * The full scan sets it, because such a claim got no verdict and is unserved.
-   * The quick scan leaves it off to keep its historical result objects.
+   * Mark a claim whose provider threw on every retry as `apiError: true` (default on).
+   * Such a claim got no verdict: the scan must count it in verificationErrors, report
+   * degraded, and never be cached (the cache refuses results with apiError). Before
+   * 2026-10-13 the quick scan left it off, so a thrown provider error read as a plain
+   * 'unverified' verdict and could be cached for 24 hours.
    */
   flagExhaustedRetries?: boolean;
 }
@@ -277,7 +279,7 @@ export async function runVerification(
   verifier: Verifier,
   options: RunVerificationOptions = {},
 ): Promise<VerificationRun> {
-  const { onProgress, onClaimVerified, signal, flagExhaustedRetries = false } = options;
+  const { onProgress, onClaimVerified, signal, flagExhaustedRetries = true } = options;
   const verifications: Record<string, VerificationResult> = {};
   const results: Array<VerificationResult | undefined> = new Array(claims.length).fill(undefined);
   let cursor = 0;

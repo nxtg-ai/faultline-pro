@@ -236,12 +236,13 @@ describe('scan(mode full)', () => {
       expect(v.unservedClaimIds).toEqual(['f2']);
     });
 
-    it('quick mode keeps its historical result: no apiError on the exhausted claim', async () => {
+    it('quick mode flags the exhausted claim too, so the scan is degraded and never cached', async () => {
       const r = await scanWithThrowingClaim('quick');
       expect(r.verifications.f2).toEqual({
-        claimId: 'f2', status: 'unverified', explanation: 'Verify failed after retries.', sources: [],
+        claimId: 'f2', status: 'unverified', explanation: 'Verify failed after retries.', sources: [], apiError: true,
       });
-      expect(r.verificationErrors).toBe(0);
+      expect(r.verificationErrors).toBe(1);
+      expect(r.degraded).toBe(true);
     });
   });
 });
