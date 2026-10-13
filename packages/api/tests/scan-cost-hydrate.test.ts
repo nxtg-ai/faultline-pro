@@ -126,6 +126,20 @@ describe('scan-cost log kind (admin-verify batches are not scans)', () => {
     expect(pct.count).toBe(1);
     expect(pct.p50).toBe(0.31);
   });
+
+  it('SCH-10: a full-scan row loads back as full-scan and stays out of percentiles (GoPMO 1.18.11.3.12)', () => {
+    const p = join(dir, 'log.jsonl');
+    writeFileSync(p, [
+      row({ scan_id: 'full-job', user_tier: 'pro', kind: 'full-scan', usd_estimate: 7.08 }),
+      row({ scan_id: 'quick', user_tier: 'pro', kind: 'scan', usd_estimate: 0.28 }),
+    ].join('\n') + '\n');
+    const ev = loadScanCostLog(p);
+    expect(ev.map((e) => [e.scanId, e.kind])).toEqual([['full-job', 'full-scan'], ['quick', 'scan']]);
+    getCostStore().hydrate(ev);
+    const pct = getCostStore().getPercentiles(30, 'pro');
+    expect(pct.count).toBe(1);
+    expect(pct.p50).toBe(0.28);
+  });
 });
 
 describe('GET /costs/percentiles', () => {

@@ -31,6 +31,7 @@ import {
 export { DEFAULT_VERIFY_CAP, resolveVerifyCap, type VerificationSummary };
 export {
   VERIFY_CONCURRENCY,
+  resolveVerifyConcurrency,
   type ProviderName,
   type PipelineConfig,
   type ScanProgressCallback,
@@ -128,6 +129,8 @@ export interface VerifyFullScanOptions {
   onProgress?: ScanProgressCallback;
   /** Stops starting new claims; claims never started are reported as not attempted. */
   signal?: AbortSignal;
+  /** Fact claims verified at the same time (default VERIFY_CONCURRENCY, 8). The API's full scan uses 4. */
+  concurrency?: number;
   /** The scanned text, when available: sets `input` and runs the local rules (no provider call). */
   text?: string;
   minConfidence?: number;
@@ -356,6 +359,7 @@ interface FullVerificationContext {
   onProgress?: ScanProgressCallback;
   onClaim?: ScanClaimCallback;
   signal?: AbortSignal;
+  concurrency?: number;
 }
 
 /** The full-scan core shared by scan(mode 'full') and verifyFullScan. */
@@ -369,6 +373,7 @@ async function runFullVerification(
     onProgress: context.onProgress,
     onClaimVerified: context.onClaim,
     signal: context.signal,
+    concurrency: context.concurrency,
     flagExhaustedRetries: true,
   });
 

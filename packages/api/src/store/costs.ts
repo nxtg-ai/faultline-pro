@@ -142,8 +142,12 @@ export interface ManagedScanCostEvent {
   costUsd: number;
   latencyMs: number;
   cacheHit?: boolean;      // true when result served from cache (cost = 0 effective)
-  /** What produced the cost: a customer scan, or an admin benchmark batch of up to 25 claims. Absent = 'scan'. */
-  kind?: 'scan' | 'admin-verify';
+  /**
+   * What produced the cost: a customer scan, an admin benchmark batch of up to 25
+   * claims, or one full-scan step (an estimate's extraction or a job's verify run,
+   * which can be 200+ claims). Absent = 'scan'. Per-scan percentiles count 'scan' only.
+   */
+  kind?: 'scan' | 'admin-verify' | 'full-scan';
 }
 
 const VALID_TIERS = new Set<ManagedScanCostEvent['tier']>(['enterprise', 'pro', 'personal', 'free', 'anon', 'userkey']);
@@ -402,7 +406,7 @@ export function loadScanCostLog(logPath = SCAN_COST_LOG_PATH): ManagedScanCostEv
         costUsd: num(r.usd_estimate),
         latencyMs: num(r.wall_ms),
         cacheHit: r.cache_hit === true,
-        kind: r.kind === 'admin-verify' ? 'admin-verify' : 'scan',
+        kind: r.kind === 'admin-verify' || r.kind === 'full-scan' ? r.kind : 'scan',
       });
     } catch {
       /* skip a malformed row */

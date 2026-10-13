@@ -18,6 +18,7 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { healthRoutes } from './routes/health.js';
 import { scanRoutes } from './routes/scan.js';
+import { fullScanRoutes } from './routes/full-scan.js';
 import { reportRoutes } from './routes/report.js';
 import { uploadRoutes } from './routes/upload.js';
 import { keysRoutes } from './routes/keys.js';
@@ -78,6 +79,7 @@ import { getJobScheduler, resetJobScheduler } from './store/jobs.js';
 import { getNpmMetricsStore, resetNpmMetricsStore } from './store/npm-metrics.js';
 import { getAuditLogger, hashInput } from './store/audit.js';
 import { getUsageMeter } from './store/usage.js';
+import { stopFullScanJobPruning } from './store/full-scan-jobs.js';
 import { FAULTLINE_API_VERSION } from './version.js';
 
 const MAX_FILE_SIZE = 10_485_760; // 10MB
@@ -154,6 +156,7 @@ export function buildServer() {
   fastify.register(swaggerUi, { routePrefix: '/docs', uiConfig: { docExpansion: 'list' } });
   fastify.register(healthRoutes);
   fastify.register(scanRoutes);
+  fastify.register(fullScanRoutes);
   fastify.register(reportRoutes);
   fastify.register(uploadRoutes);
   fastify.register(keysRoutes);
@@ -267,6 +270,7 @@ export function buildServer() {
     resetScheduleRunner();
     getNpmMetricsStore().stopPolling();
     resetNpmMetricsStore();
+    stopFullScanJobPruning();
   });
 
   fastify.addHook('onRequest', async (request: FastifyRequest) => {

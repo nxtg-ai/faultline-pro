@@ -6,7 +6,7 @@
  * One implementation so the two scan modes cannot drift on provider choice,
  * concurrency or apiError semantics.
  */
-import type { Claim, VerificationResult } from '../types.js';
+import type { ApiErrorReason, Claim, VerificationResult } from '../types.js';
 import type { LLMProvider, Retriever } from '../providers/base_provider.js';
 import { getProvider } from '../providers/registry.js';
 import { DEFAULT_SCAN_PROVIDER, resolveApiKey } from './provider-keys.js';
@@ -16,6 +16,22 @@ import { consensusVerify, type NamedProvider } from '../consensus/consensus_engi
 
 /** Claims verified at the same time within one scan. */
 export const VERIFY_CONCURRENCY = 8;
+
+/**
+ * Normalise a requested verify concurrency: a finite number >= 1 is floored to an
+ * integer; anything else (0, negative, NaN, a non-number) falls back to
+ * VERIFY_CONCURRENCY, so a bad value can never stall a run at 0 workers.
+ *
+ * @example
+ *   resolveVerifyConcurrency(4)   // 4
+ *   resolveVerifyConcurrency(2.7) // 2
+ *   resolveVerifyConcurrency(0)   // 8
+ */
+export function resolveVerifyConcurrency(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 1
+    ? Math.floor(value)
+    : VERIFY_CONCURRENCY;
+}
 
 /** Provider names supported by the Faultline provider registry. */
 export type ProviderName = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
@@ -221,6 +237,8 @@ export interface RunVerificationOptions {
    * 'unverified' verdict and could be cached for 24 hours.
    */
   flagExhaustedRetries?: boolean;
+  /** Claims verified at the same time (default VERIFY_CONCURRENCY; see resolveVerifyConcurrency). */
+  concurrency?: number;
 }
 
 /** What one verify-stage run produced. */
@@ -235,6 +253,21 @@ export interface VerificationRun {
   notAttempted: Claim[];
 }
 
+/**
+ * Classify the error a claim's final attempt threw. Patterns follow
+ * services/verify-error.ts so the reason and the customer text agree on what a
+ * 429, a 503 or a timeout is; a timeout is tested before the 5xx/unavailable
+ * class because "upstream timed out (503)" is still a timeout to the caller.
+ */
+export function classifyApiError(err: unknown): ApiErrorReason {
+  const name = err instanceof Error ? err.name : '';
+  const raw = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  if (/\b429\b|resource_exhausted|quota|rate[ _-]?limit|too many requests/.test(raw)) return 'rate_limited';
+  if (name === 'AbortError' || name === 'TimeoutError' || /timeout|timed out|etimedout/.test(raw)) return 'timeout';
+  if (/\b503\b|overloaded|unavailable/.test(raw)) return 'provider_unavailable';
+  return 'provider_error';
+}
+
 function exhaustedRetryResult(claim: Claim, err: unknown, flagApiError: boolean): VerificationResult {
   const isRateLimit = err instanceof Error
     && (err.message.includes('429') || err.message.toLowerCase().includes('rate limit'));
@@ -246,7 +279,7 @@ function exhaustedRetryResult(claim: Claim, err: unknown, flagApiError: boolean)
       : 'Verify failed after retries.',
     sources: [],
   };
-  return flagApiError ? { ...result, apiError: true } : result;
+  return flagApiError ? { ...result, apiError: true, apiErrorReason: classifyApiError(err) } : result;
 }
 
 /**
@@ -270,7 +303,8 @@ async function verifyOneClaim(claim: Claim, verifier: Verifier, flagExhaustedRet
 }
 
 /**
- * Verify `claims` in order with VERIFY_CONCURRENCY workers. Every claim is
+ * Verify `claims` in order with `options.concurrency` workers (default
+ * VERIFY_CONCURRENCY). Every claim is
  * attempted unless `signal` aborts, in which case the rest are reported in
  * `notAttempted`.
  */
@@ -280,6 +314,7 @@ export async function runVerification(
   options: RunVerificationOptions = {},
 ): Promise<VerificationRun> {
   const { onProgress, onClaimVerified, signal, flagExhaustedRetries = true } = options;
+  const concurrency = resolveVerifyConcurrency(options.concurrency ?? VERIFY_CONCURRENCY);
   const verifications: Record<string, VerificationResult> = {};
   const results: Array<VerificationResult | undefined> = new Array(claims.length).fill(undefined);
   let cursor = 0;
@@ -293,7 +328,7 @@ export async function runVerification(
       onClaimVerified?.(claims[i], result, i, claims.length);
     }
   };
-  await Promise.all(Array.from({ length: Math.min(VERIFY_CONCURRENCY, claims.length) }, runSlot));
+  await Promise.all(Array.from({ length: Math.min(concurrency, claims.length) }, runSlot));
   return {
     verifications,
     results,

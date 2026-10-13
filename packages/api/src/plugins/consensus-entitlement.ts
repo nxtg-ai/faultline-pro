@@ -14,6 +14,17 @@ const CONSENSUS_TIERS = new Set<Tier>(['enterprise']);
 const FORWARDABLE_TIERS = new Set<Tier>(['enterprise', 'pro', 'personal', 'free', 'anon', 'userkey']);
 
 /**
+ * True when the request authenticated with the server's own FAULTLINE_API_KEY
+ * (keyId 'admin', set only by requireApiKey's env-key match). That key is held
+ * by faultline-web alone, so it is the only caller whose forwarded headers
+ * (x-user-tier, x-faultline-user-ref) are trusted. Deliberately narrower than
+ * auth.ts isAdminKeyId: a keystore key with the 'admin' permission is not fw.
+ */
+export function isServerKeyId(keyId: string): boolean {
+  return keyId === 'admin';
+}
+
+/**
  * The tier a request is ENTITLED to — for feature decisions, not telemetry.
  *
  * `x-user-tier` is caller-supplied (ae4987a: a spoofable header must not buy a
@@ -28,7 +39,7 @@ const FORWARDABLE_TIERS = new Set<Tier>(['enterprise', 'pro', 'personal', 'free'
  * keys cannot reach consensus until an enterprise permission exists.)
  */
 export function resolveEntitledTier(keyId: string, headerTier?: string | string[]): Tier {
-  if (keyId !== 'admin') return resolveTier(keyId);
+  if (!isServerKeyId(keyId)) return resolveTier(keyId);
   const raw = Array.isArray(headerTier) ? headerTier[0] : headerTier;
   if (raw === undefined || raw === '') return 'enterprise';
   return FORWARDABLE_TIERS.has(raw as Tier) ? (raw as Tier) : 'free';

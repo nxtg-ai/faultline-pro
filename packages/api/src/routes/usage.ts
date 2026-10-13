@@ -6,6 +6,7 @@ import { getMonthlyCap, isUsageCapEnabled } from '../store/entitlements.js';
 import { nextMonthResetEpoch } from '../plugins/usage-cap.js';
 import { getProviderSpendLedger, getProviderSpendStatus } from '../store/provider-spend.js';
 import { getGroundingAllowanceStatus } from '../store/grounding-allowance.js';
+import { getFullScanJobStore } from '../store/full-scan-jobs.js';
 
 export async function usageRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get('/usage', { preHandler: requireApiKey, schema: { tags: ['Analytics'], summary: 'Per-key daily scan usage counts + monthly quota' } }, async (request, reply) => {
@@ -38,6 +39,10 @@ export async function usageRoutes(fastify: FastifyInstance): Promise<void> {
     // Daily Gemini grounded-prompt count vs Google's free allowance (N-230,
     // Asif ruling 2026-10-01). Admin only for the same reason as providerBudget.
     const groundingAllowance = isAdmin ? getGroundingAllowanceStatus() : undefined;
+    // Full-scan refund rate over the trailing 7 days, from the terminal-job ledger
+    // (emma-soul condition 4, GoPMO 1.18.11.3.12). `alert` = refunded units above
+    // 10% of charged units; fp then reports the cause. Admin only: fleet-wide.
+    const fullScanRefunds = isAdmin ? getFullScanJobStore().refundSummary() : undefined;
 
     return reply.status(200).send({
       keyId,
@@ -45,6 +50,7 @@ export async function usageRoutes(fastify: FastifyInstance): Promise<void> {
       quota,
       ...(providerBudget ? { providerBudget } : {}),
       ...(groundingAllowance ? { groundingAllowance } : {}),
+      ...(fullScanRefunds ? { fullScanRefunds } : {}),
     });
   });
 }

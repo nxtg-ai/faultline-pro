@@ -63,6 +63,9 @@ export interface ProviderVote {
   apiError?: boolean;
 }
 
+/** What a provider failure was, after the engine's retries: 429, 503, a timeout, or anything else. */
+export type ApiErrorReason = 'rate_limited' | 'provider_unavailable' | 'timeout' | 'provider_error';
+
 export interface VerificationResult {
   claimId: string;
   status: ClaimStatus;
@@ -77,6 +80,13 @@ export interface VerificationResult {
    * claim is the failure mode this flag exists to prevent.
    */
   apiError?: boolean;
+  /**
+   * Why a claim got no verdict: set only together with `apiError: true`, by the
+   * engine's retry ladder after its final attempt. A full scan reports it per
+   * unserved claim so a refund can say what was lost (emma-soul refund ruling,
+   * GoPMO 1.18.11.3.12). Absent on a real verdict and on a consensus result.
+   */
+  apiErrorReason?: ApiErrorReason;
   /**
    * True when the model's reply was not parseable JSON and the engine fell back
    * to status 'mixed' (geminiService.verifyClaim). Absent otherwise. It lets a

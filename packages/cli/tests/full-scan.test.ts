@@ -30,6 +30,8 @@ import {
   scan,
   extractForFullScan,
   verifyFullScan,
+  resolveVerifyConcurrency,
+  VERIFY_CONCURRENCY,
   unitsForFullScan,
   unitAccounting,
   CLAIMS_PER_UNIT,
@@ -239,7 +241,8 @@ describe('scan(mode full)', () => {
     it('quick mode flags the exhausted claim too, so the scan is degraded and never cached', async () => {
       const r = await scanWithThrowingClaim('quick');
       expect(r.verifications.f2).toEqual({
-        claimId: 'f2', status: 'unverified', explanation: 'Verify failed after retries.', sources: [], apiError: true,
+        claimId: 'f2', status: 'unverified', explanation: 'Verify failed after retries.', sources: [],
+        apiError: true, apiErrorReason: 'provider_unavailable',
       });
       expect(r.verificationErrors).toBe(1);
       expect(r.degraded).toBe(true);
@@ -351,4 +354,102 @@ describe('quick mode is unchanged (regression)', () => {
       expect(r.verification).not.toHaveProperty('mode');
     });
   }
+});
+
+describe('verify concurrency', () => {
+  /** A verifier whose calls stay in flight until released, recording the most ever in flight. */
+  function gatedVerifier() {
+    const waiting: Array<() => void> = [];
+    let inFlight = 0;
+    let maxInFlight = 0;
+    mockVerifyClaim.mockImplementation(async (c: Claim) => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise<void>((resolve) => waiting.push(resolve));
+      inFlight -= 1;
+      return supported(c);
+    });
+    const settle = async (): Promise<void> => { await new Promise((r) => setImmediate(r)); };
+    return {
+      waiting,
+      maxInFlight: () => maxInFlight,
+      inFlight: () => inFlight,
+      releaseOne: async () => { waiting.shift()?.(); await settle(); },
+      settle,
+    };
+  }
+
+  it('concurrency 4 never has more than 4 claims in flight, and a 5th starts only when one finishes', async () => {
+    const gate = gatedVerifier();
+    const pending = verifyFullScan(facts(10), { providerName: 'mock', concurrency: 4 });
+    await gate.settle();
+
+    expect(gate.inFlight()).toBe(4);
+    expect(mockVerifyClaim).toHaveBeenCalledTimes(4);
+    await gate.releaseOne();
+    expect(mockVerifyClaim).toHaveBeenCalledTimes(5);
+    while (gate.waiting.length > 0) await gate.releaseOne();
+
+    const r = await pending;
+    expect(gate.maxInFlight()).toBe(4);
+    expect(mockVerifyClaim).toHaveBeenCalledTimes(10);
+    expect(r.verification.servedClaims).toBe(10);
+  });
+
+  it('defaults to VERIFY_CONCURRENCY (8) in flight', async () => {
+    const gate = gatedVerifier();
+    const pending = verifyFullScan(facts(12), { providerName: 'mock' });
+    await gate.settle();
+    expect(gate.inFlight()).toBe(VERIFY_CONCURRENCY);
+    while (gate.waiting.length > 0) await gate.releaseOne();
+    await pending;
+    expect(gate.maxInFlight()).toBe(8);
+  });
+
+  it('normalises invalid values to 8 and floors fractions', () => {
+    expect(resolveVerifyConcurrency(4)).toBe(4);
+    expect(resolveVerifyConcurrency(1)).toBe(1);
+    expect(resolveVerifyConcurrency(2.7)).toBe(2);
+    for (const bad of [0, -1, 0.5, Number.NaN, Number.POSITIVE_INFINITY, '4', undefined, null]) {
+      expect(resolveVerifyConcurrency(bad)).toBe(8);
+    }
+  });
+});
+
+describe('apiErrorReason on a claim whose provider threw on every retry', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  async function reasonFor(error: unknown): Promise<VerificationResult> {
+    mockVerifyClaim.mockImplementation(async () => { throw error; });
+    const pending = verifyFullScan(facts(1), { providerName: 'mock' });
+    await vi.advanceTimersByTimeAsync(10_000);
+    return (await pending).verifications.f1;
+  }
+
+  const cases: Array<[unknown, string, string]> = [
+    [new Error('429 Too Many Requests'), 'rate_limited', 'Rate limit reached. Upgrade for higher limits: https://faultline.nxtg.ai/pricing'],
+    [new Error('RESOURCE_EXHAUSTED: quota'), 'rate_limited', 'Verify failed after retries.'],
+    [new Error('HTTP 503 model overloaded'), 'provider_unavailable', 'Verify failed after retries.'],
+    [new Error('Service Unavailable'), 'provider_unavailable', 'Verify failed after retries.'],
+    [new Error('request timed out after 30000ms'), 'timeout', 'Verify failed after retries.'],
+    [Object.assign(new Error('The operation was aborted'), { name: 'TimeoutError' }), 'timeout', 'Verify failed after retries.'],
+    [new Error('500 Internal Server Error'), 'provider_error', 'Verify failed after retries.'],
+    ['a thrown string', 'provider_error', 'Verify failed after retries.'],
+  ];
+  for (const [error, reason, explanation] of cases) {
+    it(`${String(error instanceof Error ? error.message : error)} -> ${reason}, explanation unchanged`, async () => {
+      const v = await reasonFor(error);
+      expect(v.apiError).toBe(true);
+      expect(v.apiErrorReason).toBe(reason);
+      expect(v.explanation).toBe(explanation);
+      expect(v.status).toBe('unverified');
+    });
+  }
+
+  it('a real verdict carries no apiErrorReason', async () => {
+    const r = await verifyFullScan(facts(1), { providerName: 'mock' });
+    expect(r.verifications.f1.status).toBe('supported');
+    expect(r.verifications.f1).not.toHaveProperty('apiErrorReason');
+  });
 });
