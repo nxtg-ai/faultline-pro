@@ -885,6 +885,30 @@
       "fp": "2d62362db4f30c8b8ba7b82931ac037c_0",
       "disposition": "false-positive",
       "reason": "false-positive, triaged 2026-10-13 (fp): logs the cost report (ledger totals, counts, claim ids, engine commit); the admin key is sent only as the x-api-key header and is never in the report"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_http_insecure",
+      "uri": "scripts/grounding-allowance-check.mjs",
+      "fp": "f394d2550260260a0ac0ee966079cb91_0",
+      "disposition": "false-positive",
+      "reason": "false-positive, triaged 2026-10-13 (fp): the only http:// target is the Dx3 REST API at its Tailscale address (100.123.83.34:8004), reached over the WireGuard-encrypted tailnet from this hand-run cron script; the body is an alert handoff with counts, no key"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/grounding-allowance-check.mjs",
+      "fp": "937cc6b29ffdba51be8a432f143c6644_4",
+      "disposition": "false-positive",
+      "reason": "false-positive, triaged 2026-10-13 (fp): index shifted by the two error logs added for the fp wake (GoPMO 1.18.11.1.18); the script's log lines print counts, thresholds and error messages; the API key is read into a header only and never logged"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "scripts/grounding-allowance-check.mjs",
+      "fp": "937cc6b29ffdba51be8a432f143c6644_5",
+      "disposition": "false-positive",
+      "reason": "false-positive, triaged 2026-10-13 (fp): index shifted as above; the crash line prints the error stack of a hand-run cron script, which never contains the API key (header only)"
     }
   ]
 }
