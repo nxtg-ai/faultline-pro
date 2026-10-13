@@ -21,7 +21,7 @@ Status: **v1, agreed with fw** (fw answers al:1ec20db80705d4b2; user-ref and per
 
 Both POSTs sit behind `requireApiKey`, `rateLimitScan` and the provider spend cap. GET is behind `requireApiKey` only and makes no provider call.
 
-1. `POST /scan/full/estimate` `{ text, provider? }` -> `200 { estimateId, factClaims, notCheckable, units, expiresAt }`. The extracted claims are held in memory under `estimateId` for 30 minutes (at most 1,000 estimates and 10M characters held, oldest evicted first). An estimate belongs to the key and user-ref that made it. Text is capped at 50,000 characters (fw also enforces this at its edge). Rate limited per key and per user-ref (`FAULTLINE_FULL_ESTIMATE_PER_MIN`, default 10). An extraction failure is `502 extraction_failed` with no provider text.
+1. `POST /scan/full/estimate` `{ text, provider? }` -> `200 { estimateId, factClaims, notCheckable, units, expiresAt, claims: [{ claimId, text }] }`, where `claims` lists the fact claims being priced, in extraction order (fw ask al:a655424881780798: the user sees what they pay to check, and fw keeps the text for the unchecked list after a restart). The extracted claims are held in memory under `estimateId` for 30 minutes (at most 1,000 estimates and 10M characters held, oldest evicted first). An estimate belongs to the key and user-ref that made it. Text is capped at 50,000 characters (fw also enforces this at its edge). Rate limited per key and per user-ref (`FAULTLINE_FULL_ESTIMATE_PER_MIN`, default 10). An extraction failure is `502 extraction_failed` with no provider text.
 2. `POST /scan/full` `{ estimateId }` with header `Idempotency-Key` (required; the key fw's meter used for the charge) -> `202 { jobId, units, factClaims }`. `units` is the estimate's figure, never recomputed; fw aborts with a full refund if it differs from what it reserved.
    - A missing Idempotency-Key is `400 idempotency_key_required`; a malformed one `400 idempotency_key_invalid`.
    - A reused Idempotency-Key returns the same job, never a second run, including after a restart for a job that finished (the key is kept in the ledger row). The same key with a different `estimateId` is `409 idempotency_conflict`.
@@ -40,6 +40,8 @@ Job lookup answers:
 | `404 job_not_found` | not an id this API issued, or another key's job | nothing |
 | `404 job_lost` | issued under 24 h ago, not in memory or the ledger: it was running at a restart | refund all charged units |
 | `410 job_expired` | issued over 24 h ago | nothing (settled long before) |
+
+Anomalies (a `404 job_not_found` for an id fw got a 202 for, or `410 job_expired` for a job fw has not settled): fw settles on what it observed, `served = ceil(verdicts fw stored / 8)` (agreed al:a655424881780798).
 
 ## 4. Units and refunds (emma-soul al:c747e63f2fc26683)
 

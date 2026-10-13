@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { extractForFullScan, verifyFullScan, type FullScanResult } from '@nxtg/faultline/cli/scan.js';
+import { partitionForFullScan } from '@nxtg/faultline/cli/full-scan.js';
 import { captureUsage, type UsageLeg } from '@nxtg/faultline/lib/usage-sink.js';
 import { requireApiKey } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
@@ -285,6 +286,10 @@ export async function fullScanRoutes(fastify: FastifyInstance): Promise<void> {
         notCheckable: estimate.notCheckable,
         units: estimate.units,
         expiresAt: new Date(estimate.expiresAt).toISOString(),
+        // The fact claims being priced, so fw shows the user what they pay to check and
+        // keeps the text for the unchecked list even after a restart drops the result.
+        // Extraction of the user's own input, no grounded output.
+        claims: partitionForFullScan(outcome.value.claims).facts.map((c) => ({ claimId: c.id, text: c.text })),
       });
     },
   );

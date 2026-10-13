@@ -262,6 +262,10 @@ describe('full lifecycle on the real mock provider', () => {
     expect(est.statusCode).toBe(200);
     expect(est.json.estimateId).toMatch(/^fse_[0-9a-f]{32}$/);
     expect(est.json).toMatchObject({ factClaims: 10, notCheckable: 0, units: 2 });
+    expect(est.json.claims).toHaveLength(10);
+    expect(est.json.claims[0]).toEqual({ claimId: 'c1', text: expect.any(String) });
+    expect(est.json.claims[0].text.length).toBeGreaterThan(0);
+    expect(est.json.claims.map((c: Json) => c.claimId)).toEqual(Array.from({ length: 10 }, (_, i) => `c${i + 1}`));
     const ttl = Date.parse(est.json.expiresAt) - Date.now();
     expect(ttl).toBeGreaterThan(29 * 60_000);
     expect(ttl).toBeLessThanOrEqual(30 * 60_000);
@@ -318,6 +322,7 @@ describe('full lifecycle on the real mock provider', () => {
     const text = 'Paris is the capital of France. In my opinion Paris is lovely. Water boils at 100 C at sea level.';
     const est = await estimate(text);
     expect(est.json).toMatchObject({ factClaims: 2, notCheckable: 1, units: 1 });
+    expect(est.json.claims.map((c: Json) => c.claimId)).toEqual(['c1', 'c3']);
 
     const started = await start(est.json.estimateId, 'idem-opinion');
     const done = await untilTerminal(started.json.jobId);
