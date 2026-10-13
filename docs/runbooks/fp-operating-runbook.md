@@ -83,6 +83,13 @@ The production Gemini key is in project Faultline (`gen-lang-client-0856465510`)
 - Refund rate: admin `GET /usage` -> `fullScanRefunds` (trailing 7 days); the hourly grounding check alerts fp on it and on any ledger write failure (`docs/grounding-allowance-alert.md`). When `alert` is true (refunded units above 10% of charged), find the cause from the reason-code totals and report it to emma-soul (ruling al:c747e63f2fc26683, condition 4).
 - A deploy loses running jobs: fw sees `404 job_lost` and refunds them in full.
 
+## Revenue scoreboard timer (GoPMO 1.18.11.1.7)
+
+- User timer `fp-scoreboard-read.timer` (`~/.config/systemd/user/`), 22:15 America/Chicago daily, before product-oracle's 22:30 CDT read (crontab). It runs `scripts/scoreboard-read.sh`: the Stripe oracle from git object `dcc3bff` (sha256 pinned in the script) piped into dx3's writer from `6536eb9`, `--lane fp`. Linger is on, so it runs without a login.
+- Check: `systemctl --user list-timers fp-scoreboard-read.timer`, `journalctl --user -u fp-scoreboard-read.service`. Exit 0 = row read back equal; 1 = mismatch or API failure (re-send with the writer's `post --artifact <file>.post.json`); 2 = refused; 3 = the oracle failed and an all-unknown row was written.
+- Artifacts (aggregate only, 0644): `~/.cache/faultline-pro/scoreboard/`. Rows: `GET http://127.0.0.1:8004/api/cognitive/ledger/entries?ledger=revenue&entry_kind=scoreboard`.
+- First run 2026-10-13 17:13Z (manual start): row `22372e9f-1441-43c1-babd-e64a3836072c`, read back equal, 11 measures, 0 unknown.
+
 ## Founder UAT
 
 Write the guide to `docs/uat/`, give the absolute path. For plan limits, seed Clerk metadata (public `plan`, private `scanUsage.{YYYY-MM}`) instead of running real scans, and tell the tester to keep the other private keys (`stripeCustomerId`, `stripeSubscriptionId`) and to restore the count afterwards.

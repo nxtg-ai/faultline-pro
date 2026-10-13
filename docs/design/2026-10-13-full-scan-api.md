@@ -29,6 +29,7 @@ Both POSTs sit behind `requireApiKey`, `rateLimitScan` and the provider spend ca
    - An unknown or expired `estimateId` is `410 estimate_expired` (nothing charged; fw re-estimates).
    - An estimate already started under another Idempotency-Key is `409 estimate_used`.
    - A user with a queued or running job gets `409 job_running`.
+   - When the API cannot write its job ledger, a new job is refused with `503 ledger_unavailable` before any spend (fw refunds the reservation), so no job starts whose finished accounting could not survive a restart.
 3. `GET /scan/full/:jobId` -> `{ jobId, status: queued|running|done|stopped|failed, factClaims, checked, failed, progress: [{ claimId, status: pending|served|unserved, verdict? }], unserved: [{ claimId, reason }], units: { charged, served, refund }, resultAvailable, durable, result? }`. Verdicts appear in `progress` as they land, so the results page fills in while fw polls (about every 2 s). `checked` is the served count; `failed` counts claims that ran and failed (not `not_attempted`). `result` is present at `done` or `stopped` while the job is in memory. `durable` is true once the job is terminal and its record is on the ledger, so a restart keeps it; it is false while the job runs and for a terminal job whose ledger write failed (after one retry). **fw settles on a terminal answer when it sees one** and never waits for a later read, because a non-durable job answers `404 job_lost` after a restart (codex F12-1). `failed` status means the run could not start or the provider threw outright: served 0, so the refund is every charged unit.
 4. `POST /scan/full/:jobId/stop` -> stops the job. A queued job stops at once; a running job starts no new claim and becomes `stopped` when the claims in flight finish. Claims never started are unserved (`not_attempted`).
 
@@ -38,8 +39,10 @@ Job lookup answers:
 |---|---|---|
 | `200` | the job, any status | poll, or settle once terminal |
 | `404 job_not_found` | not an id this API issued, or another key's job | nothing |
-| `404 job_lost` | issued under 24 h ago, not in memory or the ledger: it was running at a restart | refund all charged units |
+| `404 job_lost` | issued under 24 h ago, not in memory or the ledger: no terminal record survived a restart. Normally the job was running at the restart; rarely it finished but its ledger write failed (see residual below) | refund all charged units |
 | `410 job_expired` | issued over 24 h ago | nothing (settled long before) |
+
+**Residual (codex F12-1, ruling requested from emma-soul):** a job that finishes while the ledger disk is failing, then a restart before fw reads its terminal status, answers `job_lost` and is refunded in full although it was served. It needs two faults at once: the disk failing after the job started (the start guard refuses new jobs while it fails), and a restart before fw's next poll (about 2 s with the tab open; fw's cron otherwise). The error is in the customer's favour (a refund for delivered work, never a charge for undelivered work), the hourly check alerts fp on any write failure, and the exposure is bounded by the running jobs at that moment (at most `FAULTLINE_FULL_MAX_RUNNING`, default 4).
 
 Anomalies (a `404 job_not_found` for an id fw got a 202 for, or `410 job_expired` for a job fw has not settled): fw settles on what it observed, `served = ceil(verdicts fw stored / 8)` (agreed al:a655424881780798).
 

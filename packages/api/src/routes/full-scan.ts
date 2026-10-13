@@ -327,6 +327,9 @@ export async function fullScanRoutes(fastify: FastifyInstance): Promise<void> {
       }
       if (estimate.startedBy) return reply.status(409).send({ error: 'estimate_used' });
       if (store.activeJobFor(keyId, userRef)) return reply.status(409).send({ error: 'job_running' });
+      // A job whose terminal row cannot reach the disk would read as job_lost after a
+      // restart and be refunded in full although served: refuse it before any spend.
+      if (!store.ledgerWritable()) return reply.status(503).send({ error: 'ledger_unavailable' });
 
       const job = store.startJob(estimate, {
         idempotencyKey,

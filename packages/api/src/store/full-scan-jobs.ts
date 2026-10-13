@@ -657,6 +657,26 @@ class FullScanJobStore {
     return this.writeFailures;
   }
 
+  /**
+   * Can a terminal row be written right now? A zero-byte append to the ledger
+   * path (creating its directory if needed). POST /scan/full refuses a new job
+   * with 503 ledger_unavailable when this fails, so no job starts whose finished
+   * accounting could not survive a restart (codex F12-1). It cannot see a full
+   * disk (zero bytes always fit); persist's retry, `durable` and the hourly alert
+   * cover that.
+   */
+  ledgerWritable(): boolean {
+    const path = fullScanLedgerPath();
+    try {
+      const dir = dirname(path);
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      appendFileSync(path, '');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   /** Refunded units against charged units over the trailing `days`, from the ledger rows. */
   refundSummary(days: number = REFUND_WINDOW_DAYS, now: number = Date.now()): FullScanRefundSummary {
     const since = now - days * 86_400_000;
