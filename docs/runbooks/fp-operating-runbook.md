@@ -60,6 +60,21 @@ A change is not done until, in the same commit or PR: `CHANGELOG.md` `[Unrelease
 - Web critique gate: `POST https://faultline.nxtg.ai/api/critique` with no `x-critique-token` → `401 critique_token_required`.
 - Vercel runtime logs: free-text `query` times out on this project. Use `deploymentId` plus `statusCode`, `level: ["error"]` or `group_by` instead.
 
+## Google prepay balance
+
+The production Gemini key is in project Faultline (`gen-lang-client-0856465510`), billing account Personal Project (2026), `01D715-3F52D3-CC8E78`. Since 2026-10-12 that account is **prepay**: when the balance reaches $0, every API key on the account stops and every Faultline scan fails. The switch to prepay cannot be undone. No API returns the balance; read it in AI Studio, Billing tab (`https://aistudio.google.com/billing?billing=01D715-3F52D3-CC8E78`).
+
+- Funding, drawn in this order: Google Developer Program promotional credits first ($60 applied 2026-10-13, $10 grants expiring 2027-02-23 to 2027-09-23, plus the founder's monthly $10 with "Always use this billing account" set), then prepay ($25 bought 2026-10-12, expires 2027-10-12). Google: "eligible Google Cloud credits are consumed before your Prepay credit balance."
+- Alerts: Cloud Billing budget "Faultline prepay balance (25 USD credit)", Gemini API only, 2026-10-13 to 2027-10-12, net of credits, at $15 and $22 of $25 actual spend. It mails billing admins and the Monitoring email channel faultline.pro@nxtg.ai. Google records costs within about 24 hours, so an alert can lag spend by up to a day. `scripts/vendor-consent-watch.py` (cron every 15 minutes) labels mail to faultline.pro@ from a google.com sender as GOOGLE BILLING ALERT, mints P0 handoff `hf-fp-google-billing-<uid>`, wakes the fp pane, Telegrams and posts to /alignment.
+- Google-side caps: a $20 per month project spend cap on Faultline (AI Studio, Spend; experimental) and the $250 billing-account tier cap. The project cap stops spend above $20 in a month whatever the balance.
+- Auto-reload is **off**. Turning it on is emma-soul's call (al:4c0e56abe943a50c ruled it off pending her separate ruling).
+- **Top-up path** when the alert fires:
+  1. Read the balance in AI Studio Billing and the month's spend in AI Studio Spend. Post both.
+  2. Buying credit is spend. The authorization record for the first purchase was emma-soul al:4c0e56abe943a50c ($25, hard ceiling $50, card already on file, no new payment method). A further purchase needs a new emma-soul authorization record naming the amount; the sending lane never authorizes itself. Ask emma-soul with the balance, the 30-day spend and the days left at that rate.
+  3. On the record: AI Studio, Billing, Buy credits, "Other amount", the authorized amount, card on file, auto-reload left off, Continue. Google shows "Payment successful" and "Credits added".
+  4. Receipt: balance before and after, then one production scan (`POST /scan`, admin key, provider gemini) that returns verdicts; append the purchase to `~/ASIF/governance/spend-ledger.jsonl` and post the receipt with the GoPMO node.
+  5. If the $20 project cap, not the balance, is what stops scans, raising it is also emma-soul's call.
+
 ## Founder UAT
 
 Write the guide to `docs/uat/`, give the absolute path. For plan limits, seed Clerk metadata (public `plan`, private `scanUsage.{YYYY-MM}`) instead of running real scans, and tell the tester to keep the other private keys (`stripeCustomerId`, `stripeSubscriptionId`) and to restore the count afterwards.

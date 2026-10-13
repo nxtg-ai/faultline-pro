@@ -36,6 +36,11 @@ WATCH_DOMAINS = ("ceramic.ai", "exa.ai", "brave.com", "tavily.com", "linkup.so")
 # Founder ruling 2026-10-05 (al:481a87a5d0db81cc): Faultline Pro vendor, licensing and research
 # mail goes from faultline.pro@nxtg.ai, so any mail TO it is a reply this watch must see too.
 WATCH_TO = ("faultline.pro@nxtg.ai",)
+# Google Cloud billing and Monitoring alerts (GoPMO 1.18.11.1.19): the prepay-balance budget mails
+# faultline.pro@ through a Monitoring email channel. Prepay fails every scan at $0, so such a mail is
+# not a vendor reply: it gets its own label, a P0 handoff and the top-up path.
+BILLING_SENDER_DOMAINS = ("google.com",)
+TOPUP_PATH = "docs/runbooks/fp-operating-runbook.md section Google prepay balance"
 SINCE = "01-Oct-2026"  # covers the 2026-10-02 licensing mails as well as the 2026-10-05 consent requests
 CREDS = os.path.expanduser("~/.secrets/geo-stripe.env")
 STATE_DIR = os.path.expanduser("~/.cache/faultline-pro")
@@ -69,10 +74,28 @@ def say(msg):
             pass
 
 
-def mint_handoff(f):
-    """Typed Dx3 handoff per reply, so it survives an idle pane. The id comes from the mailbox UID,
-    so a re-run updates the same row. Returns the record_id, or None (logged, never fatal)."""
-    body = {
+def is_billing(f):
+    """A Google billing or Monitoring alert, judged by sender domain only (never by display name or subject)."""
+    d = f.get("sender_domain", "unknown")
+    return any(d == b or d.endswith("." + b) for b in BILLING_SENDER_DOMAINS)
+
+
+def handoff_body(f):
+    """The typed Dx3 handoff for one message. The id comes from the mailbox UID, so a re-run updates
+    the same row."""
+    if is_billing(f):
+        return {
+            "handoff_id": f"hf-fp-google-billing-{f['uid']}",
+            "content": (f"From fp vendor-consent-watch: Google billing alert to faultline.pro@, sender domain "
+                        f"{f['sender_domain']}, Zoho INBOX uid {f['uid']}. Prepay fails every Gemini scan at $0. fp reads "
+                        f"the AI Studio billing balance, follows {TOPUP_PATH}, posts the balance and what it did, then "
+                        f"acks this handoff. GoPMO 1.18.11.1.19."),
+            "handoff_status": "OPEN", "from_machine": "NXTG-AI", "to_machine": "NXTG-AI",
+            "subject": f"[fp] GOOGLE BILLING ALERT: sender domain {f['sender_domain']}", "priority": "P0",
+            "project_ids": ["P-08"], "source_ref": LEDGER,
+            "reason": "vendor-consent-watch: Google prepay balance or budget alert",
+        }
+    return {
         "handoff_id": f"hf-fp-vendor-reply-{f['uid']}",
         "content": (f"From fp vendor-consent-watch: vendor reply in a Faultline Pro thread, sender domain "
                     f"{f['sender_domain']} (watch match {f['domain']}), Zoho INBOX uid {f['uid']}. fp reads it in full, "
@@ -83,6 +106,27 @@ def mint_handoff(f):
         "project_ids": ["P-08"], "source_ref": LEDGER,
         "reason": "vendor-consent-watch: durable alert for an unanswered vendor reply",
     }
+
+
+def alert_lines(f):
+    """(pane text, /alignment and Telegram text). No From or Subject text: these reach an agent pane."""
+    hid = handoff_body(f)["handoff_id"]
+    if is_billing(f):
+        line = (f"GOOGLE BILLING ALERT to faultline.pro@: sender domain {f['sender_domain']}, Zoho INBOX uid "
+                f"{f['uid']}. Dx3 handoff {hid}. GoPMO 1.18.11.1.19.")
+        return (f"[vendor-consent-watch] {line} Read the AI Studio billing balance now and follow {TOPUP_PATH}; "
+                f"prepay fails every scan at $0.", line + " fp reads the prepay balance and follows the top-up path.")
+    line = (f"VENDOR REPLY ({f['domain']} match) in a Faultline Pro thread: sender domain {f['sender_domain']}, "
+            f"Zoho INBOX uid {f['uid']}. Dx3 handoff {hid}.")
+    return (f"[vendor-consent-watch] {line} Read it in the Zoho inbox, answer in-thread from faultline.pro@, "
+            f"post a receipt, ack the handoff.",
+            line + " fp answers in-thread from faultline.pro@; prereg A1 arms stay SUSPENDED until written consent.")
+
+
+def mint_handoff(f):
+    """Typed Dx3 handoff per message, so it survives an idle pane. Returns the record_id, or None
+    (logged, never fatal)."""
+    body = handoff_body(f)
     try:
         req = urllib.request.Request(DX3 + "/api/cognitive/upsert_handoff", data=json.dumps(body).encode(),
                                      headers={"Content-Type": "application/json"}, method="POST")
@@ -172,14 +216,12 @@ def main():
     for f in found:
         f["sender_domain"] = sender_domain(f["from"])
         f["handoff_record_id"] = mint_handoff(f)
-        # No From or Subject text here: these lines reach an agent pane and /alignment (see sender_domain).
-        line = (f"VENDOR REPLY ({f['domain']} match) in a Faultline Pro thread: sender domain {f['sender_domain']}, "
-                f"Zoho INBOX uid {f['uid']}. Dx3 handoff hf-fp-vendor-reply-{f['uid']}.")
-        f["pane_woken"] = wake_fp(f"[vendor-consent-watch] {line} Read it in the Zoho inbox, answer in-thread "
-                                  f"from faultline.pro@, post a receipt, ack the handoff.")
+        f["kind"] = "google-billing" if is_billing(f) else "vendor-reply"
+        pane_text, post_text = alert_lines(f)
+        f["pane_woken"] = wake_fp(pane_text)
         with open(LEDGER, "a") as fh:
             fh.write(json.dumps(f) + "\n")
-        say(line + " fp answers in-thread from faultline.pro@; prereg A1 arms stay SUSPENDED until written consent.")
+        say(post_text)
     json.dump({"seen_uids": sorted(seen)}, open(STATE, "w"))
     print(f"vendor-consent-watch: {len(found)} new")
     return 0
