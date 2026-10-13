@@ -143,7 +143,50 @@ async function probe(apiKey) {
   if (!g || typeof g.groundedPrompts !== 'number' || typeof g.day !== 'string') {
     throw new Error('GET /usage has no groundingAllowance (old deploy, or not the admin key)');
   }
-  return g;
+  return { g, fullScan: body?.fullScanRefunds ?? null };
+}
+
+/**
+ * Full-scan (deep scan) health from the same GET /usage read, alerted once per
+ * Pacific day per kind: refunds above 10% of charged units over 7 days (emma-soul
+ * al:c747e63f2fc26683 condition 4: fp reports the cause to her), and terminal-job
+ * ledger write failures (a restart would turn those jobs into job_lost, refunded in
+ * full; codex F12-1). Counts only, never job content.
+ */
+async function checkFullScan(state, day, f) {
+  if (!f || typeof f.unitsCharged !== 'number') return null;
+  const alerts = [];
+  if (f.alert === true) {
+    const reasons = Object.entries(f.reasons ?? {}).filter(([, n]) => n > 0).map(([r, n]) => `${r} ${n}`).join(', ');
+    alerts.push({
+      kind: 'refund-rate',
+      text: `deep-scan refunds ${f.unitsRefunded} of ${f.unitsCharged} units over ${f.days} days `
+        + `(${(f.refundRate * 100).toFixed(1)}%, above 10%) across ${f.jobs} jobs; reasons: ${reasons || 'none recorded'}. `
+        + 'fp reports the cause to emma-soul (ruling al:c747e63f2fc26683, condition 4).',
+    });
+  }
+  if (f.ledgerWriteFailures > 0) {
+    alerts.push({
+      kind: 'ledger-write',
+      text: `deep-scan job ledger write failures ${f.ledgerWriteFailures} in this API process: a restart would answer `
+        + 'job_lost for those finished jobs and fw would refund them in full. Check the faultline_ledgers volume.',
+    });
+  }
+  const fired = [];
+  for (const a of alerts) {
+    const dedupeKey = `${day}:full-scan:${a.kind}`;
+    if (state.alerted.includes(dedupeKey)) continue;
+    const message = `Faultline ${a.text} GoPMO 1.18.11.3.12.`;
+    const notified = notify(message);
+    const handoffId = `hf-fp-fullscan-${day}-${a.kind}`;
+    const handoffRecord = await mintHandoff(handoffId, `From fp grounding-allowance-check: ${message} `
+      + 'fp reads GET /usage fullScanRefunds, finds the cause, posts what it did, then acks this handoff.', 'P1');
+    const paneWoken = wakeFp(`[grounding-allowance-check] ${message} Dx3 handoff ${handoffId}.`);
+    if (notified || paneWoken) state.alerted.push(dedupeKey);
+    fired.push({ kind: a.kind, notified, paneWoken, handoffRecord });
+  }
+  return { refundRate: f.refundRate, unitsCharged: f.unitsCharged, unitsRefunded: f.unitsRefunded,
+    ledgerWriteFailures: f.ledgerWriteFailures, alerts: fired };
 }
 
 /** Carry the pre-restart count forward when the server restarted mid-day. */
@@ -177,8 +220,9 @@ async function main() {
   if (!apiKey) return handleProbeFailure(state, new Error('FAULTLINE_API_KEY not found in env or faultline-web .env.local'));
 
   let g;
+  let fullScan;
   try {
-    g = await probe(apiKey);
+    ({ g, fullScan } = await probe(apiKey));
   } catch (error) {
     return handleProbeFailure(state, error);
   }
@@ -215,6 +259,8 @@ async function main() {
     if (notified || paneWoken) state.alerted.push(dedupeKey);
   }
 
+  const fullScanRow = await checkFullScan(state, g.day, fullScan);
+
   const verdict = overThreshold ? 'ALERT' : 'OK';
   appendMonitorRow({
     ts: new Date().toISOString(),
@@ -235,6 +281,7 @@ async function main() {
     notified,
     paneWoken,
     handoffRecord,
+    fullScan: fullScanRow,
   });
   saveState(state);
   console.log(

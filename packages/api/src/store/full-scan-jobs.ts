@@ -130,6 +130,8 @@ export interface FullScanJob {
   controller: AbortController;
   result?: FullScanResult;
   finishedAt?: string;
+  /** Set at finish: whether the terminal row reached the ledger, so a restart keeps it. */
+  durable?: boolean;
 }
 
 /** One terminal job on disk. Counts and ids only (see the header). */
@@ -173,6 +175,13 @@ export interface FullScanJobView {
   units: UnitAccounting;
   /** False for a job reloaded from the ledger after a restart (and for a failed job): no result to serve. */
   resultAvailable: boolean;
+  /**
+   * True once the job is terminal AND its row is on the ledger, so a restart keeps
+   * it. False while queued or running, and for a terminal job whose ledger write
+   * failed: a restart would then answer job_lost, so fw must settle on this terminal
+   * answer, not wait (codex F12-1).
+   */
+  durable: boolean;
   result?: FullScanResult;
 }
 
@@ -285,6 +294,7 @@ export function describeJob(job: FullScanJob): FullScanJobView {
     unserved,
     units: unitAccounting(job.charged, served),
     resultAvailable: job.status !== 'failed',
+    durable: job.durable === true,
     ...(withResult ? { result: job.result } : {}),
   };
 }
@@ -301,6 +311,7 @@ export function describeLedgerRow(row: FullScanLedgerRow): FullScanJobView {
     unserved: row.unserved,
     units: row.units,
     resultAvailable: false,
+    durable: true,
   };
 }
 
@@ -564,7 +575,7 @@ class FullScanJobStore {
     }
     job.claims = [];
     job.text = '';
-    this.persist(ledgerRowFor(job as FullScanJob & { status: TerminalStatus; finishedAt: string }));
+    job.durable = this.persist(ledgerRowFor(job as FullScanJob & { status: TerminalStatus; finishedAt: string }));
   }
 
   /**
@@ -588,19 +599,26 @@ class FullScanJobStore {
   // Ledger
 
   /**
-   * Append a terminal row. A failed write never fails the job: the row still
-   * answers GET and the refund report in this process, and the count surfaces it.
+   * Append a terminal row, retrying once. A failed write never fails the job: the
+   * row still answers GET and the refund report in this process, GET says
+   * `durable: false`, and the count surfaces on admin GET /usage (the hourly check
+   * alerts on it). Returns whether the row reached the disk.
    */
-  private persist(row: FullScanLedgerRow): void {
+  private persist(row: FullScanLedgerRow): boolean {
     this.ledgerRows.set(row.jobId, row);
     const path = fullScanLedgerPath();
-    try {
-      const dir = dirname(path);
-      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-      appendFileSync(path, JSON.stringify(row) + '\n');
-    } catch {
-      this.writeFailures += 1;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const dir = dirname(path);
+        if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+        appendFileSync(path, JSON.stringify(row) + '\n');
+        return true;
+      } catch {
+        // retry once, then count it
+      }
     }
+    this.writeFailures += 1;
+    return false;
   }
 
   /**

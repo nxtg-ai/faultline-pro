@@ -80,7 +80,7 @@ The production Gemini key is in project Faultline (`gen-lang-client-0856465510`)
 - Routes and contract: `docs/design/2026-10-13-full-scan-api.md` (GoPMO 1.18.11.3.12). fw's meter charges and refunds; the API only reports units.
 - Finished jobs: `/var/log/faultline/full-scan-jobs.jsonl` on the `faultline_ledgers` volume (`FAULTLINE_FULL_JOBS_LEDGER`). It holds ids, counts, units and reason codes, never text, claims or sources. Keep it that way: Google's grounding terms forbid caching grounded output.
 - Limits: `FAULTLINE_FULL_MAX_RUNNING` (default 4 jobs at once), `FAULTLINE_FULL_ESTIMATE_PER_MIN` (default 10 estimates per key and user per minute).
-- Refund rate: admin `GET /usage` -> `fullScanRefunds` (trailing 7 days). When `alert` is true (refunded units above 10% of charged), find the cause from the reason-code totals and report it to emma-soul (ruling al:c747e63f2fc26683, condition 4).
+- Refund rate: admin `GET /usage` -> `fullScanRefunds` (trailing 7 days); the hourly grounding check alerts fp on it and on any ledger write failure (`docs/grounding-allowance-alert.md`). When `alert` is true (refunded units above 10% of charged), find the cause from the reason-code totals and report it to emma-soul (ruling al:c747e63f2fc26683, condition 4).
 - A deploy loses running jobs: fw sees `404 job_lost` and refunds them in full.
 
 ## Founder UAT

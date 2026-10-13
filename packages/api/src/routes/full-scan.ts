@@ -42,7 +42,9 @@ type ScanProvider = typeof PROVIDER_ENUM[number];
 
 const USER_REF_HEADER = 'x-faultline-user-ref';
 const USER_REF_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
-const IDEMPOTENCY_KEY_PATTERN = /^[\x21-\x7E]{1,255}$/;
+// fw's own rule (faultline-web lib/entitlements.ts requestIdFrom): a plain token only, so
+// the id written to the ledger can never carry a URL or free text (codex F12-2).
+const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 
 const ESTIMATE_BODY = {
   type: 'object',

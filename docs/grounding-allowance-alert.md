@@ -77,3 +77,13 @@ Positive control, 2026-10-13 14:00Z: `GROUNDING_ALERT_THRESHOLD=1`, a scratch `G
 ## Tests
 
 `packages/api/tests/grounding-allowance.test.ts` (19) and `packages/cli/tests/usage-sink.test.ts` US-05/US-06. The end-to-end tests mock the SDK at the module boundary, count the `googleSearch` requests the mock receives, and assert the server's count equals that number. They cover an uncaptured engine scan and a real `POST /scan`.
+
+## Deep-scan checks (added 2026-10-13, GoPMO 1.18.11.3.12)
+
+The same hourly read of admin `GET /usage` also reads `fullScanRefunds` and alerts once per Pacific day per kind (Telegram, fp pane wake, Dx3 handoff `hf-fp-fullscan-<day>-<kind>`):
+
+- `refund-rate`: deep-scan refunds above 10% of charged units over the trailing 7 days. emma-soul's ruling al:c747e63f2fc26683 (condition 4) has fp report the cause to her.
+- `ledger-write`: the API failed to write a finished job's record to the volume. A restart would then answer `job_lost` for that job and fw would refund it in full.
+
+The row in the monitor log carries `fullScan` with the counts and the alerts fired. Drill on 2026-10-13 against a local stub (notifier stubbed, `GROUNDING_WAKE_FP=0`): both alerts fired once, the second run fired none.
+

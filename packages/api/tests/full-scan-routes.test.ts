@@ -414,6 +414,13 @@ describe('POST /scan/full answers', () => {
     const bad = await start(est.json.estimateId, 'has a space');
     expect(bad.statusCode).toBe(400);
     expect(bad.json).toEqual({ error: 'idempotency_key_invalid' });
+    // Only fw's plain-token form reaches the ledger: no URL, no free text, no 1-char key (codex F12-2).
+    for (const key of ['https://sensitive.invalid/private-user-content', 'a.b.c.d.e.f', 'short', 'x'.repeat(129)]) {
+      const res = await start(est.json.estimateId, key);
+      expect(res.statusCode).toBe(400);
+      expect(res.json).toEqual({ error: 'idempotency_key_invalid' });
+    }
+    expect((await start(est.json.estimateId, 'Ab0_-xyz')).statusCode).toBe(202);
   });
 
   it('410 estimate_expired for an unknown id, a 30-minute-old estimate, and another key\'s estimate', async () => {
@@ -654,6 +661,7 @@ describe('persistence', () => {
     const jobId = await startJob(text, 'idem-persist', { userRef: USER_A });
     const live = await untilTerminal(jobId);
     expect(live.resultAvailable).toBe(true);
+    expect(live.durable).toBe(true);
     expect(JSON.stringify(live.result)).toContain('Zanzibarquokka7731');
 
     const rows = ledgerRows();
@@ -679,12 +687,40 @@ describe('persistence', () => {
       unserved: [{ claimId: 'c3', reason: 'timeout' }],
       units: live.units,
       resultAvailable: false,
+      durable: true,
     });
     expect(JSON.stringify(reloaded.json)).not.toContain('Zanzibarquokka7731');
 
     const other = getKeyStore().create('other-key');
     expect((await poll(jobId, { key: other.key })).json).toEqual({ error: 'job_not_found' });
     expect((await stop(jobId)).json).toEqual(reloaded.json);
+  });
+
+  it('a failed ledger write keeps the accounting, says durable false, retries once and is counted (codex F12-1)', async () => {
+    useFixtureProvider(async (c) => supported(c));
+    // A regular file where the ledger directory should be: every append fails with ENOTDIR.
+    const blocker = join(tmpDir, 'not-a-dir');
+    writeFileSync(blocker, '');
+    process.env.FAULTLINE_FULL_JOBS_LEDGER = join(blocker, 'full-scan-jobs.jsonl');
+    const jobId = await startJob(sentences(9), 'idem-enotdir');
+    const done = await untilTerminal(jobId);
+    expect(done.status).toBe('done');
+    expect(done.units).toEqual({ charged: 2, served: 2, refund: 0 });
+    expect(done.durable).toBe(false);
+    expect(done.resultAvailable).toBe(true);
+    expect((await call('GET', '/usage')).json.fullScanRefunds.ledgerWriteFailures).toBe(1);
+
+    // The restart this flag warns about: the job is gone, so fw must settle on the terminal answer above.
+    resetFullScanJobStore();
+    expect((await poll(jobId)).json).toEqual({ error: 'job_lost' });
+  });
+
+  it('a job still running says durable false; a written terminal job says true', async () => {
+    const gate = gated();
+    const jobId = await startJob(sentences(2), 'idem-durable');
+    expect((await poll(jobId)).json.durable).toBe(false);
+    await gate.releaseAll();
+    expect((await untilTerminal(jobId)).durable).toBe(true);
   });
 
   it('a replayed start after a restart returns the same terminal job, never a second run', async () => {
