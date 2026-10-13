@@ -67,9 +67,12 @@ The wrapper pulls the script from `origin/main` and runs it with Node. Each run:
 - reads `GET https://faultline-api.fly.dev/usage` with `FAULTLINE_API_KEY` (env, else `/home/axw/projects/faultline-web/.env.local`; never printed),
 - appends one row to `~/ASIF/governance/spend-monitor/faultline-pro-grounding.jsonl`,
 - sends `~/ASIF/scripts/notify-telegram.sh` once per allowance-day per level: at the threshold, and again past the free 1,500. The dedupe key is `day:level:threshold`, kept in `~/.cache/faultline-pro/grounding-alert-state.json`,
+- on the same alert, also reaches fp (GoPMO 1.18.11.1.18): mints Dx3 handoff `hf-fp-grounding-<day>-<level>-<threshold>` (P1 at the threshold, P0 past the free limit) and pastes the alert into the fp tmux pane (session `faultline-pro`). `GROUNDING_WAKE_FP=0` turns both off. The row records `paneWoken` and `handoffRecord`,
 - exits 0 OK, 1 ALERT, 2 probe failure. A probe failure (HTTP error, missing field, no key) also sends a Telegram, at most once a day while it lasts.
 
 `GROUNDING_ALERT_THRESHOLD=<n>` overrides the threshold on the client side only. It is used for the scheduler drill and does not change the server.
+
+Positive control, 2026-10-13 14:00Z: `GROUNDING_ALERT_THRESHOLD=1`, a scratch `GROUNDING_STATE_DIR` and `GROUNDING_MONITOR_LOG`, `GROUNDING_NOTIFY=/bin/true` (no Telegram to the founder for a drill). With 2 grounded prompts that day it fired once: handoff `hf-fp-grounding-2026-10-13-threshold-1` (record 7a445b99, acked as a drill) and the alert text arrived in the fp pane. A second run with the same state sent nothing (dedupe).
 
 ## Tests
 

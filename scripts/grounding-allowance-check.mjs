@@ -17,9 +17,13 @@
  * the prompts sent between the last check and the restart.
  *
  * Exit: 0 OK, 1 ALERT (over threshold), 2 probe failure.
+ * An alert also reaches fp (GoPMO 1.18.11.1.18): a typed Dx3 handoff and a paste into the fp
+ * tmux pane, because Telegram reaches the founder's phone, not the lane that acts.
+ *
  * Env: FAULTLINE_API_URL, FAULTLINE_API_KEY, GROUNDING_ALERT_THRESHOLD (client-side
  * override, used for the scheduler drill), GROUNDING_STATE_DIR, GROUNDING_MONITOR_LOG,
- * GROUNDING_NOTIFY.
+ * GROUNDING_NOTIFY, GROUNDING_WAKE_FP ('0' turns the fp handoff and pane wake off),
+ * FP_TMUX_SESSION (default faultline-pro), DX3_API_URL.
  */
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -35,6 +39,9 @@ const MONITOR_LOG = process.env.GROUNDING_MONITOR_LOG
   ?? join(HOME, 'ASIF', 'governance', 'spend-monitor', 'faultline-pro-grounding.jsonl');
 const NOTIFY = process.env.GROUNDING_NOTIFY ?? join(HOME, 'ASIF', 'scripts', 'notify-telegram.sh');
 const PROBE_FAIL_RENOTIFY_MS = 24 * 3_600_000;
+const WAKE_FP = (process.env.GROUNDING_WAKE_FP ?? '1') !== '0';
+const FP_SESSION = process.env.FP_TMUX_SESSION ?? 'faultline-pro';
+const DX3 = (process.env.DX3_API_URL ?? 'http://100.123.83.34:8004').replace(/\/+$/, '');
 
 /** The server key, from env or faultline-web's .env.local. Never logged. */
 function readApiKey() {
@@ -82,6 +89,46 @@ function notify(message) {
   } catch (error) {
     console.error(`notify failed: ${error instanceof Error ? error.message : String(error)}`);
     return false;
+  }
+}
+
+/** Paste the alert into the fp pane and press Enter. True when the keys were sent (a nudge, not proof it was read). */
+function wakeFp(message) {
+  if (!WAKE_FP) return false;
+  try {
+    const panes = execFileSync('tmux', ['list-panes', '-a', '-F', '#{session_name}:#{window_index}.#{pane_index}'],
+      { encoding: 'utf8', timeout: 10_000 }).split('\n');
+    const target = panes.find((pane) => pane.split(':')[0] === FP_SESSION);
+    if (!target) return false;
+    execFileSync('tmux', ['load-buffer', '-b', 'fp-grounding', '-'], { input: message, timeout: 10_000 });
+    execFileSync('tmux', ['paste-buffer', '-b', 'fp-grounding', '-d', '-t', target], { timeout: 10_000 });
+    execFileSync('sleep', ['0.3']);
+    execFileSync('tmux', ['send-keys', '-t', target, 'Enter'], { timeout: 10_000 });
+    return true;
+  } catch (error) {
+    console.error(`fp pane wake failed: ${error instanceof Error ? error.message : String(error)}`);
+    return false;
+  }
+}
+
+/** A typed Dx3 handoff, so the alert survives an idle pane. Same id per day and level: a re-run updates it. */
+async function mintHandoff(handoffId, content, priority) {
+  if (!WAKE_FP) return null;
+  try {
+    const res = await fetch(`${DX3}/api/cognitive/upsert_handoff`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        handoff_id: handoffId, content, handoff_status: 'OPEN', from_machine: 'NXTG-AI', to_machine: 'NXTG-AI',
+        subject: `[fp] GROUNDING ALLOWANCE ${handoffId}`, priority, project_ids: ['P-08'], source_ref: MONITOR_LOG,
+        reason: 'grounding-allowance-check: grounded prompts at or past the alert threshold',
+      }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    return res.ok ? ((await res.json()).record_id ?? null) : null;
+  } catch (error) {
+    console.error(`handoff mint failed: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
   }
 }
 
@@ -144,6 +191,8 @@ async function main() {
   const overFreeLimit = count >= g.freeDailyLimit;
 
   let notified = false;
+  let paneWoken = false;
+  let handoffRecord = null;
   const level = overFreeLimit ? 'free-limit' : overThreshold ? 'threshold' : null;
   const dedupeKey = level ? `${g.day}:${level}:${threshold}` : null;
   if (dedupeKey && !state.alerted.includes(dedupeKey)) {
@@ -155,11 +204,15 @@ async function main() {
       g.ledgerWriteFailures > 0 ? `server ledger write failures ${g.ledgerWriteFailures}` : '',
       override !== null ? `client threshold override ${override}` : '',
     ].filter(Boolean).join('; ');
-    notified = notify(
-      `Faultline Gemini grounding: ${count} grounded prompts on ${g.day} (Pacific day), ${what}. `
-      + `Resets ${g.resetsAt}. Time to reprice on real usage.${extras ? ` (${extras})` : ''}`,
-    );
-    if (notified) state.alerted.push(dedupeKey);
+    const message = `Faultline Gemini grounding: ${count} grounded prompts on ${g.day} (Pacific day), ${what}. `
+      + `Resets ${g.resetsAt}. Time to reprice on real usage.${extras ? ` (${extras})` : ''}`;
+    notified = notify(message);
+    const handoffId = `hf-fp-grounding-${g.day}-${level}-${threshold}`;
+    handoffRecord = await mintHandoff(handoffId, `From fp grounding-allowance-check: ${message} GoPMO 1.18.11.1.18. `
+      + 'fp reads GET /usage, decides whether to slow or reprice, posts what it did, then acks this handoff.',
+    overFreeLimit ? 'P0' : 'P1');
+    paneWoken = wakeFp(`[grounding-allowance-check] ${message} Dx3 handoff ${handoffId}. GoPMO 1.18.11.1.18.`);
+    if (notified || paneWoken) state.alerted.push(dedupeKey);
   }
 
   const verdict = overThreshold ? 'ALERT' : 'OK';
@@ -180,11 +233,13 @@ async function main() {
     processStartedAt: g.processStartedAt,
     ledgerWriteFailures: g.ledgerWriteFailures,
     notified,
+    paneWoken,
+    handoffRecord,
   });
   saveState(state);
   console.log(
     `${new Date().toISOString()} ${verdict} day=${g.day} grounded=${count} threshold=${threshold} `
-    + `free=${g.freeDailyLimit} carried=${carried} notified=${notified}`,
+    + `free=${g.freeDailyLimit} carried=${carried} notified=${notified} paneWoken=${paneWoken}`,
   );
   return overThreshold ? 1 : 0;
 }
