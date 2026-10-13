@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { ApiErrorReason, Claim, VerificationResult } from '@nxtg/faultline/types.js';
@@ -196,6 +196,8 @@ export interface FullScanRefundSummary {
   alert: boolean;
   reasons: Record<UnservedReason, number>;
   ledgerWriteFailures: number;
+  /** True while new full-scan jobs are refused after a failed ledger write (the breaker). */
+  admissionClosed: boolean;
 }
 
 export type JobLookup =
@@ -364,7 +366,12 @@ class FullScanRunQueue {
   private waiting: Array<{ job: FullScanJob; run: FullScanJobRunner }> = [];
   private running = 0;
 
-  constructor(private readonly onCrash: (job: FullScanJob) => void) {}
+  constructor(
+    private readonly onCrash: (job: FullScanJob) => void,
+    /** Asked before a queued job starts; false finishes it unrun (see FullScanJobStore.refuseUnrun). */
+    private readonly canStart: () => boolean = () => true,
+    private readonly onRefused: (job: FullScanJob) => void = () => {},
+  ) {}
 
   enqueue(job: FullScanJob, run: FullScanJobRunner): void {
     this.waiting.push({ job, run });
@@ -379,6 +386,10 @@ class FullScanRunQueue {
     while (this.running < maxRunningJobs() && this.waiting.length > 0) {
       const next = this.waiting.shift()!;
       if (next.job.status !== 'queued') continue; // stopped while waiting
+      if (!this.canStart()) {
+        this.onRefused(next.job);
+        continue;
+      }
       this.start(next.job, next.run);
     }
   }
@@ -393,6 +404,28 @@ class FullScanRunQueue {
         this.pump();
       });
   }
+}
+
+/** How the ledger is appended. Tests swap it to model a nearly full disk. */
+type LedgerAppend = (path: string, data: string) => void;
+const fsAppend: LedgerAppend = (path, data) => appendFileSync(path, data);
+let appendLedger: LedgerAppend = fsAppend;
+
+/**
+ * Tests only: replace the ledger append (null restores the filesystem one). Used
+ * to model a nearly full disk, where a one-byte write fits and a row does not,
+ * which no real path in a test sandbox reproduces (/dev/full refuses both).
+ */
+export function setFullScanLedgerAppendForTests(fn: LedgerAppend | null): void {
+  appendLedger = fn ?? fsAppend;
+}
+
+/** Size of the probe row that must reach the disk before admission reopens. */
+const LEDGER_PROBE_BYTES = 8192;
+
+function probeRow(): string {
+  const head = JSON.stringify({ probe: 'ledger-writable', ts: new Date().toISOString(), pad: '' });
+  return head.replace('"pad":""', `"pad":"${'0'.repeat(Math.max(0, LEDGER_PROBE_BYTES - head.length - 1))}"`) + '\n';
 }
 
 // ── Store ───────────────────────────────────────────────────────────────────
@@ -430,7 +463,18 @@ class FullScanJobStore {
   private writeFailures = 0;
   private lastPrune = 0;
   private pruneTimer: ReturnType<typeof setInterval> | null = null;
-  private readonly queue = new FullScanRunQueue((job) => this.finish(job, 'failed'));
+  private readonly queue = new FullScanRunQueue(
+    (job) => this.finish(job, 'failed'),
+    () => this.ledgerWritable(),
+    (job) => this.finish(job, 'failed'),
+  );
+  /**
+   * Open after any failed ledger write (codex F12-3, emma-soul al:d65d2e44c95f00d0):
+   * new jobs get 503 and queued jobs finish unrun until a real non-empty probe
+   * row reaches the disk. So the jobs exposed to a write failure are only those
+   * already running when the first write failed (at most FAULTLINE_FULL_MAX_RUNNING).
+   */
+  private breakerOpen = false;
 
   constructor(now: number = Date.now()) {
     this.hydrate(now);
@@ -611,13 +655,14 @@ class FullScanJobStore {
       try {
         const dir = dirname(path);
         if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-        appendFileSync(path, JSON.stringify(row) + '\n');
+        appendLedger(path, JSON.stringify(row) + '\n');
         return true;
       } catch {
         // retry once, then count it
       }
     }
     this.writeFailures += 1;
+    this.breakerOpen = true;
     return false;
   }
 
@@ -630,7 +675,8 @@ class FullScanJobStore {
     const path = fullScanLedgerPath();
     let raw: string;
     try {
-      if (!existsSync(path)) return;
+      // A regular file only: a device such as /dev/full reads forever.
+      if (!existsSync(path) || !statSync(path).isFile()) return;
       raw = readFileSync(path, 'utf8');
     } catch {
       return;
@@ -658,23 +704,34 @@ class FullScanJobStore {
   }
 
   /**
-   * Can a terminal row be written right now? A zero-byte append to the ledger
-   * path (creating its directory if needed). POST /scan/full refuses a new job
-   * with 503 ledger_unavailable when this fails, so no job starts whose finished
-   * accounting could not survive a restart (codex F12-1). It cannot see a full
-   * disk (zero bytes always fit); persist's retry, `durable` and the hourly alert
-   * cover that.
+   * May a job start now? Asked by POST /scan/full (503 ledger_unavailable when
+   * false) and before a queued job runs. Every answer is a real, non-empty write
+   * to the ledger itself (codex F12-3: a zero-byte append succeeds on a full disk):
+   *
+   * - breaker closed: append one newline (skipped by hydrate). A failure opens it.
+   * - breaker open: append a probe row padded to LEDGER_PROBE_BYTES, larger than a
+   *   typical terminal row, so a nearly full disk does not reopen admission for one
+   *   more job that cannot be recorded. Only that write closes the breaker. The
+   *   probe row has no job id, so hydrate skips it.
    */
   ledgerWritable(): boolean {
     const path = fullScanLedgerPath();
+    const payload = this.breakerOpen ? probeRow() : '\n';
     try {
       const dir = dirname(path);
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-      appendFileSync(path, '');
+      appendLedger(path, payload);
+      this.breakerOpen = false;
       return true;
     } catch {
+      this.breakerOpen = true;
       return false;
     }
+  }
+
+  /** True while new jobs are refused after a failed ledger write. */
+  admissionClosed(): boolean {
+    return this.breakerOpen;
   }
 
   /** Refunded units against charged units over the trailing `days`, from the ledger rows. */
@@ -697,6 +754,7 @@ class FullScanJobStore {
       alert: refundRate > REFUND_ALERT_RATE,
       reasons,
       ledgerWriteFailures: this.writeFailures,
+      admissionClosed: this.breakerOpen,
     };
   }
 

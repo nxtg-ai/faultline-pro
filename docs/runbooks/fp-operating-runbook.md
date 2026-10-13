@@ -82,6 +82,7 @@ The production Gemini key is in project Faultline (`gen-lang-client-0856465510`)
 - Limits: `FAULTLINE_FULL_MAX_RUNNING` (default 4 jobs at once), `FAULTLINE_FULL_ESTIMATE_PER_MIN` (default 10 estimates per key and user per minute).
 - Refund rate: admin `GET /usage` -> `fullScanRefunds` (trailing 7 days); the hourly grounding check alerts fp on it and on any ledger write failure (`docs/grounding-allowance-alert.md`). When `alert` is true (refunded units above 10% of charged), find the cause from the reason-code totals and report it to emma-soul (ruling al:c747e63f2fc26683, condition 4).
 - A deploy loses running jobs: fw sees `404 job_lost` and refunds them in full.
+- `fullScanRefunds.admissionClosed: true` means a ledger write failed and new deep scans get `503 ledger_unavailable`. It reopens by itself once an 8 KB probe row can be written; fix the volume (space, mount), then post the affected job ids and units refunded within a day (emma-soul al:a1df02700e167833, condition 1).
 
 ## Revenue scoreboard timer (GoPMO 1.18.11.1.7)
 

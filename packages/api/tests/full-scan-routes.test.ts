@@ -15,7 +15,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { Claim, VerificationResult, ApiErrorReason } from '@nxtg/faultline/types.js';
@@ -28,6 +28,7 @@ import { getCostStore, resetCostStore } from '../src/store/costs.js';
 import {
   getFullScanJobStore,
   resetFullScanJobStore,
+  setFullScanLedgerAppendForTests,
   newJobId,
   type FullScanLedgerRow,
 } from '../src/store/full-scan-jobs.js';
@@ -244,6 +245,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  setFullScanLedgerAppendForTests(null);
   for (const gate of openGates) await gate.releaseAll();
   resetFullScanJobStore();
   await server.close();
@@ -737,6 +739,101 @@ describe('persistence', () => {
     expect((await untilTerminal(ok.json.jobId)).durable).toBe(true);
   });
 
+  // codex F12-3 / emma-soul al:d65d2e44c95f00d0: /dev/full accepts a zero-byte append
+  // but refuses every real write (ENOSPC), like a full disk.
+  const DEV_FULL = '/dev/full';
+  const haveDevFull = existsSync(DEV_FULL);
+
+  it.skipIf(!haveDevFull)('the first failed write closes admission: job 2 gets 503 on a ledger that refuses real writes (codex /dev/full case)', async () => {
+    useFixtureProvider(async (c) => supported(c));
+    const gate = gated();
+    const first = await startJob(sentences(13), 'idem-devfull-1', { userRef: USER_A });
+    process.env.FAULTLINE_FULL_JOBS_LEDGER = DEV_FULL; // the disk fills while job 1 runs
+    await gate.releaseAll();
+    const done = await untilTerminal(first);
+    expect(done.status).toBe('done');
+    expect(done.durable).toBe(false);
+
+    const est = await estimate(sentences(13), { userRef: USER_B });
+    const second = await start(est.json.estimateId, 'idem-devfull-2', { userRef: USER_B });
+    expect(second.statusCode).toBe(503);
+    expect(second.json).toEqual({ error: 'ledger_unavailable' });
+    const third = await start(est.json.estimateId, 'idem-devfull-3', { userRef: USER_B });
+    expect(third.statusCode).toBe(503);
+    const refunds = (await call('GET', '/usage')).json.fullScanRefunds;
+    expect(refunds).toMatchObject({ ledgerWriteFailures: 1, admissionClosed: true });
+  });
+
+  it.skipIf(!haveDevFull)('a ledger that refuses real writes from the start refuses job 1 (the admission write is non-empty)', async () => {
+    const verifyClaim = useFixtureProvider(async (c) => supported(c));
+    const est = await estimate(sentences(3));
+    process.env.FAULTLINE_FULL_JOBS_LEDGER = DEV_FULL;
+    const res = await start(est.json.estimateId, 'idem-devfull-first');
+    expect(res.statusCode).toBe(503);
+    expect(res.json).toEqual({ error: 'ledger_unavailable' });
+    expect(verifyClaim).not.toHaveBeenCalled();
+  });
+
+  it.skipIf(!haveDevFull)('admission reopens only after a padded probe row reaches the disk; hydrate skips the probe row', async () => {
+    useFixtureProvider(async (c) => supported(c));
+    const est = await estimate(sentences(2));
+    process.env.FAULTLINE_FULL_JOBS_LEDGER = DEV_FULL;
+    expect((await start(est.json.estimateId, 'idem-reopen')).statusCode).toBe(503);
+    expect(getFullScanJobStore().admissionClosed()).toBe(true);
+
+    process.env.FAULTLINE_FULL_JOBS_LEDGER = ledgerFile; // disk healthy again
+    const ok = await start(est.json.estimateId, 'idem-reopen');
+    expect(ok.statusCode).toBe(202);
+    expect(getFullScanJobStore().admissionClosed()).toBe(false);
+    await untilTerminal(ok.json.jobId);
+    const lines = readFileSync(ledgerFile, 'utf8').split('\n').filter((l) => l.trim() !== '');
+    const probe = lines.find((l) => l.includes('"probe":"ledger-writable"'));
+    expect(probe).toBeDefined();
+    expect(probe!.length).toBeGreaterThanOrEqual(8000);
+    resetFullScanJobStore();
+    expect((await call('GET', '/usage')).json.fullScanRefunds.jobs).toBe(1); // the probe row is not a job
+  });
+
+  it.skipIf(!haveDevFull)('a job still queued when the first write fails finishes unrun: nothing verified, every unit refunded', async () => {
+    process.env.FAULTLINE_FULL_MAX_RUNNING = '1';
+    const gate = gated();
+    const first = await startJob(sentences(2), 'idem-q-1', { userRef: USER_A });
+    const queued = await startJob(sentences(9), 'idem-q-2', { userRef: USER_B });
+    expect((await poll(queued)).json.status).toBe('queued');
+    process.env.FAULTLINE_FULL_JOBS_LEDGER = DEV_FULL;
+    await gate.releaseAll();
+    await untilTerminal(first);
+    const refused = await untilTerminal(queued);
+    expect(refused.status).toBe('failed');
+    expect(refused.checked).toBe(0);
+    expect(refused.units).toEqual({ charged: 2, served: 0, refund: 2 });
+    expect(refused.unserved.length).toBeGreaterThan(0);
+    expect(refused.unserved.every((u: Json) => u.reason === 'not_attempted')).toBe(true);
+  });
+
+  it('nearly full disk (a one-byte write fits, a row does not): the failed row closes admission, job 2 gets 503', async () => {
+    useFixtureProvider(async (c) => supported(c));
+    const writes: number[] = [];
+    setFullScanLedgerAppendForTests((path, data) => {
+      writes.push(data.length);
+      if (data.length > 1) throw Object.assign(new Error('ENOSPC: no space left on device'), { code: 'ENOSPC' });
+      appendFileSync(path, data);
+    });
+    try {
+      const first = await startJob(sentences(13), 'idem-nearfull-1', { userRef: USER_A });
+      expect((await untilTerminal(first)).durable).toBe(false);
+      const est = await estimate(sentences(13), { userRef: USER_B });
+      const second = await start(est.json.estimateId, 'idem-nearfull-2', { userRef: USER_B });
+      expect(second.statusCode).toBe(503);
+      expect(second.json).toEqual({ error: 'ledger_unavailable' });
+      // job 1's admission was a 1-byte write; job 2's was refused on an 8 KB probe row.
+      expect(writes[0]).toBe(1);
+      expect(writes[writes.length - 1]).toBeGreaterThanOrEqual(8000);
+    } finally {
+      setFullScanLedgerAppendForTests(null);
+    }
+  });
+
   it('a job still running says durable false; a written terminal job says true', async () => {
     const gate = gated();
     const jobId = await startJob(sentences(2), 'idem-durable');
@@ -835,6 +932,7 @@ describe('GET /usage fullScanRefunds (admin)', () => {
       alert: false,
       reasons: { rate_limited: 11, provider_unavailable: 0, timeout: 0, provider_error: 0, not_attempted: 0 },
       ledgerWriteFailures: 0,
+      admissionClosed: false,
     });
   });
 
