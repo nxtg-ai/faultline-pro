@@ -3,6 +3,7 @@ import type { LLMProvider, ImageInput, CritiqueResult, ProviderFactory } from '.
 import { buildGroundedPrompt } from './grounded_prompt';
 import { sanitizeVerifyError } from '../services/verify-error';
 import { recordUsage } from '../lib/usage-sink';
+import { ExtractionError, parseExtractedClaims } from './extraction-error';
 
 /**
  * OpenAI provider — implements the LLMProvider interface using OpenAI's API.
@@ -49,15 +50,13 @@ Return a JSON object with a "claims" key containing an array where each object h
 - importance: integer 1-5 (5 being critical to the argument's integrity)`,
     });
 
+    let response: string;
     try {
-      const response = await this.callAPI(content, 'user');
-      const parsed = JSON.parse(response);
-      const claims = parsed.claims || parsed;
-      return Array.isArray(claims) ? claims : [];
+      response = await this.callAPI(content, 'user');
     } catch (error) {
-      console.error('Error extracting claims (OpenAI):', error);
-      return [];
+      throw ExtractionError.fromProviderError(error);
     }
+    return parseExtractedClaims(response, true);
   }
 
   async verifyClaim(claim: Claim): Promise<VerificationResult> {

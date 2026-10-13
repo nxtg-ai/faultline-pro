@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { isExtractionError } from '@nxtg/faultline/providers/extraction-error.js';
 import { getAnalyticsStore } from '../store/analytics.js';
 import type { RiskLevel } from '../store/analytics.js';
 import { fireWebhookEvent } from '../store/webhooks.js';
@@ -50,7 +51,7 @@ async function scanWithFailover(
   const chain = cb.getChain(preferred);
   if (chain.length === 0) throw new Error('All providers circuit-broken.');
 
-  let lastError = '';
+  let lastError: unknown;
   for (const p of chain) {
     try {
       const result = await scan(text, p);
@@ -58,10 +59,13 @@ async function scanWithFailover(
       return result;
     } catch (err) {
       cb.recordFailure(p);
-      lastError = err instanceof Error ? err.message : String(err);
+      lastError = err;
     }
   }
-  throw new Error(lastError || 'All providers failed.');
+  // Keep an ExtractionError whole so its reason reaches the response.
+  if (isExtractionError(lastError)) throw lastError;
+  const message = lastError instanceof Error ? lastError.message : String(lastError ?? '');
+  throw new Error(message || 'All providers failed.');
 }
 
 export async function batchRoutes(fastify: FastifyInstance): Promise<void> {
@@ -116,7 +120,7 @@ export async function batchRoutes(fastify: FastifyInstance): Promise<void> {
 
       type ScanResult = Awaited<ReturnType<typeof scan>>;
       const results: Array<ScanResult | null> = [];
-      const errors: Array<{ index: number; error: string }> = [];
+      const errors: Array<{ index: number; error: string; reason?: string }> = [];
 
       for (let i = 0; i < settled.length; i++) {
         const outcome = settled[i];
@@ -132,7 +136,10 @@ export async function batchRoutes(fastify: FastifyInstance): Promise<void> {
             outcome.reason instanceof Error
               ? outcome.reason.message
               : String(outcome.reason);
-          errors.push({ index: i, error: message });
+          // An extraction failure names itself; ExtractionError.message is customer-safe.
+          errors.push(isExtractionError(outcome.reason)
+            ? { index: i, error: message, reason: outcome.reason.reason }
+            : { index: i, error: message });
           fireWebhookEvent('scan.failed', { index: i, error: message });
         }
       }

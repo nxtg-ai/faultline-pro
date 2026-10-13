@@ -163,9 +163,8 @@ describe('POST /scan', () => {
 
   it('returns 500 when scan throws an error', async () => {
     const { scan } = await import('@nxtg/faultline/cli/scan.js');
-    // With failover, all 5 providers must fail to produce a 500.
+    // With failover, all 4 real providers must fail to produce a 500 (mock is never a fallback).
     vi.mocked(scan)
-      .mockRejectedValueOnce(new Error('Provider API key missing'))
       .mockRejectedValueOnce(new Error('Provider API key missing'))
       .mockRejectedValueOnce(new Error('Provider API key missing'))
       .mockRejectedValueOnce(new Error('Provider API key missing'))

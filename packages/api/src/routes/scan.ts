@@ -22,6 +22,8 @@ import { notifyScanFailed } from '../store/notifications.js';
 import { buildEuComplianceReport, evaluateComplianceGate } from '@nxtg/faultline/cli/compliance-report.js';
 import { captureUsage } from '@nxtg/faultline/lib/usage-sink.js';
 import { resolveVerifyPolicy, withVerificationTier } from '../plugins/verify-cap.js';
+import { isExtractionError, type ExtractionError } from '@nxtg/faultline/providers/extraction-error.js';
+import { sendExtractionFailed } from '../lib/extraction-failure.js';
 
 
 const PROVIDER_ENUM = ['gemini', 'openai', 'claude', 'perplexity', 'mock'] as const;
@@ -76,6 +78,16 @@ const SCAN_TEMPLATE_SCHEMA = {
 interface ScanTemplateBody {
   text: string;
   provider?: ScanProvider;
+}
+
+/**
+ * The first 200 characters of a failed extraction's provider error, for ops logs.
+ * The provider's reply carries quota and status text, never the API key (sent in a
+ * header) or the scanned text.
+ */
+function causeHead(err: Error): string {
+  const cause = (err as { cause?: unknown }).cause;
+  return (cause instanceof Error ? cause.message : String(cause ?? '')).slice(0, 200);
 }
 
 export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
@@ -139,6 +151,10 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
             const missing = match?.[1] ?? 'unknown';
             return reply.status(503).send({ error: 'provider_not_configured', provider: missing });
           }
+          if (isExtractionError(err)) {
+            console.error('/scan (pipelineConfig) extraction failed:', err.reason, causeHead(err));
+            return sendExtractionFailed(reply, err);
+          }
           return reply.status(500).send({ error: err instanceof Error ? err.message : String(err) });
         }
       }
@@ -178,6 +194,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       let lastError: string = '';
+      let lastFailure: unknown;
       const attempted: Provider[] = [];
       const startTime = Date.now();
 
@@ -269,8 +286,16 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
         } catch (err) {
           cb.recordFailure(p);
           attempted.push(p);
+          lastFailure = err;
           lastError = err instanceof Error ? err.message : String(err);
         }
+      }
+
+      // Every provider in the chain failed. When the last one failed at extraction,
+      // say so (502 extraction_failed + reason), never with the provider's own text.
+      const extractionFailed = isExtractionError(lastFailure);
+      if (isExtractionError(lastFailure)) {
+        console.error('/scan extraction failed on the last provider tried:', lastFailure.reason, causeHead(lastFailure));
       }
 
       recordScanTelemetry({
@@ -281,10 +306,11 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
         latencyMs:   Date.now() - startTime,
         inputLength: text.length,
         cacheHit:    false,
-        errorCode:   500,
+        errorCode:   extractionFailed ? 502 : 500,
       });
       fireWebhookEvent('scan.failed', { error: lastError });
       void notifyScanFailed(keyId, lastError, attempted[attempted.length - 1] ?? effectiveProvider);
+      if (extractionFailed) return sendExtractionFailed(reply, lastFailure as ExtractionError);
       return reply.status(500).send({ error: lastError });
     },
   );

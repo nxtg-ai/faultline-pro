@@ -198,9 +198,15 @@ describe('Integration: Full Pipeline — Extract → Score → Map → Report', 
     expect(report.triggeredArticles.some((a) => a.article.includes('Article 5'))).toBe(true);
   });
 
-  it('extraction failure → empty report with no-claims mitigation', async () => {
+  it('extraction failure → ExtractionError, no report; zero claims → no-claims mitigation', async () => {
     mockGenerateContent.mockRejectedValueOnce(new Error('API down'));
 
+    // A failed extraction must not become an empty report.
+    await expect(provider.extractClaims('Some input'))
+      .rejects.toMatchObject({ name: 'ExtractionError', reason: 'provider_error' });
+
+    // A valid empty reply is zero claims, which the report states.
+    mockGenerateContent.mockResolvedValueOnce({ text: '[]' });
     const claims = await provider.extractClaims('Some input');
     expect(claims).toEqual([]);
 

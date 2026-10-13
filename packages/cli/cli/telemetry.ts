@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { isExtractionError, type ExtractionErrorReason } from '../providers/extraction-error.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -113,7 +114,17 @@ export function sendTelemetry(
  * Classify a caught error into an enumerated error code.
  * Never touches error.message content.
  */
+const EXTRACTION_ERROR_CODES: Record<ExtractionErrorReason, ErrorCode> = {
+  rate_limited: 'RATE_LIMIT',
+  timeout: 'TIMEOUT',
+  provider_unavailable: 'PROVIDER_UNAVAILABLE',
+  invalid_output: 'PARSE_ERROR',
+  provider_error: 'API_ERROR',
+};
+
 export function classifyError(err: unknown): ErrorCode {
+  // The ExtractionError message is customer text; its reason is the classification.
+  if (isExtractionError(err)) return EXTRACTION_ERROR_CODES[err.reason];
   if (err instanceof Error) {
     const name = err.name;
     if (name === 'AbortError') return 'TIMEOUT';

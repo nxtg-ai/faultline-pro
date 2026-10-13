@@ -11,6 +11,8 @@ import { recordProviderSpend } from '../store/provider-spend.js';
 import { getUsageMeter } from '../store/usage.js';
 import { captureUsage } from '@nxtg/faultline/lib/usage-sink.js';
 import { resolveVerifyPolicy, withVerificationTier } from '../plugins/verify-cap.js';
+import { isExtractionError } from '@nxtg/faultline/providers/extraction-error.js';
+import { extractionFailedBody } from '../lib/extraction-failure.js';
 
 type ScanProvider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
 
@@ -83,6 +85,19 @@ function sseHeaders(reply: FastifyReply): Record<string, string> {
   return headers;
 }
 
+const GENERIC_STREAM_ERROR = 'Scan failed — the verification service hit an error. Please retry.';
+const EXTRACTION_STREAM_ERROR = 'Scan failed — claims could not be extracted from the text, so nothing was verified. Please retry.';
+
+/**
+ * The client-safe SSE error event. An extraction failure also carries
+ * `error: 'extraction_failed'` and its `reason`, the same fields as the 502 body
+ * of POST /scan; never the raw provider error.
+ */
+function streamErrorEvent(err: unknown): Record<string, unknown> {
+  if (isExtractionError(err)) return { type: 'error', message: EXTRACTION_STREAM_ERROR, ...extractionFailedBody(err) };
+  return { type: 'error', message: GENERIC_STREAM_ERROR };
+}
+
 /**
  * N-134/N-135 — Server-Sent Events scan streaming with progressive per-claim delivery.
  * GET /scan/stream?text=...&provider=mock
@@ -94,7 +109,7 @@ function sseHeaders(reply: FastifyReply): Record<string, string> {
  *   data: {"type":"start","claimCount":N,"provider":"mock"}        ← on first claim verified
  *   data: {"type":"claim_verified","index":0,"claim":{...},"verdict":{...}}  × N
  *   data: {"type":"complete","overallRisk":"low","claimCount":N,"verification":{tier,cap,eligibleClaims,verifiedClaims,uncheckedClaims,uncheckedClaimIds}}
- *   data: {"type":"error","message":"..."}  (on failure only)
+ *   data: {"type":"error","message":"..."}  (on failure only; plus "error":"extraction_failed","reason" when extraction failed)
  */
 export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: { text?: string; provider?: string } }>(
@@ -200,7 +215,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
         if (!startEmitted) {
           emit({ type: 'start', claimCount: 0, provider: effectiveProvider });
         }
-        emit({ type: 'error', message: 'Scan failed — the verification service hit an error. Please retry.' });
+        emit(streamErrorEvent(err));
       } finally {
         reply.raw.end();
       }
@@ -217,7 +232,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
    *   data: {"type":"start","claimCount":N,"provider":"..."}
    *   data: {"type":"claim_verified","index":N,"claim":{...},"verdict":{...}}  × N
    *   data: {"type":"complete","overallRisk":"low|medium|high|critical","claimCount":N,"verification":{...}}
-   *   data: {"type":"error","message":"..."}  (on failure only)
+   *   data: {"type":"error","message":"..."}  (on failure only; plus "error":"extraction_failed","reason" when extraction failed)
    */
   fastify.post<{ Body: StreamPostBody }>(
     '/scan/stream',
@@ -315,7 +330,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
         if (!startEmitted) {
           emit({ type: 'start', claimCount: 0, provider: effectiveProvider });
         }
-        emit({ type: 'error', message: 'Scan failed — the verification service hit an error. Please retry.' });
+        emit(streamErrorEvent(err));
       } finally {
         reply.raw.end();
       }

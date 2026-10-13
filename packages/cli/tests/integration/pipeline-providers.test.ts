@@ -277,26 +277,22 @@ describe('Integration: Multi-Provider Pipeline', () => {
   // --- 3. Error propagation ---
 
   describe('error propagation through pipeline', () => {
-    it('Gemini extraction failure → empty report with mitigation', async () => {
+    it('Gemini extraction failure → pipeline stops with ExtractionError, no report', async () => {
       mockGenerateContent.mockRejectedValueOnce(new Error('Gemini 500'));
 
       const provider = getProvider('key', 'gemini');
-      const { claims, report } = await runFullPipeline(provider);
-
-      expect(claims).toEqual([]);
-      expect(report.euRiskSummary.totalClaims).toBe(0);
-      expect(report.mitigations.some((m) => m.includes('No verified claims'))).toBe(true);
+      // A failed extraction must not produce an empty "no verified claims" report.
+      await expect(runFullPipeline(provider))
+        .rejects.toMatchObject({ name: 'ExtractionError', reason: 'provider_error' });
     });
 
-    it('Claude extraction failure → empty report with mitigation', async () => {
+    it('Claude extraction failure → pipeline stops with ExtractionError, no report', async () => {
       mockFetch.mockRejectedValueOnce(new Error('Claude 429'));
 
       const provider = getProvider('key', 'claude');
-      const { claims, report } = await runFullPipeline(provider);
-
-      expect(claims).toEqual([]);
-      expect(report.euRiskSummary.totalClaims).toBe(0);
-      expect(report.mitigations.some((m) => m.includes('No verified claims'))).toBe(true);
+      // A failed extraction must not produce an empty "no verified claims" report.
+      await expect(runFullPipeline(provider))
+        .rejects.toMatchObject({ name: 'ExtractionError', reason: 'rate_limited' });
     });
 
     it('Gemini verification failure mid-pipeline → unverified + low risk report', async () => {

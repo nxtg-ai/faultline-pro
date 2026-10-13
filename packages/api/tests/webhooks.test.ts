@@ -271,9 +271,8 @@ describe('Webhook dispatch', () => {
 
   it('D7. POST /scan 500 (scan throws) triggers scan.failed event', async () => {
     const { scan } = await import('@nxtg/faultline/cli/scan.js');
-    // With failover, all 5 providers must fail to trigger scan.failed.
+    // With failover, all 4 real providers must fail to trigger scan.failed (mock is never a fallback).
     vi.mocked(scan)
-      .mockRejectedValueOnce(new Error('Provider failure'))
       .mockRejectedValueOnce(new Error('Provider failure'))
       .mockRejectedValueOnce(new Error('Provider failure'))
       .mockRejectedValueOnce(new Error('Provider failure'))

@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { verifyClaims, autoDetectProvider, isGrounded } from '../src/verify.js';
 import type { ScanResult } from '@nxtg/faultline/cli/scan.js';
+import { ExtractionError } from '@nxtg/faultline/providers/extraction-error.js';
 
 /** Build a ScanResult the way the engine does, for mapping tests. */
 function scanResult(over: Partial<ScanResult> = {}): ScanResult {
@@ -46,6 +47,21 @@ describe('verifyClaims — input handling', () => {
     await expect(verifyClaims({ text: '   ' }, { scanFn: async () => scanResult() })).rejects.toThrow(
       /non-empty/i,
     );
+  });
+});
+
+describe('verifyClaims — failed extraction', () => {
+  it('rejects with the ExtractionError (no verdicts, no audit record) so the tool reports a failure', async () => {
+    const failure = new ExtractionError('invalid_output', new SyntaxError('Unterminated string in JSON'));
+    const err = await verifyClaims(
+      { text: 'The Eiffel Tower is in Paris. It opened in 1889.', provider: 'mock' },
+      { scanFn: async () => { throw failure; }, transport: { mode: 'local' } },
+    ).catch((e: unknown) => e);
+
+    expect(err).toBe(failure);
+    expect((err as ExtractionError).message).toMatch(/^Claim extraction failed/);
+    expect((err as ExtractionError).message).not.toContain('Unterminated');
+    expect(readdirSync(auditRoot, { recursive: true })).toEqual([]);
   });
 });
 

@@ -2,6 +2,7 @@ import type { Claim, VerificationResult, ClaimStatus, Source } from '../types';
 import type { LLMProvider, ImageInput, CritiqueResult, ProviderFactory } from './base_provider';
 import { buildGroundedPrompt } from './grounded_prompt';
 import { sanitizeVerifyError } from '../services/verify-error';
+import { ExtractionError, parseExtractedClaims } from './extraction-error';
 import { recordUsage } from '../lib/usage-sink';
 
 /**
@@ -59,14 +60,15 @@ Return a JSON array where each object has:
 Return ONLY the JSON array, no other text.`,
     });
 
+    let response: string;
     try {
-      const response = await this.callAPI(content, 'user');
-      const parsed = JSON.parse(this.extractJson(response));
-      return Array.isArray(parsed) ? parsed : [];
+      response = await this.callAPI(content, 'user');
     } catch (error) {
-      console.error('Error extracting claims (Claude):', error);
-      return [];
+      throw ExtractionError.fromProviderError(error);
     }
+    // An empty reply is a failed extraction, not "no claims" (extractJson would read it as []).
+    if (!response.trim()) throw new ExtractionError('invalid_output', new Error('empty extraction reply'));
+    return parseExtractedClaims(this.extractJson(response));
   }
 
   async verifyClaim(claim: Claim): Promise<VerificationResult> {

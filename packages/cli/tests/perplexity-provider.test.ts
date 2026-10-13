@@ -7,6 +7,7 @@ const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
 import { createPerplexityProvider } from '../providers/perplexity_provider';
+import { ExtractionError } from '../providers/extraction-error';
 
 function mockPerplexityResponse(content: string, citations: string[] = [], status = 200) {
   return {
@@ -120,22 +121,60 @@ describe('PerplexityProvider', () => {
       expect(contentTypes).not.toContain('image_url');
     });
 
-    it('should return empty array on API error', async () => {
-      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+    // A failed extraction must throw, not return []: scan() would otherwise fill one
+    // synthetic claim per sentence and verify or price those as if extracted.
+    it('throws ExtractionError(provider_error) on a network error, keeping the cause', async () => {
+      const networkError = new Error('Network error');
+      mockFetch.mockRejectedValueOnce(networkError);
 
       const provider = createPerplexityProvider('test-key');
-      const result = await provider.extractClaims('Some text');
-      expect(result).toEqual([]);
+      const err = await provider.extractClaims('Some text').catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ExtractionError);
+      expect((err as ExtractionError).reason).toBe('provider_error');
+      expect((err as ExtractionError).cause).toBe(networkError);
+      expect((err as ExtractionError).message).not.toContain('Network error');
     });
 
-    it('should return empty array for non-array response', async () => {
+    it('throws ExtractionError(rate_limited) on HTTP 429', async () => {
+      mockFetch.mockResolvedValueOnce(mockPerplexityResponse('', [], 429));
+
+      const provider = createPerplexityProvider('test-key');
+      await expect(provider.extractClaims('Some text')).rejects.toMatchObject({ name: 'ExtractionError', reason: 'rate_limited' });
+    });
+
+    it('throws ExtractionError(provider_unavailable) on HTTP 503', async () => {
+      mockFetch.mockResolvedValueOnce(mockPerplexityResponse('', [], 503));
+
+      const provider = createPerplexityProvider('test-key');
+      await expect(provider.extractClaims('Some text')).rejects.toMatchObject({ name: 'ExtractionError', reason: 'provider_unavailable' });
+    });
+
+    it('throws ExtractionError(invalid_output) on JSON cut off mid-output', async () => {
+      mockFetch.mockResolvedValueOnce(
+        mockPerplexityResponse('{"claims": [{"id": "c1", "text": "The Eiffel Tower is in Par'),
+      );
+
+      const provider = createPerplexityProvider('test-key');
+      const err = await provider.extractClaims('Some text').catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ExtractionError);
+      expect((err as ExtractionError).reason).toBe('invalid_output');
+      expect((err as ExtractionError).cause).toBeInstanceOf(SyntaxError);
+    });
+
+    it('throws ExtractionError(invalid_output) for a non-array response', async () => {
       mockFetch.mockResolvedValueOnce(
         mockPerplexityResponse(JSON.stringify({ not: 'an array' })),
       );
 
       const provider = createPerplexityProvider('test-key');
-      const result = await provider.extractClaims('Some text');
-      expect(result).toEqual([]);
+      await expect(provider.extractClaims('Some text')).rejects.toMatchObject({ name: 'ExtractionError', reason: 'invalid_output' });
+    });
+
+    it('returns [] for a valid empty claims array (zero claims is not an error)', async () => {
+      mockFetch.mockResolvedValueOnce(mockPerplexityResponse(JSON.stringify({ claims: [] })));
+
+      const provider = createPerplexityProvider('test-key');
+      await expect(provider.extractClaims('Some text')).resolves.toEqual([]);
     });
 
     it('should send correct headers with API key', async () => {
@@ -165,7 +204,7 @@ describe('PerplexityProvider', () => {
       expect(body.model).toBe('sonar-pro');
     });
 
-    it('should handle empty choices array', async () => {
+    it('throws ExtractionError(invalid_output) for an empty choices array', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -174,8 +213,7 @@ describe('PerplexityProvider', () => {
       });
 
       const provider = createPerplexityProvider('test-key');
-      const result = await provider.extractClaims('Some text');
-      expect(result).toEqual([]);
+      await expect(provider.extractClaims('Some text')).rejects.toMatchObject({ name: 'ExtractionError', reason: 'invalid_output' });
     });
   });
 

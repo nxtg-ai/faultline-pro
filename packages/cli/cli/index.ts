@@ -43,6 +43,7 @@ import { RELEASE_STAGE } from './release-stage.js';
 import { governCommand } from './govern.js';
 import { evaluateGuard, formatGuardReport, formatGuardJson, readStdin, isFailOn, FAIL_ON_VALUES } from './guard.js';
 import { resolveTransport, runScan, isGrounded } from './transport.js';
+import { isExtractionError } from '../providers/extraction-error.js';
 
 /**
  * Read from package.json rather than hardcoded.
@@ -111,6 +112,15 @@ function isImplicitMock(explicitProvider: string | undefined, resolved: string):
 /**
  * What to say instead of a fabricated verdict. Actionable, not just a refusal.
  */
+/**
+ * A failed claim extraction is not a result: the scan stops, says nothing was
+ * verified, and exits non-zero (never a report built on synthetic claims).
+ */
+function extractionFailureOutput(err: unknown): { exitCode: number; output: string } | null {
+  if (!isExtractionError(err)) return null;
+  return { exitCode: 1, output: `Error: ${err.message} (reason: ${err.reason})` };
+}
+
 function noProviderKeyOutput(command: string): { exitCode: number; output: string } {
   return {
     exitCode: 0,
@@ -953,6 +963,15 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
         if (batchNoKey) return batchNoKey;
         const batchResult = await batchScan(resolvedDir, providerName, minConfidence, globPattern);
 
+        // A file whose extraction failed was not checked: never a pass, gate or no gate.
+        if (batchResult.extractionFailures.length > 0) {
+          const failed = batchResult.extractionFailures.map((f) => `  ${f.file} (${f.reason})`).join('\n');
+          process.stderr.write(
+            `✗ Claim extraction failed for ${batchResult.extractionFailures.length} file(s); nothing in them was verified:\n${failed}\n`,
+          );
+          return { exitCode: 1, output: JSON.stringify(batchResult, null, 2) };
+        }
+
         if (batchResult.filesScanned === 0) {
           return { exitCode: 1, output: `Error: No files found in ${resolvedDir}${globPattern ? ` matching "${globPattern}"` : ''}.` };
         }
@@ -1015,6 +1034,8 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
           fileSpinner.succeed('Scan complete');
         } catch (err) {
           fileSpinner.fail('Scan failed');
+          const extractionFailure = extractionFailureOutput(err);
+          if (extractionFailure) return extractionFailure;
           throw err;
         }
 
@@ -1057,6 +1078,8 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
       } catch (err) {
         spinner.fail('Scan failed');
         sendTelemetry({ version: VERSION, provider: providerName ?? 'unknown', exit_status: 1, eval_count: 0, error_code: classifyError(err) });
+        const extractionFailure = extractionFailureOutput(err);
+        if (extractionFailure) return extractionFailure;
         throw err;
       }
 
@@ -1445,5 +1468,12 @@ if (isDirectRun) {
   main(process.argv.slice(2)).then(({ exitCode, output }) => {
     console.log(output);
     process.exit(exitCode);
+  }, (err: unknown) => {
+    // Commands that call scan() without their own catch: an extraction failure
+    // gets its safe message, never a stack trace or a fake result.
+    const extractionFailure = extractionFailureOutput(err);
+    if (!extractionFailure) throw err;
+    console.error(extractionFailure.output);
+    process.exit(extractionFailure.exitCode);
   });
 }

@@ -3,6 +3,7 @@ import { join, relative } from 'node:path';
 import type { Claim, VerificationResult, AnalysisState } from '../types.js';
 import { generateComplianceReport, type ComplianceReport } from '../compliance/report_generator.js';
 import { runAllRules, runRules, type Finding } from '../rules/index.js';
+import { isExtractionError, type ExtractionErrorReason } from '../providers/extraction-error.js';
 import {
   DEFAULT_VERIFY_CAP,
   resolveVerifyCap,
@@ -406,6 +407,8 @@ export interface BatchScanResult {
   glob: string | null;
   filesScanned: number;
   filesSkipped: number;
+  /** Files counted in filesSkipped because claim extraction failed: nothing in them was checked. */
+  extractionFailures: Array<{ file: string; reason: ExtractionErrorReason }>;
   results: Array<{ file: string; result: ScanResult }>;
   summary: BatchSummary;
 }
@@ -471,6 +474,7 @@ export async function batchScan(
 ): Promise<BatchScanResult> {
   const files = collectFiles(dir, globPattern || null);
   const results: Array<{ file: string; result: ScanResult }> = [];
+  const extractionFailures: BatchScanResult['extractionFailures'] = [];
   let filesSkipped = 0;
 
   for (const file of files) {
@@ -482,8 +486,9 @@ export async function batchScan(
       }
       const result = await scan(text, providerName, minConfidence);
       results.push({ file: relative(dir, file), result });
-    } catch {
+    } catch (err) {
       filesSkipped++;
+      if (isExtractionError(err)) extractionFailures.push({ file: relative(dir, file), reason: err.reason });
     }
   }
 
@@ -494,6 +499,7 @@ export async function batchScan(
     glob: globPattern || null,
     filesScanned: results.length,
     filesSkipped,
+    extractionFailures,
     results,
     summary,
   };

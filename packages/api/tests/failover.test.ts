@@ -91,11 +91,12 @@ describe('CircuitBreaker — unit', () => {
     expect(cb.isDown('openai')).toBe(false);
   });
 
-  it('getChain() without preferred returns full chain (5 providers)', () => {
+  it('getChain() without preferred returns the real providers, never the mock fallback (4 providers)', () => {
     const cb = getCircuitBreaker();
     const chain = cb.getChain();
-    expect(chain).toHaveLength(5);
-    expect(chain).toEqual(PROVIDER_CHAIN);
+    expect(chain).toHaveLength(4);
+    expect(chain).toEqual(PROVIDER_CHAIN.filter((p) => p !== 'mock'));
+    expect(chain).not.toContain('mock');
   });
 
   it('getChain() skips DOWN providers', () => {
@@ -105,13 +106,22 @@ describe('CircuitBreaker — unit', () => {
     }
     const chain = cb.getChain();
     expect(chain).not.toContain('gemini');
-    expect(chain).toHaveLength(4);
+    expect(chain).toHaveLength(3);
   });
 
   it('getChain() with preferred puts preferred first', () => {
     const cb = getCircuitBreaker();
     const chain = cb.getChain('claude');
     expect(chain[0]).toBe('claude');
+    expect(chain).toHaveLength(4);
+    expect(chain).not.toContain('mock');
+  });
+
+  it('getChain(\'mock\') tries mock only because it was asked for, first', () => {
+    const cb = getCircuitBreaker();
+    const chain = cb.getChain('mock');
+    expect(chain[0]).toBe('mock');
+    expect(chain.filter((p) => p === 'mock')).toHaveLength(1);
     expect(chain).toHaveLength(5);
   });
 

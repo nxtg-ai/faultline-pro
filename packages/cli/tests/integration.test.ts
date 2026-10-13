@@ -162,13 +162,18 @@ describe('Integration: Full Pipeline (Mocked)', () => {
     expect(calculateRisk(verifications)).toBe('critical');
   });
 
-  it('should handle extraction failure gracefully in pipeline', async () => {
+  it('should stop the pipeline on extraction failure (no empty "low risk" result)', async () => {
     mockGenerateContent.mockRejectedValueOnce(new Error('API down'));
 
+    // A failed extraction is not "no claims": it throws, so nothing downstream
+    // can score an unchecked document as low risk.
+    await expect(extractClaims('Input', 'test-key'))
+      .rejects.toMatchObject({ name: 'ExtractionError', reason: 'provider_error' });
+
+    // A genuine zero-claim reply still flows through: no verifications → low risk
+    mockGenerateContent.mockResolvedValueOnce({ text: '[]' });
     const claims = await extractClaims('Input', 'test-key');
     expect(claims).toEqual([]);
-
-    // No claims → no verifications → low risk
     const toVerify = filterClaimsForVerification(claims);
     expect(toVerify).toHaveLength(0);
     expect(calculateRisk({})).toBe('low');

@@ -3,6 +3,7 @@ import { GoogleGenAI } from "@google/genai";
 import type { Claim, VerificationResult, ClaimStatus } from '../types';
 import { sanitizeVerifyError } from './verify-error';
 import { recordUsage } from '../lib/usage-sink';
+import { ExtractionError, parseExtractedClaims } from '../providers/extraction-error';
 
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 
@@ -91,15 +92,15 @@ export const extractClaims = async (text: string, apiKey: string, image?: { data
     - importance: integer 1-5 (5 being critical to the argument's integrity)
   `;
 
+  const parts: any[] = [{ text: prompt }];
+  if (image) {
+    parts.unshift({ inlineData: { mimeType: image.mimeType, data: image.data } });
+  }
+
+  let response: any;
   try {
     const ai = getClient(apiKey);
-
-    const parts: any[] = [{ text: prompt }];
-    if (image) {
-      parts.unshift({ inlineData: { mimeType: image.mimeType, data: image.data } });
-    }
-
-    const response = await ai.models.generateContent({
+    response = await ai.models.generateContent({
       model,
       contents: { parts },
       config: {
@@ -119,15 +120,14 @@ export const extractClaims = async (text: string, apiKey: string, image?: { data
         }
       }
     });
-
-    recordGeminiUsage(response, false, 'extraction');
-    const cleanedText = cleanJson(response.text || '[]');
-    const result = JSON.parse(cleanedText);
-    return Array.isArray(result) ? result : [];
   } catch (error) {
-    console.error("Error extracting claims:", error);
-    return [];
+    throw ExtractionError.fromProviderError(error);
   }
+
+  recordGeminiUsage(response, false, 'extraction');
+  // An empty reply (a blocked or cut-off response) is a failed extraction, not "no claims".
+  if (!response.text?.trim()) throw new ExtractionError('invalid_output', new Error('empty extraction reply'));
+  return parseExtractedClaims(cleanJson(response.text));
 };
 
 export const verifyClaim = async (claim: Claim, apiKey: string): Promise<VerificationResult> => {

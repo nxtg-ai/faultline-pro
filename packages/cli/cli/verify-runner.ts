@@ -6,13 +6,14 @@
  * One implementation so the two scan modes cannot drift on provider choice,
  * concurrency or apiError semantics.
  */
-import type { ApiErrorReason, Claim, VerificationResult } from '../types.js';
+import type { Claim, VerificationResult } from '../types.js';
 import type { LLMProvider, Retriever } from '../providers/base_provider.js';
 import { getProvider } from '../providers/registry.js';
 import { DEFAULT_SCAN_PROVIDER, resolveApiKey } from './provider-keys.js';
 import { GeminiGroundingRetriever } from '../providers/gemini_provider.js';
 import { OpenAIWebSearchRetriever } from '../providers/openai_web_search_retriever.js';
 import { consensusVerify, type NamedProvider } from '../consensus/consensus_engine.js';
+import { classifyApiError } from '../providers/extraction-error.js';
 
 /** Claims verified at the same time within one scan. */
 export const VERIFY_CONCURRENCY = 8;
@@ -254,19 +255,11 @@ export interface VerificationRun {
 }
 
 /**
- * Classify the error a claim's final attempt threw. Patterns follow
- * services/verify-error.ts so the reason and the customer text agree on what a
- * 429, a 503 or a timeout is; a timeout is tested before the 5xx/unavailable
- * class because "upstream timed out (503)" is still a timeout to the caller.
+ * Classify the error a claim's final attempt threw. Shared with extraction
+ * (providers/extraction-error.ts) so both stages name a 429, a 503 or a
+ * timeout the same way.
  */
-export function classifyApiError(err: unknown): ApiErrorReason {
-  const name = err instanceof Error ? err.name : '';
-  const raw = (err instanceof Error ? err.message : String(err)).toLowerCase();
-  if (/\b429\b|resource_exhausted|quota|rate[ _-]?limit|too many requests/.test(raw)) return 'rate_limited';
-  if (name === 'AbortError' || name === 'TimeoutError' || /timeout|timed out|etimedout/.test(raw)) return 'timeout';
-  if (/\b503\b|overloaded|unavailable/.test(raw)) return 'provider_unavailable';
-  return 'provider_error';
-}
+export { classifyApiError };
 
 function exhaustedRetryResult(claim: Claim, err: unknown, flagApiError: boolean): VerificationResult {
   const isRateLimit = err instanceof Error

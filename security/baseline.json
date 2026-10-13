@@ -241,14 +241,6 @@
     {
       "tool": "bearer",
       "ruleId": "javascript_lang_logger_leak",
-      "uri": "packages/cli/providers/claude_provider.ts",
-      "fp": "9873b3de8f228a4ff437e980ff905a06_1",
-      "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
-    },
-    {
-      "tool": "bearer",
-      "ruleId": "javascript_lang_logger_leak",
       "uri": "packages/cli/providers/openai_provider.ts",
       "fp": "195085d4162ddbfff995c5c9c8a80990_0",
       "disposition": "accepted-pre-existing",
@@ -257,24 +249,8 @@
     {
       "tool": "bearer",
       "ruleId": "javascript_lang_logger_leak",
-      "uri": "packages/cli/providers/openai_provider.ts",
-      "fp": "195085d4162ddbfff995c5c9c8a80990_1",
-      "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
-    },
-    {
-      "tool": "bearer",
-      "ruleId": "javascript_lang_logger_leak",
       "uri": "packages/cli/providers/perplexity_provider.ts",
       "fp": "114b12933db40e5d92136e3450e87317_0",
-      "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
-    },
-    {
-      "tool": "bearer",
-      "ruleId": "javascript_lang_logger_leak",
-      "uri": "packages/cli/providers/perplexity_provider.ts",
-      "fp": "114b12933db40e5d92136e3450e87317_1",
       "disposition": "accepted-pre-existing",
       "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
@@ -419,14 +395,6 @@
       "ruleId": "javascript_lang_logger_leak",
       "uri": "packages/cli/services/geminiService.ts",
       "fp": "550bb744ee3e4d762b6d880be9c180b4_3",
-      "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
-    },
-    {
-      "tool": "bearer",
-      "ruleId": "javascript_lang_logger_leak",
-      "uri": "packages/cli/services/geminiService.ts",
-      "fp": "550bb744ee3e4d762b6d880be9c180b4_4",
       "disposition": "accepted-pre-existing",
       "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
@@ -933,6 +901,30 @@
       "fp": "ab900822748af08205367adacace2830_1",
       "disposition": "false-positive",
       "reason": "false-positive, triaged 2026-10-13 (fp): logs a document id and the first 200 characters of a provider error from a local research run; the Gemini key travels in a request header, not in error text"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/api/src/routes/scan.ts",
+      "fp": "f2f0119f0a9d9aa1766a4ee6bc873720_0",
+      "disposition": "false-positive",
+      "reason": "false-positive, triaged 2026-10-13 (fp): logs an extraction failure's reason code and the first 200 characters of the provider's error message (quota/status text) to the server log; the API key travels in a request header and the scanned text is not in the error. Replaces the provider-level extraction logs removed with the silent-failure fix"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/api/src/routes/scan.ts",
+      "fp": "f2f0119f0a9d9aa1766a4ee6bc873720_1",
+      "disposition": "false-positive",
+      "reason": "false-positive, triaged 2026-10-13 (fp): same as the entry above, for the failover loop's last failure: reason code and a 200-character head of the provider's error message only"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/cli/index.ts",
+      "fp": "2abfe6ecf9455426db963bc44ea258dd_1",
+      "disposition": "false-positive",
+      "reason": "false-positive, triaged 2026-10-13 (fp): prints the fixed customer-safe extraction-failure sentence (ExtractionError SAFE_MESSAGES) to the CLI user's own terminal; no provider payload, key or input text"
     }
   ]
 }

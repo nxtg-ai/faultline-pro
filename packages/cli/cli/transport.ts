@@ -73,6 +73,8 @@ function explainStatus(status: number, body: string): string {
       return 'the key lacks permission for this operation (403).';
     case 429:
       return 'rate limit or monthly cap reached (429). This is NOT a verdict on your claims.';
+    case 502:
+      return `the API could not extract claims from the text (502): ${body}. Nothing was verified.`;
     case 503:
       return `the API is not ready to scan (503): ${body}`;
     default:

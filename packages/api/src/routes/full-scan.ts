@@ -3,6 +3,8 @@ import { extractForFullScan, verifyFullScan, type FullScanResult } from '@nxtg/f
 import { partitionForFullScan } from '@nxtg/faultline/cli/full-scan.js';
 import { captureUsage, type UsageLeg } from '@nxtg/faultline/lib/usage-sink.js';
 import { requireApiKey } from '../plugins/auth.js';
+import { isExtractionError } from '@nxtg/faultline/providers/extraction-error.js';
+import { sendExtractionFailed } from '../lib/extraction-failure.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { isServerKeyId, resolveEntitledTier } from '../plugins/consensus-entitlement.js';
@@ -270,6 +272,7 @@ export async function fullScanRoutes(fastify: FastifyInstance): Promise<void> {
           return reply.status(503).send({ error: 'provider_not_configured', provider: missing });
         }
         // Never echo a raw provider error (it can carry quota blobs and model ids).
+        if (isExtractionError(outcome.error)) return sendExtractionFailed(reply, outcome.error);
         return reply.status(502).send({ error: 'extraction_failed' });
       }
       const estimate = getFullScanJobStore().createEstimate({
