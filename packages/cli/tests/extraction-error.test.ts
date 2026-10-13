@@ -110,6 +110,41 @@ describe('parseExtractedClaims', () => {
     expect((err as ExtractionError).cause).toBeInstanceOf(SyntaxError);
   });
 
+  it('rejects a claims array holding a malformed item: invalid_output, cause names index and field, no claim text (codex E1)', () => {
+    const cases: Array<[string, string]> = [
+      [JSON.stringify({ claims: [{ text: 'UPSTREAM_ERROR_SENTINEL', type: 'error' }] }), 'id'],
+      [JSON.stringify({ claims: [{}] }), 'id'],
+      [JSON.stringify({ claims: [claim, null] }), 'object'],
+      [JSON.stringify({ claims: [claim, 'a string'] }), 'object'],
+      [JSON.stringify({ claims: [{ ...claim, text: '  ' }] }), 'text'],
+      [JSON.stringify({ claims: [{ ...claim, type: 'error' }] }), 'type'],
+      [JSON.stringify({ claims: [{ ...claim, importance: 0 }] }), 'importance'],
+      [JSON.stringify({ claims: [{ ...claim, importance: 6 }] }), 'importance'],
+      [JSON.stringify({ claims: [{ ...claim, importance: 2.5 }] }), 'importance'],
+      [JSON.stringify({ claims: [{ ...claim, importance: '4' }] }), 'importance'],
+    ];
+    for (const [raw, field] of cases) {
+      let err: unknown;
+      try { parseExtractedClaims(raw, true); } catch (e) { err = e; }
+      expect(err, raw).toBeInstanceOf(ExtractionError);
+      expect((err as ExtractionError).reason).toBe('invalid_output');
+      expect(String(((err as ExtractionError).cause as Error).message)).toContain(field);
+      expect(String(((err as ExtractionError).cause as Error).message)).not.toContain('SENTINEL');
+    }
+  });
+
+  it('one bad item fails the whole list, even beside valid claims', () => {
+    const raw = JSON.stringify([claim, { ...claim, id: 'c2', type: 'error' }]);
+    expect(() => parseExtractedClaims(raw)).toThrow(expect.objectContaining({ reason: 'invalid_output' }));
+  });
+
+  it('accepts a numeric id as a string and keeps every valid claim unchanged', () => {
+    const claims = parseExtractedClaims(JSON.stringify([{ ...claim, id: 7 }, { ...claim, id: 'c2', type: 'opinion', importance: 1 }]));
+    expect(claims).toHaveLength(2);
+    expect(claims[0]).toEqual({ ...claim, id: '7' });
+    expect(claims[1]).toMatchObject({ id: 'c2', type: 'opinion', importance: 1 });
+  });
+
   it('throws invalid_output for JSON that holds no array', () => {
     for (const raw of ['{"not":"an array"}', 'null', '42', '"text"', '{"claims":null}']) {
       expect(() => parseExtractedClaims(raw, true), raw).toThrow(expect.objectContaining({ reason: 'invalid_output' }));
@@ -191,5 +226,20 @@ describe('Gemini extractClaims (services/geminiService.ts)', () => {
     mockGenerateContent.mockRejectedValueOnce(new Error('429 Too Many Requests'));
     await expect(createGeminiProvider('test-key').extractClaims('Some text here.'))
       .rejects.toMatchObject({ name: 'ExtractionError', reason: 'rate_limited' });
+  });
+});
+
+// Codex E1 repro through a real provider and the real scan(): a claims array of
+// malformed items must fail extraction, not be padded with synthetic claims.
+describe('a malformed claims array through a real provider (codex E1)', () => {
+  it('OpenAI extractClaims rejects the sentinel reply with invalid_output (scan() then verifies nothing: scan-extraction-failure.test.ts)', async () => {
+    const { createOpenAIProvider } = await import('../providers/openai_provider.js');
+    const provider = createOpenAIProvider('sk-test');
+    const sentinel = JSON.stringify({ claims: [{ text: 'UPSTREAM_ERROR_SENTINEL', type: 'error' }] });
+    vi.spyOn(provider as unknown as { callAPI: () => Promise<string> }, 'callAPI').mockResolvedValue(sentinel);
+    const verify = vi.spyOn(provider, 'verifyClaim');
+    await expect(provider.extractClaims('The Eiffel Tower is in Paris. Water boils at 100 C.'))
+      .rejects.toMatchObject({ name: 'ExtractionError', reason: 'invalid_output' });
+    expect(verify).not.toHaveBeenCalled();
   });
 });

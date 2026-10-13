@@ -89,5 +89,30 @@ export function parseExtractedClaims(raw: string, unwrap = false): Claim[] {
   if (!Array.isArray(claims)) {
     throw new ExtractionError('invalid_output', new Error(`expected a claims array, got ${claims === null ? 'null' : typeof claims}`));
   }
-  return claims as Claim[];
+  return claims.map((item, index) => validateClaim(item, index));
+}
+
+const CLAIM_TYPES: ReadonlySet<string> = new Set(['fact', 'opinion', 'interpretation']);
+
+/**
+ * One extracted claim, checked field by field. Any malformed item fails the whole
+ * extraction (invalid_output): the model did not follow the format, so nothing it
+ * returned can be trusted as the claim list, and a half-valid list would let the
+ * per-sentence guarantee fill synthetic claims around it (codex E1). A numeric id
+ * is the only coercion. The cause names the item index and field, never claim text.
+ */
+function validateClaim(item: unknown, index: number): Claim {
+  const fail = (field: string): never => {
+    throw new ExtractionError('invalid_output', new Error(`claim ${index}: invalid or missing ${field}`));
+  };
+  if (item === null || typeof item !== 'object' || Array.isArray(item)) return fail('object');
+  const { id, text, type, importance } = item as Record<string, unknown>;
+  const claimId = typeof id === 'number' && Number.isFinite(id) ? String(id) : id;
+  if (typeof claimId !== 'string' || claimId.trim() === '') return fail('id');
+  if (typeof text !== 'string' || text.trim() === '') return fail('text');
+  if (typeof type !== 'string' || !CLAIM_TYPES.has(type)) return fail('type');
+  if (typeof importance !== 'number' || !Number.isInteger(importance) || importance < 1 || importance > 5) {
+    return fail('importance');
+  }
+  return { ...(item as object), id: claimId, text, type: type as Claim['type'], importance } as Claim;
 }
