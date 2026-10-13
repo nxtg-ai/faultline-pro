@@ -102,6 +102,32 @@ describe('getPercentiles() latency and tier', () => {
   });
 });
 
+describe('scan-cost log kind (admin-verify batches are not scans)', () => {
+  it('SCH-08: a logged admin-verify row loads back as admin-verify; a row without kind loads as scan', () => {
+    const p = join(dir, 'log.jsonl');
+    writeFileSync(p, [
+      row({ scan_id: 'batch', user_tier: 'enterprise', kind: 'admin-verify', usd_estimate: 0.884 }),
+      row({ scan_id: 'legacy', user_tier: 'enterprise', usd_estimate: 0.31 }),
+    ].join('\n') + '\n');
+    const ev = loadScanCostLog(p);
+    expect(ev).toHaveLength(2);
+    expect(ev.map((e) => [e.scanId, e.kind])).toEqual([['batch', 'admin-verify'], ['legacy', 'scan']]);
+  });
+
+  it('SCH-09: after hydrate the admin-verify row stays out of percentiles', () => {
+    const p = join(dir, 'log.jsonl');
+    writeFileSync(p, [
+      row({ scan_id: 'batch', user_tier: 'enterprise', kind: 'admin-verify', usd_estimate: 0.884 }),
+      row({ scan_id: 'scan', user_tier: 'enterprise', kind: 'scan', usd_estimate: 0.31 }),
+    ].join('\n') + '\n');
+    getCostStore().hydrate(loadScanCostLog(p));
+    expect(getCostStore().getManagedEvents()).toHaveLength(2);
+    const pct = getCostStore().getPercentiles(30, 'enterprise');
+    expect(pct.count).toBe(1);
+    expect(pct.p50).toBe(0.31);
+  });
+});
+
 describe('GET /costs/percentiles', () => {
   async function app() {
     const { costsRoutes } = await import('../src/routes/costs.js');

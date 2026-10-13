@@ -5,7 +5,6 @@ import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import {
   appendScanCostLog,
   buildManagedCostEvent,
-  emitScanCostEvent,
   getCostStore,
   resolveTier,
 } from '../store/costs.js';
@@ -28,7 +27,7 @@ import type { Claim, ClaimStatus } from '@nxtg/faultline/types.js';
  * Gates and ledgers match a scan: admin key only, the per-minute burst limiter,
  * the fleet provider-spend cap; usage captured per claim and priced by
  * `buildManagedCostEvent` into the same cost store, scan-cost log and append-only
- * provider-spend ledger. Grounded Gemini prompts reach the daily grounding
+ * provider-spend ledger, tagged kind 'admin-verify' so per-scan percentiles leave it out. Grounded Gemini prompts reach the daily grounding
  * allowance through the process-wide usage observer, as every scan's do.
  *
  * ONE call per claim, no retry. Retries belong to the runner, which checks the
@@ -178,9 +177,11 @@ function recordBatchSpend(runs: ClaimRun[], claims: VerifyClaimInput[], provider
     claimCount: runs.filter((run) => !run.outcome.apiError).length,
     tier: resolveTier(keyId),
     latencyMs: Date.now() - startMs,
+    // A benchmark batch, not a scan: kept out of per-scan percentiles, still counted as spend below.
+    kind: 'admin-verify',
   });
   getCostStore().recordManaged(costEvent);
-  emitScanCostEvent(costEvent);
+  // Not sent to the telemetry Worker: its /api/scan-costs/stats is per-scan and cannot tell a batch from a scan.
   appendScanCostLog(costEvent);
   recordProviderSpend(costEvent);
 }

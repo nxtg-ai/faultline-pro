@@ -324,6 +324,21 @@ describe('POST /admin/verify-claims — the ledgers a scan writes', () => {
     expect(rows[0].costUsd as number).toBeCloseTo(expected.costUsd, 10);
   });
 
+  it('records the batch as kind admin-verify: provider spend still rises, scan percentiles do not', async () => {
+    expect(spendRows()).toHaveLength(0);
+    const res = await post({ claims: claims(3) });
+    expect(res.statusCode).toBe(200);
+    const events = getCostStore().getManagedEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ kind: 'admin-verify', tier: 'enterprise', provider: 'gemini' });
+    expect(events[0].costUsd).toBeGreaterThan(0);
+    // Money still counts: the ledger row carries the batch's full cost.
+    const rows = spendRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].costUsd as number).toBeCloseTo(events[0].costUsd, 10);
+    expect(getCostStore().getPercentiles(30, 'enterprise').count).toBe(0);
+  });
+
   it('records the batch in the managed cost store, the same store a scan writes (mock provider)', async () => {
     expect(getCostStore().getManagedEvents()).toHaveLength(0);
     const res = await post({ claims: claims(2), provider: 'mock' });

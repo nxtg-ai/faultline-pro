@@ -119,6 +119,18 @@ describe('CostStore.getPercentiles()', () => {
     expect(result.p90).toBeGreaterThanOrEqual(result.p50);
     expect(result.p99).toBeGreaterThanOrEqual(result.p90);
   });
+
+  it('SC-15: an admin-verify batch is not a scan — excluded from percentiles, a same-tier scan is kept', () => {
+    // The live defect: one 25-claim benchmark batch read as one enterprise scan at $0.884.
+    getCostStore().recordManaged({ ...makeEvent(0.884), tier: 'enterprise', kind: 'admin-verify' });
+    getCostStore().recordManaged({ ...makeEvent(0.30), tier: 'enterprise' });
+    expect(getCostStore().getManagedEvents()).toHaveLength(2);
+    const result = getCostStore().getPercentiles(30, 'enterprise');
+    expect(result.count).toBe(1);
+    expect(result.p50).toBe(0.30);
+    expect(result.p99).toBe(0.30);
+    expect(getCostStore().getPercentiles(30).count).toBe(1);
+  });
 });
 
 // ── renderCostStats() smoke tests ─────────────────────────────────────────────

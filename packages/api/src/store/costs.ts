@@ -90,6 +90,7 @@ export function buildManagedCostEvent(
     tier: ManagedScanCostEvent['tier'];
     latencyMs: number;
     cacheHit?: boolean;
+    kind?: ManagedScanCostEvent['kind'];
   },
 ): ManagedScanCostEvent {
   const usage = summarizeScanUsage(legs);
@@ -123,6 +124,7 @@ export function buildManagedCostEvent(
     costUsd,
     latencyMs: opts.latencyMs,
     cacheHit: opts.cacheHit ?? false,
+    ...(opts.kind ? { kind: opts.kind } : {}),
   };
 }
 
@@ -140,6 +142,8 @@ export interface ManagedScanCostEvent {
   costUsd: number;
   latencyMs: number;
   cacheHit?: boolean;      // true when result served from cache (cost = 0 effective)
+  /** What produced the cost: a customer scan, or an admin benchmark batch of up to 25 claims. Absent = 'scan'. */
+  kind?: 'scan' | 'admin-verify';
 }
 
 const VALID_TIERS = new Set<ManagedScanCostEvent['tier']>(['enterprise', 'pro', 'personal', 'free', 'anon', 'userkey']);
@@ -187,6 +191,7 @@ export function emitScanCostEvent(event: ManagedScanCostEvent): void {
     cost_usd:       event.costUsd,
     latency_ms:     event.latencyMs,
     cache_hit:      event.cacheHit ?? false,
+    kind:           event.kind ?? 'scan',
   };
   fetch(`${TELEMETRY_WORKER}/scan-costs`, {
     method: 'POST',
@@ -218,6 +223,7 @@ export function appendScanCostLog(event: ManagedScanCostEvent, logPath = SCAN_CO
     wall_ms:        event.latencyMs,
     usd_estimate:   event.costUsd,
     cache_hit:      event.cacheHit ?? false,
+    kind:           event.kind ?? 'scan',
   });
   appendFile(logPath, row + '\n').catch(() => { /* fire-and-forget */ });
 }
@@ -329,7 +335,12 @@ class CostStore {
   }
 
   getPercentiles(days = 30, tier?: ManagedScanCostEvent['tier']): CostPercentiles {
-    const events = this.getManagedEvents(days).filter((e) => !tier || e.tier === tier);
+    // Per-scan percentiles describe scans only: an admin-verify batch is up to 25 claims, not one scan.
+    // Legacy admin batches logged before `kind` existed carry no kind, still read as scans here,
+    // and age out of the 30-day window.
+    const events = this.getManagedEvents(days)
+      .filter((e) => (e.kind ?? 'scan') === 'scan')
+      .filter((e) => !tier || e.tier === tier);
     const costs = events.map((e) => e.costUsd).sort((a, b) => a - b);
     const walls = events.map((e) => e.latencyMs).sort((a, b) => a - b);
     return {
@@ -391,6 +402,7 @@ export function loadScanCostLog(logPath = SCAN_COST_LOG_PATH): ManagedScanCostEv
         costUsd: num(r.usd_estimate),
         latencyMs: num(r.wall_ms),
         cacheHit: r.cache_hit === true,
+        kind: r.kind === 'admin-verify' ? 'admin-verify' : 'scan',
       });
     } catch {
       /* skip a malformed row */
