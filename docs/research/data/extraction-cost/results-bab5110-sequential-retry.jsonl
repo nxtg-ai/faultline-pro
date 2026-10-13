@@ -1,0 +1,5 @@
+{"id":"p10-Photosynthesis","bucket":"p10","chars":29843,"raw":421,"claims":439,"facts":439,"legs":1,"inputTokens":6099,"outputTokens":21992,"usd":0.0568097,"ms":149249}
+{"id":"p50-Apollo_Photo_Reef","bucket":"p50","chars":149822,"raw":0,"claims":945,"facts":945,"legs":1,"inputTokens":32480,"outputTokens":3841,"usd":0.0193465,"ms":268064}
+{"id":"p50-US_history_WWII","bucket":"p50","chars":149952,"raw":0,"claims":1049,"facts":1049,"legs":1,"inputTokens":32664,"outputTokens":2609,"usd":0.016321699999999998,"ms":258741}
+{"id":"short-History_of_the_United_States","bucket":"short","chars":2940,"raw":46,"claims":51,"facts":51,"legs":1,"inputTokens":790,"outputTokens":2451,"usd":0.0063645,"ms":27712}
+{"id":"short-Photosynthesis","bucket":"short","chars":2869,"raw":49,"claims":55,"facts":55,"legs":1,"inputTokens":704,"outputTokens":1475,"usd":0.0038986999999999997,"ms":23069}

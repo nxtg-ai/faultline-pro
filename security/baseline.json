@@ -1,6 +1,6 @@
 {
   "schema": "faultline.security-baseline.v1",
-  "about": "Blocking (level error) semgrep and bearer findings that existed when the ratchet was installed. scripts/security-gate.mjs fails on any blocking finding not listed here. Fingerprint = tool + ruleId + uri + fp (bearer primaryLocationLineHash, else sha256 of the message); no line numbers. Docs: docs/security/2026-10-02-security-evidence-v0.11.1.md §8.",
+  "about": "Blocking (level error) semgrep and bearer findings that existed when the ratchet was installed. scripts/security-gate.mjs fails on any blocking finding not listed here. Fingerprint = tool + ruleId + uri + fp (bearer primaryLocationLineHash, else sha256 of the message); no line numbers. Docs: docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78.",
   "sources": {
     "bearer": "run 37062617182 (main, 2026-10-02) bearer.sarif",
     "semgrep": "none: the 5 errors in run 37062617182 were fixed, suppressed in source, or ignored (.semgrepignore) on branch security-gate"
@@ -12,7 +12,7 @@
       "uri": "infra/telemetry-worker/src/index.ts",
       "fp": "4237cf5c049aa9650016ca043a553030_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -20,7 +20,7 @@
       "uri": "infra/telemetry-worker/src/index.ts",
       "fp": "4237cf5c049aa9650016ca043a553030_1",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -36,7 +36,7 @@
       "uri": "packages/api/benchmarks/run.ts",
       "fp": "ae240af172ed8a0e3cacf622c33a29e2_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -44,7 +44,7 @@
       "uri": "packages/api/benchmarks/run.ts",
       "fp": "ae240af172ed8a0e3cacf622c33a29e2_1",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -52,7 +52,7 @@
       "uri": "packages/api/benchmarks/run.ts",
       "fp": "ae240af172ed8a0e3cacf622c33a29e2_2",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -60,7 +60,7 @@
       "uri": "packages/api/src/index.ts",
       "fp": "375a3fc994a00e99e881dea48fdde48a_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -68,7 +68,7 @@
       "uri": "packages/api/src/index.ts",
       "fp": "375a3fc994a00e99e881dea48fdde48a_1",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -76,7 +76,7 @@
       "uri": "packages/api/src/lib/html.ts",
       "fp": "589ed3034131ee8768066b13f7c83e4b_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -116,7 +116,7 @@
       "uri": "packages/api/src/routes/stream.ts",
       "fp": "1e218ea589a3580c34f2ceb973fb0d36_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -124,7 +124,7 @@
       "uri": "packages/api/src/routes/stream.ts",
       "fp": "1e218ea589a3580c34f2ceb973fb0d36_1",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -132,7 +132,7 @@
       "uri": "packages/api/src/store/rate-alerts.ts",
       "fp": "c30babc03be438fbb47aba7eaefd7699_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -140,7 +140,7 @@
       "uri": "packages/api/src/store/rules.ts",
       "fp": "4ce05d0cd4c37f504a007a9af281369a_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -148,7 +148,7 @@
       "uri": "packages/api/src/store/scan-history.ts",
       "fp": "628c297c9551a4f68d7203bc2a833dff_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -156,7 +156,7 @@
       "uri": "packages/cli/cli/aggregate.ts",
       "fp": "b79011e7ac1fb595285fd64bdfa229e0_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -164,7 +164,7 @@
       "uri": "packages/cli/cli/compliance-report.ts",
       "fp": "3f6dddf56de9872e7e27b78664afa69d_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -172,7 +172,7 @@
       "uri": "packages/cli/cli/index.ts",
       "fp": "2abfe6ecf9455426db963bc44ea258dd_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -180,7 +180,7 @@
       "uri": "packages/cli/cli/report.ts",
       "fp": "6e177e0d61d4c27f72b87052b1fa2ce3_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -188,7 +188,7 @@
       "uri": "packages/cli/cli/verify-runner.ts",
       "fp": "2b7f0bd4c005cc01f1bab025e228839e_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block; moved 2026-10-13 (fp) with the verify loop from scan.ts to verify-runner.ts (GoPMO 1.18.11.3.12): Math.random jitter on the retry backoff, not a security value"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block; moved 2026-10-13 (fp) with the verify loop from scan.ts to verify-runner.ts (GoPMO 1.18.11.3.12): Math.random jitter on the retry backoff, not a security value"
     },
     {
       "tool": "bearer",
@@ -196,7 +196,7 @@
       "uri": "packages/cli/cli/watch.ts",
       "fp": "ad7eb825e0c095a721891ae01b918ab2_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -204,7 +204,7 @@
       "uri": "packages/cli/cli/watch.ts",
       "fp": "ad7eb825e0c095a721891ae01b918ab2_1",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -212,7 +212,7 @@
       "uri": "packages/cli/consensus/consensus_engine.ts",
       "fp": "38af70f89e9c08cc3e9d7172c5b368ba_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -220,7 +220,7 @@
       "uri": "packages/cli/governance/policy_engine.ts",
       "fp": "06f8b48775aa50d89eb4443ecf865fff_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -236,7 +236,7 @@
       "uri": "packages/cli/providers/claude_provider.ts",
       "fp": "9873b3de8f228a4ff437e980ff905a06_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -244,7 +244,7 @@
       "uri": "packages/cli/providers/claude_provider.ts",
       "fp": "9873b3de8f228a4ff437e980ff905a06_1",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -252,7 +252,7 @@
       "uri": "packages/cli/providers/openai_provider.ts",
       "fp": "195085d4162ddbfff995c5c9c8a80990_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -260,7 +260,7 @@
       "uri": "packages/cli/providers/openai_provider.ts",
       "fp": "195085d4162ddbfff995c5c9c8a80990_1",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -268,7 +268,7 @@
       "uri": "packages/cli/providers/perplexity_provider.ts",
       "fp": "114b12933db40e5d92136e3450e87317_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -276,7 +276,7 @@
       "uri": "packages/cli/providers/perplexity_provider.ts",
       "fp": "114b12933db40e5d92136e3450e87317_1",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -284,7 +284,7 @@
       "uri": "packages/cli/rules/engine.ts",
       "fp": "5bb3cffbaf5bc8cd155d8cfec5559ec5_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -292,7 +292,7 @@
       "uri": "packages/cli/scripts/live-consensus-proof.ts",
       "fp": "695dc514c09b66f83cfd518066af8698_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -300,7 +300,7 @@
       "uri": "packages/cli/scripts/live-consensus-proof.ts",
       "fp": "695dc514c09b66f83cfd518066af8698_1",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -308,7 +308,7 @@
       "uri": "packages/cli/scripts/live-consensus-proof.ts",
       "fp": "695dc514c09b66f83cfd518066af8698_10",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -316,7 +316,7 @@
       "uri": "packages/cli/scripts/live-consensus-proof.ts",
       "fp": "695dc514c09b66f83cfd518066af8698_11",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -324,7 +324,7 @@
       "uri": "packages/cli/scripts/live-consensus-proof.ts",
       "fp": "695dc514c09b66f83cfd518066af8698_12",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -332,7 +332,7 @@
       "uri": "packages/cli/scripts/live-consensus-proof.ts",
       "fp": "695dc514c09b66f83cfd518066af8698_2",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -340,7 +340,7 @@
       "uri": "packages/cli/scripts/live-consensus-proof.ts",
       "fp": "695dc514c09b66f83cfd518066af8698_3",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -348,7 +348,7 @@
       "uri": "packages/cli/scripts/live-consensus-proof.ts",
       "fp": "695dc514c09b66f83cfd518066af8698_4",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -356,7 +356,7 @@
       "uri": "packages/cli/scripts/live-consensus-proof.ts",
       "fp": "695dc514c09b66f83cfd518066af8698_5",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -364,7 +364,7 @@
       "uri": "packages/cli/scripts/live-consensus-proof.ts",
       "fp": "695dc514c09b66f83cfd518066af8698_6",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -372,7 +372,7 @@
       "uri": "packages/cli/scripts/live-consensus-proof.ts",
       "fp": "695dc514c09b66f83cfd518066af8698_7",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -380,7 +380,7 @@
       "uri": "packages/cli/scripts/live-consensus-proof.ts",
       "fp": "695dc514c09b66f83cfd518066af8698_8",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -388,7 +388,7 @@
       "uri": "packages/cli/scripts/live-consensus-proof.ts",
       "fp": "695dc514c09b66f83cfd518066af8698_9",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -396,7 +396,7 @@
       "uri": "packages/cli/services/geminiService.ts",
       "fp": "550bb744ee3e4d762b6d880be9c180b4_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -404,7 +404,7 @@
       "uri": "packages/cli/services/geminiService.ts",
       "fp": "550bb744ee3e4d762b6d880be9c180b4_1",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -412,7 +412,7 @@
       "uri": "packages/cli/services/geminiService.ts",
       "fp": "550bb744ee3e4d762b6d880be9c180b4_2",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -420,7 +420,7 @@
       "uri": "packages/cli/services/geminiService.ts",
       "fp": "550bb744ee3e4d762b6d880be9c180b4_3",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -428,7 +428,7 @@
       "uri": "packages/cli/services/geminiService.ts",
       "fp": "550bb744ee3e4d762b6d880be9c180b4_4",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -436,7 +436,7 @@
       "uri": "packages/terraform-provider/main.go",
       "fp": "405b3f6b0ddde3de821dd15452659b2e_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -444,7 +444,7 @@
       "uri": "packages/web/App.tsx",
       "fp": "c4ca314977bcaa78d46a6382097b0ece_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -452,7 +452,7 @@
       "uri": "packages/web/components/Dashboard.tsx",
       "fp": "dea11edf167070bf4e2dac9a9ef226cf_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -460,7 +460,7 @@
       "uri": "packages/web/components/Dashboard.tsx",
       "fp": "dea11edf167070bf4e2dac9a9ef226cf_1",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -468,7 +468,7 @@
       "uri": "packages/web/components/Dashboard.tsx",
       "fp": "55f05fc48a7eb293f7f4815d2eb52bd2_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -492,7 +492,7 @@
       "uri": "packages/web/index.tsx",
       "fp": "837832b38a142fbfc218b543ca069d53_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -500,7 +500,7 @@
       "uri": "packages/web/services/geminiService.ts",
       "fp": "5d026c2e7fe1574ca4723ff14891a6fb_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -508,7 +508,7 @@
       "uri": "packages/web/services/geminiService.ts",
       "fp": "5d026c2e7fe1574ca4723ff14891a6fb_1",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -516,7 +516,7 @@
       "uri": "packages/web/services/geminiService.ts",
       "fp": "5d026c2e7fe1574ca4723ff14891a6fb_2",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -524,7 +524,7 @@
       "uri": "scripts/api-health-check.mjs",
       "fp": "b4277517d8ccf7391cc7dc87c5fc720e_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -532,7 +532,7 @@
       "uri": "scripts/api-health-check.mjs",
       "fp": "b4277517d8ccf7391cc7dc87c5fc720e_1",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -540,7 +540,7 @@
       "uri": "scripts/api-health-check.mjs",
       "fp": "b4277517d8ccf7391cc7dc87c5fc720e_2",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -548,7 +548,7 @@
       "uri": "scripts/assert-prompt-fidelity.ts",
       "fp": "fea3dd4d84fe0c5cb2b8dc2f24732c27_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -556,7 +556,7 @@
       "uri": "scripts/assert-prompt-fidelity.ts",
       "fp": "fea3dd4d84fe0c5cb2b8dc2f24732c27_1",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -564,7 +564,7 @@
       "uri": "scripts/assert-prompt-fidelity.ts",
       "fp": "fea3dd4d84fe0c5cb2b8dc2f24732c27_2",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -572,7 +572,7 @@
       "uri": "scripts/assert-prompt-fidelity.ts",
       "fp": "fea3dd4d84fe0c5cb2b8dc2f24732c27_3",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -580,7 +580,7 @@
       "uri": "scripts/grounding-allowance-check.mjs",
       "fp": "937cc6b29ffdba51be8a432f143c6644_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -588,7 +588,7 @@
       "uri": "scripts/grounding-allowance-check.mjs",
       "fp": "937cc6b29ffdba51be8a432f143c6644_1",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -596,7 +596,7 @@
       "uri": "scripts/grounding-allowance-check.mjs",
       "fp": "937cc6b29ffdba51be8a432f143c6644_2",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -604,7 +604,7 @@
       "uri": "scripts/grounding-allowance-check.mjs",
       "fp": "937cc6b29ffdba51be8a432f143c6644_3",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -612,7 +612,7 @@
       "uri": "scripts/measure-consensus-cost.ts",
       "fp": "ce1f4d45544b57b89d05ec29b6529455_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -620,7 +620,7 @@
       "uri": "scripts/measure-consensus-cost.ts",
       "fp": "ce1f4d45544b57b89d05ec29b6529455_1",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -628,7 +628,7 @@
       "uri": "scripts/measure-consensus-cost.ts",
       "fp": "ce1f4d45544b57b89d05ec29b6529455_10",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -636,7 +636,7 @@
       "uri": "scripts/measure-consensus-cost.ts",
       "fp": "ce1f4d45544b57b89d05ec29b6529455_11",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -644,7 +644,7 @@
       "uri": "scripts/measure-consensus-cost.ts",
       "fp": "ce1f4d45544b57b89d05ec29b6529455_12",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -652,7 +652,7 @@
       "uri": "scripts/measure-consensus-cost.ts",
       "fp": "ce1f4d45544b57b89d05ec29b6529455_13",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -660,7 +660,7 @@
       "uri": "scripts/measure-consensus-cost.ts",
       "fp": "ce1f4d45544b57b89d05ec29b6529455_14",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -668,7 +668,7 @@
       "uri": "scripts/measure-consensus-cost.ts",
       "fp": "ce1f4d45544b57b89d05ec29b6529455_2",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -676,7 +676,7 @@
       "uri": "scripts/measure-consensus-cost.ts",
       "fp": "ce1f4d45544b57b89d05ec29b6529455_3",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -684,7 +684,7 @@
       "uri": "scripts/measure-consensus-cost.ts",
       "fp": "ce1f4d45544b57b89d05ec29b6529455_4",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -692,7 +692,7 @@
       "uri": "scripts/measure-consensus-cost.ts",
       "fp": "ce1f4d45544b57b89d05ec29b6529455_5",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -700,7 +700,7 @@
       "uri": "scripts/measure-consensus-cost.ts",
       "fp": "ce1f4d45544b57b89d05ec29b6529455_6",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -708,7 +708,7 @@
       "uri": "scripts/measure-consensus-cost.ts",
       "fp": "ce1f4d45544b57b89d05ec29b6529455_7",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -716,7 +716,7 @@
       "uri": "scripts/measure-consensus-cost.ts",
       "fp": "ce1f4d45544b57b89d05ec29b6529455_8",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -724,7 +724,7 @@
       "uri": "scripts/measure-consensus-cost.ts",
       "fp": "ce1f4d45544b57b89d05ec29b6529455_9",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -732,7 +732,7 @@
       "uri": "scripts/scan-cost-digest.ts",
       "fp": "67f1bc29cc34018f89922b638dc61ae2_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -740,7 +740,7 @@
       "uri": "scripts/scan-cost-digest.ts",
       "fp": "67f1bc29cc34018f89922b638dc61ae2_1",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -748,7 +748,7 @@
       "uri": "scripts/scan-cost-digest.ts",
       "fp": "67f1bc29cc34018f89922b638dc61ae2_2",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -756,7 +756,7 @@
       "uri": "scripts/version-parity.mjs",
       "fp": "5cec027aadc9518791cbbf4f53f3ebe2_0",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -764,7 +764,7 @@
       "uri": "scripts/version-parity.mjs",
       "fp": "5cec027aadc9518791cbbf4f53f3ebe2_1",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -772,7 +772,7 @@
       "uri": "scripts/version-parity.mjs",
       "fp": "5cec027aadc9518791cbbf4f53f3ebe2_2",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -780,7 +780,7 @@
       "uri": "scripts/version-parity.mjs",
       "fp": "5cec027aadc9518791cbbf4f53f3ebe2_3",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -788,7 +788,7 @@
       "uri": "scripts/version-parity.mjs",
       "fp": "5cec027aadc9518791cbbf4f53f3ebe2_4",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -796,7 +796,7 @@
       "uri": "scripts/version-parity.mjs",
       "fp": "5cec027aadc9518791cbbf4f53f3ebe2_5",
       "disposition": "accepted-pre-existing",
-      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md §8; ratchet: new findings block"
+      "reason": "triaged 2026-10-02, docs/security/2026-10-02-security-evidence-v0.11.1.md \u00a78; ratchet: new findings block"
     },
     {
       "tool": "bearer",
@@ -909,6 +909,30 @@
       "fp": "937cc6b29ffdba51be8a432f143c6644_5",
       "disposition": "false-positive",
       "reason": "false-positive, triaged 2026-10-13 (fp): index shifted as above; the crash line prints the error stack of a hand-run cron script, which never contains the API key (header only)"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_path_traversal",
+      "uri": "packages/cli/scripts-extraction-cost.ts",
+      "fp": "04561de22e37ccdf68bbf231e7c68ae1_0",
+      "disposition": "false-positive",
+      "reason": "false-positive, triaged 2026-10-13 (fp): readFileSync joins a directory the local operator passes on the command line with file names from readdirSync of that same directory, in a research script run by hand (extraction cost, emma-soul al:2d7d2047383addb3); not in the published package and no remote input reaches a path"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/scripts-extraction-cost.ts",
+      "fp": "ab900822748af08205367adacace2830_0",
+      "disposition": "false-positive",
+      "reason": "false-positive, triaged 2026-10-13 (fp): logs a document id, claim counts, token counts and cost only; no key, prompt text or user data"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/scripts-extraction-cost.ts",
+      "fp": "ab900822748af08205367adacace2830_1",
+      "disposition": "false-positive",
+      "reason": "false-positive, triaged 2026-10-13 (fp): logs a document id and the first 200 characters of a provider error from a local research run; the Gemini key travels in a request header, not in error text"
     }
   ]
 }
