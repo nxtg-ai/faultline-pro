@@ -7,6 +7,10 @@ import { buildServer } from '../src/server.js';
 import { getClaimIndex, resetClaimIndex } from '../src/store/claims.js';
 import type { FastifyInstance } from 'fastify';
 
+/** The caller every claim here belongs to: the server key plus a faultline-web user (the claim index is per caller). */
+const TEST_CLAIM_CALLER = 'admin\u0000claimtestuser01';
+
+
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
 function ingest(scanId = 'scan-1') {
@@ -21,8 +25,7 @@ function ingest(scanId = 'scan-1') {
       c2: { status: 'contradicted', sources: [] },
       c3: { status: 'unverified',   sources: [] },
     },
-    scanId,
-  );
+    scanId, TEST_CLAIM_CALLER);
 }
 
 function setup() {
@@ -37,7 +40,7 @@ describe('ClaimIndex.getStats()', () => {
   afterEach(() => { delete process.env.FAULTLINE_API_KEY; });
 
   it('returns zeros for empty index', () => {
-    const s = getClaimIndex().getStats();
+    const s = getClaimIndex().getStats(TEST_CLAIM_CALLER);
     expect(s.totalClaims).toBe(0);
     expect(s.totalScans).toBe(0);
     expect(s.accuracyRate).toBe(0);
@@ -47,20 +50,20 @@ describe('ClaimIndex.getStats()', () => {
 
   it('totalClaims matches ingest count', () => {
     ingest();
-    expect(getClaimIndex().getStats().totalClaims).toBe(3);
+    expect(getClaimIndex().getStats(TEST_CLAIM_CALLER).totalClaims).toBe(3);
   });
 
   it('totalScans counts unique scanIds', () => {
     ingest('scan-1');
     ingest('scan-2');
     // 2 ingests with same claims → same 3 records but 2 scanIds recorded in verdicts
-    const s = getClaimIndex().getStats();
+    const s = getClaimIndex().getStats(TEST_CLAIM_CALLER);
     expect(s.totalScans).toBe(2);
   });
 
   it('byVerdict counts by lastVerdict', () => {
     ingest();
-    const s = getClaimIndex().getStats();
+    const s = getClaimIndex().getStats(TEST_CLAIM_CALLER);
     expect(s.byVerdict['supported']).toBe(1);
     expect(s.byVerdict['contradicted']).toBe(1);
     expect(s.byVerdict['unverified']).toBe(1);
@@ -68,7 +71,7 @@ describe('ClaimIndex.getStats()', () => {
 
   it('accuracyRate = supported / (supported + contradicted)', () => {
     ingest();
-    const s = getClaimIndex().getStats();
+    const s = getClaimIndex().getStats(TEST_CLAIM_CALLER);
     expect(s.accuracyRate).toBeCloseTo(0.5);  // 1 supported / (1+1)
   });
 
@@ -76,41 +79,39 @@ describe('ClaimIndex.getStats()', () => {
     getClaimIndex().ingest(
       [{ id: 'x1', text: 'All true.' }],
       { x1: { status: 'supported', sources: [] } },
-      'scan-x',
-    );
-    expect(getClaimIndex().getStats().accuracyRate).toBe(1);
+      'scan-x', TEST_CLAIM_CALLER);
+    expect(getClaimIndex().getStats(TEST_CLAIM_CALLER).accuracyRate).toBe(1);
   });
 
   it('accuracyRate is 0 when all claims are contradicted', () => {
     getClaimIndex().ingest(
       [{ id: 'x1', text: 'All false.' }],
       { x1: { status: 'contradicted', sources: [] } },
-      'scan-x',
-    );
-    expect(getClaimIndex().getStats().accuracyRate).toBe(0);
+      'scan-x', TEST_CLAIM_CALLER);
+    expect(getClaimIndex().getStats(TEST_CLAIM_CALLER).accuracyRate).toBe(0);
   });
 
   it('verifiedRate = supported / total', () => {
     ingest();
-    const s = getClaimIndex().getStats();
+    const s = getClaimIndex().getStats(TEST_CLAIM_CALLER);
     expect(s.verifiedRate).toBeCloseTo(1 / 3);
   });
 
   it('claimTypes counts by type', () => {
     ingest();
-    const s = getClaimIndex().getStats();
+    const s = getClaimIndex().getStats(TEST_CLAIM_CALLER);
     expect(s.claimTypes['fact']).toBe(3);
   });
 
   it('avgFrequency equals total frequency / claim count', () => {
     ingest();  // frequency = 1 for each claim after first ingest
-    const s = getClaimIndex().getStats();
+    const s = getClaimIndex().getStats(TEST_CLAIM_CALLER);
     expect(s.avgFrequency).toBe(1);
   });
 
   it('topSources extracts hostnames from source URIs', () => {
     ingest();
-    const s = getClaimIndex().getStats();
+    const s = getClaimIndex().getStats(TEST_CLAIM_CALLER);
     // c1 has source https://example.com/report → host = 'example.com'
     expect(s.topSources.length).toBeGreaterThan(0);
     expect(s.topSources[0].uri).toBe('example.com');
@@ -124,8 +125,8 @@ describe('ClaimIndex.getStats()', () => {
     claims.forEach((c, i) => {
       verifs[c.id] = { status: 'supported', sources: [{ title: `Source ${i}`, uri: `https://domain${i}.com/` }] };
     });
-    getClaimIndex().ingest(claims, verifs, 'scan-many');
-    const s = getClaimIndex().getStats();
+    getClaimIndex().ingest(claims, verifs, 'scan-many', TEST_CLAIM_CALLER);
+    const s = getClaimIndex().getStats(TEST_CLAIM_CALLER);
     expect(s.topSources.length).toBeLessThanOrEqual(10);
   });
 
@@ -139,9 +140,8 @@ describe('ClaimIndex.getStats()', () => {
         a1: { status: 'supported', sources: [{ title: 'Reuters', uri: 'https://reuters.com/a' }] },
         a2: { status: 'supported', sources: [{ title: 'Reuters', uri: 'https://reuters.com/b' }] },
       },
-      'scan-multi-source',
-    );
-    const s = getClaimIndex().getStats();
+      'scan-multi-source', TEST_CLAIM_CALLER);
+    const s = getClaimIndex().getStats(TEST_CLAIM_CALLER);
     const reuters = s.topSources.find(x => x.uri === 'reuters.com');
     expect(reuters?.count).toBe(2);
   });
@@ -155,7 +155,7 @@ describe('GET /claims/stats', () => {
   afterEach(async () => { await server.close(); delete process.env.FAULTLINE_API_KEY; });
 
   it('returns 200 with stats shape', async () => {
-    const res = await server.inject({ method: 'GET', url: '/claims/stats', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: '/claims/stats', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(typeof body.totalClaims).toBe('number');
@@ -168,7 +168,7 @@ describe('GET /claims/stats', () => {
 
   it('returns correct counts after ingest', async () => {
     ingest();
-    const res = await server.inject({ method: 'GET', url: '/claims/stats', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: '/claims/stats', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
     expect(body.totalClaims).toBe(3);
     expect(body.byVerdict.supported).toBe(1);
@@ -178,14 +178,14 @@ describe('GET /claims/stats', () => {
 
   it('accuracyRate is in [0, 1]', async () => {
     ingest();
-    const res = await server.inject({ method: 'GET', url: '/claims/stats', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: '/claims/stats', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
     expect(body.accuracyRate).toBeGreaterThanOrEqual(0);
     expect(body.accuracyRate).toBeLessThanOrEqual(1);
   });
 
   it('returns 200 for empty index', async () => {
-    const res = await server.inject({ method: 'GET', url: '/claims/stats', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: '/claims/stats', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body).totalClaims).toBe(0);
   });

@@ -14,6 +14,10 @@ import { getCostStore, resetCostStore } from '../src/store/costs.js';
 import { getBulkJobStore, resetBulkJobStore } from '../src/store/bulk-jobs.js';
 import type { ClaimRecord } from '../src/store/claims.js';
 
+/** The caller every claim here belongs to: the server key plus a faultline-web user (the claim index is per caller). */
+const TEST_CLAIM_CALLER = 'admin\u0000claimtestuser01';
+
+
 // ─── P1: computeAttributionConfidence always returns 0–100 ─────────────────
 
 describe('Property-based tests — CRUCIBLE Gate 6', () => {
@@ -81,9 +85,9 @@ describe('Property-based tests — CRUCIBLE Gate 6', () => {
             text,
             type: 'fact',
           }));
-          index.ingest(claims, {}, 'scan-1');
-          const all = index.search({});
-          const filtered = index.search({ text: searchTerm });
+          index.ingest(claims, {}, 'scan-1', TEST_CLAIM_CALLER);
+          const all = index.search(TEST_CLAIM_CALLER, {});
+          const filtered = index.search(TEST_CLAIM_CALLER, { text: searchTerm });
           // filtered must be a subset of all
           return filtered.every((r) => all.some((a) => a.id === r.id));
         },
@@ -101,9 +105,9 @@ describe('Property-based tests — CRUCIBLE Gate 6', () => {
           resetClaimIndex();
           const index = getClaimIndex();
           const claim = [{ id: 'c1', text, type: 'fact' }];
-          index.ingest(claim, {}, 'scan-1');
-          index.ingest(claim, {}, 'scan-2');
-          const results = index.getTrending(10);
+          index.ingest(claim, {}, 'scan-1', TEST_CLAIM_CALLER);
+          index.ingest(claim, {}, 'scan-2', TEST_CLAIM_CALLER);
+          const results = index.getTrending(TEST_CLAIM_CALLER, 10);
           // Should have exactly 1 record (deduplicated) with frequency 2
           return results.length === 1 && results[0].frequency === 2;
         },
@@ -224,8 +228,8 @@ describe('Property-based tests — CRUCIBLE Gate 6', () => {
             text: `unique claim text number ${i} for property test`,
             type: 'fact',
           }));
-          index.ingest(claims, {}, 'scan-x');
-          const results = index.search({ limit });
+          index.ingest(claims, {}, 'scan-x', TEST_CLAIM_CALLER);
+          const results = index.search(TEST_CLAIM_CALLER, { limit });
           return results.length <= limit;
         },
       ),
@@ -328,10 +332,10 @@ describe('Property-based tests — CRUCIBLE Gate 6', () => {
               },
             ];
             for (let s = 0; s <= scanCount; s++) {
-              index.ingest(claim, {}, `scan-${i}-${s}`);
+              index.ingest(claim, {}, `scan-${i}-${s}`, TEST_CLAIM_CALLER);
             }
           });
-          const trending = index.getTrending(100);
+          const trending = index.getTrending(TEST_CLAIM_CALLER, 100);
           for (let i = 1; i < trending.length; i++) {
             if (trending[i].frequency > trending[i - 1].frequency) return false;
           }

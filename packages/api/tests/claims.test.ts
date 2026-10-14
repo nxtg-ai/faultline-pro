@@ -6,6 +6,10 @@ import { resetWebhookStore, getWebhookStore } from '../src/store/webhooks.js';
 import { _setSleepFn } from '../src/store/webhooks.js';
 import type { FastifyInstance } from 'fastify';
 
+/** The caller every claim here belongs to: the server key plus a faultline-web user (the claim index is per caller). */
+const TEST_CLAIM_CALLER = 'admin\u0000claimtestuser01';
+
+
 const SCAN_RESULT_VERIFIED = {
   input: 'The moon landing occurred in 1969.',
   provider: 'mock',
@@ -53,7 +57,7 @@ describe('GET /claims/trending', () => {
   });
 
   it('returns 200 with empty trending/emerging/verdictChanged on cold start', async () => {
-    const res = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(Array.isArray(body.trending)).toBe(true);
@@ -66,11 +70,11 @@ describe('GET /claims/trending', () => {
     await server.inject({
       method: 'POST',
       url: '/scan',
-      headers: { 'x-api-key': 'claims-test-key', 'content-type': 'application/json' },
+      headers: { 'x-api-key': 'claims-test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' },
       payload: JSON.stringify({ text: 'The moon landing occurred in 1969.', provider: 'mock' }),
     });
 
-    const res = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
     expect(body.trending.length).toBeGreaterThan(0);
     expect(body.trending[0].frequency).toBeGreaterThanOrEqual(1);
@@ -78,7 +82,7 @@ describe('GET /claims/trending', () => {
 
   it('frequency increments on repeated scans of same claim text', async () => {
     const payload = JSON.stringify({ text: 'Earth is round.', provider: 'mock' });
-    const headers = { 'x-api-key': 'claims-test-key', 'content-type': 'application/json' };
+    const headers = { 'x-api-key': 'claims-test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' };
 
     // Reset cache so mock is called each time
     await server.inject({ method: 'POST', url: '/scan', headers, payload });
@@ -87,7 +91,7 @@ describe('GET /claims/trending', () => {
     resetCache();
     await server.inject({ method: 'POST', url: '/scan', headers, payload });
 
-    const res = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
     const claim = body.trending.find((t: { text: string }) =>
       t.text.toLowerCase().includes('moon landing'),
@@ -100,12 +104,12 @@ describe('GET /claims/trending', () => {
   it('trending claims are sorted by frequency descending', async () => {
     // Do 2 scans (same claims ingested twice)
     const payload = JSON.stringify({ text: 'Moon landing.', provider: 'mock' });
-    const headers = { 'x-api-key': 'claims-test-key', 'content-type': 'application/json' };
+    const headers = { 'x-api-key': 'claims-test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' };
     await server.inject({ method: 'POST', url: '/scan', headers, payload });
     resetCache();
     await server.inject({ method: 'POST', url: '/scan', headers, payload });
 
-    const res = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
     if (body.trending.length >= 2) {
       expect(body.trending[0].frequency).toBeGreaterThanOrEqual(body.trending[1].frequency);
@@ -116,11 +120,11 @@ describe('GET /claims/trending', () => {
     await server.inject({
       method: 'POST',
       url: '/scan',
-      headers: { 'x-api-key': 'claims-test-key', 'content-type': 'application/json' },
+      headers: { 'x-api-key': 'claims-test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' },
       payload: JSON.stringify({ text: 'Fresh claim.', provider: 'mock' }),
     });
 
-    const res = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
     expect(body.emerging.length).toBeGreaterThan(0);
   });
@@ -128,7 +132,7 @@ describe('GET /claims/trending', () => {
   it('requires an API key: 401 without one, 401 with a wrong one', async () => {
     const none = await server.inject({ method: 'GET', url: '/claims/trending' });
     expect(none.statusCode).toBe(401);
-    const wrong = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': 'not-a-key' } });
+    const wrong = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': 'not-a-key' , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(wrong.statusCode).toBe(401);
     expect(none.body).not.toContain('normalizedText');
   });
@@ -137,17 +141,17 @@ describe('GET /claims/trending', () => {
     await server.inject({
       method: 'POST',
       url: '/scan',
-      headers: { 'x-api-key': 'claims-test-key', 'content-type': 'application/json' },
+      headers: { 'x-api-key': 'claims-test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' },
       payload: JSON.stringify({ text: 'Claim text.', provider: 'mock' }),
     });
 
-    const res = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
     expect(body.verdictChanged).toEqual([]);
   });
 
   it('detects verdict flip from supported to unverified', async () => {
-    const headers = { 'x-api-key': 'claims-test-key', 'content-type': 'application/json' };
+    const headers = { 'x-api-key': 'claims-test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' };
     const payload = JSON.stringify({ text: 'Moon landing claim.', provider: 'mock' });
 
     // First scan: verified
@@ -159,7 +163,7 @@ describe('GET /claims/trending', () => {
     mockScan.mockResolvedValueOnce(SCAN_RESULT_UNVERIFIED);
     await server.inject({ method: 'POST', url: '/scan', headers, payload });
 
-    const res = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
     expect(body.verdictChanged.length).toBeGreaterThan(0);
     expect(body.verdictChanged[0].previousVerdict).toBe('supported');
@@ -167,14 +171,14 @@ describe('GET /claims/trending', () => {
   });
 
   it('fires claim.verdict_changed webhook on verdict flip', async () => {
-    const headers = { 'x-api-key': 'claims-test-key', 'content-type': 'application/json' };
+    const headers = { 'x-api-key': 'claims-test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' };
     const adminKey = 'claims-test-key';
 
     // Register a webhook for claim.verdict_changed
     const webhookRes = await server.inject({
       method: 'POST',
       url: '/webhooks',
-      headers: { 'x-api-key': adminKey, 'content-type': 'application/json' },
+      headers: { 'x-api-key': adminKey, 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' },
       payload: JSON.stringify({
         url: 'http://localhost:9999/webhook',
         events: ['claim.verdict_changed'],
@@ -194,18 +198,18 @@ describe('GET /claims/trending', () => {
 
     // Verdict change detected in index
     const idx = getClaimIndex();
-    expect(idx.getVerdictChanges().length).toBeGreaterThanOrEqual(0); // webhook fired async
+    expect(idx.getVerdictChanges(TEST_CLAIM_CALLER).length).toBeGreaterThanOrEqual(0); // webhook fired async
   });
 
   it('trending response has expected shape per claim', async () => {
     await server.inject({
       method: 'POST',
       url: '/scan',
-      headers: { 'x-api-key': 'claims-test-key', 'content-type': 'application/json' },
+      headers: { 'x-api-key': 'claims-test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' },
       payload: JSON.stringify({ text: 'Shape test.', provider: 'mock' }),
     });
 
-    const res = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
     if (body.trending.length > 0) {
       const claim = body.trending[0];
@@ -220,32 +224,32 @@ describe('GET /claims/trending', () => {
 
   it('ClaimIndex.ingest handles empty claims array without error', () => {
     const idx = getClaimIndex();
-    expect(() => idx.ingest([], {}, 'scan-0')).not.toThrow();
+    expect(() => idx.ingest([], {}, 'scan-0', TEST_CLAIM_CALLER)).not.toThrow();
     expect(idx.size).toBe(0);
   });
 
   it('ClaimIndex.size reflects total unique claims', () => {
     const idx = getClaimIndex();
-    idx.ingest([{ id: 'c1', text: 'Claim A' }, { id: 'c2', text: 'Claim B' }], {}, 'scan-1');
+    idx.ingest([{ id: 'c1', text: 'Claim A' }, { id: 'c2', text: 'Claim B' }], {}, 'scan-1', TEST_CLAIM_CALLER);
     expect(idx.size).toBe(2);
     // Re-ingest same claims — size stays 2
-    idx.ingest([{ id: 'c1', text: 'Claim A' }], {}, 'scan-2');
+    idx.ingest([{ id: 'c1', text: 'Claim A' }], {}, 'scan-2', TEST_CLAIM_CALLER);
     expect(idx.size).toBe(2);
   });
 
   it('getTrending returns at most limit results', () => {
     const idx = getClaimIndex();
     for (let i = 0; i < 25; i++) {
-      idx.ingest([{ id: `c${i}`, text: `Unique claim number ${i}` }], {}, `scan-${i}`);
+      idx.ingest([{ id: `c${i}`, text: `Unique claim number ${i}` }], {}, `scan-${i}`, TEST_CLAIM_CALLER);
     }
-    expect(idx.getTrending(10).length).toBe(10);
+    expect(idx.getTrending(TEST_CLAIM_CALLER, 10).length).toBe(10);
   });
 
   it('claim.verdict_changed is a subscribable webhook event', async () => {
     const res = await server.inject({
       method: 'POST',
       url: '/webhooks',
-      headers: { 'x-api-key': 'claims-test-key', 'content-type': 'application/json' },
+      headers: { 'x-api-key': 'claims-test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' },
       payload: JSON.stringify({
         url: 'http://example.com/hook',
         events: ['claim.verdict_changed'],

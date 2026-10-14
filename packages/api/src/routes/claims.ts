@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { getClaimIndex, computeAttributionConfidence } from '../store/claims.js';
 import { escHtml } from '../lib/html.js';
 import { requireApiKey } from '../plugins/auth.js';
+import { cacheCaller } from '../lib/cache-caller.js';
 
 export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{
@@ -38,7 +39,7 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const { text, verdict, from, to, source, limit } = request.query;
       const limitNum = limit ? Math.min(parseInt(limit, 10) || 50, 200) : 50;
-      const results = getClaimIndex().search({ text, verdict, from, to, source, limit: limitNum });
+      const results = getClaimIndex().search(cacheCaller(request), { text, verdict, from, to, source, limit: limitNum });
       return reply.status(200).send({
         claims: results.map((r) => ({
           id: r.id,
@@ -56,11 +57,12 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
-  fastify.get('/claims/trending', { preHandler: requireApiKey, schema: { tags: ['Claims'], summary: 'Trending claims by frequency and emerging in last 24h' } }, async (_request, reply) => {
+  fastify.get('/claims/trending', { preHandler: requireApiKey, schema: { tags: ['Claims'], summary: 'Trending claims by frequency and emerging in last 24h' } }, async (request, reply) => {
     const index = getClaimIndex();
+    const caller = cacheCaller(request);
 
     return reply.status(200).send({
-      trending: index.getTrending(20).map((r) => ({
+      trending: index.getTrending(caller, 20).map((r) => ({
         text: r.originalText,
         normalizedText: r.normalizedText,
         frequency: r.frequency,
@@ -68,14 +70,14 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
         lastSeen: r.lastSeen,
         lastVerdict: r.lastVerdict,
       })),
-      emerging: index.getEmerging(10).map((r) => ({
+      emerging: index.getEmerging(caller, 10).map((r) => ({
         text: r.originalText,
         normalizedText: r.normalizedText,
         frequency: r.frequency,
         firstSeen: r.firstSeen,
         lastVerdict: r.lastVerdict,
       })),
-      verdictChanged: index.getVerdictChanges(10),
+      verdictChanged: index.getVerdictChanges(caller, 10),
     });
   });
 
@@ -94,7 +96,7 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
       },
     },
     async (request, reply) => {
-      const record = getClaimIndex().getById(request.params.id);
+      const record = getClaimIndex().getById(request.params.id, cacheCaller(request));
       if (!record) {
         return reply.status(404).send({ error: 'Claim not found.' });
       }
@@ -133,7 +135,7 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
       },
     },
     async (request, reply) => {
-      const explanation = getClaimIndex().explain(request.params.id);
+      const explanation = getClaimIndex().explain(request.params.id, cacheCaller(request));
       if (!explanation) {
         return reply.status(404).send({ error: 'Claim not found.' });
       }
@@ -148,8 +150,8 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/claims/stats',
     { preHandler: requireApiKey, schema: { tags: ['Claims'], summary: 'Aggregate statistics across all verified claims' } },
-    async (_request, reply) => {
-      return reply.send(getClaimIndex().getStats());
+    async (request, reply) => {
+      return reply.send(getClaimIndex().getStats(cacheCaller(request)));
     },
   );
 

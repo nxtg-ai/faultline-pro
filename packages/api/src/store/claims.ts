@@ -1,6 +1,7 @@
 import { storedVerdictProblem, InvalidVerdictError } from '@nxtg/faultline/lib/verdict-guard.js';
 import { randomUUID } from 'node:crypto';
 import { fireWebhookEvent } from './webhooks.js';
+import { isGroundedVerification } from './cache.js';
 
 export interface ClaimVerdict {
   scanId: string;
@@ -53,15 +54,33 @@ export function computeAttributionConfidence(record: ClaimRecord): number {
   return Math.min(100, score);
 }
 
+/**
+ * The claim index is kept per caller (the same identity as the scan cache and
+ * webhooks: API key plus, behind faultline-web's server key, the user). A
+ * caller reads only its own claims; a null caller (the server key without a
+ * user ref) indexes and reads nothing. Gemini Grounded Results never enter it,
+ * not even the caller's own: Google's terms forbid caching or storing them
+ * (emma-soul al:1fba541b5d8c468f; same rule as the scan cache, item 7).
+ */
 class ClaimIndex {
+  /** Keyed by `${caller}\0${normalizedText}`. */
   private records: Map<string, ClaimRecord> = new Map();
   private byId: Map<string, ClaimRecord> = new Map();
-  private verdictChanges: VerdictChange[] = [];
+  private callerById: Map<string, string> = new Map();
+  private verdictChanges: Array<{ caller: string; change: VerdictChange }> = [];
+
+  /** The caller's own records. */
+  private recordsOf(caller: string | null): ClaimRecord[] {
+    if (caller === null) return [];
+    return [...this.byId.values()].filter((r) => this.callerById.get(r.id) === caller);
+  }
 
   ingest(
     claims: Array<{ id: string; text: string; type?: string }>,
     verifications: Record<string, { status?: string; sources?: Array<{ title: string; uri: string }>; provenance?: { retrievedAt?: string } }>,
     scanId: string,
+    caller: string | null,
+    provider?: string,
   ): void {
     for (const claim of claims) {
       const v = verifications[claim.id];
@@ -71,10 +90,13 @@ class ClaimIndex {
         throw new InvalidVerdictError(`claim ${claim.id}: ${problem}`);
       }
     }
+    if (caller === null || provider === 'gemini') return;
     const now = new Date().toISOString();
 
     for (const claim of claims) {
+      if (isGroundedVerification(verifications[claim.id])) continue;
       const normalized = claim.text.trim().toLowerCase();
+      const key = `${caller}\u0000${normalized}`;
       const status = verifications[claim.id]?.status ?? 'unverified';
       const rawSources = verifications[claim.id]?.sources ?? [];
       const claimType = claim.type ?? 'fact';
@@ -90,7 +112,7 @@ class ClaimIndex {
         seenAt,
       }));
 
-      const existing = this.records.get(normalized);
+      const existing = this.records.get(key);
 
       if (!existing) {
         const record: ClaimRecord = {
@@ -105,8 +127,9 @@ class ClaimIndex {
           lastVerdict: status,
           sources: newSources,
         };
-        this.records.set(normalized, record);
+        this.records.set(key, record);
         this.byId.set(record.id, record);
+        this.callerById.set(record.id, caller);
       } else {
         const previousVerdict = existing.lastVerdict;
         existing.frequency += 1;
@@ -133,7 +156,7 @@ class ClaimIndex {
             currentVerdict: status,
             changedAt: now,
           };
-          this.verdictChanges.push(change);
+          this.verdictChanges.push({ caller, change });
           fireWebhookEvent('claim.verdict_changed', {
             claim: existing.originalText,
             previousVerdict,
@@ -145,11 +168,13 @@ class ClaimIndex {
     }
   }
 
-  getById(id: string): ClaimRecord | undefined {
+  /** The record, only when it belongs to `caller`. */
+  getById(id: string, caller: string | null): ClaimRecord | undefined {
+    if (caller === null || this.callerById.get(id) !== caller) return undefined;
     return this.byId.get(id);
   }
 
-  explain(id: string): {
+  explain(id: string, caller: string | null): {
     claim: string;
     claimType: string;
     verdict: string;
@@ -158,7 +183,7 @@ class ClaimIndex {
     evidenceFound: Array<{ title: string; uri: string; seenAt: string }>;
     suggestions: string[];
   } | null {
-    const record = this.byId.get(id);
+    const record = this.getById(id, caller);
     if (!record) return null;
 
     const confidence = computeAttributionConfidence(record);
@@ -223,8 +248,8 @@ class ClaimIndex {
   /**
    * Top N claims by frequency.
    */
-  getTrending(limit = 10): ClaimRecord[] {
-    return [...this.records.values()]
+  getTrending(caller: string | null, limit = 10): ClaimRecord[] {
+    return this.recordsOf(caller)
       .sort((a, b) => b.frequency - a.frequency)
       .slice(0, limit);
   }
@@ -232,9 +257,9 @@ class ClaimIndex {
   /**
    * Claims first seen within the last `windowMs` milliseconds (default 24h).
    */
-  getEmerging(limit = 10, windowMs = 24 * 60 * 60 * 1000): ClaimRecord[] {
+  getEmerging(caller: string | null, limit = 10, windowMs = 24 * 60 * 60 * 1000): ClaimRecord[] {
     const cutoff = new Date(Date.now() - windowMs).toISOString();
-    return [...this.records.values()]
+    return this.recordsOf(caller)
       .filter((r) => r.firstSeen >= cutoff)
       .sort((a, b) => b.firstSeen.localeCompare(a.firstSeen))
       .slice(0, limit);
@@ -243,11 +268,12 @@ class ClaimIndex {
   /**
    * Claims that flipped from verified to unverified.
    */
-  getVerdictChanges(limit = 10): VerdictChange[] {
-    return this.verdictChanges.slice(-limit);
+  getVerdictChanges(caller: string | null, limit = 10): VerdictChange[] {
+    if (caller === null) return [];
+    return this.verdictChanges.filter((c) => c.caller === caller).map((c) => c.change).slice(-limit);
   }
 
-  search(params: {
+  search(caller: string | null, params: {
     text?: string;
     verdict?: string;
     from?: string;
@@ -255,7 +281,7 @@ class ClaimIndex {
     source?: string;
     limit?: number;
   }): ClaimRecord[] {
-    let results = [...this.records.values()];
+    let results = this.recordsOf(caller);
     if (params.text) {
       const q = params.text.toLowerCase();
       results = results.filter((r) => r.normalizedText.includes(q));
@@ -281,11 +307,11 @@ class ClaimIndex {
   }
 
   /**
-   * Aggregate stats across all indexed claims.
+   * Aggregate stats across the caller's indexed claims.
    * accuracyRate = supported / (supported + contradicted)  — "of claims with a definitive verdict, how many checked out?"
    * verifiedRate = supported / total  — "what fraction of all AI claims were accurate?"
    */
-  getStats(): {
+  getStats(caller: string | null): {
     totalClaims:    number;
     totalScans:     number;
     byVerdict:      Record<string, number>;
@@ -295,7 +321,7 @@ class ClaimIndex {
     avgFrequency:   number;
     topSources:     Array<{ uri: string; count: number }>;
   } {
-    const all = [...this.records.values()];
+    const all = this.recordsOf(caller);
     const byVerdict: Record<string, number> = {};
     const claimTypes: Record<string, number> = {};
     const sourceMap: Map<string, number> = new Map();
@@ -341,6 +367,7 @@ class ClaimIndex {
   reset(): void {
     this.records = new Map();
     this.byId = new Map();
+    this.callerById = new Map();
     this.verdictChanges = [];
   }
 }

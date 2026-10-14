@@ -271,6 +271,8 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
             Array.isArray(result.claims) ? (result.claims as Array<{ id: string; text: string; type?: string }>) : [],
             (result.verifications ?? {}) as Record<string, { status?: string; sources?: Array<{ title: string; uri: string }> }>,
             scanId,
+            caller,
+            p,
           );
           getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
           recordScanTelemetry({
