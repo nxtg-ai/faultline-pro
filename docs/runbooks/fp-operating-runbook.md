@@ -57,6 +57,9 @@ A change is not done until, in the same commit or PR: `CHANGELOG.md` `[Unrelease
 
 ## Live probes (zero or near-zero spend)
 
+- Auth header is `x-api-key: <key>`. `Authorization: Bearer` answers 401.
+- Per-caller `/scan` cache (EP4 item 7): `POST /scan` with the server key, `x-faultline-user-ref: <8-128 of [A-Za-z0-9_-]>`, body `{"text":"<unique text>","provider":"mock"}`. Same ref twice → `X-Cache: MISS` then `HIT` with `cache:{hit:true,checkedAt}` in the body; another ref → MISS; no ref → never cached; `provider:"gemini"` → never cached (Google terms). Verified 2026-10-14 on 7e59280.
+
 - Consensus gate: `POST https://faultline-api.fly.dev/scan/stream` with the server key, `x-user-tier: pro`, body `{"text":"…","provider":"mock","pipelineConfig":{"extractionProvider":"mock","consensus":true,"consensusProviders":["mock"]}}` → `403 consensus_not_in_plan`; `x-user-tier: enterprise` → 200.
 - Spend cap state: `GET /usage` with the server key → `providerBudget.enforced` (false = dormant).
 - Ledger health: `GET /usage` → `providerBudget.ledgerWriteFailures` and `groundingAllowance.ledgerWriteFailures` must be 0. Above 0 means the ledger file is not being written and the count lives only in memory.
