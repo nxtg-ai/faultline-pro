@@ -132,7 +132,7 @@ Extracts claims from text and verifies each one.
 X-Cache: HIT | MISS       (whether the result came from cache)
 ```
 
-**Cache.** A result is cached for 24 hours for **its own caller only**: the same API key and, behind faultline-web's server key, the same user (`x-faultline-user-ref`, trusted from that key alone). A hit says so in the body, `"cache": {"hit": true, "checkedAt": "<when the scan ran>"}`, so a cached verdict never reads as fresh; a fresh result has no `cache` field. **A Gemini-grounded result is never cached**, not even for its own caller: Google's terms say "will not ... cache ... Grounded Results". So with the default provider (`gemini`) every scan runs fresh. Results with an unchecked claim are never cached either. `POST /scan/deep` follows the same rules.
+**Cache.** A result is cached for 24 hours for **its own caller only**: the same API key and, behind faultline-web's server key, the same user (`x-faultline-user-ref`, trusted from that key alone; a server-key request without a valid user ref is not cached at all, since it could be any web user). A hit says so in the body, `"cache": {"hit": true, "checkedAt": "<when the scan ran>"}`, so a cached verdict never reads as fresh; a fresh result has no `cache` field. **A Gemini-grounded result is never cached**, not even for its own caller: Google's terms say "will not ... cache ... Grounded Results". So with the default provider (`gemini`) every scan runs fresh. Results with an unchecked claim are never cached either. `POST /scan/deep` follows the same rules.
 
 ---
 

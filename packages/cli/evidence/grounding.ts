@@ -6,9 +6,15 @@
  */
 export const GROUNDING_REDIRECT_HOST = 'vertexaisearch.cloud.google.com';
 
+/**
+ * True when `uri` points at Google's grounding host, however it is spelled:
+ * any case, and with or without the trailing root dot ("host." resolves to
+ * the same host; the URL parser also decodes "%2e" to it). Fable seat,
+ * 2026-10-14: the dotted spelling got past an exact compare.
+ */
 export function isGroundingRedirect(uri: string): boolean {
   try {
-    return new URL(uri).hostname.toLowerCase() === GROUNDING_REDIRECT_HOST;
+    return new URL(uri).hostname.toLowerCase().replace(/\.+$/, '') === GROUNDING_REDIRECT_HOST;
   } catch {
     return false;
   }

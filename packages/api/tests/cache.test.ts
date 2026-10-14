@@ -28,7 +28,8 @@ const SCAN_RESULT = {
 
 let server: FastifyInstance;
 const ADMIN = 'admin';
-const adminHeaders = () => ({ 'x-api-key': ADMIN, 'content-type': 'application/json' });
+// The server key is cached per forwarded user; with no user ref it gets no cache (EP4 item 7).
+const adminHeaders = () => ({ 'x-api-key': ADMIN, 'content-type': 'application/json', 'x-faultline-user-ref': 'user_cachetest' });
 
 beforeEach(async () => {
   process.env.FAULTLINE_API_KEY = ADMIN;

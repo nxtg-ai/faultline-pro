@@ -92,7 +92,7 @@ const TEXT_A = 'Revenue grew 45% in 2024.';
 const TEXT_B = 'The product has 10 million users in Q3 2024.';
 const JSON_H = { 'content-type': 'application/json' };
 
-function ah() { return { 'x-api-key': ADMIN_SECRET, ...JSON_H }; }
+function ah() { return { 'x-api-key': ADMIN_SECRET, ...JSON_H, 'x-faultline-user-ref': 'user_testref1' }; }
 function kh(secret: string) { return { 'x-api-key': secret, ...JSON_H }; }
 
 // ── Shared state that flows between scenarios ─────────────────────────────────

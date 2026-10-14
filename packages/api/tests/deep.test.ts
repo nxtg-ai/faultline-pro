@@ -168,7 +168,11 @@ describe('POST /scan/deep', () => {
 
   it('caches deep scan result on second request', async () => {
     const payload = JSON.stringify({ text: 'Cached deep scan claim.', provider: 'mock' });
-    const headers = { 'x-api-key': 'deep-test-key', 'content-type': 'application/json' };
+    // The server key is cached per forwarded user; with no user ref it is not cached at all (EP4 item 7).
+    const headers = { 'x-api-key': 'deep-test-key', 'content-type': 'application/json', 'x-faultline-user-ref': 'user_deeptest1' };
+    const anonymous = { 'x-api-key': 'deep-test-key', 'content-type': 'application/json' };
+    await server.inject({ method: 'POST', url: '/scan/deep', headers: anonymous, payload });
+    expect((await server.inject({ method: 'POST', url: '/scan/deep', headers: anonymous, payload })).headers['x-cache']).toBe('MISS');
 
     const res1 = await server.inject({ method: 'POST', url: '/scan/deep', headers, payload });
     const res2 = await server.inject({ method: 'POST', url: '/scan/deep', headers, payload });

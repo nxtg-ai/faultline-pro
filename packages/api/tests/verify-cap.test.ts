@@ -54,7 +54,7 @@ async function postScan(
   body: Json,
   userTier?: string,
 ): Promise<{ statusCode: number; json: Json; cache: string | undefined }> {
-  const headers: Record<string, string> = { 'x-api-key': apiKey, 'content-type': 'application/json' };
+  const headers: Record<string, string> = { 'x-api-key': apiKey, 'content-type': 'application/json', 'x-faultline-user-ref': 'user_testref1' };
   if (userTier !== undefined) headers['x-user-tier'] = userTier;
   const res = await server.inject({ method: 'POST', url: '/scan', headers, payload: JSON.stringify(body) });
   return { statusCode: res.statusCode, json: JSON.parse(res.body) as Json, cache: res.headers['x-cache'] as string | undefined };

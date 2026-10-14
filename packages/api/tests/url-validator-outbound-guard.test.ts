@@ -24,7 +24,7 @@ import {
   setOutboundResolver,
   type ResolvedAddress,
 } from '../src/lib/outbound-url.js';
-import { buildEvidenceLinks, resetUrlFetcher, validateSourceUrl } from '../src/lib/url-validator.js';
+import { buildEvidenceLinks, resetUrlFetcher, setUrlFetcher, validateSourceUrl } from '../src/lib/url-validator.js';
 import { buildServer } from '../src/server.js';
 import { clearRobotsCache, EVIDENCE_USER_AGENT } from '@nxtg/faultline/evidence/robots.js';
 import { resetCache } from '../src/store/cache.js';
@@ -337,5 +337,40 @@ describe('url-validator: a robots.txt that redirects to a private address', () =
     const result = await validateSourceUrl(`http://source.test:${start.port}/doc`, 'Doc', 'claim');
     expect(result.statusCode).toBe(0);
     expect(start.requests.map((r) => `${r.method} ${r.url}`)).toEqual(['GET /robots.txt']);
+  });
+});
+
+describe('url-validator: deep-fix Fable seat findings, pinned', () => {
+  let target: CountingServer | undefined;
+  afterEach(async () => { if (target) await stop(target); target = undefined; });
+
+  it('UVG-14 the grounding host with a trailing dot (or %2e) is never looked up or requested', async () => {
+    const resolver = resolveFrom({ 'vertexaisearch.cloud.google.com': '127.0.0.1' });
+    for (const u of ['https://vertexaisearch.cloud.google.com./grounding-api-redirect/abc', 'https://vertexaisearch.cloud.google.com%2e/grounding-api-redirect/abc']) {
+      const result = await validateSourceUrl(u, 'g', 'claim');
+      expect(result).toEqual(expect.objectContaining({ statusCode: 0, available: false, notChecked: 'provider_terms' }));
+    }
+    expect(resolver).not.toHaveBeenCalled();
+  });
+
+  it('UVG-15 a robots.txt that answers 500 means nothing on that site is probed', async () => {
+    admitLoopbackOneAsPublic();
+    target = await startCountingServer('127.0.0.1', (res, _port, path) => {
+      if (path === '/robots.txt') res.writeHead(500).end();
+      else ok(res);
+    });
+    resolveFrom({ 'down.test': '127.0.0.1' });
+    const result = await validateSourceUrl(`http://down.test:${target.port}/a`, 'A', 'claim');
+    expect(result.statusCode).toBe(0);
+    expect(result.notChecked).toBeUndefined();
+    expect(target.requests.filter((r) => r.method === 'HEAD')).toHaveLength(0);
+  });
+
+  it('UVG-16 a grounding Link never reaches an installed fetcher either', async () => {
+    const spy = vi.fn(async () => ({ status: 200, headers: {} }));
+    setUrlFetcher(spy);
+    const result = await validateSourceUrl('https://vertexaisearch.cloud.google.com/grounding-api-redirect/z', 'g', 'claim');
+    expect(result.notChecked).toBe('provider_terms');
+    expect(spy).not.toHaveBeenCalled();
   });
 });

@@ -42,6 +42,8 @@ import { resetCache, getScanCache, holdsGroundedResults } from '../src/store/cac
 import { resetProviderSpendLedger } from '../src/store/provider-spend.js';
 import { resetGroundingAllowanceLedger, uninstallGroundingCounter } from '../src/store/grounding-allowance.js';
 import { registerProvider } from '@nxtg/faultline/providers/registry.js';
+import { setUrlFetcher, resetUrlFetcher } from '../src/lib/url-validator.js';
+import { getCacheWarmer, getWarmupStore, WARMUP_RETIRED } from '../src/store/cache-warmup.js';
 
 registerProvider('mock', () => ({
   name: 'Cache fixture',
@@ -153,5 +155,50 @@ describe('holdsGroundedResults', () => {
     expect(holdsGroundedResults(v({ sources: [{ uri: 'https://VERTEXAISEARCH.cloud.google.com/grounding-api-redirect/z' }] }))).toBe(true);
     expect(holdsGroundedResults(v({ provenance: { provider: 'openai' }, sources: [{ uri: 'https://publisher.example/a' }] }))).toBe(false);
     expect(getScanCache().set('k', 't', 'p', v({ provenance: { provider: 'gemini', model: 'm', verifiedAt: 'T' } }) as never)).toBe(false);
+  });
+});
+
+describe('item 7 Fable seat findings, pinned', () => {
+  it('the server key with no user ref gets no cache at all (it could be any web user)', async () => {
+    await withServer(async (post) => {
+      expect((await post(SERVER_KEY, 'mock')).cache).toBe('MISS');
+      expect((await post(SERVER_KEY, 'mock')).cache).toBe('MISS');
+      expect((await post(SERVER_KEY, 'mock', { 'x-faultline-user-ref': 'bad ref!' })).cache).toBe('MISS');
+      expect(getScanCache().stats().size).toBe(0);
+    });
+  }, 30_000);
+
+  it('/scan/deep: a hit goes back only to the same key and carries cache.checkedAt', async () => {
+    setUrlFetcher(async () => ({ status: 200, headers: {} }));
+    const a = getKeyStore().create('A', ['pro', 'scan']).key;
+    const b = getKeyStore().create('B', ['pro', 'scan']).key;
+    const server = buildServer();
+    await server.ready();
+    try {
+      const deep = async (key: string, headers: Record<string, string> = {}) => {
+        const res = await server.inject({ method: 'POST', url: '/scan/deep', headers: { 'x-api-key': key, 'content-type': 'application/json', ...headers },
+          payload: { text: 'The Eiffel Tower was completed in 1889.', provider: 'mock' } });
+        expect(res.statusCode).toBe(200);
+        return { cache: res.headers['x-cache'], body: res.json() };
+      };
+      expect((await deep(a)).cache).toBe('MISS');
+      const hit = await deep(a);
+      expect(hit.cache).toBe('HIT');
+      expect(hit.body.cache.checkedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      expect((await deep(b)).cache).toBe('MISS');
+      expect((await deep(SERVER_KEY, { 'x-faultline-user-ref': 'user_aaaaaaaa' })).cache).toBe('MISS');
+      expect((await deep(SERVER_KEY, { 'x-faultline-user-ref': 'user_bbbbbbbb' })).cache).toBe('MISS');
+    } finally {
+      await server.close();
+      resetUrlFetcher();
+    }
+  }, 30_000);
+
+  it('the cache warmer is retired: it scans nothing and says why', async () => {
+    const target = getWarmupStore().create({ name: 't', text: 'The Eiffel Tower was completed in 1889.', provider: 'mock' } as never, 'admin');
+    const run = await getCacheWarmer().warmOne(target.id);
+    expect(run.status).toBe('error');
+    expect(run.error).toBe(WARMUP_RETIRED);
+    expect(getScanCache().stats().size).toBe(0);
   });
 });

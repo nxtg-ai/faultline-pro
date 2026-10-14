@@ -320,3 +320,25 @@ describe('Fable seat findings (2026-10-14), pinned', () => {
     }
   });
 });
+
+describe('grounding host, however spelled (deep-fix Fable seat HIGH)', () => {
+  it('isGroundingRedirect matches any case and a trailing root dot', async () => {
+    const { isGroundingRedirect } = await import('../evidence/grounding.js');
+    for (const u of [
+      'https://vertexaisearch.cloud.google.com/grounding-api-redirect/a',
+      'https://VERTEXAISEARCH.cloud.google.com/x',
+      'https://vertexaisearch.cloud.google.com./x',
+      'https://vertexaisearch.cloud.google.com%2e/x',
+      'https://user@vertexaisearch.cloud.google.com:443/x',
+    ]) expect(isGroundingRedirect(u)).toBe(true);
+    expect(isGroundingRedirect('https://vertexaisearch.cloud.google.com.evil.example/x')).toBe(false);
+    expect(isGroundingRedirect('not a url')).toBe(false);
+  });
+
+  it('a dotted grounding Link is never requested, robots.txt included', async () => {
+    const s = site({});
+    const ev = await fetchSourceEvidence({ title: 'g', uri: 'https://vertexaisearch.cloud.google.com./grounding-api-redirect/a' }, CLAIM_TEXT, { fetch: s.f });
+    expect(ev).toEqual({ status: 'not_fetched', reason: 'provider_terms', passage: null });
+    expect(s.requested).toEqual([]);
+  });
+});

@@ -42,7 +42,8 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
       const effectiveProvider = provider ?? 'gemini';
 
       // Check cache first
-      const hit = getScanCache().get(cacheCaller(request), text, `deep:${effectiveProvider}`);
+      const caller = cacheCaller(request);
+      const hit = caller === null ? null : getScanCache().get(caller, text, `deep:${effectiveProvider}`);
       if (hit) {
         const cached: Record<string, unknown> = { ...hit.result, cache: { hit: true, checkedAt: hit.checkedAt } };
         reply.header('X-Cache', 'HIT');
@@ -73,7 +74,7 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
 
           const enriched = { ...result, evidenceLinks };
 
-          getScanCache().set(cacheCaller(request), text, `deep:${effectiveProvider}`, enriched as unknown as Record<string, unknown>);
+          if (caller !== null) getScanCache().set(caller, text, `deep:${effectiveProvider}`, enriched as unknown as Record<string, unknown>);
           getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
           fireWebhookEvent('scan.complete', enriched);
 

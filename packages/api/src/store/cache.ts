@@ -1,5 +1,6 @@
 import { assertValidScanResult } from '@nxtg/faultline/lib/verdict-guard.js';
 import { createHash } from 'node:crypto';
+import { isGroundingRedirect } from '@nxtg/faultline/evidence/grounding.js';
 import { DEFAULT_VERIFY_CAP, resolveVerifyCap } from '@nxtg/faultline/cli/verify-cap.js';
 
 type ScanResult = Record<string, unknown>; // opaque — cache stores whatever scan() returns
@@ -26,8 +27,6 @@ function cacheKey(caller: string, text: string, provider: string, verifyCap: num
     .digest('hex');
 }
 
-const GROUNDING_HOST = 'vertexaisearch.cloud.google.com';
-
 /**
  * True when a result holds Gemini Grounded Results: a verdict whose retriever
  * is gemini-grounding, or a source that is a Google grounding Link. Google's
@@ -43,13 +42,9 @@ export function holdsGroundedResults(result: ScanResult): boolean {
     const prov = (v as { provenance?: { retriever?: unknown; provider?: unknown } }).provenance;
     if (prov?.retriever === 'gemini-grounding' || prov?.provider === 'gemini') return true;
     const sources = (v as { sources?: Array<{ uri?: unknown }> }).sources;
-    if (Array.isArray(sources) && sources.some((s) => typeof s?.uri === 'string' && hostOf(s.uri) === GROUNDING_HOST)) return true;
+    if (Array.isArray(sources) && sources.some((s) => typeof s?.uri === 'string' && isGroundingRedirect(s.uri))) return true;
   }
   return false;
-}
-
-function hostOf(uri: string): string {
-  try { return new URL(uri).hostname.toLowerCase(); } catch { return ''; }
 }
 
 /** A cache hit: the result as it was stored, and when it was checked. */

@@ -162,7 +162,8 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
         }
       }
 
-      const hit = getScanCache().get(cacheCaller(request), text, effectiveProvider, verifyPolicy.cap);
+      const caller = cacheCaller(request);
+      const hit = caller === null ? null : getScanCache().get(caller, text, effectiveProvider, verifyPolicy.cap);
       const cached = hit?.result;
       if (hit && cached) {
         reply.header('X-Cache', 'HIT');
@@ -262,7 +263,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
             });
           }
 
-          getScanCache().set(cacheCaller(request), text, effectiveProvider, result as unknown as Record<string, unknown>, verifyPolicy.cap);
+          if (caller !== null) getScanCache().set(caller, text, effectiveProvider, result as unknown as Record<string, unknown>, verifyPolicy.cap);
           const scanId = `scan-${Date.now()}`;
           getClaimIndex().ingest(
             Array.isArray(result.claims) ? (result.claims as Array<{ id: string; text: string; type?: string }>) : [],

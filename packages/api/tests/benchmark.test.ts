@@ -70,7 +70,7 @@ describe('Performance benchmarks — mock provider', () => {
       const res = await server.inject({
         method: 'POST',
         url: '/scan',
-        headers: { 'x-api-key': 'bench-key', 'content-type': 'application/json' },
+        headers: { 'x-api-key': 'bench-key', 'content-type': 'application/json', 'x-faultline-user-ref': 'user_testref1' },
         payload: JSON.stringify({ text: `Unique claim number ${i}`, provider: 'mock' }),
       });
       latencies.push(performance.now() - t0);
@@ -96,7 +96,7 @@ describe('Performance benchmarks — mock provider', () => {
     await server.inject({
       method: 'POST',
       url: '/scan',
-      headers: { 'x-api-key': 'bench-key', 'content-type': 'application/json' },
+      headers: { 'x-api-key': 'bench-key', 'content-type': 'application/json', 'x-faultline-user-ref': 'user_testref1' },
       payload: JSON.stringify({ text: TEXT, provider: 'mock' }),
     });
 
@@ -107,7 +107,7 @@ describe('Performance benchmarks — mock provider', () => {
       const res = await server.inject({
         method: 'POST',
         url: '/scan',
-        headers: { 'x-api-key': 'bench-key', 'content-type': 'application/json' },
+        headers: { 'x-api-key': 'bench-key', 'content-type': 'application/json', 'x-faultline-user-ref': 'user_testref1' },
         payload: JSON.stringify({ text: `Cache miss text ${i}`, provider: 'mock' }),
       });
       missLatencies.push(performance.now() - t0);
@@ -121,7 +121,7 @@ describe('Performance benchmarks — mock provider', () => {
       const res = await server.inject({
         method: 'POST',
         url: '/scan',
-        headers: { 'x-api-key': 'bench-key', 'content-type': 'application/json' },
+        headers: { 'x-api-key': 'bench-key', 'content-type': 'application/json', 'x-faultline-user-ref': 'user_testref1' },
         payload: JSON.stringify({ text: TEXT, provider: 'mock' }),
       });
       hitLatencies.push(performance.now() - t0);
@@ -159,7 +159,7 @@ describe('Performance benchmarks — mock provider', () => {
       const res = await server.inject({
         method: 'POST',
         url: '/scan/batch',
-        headers: { 'x-api-key': 'bench-key', 'content-type': 'application/json' },
+        headers: { 'x-api-key': 'bench-key', 'content-type': 'application/json', 'x-faultline-user-ref': 'user_testref1' },
         payload: JSON.stringify({ texts, provider: 'mock' }),
       });
       latencies.push(performance.now() - t0);

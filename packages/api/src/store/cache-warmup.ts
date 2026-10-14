@@ -7,7 +7,8 @@
  *
  * Design:
  *   - Admin registers targets (text or URL + provider) with an optional schedule
- *   - CacheWarmer.warmOne() calls scan() and writes the result to ScanCache
+ *   - CacheWarmer.warmOne() is RETIRED (EP4 Amendment 2 item 7): the scan cache is
+ *     per caller, so it records a run that did nothing and scans nothing
  *   - Warmup history (last 20 runs per target) is kept for observability
  *   - Admin can trigger a warmup immediately via the route layer
  *   - Global warmAll() iterates all enabled targets
@@ -15,9 +16,6 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { scan } from '@nxtg/faultline/cli/scan.js';
-import { getScanCache } from './cache.js';
-import { OPERATOR_CACHE_CALLER } from '../lib/cache-caller.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -171,8 +169,11 @@ export function resetWarmupStore(): void {
 
 // ── Warmer ────────────────────────────────────────────────────────────────────
 
+/** Why a warm-up run does nothing. */
+export const WARMUP_RETIRED = 'cache warm-up is retired: cached results are per caller, so a warmed entry would be served to no one; nothing was scanned';
+
 export class CacheWarmer {
-  /** Warm a single target. Writes result to ScanCache and records the run. */
+  /** Retired: records that a warm-up was asked for and did nothing (see WARMUP_RETIRED). */
   async warmOne(targetId: string): Promise<WarmupRun> {
     const store  = getWarmupStore();
     const target = store.get(targetId);
@@ -181,29 +182,16 @@ export class CacheWarmer {
     const startedAt = new Date().toISOString();
     const start     = Date.now();
 
-    try {
-      const result = await scan(target.text, target.provider);
-      // Warmed for the operator's own caller only (cache entries are per caller).
-      const stored = getScanCache().set(OPERATOR_CACHE_CALLER, target.text, target.provider, result as unknown as Record<string, unknown>);
-      const durationMs  = Date.now() - start;
-      return store.recordRun(targetId, {
-        startedAt,
-        completedAt: new Date().toISOString(),
-        durationMs,
-        // A result the cache refuses (unchecked claims, or Gemini Grounded Results,
-        // which Google's terms forbid caching) is reported, never shown as warmed.
-        ...(stored ? { status: 'done' as const } : { status: 'error' as const, error: 'not cacheable: unchecked claims or Gemini Grounded Results (provider terms)' }),
-      });
-    } catch (err) {
-      const durationMs = Date.now() - start;
-      return store.recordRun(targetId, {
-        startedAt,
-        completedAt: new Date().toISOString(),
-        durationMs,
-        status: 'error',
-        error:  err instanceof Error ? err.message : String(err),
-      });
-    }
+    // Retired (EP4 Amendment 2 item 7): cached results are per caller, so a
+    // warmed entry would be served to no one, and a Gemini-grounded result may
+    // not be cached at all (provider terms). Nothing is scanned or spent.
+    return store.recordRun(targetId, {
+      startedAt,
+      completedAt: new Date().toISOString(),
+      durationMs: Date.now() - start,
+      status: 'error',
+      error: WARMUP_RETIRED,
+    });
   }
 
   /**

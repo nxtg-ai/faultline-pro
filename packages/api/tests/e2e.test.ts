@@ -85,7 +85,7 @@ const ADMIN = 'admin-secret';
 const JSON_HDR = { 'content-type': 'application/json' };
 
 function adminHeaders() {
-  return { 'x-api-key': ADMIN, ...JSON_HDR };
+  return { 'x-api-key': ADMIN, ...JSON_HDR, 'x-faultline-user-ref': 'user_testref1' };
 }
 
 function scanHeaders() {
