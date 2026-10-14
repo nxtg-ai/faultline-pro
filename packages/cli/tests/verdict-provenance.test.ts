@@ -70,13 +70,49 @@ describe('engine binding through scan()', () => {
     expect(Date.parse(p.verifiedAt)).toBeGreaterThanOrEqual(before);
   });
 
-  it('a provider cannot claim to be another provider; its reported model and time are kept', async () => {
+  it('a provider cannot claim another identity, a retriever or a time: only its model is kept', async () => {
     registerFixture('prov-liar', (c) => ({
       claimId: c.id, status: 'supported', explanation: 'ok', sources: [],
-      provenance: { provider: 'gemini', model: 'served-model-7', verifiedAt: '2026-10-14T01:02:03.000Z' },
+      provenance: { provider: 'gemini', model: 'served-model-7', verifiedAt: '2026-01-01T00:00:00.000Z', retriever: 'gemini-grounding', retrievedAt: '2026-01-01T00:00:00.000Z' },
     }));
+    const before = Date.now();
     const r = await scan(CLAIM.text, 'prov-liar');
-    expect(r.verifications.c1.provenance).toEqual({ provider: 'prov-liar', model: 'served-model-7', verifiedAt: '2026-10-14T01:02:03.000Z' });
+    const p = r.verifications.c1.provenance!;
+    expect(p).toEqual({ provider: 'prov-liar', model: 'served-model-7', verifiedAt: expect.stringMatching(ISO) });
+    expect(Date.parse(p.verifiedAt)).toBeGreaterThanOrEqual(before);
+  });
+
+  it('EP4 examiner probe-spoof: a provider labelling itself gemini-grounding still has its citations fetched', async () => {
+    const page = '<p>The examiner fixture contains a factual claim that this page states in full.</p>';
+    const fetch = vi.fn(async (url: string) => (url.endsWith('/robots.txt')
+      ? new Response('', { status: 404 })
+      : new Response(page, { status: 200, headers: { 'content-type': 'text/html' } })));
+    const cite = { title: 'Publisher', uri: 'https://publisher.example/claim' };
+    registerFixture('prov-spoof', (c) => ({
+      claimId: c.id, status: 'supported', explanation: 'ok', sources: [cite],
+      provenance: { provider: 'gemini', model: 'm', verifiedAt: '2026-01-01T00:00:00.000Z', retriever: 'gemini-grounding', retrievedAt: '2026-01-01T00:00:00.000Z' },
+    }));
+    const r = await scan(CLAIM.text, 'prov-spoof', undefined, undefined, undefined, undefined, undefined, { evidence: { fetch } });
+    const v = r.verifications.c1;
+    expect(v.provenance!.retriever).toBeUndefined();
+    expect(v.sources[0].evidence!.status).toBe('ok');
+    expect(fetch.mock.calls.map((c) => c[0])).toContain(cite.uri);
+  });
+
+  it('the real gemini provider id carries the gemini-grounding retriever, timed at the call site', async () => {
+    mockGenerateContent.mockReset();
+    // The first call extracts the claim list; the next verifies it.
+    mockGenerateContent.mockResolvedValueOnce({ text: JSON.stringify([{ id: 'c1', text: CLAIM.text, type: 'fact', importance: 5 }]), candidates: [] });
+    mockGenerateContent.mockResolvedValue({
+      text: '{"status":"supported","explanation":"ok"}', modelVersion: 'gemini-2.5-flash-001', candidates: [],
+    });
+    const before = Date.now();
+    const r = await scan(CLAIM.text, 'gemini');
+    const p = r.verifications.c1.provenance!;
+    expect(p.provider).toBe('gemini');
+    expect(p.retriever).toBe('gemini-grounding');
+    expect(p.retrievedAt).toBe(p.verifiedAt);
+    expect(Date.parse(p.verifiedAt)).toBeGreaterThanOrEqual(before);
   });
 
   it('a verdict replaced by the allowlist guard carries no provenance', async () => {

@@ -285,23 +285,35 @@ function exhaustedRetryResult(claim: Claim, err: unknown, flagApiError: boolean)
 }
 
 /**
- * Bind who produced a verdict and when. The provider id is the one the engine
- * resolved; the model and time come from the provider when it reports them
- * (Gemini reports the model Google served), else from its configured model and
- * the moment the call returned. A verdict whose check never ran carries none.
- * Honor System #2, GoPMO 1.18.11.3 P1a.
+ * The retrieval a built-in provider performs inside its own verify call, keyed
+ * by the provider id the engine resolved. Only these may carry a retriever: a
+ * provider that labels itself `gemini-grounding` would otherwise exempt its
+ * own citations from the evidence fetch (EP4 Amendment 2, examiner probe-spoof).
  */
-function withProvenance(result: VerificationResult, verifier: Verifier): VerificationResult {
+const ENGINE_RETRIEVERS: Readonly<Record<string, string>> = Object.freeze({ gemini: 'gemini-grounding' });
+
+/**
+ * Bind who produced a verdict and when, at the call site. The provider id is
+ * the one the engine resolved; the retriever comes from ENGINE_RETRIEVERS by
+ * that id; verifiedAt (and retrievedAt, for a provider that searches inside
+ * the same call) is the moment the call returned. None of these is taken from
+ * the provider's own object. Only the model is: Gemini reports the model
+ * Google served, else the configured model is used. A verdict whose check
+ * never ran carries none. Honor System #2, GoPMO 1.18.11.3 P1a; emma-soul
+ * al:193832a732e0b82e item 5.
+ */
+function withProvenance(result: VerificationResult, verifier: Verifier, returnedAt: string): VerificationResult {
   if (!result || typeof result !== 'object' || result.apiError === true) return result;
   const own = result.provenance;
+  const provider = verifier.providerName ?? verifier.provider.name;
+  const retriever = Object.prototype.hasOwnProperty.call(ENGINE_RETRIEVERS, provider) ? ENGINE_RETRIEVERS[provider] : undefined;
   return {
     ...result,
     provenance: {
-      ...(own ?? {}),
-      // The provider id is always the one the engine resolved, never the provider's own claim.
-      provider: verifier.providerName ?? verifier.provider.name,
+      provider,
       model: typeof own?.model === 'string' && own.model.length > 0 ? own.model : verifier.provider.modelId,
-      verifiedAt: typeof own?.verifiedAt === 'string' ? own.verifiedAt : new Date().toISOString(),
+      verifiedAt: returnedAt,
+      ...(retriever !== undefined ? { retriever, retrievedAt: returnedAt } : {}),
     },
   };
 }
@@ -317,7 +329,8 @@ async function verifyOneClaim(claim: Claim, verifier: Verifier, flagExhaustedRet
   let delay = 1000;
   for (let attempt = 0; ; attempt++) {
     try {
-      return withProvenance(await verifier.provider.verifyClaim(claim), verifier);
+      const result = await verifier.provider.verifyClaim(claim);
+      return withProvenance(result, verifier, new Date().toISOString());
     } catch (err) {
       if (attempt >= 2) return exhaustedRetryResult(claim, err, flagExhaustedRetries);
       await new Promise(r => setTimeout(r, delay + Math.floor(Math.random() * 500)));
