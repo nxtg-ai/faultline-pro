@@ -66,7 +66,7 @@ describe('GET /claims/:id/explain', () => {
     expect(records.length).toBeGreaterThan(0);
     const claimId = records[0].id;
 
-    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/explain` });
+    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/explain`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.claim).toBeDefined();
@@ -80,7 +80,7 @@ describe('GET /claims/:id/explain', () => {
 
   // EX2: 404 for unknown id
   it('EX2: returns 404 for unknown claim id', async () => {
-    const res = await server.inject({ method: 'GET', url: '/claims/does-not-exist/explain' });
+    const res = await server.inject({ method: 'GET', url: '/claims/does-not-exist/explain', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     expect(res.statusCode).toBe(404);
     const body = JSON.parse(res.body);
     expect(typeof body.error).toBe('string');
@@ -98,7 +98,7 @@ describe('GET /claims/:id/explain', () => {
     const index = getClaimIndex();
     const claimId = index.getTrending(1)[0].id;
 
-    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/explain` });
+    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/explain`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     const body = JSON.parse(res.body);
 
     expect(typeof body.claim).toBe('string');
@@ -122,7 +122,7 @@ describe('GET /claims/:id/explain', () => {
     const index = getClaimIndex();
     const claimId = index.getTrending(1)[0].id;
 
-    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/explain` });
+    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/explain`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     const body = JSON.parse(res.body);
 
     expect(body.reasoningChain.length).toBeGreaterThan(0);
@@ -155,7 +155,7 @@ describe('GET /claims/:id/explain', () => {
     const index = getClaimIndex();
     const claimId = index.getTrending(1)[0].id;
 
-    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/explain` });
+    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/explain`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     const body = JSON.parse(res.body);
 
     expect(body.suggestions.length).toBeGreaterThan(0);
@@ -173,7 +173,7 @@ describe('GET /claims/:id/explain', () => {
     const index = getClaimIndex();
     const claimId = index.getTrending(1)[0].id;
 
-    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/explain` });
+    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/explain`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     const body = JSON.parse(res.body);
 
     expect(body.confidence).toBeGreaterThanOrEqual(0);

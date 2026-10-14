@@ -53,7 +53,7 @@ describe('GET /claims/:id/attribution', () => {
   });
 
   it('returns 404 for unknown claim id', async () => {
-    const res = await server.inject({ method: 'GET', url: '/claims/does-not-exist/attribution' });
+    const res = await server.inject({ method: 'GET', url: '/claims/does-not-exist/attribution', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     expect(res.statusCode).toBe(404);
     const body = JSON.parse(res.body);
     expect(typeof body.error).toBe('string');
@@ -69,7 +69,7 @@ describe('GET /claims/:id/attribution', () => {
     });
 
     // Get trending to find the claim id
-    const trending = await server.inject({ method: 'GET', url: '/claims/trending' });
+    const trending = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     const trendingBody = JSON.parse(trending.body);
     expect(trendingBody.trending.length).toBeGreaterThan(0);
 
@@ -80,7 +80,7 @@ describe('GET /claims/:id/attribution', () => {
     const claimId = records[0].id;
     expect(claimId).toBeTruthy();
 
-    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/attribution` });
+    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/attribution`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.id).toBe(claimId);
@@ -101,7 +101,7 @@ describe('GET /claims/:id/attribution', () => {
     const records = index.getTrending(1);
     const claimId = records[0].id;
 
-    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/attribution` });
+    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/attribution`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     const body = JSON.parse(res.body);
 
     expect(body.id).toBeTruthy();
@@ -131,7 +131,7 @@ describe('GET /claims/:id/attribution', () => {
     const withSources = records.find((r) => r.sources.length > 0);
     if (!withSources) return; // no sources in this run (cache hit scenario)
 
-    const res = await server.inject({ method: 'GET', url: `/claims/${withSources.id}/attribution` });
+    const res = await server.inject({ method: 'GET', url: `/claims/${withSources.id}/attribution`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     const body = JSON.parse(res.body);
     if (body.attributionChain.sources.length > 0) {
       const src = body.attributionChain.sources[0];
@@ -219,16 +219,14 @@ describe('GET /claims/:id/attribution', () => {
     expect(id1).toBe(id2);
   });
 
-  it('does not require API key', async () => {
+  it('requires an API key: an indexed claim is not readable without one', async () => {
     const index = getClaimIndex();
-    index.ingest([{ id: 'c1', text: 'Public claim.' }], {}, 'scan-1');
+    index.ingest([{ id: 'c1', text: 'Private claim.' }], {}, 'scan-1');
     const claimId = index.getTrending(1)[0].id;
 
-    delete process.env.FAULTLINE_API_KEY;
-    const server2 = buildServer();
-    const res = await server2.inject({ method: 'GET', url: `/claims/${claimId}/attribution` });
-    await server2.close();
-    expect(res.statusCode).toBe(200);
+    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/attribution` });
+    expect(res.statusCode).toBe(401);
+    expect(res.body).not.toContain('Private claim');
   });
 
   it('claimType is stored from scan claims', async () => {
@@ -243,7 +241,7 @@ describe('GET /claims/:id/attribution', () => {
     const records = index.getTrending(5);
     const factClaim = records.find((r) => r.claimType === 'fact');
     if (factClaim) {
-      const res = await server.inject({ method: 'GET', url: `/claims/${factClaim.id}/attribution` });
+      const res = await server.inject({ method: 'GET', url: `/claims/${factClaim.id}/attribution`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
       const body = JSON.parse(res.body);
       expect(body.claimType).toBe('fact');
     }

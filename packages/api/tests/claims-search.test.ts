@@ -68,7 +68,7 @@ describe('GET /claims (search)', () => {
 
   // CS7: GET /claims returns empty array when no claims
   it('CS7: returns 200 with empty claims array on cold start', async () => {
-    const res = await server.inject({ method: 'GET', url: '/claims' });
+    const res = await server.inject({ method: 'GET', url: '/claims', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(Array.isArray(body.claims)).toBe(true);
@@ -85,7 +85,7 @@ describe('GET /claims (search)', () => {
       payload: JSON.stringify({ text: 'Moon landing.', provider: 'mock' }),
     });
 
-    const res = await server.inject({ method: 'GET', url: '/claims' });
+    const res = await server.inject({ method: 'GET', url: '/claims', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(Array.isArray(body.claims)).toBe(true);
@@ -102,7 +102,7 @@ describe('GET /claims (search)', () => {
       payload: JSON.stringify({ text: 'Shape test.', provider: 'mock' }),
     });
 
-    const res = await server.inject({ method: 'GET', url: '/claims' });
+    const res = await server.inject({ method: 'GET', url: '/claims', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     const body = JSON.parse(res.body);
     expect(body.claims.length).toBeGreaterThan(0);
     const claim = body.claims[0];
@@ -127,7 +127,7 @@ describe('GET /claims (search)', () => {
       payload: JSON.stringify({ text: 'Moon text.', provider: 'mock' }),
     });
 
-    const res = await server.inject({ method: 'GET', url: '/claims?text=moon+landing' });
+    const res = await server.inject({ method: 'GET', url: '/claims?text=moon+landing', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.claims.length).toBeGreaterThan(0);
@@ -145,7 +145,7 @@ describe('GET /claims (search)', () => {
       payload: JSON.stringify({ text: 'Moon test.', provider: 'mock' }),
     });
 
-    const res = await server.inject({ method: 'GET', url: '/claims?text=zzznomatch' });
+    const res = await server.inject({ method: 'GET', url: '/claims?text=zzznomatch', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.claims.length).toBe(0);
@@ -161,7 +161,7 @@ describe('GET /claims (search)', () => {
       payload: JSON.stringify({ text: 'Verdict test.', provider: 'mock' }),
     });
 
-    const resSupported = await server.inject({ method: 'GET', url: '/claims?verdict=supported' });
+    const resSupported = await server.inject({ method: 'GET', url: '/claims?verdict=supported', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     expect(resSupported.statusCode).toBe(200);
     const bodySupported = JSON.parse(resSupported.body);
     for (const claim of bodySupported.claims) {
@@ -177,7 +177,7 @@ describe('GET /claims (search)', () => {
       payload: JSON.stringify({ text: 'Verdict test 2.', provider: 'mock' }),
     });
 
-    const resUnverified = await server.inject({ method: 'GET', url: '/claims?verdict=unverified' });
+    const resUnverified = await server.inject({ method: 'GET', url: '/claims?verdict=unverified', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     expect(resUnverified.statusCode).toBe(200);
     const bodyUnverified = JSON.parse(resUnverified.body);
     expect(bodyUnverified.claims.length).toBeGreaterThan(0);
@@ -197,7 +197,7 @@ describe('GET /claims (search)', () => {
 
     // A from date far in the future should return nothing
     const futureDate = '2099-01-01T00:00:00.000Z';
-    const res = await server.inject({ method: 'GET', url: `/claims?from=${encodeURIComponent(futureDate)}` });
+    const res = await server.inject({ method: 'GET', url: `/claims?from=${encodeURIComponent(futureDate)}`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.claims.length).toBe(0);
@@ -212,7 +212,7 @@ describe('GET /claims (search)', () => {
     });
 
     const pastDate = '2000-01-01T00:00:00.000Z';
-    const res = await server.inject({ method: 'GET', url: `/claims?from=${encodeURIComponent(pastDate)}` });
+    const res = await server.inject({ method: 'GET', url: `/claims?from=${encodeURIComponent(pastDate)}`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.claims.length).toBeGreaterThan(0);
@@ -226,7 +226,7 @@ describe('GET /claims (search)', () => {
       idx.ingest([{ id: `lim${i}`, text: `Limit test claim number ${i}` }], {}, `scan-lim-${i}`);
     }
 
-    const res = await server.inject({ method: 'GET', url: '/claims?limit=2' });
+    const res = await server.inject({ method: 'GET', url: '/claims?limit=2', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.claims.length).toBeLessThanOrEqual(2);
@@ -240,7 +240,7 @@ describe('GET /claims (search)', () => {
       idx.ingest([{ id: `cap${i}`, text: `Cap test claim number ${i}` }], {}, `scan-cap-${i}`);
     }
 
-    const res = await server.inject({ method: 'GET', url: '/claims?limit=999' });
+    const res = await server.inject({ method: 'GET', url: '/claims?limit=999', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.claims.length).toBeLessThanOrEqual(200);
@@ -256,7 +256,7 @@ describe('GET /claims (search)', () => {
     });
 
     // c1 has source uri https://nasa.gov/moon
-    const res = await server.inject({ method: 'GET', url: '/claims?source=nasa.gov' });
+    const res = await server.inject({ method: 'GET', url: '/claims?source=nasa.gov', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.claims.length).toBeGreaterThan(0);
@@ -275,7 +275,7 @@ describe('GET /claims (search)', () => {
       payload: JSON.stringify({ text: 'Source none test.', provider: 'mock' }),
     });
 
-    const res = await server.inject({ method: 'GET', url: '/claims?source=zzznomatch' });
+    const res = await server.inject({ method: 'GET', url: '/claims?source=zzznomatch', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.claims.length).toBe(0);
@@ -294,7 +294,7 @@ describe('GET /claims (search)', () => {
       'scan-total',
     );
 
-    const res = await server.inject({ method: 'GET', url: '/claims' });
+    const res = await server.inject({ method: 'GET', url: '/claims', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.total).toBe(body.claims.length);
@@ -315,7 +315,7 @@ describe('GET /claims (search)', () => {
       payload: JSON.stringify({ text: 'Water boils.', provider: 'mock' }),
     });
 
-    const res = await server.inject({ method: 'GET', url: '/claims' });
+    const res = await server.inject({ method: 'GET', url: '/claims', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     // Should have claims from both scans
@@ -336,7 +336,7 @@ describe('GET /claims (search)', () => {
     resetCache();
     await server.inject({ method: 'POST', url: '/scan', headers, payload });
 
-    const res = await server.inject({ method: 'GET', url: '/claims' });
+    const res = await server.inject({ method: 'GET', url: '/claims', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     const body = JSON.parse(res.body);
 
     // SCAN_RESULT_BASE has 2 unique claims; repeated scan should not duplicate them

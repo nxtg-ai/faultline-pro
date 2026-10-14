@@ -347,7 +347,7 @@ describe('F5: Verdict propagation into ClaimIndex', () => {
   });
 
   it('F5.2 GET /claims/stats reflects ClaimIndex state (Gate 2)', async () => {
-    const res = await server.inject({ method: 'GET', url: '/claims/stats' });
+    const res = await server.inject({ method: 'GET', url: '/claims/stats', headers: { 'x-api-key': ADMIN_SECRET } });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.totalClaims).toBeGreaterThan(0);  // Gate 2

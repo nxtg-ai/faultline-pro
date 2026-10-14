@@ -155,7 +155,7 @@ describe('GET /claims/stats', () => {
   afterEach(async () => { await server.close(); delete process.env.FAULTLINE_API_KEY; });
 
   it('returns 200 with stats shape', async () => {
-    const res = await server.inject({ method: 'GET', url: '/claims/stats' });
+    const res = await server.inject({ method: 'GET', url: '/claims/stats', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(typeof body.totalClaims).toBe('number');
@@ -168,7 +168,7 @@ describe('GET /claims/stats', () => {
 
   it('returns correct counts after ingest', async () => {
     ingest();
-    const res = await server.inject({ method: 'GET', url: '/claims/stats' });
+    const res = await server.inject({ method: 'GET', url: '/claims/stats', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     const body = JSON.parse(res.body);
     expect(body.totalClaims).toBe(3);
     expect(body.byVerdict.supported).toBe(1);
@@ -178,21 +178,21 @@ describe('GET /claims/stats', () => {
 
   it('accuracyRate is in [0, 1]', async () => {
     ingest();
-    const res = await server.inject({ method: 'GET', url: '/claims/stats' });
+    const res = await server.inject({ method: 'GET', url: '/claims/stats', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     const body = JSON.parse(res.body);
     expect(body.accuracyRate).toBeGreaterThanOrEqual(0);
     expect(body.accuracyRate).toBeLessThanOrEqual(1);
   });
 
   it('returns 200 for empty index', async () => {
-    const res = await server.inject({ method: 'GET', url: '/claims/stats' });
+    const res = await server.inject({ method: 'GET', url: '/claims/stats', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body).totalClaims).toBe(0);
   });
 
-  it('no auth required', async () => {
+  it('requires an API key', async () => {
     const res = await server.inject({ method: 'GET', url: '/claims/stats' });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(401);
   });
 });
 

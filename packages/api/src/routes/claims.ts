@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { getClaimIndex, computeAttributionConfidence } from '../store/claims.js';
 import { escHtml } from '../lib/html.js';
+import { requireApiKey } from '../plugins/auth.js';
 
 export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{
@@ -15,6 +16,8 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
   }>(
     '/claims',
     {
+      // Claim text and verdicts are caller data: a key is required (emma-soul al:6a0c831cb6ed0d62).
+      preHandler: requireApiKey,
       schema: {
         tags: ['Claims'],
         summary: 'Search claims by text, verdict, date, or source',
@@ -53,7 +56,7 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
-  fastify.get('/claims/trending', { schema: { tags: ['Claims'], summary: 'Trending claims by frequency and emerging in last 24h' } }, async (_request, reply) => {
+  fastify.get('/claims/trending', { preHandler: requireApiKey, schema: { tags: ['Claims'], summary: 'Trending claims by frequency and emerging in last 24h' } }, async (_request, reply) => {
     const index = getClaimIndex();
 
     return reply.status(200).send({
@@ -79,6 +82,7 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Params: { id: string } }>(
     '/claims/:id/attribution',
     {
+      preHandler: requireApiKey,
       schema: {
         tags: ['Claims'],
         summary: 'Provenance chain and attribution confidence for a claim',
@@ -117,6 +121,7 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Params: { id: string } }>(
     '/claims/:id/explain',
     {
+      preHandler: requireApiKey,
       schema: {
         tags: ['Claims'],
         summary: 'Reasoning chain and improvement suggestions for a claim',
@@ -142,7 +147,7 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
    */
   fastify.get(
     '/claims/stats',
-    { schema: { tags: ['Claims'], summary: 'Aggregate statistics across all verified claims' } },
+    { preHandler: requireApiKey, schema: { tags: ['Claims'], summary: 'Aggregate statistics across all verified claims' } },
     async (_request, reply) => {
       return reply.send(getClaimIndex().getStats());
     },

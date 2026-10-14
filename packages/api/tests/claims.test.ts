@@ -53,7 +53,7 @@ describe('GET /claims/trending', () => {
   });
 
   it('returns 200 with empty trending/emerging/verdictChanged on cold start', async () => {
-    const res = await server.inject({ method: 'GET', url: '/claims/trending' });
+    const res = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(Array.isArray(body.trending)).toBe(true);
@@ -70,7 +70,7 @@ describe('GET /claims/trending', () => {
       payload: JSON.stringify({ text: 'The moon landing occurred in 1969.', provider: 'mock' }),
     });
 
-    const res = await server.inject({ method: 'GET', url: '/claims/trending' });
+    const res = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     const body = JSON.parse(res.body);
     expect(body.trending.length).toBeGreaterThan(0);
     expect(body.trending[0].frequency).toBeGreaterThanOrEqual(1);
@@ -87,7 +87,7 @@ describe('GET /claims/trending', () => {
     resetCache();
     await server.inject({ method: 'POST', url: '/scan', headers, payload });
 
-    const res = await server.inject({ method: 'GET', url: '/claims/trending' });
+    const res = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     const body = JSON.parse(res.body);
     const claim = body.trending.find((t: { text: string }) =>
       t.text.toLowerCase().includes('moon landing'),
@@ -105,7 +105,7 @@ describe('GET /claims/trending', () => {
     resetCache();
     await server.inject({ method: 'POST', url: '/scan', headers, payload });
 
-    const res = await server.inject({ method: 'GET', url: '/claims/trending' });
+    const res = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     const body = JSON.parse(res.body);
     if (body.trending.length >= 2) {
       expect(body.trending[0].frequency).toBeGreaterThanOrEqual(body.trending[1].frequency);
@@ -120,17 +120,17 @@ describe('GET /claims/trending', () => {
       payload: JSON.stringify({ text: 'Fresh claim.', provider: 'mock' }),
     });
 
-    const res = await server.inject({ method: 'GET', url: '/claims/trending' });
+    const res = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     const body = JSON.parse(res.body);
     expect(body.emerging.length).toBeGreaterThan(0);
   });
 
-  it('does not require API key', async () => {
-    delete process.env.FAULTLINE_API_KEY;
-    const server2 = buildServer();
-    const res = await server2.inject({ method: 'GET', url: '/claims/trending' });
-    await server2.close();
-    expect(res.statusCode).toBe(200);
+  it('requires an API key: 401 without one, 401 with a wrong one', async () => {
+    const none = await server.inject({ method: 'GET', url: '/claims/trending' });
+    expect(none.statusCode).toBe(401);
+    const wrong = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': 'not-a-key' } });
+    expect(wrong.statusCode).toBe(401);
+    expect(none.body).not.toContain('normalizedText');
   });
 
   it('verdictChanged is empty when no verdict flips', async () => {
@@ -141,7 +141,7 @@ describe('GET /claims/trending', () => {
       payload: JSON.stringify({ text: 'Claim text.', provider: 'mock' }),
     });
 
-    const res = await server.inject({ method: 'GET', url: '/claims/trending' });
+    const res = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     const body = JSON.parse(res.body);
     expect(body.verdictChanged).toEqual([]);
   });
@@ -159,7 +159,7 @@ describe('GET /claims/trending', () => {
     mockScan.mockResolvedValueOnce(SCAN_RESULT_UNVERIFIED);
     await server.inject({ method: 'POST', url: '/scan', headers, payload });
 
-    const res = await server.inject({ method: 'GET', url: '/claims/trending' });
+    const res = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     const body = JSON.parse(res.body);
     expect(body.verdictChanged.length).toBeGreaterThan(0);
     expect(body.verdictChanged[0].previousVerdict).toBe('supported');
@@ -205,7 +205,7 @@ describe('GET /claims/trending', () => {
       payload: JSON.stringify({ text: 'Shape test.', provider: 'mock' }),
     });
 
-    const res = await server.inject({ method: 'GET', url: '/claims/trending' });
+    const res = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
     const body = JSON.parse(res.body);
     if (body.trending.length > 0) {
       const claim = body.trending[0];

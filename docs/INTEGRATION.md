@@ -729,9 +729,10 @@ These are available if your UI needs them.
 | `GET /dashboard` | Admin | Scan counts, risk distribution, provider status |
 | `GET /usage` | API key | Per-day scan counts for your key, and `quota` (monthly scan cap position). Admin keys also get `providerBudget` (the fleet provider-spend position) |
 | `POST /critique` | API key | Critique plus improved prompt for failed claims. Makes a paid LLM call, so it is rate limited and covered by the provider-spend cap and ledger. `provider` must be one of the `/scan` providers (unknown name: `400`). See `docs/provider-spend-cap.md` |
-| `GET /claims` | None | Claim database (searchable, filterable) |
-| `GET /claims/trending` | None | Trending + emerging claims |
-| `GET /claims/stats` | None | Accuracy rate, verdict distribution |
+| `GET /claims` | API key | Claim database (searchable, filterable) |
+| `GET /claims/trending` | API key | Trending + emerging claims |
+| `GET /claims/stats` | API key | Accuracy rate, verdict distribution |
+| `GET /claims/:id/attribution`, `GET /claims/:id/explain` | API key | One claim's sources, verdict history and reasoning |
 | `GET /scans/timeline` | API key | Re-scan history for a given text, from your key's scans only (admin: all keys) |
 | `GET /scans/search` | API key | Full-text search over your key's scan history (admin: all keys). `tenantId` narrows, never widens |
 | `GET /scan/:id/graph` | None | Mermaid claim graph for a scan |
