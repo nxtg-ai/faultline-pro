@@ -27,6 +27,8 @@ on:
           - secrets-list
           - scale-to-one
           - create-ledger-volume
+          - releases
+          - logs
 
 permissions:
   contents: read
@@ -75,3 +77,14 @@ jobs:
             flyctl volumes create faultline_ledgers -a "$APP" --region lax --size 1 --yes
           fi
           flyctl volumes list -a "$APP"
+
+      # Read-only, for incident forensics (GoPMO 1.18.11.3): deploy history
+      # with times, and whatever recent log buffer Fly still holds.
+      - name: Releases (deploy history)
+        if: inputs.action == 'releases'
+        run: flyctl releases -a "$APP" --json | python3 -c "import sys,json; [print(r.get('Version'), r.get('CreatedAt'), r.get('Status'), r.get('Description','')[:60]) for r in json.load(sys.stdin)]"
+
+      - name: Recent logs (buffer only, request lines)
+        if: inputs.action == 'logs'
+        run: flyctl logs -a "$APP" --no-tail | grep -E 'GET|POST|graphql|claims' | tail -n 2000 || true
+
