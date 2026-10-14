@@ -1,3 +1,4 @@
+import { storedVerdictProblem, InvalidVerdictError } from '@nxtg/faultline/lib/verdict-guard.js';
 import { randomUUID } from 'node:crypto';
 import { fireWebhookEvent } from './webhooks.js';
 
@@ -62,6 +63,14 @@ class ClaimIndex {
     verifications: Record<string, { status?: string; sources?: Array<{ title: string; uri: string }> }>,
     scanId: string,
   ): void {
+    for (const claim of claims) {
+      const v = verifications[claim.id];
+      // A missing status reads as 'unverified' below, so it is checked as that.
+      const problem = v === undefined ? null : storedVerdictProblem({ ...v, status: v.status ?? 'unverified' });
+      if (problem !== null) {
+        throw new InvalidVerdictError(`claim ${claim.id}: ${problem}`);
+      }
+    }
     const now = new Date().toISOString();
 
     for (const claim of claims) {

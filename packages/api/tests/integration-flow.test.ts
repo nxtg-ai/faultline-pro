@@ -63,7 +63,7 @@ vi.mock('@nxtg/faultline/cli/scan.js', () => ({
     verifications: {
       c1: {
         claimId: 'c1', status: 'supported', explanation: 'Confirmed by annual report.',
-        sources: [{ title: 'Annual Report 2024', url: 'https://example.com/report' }],
+        sources: [{ title: 'Annual Report 2024', uri: 'https://example.com/report' }],
       },
       c2: {
         claimId: 'c2', status: 'unverified', explanation: 'No corroborating source found.',

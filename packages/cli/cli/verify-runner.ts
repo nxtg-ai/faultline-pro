@@ -14,6 +14,7 @@ import { GeminiGroundingRetriever } from '../providers/gemini_provider.js';
 import { OpenAIWebSearchRetriever } from '../providers/openai_web_search_retriever.js';
 import { consensusVerify, type NamedProvider } from '../consensus/consensus_engine.js';
 import { classifyApiError } from '../providers/extraction-error.js';
+import { guardVerdict } from '../lib/verdict-guard.js';
 
 /** Claims verified at the same time within one scan. */
 export const VERIFY_CONCURRENCY = 8;
@@ -315,7 +316,7 @@ export async function runVerification(
     while (cursor < claims.length && !signal?.aborted) {
       const i = cursor++;
       onProgress?.(`Verifying claim ${i + 1}/${claims.length}...`);
-      const result = await verifyOneClaim(claims[i], verifier, flagExhaustedRetries);
+      const result = guardVerdict(await verifyOneClaim(claims[i], verifier, flagExhaustedRetries), claims[i].id);
       verifications[claims[i].id] = result;
       results[i] = result;
       onClaimVerified?.(claims[i], result, i, claims.length);

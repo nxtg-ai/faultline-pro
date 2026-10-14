@@ -1,3 +1,4 @@
+import { assertValidScanResult, isInvalidVerdictError } from '@nxtg/faultline/lib/verdict-guard.js';
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey, resolveRequestTenantId } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
@@ -222,6 +223,10 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
           emitScanCostEvent(costEvent);
           appendScanCostLog(costEvent);
           recordProviderSpend(costEvent); // A-110 item 1 — append-only provider-spend ledger
+          // A verdict outside the allowlist is refused before anything is stored
+          // or cached (502 invalid_verdict; GoPMO 1.18.11.3 P2). The spend above is real.
+          assertValidScanResult(result);
+
           // NOTE: POST /scan usage is incremented by the server.ts onResponse hook
           // (isScanPost && 200) — do NOT increment here or it double-counts. The
           // stream + template routes below DO increment locally (the hook doesn't
@@ -284,6 +289,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
           fireWebhookEvent('scan.complete', enriched);
           return reply.status(200).send(enriched);
         } catch (err) {
+          if (isInvalidVerdictError(err)) throw err;
           cb.recordFailure(p);
           attempted.push(p);
           lastFailure = err;

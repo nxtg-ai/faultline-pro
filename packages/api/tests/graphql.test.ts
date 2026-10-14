@@ -13,7 +13,7 @@ vi.mock('@nxtg/faultline/cli/scan.js', () => ({
     provider: 'mock',
     claims: [{ id: 'c1', text: 'The sky is blue.', type: 'fact', importance: 3 }],
     verifications: {
-      c1: { claimId: 'c1', status: 'verified', explanation: 'Observable.', sources: [] },
+      c1: { claimId: 'c1', status: 'supported', explanation: 'Observable.', sources: [] },
     },
     overallRisk: 'low',
     complianceReport: { riskTier: 'minimal', findings: [] },

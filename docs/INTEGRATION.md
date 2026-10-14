@@ -436,6 +436,7 @@ All errors return JSON with this shape:
 | `429` | `RATE_LIMIT_EXCEEDED` | Too many requests for this key |
 | `500` | `INTERNAL_ERROR` | Unexpected server error |
 | `502` | `extraction_failed` | Claim extraction failed at the provider (body `{"error":"extraction_failed","reason":"rate_limited"\|"provider_unavailable"\|"timeout"\|"invalid_output"\|"provider_error"}`). Nothing was checked; retry. `/scan/stream` sends the same fields in its `{"type":"error"}` event. Before 2026-10-13 a failed extraction was hidden and the scan ran on one synthetic claim per sentence. |
+| `502` | `invalid_verdict` | `POST /scan` only. The result carried a verdict status outside the stored allowlist (`supported`, `contradicted`, `mixed`, `unverified`, plus `skipped` for a claim not sent to verification), a source without a string `uri`, or an `overallRisk` outside `low`/`medium`/`high`/`critical`. Body `{"error":"An unexpected error occurred.","code":"invalid_verdict"}`. Nothing was stored or cached. Inside a scan the engine already replaces a malformed verdict with `unverified` plus `apiError: true`, `apiErrorReason: "provider_error"`, so this status means a value got past the engine. |
 | `503` | `SERVICE_UNAVAILABLE` | No providers configured, or all circuit-broken |
 
 **Rate limit error body** (429):

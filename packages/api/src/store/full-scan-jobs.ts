@@ -1,3 +1,4 @@
+import { guardVerdict } from '@nxtg/faultline/lib/verdict-guard.js';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -592,7 +593,8 @@ class FullScanJobStore {
   /** Record a verdict as it lands (index = position among the job's fact claims). */
   recordVerdict(job: FullScanJob, index: number, verdict: VerificationResult): void {
     if (isTerminal(job.status)) return;
-    job.verdicts[index] = verdict;
+    // A malformed verdict is stored as an unserved provider error (refunded), never as given.
+    job.verdicts[index] = guardVerdict(verdict, job.factIds[index] ?? verdict?.claimId ?? '');
   }
 
   /**

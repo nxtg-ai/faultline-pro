@@ -1,3 +1,4 @@
+import { assertValidScanResult } from '@nxtg/faultline/lib/verdict-guard.js';
 import { randomUUID } from 'node:crypto';
 
 export interface StoredScan {
@@ -13,6 +14,7 @@ class ScanStore {
   private readonly MAX = 1000;
 
   record(keyId: string, text: string, result: Record<string, unknown>): StoredScan {
+    assertValidScanResult(result);
     const entry: StoredScan = {
       id: randomUUID(),
       keyId,

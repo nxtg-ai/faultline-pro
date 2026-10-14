@@ -37,7 +37,7 @@ vi.mock('@nxtg/faultline/cli/scan.js', () => ({
     provider: 'mock',
     claims: [{ id: 'c1', text: 'AI generated the universe in 2023.', type: 'fact', importance: 4 }],
     verifications: {
-      c1: { claimId: 'c1', status: 'supported', explanation: 'Confirmed.', sources: [{ title: 'Source A', url: 'https://example.com' }] },
+      c1: { claimId: 'c1', status: 'supported', explanation: 'Confirmed.', sources: [{ title: 'Source A', uri: 'https://example.com' }] },
     },
     overallRisk: 'low',
     complianceReport: { riskTier: 'minimal', findings: [], claimMappings: [], euRiskSummary: { totalClaims: 1, highestTier: 'minimal', unacceptable: 0, high: 0, limited: 0, minimal: 1 } },

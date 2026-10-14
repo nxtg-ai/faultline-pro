@@ -657,6 +657,24 @@ describe('GET /scan/full/:jobId answers', () => {
 describe('persistence', () => {
   const PLANTED = 'Zanzibarquokka7731 marks the planted input';
 
+  // GoPMO 1.18.11.3 P2: a status outside the allowlist is never served as given.
+  it('a verdict outside the allowlist is unserved (provider_error) and refunded, never shown', async () => {
+    useFixtureProvider(async (c) => (c.id === 'c2' ? { ...supported(c), status: 'ROYALLY_CERTIFIED' as never } : supported(c)));
+    const jobId = await startJob(sentences(3), 'idem-allowlist');
+    const done = await untilTerminal(jobId);
+    expect(JSON.stringify(done)).not.toContain('ROYALLY_CERTIFIED');
+    const c2 = done.progress.find((p: Json) => p.claimId === 'c2');
+    expect(c2).toMatchObject({ status: 'unserved', reason: 'provider_error' });
+    expect(done.unserved).toEqual([{ claimId: 'c2', reason: 'provider_error' }]);
+    expect(done.progress.filter((p: Json) => p.status === 'served')).toHaveLength(2);
+  });
+
+  it('the job store itself replaces a verdict outside the allowlist (no engine in the loop)', () => {
+    const job = { status: 'running', factIds: ['c1'], verdicts: [undefined] } as never as Parameters<ReturnType<typeof getFullScanJobStore>['recordVerdict']>[0];
+    getFullScanJobStore().recordVerdict(job, 0, { claimId: 'c1', status: 'ROYALLY_CERTIFIED' as never, explanation: 'x', sources: [] });
+    expect(job.verdicts[0]).toMatchObject({ claimId: 'c1', status: 'unverified', apiError: true, apiErrorReason: 'provider_error' });
+  });
+
   // Google's grounding terms: Search Suggestions are shown unaltered with the
   // grounded verdict, and grounded output is never cached (fw al:da4e96a09515f831).
   it('Search Suggestions reach the submitter unaltered and never reach the ledger', async () => {

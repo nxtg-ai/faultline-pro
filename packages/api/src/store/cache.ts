@@ -1,3 +1,4 @@
+import { assertValidScanResult } from '@nxtg/faultline/lib/verdict-guard.js';
 import { createHash } from 'node:crypto';
 import { DEFAULT_VERIFY_CAP, resolveVerifyCap } from '@nxtg/faultline/cli/verify-cap.js';
 
@@ -75,6 +76,7 @@ class ScanCache {
     // free-tier-gemini 429 report cached + re-served. `apiError:true` is the
     // deterministic "not checked" flag every provider sets on verify failure.
     if (hasUncheckedClaim(result)) return;
+    assertValidScanResult(result);
     const key = cacheKey(text, provider, verifyCap);
     const now = Date.now();
     this.store.set(key, { result, cachedAt: now, expiresAt: now + this.ttlMs });
