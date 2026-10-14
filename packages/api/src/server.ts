@@ -209,15 +209,17 @@ export function buildServer() {
   fastify.register(critiqueRoutes);
   fastify.register(adminVerifyRoutes);
 
-  // GraphQL is OFF (emma-soul al:95753eecd4a6025b, CRITICAL). Its key check
-  // fired only on an exact POST /graphql, so a query string or a GET reached
-  // every resolver with no key, including createKey. With the route not
-  // registered, every /graphql method and URL variant answers 404. It comes
-  // back only with the scoped fix, after two review passes; tests opt in with
-  // FAULTLINE_GRAPHQL=on.
+  // GraphQL is OFF unless FAULTLINE_GRAPHQL=on (emma-soul al:95753eecd4a6025b,
+  // CRITICAL). Its key check had fired only on an exact POST /graphql, so a
+  // query string or a GET reached every resolver with no key, createKey
+  // included. Production keeps it off until this scoped fix passes two reviews.
   if (process.env.FAULTLINE_GRAPHQL === 'on') {
+    // Every request that reaches the GraphQL route needs a key, whatever its
+    // method or query string. The route pattern is matched, not the raw URL.
     fastify.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
-      if (request.url === '/graphql' && request.method === 'POST') {
+      const route = request.routeOptions?.url;
+      const path = request.url.split('?')[0].replace(/\/+$/, '');
+      if (route === '/graphql' || path.toLowerCase() === '/graphql') {
         const { requireApiKey } = await import('./plugins/auth.js');
         await requireApiKey(request, reply);
       }

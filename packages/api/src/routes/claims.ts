@@ -262,6 +262,10 @@ function buildClaimsHtml(): string {
 <header>
   <div style="font-size:1.2rem;font-weight:700;letter-spacing:-.02em"><span style="color:#f85149">fault</span>line pro</div>
   <h1>Claim Database</h1>
+  <form id="key-form" style="margin-left:auto;display:flex;gap:6px" onsubmit="event.preventDefault();saveKey()">
+    <input id="api-key" type="password" placeholder="API key" autocomplete="off" aria-label="API key" style="padding:4px 8px">
+    <button type="submit">Use key</button>
+  </form>
 </header>
 
 <div class="container">
@@ -346,6 +350,18 @@ function buildClaimsHtml(): string {
 </div>
 
 <script>
+// The claim routes need an API key. It is kept for this tab only and sent as x-api-key.
+function apiKey() { try { return sessionStorage.getItem('faultline-api-key') || ''; } catch { return ''; } }
+function saveKey() {
+  try { sessionStorage.setItem('faultline-api-key', document.getElementById('api-key').value.trim()); } catch {}
+  loadStats(); loadSidebar(); runSearch(1);
+}
+async function api(path) {
+  const r = await fetch(path, { headers: { 'x-api-key': apiKey() } });
+  if (r.status === 401) throw new Error('Enter a valid API key to see your claims.');
+  if (!r.ok) throw new Error('Request failed (' + r.status + ')');
+  return r.json();
+}
 const PAGE_SIZE = 25;
 let allResults = [];
 let currentPage = 1;
@@ -368,7 +384,7 @@ function fmt(iso) {
 // ── Stats ──────────────────────────────────────────────────────────────────────
 async function loadStats() {
   try {
-    const d = await fetch('/claims/stats').then(r => r.json());
+    const d = await api('/claims/stats');
     document.getElementById('s-total').textContent = d.totalClaims.toLocaleString();
     document.getElementById('s-scans').textContent = d.totalScans.toLocaleString();
     const acc = (d.accuracyRate * 100).toFixed(1) + '%';
@@ -404,7 +420,7 @@ async function loadStats() {
 // ── Trending / Emerging ────────────────────────────────────────────────────────
 async function loadSidebar() {
   try {
-    const d = await fetch('/claims/trending').then(r => r.json());
+    const d = await api('/claims/trending');
 
     document.getElementById('trending-list').innerHTML = d.trending.length === 0
       ? '<p class="empty" style="padding:12px 0">No claims yet.</p>'
@@ -443,7 +459,7 @@ async function runSearch(page) {
   params.set('limit', '200');
 
   try {
-    const d = await fetch('/claims?' + params.toString()).then(r => r.json());
+    const d = await api('/claims?' + params.toString());
     allResults = d.claims || [];
     renderPage();
     loadStats();  // refresh stats after search
