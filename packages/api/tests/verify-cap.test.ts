@@ -115,16 +115,16 @@ describe('ScanCache — keyed on the verify cap', () => {
 
   it('a result cached under one cap is not served under another', () => {
     const cache = getScanCache();
-    cache.set('same text', 'mock', { marker: 'cap3' }, 3);
-    expect(cache.get('same text', 'mock', 8)).toBeNull();
-    expect(cache.get('same text', 'mock', 3)).toEqual({ marker: 'cap3' });
+    cache.set('k', 'same text', 'mock', { marker: 'cap3' }, 3);
+    expect(cache.get('k', 'same text', 'mock', 8)).toBeNull();
+    expect(cache.get('k', 'same text', 'mock', 3)?.result).toEqual({ marker: 'cap3' });
   });
 
   it('no cap means the engine default (8), so warm-up entries serve 8-cap plans', () => {
     const cache = getScanCache();
-    cache.set('warm text', 'mock', { marker: 'default' });
-    expect(cache.get('warm text', 'mock', 8)).toEqual({ marker: 'default' });
-    expect(cache.get('warm text', 'mock', 3)).toBeNull();
+    cache.set('k', 'warm text', 'mock', { marker: 'default' });
+    expect(cache.get('k', 'warm text', 'mock', 8)?.result).toEqual({ marker: 'default' });
+    expect(cache.get('k', 'warm text', 'mock', 3)).toBeNull();
   });
 });
 

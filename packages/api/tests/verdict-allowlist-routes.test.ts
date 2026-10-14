@@ -114,10 +114,10 @@ describe('each store refuses an invalid verdict at its write method', () => {
   });
 
   it('scan cache', () => {
-    expect(() => getScanCache().set('text', 'mock', result(PROBE) as never)).toThrow(/invalid verdict/);
-    expect(getScanCache().get('text', 'mock')).toBeNull();
-    getScanCache().set('text', 'mock', result('contradicted') as never);
-    expect(getScanCache().get('text', 'mock')).not.toBeNull();
+    expect(() => getScanCache().set('k', 'text', 'mock', result(PROBE) as never)).toThrow(/invalid verdict/);
+    expect(getScanCache().get('k', 'text', 'mock')).toBeNull();
+    getScanCache().set('k', 'text', 'mock', result('contradicted') as never);
+    expect(getScanCache().get('k', 'text', 'mock')).not.toBeNull();
   });
 
   it('claim index', () => {

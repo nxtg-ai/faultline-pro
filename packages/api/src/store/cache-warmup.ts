@@ -17,6 +17,7 @@
 import { randomUUID } from 'node:crypto';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { getScanCache } from './cache.js';
+import { OPERATOR_CACHE_CALLER } from '../lib/cache-caller.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -182,13 +183,16 @@ export class CacheWarmer {
 
     try {
       const result = await scan(target.text, target.provider);
-      getScanCache().set(target.text, target.provider, result as unknown as Record<string, unknown>);
+      // Warmed for the operator's own caller only (cache entries are per caller).
+      const stored = getScanCache().set(OPERATOR_CACHE_CALLER, target.text, target.provider, result as unknown as Record<string, unknown>);
       const durationMs  = Date.now() - start;
       return store.recordRun(targetId, {
         startedAt,
         completedAt: new Date().toISOString(),
         durationMs,
-        status:      'done',
+        // A result the cache refuses (unchecked claims, or Gemini Grounded Results,
+        // which Google's terms forbid caching) is reported, never shown as warmed.
+        ...(stored ? { status: 'done' as const } : { status: 'error' as const, error: 'not cacheable: unchecked claims or Gemini Grounded Results (provider terms)' }),
       });
     } catch (err) {
       const durationMs = Date.now() - start;

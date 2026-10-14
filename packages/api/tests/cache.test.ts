@@ -280,9 +280,9 @@ describe('Cache — TTL expiry', () => {
     process.env.FAULTLINE_CACHE_TTL_MS = '1';
     resetCache();
     const cache = getScanCache();
-    cache.set('text', 'gemini', SCAN_RESULT as unknown as Record<string, unknown>);
+    cache.set('k', 'text', 'gemini', SCAN_RESULT as unknown as Record<string, unknown>);
     return new Promise<void>(resolve => setTimeout(resolve, 5)).then(() => {
-      const result = cache.get('text', 'gemini');
+      const result = cache.get('k', 'text', 'gemini');
       expect(result).toBeNull();
       delete process.env.FAULTLINE_CACHE_TTL_MS;
       resetCache();
@@ -322,8 +322,8 @@ describe('ScanCache — never caches unchecked/apiError results', () => {
 
   it('caches a clean result (control)', () => {
     const clean = { claims: [{ id: 'c1' }], verifications: { c1: { status: 'supported' } } };
-    getScanCache().set('doc', 'gemini', clean);
-    expect(getScanCache().get('doc', 'gemini')).toEqual(clean);
+    getScanCache().set('k', 'doc', 'gemini', clean);
+    expect(getScanCache().get('k', 'doc', 'gemini')?.result).toEqual(clean);
     expect(getScanCache().stats().size).toBe(1);
   });
 
@@ -332,13 +332,13 @@ describe('ScanCache — never caches unchecked/apiError results', () => {
       claims: [{ id: 'c1' }],
       verifications: { c1: { status: 'unverified', apiError: true, explanation: 'Verification temporarily unavailable' } },
     };
-    getScanCache().set('doc429', 'gemini', poisoned);
-    expect(getScanCache().get('doc429', 'gemini')).toBeNull();
+    getScanCache().set('k', 'doc429', 'gemini', poisoned);
+    expect(getScanCache().get('k', 'doc429', 'gemini')).toBeNull();
     expect(getScanCache().stats().size).toBe(0);
   });
 
   it('refuses to cache when apiError is inline on a claim', () => {
-    getScanCache().set('doc2', 'openai', { claims: [{ id: 'c1', apiError: true }] });
-    expect(getScanCache().get('doc2', 'openai')).toBeNull();
+    getScanCache().set('k', 'doc2', 'openai', { claims: [{ id: 'c1', apiError: true }] });
+    expect(getScanCache().get('k', 'doc2', 'openai')).toBeNull();
   });
 });

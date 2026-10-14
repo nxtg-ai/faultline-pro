@@ -13,14 +13,50 @@ interface CacheEntry {
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 /**
+ * The caller is part of the key: a result is served back only to the caller
+ * that paid for it, never to another key or another user behind faultline-web's
+ * server key (EP4 Amendment 2 item 7, emma-soul al:193832a732e0b82e).
  * The verify cap is part of the key: a result verified under one plan's cap
  * must never be served to a plan with a different cap. The cap is normalised
  * the way the engine normalises it, so 8 and an invalid value share an entry.
  */
-function cacheKey(text: string, provider: string, verifyCap: number): string {
+function cacheKey(caller: string, text: string, provider: string, verifyCap: number): string {
   return createHash('sha256')
-    .update(`${text}\0${provider}\0cap=${resolveVerifyCap(verifyCap)}`)
+    .update(`${caller}\0${text}\0${provider}\0cap=${resolveVerifyCap(verifyCap)}`)
     .digest('hex');
+}
+
+const GROUNDING_HOST = 'vertexaisearch.cloud.google.com';
+
+/**
+ * True when a result holds Gemini Grounded Results: a verdict whose retriever
+ * is gemini-grounding, or a source that is a Google grounding Link. Google's
+ * terms say "will not ... cache ... Grounded Results" and show them only "to
+ * the end user who submitted the prompt", so such a result is never cached,
+ * not even for its own caller.
+ */
+export function holdsGroundedResults(result: ScanResult): boolean {
+  const verifications = (result as { verifications?: Record<string, unknown> }).verifications;
+  if (!verifications || typeof verifications !== 'object') return false;
+  for (const v of Object.values(verifications)) {
+    if (!v || typeof v !== 'object') continue;
+    const prov = (v as { provenance?: { retriever?: unknown; provider?: unknown } }).provenance;
+    if (prov?.retriever === 'gemini-grounding' || prov?.provider === 'gemini') return true;
+    const sources = (v as { sources?: Array<{ uri?: unknown }> }).sources;
+    if (Array.isArray(sources) && sources.some((s) => typeof s?.uri === 'string' && hostOf(s.uri) === GROUNDING_HOST)) return true;
+  }
+  return false;
+}
+
+function hostOf(uri: string): string {
+  try { return new URL(uri).hostname.toLowerCase(); } catch { return ''; }
+}
+
+/** A cache hit: the result as it was stored, and when it was checked. */
+export interface CacheHit {
+  result: ScanResult;
+  /** When the cached scan ran (ISO). Shown in the response so a hit never reads as fresh. */
+  checkedAt: string;
 }
 
 /**
@@ -56,8 +92,8 @@ class ScanCache {
   }
 
   /** `verifyCap` defaults to the engine default, the cap a scan() without options runs at. */
-  get(text: string, provider: string, verifyCap: number = DEFAULT_VERIFY_CAP): ScanResult | null {
-    const key = cacheKey(text, provider, verifyCap);
+  get(caller: string, text: string, provider: string, verifyCap: number = DEFAULT_VERIFY_CAP): CacheHit | null {
+    const key = cacheKey(caller, text, provider, verifyCap);
     const entry = this.store.get(key);
     if (!entry) { this._misses++; return null; }
     if (Date.now() > entry.expiresAt) {
@@ -66,20 +102,23 @@ class ScanCache {
       return null;
     }
     this._hits++;
-    return entry.result;
+    return { result: entry.result, checkedAt: new Date(entry.cachedAt).toISOString() };
   }
 
-  set(text: string, provider: string, result: ScanResult, verifyCap: number = DEFAULT_VERIFY_CAP): void {
+  /** Store a result for `caller`. Returns false when the result may not be cached. */
+  set(caller: string, text: string, provider: string, result: ScanResult, verifyCap: number = DEFAULT_VERIFY_CAP): boolean {
     // Never cache a scan whose verification did not run (provider quota/auth/5xx).
     // A cached error report is a served defect that survives the key/config fix —
     // it re-serves the raw failure for the full TTL. Origin: 2026-07-13 prod
     // free-tier-gemini 429 report cached + re-served. `apiError:true` is the
     // deterministic "not checked" flag every provider sets on verify failure.
-    if (hasUncheckedClaim(result)) return;
+    if (hasUncheckedClaim(result)) return false;
     assertValidScanResult(result);
-    const key = cacheKey(text, provider, verifyCap);
+    if (holdsGroundedResults(result)) return false;
+    const key = cacheKey(caller, text, provider, verifyCap);
     const now = Date.now();
     this.store.set(key, { result, cachedAt: now, expiresAt: now + this.ttlMs });
+    return true;
   }
 
   flush(): void {

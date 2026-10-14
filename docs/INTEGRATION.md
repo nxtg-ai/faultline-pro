@@ -132,6 +132,8 @@ Extracts claims from text and verifies each one.
 X-Cache: HIT | MISS       (whether the result came from cache)
 ```
 
+**Cache.** A result is cached for 24 hours for **its own caller only**: the same API key and, behind faultline-web's server key, the same user (`x-faultline-user-ref`, trusted from that key alone). A hit says so in the body, `"cache": {"hit": true, "checkedAt": "<when the scan ran>"}`, so a cached verdict never reads as fresh; a fresh result has no `cache` field. **A Gemini-grounded result is never cached**, not even for its own caller: Google's terms say "will not ... cache ... Grounded Results". So with the default provider (`gemini`) every scan runs fresh. Results with an unchecked claim are never cached either. `POST /scan/deep` follows the same rules.
+
 ---
 
 ### POST `/scan/batch` — Multiple texts in one call
@@ -411,7 +413,7 @@ independentEvidence?: {
 
 An empty `sources` list means the second retriever found nothing. OpenAI's terms: the customer "owns all Output" (Services Agreement §4.1), and the web search guide requires citations to be "clearly visible and clickable" when web results are shown. Cost, measured 2026-10-14: about 1.1 to 1.3 cents per checked claim.
 
-**Provenance.** Every verdict whose check ran names the provider and model that produced it and the time, bound at the provider call. The provider id is always the one the engine resolved, and so are `retriever`, `verifiedAt` and `retrievedAt`: the times are when the provider call returned, and the `gemini-grounding` retriever is carried only by the built-in `gemini` provider or by a consensus run whose shared retriever is Gemini grounding. A provider's own claims to any of these are discarded; only its reported model is kept. A cached result keeps its original `verifiedAt`, so a cache hit shows how old the verdict is. The API PDF prints one "Checked by" line per claim and each source's URI.
+**Provenance.** Every verdict whose check ran names the provider and model that produced it and the time, bound at the provider call. The provider id is always the one the engine resolved, and so are `retriever`, `verifiedAt` and `retrievedAt`: the times are when the provider call returned, and the `gemini-grounding` retriever is carried only by the built-in `gemini` provider or by a consensus run whose shared retriever is Gemini grounding. A provider's own claims to any of these are discarded; only its reported model is kept. A cached result keeps its original `verifiedAt` and carries `cache.checkedAt`, so a cache hit shows how old the verdict is. The API PDF prints one "Checked by" line per claim and each source's URI.
 
 **Search Suggestions (Gemini grounded verdicts).** When a verdict came from Gemini with Grounding with Google Search, it carries `searchEntryPoint.renderedContent` (HTML and CSS from Google) and `webSearchQueries`, passed through unaltered from that verdict's own grounded request. Google's grounding terms require the suggestion to be displayed, unaltered, wherever that verdict's explanation or sources are shown to the end user, and grounded results to be shown only to the end user who submitted the prompt. Render `renderedContent` as given (for example in a sandboxed iframe or a shadow root); do not restyle, trim or re-host it. The fields are on every surface that returns a verdict: `GET`/`POST /scan/stream` (`claim_verified.verdict`), `POST /scan` (`verifications[id]`) and `GET /scan/full/:jobId` (`progress[].verdict`). Faultline never writes them to disk.
 

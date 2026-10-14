@@ -8,6 +8,7 @@ import { fireWebhookEvent } from '../store/webhooks.js';
 import { getCircuitBreaker } from '../store/circuit-breaker.js';
 import type { Provider } from '../store/circuit-breaker.js';
 import { getScanCache } from '../store/cache.js';
+import { cacheCaller } from '../lib/cache-caller.js';
 import { buildEvidenceLinks } from '../lib/url-validator.js';
 
 const BODY_SCHEMA = {
@@ -41,8 +42,9 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
       const effectiveProvider = provider ?? 'gemini';
 
       // Check cache first
-      const cached = getScanCache().get(text, `deep:${effectiveProvider}`);
-      if (cached) {
+      const hit = getScanCache().get(cacheCaller(request), text, `deep:${effectiveProvider}`);
+      if (hit) {
+        const cached: Record<string, unknown> = { ...hit.result, cache: { hit: true, checkedAt: hit.checkedAt } };
         reply.header('X-Cache', 'HIT');
         getAnalyticsStore().record(keyId, (cached as { overallRisk: string }).overallRisk as RiskLevel);
         fireWebhookEvent('scan.complete', cached);
@@ -71,7 +73,7 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
 
           const enriched = { ...result, evidenceLinks };
 
-          getScanCache().set(text, `deep:${effectiveProvider}`, enriched as unknown as Record<string, unknown>);
+          getScanCache().set(cacheCaller(request), text, `deep:${effectiveProvider}`, enriched as unknown as Record<string, unknown>);
           getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
           fireWebhookEvent('scan.complete', enriched);
 

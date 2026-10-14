@@ -15,6 +15,7 @@ import { getCircuitBreaker } from '../store/circuit-breaker.js';
 import type { Provider } from '../store/circuit-breaker.js';
 import { getAuditLogger } from '../store/audit.js';
 import { getScanCache } from '../store/cache.js';
+import { cacheCaller } from '../lib/cache-caller.js';
 import { getTemplateStore } from '../store/templates.js';
 import { getClaimIndex } from '../store/claims.js';
 import { getCostStore, emitScanCostEvent, appendScanCostLog, resolveTier, buildManagedCostEvent } from '../store/costs.js';
@@ -161,8 +162,9 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
         }
       }
 
-      const cached = getScanCache().get(text, effectiveProvider, verifyPolicy.cap);
-      if (cached) {
+      const hit = getScanCache().get(cacheCaller(request), text, effectiveProvider, verifyPolicy.cap);
+      const cached = hit?.result;
+      if (hit && cached) {
         reply.header('X-Cache', 'HIT');
         getAnalyticsStore().record(keyId, (cached as { overallRisk: string }).overallRisk as RiskLevel);
         recordScanTelemetry({
@@ -181,6 +183,8 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
           ...cached,
           complianceScore: cachedCompReport.complianceScore,
           compliancePass: cachedCompGate.pass,
+          // Said in the result itself, so a cached verdict never reads as fresh.
+          cache: { hit: true, checkedAt: hit.checkedAt },
         }, verifyPolicy.tier);
         fireWebhookEvent('scan.complete', cachedEnriched);
         return reply.status(200).send(cachedEnriched);
@@ -258,7 +262,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
             });
           }
 
-          getScanCache().set(text, effectiveProvider, result as unknown as Record<string, unknown>, verifyPolicy.cap);
+          getScanCache().set(cacheCaller(request), text, effectiveProvider, result as unknown as Record<string, unknown>, verifyPolicy.cap);
           const scanId = `scan-${Date.now()}`;
           getClaimIndex().ingest(
             Array.isArray(result.claims) ? (result.claims as Array<{ id: string; text: string; type?: string }>) : [],
