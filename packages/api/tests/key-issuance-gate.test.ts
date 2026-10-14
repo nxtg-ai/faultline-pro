@@ -63,6 +63,28 @@ describe('customer key issuance is closed', () => {
     expect(open.statusCode).toBe(201);
   });
 
+  it('KG-6. PATCH cannot re-scope a key into a customer key while closed', async () => {
+    const created = await server.inject({ method: 'POST', url: '/keys', headers: H, body: JSON.stringify({ name: 'operator', permissions: ['admin', 'scan'] }) });
+    expect(created.statusCode).toBe(201);
+    const id = JSON.parse(created.body).id;
+    const nonAdmin = () => getKeyStore().list().filter((k) => !k.permissions.includes('admin')).length;
+    for (const permissions of [['scan'], [], ['scan', 'report']]) {
+      const res = await server.inject({ method: 'PATCH', url: `/keys/${id}`, headers: H, body: JSON.stringify({ permissions }) });
+      expect(res.statusCode).toBe(403);
+      expect(JSON.parse(res.body).error).toBe('customer_keys_closed');
+    }
+    expect(nonAdmin()).toBe(0);
+    expect(getKeyStore().validateById(id)!.permissions).toContain('admin');
+    const rename = await server.inject({ method: 'PATCH', url: `/keys/${id}`, headers: H, body: JSON.stringify({ name: 'renamed' }) });
+    expect(rename.statusCode).toBe(200);
+    const keepAdmin = await server.inject({ method: 'PATCH', url: `/keys/${id}`, headers: H, body: JSON.stringify({ permissions: ['admin'] }) });
+    expect(keepAdmin.statusCode).toBe(200);
+    process.env.FAULTLINE_CUSTOMER_KEYS = 'on';
+    const open = await server.inject({ method: 'PATCH', url: `/keys/${id}`, headers: H, body: JSON.stringify({ permissions: ['scan'] }) });
+    expect(open.statusCode).toBe(200);
+    expect(nonAdmin()).toBe(1);
+  });
+
   it('KG-5. GraphQL createKey refuses a customer key while closed', async () => {
     process.env.FAULTLINE_GRAPHQL = 'on';
     const s2 = buildServer();

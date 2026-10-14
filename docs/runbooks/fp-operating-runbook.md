@@ -57,7 +57,7 @@ A change is not done until, in the same commit or PR: `CHANGELOG.md` `[Unrelease
 
 ## Customer keys (closed)
 
-`FAULTLINE_CUSTOMER_KEYS` is unset in production: the engine issues only admin keys (emma-soul al:837ec6cea3437a7d). Set it to `on` only after the tenancy change (every stored object owned, one ownership guard, a route-table test) has passed two reviews and emma-soul rules it open.
+`FAULTLINE_CUSTOMER_KEYS` is unset in production: the engine issues only admin keys, and `PATCH /keys/:id` cannot re-scope a key to non-admin permissions (emma-soul al:837ec6cea3437a7d; PATCH gap found by the post-deploy seat, al:cb6b01db985c2056). Set it to `on` only after the tenancy change (every stored object owned, one ownership guard, a route-table test) has passed two reviews and emma-soul rules it open.
 
 ## Live probes (zero or near-zero spend)
 

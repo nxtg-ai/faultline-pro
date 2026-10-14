@@ -392,6 +392,11 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
     '/keys/:id',
     { preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Update key name and/or permissions', body: PATCH_BODY_SCHEMA } },
     async (request, reply) => {
+      // Re-scoping a key is issuing one: an admin key PATCHed down to ["scan"]
+      // would be a customer key minted past the freeze (seat al:cb6b01db985c2056 M1).
+      if (request.body.permissions !== undefined && !mayIssueKey(request.body.permissions)) {
+        return reply.status(403).send(CUSTOMER_KEYS_CLOSED);
+      }
       const store = getKeyStore();
       const updated = store.update(request.params.id, request.body);
       if (!updated) return reply.status(404).send({ error: 'Key not found.' });
