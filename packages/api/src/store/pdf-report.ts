@@ -29,6 +29,20 @@ export interface PdfVerification {
   sources:     Array<{ title: string; uri: string; evidence?: PdfSourceEvidence }>;
   /** Who produced the verdict and when (engine VerdictProvenance). */
   provenance?: { provider: string; model: string; verifiedAt: string; retriever?: string; retrievedAt?: string };
+  /** Passages a second retriever found, kept apart from `sources` (engine IndependentEvidence). */
+  independentEvidence?: {
+    retriever: string;
+    model?: string;
+    retrievedAt: string;
+    sources: Array<{ title: string; uri: string; evidence?: PdfSourceEvidence }>;
+  };
+}
+
+/** The heading line for a second retriever's passages, or null when there are none. */
+export function independentHeading(ie: PdfVerification['independentEvidence']): string | null {
+  if (!ie || typeof ie.retriever !== 'string' || typeof ie.retrievedAt !== 'string') return null;
+  const by = typeof ie.model === 'string' ? `${ie.retriever} / ${ie.model}` : ie.retriever;
+  return `Independent passages (${by}, searched ${ie.retrievedAt}):`;
 }
 
 /** What fetching a cited source found (engine SourceEvidence). */
@@ -548,6 +562,29 @@ function drawClaimAnalysis(
               .restore();
             doc.moveDown(0.15);
           }
+        });
+      }
+
+      // Independent passages from a second retriever, apart from the verdict's sources
+      const heading = independentHeading(v.independentEvidence);
+      if (heading) {
+        doc.save().fontSize(8).font('Helvetica-Bold').fillColor(COLORS.muted)
+          .text(heading, COLORS.pageGutter + 10, doc.y, { width: COLORS.pageWidth - 20 }).restore();
+        const found = v.independentEvidence!.sources ?? [];
+        if (found.length === 0) {
+          doc.save().fontSize(8).font('Helvetica').fillColor(COLORS.muted)
+            .text('No result pages found.', COLORS.pageGutter + 20, doc.y).restore();
+        }
+        found.slice(0, 3).forEach(src => {
+          doc.save().fontSize(8).font('Helvetica').fillColor(COLORS.blue)
+            .text(src.title && src.title !== src.uri ? `• ${src.title} (${src.uri})` : `• ${src.uri}`, COLORS.pageGutter + 20, doc.y, { width: COLORS.pageWidth - 30, ellipsis: true })
+            .restore();
+          const quoted = evidenceLine(src.evidence);
+          if (quoted) {
+            doc.save().fontSize(8).font('Helvetica-Oblique').fillColor(COLORS.text)
+              .text(quoted, COLORS.pageGutter + 28, doc.y, { width: COLORS.pageWidth - 38 }).restore();
+          }
+          doc.moveDown(0.15);
         });
       }
     }

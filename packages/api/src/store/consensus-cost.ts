@@ -34,13 +34,15 @@ export interface Rate {
  * calls (NOT provider families — that conflation is what let defect 3 hide).
  * Values pinned 2026-07-03 (see rates.ts provenance citations, mirrored here):
  *   gemini-2.5-flash  $0.30/$2.50  + $0.035/grounded-prompt
- *   gpt-4o-mini       $0.15/$0.60  (legacy grandfathered 4o-mini)
+ *   gpt-4o-mini       $0.15/$0.60 + $0.010/web_search call (the fee applies only to
+ *                     isGrounding legs; the 8,000-token search block is in input_tokens,
+ *                     measured 2026-10-14; developers.openai.com/api/docs/pricing)
  *   claude-opus-4-8   $5.00/$25.00 (LIVE Anthropic models page)
  *   gpt-4o            $2.50/$10.00 + $0.010/web_search call (legacy 4o)
  */
 export const CONSENSUS_MODEL_RATES: Record<string, Rate> = {
   'gemini-2.5-flash': { inputPerM: 0.30, outputPerM: 2.50, groundingPerCall: 0.035 },
-  'gpt-4o-mini':      { inputPerM: 0.15, outputPerM: 0.60, groundingPerCall: 0 },
+  'gpt-4o-mini':      { inputPerM: 0.15, outputPerM: 0.60, groundingPerCall: 0.010 },
   'claude-opus-4-8':  { inputPerM: 5.00, outputPerM: 25.00, groundingPerCall: 0 },
   'gpt-4o':           { inputPerM: 2.50, outputPerM: 10.00, groundingPerCall: 0.010 },
 };

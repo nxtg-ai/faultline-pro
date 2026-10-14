@@ -33,6 +33,18 @@ export interface Source {
   evidence?: SourceEvidence;
 }
 
+/** Passages from a second retriever, kept apart from the verdict's own sources. */
+export interface IndependentEvidence {
+  /** The retriever's name, e.g. 'openai-web-search'. */
+  retriever: string;
+  /** The model that ran the search, when the retriever reports one. */
+  model?: string;
+  /** When the search returned (ISO 8601). */
+  retrievedAt: string;
+  /** The retriever's result pages, each with what fetching it found. No model-written snippet. */
+  sources: Source[];
+}
+
 /** What fetching one cited source found (Honor System #3, GoPMO 1.18.11.3 P1b). */
 export interface SourceEvidence {
   /**
@@ -167,6 +179,13 @@ export interface VerificationResult {
   searchEntryPoint?: { renderedContent: string };
   /** Who produced this verdict and when (see VerdictProvenance). */
   provenance?: VerdictProvenance;
+  /**
+   * Passages found by a second, independent retriever whose terms allow
+   * fetching its result pages, run beside the verdict (GoPMO 1.18.11.3;
+   * emma-soul authorization al:e615798a8e8109c0). Never merged into
+   * `sources`: those are what the verdict was grounded on.
+   */
+  independentEvidence?: IndependentEvidence;
   /** The Google Search queries the grounded prompt ran (same source, same rule). */
   webSearchQueries?: string[];
   /**

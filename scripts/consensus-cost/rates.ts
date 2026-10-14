@@ -58,7 +58,13 @@ export const LIVE_RATES: Record<string, Rate | null> = {
   //   legacy GPT-4o rates still billed for existing 4o access, confirmed via web search of
   //   pricing aggregators (pricepertoken.com, valueaddvc.com). Re-verify if a paid run depends
   //   on exactness. NOT taken from a live official page.
-  'gpt-4o-mini':      { inputPerM: 0.15, outputPerM: 0.60, groundingPerCall: 0 },
+  //   UPDATE 2026-10-14: the official pricing page now lists gpt-4o-mini at "$0.15 | $0.075 | - |
+  //   $0.60" and web search at "$10.00 / 1k calls", with "For gpt-4o-mini and gpt-4.1-mini with the
+  //   non-preview web search tool, search content tokens are billed as a fixed block of 8,000 input
+  //   tokens per call" (https://developers.openai.com/api/docs/pricing, fetched 2026-10-14). A live
+  //   call reported input_tokens 8174, so the block is inside input_tokens. groundingPerCall applies
+  //   only to isGrounding legs (the web_search retriever), never to a grounded-verify:openai voter.
+  'gpt-4o-mini':      { inputPerM: 0.15, outputPerM: 0.60, groundingPerCall: 0.010 },
   // claude-opus-4-8: $5.00/M input, $25.00/M output. Confirmed verbatim on the LIVE Anthropic
   //   models page (fetched 2026-07-03): "claude-opus-4-8 ... $5 / input MTok  $25 / output MTok".
   //   Source: https://platform.claude.com/docs/en/about-claude/models/overview

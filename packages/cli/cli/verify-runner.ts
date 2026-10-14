@@ -16,6 +16,7 @@ import { consensusVerify, type NamedProvider } from '../consensus/consensus_engi
 import { classifyApiError } from '../providers/extraction-error.js';
 import { guardVerdict } from '../lib/verdict-guard.js';
 import { attachEvidence, type EvidenceOptions } from '../evidence/passage.js';
+import { attachIndependentEvidence, type IndependentEvidenceOptions } from '../evidence/independent.js';
 
 /** Claims verified at the same time within one scan. */
 export const VERIFY_CONCURRENCY = 8;
@@ -246,6 +247,8 @@ export interface RunVerificationOptions {
   concurrency?: number;
   /** When set, each verdict's cited sources are fetched for evidence passages before it is reported (GoPMO 1.18.11.3 P1b). */
   evidence?: EvidenceOptions;
+  /** When set, a second retriever's passages are attached as independentEvidence before the verdict is reported. */
+  independentEvidence?: IndependentEvidenceOptions;
 }
 
 /** What one verify-stage run produced. */
@@ -344,7 +347,10 @@ export async function runVerification(
       const i = cursor++;
       onProgress?.(`Verifying claim ${i + 1}/${claims.length}...`);
       const checked = guardVerdict(await verifyOneClaim(claims[i], verifier, flagExhaustedRetries), claims[i].id);
-      const result = options.evidence ? await attachEvidence(checked, claims[i].text, options.evidence) : checked;
+      const withSources = options.evidence ? await attachEvidence(checked, claims[i].text, options.evidence) : checked;
+      const result = options.independentEvidence
+        ? await attachIndependentEvidence(withSources, claims[i].text, options.independentEvidence)
+        : withSources;
       verifications[claims[i].id] = result;
       results[i] = result;
       onClaimVerified?.(claims[i], result, i, claims.length);

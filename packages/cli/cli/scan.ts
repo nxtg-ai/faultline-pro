@@ -1,4 +1,5 @@
 import type { EvidenceOptions } from '../evidence/passage.js';
+import type { IndependentEvidenceOptions } from '../evidence/independent.js';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import type { Claim, VerificationResult, AnalysisState } from '../types.js';
@@ -72,6 +73,8 @@ export interface ScanOptions {
    * (evidence/passage.ts). Off unless set; the API passes its guarded fetch.
    */
   evidence?: EvidenceOptions;
+  /** Attach a second retriever's passages as independentEvidence (off unless set). */
+  independentEvidence?: IndependentEvidenceOptions;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -144,6 +147,7 @@ export interface VerifyFullScanOptions {
   ruleNames?: string[];
   /** Attach evidence passages from each cited source (see ScanOptions.evidence). */
   evidence?: EvidenceOptions;
+  independentEvidence?: IndependentEvidenceOptions;
 }
 
 function calculateRisk(
@@ -295,13 +299,14 @@ export async function scan(
     return runFullVerification(claims, verifier, {
       provider: extractionProvider.name, text, minConfidence, ruleNames, onProgress, onClaim: onClaimVerified,
       evidence: options?.evidence,
+      independentEvidence: options?.independentEvidence,
     });
   }
 
   const verifyCap = resolveVerifyCap(options?.verifyCap);
   const rankedEligible = rankEligibleClaims(claims);
   const toVerify = rankedEligible.slice(0, verifyCap);
-  const { verifications } = await runVerification(toVerify, verifier, { onProgress, onClaimVerified, evidence: options?.evidence });
+  const { verifications } = await runVerification(toVerify, verifier, { onProgress, onClaimVerified, evidence: options?.evidence, independentEvidence: options?.independentEvidence });
 
   onProgress?.('Generating report...');
   const overallRisk = calculateRisk(verifications);
@@ -371,6 +376,7 @@ interface FullVerificationContext {
   signal?: AbortSignal;
   concurrency?: number;
   evidence?: EvidenceOptions;
+  independentEvidence?: IndependentEvidenceOptions;
 }
 
 /** The full-scan core shared by scan(mode 'full') and verifyFullScan. */
@@ -387,6 +393,7 @@ async function runFullVerification(
     concurrency: context.concurrency,
     flagExhaustedRetries: true,
     evidence: context.evidence,
+    independentEvidence: context.independentEvidence,
   });
 
   context.onProgress?.('Generating report...');

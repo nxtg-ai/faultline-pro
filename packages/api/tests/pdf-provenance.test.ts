@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 // The lib entry avoids pdf-parse's debug harness in index.js.
 import pdf from 'pdf-parse/lib/pdf-parse.js';
-import { evidenceLine, generatePdfReport, provenanceLine } from '../src/store/pdf-report.js';
+import { evidenceLine, generatePdfReport, independentHeading, provenanceLine } from '../src/store/pdf-report.js';
 
 const SCAN = {
   input: 'The Eiffel Tower was completed in 1889.',
@@ -67,5 +67,26 @@ describe('API PDF', () => {
     const buf = await generatePdfReport({ ...SCAN, verifications: { c1: bare } } as never);
     const { text } = await pdf(buf);
     expect(String(text)).not.toContain('Checked by');
+  });
+});
+
+describe('independent passages in the PDF', () => {
+  const ie = {
+    retriever: 'openai-web-search', model: 'gpt-4o-mini', retrievedAt: '2026-10-14T04:00:00.000Z',
+    sources: [{ title: 'Ospreyfold Archive', uri: 'https://ospreyfold.example/e', evidence: { status: 'ok', passage: 'Ospreyfold says the tower was finished in 1889.', fetchedAt: '2026-10-14T04:00:01.000Z' } }],
+  };
+
+  it('independentHeading names the retriever, model and search time', () => {
+    expect(independentHeading(ie)).toBe('Independent passages (openai-web-search / gpt-4o-mini, searched 2026-10-14T04:00:00.000Z):');
+    expect(independentHeading(undefined)).toBeNull();
+  });
+
+  it('prints the second retriever\'s passages apart from the verdict\'s sources', async () => {
+    const scan = { ...SCAN, verifications: { c1: { ...SCAN.verifications.c1, independentEvidence: ie } } };
+    const { text } = await pdf(await generatePdfReport(scan as never));
+    const flat = String(text).replace(/\s+/g, ' ');
+    expect(flat).toContain('Independent passages (openai-web-search / gpt-4o-mini');
+    expect(flat).toContain('Ospreyfold says the tower was finished in 1889.');
+    expect(flat).toContain('https://ospreyfold.example/e');
   });
 });

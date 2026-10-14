@@ -46,11 +46,14 @@ interface ResponsesPayload {
 export class OpenAIWebSearchRetriever implements Retriever {
   readonly name = 'openai-web-search';
   private readonly apiKey: string;
-  private readonly model: string;
+  /** The model that runs the web_search call (recorded in provenance and usage). */
+  readonly model: string;
 
-  constructor(apiKey: string) {
+  /** `opts.model` overrides FAULTLINE_OPENAI_SEARCH_MODEL and the default. */
+  constructor(apiKey: string, opts: { model?: string } = {}) {
     this.apiKey = apiKey;
     this.model =
+      opts.model ||
       (typeof process !== 'undefined' ? process.env?.FAULTLINE_OPENAI_SEARCH_MODEL : undefined) ||
       DEFAULT_MODEL;
   }

@@ -53,6 +53,8 @@ A change is not done until, in the same commit or PR: `CHANGELOG.md` `[Unrelease
 
 - `FAULTLINE_EVIDENCE_FETCH=off` (Fly secret or env) stops the API fetching cited pages for evidence passages (GoPMO 1.18.11.3 P1b). Default on. Every fetch goes through `fetchOutboundFollow` (private addresses and every redirect hop refused, 6 s and 1.5 MB per page). The API test suite sets it off in `packages/api/vitest.config.ts`; `tests/evidence-routes.test.ts` turns it on with a stubbed network.
 
+- `FAULTLINE_PASSAGE_LEG=on` turns on the independent passage leg (OpenAI web_search on each verified claim, its result pages quoted into `independentEvidence`). Off by default; it also needs `OPENAI_API_KEY`. `FAULTLINE_PASSAGE_SEARCH_MODEL` overrides the model (default `gpt-4o-mini`). Authorization: emma-soul al:e615798a8e8109c0, 40 USD build-and-test cap, at most 1.5 cents per checked claim in production. Measured 2026-10-14: gpt-4o-mini about 1.1 to 1.3 cents per claim, gpt-4.1-mini about 1.4 to 1.7 cents (over the cap). Gemini grounding Links are never fetched (Google's terms; emma-soul al:07b45f0562efbbf0).
+
 ## Live probes (zero or near-zero spend)
 
 - Consensus gate: `POST https://faultline-api.fly.dev/scan/stream` with the server key, `x-user-tier: pro`, body `{"text":"…","provider":"mock","pipelineConfig":{"extractionProvider":"mock","consensus":true,"consensusProviders":["mock"]}}` → `403 consensus_not_in_plan`; `x-user-tier: enterprise` → 200.

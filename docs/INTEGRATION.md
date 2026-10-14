@@ -398,6 +398,19 @@ evidence?: {
 
 `ok` means a sentence on the page shares enough words with the claim (at least two, and at least 40% of the claim's content words) to be the best quote; it is not a judgment that the page supports the claim. The verdict's `status` is that judgment. `no_match` means the page was read and no sentence shared enough words with the claim; Faultline never fills that gap with a model-written quote. A source's older `snippet` field, when present, is model-derived and is not evidence. Fetching adds up to 6 seconds per claim (sources are fetched in parallel). The API PDF quotes each passage with the time the page was read.
 
+**Independent passages (behind `FAULTLINE_PASSAGE_LEG=on`, off by default).** Because Gemini grounding Links may not be fetched, the API can run a second retriever beside the verdict: OpenAI web_search on the same claim (model `gpt-4o-mini` unless `FAULTLINE_PASSAGE_SEARCH_MODEL` says otherwise). It fetches that retriever's own result pages and quotes them into a separate field. These pages are not what the verdict was grounded on, so they are never merged into `sources`:
+
+```typescript
+independentEvidence?: {
+  retriever: string;      // 'openai-web-search'
+  model?: string;         // e.g. 'gpt-4o-mini'
+  retrievedAt: string;    // ISO 8601, when the search returned
+  sources: Array<{ title: string; uri: string; evidence: SourceEvidence }>;  // at most 3; the search model's own snippet is not carried
+}
+```
+
+An empty `sources` list means the second retriever found nothing. OpenAI's terms: the customer "owns all Output" (Services Agreement §4.1), and the web search guide requires citations to be "clearly visible and clickable" when web results are shown. Cost, measured 2026-10-14: about 1.1 to 1.3 cents per checked claim.
+
 **Provenance.** Every verdict whose check ran names the provider and model that produced it and the time, bound at the provider call. The provider id is always the one the engine resolved. A cached result keeps its original `verifiedAt`, so a cache hit shows how old the verdict is. The API PDF prints one "Checked by" line per claim and each source's URI.
 
 **Search Suggestions (Gemini grounded verdicts).** When a verdict came from Gemini with Grounding with Google Search, it carries `searchEntryPoint.renderedContent` (HTML and CSS from Google) and `webSearchQueries`, passed through unaltered from that verdict's own grounded request. Google's grounding terms require the suggestion to be displayed, unaltered, wherever that verdict's explanation or sources are shown to the end user, and grounded results to be shown only to the end user who submitted the prompt. Render `renderedContent` as given (for example in a sandboxed iframe or a shadow root); do not restyle, trim or re-host it. The fields are on every surface that returns a verdict: `GET`/`POST /scan/stream` (`claim_verified.verdict`), `POST /scan` (`verifications[id]`) and `GET /scan/full/:jobId` (`progress[].verdict`). Faultline never writes them to disk.

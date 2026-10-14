@@ -1,4 +1,4 @@
-import { apiEvidenceOptions } from '../lib/evidence.js';
+import { apiEvidenceOptions, apiIndependentEvidenceOptions } from '../lib/evidence.js';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
@@ -179,7 +179,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
             });
           },
           /* pipelineConfig */ undefined,
-          { verifyCap: verifyPolicy.cap, evidence: apiEvidenceOptions() },
+          { verifyCap: verifyPolicy.cap, evidence: apiEvidenceOptions(), independentEvidence: apiIndependentEvidenceOptions() },
         ));
 
         const claimCount = Array.isArray(result.claims) ? result.claims.length : 0;
@@ -294,7 +294,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
             });
           },
           pipelineConfig,
-          { verifyCap: verifyPolicy.cap, evidence: apiEvidenceOptions() },
+          { verifyCap: verifyPolicy.cap, evidence: apiEvidenceOptions(), independentEvidence: apiIndependentEvidenceOptions() },
         ));
 
         const claimCount = Array.isArray(result.claims) ? result.claims.length : 0;

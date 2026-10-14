@@ -1,4 +1,4 @@
-import { apiEvidenceOptions } from '../lib/evidence.js';
+import { apiEvidenceOptions, apiIndependentEvidenceOptions } from '../lib/evidence.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { extractForFullScan, verifyFullScan, type FullScanResult } from '@nxtg/faultline/cli/scan.js';
 import { partitionForFullScan } from '@nxtg/faultline/cli/full-scan.js';
@@ -212,6 +212,7 @@ async function runFullScanJob(store: FullScanJobStore, job: FullScanJob): Promis
     concurrency: FULL_SCAN_CONCURRENCY,
     signal: job.controller.signal,
     evidence: apiEvidenceOptions(),
+    independentEvidence: apiIndependentEvidenceOptions(),
     onClaim: (_claim, verdict, index) => store.recordVerdict(job, index, verdict),
   }));
   logFullScanCost(legs, {
