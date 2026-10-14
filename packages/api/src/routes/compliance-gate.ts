@@ -4,6 +4,7 @@ import { rateLimitScan } from '../plugins/ratelimit.js';
 import { esc } from '../lib/html.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { getScanStore } from '../store/scans.js';
+import { ownedScan } from '../lib/scan-access.js';
 import { getComplianceHistoryStore } from '../store/compliance-history.js';
 import { fireWebhookEvent } from '../store/webhooks.js';
 import {
@@ -273,7 +274,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
       },
     },
     async (request, reply) => {
-      const stored = getScanStore().getById(request.params.id);
+      const stored = ownedScan(request.params.id, request.keyId);
       if (!stored) {
         return reply.status(404).send({ error: 'Scan not found.' });
       }
@@ -310,9 +311,9 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
     },
     async (request, reply) => {
       const { beforeId, afterId, projectName } = request.body;
-      const beforeScan = getScanStore().getById(beforeId);
+      const beforeScan = ownedScan(beforeId, request.keyId);
       if (!beforeScan) return reply.status(404).send({ error: `Scan not found: ${beforeId}` });
-      const afterScan = getScanStore().getById(afterId);
+      const afterScan = ownedScan(afterId, request.keyId);
       if (!afterScan) return reply.status(404).send({ error: `Scan not found: ${afterId}` });
 
       const beforeResult = beforeScan.result as unknown as Parameters<typeof buildEuComplianceReport>[0];
@@ -348,7 +349,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
       },
     },
     async (request, reply) => {
-      const stored = getScanStore().getById(request.params.id);
+      const stored = ownedScan(request.params.id, request.keyId);
       if (!stored) {
         return reply.status(404).send({ error: 'Scan not found.' });
       }
@@ -473,7 +474,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
         summary: 'EU AI Act compliance dashboard (HTML)',
       },
     },
-    async (_request, reply) => {
+    async (request, reply) => {
       const store = getComplianceHistoryStore();
       const history = store.query({ limit: 20 });
       const latest = history.length > 0 ? history[history.length - 1] : null;
@@ -506,7 +507,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
       // Fetch per-article breakdown from the latest scan (if available)
       let articleStatuses: Array<{ article: string; status: string; score: number }> = [];
       if (latest) {
-        const scan = getScanStore().getById(latest.scanId);
+        const scan = ownedScan(latest.scanId, request.keyId);
         if (scan) {
           const result = scan.result as unknown as Parameters<typeof buildEuComplianceReport>[0];
           const report = buildEuComplianceReport(result, { projectName: latest.projectName });

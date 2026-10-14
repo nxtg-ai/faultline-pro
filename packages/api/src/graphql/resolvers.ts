@@ -16,6 +16,13 @@ function requireAdmin(ctx: GqlContext): void {
   if (!isAdminKeyId(ctx.keyId)) throw new GraphQLError('Forbidden. Admin access required.', { extensions: { code: 'FORBIDDEN' } });
 }
 
+/** A `limit` argument: a positive integer, capped at `max`; anything else is refused. */
+function boundedLimit(value: number | undefined, fallback: number, max: number): number {
+  if (value === undefined || value === null) return fallback;
+  if (!Number.isInteger(value) || value < 1) throw new GraphQLError('limit must be a positive integer.', { extensions: { code: 'BAD_USER_INPUT' } });
+  return Math.min(value, max);
+}
+
 /** The key whose data a non-admin caller may read: always its own. */
 function ownKeyScope(ctx: GqlContext, requested: string | undefined): string | undefined {
   if (isAdminKeyId(ctx.keyId)) return requested;
@@ -61,7 +68,7 @@ export const resolvers = {
     },
 
     scans: (_: unknown, args: { keyId?: string; limit?: number }, ctx: GqlContext) => {
-      const limit = Math.min(args.limit ?? 50, 200);
+      const limit = boundedLimit(args.limit, 50, 200);
       const items = getScanStore().list(ownKeyScope(ctx, args.keyId), limit);
       return items.map((s) => toScanResult(s.id, s.result, s.scannedAt));
     },
@@ -84,7 +91,7 @@ export const resolvers = {
     audit: (_: unknown, args: { limit?: number }, ctx: GqlContext) => {
       requireAdmin(ctx);
       const entries = getAuditLogger().getEntries();
-      const max = Math.min(args.limit ?? 100, 500);
+      const max = boundedLimit(args.limit, 100, 500);
       const limited = entries.slice(-max);
       return limited.map((e) => ({
         timestamp: e.timestamp,

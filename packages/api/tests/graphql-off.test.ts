@@ -30,12 +30,12 @@ describe('GraphQL is off', () => {
   it.each([
     ['POST', '/graphql'],
     ['POST', '/graphql?x=1'],
-    ['POST', '/graphql/'],
-    ['POST', '/GraphQL'],
     ['GET', '/graphql'],
     ['GET', '/graphql?query=%7Bscans%7Bid%7D%7D'],
-    ['POST', '/graphiql'],
   ] as const)('GO-1. %s %s answers 404 without a key', async (method, url) => {
+    // Only variants that reach GraphQL when it is on, so each goes red if the
+    // switch fails. Trailing slash, other case and /graphiql 404 either way
+    // (post-deploy Opus seat on 0ae37a0: those three proved nothing).
     const res = await server.inject({ method, url, headers: { 'content-type': 'application/json' }, ...(method === 'POST' ? { body: MUTATION } : {}) });
     expect(res.statusCode).toBe(404);
   });

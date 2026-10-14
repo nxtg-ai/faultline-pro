@@ -146,6 +146,24 @@ describe('GraphQL needs a key on every method and URL', () => {
     expect(JSON.stringify(body.data ?? {})).not.toContain('"count":3');
   });
 
+  it.each([
+    ['POST /%67raphql (percent-encoded path)', { method: 'POST', url: '/%67raphql?x=1', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query: SCANS_QUERY }) }],
+    ['POST absolute-form target', { method: 'POST', url: 'http://localhost/graphql?x=1', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query: SCANS_QUERY }) }],
+    ['GET /%67raphql', { method: 'GET', url: `/%67raphql?query=${encodeURIComponent(SCANS_QUERY)}` }],
+  ])('GQ-9. %s with no key gets no data', async (_name, req) => {
+    seedPrivateScan('someone-else');
+    const res = await server.inject(req as never);
+    expect(res.body).not.toContain(PRIVATE);
+    expect([401, 404]).toContain(res.statusCode);
+  });
+
+  it('GQ-10. a scans or audit limit below 1 is refused', async () => {
+    for (const query of ['{ scans(limit: -5) { id } }', '{ scans(limit: 0) { id } }', '{ audit(limit: -1) { endpoint } }']) {
+      const res = await server.inject({ method: 'POST', url: '/graphql', headers: { 'x-api-key': ADMIN, 'content-type': 'application/json' }, body: JSON.stringify({ query }) });
+      expect(JSON.parse(res.body).errors?.[0]?.message, query).toMatch(/positive integer/);
+    }
+  });
+
   it('GQ-6. the server key still works', async () => {
     seedPrivateScan('someone');
     const res = await server.inject({ method: 'POST', url: '/graphql', headers: { 'x-api-key': ADMIN, 'content-type': 'application/json' }, body: JSON.stringify({ query: SCANS_QUERY }) });
@@ -208,5 +226,41 @@ describe('the claim viewer sends a key', () => {
     expect(() => new Function(script)).not.toThrow();
     expect(script).toContain("'x-api-key': apiKey()");
     expect(script).not.toMatch(/fetch\('\/claims/);
+  });
+});
+
+describe('stored scans in PDF and compliance routes belong to their key', () => {
+  let server: FastifyInstance;
+
+  beforeEach(() => {
+    process.env.FAULTLINE_API_KEY = ADMIN;
+    resetScanStore(); resetKeyStore();
+    server = buildServer();
+  });
+
+  afterEach(async () => {
+    await server.close();
+    delete process.env.FAULTLINE_API_KEY;
+  });
+
+  it('SC-1. another key cannot read a stored scan through the PDF, compliance or badge routes', async () => {
+    const owner = getKeyStore().create('owner', ['scan', 'report']);
+    const other = getKeyStore().create('other', ['scan', 'report']);
+    const id = seedPrivateScan(owner.id);
+    const asOther = { 'x-api-key': other.key, 'content-type': 'application/json' };
+    const reqs = [
+      { method: 'GET', url: `/scan/report/pdf/${id}`, headers: asOther },
+      { method: 'POST', url: '/scan/report/pdf', headers: asOther, body: JSON.stringify({ scanId: id }) },
+      { method: 'GET', url: `/scan/${id}/compliance`, headers: asOther },
+      { method: 'GET', url: `/scan/${id}/compliance/badge`, headers: asOther },
+      { method: 'POST', url: '/scan/compliance-diff', headers: asOther, body: JSON.stringify({ beforeId: id, afterId: id }) },
+    ];
+    for (const r of reqs) {
+      const res = await server.inject(r as never);
+      expect(res.statusCode, `${r.method} ${r.url}`).toBe(404);
+      expect(res.body).not.toContain('PrivateClaimMarker');
+    }
+    const own = await server.inject({ method: 'GET', url: `/scan/report/pdf/${id}`, headers: { 'x-api-key': owner.key } });
+    expect(own.statusCode).toBe(200);
   });
 });
