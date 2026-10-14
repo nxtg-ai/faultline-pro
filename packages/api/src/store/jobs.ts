@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { scan } from '@nxtg/faultline/cli/scan.js';
-import { fireWebhookEvent, webhookSafeData } from './webhooks.js';
+import { fireWebhookEvent, webhookSafeData, keyIsLive } from './webhooks.js';
 import type { WebhookEventOwner } from './webhooks.js';
 import { getAuditLogger } from './audit.js';
 import { fetchOutbound } from '../lib/outbound-url.js';
@@ -70,6 +70,11 @@ class JobStore {
 
   list(): Job[] {
     return Array.from(this.jobs.values());
+  }
+
+  /** The jobs created by `keyId`. */
+  listOwnedBy(keyId: string): Job[] {
+    return this.list().filter((j) => this.owners.get(j.id)?.keyId === keyId);
   }
 
   get(id: string): Job | null {
@@ -154,9 +159,13 @@ class JobScheduler {
         nextRunAt,
         runCount: job.runCount + 1,
       });
+      const owner = getJobStore().ownerOf(job.id);
       if (job.webhookUrl) {
+        // Sent only while the creator's key is live, checked after the scan ran
+        // (codex seat, 84cf8c8). A job with no recorded owner sends nothing.
+        const ownerLive = owner !== null && owner !== 'public' && keyIsLive(owner.keyId);
         // Guarded at send time too: the host's DNS may have changed since the job was created.
-        void fetchOutbound(job.webhookUrl, {
+        if (ownerLive) void fetchOutbound(job.webhookUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           // A grounded result reaches no webhook, this one included (Google's terms).

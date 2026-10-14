@@ -298,7 +298,8 @@ export async function dispatchWebhook(
     await _sleep(attempt === 0 ? 0 : retryDelayMs);
     // Ownership is re-read before every attempt: a key can leave the tenant,
     // or be deleted or disabled, while a retry waits (codex seat, 859a348).
-    if (!webhookMayReceive(webhook, owner)) {
+    // A webhook deleted while a retry waits gets nothing more.
+    if (getWebhookStore().getById(webhook.id) === undefined || !webhookMayReceive(webhook, owner)) {
       getWebhookDeliveryLog().push({
         id: randomUUID(), webhookId: webhook.id, event, url: webhook.url,
         timestamp: new Date().toISOString(), attempt: attempt + 1, statusCode: null,
@@ -549,7 +550,8 @@ export function keyIsLive(keyId: string): boolean {
 }
 
 export function webhookMayReceive(webhook: Webhook, owner: WebhookEventOwner): boolean {
-  if (owner === 'public') return true;
+  // Public events still need a live owner key when one was recorded.
+  if (owner === 'public') return webhook.ownerKeyId === undefined || keyIsLive(webhook.ownerKeyId);
   if (owner === null) return false;
   const ownerKeyId = webhook.ownerKeyId;
   if (ownerKeyId === undefined) return false;
@@ -599,22 +601,36 @@ export function webhookSafeData(event: WebhookEvent, data: unknown): unknown {
   };
 }
 
-const ERROR_TEXT_MAX = 300;
-const URL_IN_TEXT = /https?:\/\/[^\s"'<>)]+/gi;
+const ERROR_TEXT_MAX = 200;
+/** Error texts written by Faultline itself, which quote no provider output. */
+const OWN_ERROR_PREFIXES = ['All providers', 'No API key found for', 'Outbound URL blocked', 'test-event', 'Scan failed'];
+export const GENERIC_SCAN_ERROR = 'Scan failed (provider error).';
 
 /**
- * An error string bound for a caller's URL: Google grounding Links removed and
- * capped, so a provider error that quotes grounded output carries no source or
- * long passage (codex seat, 859a348; no engine error does this today).
+ * The error text a caller's URL may receive. A provider's own error message can
+ * quote its output, Gemini Grounded Results included, so only messages Faultline
+ * writes itself pass (capped); anything else becomes a fixed generic message
+ * (codex seats on 859a348 and 84cf8c8).
  */
 export function sanitizeErrorText(text: string): string {
-  const stripped = text.replace(URL_IN_TEXT, (u) => (isGroundingRedirect(u) ? '[grounding link removed]' : u));
+  if (!OWN_ERROR_PREFIXES.some((p) => text.startsWith(p))) return GENERIC_SCAN_ERROR;
+  const stripped = text.replace(/https?:\/\/\S+/gi, (u) => (isGroundingRedirect(u.replace(/[)"'.,;]+$/, '')) ? '[link removed]' : u));
   return stripped.length > ERROR_TEXT_MAX ? `${stripped.slice(0, ERROR_TEXT_MAX)}…` : stripped;
 }
 
 function sanitizeErrorField(data: unknown): unknown {
   if (!data || typeof data !== 'object' || typeof (data as { error?: unknown }).error !== 'string') return data;
   return { ...(data as Record<string, unknown>), error: sanitizeErrorText((data as { error: string }).error) };
+}
+
+/**
+ * The result with a `scanId`, so a webhook's minimal event (and the caller's
+ * response) can name the scan. Keeps an id the result already has. A copy;
+ * the input (possibly a cached object) is never changed.
+ */
+export function withScanId<T extends object>(result: T, scanId?: string): T & { scanId: string } {
+  const existing = (result as { scanId?: unknown }).scanId;
+  return { ...result, scanId: typeof existing === 'string' ? existing : scanId ?? `scan-${randomUUID()}` };
 }
 
 export function fireWebhookEvent(event: WebhookEvent, data: unknown, owner: WebhookEventOwner): void {

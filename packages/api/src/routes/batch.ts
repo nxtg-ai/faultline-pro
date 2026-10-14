@@ -4,7 +4,7 @@ import { scan } from '@nxtg/faultline/cli/scan.js';
 import { isExtractionError } from '@nxtg/faultline/providers/extraction-error.js';
 import { getAnalyticsStore } from '../store/analytics.js';
 import type { RiskLevel } from '../store/analytics.js';
-import { fireWebhookEvent } from '../store/webhooks.js';
+import { fireWebhookEvent, withScanId } from '../store/webhooks.js';
 import { requestOwner } from '../lib/cache-caller.js';
 import { getRateLimiter } from '../store/ratelimit.js';
 import { getKeyStore } from '../store/keys.js';
@@ -126,7 +126,7 @@ export async function batchRoutes(fastify: FastifyInstance): Promise<void> {
       for (let i = 0; i < settled.length; i++) {
         const outcome = settled[i];
         if (outcome.status === 'fulfilled') {
-          const result = outcome.value;
+          const result = withScanId(outcome.value);
           results.push(result);
           getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
           getUsageMeter().increment(keyId);
