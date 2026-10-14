@@ -52,6 +52,17 @@ describe('text and matching', () => {
     expect(p).toBe("Construction finished in March 1889, and the Eiffel Tower was completed in time for the World's Fair.");
   });
 
+  it('pickPassage skips navigation crumbs and template or JSON text, and prefers the sentence with the claim\'s number', () => {
+    const page = [
+      'Hoover Dam. Home .',
+      '"},"map_caption":{"wt":"Eiffel Tower completed 1889"},"location":{"wt":"[[Paris]]"}.',
+      'The Eiffel Tower is a wrought-iron lattice tower that was completed for the fair in Paris.',
+      'Work on the Eiffel Tower was completed in 1889 after two years of construction in Paris.',
+    ].join(' ');
+    expect(pickPassage(page, CLAIM_TEXT)).toBe('Work on the Eiffel Tower was completed in 1889 after two years of construction in Paris.');
+    expect(pickPassage('Eiffel Tower. Home. Completed 1889 .', CLAIM_TEXT)).toBeNull();
+  });
+
   it('pickPassage returns null when nothing on the page matches enough', () => {
     expect(pickPassage('Bananas are yellow. Apples are red.', CLAIM_TEXT)).toBeNull();
     expect(pickPassage('The tower is tall.', CLAIM_TEXT)).toBeNull();
@@ -123,7 +134,7 @@ describe('fetchSourceEvidence', () => {
   });
 
   it('reads at most maxBytes and says the page was truncated', async () => {
-    const big = `<p>Eiffel Tower was completed in 1889.</p>${'x'.repeat(5000)}`;
+    const big = `<p>The Eiffel Tower in Paris was completed in 1889 for the fair.</p>${'x'.repeat(5000)}`;
     const ev = await fetchSourceEvidence(source, CLAIM_TEXT, { fetch: fetchOf(() => htmlResponse(big)), maxBytes: 1000 });
     expect(ev.truncated).toBe(true);
     expect(ev.contentSha256).toBe(createHash('sha256').update(big.slice(0, 1000)).digest('hex'));

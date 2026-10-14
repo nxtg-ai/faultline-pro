@@ -79,18 +79,34 @@ export function htmlToText(html: string): string {
  * the next sentence appended when the first is short, cut at PASSAGE_MAX_CHARS.
  * Null when no sentence shares at least max(2, 40% of the claim's tokens).
  */
+/** A candidate must read as prose: long enough, and not markup, JSON or wiki template text. */
+const MIN_SENTENCE_CHARS = 40;
+const NOT_PROSE = /[{}]|":|\[\[|\]\]|\|\s*\w+\s*=|=\s*"|<|>|\bwt\b/;
+
+export function isProseSentence(s: string): boolean {
+  if (s.length < MIN_SENTENCE_CHARS || NOT_PROSE.test(s)) return false;
+  const words = s.split(/\s+/).filter((w) => /[\p{L}]{2,}/u.test(w));
+  return words.length >= 6;
+}
+
 export function pickPassage(pageText: string, claimText: string): string | null {
-  const claim = new Set(contentTokens(claimText));
+  const claimTokens = contentTokens(claimText);
+  const claim = new Set(claimTokens);
   if (claim.size === 0) return null;
-  const need = Math.max(2, Math.ceil(claim.size * 0.4));
+  const numbers = new Set(claimTokens.filter((t) => /\d/.test(t)));
+  const need = Math.max(2, Math.ceil(claim.size * 0.5));
   const sentences = pageText.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter((s) => s.length > 0);
   let best = -1;
   let bestScore = 0;
+  let bestShared = 0;
   sentences.forEach((s, i) => {
-    const score = new Set(contentTokens(s).filter((t) => claim.has(t))).size;
-    if (score > bestScore) { bestScore = score; best = i; }
+    if (!isProseSentence(s)) return;
+    const shared = new Set(contentTokens(s).filter((t) => claim.has(t)));
+    // A number from the claim (a year, a figure) is the strongest signal, so it counts twice.
+    const score = shared.size + [...shared].filter((t) => numbers.has(t)).length;
+    if (score > bestScore) { bestScore = score; bestShared = shared.size; best = i; }
   });
-  if (best < 0 || bestScore < need) return null;
+  if (best < 0 || bestShared < need) return null;
   let passage = sentences[best];
   if (passage.length < 80 && sentences[best + 1]) passage = `${passage} ${sentences[best + 1]}`;
   if (passage.length > PASSAGE_MAX_CHARS) {
