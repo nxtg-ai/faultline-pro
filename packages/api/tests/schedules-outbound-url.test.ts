@@ -187,4 +187,11 @@ describe('the schedule webhookUrl is guarded at send time (wired 231adeb)', () =
     await getScheduleRunner().runSchedule(s);
     expect(posts()).toEqual(['https://hooks.example.com/run']);
   });
+
+  it('SO-W4 the POST carries a timeout signal, so a slow receiver cannot hold the run', async () => {
+    const s = textSchedule('https://hooks.example.com/run');
+    await getScheduleRunner().runSchedule(s);
+    const init = fetchSpy.mock.calls.find(([, i]) => (i as RequestInit | undefined)?.method === 'POST')?.[1] as RequestInit;
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
 });

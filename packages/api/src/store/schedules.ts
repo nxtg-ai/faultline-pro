@@ -413,6 +413,7 @@ async function dispatchScheduleNotification(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(10_000), // a slow receiver cannot hold the run (as webhook dispatch)
       }).then((r) => r.body?.cancel()).catch(() => { /* non-fatal, including a blocked target */ });
     }
   } catch { /* non-fatal */ }
