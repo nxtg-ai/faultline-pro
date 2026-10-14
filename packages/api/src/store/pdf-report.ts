@@ -27,6 +27,18 @@ export interface PdfVerification {
   status:      string;
   explanation: string;
   sources:     Array<{ title: string; uri: string }>;
+  /** Who produced the verdict and when (engine VerdictProvenance). */
+  provenance?: { provider: string; model: string; verifiedAt: string; retriever?: string; retrievedAt?: string };
+}
+
+/** One line naming who checked a claim and when, or null when the verdict carries no provenance. */
+export function provenanceLine(p: PdfVerification['provenance']): string | null {
+  if (!p || typeof p.provider !== 'string' || typeof p.model !== 'string' || typeof p.verifiedAt !== 'string') return null;
+  const by = typeof p.retriever === 'string' ? ` by ${p.retriever}` : '';
+  const retrieved = typeof p.retrievedAt === 'string' && p.retrievedAt !== p.verifiedAt
+    ? `; evidence retrieved${by} at ${p.retrievedAt}`
+    : typeof p.retrievedAt === 'string' ? ` (evidence retrieved${by} in the same request)` : '';
+  return `Checked by ${p.provider} / ${p.model} at ${p.verifiedAt}${retrieved}`;
 }
 
 export interface PdfScanResult {
@@ -468,6 +480,18 @@ function drawClaimAnalysis(
         .restore();
       doc.moveDown(0.3);
 
+      // Provenance (Honor System #2, GoPMO 1.18.11.3 P1a)
+      const checkedBy = provenanceLine(v.provenance);
+      if (checkedBy) {
+        doc.save()
+          .fontSize(8)
+          .font('Helvetica')
+          .fillColor(COLORS.muted)
+          .text(checkedBy, COLORS.pageGutter + 10, doc.y, { width: COLORS.pageWidth - 20 })
+          .restore();
+        doc.moveDown(0.3);
+      }
+
       // Sources
       if (v.sources?.length > 0) {
         doc.save()
@@ -481,7 +505,7 @@ function drawClaimAnalysis(
             .fontSize(8)
             .font('Helvetica')
             .fillColor(COLORS.blue)
-            .text(`• ${src.title ?? src.uri}`, COLORS.pageGutter + 20, doc.y, {
+            .text(src.title && src.title !== src.uri ? `• ${src.title} (${src.uri})` : `• ${src.uri}`, COLORS.pageGutter + 20, doc.y, {
               width: COLORS.pageWidth - 30,
               ellipsis: true,
             })

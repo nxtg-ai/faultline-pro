@@ -175,6 +175,13 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
     });
 
     recordGeminiUsage(response, true, 'grounded-verify:gemini');
+    // The grounded request searched and judged in one call, so retrieval and
+    // verdict share this moment (Honor System #2, GoPMO 1.18.11.3 P1a).
+    const returnedAt = new Date().toISOString();
+    const servedModel = typeof (response as { modelVersion?: unknown }).modelVersion === 'string'
+      && (response as { modelVersion: string }).modelVersion.length > 0
+      ? (response as { modelVersion: string }).modelVersion
+      : model;
     let resultJson: any = {};
     let parseFallback = false;
     try {
@@ -221,6 +228,7 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
       // its exact previous shape (prereg G0 §3: the `mixed` confound).
       ...(parseFallback ? { parseFallback: true } : {}),
       ...searchSuggestionsOf(response.candidates?.[0]?.groundingMetadata),
+      provenance: { provider: 'gemini', model: servedModel, verifiedAt: returnedAt, retriever: 'gemini-grounding', retrievedAt: returnedAt },
     };
 
   } catch (error) {

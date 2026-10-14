@@ -25,6 +25,7 @@ vi.mock('@google/genai', () => ({
         if (grounded) {
           return {
             text: '{"status":"supported","explanation":"Matches the record."}',
+            modelVersion: 'gemini-2.5-flash-quillbeacon',
             usageMetadata: { promptTokenCount: 90, candidatesTokenCount: 20 },
             candidates: [{
               groundingMetadata: {
@@ -113,6 +114,11 @@ describe('Search Suggestions on grounded verdicts', () => {
       for (const e of verified) {
         expect(e.verdict.searchEntryPoint).toEqual({ renderedContent: CHIP });
         expect(e.verdict.webSearchQueries).toEqual(QUERIES);
+        // Provenance (GoPMO 1.18.11.3 P1a): the model Google reported, bound at the call.
+        expect(e.verdict.provenance.provider).toBe('gemini');
+        expect(e.verdict.provenance.model).toBe('gemini-2.5-flash-quillbeacon');
+        expect(e.verdict.provenance.retrievedAt).toBe(e.verdict.provenance.verifiedAt);
+        expect(e.verdict.provenance.retriever).toBe('gemini-grounding');
       }
       const bytes = ledgerBytes();
       expect(bytes.length).toBeGreaterThan(0);
@@ -134,6 +140,7 @@ describe('Search Suggestions on grounded verdicts', () => {
       for (const v of verifications) {
         expect(v.searchEntryPoint.renderedContent).toBe(CHIP);
         expect(v.webSearchQueries).toEqual(QUERIES);
+        expect(v.provenance).toMatchObject({ provider: 'gemini', model: 'gemini-2.5-flash-quillbeacon', retriever: 'gemini-grounding' });
       }
       const bytes = ledgerBytes();
       expect(bytes.length).toBeGreaterThan(0);

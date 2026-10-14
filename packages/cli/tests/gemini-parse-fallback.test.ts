@@ -57,7 +57,8 @@ describe('geminiService.verifyClaim — parseFallback', () => {
       const result = await verifyClaim(CLAIM, 'key');
       expect(['supported', 'contradicted']).toContain(result.status);
       expect('parseFallback' in result).toBe(false);
-      expect(Object.keys(result).sort()).toEqual(['claimId', 'explanation', 'sources', 'status']);
+      // provenance joined the shape on 2026-10-14 (GoPMO 1.18.11.3 P1a); parseFallback stays absent.
+      expect(Object.keys(result).sort()).toEqual(['claimId', 'explanation', 'provenance', 'sources', 'status']);
     }
   });
 

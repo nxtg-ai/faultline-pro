@@ -66,6 +66,32 @@ export interface ProviderVote {
 /** What a provider failure was, after the engine's retries: 429, 503, a timeout, or anything else. */
 export type ApiErrorReason = 'rate_limited' | 'provider_unavailable' | 'timeout' | 'provider_error';
 
+/**
+ * Who produced a verdict and when, bound at the provider call itself (Honor
+ * System point #2, GoPMO 1.18.11.3 P1a). Absent on a verdict whose check never
+ * ran (`apiError`).
+ */
+export interface VerdictProvenance {
+  /** Provider id: 'gemini', 'openai', 'claude', 'perplexity', 'mock', a registered name, or 'consensus'. */
+  provider: string;
+  /** Model id. Gemini reports the model that served the request (`modelVersion`); otherwise the configured model. Consensus lists `name:model` per voter, joined by '+'. */
+  model: string;
+  /** When the provider call that produced this verdict returned (ISO 8601). */
+  verifiedAt: string;
+  /**
+   * What retrieved the evidence: 'gemini-grounding' for a Gemini grounded call
+   * (Google Search runs inside the same request), or the consensus rig's
+   * retriever name. Absent when no retrieval ran.
+   */
+  retriever?: string;
+  /**
+   * When the evidence was retrieved (ISO 8601). A Gemini grounded call searches
+   * and judges in one request, so it equals `verifiedAt`; consensus records when
+   * its shared retrieval returned. Absent when no retrieval ran.
+   */
+  retrievedAt?: string;
+}
+
 export interface VerificationResult {
   claimId: string;
   status: ClaimStatus;
@@ -103,6 +129,8 @@ export interface VerificationResult {
    * absent on every other path. Never persisted to disk by Faultline.
    */
   searchEntryPoint?: { renderedContent: string };
+  /** Who produced this verdict and when (see VerdictProvenance). */
+  provenance?: VerdictProvenance;
   /** The Google Search queries the grounded prompt ran (same source, same rule). */
   webSearchQueries?: string[];
   /**

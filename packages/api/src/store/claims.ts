@@ -60,7 +60,7 @@ class ClaimIndex {
 
   ingest(
     claims: Array<{ id: string; text: string; type?: string }>,
-    verifications: Record<string, { status?: string; sources?: Array<{ title: string; uri: string }> }>,
+    verifications: Record<string, { status?: string; sources?: Array<{ title: string; uri: string }>; provenance?: { retrievedAt?: string } }>,
     scanId: string,
   ): void {
     for (const claim of claims) {
@@ -79,11 +79,15 @@ class ClaimIndex {
       const rawSources = verifications[claim.id]?.sources ?? [];
       const claimType = claim.type ?? 'fact';
 
+      // seenAt is when the evidence was retrieved when the verdict says so, else
+      // when it was indexed (GoPMO 1.18.11.3 P1a; EP4 recert row 2).
+      const retrievedAt = verifications[claim.id]?.provenance?.retrievedAt;
+      const seenAt = typeof retrievedAt === 'string' && !Number.isNaN(Date.parse(retrievedAt)) ? retrievedAt : now;
       const newSources: ClaimSource[] = rawSources.map((s) => ({
         title: s.title,
         uri: s.uri,
         scanId,
-        seenAt: now,
+        seenAt,
       }));
 
       const existing = this.records.get(normalized);

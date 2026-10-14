@@ -93,6 +93,8 @@ export interface ConsensusRig {
 export interface Verifier {
   provider: LLMProvider;
   consensusRig: ConsensusRig | null;
+  /** The provider id the verify stage resolved to (e.g. 'gemini'); names the verdict's provenance. */
+  providerName?: string;
 }
 
 /** The provider names each stage resolves to. */
@@ -196,7 +198,7 @@ export function resolveScanProviders(
     : getProvider(verificationApiKey, names.verificationName);
   return {
     extractionProvider,
-    verifier: { provider, consensusRig: buildConsensusRigIfEnabled(names, pipelineConfig) },
+    verifier: { provider, consensusRig: buildConsensusRigIfEnabled(names, pipelineConfig), providerName: names.verificationName },
   };
 }
 
@@ -222,7 +224,7 @@ export function resolveExtractionProvider(
 export function resolveVerifier(providerName?: string, pipelineConfig?: PipelineConfig): Verifier {
   const names = resolveStageNames(providerName, pipelineConfig);
   const provider = getProvider(resolveApiKey(names.verificationName), names.verificationName);
-  return { provider, consensusRig: buildConsensusRigIfEnabled(names, pipelineConfig) };
+  return { provider, consensusRig: buildConsensusRigIfEnabled(names, pipelineConfig), providerName: names.verificationName };
 }
 
 /** Options for one verify-stage run. */
@@ -277,6 +279,28 @@ function exhaustedRetryResult(claim: Claim, err: unknown, flagApiError: boolean)
 }
 
 /**
+ * Bind who produced a verdict and when. The provider id is the one the engine
+ * resolved; the model and time come from the provider when it reports them
+ * (Gemini reports the model Google served), else from its configured model and
+ * the moment the call returned. A verdict whose check never ran carries none.
+ * Honor System #2, GoPMO 1.18.11.3 P1a.
+ */
+function withProvenance(result: VerificationResult, verifier: Verifier): VerificationResult {
+  if (!result || typeof result !== 'object' || result.apiError === true) return result;
+  const own = result.provenance;
+  return {
+    ...result,
+    provenance: {
+      ...(own ?? {}),
+      // The provider id is always the one the engine resolved, never the provider's own claim.
+      provider: verifier.providerName ?? verifier.provider.name,
+      model: typeof own?.model === 'string' && own.model.length > 0 ? own.model : verifier.provider.modelId,
+      verifiedAt: typeof own?.verifiedAt === 'string' ? own.verifiedAt : new Date().toISOString(),
+    },
+  };
+}
+
+/**
  * Verify one claim. Consensus is internally resilient (never throws), so it
  * bypasses the single-provider retry ladder (3 attempts, jittered backoff).
  */
@@ -287,7 +311,7 @@ async function verifyOneClaim(claim: Claim, verifier: Verifier, flagExhaustedRet
   let delay = 1000;
   for (let attempt = 0; ; attempt++) {
     try {
-      return await verifier.provider.verifyClaim(claim);
+      return withProvenance(await verifier.provider.verifyClaim(claim), verifier);
     } catch (err) {
       if (attempt >= 2) return exhaustedRetryResult(claim, err, flagExhaustedRetries);
       await new Promise(r => setTimeout(r, delay + Math.floor(Math.random() * 500)));

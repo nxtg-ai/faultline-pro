@@ -206,8 +206,10 @@ export async function consensusVerify(
 ): Promise<VerificationResult> {
   // 1. RETRIEVE shared sources (never throws → [] on failure).
   let sources: Source[] = [];
+  let retrievedAt: string | undefined;
   try {
     sources = await retriever.retrieve(claim.text);
+    retrievedAt = new Date().toISOString();
   } catch {
     sources = [];
   }
@@ -217,6 +219,16 @@ export async function consensusVerify(
     providers.map((named) => runProviderVote(named, claim, sources)),
   );
 
-  // 3. FUSE.
-  return fuseVotes(claim, sources, votes);
+  // 3. FUSE, then bind who produced the verdict and when (GoPMO 1.18.11.3 P1a).
+  const fused = fuseVotes(claim, sources, votes);
+  if (fused.apiError) return fused;
+  return {
+    ...fused,
+    provenance: {
+      provider: 'consensus',
+      model: providers.map((p) => `${p.name}:${p.provider.modelId}`).join('+'),
+      verifiedAt: new Date().toISOString(),
+      ...(retrievedAt !== undefined ? { retriever: retriever.name, retrievedAt } : {}),
+    },
+  };
 }

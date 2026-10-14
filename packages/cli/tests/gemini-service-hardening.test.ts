@@ -171,6 +171,8 @@ describe('geminiService.ts — cleanJson branches + verifyClaim fallbacks', () =
 
     expect(result.apiError).toBe(true);
     expect('searchEntryPoint' in result).toBe(false);
+    // A check that never ran names no provider or time (GoPMO 1.18.11.3 P1a).
+    expect(result.provenance).toBeUndefined();
   });
 
   it('GS5: extractClaims returns [] when both text and image are falsy (line 53)', async () => {

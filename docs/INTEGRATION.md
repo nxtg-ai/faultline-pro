@@ -370,8 +370,18 @@ interface VerificationResult {
   // Google Search Suggestions, present only on a Gemini grounded verdict (see below)
   searchEntryPoint?: { renderedContent: string };
   webSearchQueries?: string[];
+  // Who produced the verdict and when; absent when the check never ran (apiError)
+  provenance?: {
+    provider: string;     // 'gemini', 'openai', 'claude', 'perplexity', 'mock' or 'consensus'
+    model: string;        // Gemini: the model Google reports it served; consensus: 'name:model+name:model'
+    verifiedAt: string;   // ISO 8601, when the provider call returned
+    retriever?: string;   // what retrieved the evidence: 'gemini-grounding' or the consensus retriever's name
+    retrievedAt?: string; // ISO 8601, when the evidence was retrieved (Gemini: same request as verifiedAt)
+  };
 }
 ```
+
+**Provenance.** Every verdict whose check ran names the provider and model that produced it and the time, bound at the provider call. The provider id is always the one the engine resolved. A cached result keeps its original `verifiedAt`, so a cache hit shows how old the verdict is. The API PDF prints one "Checked by" line per claim and each source's URI.
 
 **Search Suggestions (Gemini grounded verdicts).** When a verdict came from Gemini with Grounding with Google Search, it carries `searchEntryPoint.renderedContent` (HTML and CSS from Google) and `webSearchQueries`, passed through unaltered from that verdict's own grounded request. Google's grounding terms require the suggestion to be displayed, unaltered, wherever that verdict's explanation or sources are shown to the end user, and grounded results to be shown only to the end user who submitted the prompt. Render `renderedContent` as given (for example in a sandboxed iframe or a shadow root); do not restyle, trim or re-host it. The fields are on every surface that returns a verdict: `GET`/`POST /scan/stream` (`claim_verified.verdict`), `POST /scan` (`verifications[id]`) and `GET /scan/full/:jobId` (`progress[].verdict`). Faultline never writes them to disk.
 
@@ -768,6 +778,7 @@ export interface VerificationResult {
   sources: Array<{ title: string; uri: string }>;
   searchEntryPoint?: { renderedContent: string }; // Gemini grounded verdicts only; render unaltered
   webSearchQueries?: string[];
+  provenance?: { provider: string; model: string; verifiedAt: string; retriever?: string; retrievedAt?: string };
 }
 
 export interface ScanResult {
