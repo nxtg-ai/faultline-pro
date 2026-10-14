@@ -3,6 +3,7 @@ import { requireAdmin, requireApiKey, resolveRequestTenantId } from '../plugins/
 import { getWebhookStore, getWebhookTestHistory, getWebhookDeliveryLog, sendTestWebhook, SAMPLE_PAYLOADS } from '../store/webhooks.js';
 import type { WebhookEvent } from '../store/webhooks.js';
 import { outboundUrlRefusal } from '../lib/outbound-url.js';
+import { requestOwner } from '../lib/cache-caller.js';
 
 const VALID_EVENTS: WebhookEvent[] = ['scan.complete', 'scan.failed', 'claim.verdict_changed', 'compliance.deadline_approaching'];
 
@@ -40,8 +41,9 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       const refusal = await outboundUrlRefusal(url);
       if (refusal) return reply.status(400).send({ error: refusal });
       const tenantId = resolveRequestTenantId(request.keyId);
-      const entry = getWebhookStore().create(url, events, secret, tenantId, maxAttempts, retryDelayMs);
-      return reply.status(201).send(entry);
+      const entry = getWebhookStore().create(url, events, secret, tenantId, maxAttempts, retryDelayMs, requestOwner(request));
+      const { ownerCaller: _caller, ...shown } = entry;
+      return reply.status(201).send(shown);
     },
   );
 

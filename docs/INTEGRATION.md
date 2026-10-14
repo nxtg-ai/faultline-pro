@@ -617,6 +617,16 @@ Content-Type: application/json
 }
 ```
 
+### Who receives an event
+
+A webhook receives only its owner's events. The owner is the API key that registered it (and, behind faultline-web's server key, the `x-faultline-user-ref` user sent with the registration). At send time, an event goes to a webhook when the scan's key and the webhook's key are in the same tenant (tenancy is read when the event fires, not when the webhook was registered), or when they are the same key and user. Nothing else matches:
+
+- a webhook registered by a key that has since been deleted receives nothing;
+- two keys outside any tenant do not share webhooks;
+- the server key without a user ref receives nothing;
+- `claim.verdict_changed` comes from the claim index shared by every caller, so it has no single owner and is sent to no webhook;
+- `compliance.deadline_approaching` carries only the fixed regulatory calendar and goes to every subscriber.
+
 ### Webhook payload shape
 
 ```json
@@ -626,6 +636,21 @@ Content-Type: application/json
   "data": { /* ScanResult */ }
 }
 ```
+
+**A Gemini-grounded result is never sent to a webhook, the owner's included.** Google's grounding terms let Grounded Results be shown only to the end user who submitted the prompt. For such a scan `data` is a minimal event; read the result itself from the scan response:
+
+```json
+{
+  "scanId": null,
+  "status": "complete",
+  "grounded": true,
+  "claimCount": 3,
+  "checkedCount": 3,
+  "note": "Gemini grounded results are shown only to the user who ran the scan; read them from the scan response."
+}
+```
+
+`scanId` is null where the scan has no stored id (`POST /scan` returns none). A scheduled job's `webhookUrl` gets the same minimal shape, with `jobId`.
 
 ### Signature verification
 

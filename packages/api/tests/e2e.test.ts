@@ -253,9 +253,19 @@ describe('E2E smoke — full API surface', () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal('fetch', mockFetch);
 
+    // A scan by another key is not the webhook owner's: nothing is sent.
     await server.inject({
       method: 'POST', url: '/scan',
       headers: scanHeaders(),
+      body: JSON.stringify({ text: 'Webhook trigger scan, other key.', provider: 'mock' }),
+    });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(mockFetch).not.toHaveBeenCalled();
+
+    // The owner's scan (the key and user that registered it) is delivered.
+    await server.inject({
+      method: 'POST', url: '/scan',
+      headers: adminHeaders(),
       body: JSON.stringify({ text: 'Webhook trigger scan.', provider: 'mock' }),
     });
 

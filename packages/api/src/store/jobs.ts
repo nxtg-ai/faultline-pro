@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { scan } from '@nxtg/faultline/cli/scan.js';
-import { fireWebhookEvent } from './webhooks.js';
+import { fireWebhookEvent, webhookSafeData } from './webhooks.js';
+import type { WebhookEventOwner } from './webhooks.js';
 import { getAuditLogger } from './audit.js';
 import { fetchOutbound } from '../lib/outbound-url.js';
 
@@ -36,14 +37,17 @@ export function parseIntervalMs(schedule: string): number {
 
 class JobStore {
   private jobs = new Map<string, Job>();
+  /** Who created each job, kept off the Job so listings never show it. */
+  private owners = new Map<string, { keyId: string; caller: string | null }>();
 
   create(options: {
     text: string;
     provider?: Provider;
     schedule: string;
     webhookUrl?: string;
+    owner?: { keyId: string; caller: string | null };
   }): Job {
-    const { text, provider, schedule, webhookUrl } = options;
+    const { text, provider, schedule, webhookUrl, owner } = options;
     const intervalMs = parseIntervalMs(schedule);
     const now = new Date().toISOString();
     const job: Job = {
@@ -60,6 +64,7 @@ class JobStore {
       runCount: 0,
     };
     this.jobs.set(job.id, job);
+    if (owner) this.owners.set(job.id, owner);
     return job;
   }
 
@@ -71,7 +76,13 @@ class JobStore {
     return this.jobs.get(id) ?? null;
   }
 
+  /** The job's owner for webhook delivery; null (delivered to no one) when unknown. */
+  ownerOf(id: string): WebhookEventOwner {
+    return this.owners.get(id) ?? null;
+  }
+
   delete(id: string): boolean {
+    this.owners.delete(id);
     return this.jobs.delete(id);
   }
 
@@ -148,10 +159,11 @@ class JobScheduler {
         void fetchOutbound(job.webhookUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ event: 'job.complete', jobId: job.id, result }),
+          // A grounded result reaches no webhook, this one included (Google's terms).
+          body: JSON.stringify({ event: 'job.complete', ...(webhookSafeData('job.complete', { jobId: job.id, result }) as object) }),
         }).catch(() => { /* non-fatal, including a blocked target */ });
       } else {
-        fireWebhookEvent('job.complete', { jobId: job.id, result });
+        fireWebhookEvent('job.complete', { jobId: job.id, result }, getJobStore().ownerOf(job.id));
       }
       getAuditLogger().log({
         timestamp: now,
@@ -167,7 +179,7 @@ class JobScheduler {
       fireWebhookEvent('job.failed', {
         jobId: job.id,
         error: err instanceof Error ? err.message : String(err),
-      });
+      }, getJobStore().ownerOf(job.id));
     }
   }
 }

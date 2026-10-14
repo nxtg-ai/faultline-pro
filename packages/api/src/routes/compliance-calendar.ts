@@ -108,7 +108,7 @@ export async function complianceCalendarRoutes(fastify: FastifyInstance): Promis
           daysUntil: alert.daysUntil,
           severity: alert.deadline.severity,
           message: alert.message,
-        });
+        }, 'public');
       }
 
       return reply.status(200).send({ fired: approaching.length, alerts: approaching });

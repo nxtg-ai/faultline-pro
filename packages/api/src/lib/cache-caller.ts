@@ -18,3 +18,11 @@ export function cacheCaller(request: FastifyRequest): string | null {
   if (isServerKeyId(keyId) && ref === keyId) return null;
   return `${keyId}\u0000${ref}`;
 }
+
+/**
+ * The owner of what this request produces, for webhook delivery
+ * (store/webhooks.ts webhookMayReceive): its API key and its caller.
+ */
+export function requestOwner(request: FastifyRequest): { keyId: string; caller: string | null } {
+  return { keyId: request.keyId ?? 'unknown', caller: cacheCaller(request) };
+}

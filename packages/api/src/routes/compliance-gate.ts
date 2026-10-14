@@ -7,6 +7,7 @@ import { getScanStore } from '../store/scans.js';
 import { ownedScan } from '../lib/scan-access.js';
 import { getComplianceHistoryStore } from '../store/compliance-history.js';
 import { fireWebhookEvent } from '../store/webhooks.js';
+import { requestOwner } from '../lib/cache-caller.js';
 import {
   buildEuComplianceReport,
   evaluateComplianceGate,
@@ -242,7 +243,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
           overallRisk: report.overallRisk,
           nonCompliantCount: gate.nonCompliantCount,
           failedArticles,
-        });
+        }, requestOwner(request));
       }
 
       const response: ComplianceGateResponse = { gate, report, scanId: stored.id };
