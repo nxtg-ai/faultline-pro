@@ -1,10 +1,17 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import { buildServer } from '../src/server.js';
 import { resetKeyStore, getKeyStore } from '../src/store/keys.js';
 import { resetAuditLogger, getAuditLogger } from '../src/store/audit.js';
 import { resetUsageMeter, getUsageMeter } from '../src/store/usage.js';
 import { resetCache } from '../src/store/cache.js';
 import type { FastifyInstance } from 'fastify';
+
+// These flows exercise customer (non-admin) keys, which the issuing routes
+// refuse unless FAULTLINE_CUSTOMER_KEYS=on (customer keys closed until tenancy
+// is fixed; the gate itself is tested in key-issuance-gate.test.ts).
+beforeAll(() => { process.env.FAULTLINE_CUSTOMER_KEYS = 'on'; });
+afterAll(() => { delete process.env.FAULTLINE_CUSTOMER_KEYS; });
+
 
 vi.mock('@nxtg/faultline/cli/scan.js', () => ({
   scan: vi.fn().mockResolvedValue({

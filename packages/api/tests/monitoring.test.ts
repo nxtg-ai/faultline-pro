@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { buildServer } from '../src/server.js';
+import { getKeyStore } from '../src/store/keys.js';
 import type { FastifyInstance } from 'fastify';
 import { resetAnalytics } from '../src/store/analytics.js';
 import { resetKeyStore } from '../src/store/keys.js';
@@ -107,28 +108,37 @@ describe('Monitoring & Health Dashboard', () => {
     }
   });
 
+  it('GET /metrics needs the admin key: no key 401, a plain key 403 (emma-soul al:837ec6cea3437a7d)', async () => {
+    const none = await server.inject({ method: 'GET', url: '/metrics' });
+    expect(none.statusCode).toBe(401);
+    const plain = getKeyStore().create('plain', ['scan']);
+    const res = await server.inject({ method: 'GET', url: '/metrics', headers: { 'x-api-key': plain.key } });
+    expect(res.statusCode).toBe(403);
+    expect(res.body).not.toContain('faultline_scans_total');
+  });
+
   it('GET /metrics returns 200', async () => {
-    const res = await server.inject({ method: 'GET', url: '/metrics' });
+    const res = await server.inject({ method: 'GET', url: '/metrics', headers: { 'x-api-key': 'admin-secret' } });
     expect(res.statusCode).toBe(200);
   });
 
   it('metrics response has Content-Type: text/plain', async () => {
-    const res = await server.inject({ method: 'GET', url: '/metrics' });
+    const res = await server.inject({ method: 'GET', url: '/metrics', headers: { 'x-api-key': 'admin-secret' } });
     expect(res.headers['content-type']).toMatch(/text\/plain/);
   });
 
   it('metrics body contains faultline_scans_total', async () => {
-    const res = await server.inject({ method: 'GET', url: '/metrics' });
+    const res = await server.inject({ method: 'GET', url: '/metrics', headers: { 'x-api-key': 'admin-secret' } });
     expect(res.body).toContain('faultline_scans_total');
   });
 
   it('metrics body contains faultline_active_keys', async () => {
-    const res = await server.inject({ method: 'GET', url: '/metrics' });
+    const res = await server.inject({ method: 'GET', url: '/metrics', headers: { 'x-api-key': 'admin-secret' } });
     expect(res.body).toContain('faultline_active_keys');
   });
 
   it('metrics body contains faultline_risk_distribution', async () => {
-    const res = await server.inject({ method: 'GET', url: '/metrics' });
+    const res = await server.inject({ method: 'GET', url: '/metrics', headers: { 'x-api-key': 'admin-secret' } });
     expect(res.body).toContain('faultline_risk_distribution');
   });
 

@@ -25,6 +25,13 @@ import { resetProviderRegistry } from '../src/store/providers.js';
 import { resetCircuitBreaker } from '../src/store/circuit-breaker.js';
 import type { FastifyInstance } from 'fastify';
 
+// These flows exercise customer (non-admin) keys, which the issuing routes
+// refuse unless FAULTLINE_CUSTOMER_KEYS=on (customer keys closed until tenancy
+// is fixed; the gate itself is tested in key-issuance-gate.test.ts).
+beforeAll(() => { process.env.FAULTLINE_CUSTOMER_KEYS = 'on'; });
+afterAll(() => { delete process.env.FAULTLINE_CUSTOMER_KEYS; });
+
+
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 // MOCK JUSTIFIED: @nxtg/faultline/cli/scan.js calls external LLM providers.
 // This file smoke-tests the full API surface (key CRUD, batch, upload, PDF,

@@ -42,6 +42,8 @@ x-api-key: fl_your_key_here
 
 **Admin key**: The `FAULTLINE_API_KEY` environment variable on the server is the root admin key. It is not issued to consumers — use it only for key management operations.
 
+**Customer keys are not being issued yet.** Until per-key data isolation is finished on every route, `POST /keys`, `POST /orgs/:id/keys` and GraphQL `createKey` refuse any key without the `admin` permission (`403 customer_keys_closed`); operator (admin) keys can still be created, and an org role never mints an admin key. The server flag `FAULTLINE_CUSTOMER_KEYS=on` reopens issuance once that work is reviewed.
+
 **Getting a key for your team**: Make a `POST /keys` request with your admin key. The new key's secret is shown **once** in the response — store it immediately.
 
 ```http
@@ -755,7 +757,7 @@ These are available if your UI needs them.
 | `GET /health` | None | Server + provider status |
 | `GET /health/deep` | None | Full subsystem health |
 | `GET /status.json` | None | Machine-readable uptime, incidents, stats |
-| `GET /metrics` | None | Prometheus-format metrics |
+| `GET /metrics` | Admin | Prometheus-format metrics (admin key only) |
 | `GET /dashboard` | Admin | Scan counts, risk distribution, provider status |
 | `GET /usage` | API key | Per-day scan counts for your key, and `quota` (monthly scan cap position). Admin keys also get `providerBudget` (the fleet provider-spend position) |
 | `POST /critique` | API key | Critique plus improved prompt for failed claims. Makes a paid LLM call, so it is rate limited and covered by the provider-spend cap and ledger. `provider` must be one of the `/scan` providers (unknown name: `400`). See `docs/provider-spend-cap.md` |

@@ -46,6 +46,13 @@ import { resetWarmupStore, resetCacheWarmer } from '../src/store/cache-warmup.js
 import { resetScheduleStore } from '../src/store/schedules.js';
 import type { FastifyInstance } from 'fastify';
 
+// These flows exercise customer (non-admin) keys, which the issuing routes
+// refuse unless FAULTLINE_CUSTOMER_KEYS=on (customer keys closed until tenancy
+// is fixed; the gate itself is tested in key-issuance-gate.test.ts).
+beforeAll(() => { process.env.FAULTLINE_CUSTOMER_KEYS = 'on'; });
+afterAll(() => { delete process.env.FAULTLINE_CUSTOMER_KEYS; });
+
+
 /** The caller every claim here belongs to: the server key plus a faultline-web user (the claim index is per caller). */
 const TEST_CLAIM_CALLER = 'admin\u0000user_testref1';
 

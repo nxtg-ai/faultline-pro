@@ -1,3 +1,4 @@
+import { mayIssueKey, CUSTOMER_KEYS_CLOSED } from '../lib/key-issuance.js';
 import type { FastifyInstance } from 'fastify';
 import { requireAdmin } from '../plugins/auth.js';
 import { esc } from '../lib/html.js';
@@ -33,6 +34,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
     { preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Create a new API key', body: CREATE_BODY_SCHEMA } },
     async (request, reply) => {
       const { name, permissions, expiresAt } = request.body;
+      if (!mayIssueKey(permissions)) return reply.status(403).send(CUSTOMER_KEYS_CLOSED);
       const store = getKeyStore();
       const entry = store.create(name, permissions, expiresAt);
       return reply.status(201).send(entry);

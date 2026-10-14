@@ -1,3 +1,5 @@
+import { mayIssueKey, CUSTOMER_KEYS_CLOSED } from '../lib/key-issuance.js';
+import { isAdminKeyId } from '../plugins/auth.js';
 /**
  * Organization routes (D-162)
  *
@@ -373,11 +375,18 @@ export async function orgRoutes(fastify: FastifyInstance): Promise<void> {
       if (!isAdmin(org.id, request.keyId ?? 'unknown')) {
         return reply.status(403).send({ error: 'Admin role required.' });
       }
+      const permissions = request.body.permissions ?? ['scan'];
+      // Customer keys are closed until tenancy is fixed, and an org role
+      // never mints a fleet-wide 'admin' key: only an API admin may (an org
+      // admin could before; same audit, al:837ec6cea3437a7d).
+      if (permissions.includes('admin') ? !isAdminKeyId(request.keyId) : !mayIssueKey(permissions)) {
+        return reply.status(403).send(CUSTOMER_KEYS_CLOSED);
+      }
       try {
         const { orgKey, apiKey } = getOrgStore().createOrgKey(
           request.params.id,
           request.body.name,
-          request.body.permissions ?? ['scan'],
+          permissions,
           request.keyId ?? 'unknown',
         );
         return reply.status(201).send({

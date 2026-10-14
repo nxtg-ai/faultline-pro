@@ -55,6 +55,10 @@ A change is not done until, in the same commit or PR: `CHANGELOG.md` `[Unrelease
 
 - `FAULTLINE_PASSAGE_LEG=on` (set in `packages/api/fly.toml` `[env]` since 2026-10-14) turns on the independent passage leg. It runs only beside Gemini-grounded verdicts, only with a model measured under the cap (`gpt-4o-mini`; any other `FAULTLINE_PASSAGE_SEARCH_MODEL` leaves it off), with a 12 s deadline on the search call, and `FAULTLINE_EVIDENCE_FETCH=off` stops it too. The leg is OpenAI web_search on each Gemini-verified claim, its result pages quoted into `independentEvidence`. Off unless set; it also needs `OPENAI_API_KEY`. `FAULTLINE_PASSAGE_SEARCH_MODEL` overrides the model (default `gpt-4o-mini`). Authorization: emma-soul al:e615798a8e8109c0, 40 USD build-and-test cap, at most 1.5 cents per checked claim in production. Measured 2026-10-14: gpt-4o-mini about 1.1 to 1.3 cents per claim, gpt-4.1-mini about 1.4 to 1.7 cents (over the cap). Gemini grounding Links are never fetched (Google's terms; emma-soul al:07b45f0562efbbf0).
 
+## Customer keys (closed)
+
+`FAULTLINE_CUSTOMER_KEYS` is unset in production: the engine issues only admin keys (emma-soul al:837ec6cea3437a7d). Set it to `on` only after the tenancy change (every stored object owned, one ownership guard, a route-table test) has passed two reviews and emma-soul rules it open.
+
 ## Live probes (zero or near-zero spend)
 
 - Auth header is `x-api-key: <key>`. `Authorization: Bearer` answers 401.

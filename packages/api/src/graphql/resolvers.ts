@@ -4,6 +4,7 @@ import { getUsageMeter } from '../store/usage.js';
 import { getAuditLogger } from '../store/audit.js';
 import { getScanStore } from '../store/scans.js';
 import { isAdminKeyId } from '../plugins/auth.js';
+import { mayIssueKey, CUSTOMER_KEYS_CLOSED } from '../lib/key-issuance.js';
 import { GraphQLError } from 'graphql';
 
 /**
@@ -107,7 +108,9 @@ export const resolvers = {
   Mutation: {
     createKey: (_: unknown, args: { name: string; permissions?: string[] }, ctx: GqlContext) => {
       requireAdmin(ctx);
-      const key = getKeyStore().create(args.name, (args.permissions ?? ['scan']) as import('../store/keys.js').Permission[]);
+      const permissions = (args.permissions ?? ['scan']) as import('../store/keys.js').Permission[];
+      if (!mayIssueKey(permissions)) throw new GraphQLError(CUSTOMER_KEYS_CLOSED.message, { extensions: { code: 'FORBIDDEN' } });
+      const key = getKeyStore().create(args.name, permissions);
       return { id: key.id, name: key.name, permissions: key.permissions, createdAt: key.createdAt };
     },
 
