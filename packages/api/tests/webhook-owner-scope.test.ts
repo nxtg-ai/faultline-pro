@@ -30,7 +30,7 @@ import { getNotificationStore, resetNotificationStore, sendWeeklySummaries } fro
 import { getTemplateStore, resetTemplateStore } from '../src/store/templates.js';
 import { resetClaimIndex } from '../src/store/claims.js';
 import { getScheduleStore, getScheduleRunner, resetScheduleStore } from '../src/store/schedules.js';
-import { dispatchWebhook } from '../src/store/webhooks.js';
+import { dispatchWebhook, getWebhookDeliveryLog, resetWebhookDeliveryLog } from '../src/store/webhooks.js';
 import type { FastifyInstance } from 'fastify';
 
 const CLAIM_TEXT = 'The Eiffel Tower was completed in 1889.';
@@ -760,5 +760,79 @@ describe('every scan route passes the scan\'s owner', () => {
     expect(toB.length).toBe(1);
     expect(toA[0].raw).not.toContain(b.id);
     expect(toB[0].raw).not.toContain(a.id);
+  });
+});
+
+// ── Seat B on 43264e7 (transcript-blind Opus, CLX9): LOW-1 and LOW-2 ───────────
+
+describe('fire-time filter and the schedule webhookUrl', () => {
+  let server: FastifyInstance;
+
+  beforeEach(async () => {
+    resetAll();
+    resetWebhookDeliveryLog();
+    _setSleepFn(async () => {});
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
+    const { scan } = await import('@nxtg/faultline/cli/scan.js');
+    vi.mocked(scan).mockReset().mockResolvedValue(PLAIN_RESULT as never);
+    server = buildServer();
+    await server.ready();
+  });
+
+  afterEach(async () => {
+    await server.close();
+    vi.unstubAllGlobals();
+    delete process.env.FAULTLINE_API_KEY;
+  });
+
+  it('WO-22. a non-owner webhook is not even dispatched: no delivery record, not just a refused send', async () => {
+    const a = tenantAdminKey('Tenant A');
+    const b = tenantAdminKey('Tenant B');
+    await register(server, a.key.key, 'https://a.example.com/hook', ['scan.complete']);
+    const hookB = await register(server, b.key.key, 'https://b.example.com/hook', ['scan.complete']);
+    await scanAs(server, a.key.key, { text: CLAIM_TEXT, provider: 'mock' });
+    await flush();
+    expect(getWebhookDeliveryLog().list(hookB.id)).toEqual([]);
+    expect(getWebhookDeliveryLog().list().length).toBeGreaterThan(0);
+  });
+
+  it('SW-1. a schedule run posts to its own webhookUrl, without the notify email', async () => {
+    const a = getKeyStore().create('A', ['scan']);
+    const s = getScheduleStore().create({ name: 'nightly', cron: '0 9 * * *', text: CLAIM_TEXT, webhookUrl: 'https://a.example.com/sched', notifyEmail: 'owner@example.com' } as never, a.id);
+    await getScheduleRunner().runSchedule(s);
+    await flush();
+    const sent = deliveries().filter((d) => d.url === 'https://a.example.com/sched');
+    expect(sent.length).toBe(1);
+    expect(sent[0].body.event).toBe('scan.completed');
+    expect(sent[0].body.scheduleId).toBe(s.id);
+    expect(sent[0].raw).not.toContain('owner@example.com');
+  });
+
+  it('SW-2. grounded results reach the schedule webhookUrl as counts only; provider error text becomes generic', async () => {
+    const a = getKeyStore().create('A', ['scan']);
+    const { scan } = await import('@nxtg/faultline/cli/scan.js');
+    vi.mocked(scan).mockResolvedValueOnce(GROUNDED_RESULT as never).mockRejectedValueOnce(new Error(`Gemini said ${EXPLANATION} ${GROUNDING_URI}`));
+    const s = getScheduleStore().create({ name: 'nightly', cron: '0 9 * * *', text: CLAIM_TEXT, webhookUrl: 'https://a.example.com/sched' } as never, a.id);
+    await getScheduleRunner().runSchedule(s);
+    await getScheduleRunner().runSchedule(s);
+    await flush();
+    const sent = deliveries().filter((d) => d.url === 'https://a.example.com/sched');
+    expect(sent.length).toBe(2);
+    expect(sent[0].body.grounded).toBe(true);
+    expect(sent[0].body).not.toHaveProperty('overallRisk');
+    for (const d of sent) {
+      expect(d.raw).not.toContain(EXPLANATION);
+      expect(d.raw).not.toContain('vertexaisearch');
+    }
+    expect(sent[1].body.error).toBe('Scan failed (provider error).');
+  });
+
+  it.each(['deleted', 'disabled'])('SW-3. a schedule whose owner key is %s posts nothing to its webhookUrl', async (state) => {
+    const a = getKeyStore().create('A', ['scan']);
+    const s = getScheduleStore().create({ name: 'nightly', cron: '0 9 * * *', text: CLAIM_TEXT, webhookUrl: 'https://a.example.com/sched' } as never, a.id);
+    if (state === 'deleted') getKeyStore().delete(a.id); else getKeyStore().validateById(a.id)!.disabled = true;
+    await getScheduleRunner().runSchedule(s);
+    await flush();
+    expect(deliveries().filter((d) => d.url === 'https://a.example.com/sched')).toEqual([]);
   });
 });

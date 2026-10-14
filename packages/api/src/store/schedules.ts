@@ -14,7 +14,8 @@
 import { randomUUID } from 'node:crypto';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { getNotificationStore, type NotificationEventType } from './notifications.js';
-import { fetchOutboundFollow } from '../lib/outbound-url.js';
+import { fetchOutbound, fetchOutboundFollow } from '../lib/outbound-url.js';
+import { keyIsLive, sanitizeErrorText } from './webhooks.js';
 import { isGroundedScanResult } from './cache.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -396,6 +397,24 @@ async function dispatchScheduleNotification(
     };
     if (runResult.error) payload['error'] = runResult.error;
     await getNotificationStore().dispatch(eventType, payload, schedule.keyId);
+
+    // The schedule's own webhookUrl: stored and SSRF-checked at create and
+    // patch, and now sent to (seat B on 43264e7: it was never used). Same
+    // rules as every caller URL: only while the owner key is live, grounded
+    // results reduced to counts, error text sanitized, guarded at send time.
+    if (schedule.webhookUrl && keyIsLive(schedule.keyId)) {
+      const { notifyEmail: _email, ...forWebhook } = payload;
+      const body = {
+        event: eventType,
+        ...forWebhook,
+        ...(typeof forWebhook.error === 'string' ? { error: sanitizeErrorText(forWebhook.error) } : {}),
+      };
+      await fetchOutbound(schedule.webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }).then((r) => r.body?.cancel()).catch(() => { /* non-fatal, including a blocked target */ });
+    }
   } catch { /* non-fatal */ }
 }
 
