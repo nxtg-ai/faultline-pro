@@ -159,3 +159,32 @@ describe('scheduled run guards every fetch and every redirect hop', () => {
     expect(getScheduleStore().get(s.id)!.history[0]!.error).toMatch(/Too many redirects/);
   });
 });
+
+describe('the schedule webhookUrl is guarded at send time (wired 231adeb)', () => {
+  function textSchedule(webhookUrl: string) {
+    return getScheduleStore().create({ name: 'hook', cron: '0 9 * * *', text: 'Claim text.', webhookUrl } as never, 'admin');
+  }
+  const posts = () => fetchSpy.mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === 'POST').map(([u]) => String(u));
+
+  it('SO-W1 a webhookUrl whose host now resolves private gets no POST', async () => {
+    const s = textSchedule('https://hooks.example.com/run');
+    resolveBy({ 'hooks.example.com': '10.0.0.9' });
+    await getScheduleRunner().runSchedule(s);
+    expect(posts()).toEqual([]);
+  });
+
+  it('SO-W2 a webhookUrl that redirects is not followed (one POST, to the stored URL only)', async () => {
+    const s = textSchedule('https://hooks.example.com/run');
+    // A public target, so only "never follow" (not the per-hop guard) keeps it out.
+    fetchSpy.mockResolvedValue(redirect('https://elsewhere.example.com/landing'));
+    await getScheduleRunner().runSchedule(s);
+    expect(posts()).toEqual(['https://hooks.example.com/run']);
+    expect(fetchSpy.mock.calls.map(([u]) => String(u))).not.toContain('https://elsewhere.example.com/landing');
+  });
+
+  it('SO-W3 a public webhookUrl gets exactly one POST', async () => {
+    const s = textSchedule('https://hooks.example.com/run');
+    await getScheduleRunner().runSchedule(s);
+    expect(posts()).toEqual(['https://hooks.example.com/run']);
+  });
+});
