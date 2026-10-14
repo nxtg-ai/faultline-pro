@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import AdmZip from 'adm-zip';
-import { requireApiKey } from '../plugins/auth.js';
+import { requireApiKey, isAdminKeyId } from '../plugins/auth.js';
 import { getBulkJobStore } from '../store/bulk-jobs.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import type { Provider } from '../store/jobs.js';
@@ -97,7 +97,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       const provider = ((request.query as { provider?: string }).provider ?? 'openai') as Provider;
-      const job = getBulkJobStore().create(entryCount);
+      const job = getBulkJobStore().create(entryCount, request.keyId);
 
       if (entryCount === 0) {
         // Nothing to process — mark done immediately
@@ -116,6 +116,10 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Params: { id: string } }>(
     '/jobs/:id/progress',
     {
+      // Filenames, per-file risk and errors are the creator's data: a key is
+      // required and only the creating key (or an admin key) may read them.
+      // It had no key check at all (seat A on 43264e7, pre-existing HIGH).
+      preHandler: requireApiKey,
       schema: {
         tags: ['Jobs'],
         summary: 'Get progress and results of a bulk scan job',
@@ -127,8 +131,10 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
       },
     },
     async (request, reply) => {
-      const job = getBulkJobStore().get(request.params.id);
-      if (!job) {
+      const store = getBulkJobStore();
+      const job = store.get(request.params.id);
+      const mine = job !== undefined && store.ownerOf(job.id) !== undefined && store.ownerOf(job.id) === request.keyId;
+      if (!job || !(mine || isAdminKeyId(request.keyId))) {
         return reply.status(404).send({ error: 'Job not found.' });
       }
       return reply.status(200).send(job);

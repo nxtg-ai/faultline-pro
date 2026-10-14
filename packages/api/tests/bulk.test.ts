@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import AdmZip from 'adm-zip';
 import { buildServer } from '../src/server.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { getKeyStore } from '../src/store/keys.js';
 import { getBulkJobStore, resetBulkJobStore } from '../src/store/bulk-jobs.js';
 import { resetJobStore, resetJobScheduler } from '../src/store/jobs.js';
 import { resetKeyStore } from '../src/store/keys.js';
@@ -177,6 +178,7 @@ describe('POST /scan/bulk', () => {
     const progressRes = await server.inject({
       method: 'GET',
       url: `/jobs/${jobId}/progress`,
+      headers: authHeaders(),
     });
     const job = progressRes.json<{ status: string; totalFiles: number }>();
     expect(job.status).toBe('done');
@@ -204,6 +206,7 @@ describe('GET /jobs/:id/progress', () => {
     const res = await server.inject({
       method: 'GET',
       url: `/jobs/${jobId}/progress`,
+      headers: authHeaders(),
     });
 
     expect(res.statusCode).toBe(200);
@@ -223,8 +226,21 @@ describe('GET /jobs/:id/progress', () => {
     const res = await server.inject({
       method: 'GET',
       url: '/jobs/does-not-exist/progress',
+      headers: authHeaders(),
     });
     expect(res.statusCode).toBe(404);
+  });
+
+  it('BK3b: progress needs a key, and another key gets 404 (seat A on 43264e7)', async () => {
+    const zipBuffer = makeZipBuffer([{ name: 'file1.txt', content: 'Some claim.' }]);
+    const postRes = await server.inject({ method: 'POST', url: '/scan/bulk', headers: authHeaders(), payload: makeMultipartBody(BOUNDARY, zipBuffer) });
+    const { jobId } = postRes.json<{ jobId: string }>();
+    const none = await server.inject({ method: 'GET', url: `/jobs/${jobId}/progress` });
+    expect(none.statusCode).toBe(401);
+    const other = getKeyStore().create('other', ['scan']);
+    const foreign = await server.inject({ method: 'GET', url: `/jobs/${jobId}/progress`, headers: { 'x-api-key': other.key } });
+    expect(foreign.statusCode).toBe(404);
+    expect(foreign.body).not.toContain('file1.txt');
   });
 
   it('BK5: after processing completes, job status is done', async () => {
@@ -247,6 +263,7 @@ describe('GET /jobs/:id/progress', () => {
     const res = await server.inject({
       method: 'GET',
       url: `/jobs/${jobId}/progress`,
+      headers: authHeaders(),
     });
     const job = res.json<{ status: string }>();
     expect(job.status).toBe('done');
@@ -272,6 +289,7 @@ describe('GET /jobs/:id/progress', () => {
     const res = await server.inject({
       method: 'GET',
       url: `/jobs/${jobId}/progress`,
+      headers: authHeaders(),
     });
     const job = res.json<{ results: unknown[] }>();
     expect(job.results).toHaveLength(2);
@@ -294,6 +312,7 @@ describe('GET /jobs/:id/progress', () => {
     const res = await server.inject({
       method: 'GET',
       url: `/jobs/${jobId}/progress`,
+      headers: authHeaders(),
     });
     const job = res.json<{ progressPercent: number }>();
     expect(job.progressPercent).toBeGreaterThanOrEqual(0);
@@ -317,6 +336,7 @@ describe('GET /jobs/:id/progress', () => {
     const res = await server.inject({
       method: 'GET',
       url: `/jobs/${jobId}/progress`,
+      headers: authHeaders(),
     });
     const job = res.json<{ summary: { overallTrustScore: number } }>();
     expect(typeof job.summary.overallTrustScore).toBe('number');
@@ -345,6 +365,7 @@ describe('GET /jobs/:id/progress', () => {
     const res = await server.inject({
       method: 'GET',
       url: `/jobs/${jobId}/progress`,
+      headers: authHeaders(),
     });
     const job = res.json<{ summary: { worstOffenders: unknown[] } }>();
     expect(Array.isArray(job.summary.worstOffenders)).toBe(true);
@@ -367,6 +388,7 @@ describe('GET /jobs/:id/progress', () => {
     const res = await server.inject({
       method: 'GET',
       url: `/jobs/${jobId}/progress`,
+      headers: authHeaders(),
     });
     const job = res.json<{ summary: { riskDistribution: Record<string, number> } }>();
     const keys = Object.keys(job.summary.riskDistribution);
@@ -393,6 +415,7 @@ describe('GET /jobs/:id/progress', () => {
     const res = await server.inject({
       method: 'GET',
       url: `/jobs/${jobId}/progress`,
+      headers: authHeaders(),
     });
     const job = res.json<{
       results: Array<{ filename: string; status: string; overallRisk?: string }>;
