@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import { requireAdmin, requireApiKey, resolveRequestTenantId } from '../plugins/auth.js';
-import { getWebhookStore, getWebhookTestHistory, getWebhookDeliveryLog, sendTestWebhook, SAMPLE_PAYLOADS } from '../store/webhooks.js';
+import { requireAdmin, requireApiKey, resolveRequestTenantId, isAdminKeyId } from '../plugins/auth.js';
+import { getWebhookStore, getWebhookTestHistory, getWebhookDeliveryLog, sendTestWebhook, SAMPLE_PAYLOADS, webhookMayReceive } from '../store/webhooks.js';
 import type { WebhookEvent } from '../store/webhooks.js';
 import { outboundUrlRefusal } from '../lib/outbound-url.js';
 import { requestOwner } from '../lib/cache-caller.js';
@@ -42,7 +42,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       if (refusal) return reply.status(400).send({ error: refusal });
       const tenantId = resolveRequestTenantId(request.keyId);
       const entry = getWebhookStore().create(url, events, secret, tenantId, maxAttempts, retryDelayMs, requestOwner(request));
-      const { ownerCaller: _caller, ...shown } = entry;
+      const { ownerCaller: _caller, ownerKeyId: _key, ...shown } = entry;
       return reply.status(201).send(shown);
     },
   );
@@ -134,7 +134,12 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request, reply) => {
       const webhook = getWebhookStore().getById(request.params.id);
-      if (!webhook) return reply.status(404).send({ error: 'Webhook not found.' });
+      // Only the webhook's owner (or an admin key) may make it send a payload
+      // signed with its secret; anyone else would forge signed events (Opus seat,
+      // 859a348, pre-existing). Not found and not yours read the same.
+      if (!webhook || !(isAdminKeyId(request.keyId) || webhookMayReceive(webhook, requestOwner(request)))) {
+        return reply.status(404).send({ error: 'Webhook not found.' });
+      }
       const event = request.body?.event ?? webhook.events[0] ?? 'scan.complete';
       const result = await sendTestWebhook(webhook.url, event, webhook.secret, webhook.id);
       return reply.status(200).send(result);
@@ -145,7 +150,8 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: { webhookId?: string } }>(
     '/webhooks/test/history',
     {
-      preHandler: [requireApiKey],
+      // Lists every webhook's URL and test results, so admin only, like /webhooks/deliveries.
+      preHandler: [requireApiKey, requireAdmin],
       schema: {
         tags: ['Webhooks'],
         summary: 'Webhook test delivery history',

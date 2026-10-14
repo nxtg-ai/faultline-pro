@@ -250,7 +250,7 @@ describe('Webhook dispatch', () => {
     const webhook = getWebhookStore().create('https://example.com/hook', ['scan.complete'], secret);
     const data = { test: 'value' };
     const timestamp = '2026-03-18T00:00:00.000Z';
-    await dispatchWebhook(webhook, 'scan.complete', data, timestamp);
+    await dispatchWebhook(webhook, 'scan.complete', data, 'public', timestamp);
     const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
     const payload = JSON.parse(init.body as string);
     const expected = 'sha256=' + createHmac('sha256', secret).update(JSON.stringify(payload)).digest('hex');
@@ -338,7 +338,7 @@ describe('Webhook retry logic', () => {
 
   it('R1. succeeds on first attempt — fetch called exactly once', async () => {
     const wh = getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret');
-    await dispatchWebhook(wh, 'scan.complete', {});
+    await dispatchWebhook(wh, 'scan.complete', {}, 'public');
     expect(vi.mocked(fetch).mock.calls.length).toBe(1);
   });
 
@@ -348,26 +348,26 @@ describe('Webhook retry logic', () => {
       .mockResolvedValueOnce({ ok: true }),
     );
     const wh = getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret');
-    await dispatchWebhook(wh, 'scan.complete', {});
+    await dispatchWebhook(wh, 'scan.complete', {}, 'public');
     expect(vi.mocked(fetch).mock.calls.length).toBe(2);
   });
 
   it('R3. retries to max 3 attempts when all fail', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
     const wh = getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret');
-    await dispatchWebhook(wh, 'scan.complete', {});
+    await dispatchWebhook(wh, 'scan.complete', {}, 'public');
     expect(vi.mocked(fetch).mock.calls.length).toBe(3);
   });
 
   it('R4. all 3 failures silently swallowed — no throw', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Network error')));
     const wh = getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret');
-    await expect(dispatchWebhook(wh, 'scan.complete', {})).resolves.toBeUndefined();
+    await expect(dispatchWebhook(wh, 'scan.complete', {}, 'public')).resolves.toBeUndefined();
   });
 
   it('R5. sleep called with 0ms before attempt 0', async () => {
     const wh = getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret');
-    await dispatchWebhook(wh, 'scan.complete', {});
+    await dispatchWebhook(wh, 'scan.complete', {}, 'public');
     expect(sleepFn.mock.calls[0][0]).toBe(0);
   });
 
@@ -377,14 +377,14 @@ describe('Webhook retry logic', () => {
       .mockResolvedValueOnce({ ok: true }),
     );
     const wh = getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret');
-    await dispatchWebhook(wh, 'scan.complete', {});
+    await dispatchWebhook(wh, 'scan.complete', {}, 'public');
     expect(sleepFn.mock.calls[1][0]).toBe(500);
   });
 
   it('R7. sleep called with retryDelayMs (500ms default) before attempt 2', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
     const wh = getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret');
-    await dispatchWebhook(wh, 'scan.complete', {});
+    await dispatchWebhook(wh, 'scan.complete', {}, 'public');
     expect(sleepFn.mock.calls[2][0]).toBe(500);
   });
 });

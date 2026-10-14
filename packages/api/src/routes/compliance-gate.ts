@@ -8,6 +8,7 @@ import { ownedScan } from '../lib/scan-access.js';
 import { getComplianceHistoryStore } from '../store/compliance-history.js';
 import { fireWebhookEvent } from '../store/webhooks.js';
 import { requestOwner } from '../lib/cache-caller.js';
+import { isGroundedScanResult } from '../store/cache.js';
 import {
   buildEuComplianceReport,
   evaluateComplianceGate,
@@ -236,14 +237,18 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
         const failedArticles = gate.articles
           .filter(a => a.status !== 'compliant' && a.status !== 'not-applicable')
           .map(a => a.article);
-        fireWebhookEvent('compliance.gate_failed', {
-          scanId: stored.id,
-          projectName: report.projectName,
-          complianceScore: report.complianceScore,
-          overallRisk: report.overallRisk,
-          nonCompliantCount: gate.nonCompliantCount,
-          failedArticles,
-        }, requestOwner(request));
+        // A gate run on Gemini-grounded verdicts sends only that it failed:
+        // score, risk and articles are derived from the grounded results.
+        fireWebhookEvent('compliance.gate_failed', isGroundedScanResult(result as unknown as Record<string, unknown>)
+          ? { scanId: stored.id, projectName: report.projectName, status: 'failed', grounded: true }
+          : {
+              scanId: stored.id,
+              projectName: report.projectName,
+              complianceScore: report.complianceScore,
+              overallRisk: report.overallRisk,
+              nonCompliantCount: gate.nonCompliantCount,
+              failedArticles,
+            }, requestOwner(request));
       }
 
       const response: ComplianceGateResponse = { gate, report, scanId: stored.id };

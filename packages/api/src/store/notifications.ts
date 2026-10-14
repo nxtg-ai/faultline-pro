@@ -24,6 +24,7 @@
 import { randomUUID } from 'node:crypto';
 import { getTenantStore } from './tenants.js';
 import { fetchOutbound } from '../lib/outbound-url.js';
+import { sanitizeErrorText } from './webhooks.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -207,7 +208,10 @@ class NotificationStore {
         const res = await fetchOutbound(webhookUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ event: eventType, keyId, ...payload }),
+          body: JSON.stringify({
+            event: eventType, keyId, ...payload,
+            ...(typeof payload.error === 'string' ? { error: sanitizeErrorText(payload.error) } : {}),
+          }),
         });
         record.delivered = res.ok;
         if (!res.ok) record.error = `HTTP ${res.status}`;

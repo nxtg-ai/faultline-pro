@@ -37,14 +37,31 @@ function cacheKey(caller: string, text: string, provider: string, verifyCap: num
 export function holdsGroundedResults(result: ScanResult): boolean {
   const verifications = (result as { verifications?: Record<string, unknown> }).verifications;
   if (!verifications || typeof verifications !== 'object') return false;
-  for (const v of Object.values(verifications)) {
-    if (!v || typeof v !== 'object') continue;
-    const prov = (v as { provenance?: { retriever?: unknown; provider?: unknown } }).provenance;
-    if (prov?.retriever === 'gemini-grounding' || prov?.provider === 'gemini') return true;
-    const sources = (v as { sources?: Array<{ uri?: unknown }> }).sources;
-    if (Array.isArray(sources) && sources.some((s) => typeof s?.uri === 'string' && isGroundingRedirect(s.uri))) return true;
-  }
-  return false;
+  return Object.values(verifications).some(isGroundedVerification);
+}
+
+/**
+ * True when one verdict is a Gemini Grounded Result: its provenance names
+ * gemini or gemini-grounding, it carries Google Search Suggestions, or any
+ * source is a Google grounding Link (a consensus verdict can be grounded
+ * under another provider's name).
+ */
+export function isGroundedVerification(v: unknown): boolean {
+  if (!v || typeof v !== 'object') return false;
+  const prov = (v as { provenance?: { retriever?: unknown; provider?: unknown } }).provenance;
+  if (prov?.retriever === 'gemini-grounding' || prov?.provider === 'gemini') return true;
+  if ((v as { searchEntryPoint?: unknown }).searchEntryPoint !== undefined) return true;
+  const sources = (v as { sources?: Array<{ uri?: unknown }> }).sources;
+  return Array.isArray(sources) && sources.some((s) => typeof s?.uri === 'string' && isGroundingRedirect(s.uri));
+}
+
+/**
+ * True when a scan result is, or holds, Gemini Grounded Results: any verdict
+ * grounded, or the result names a Gemini provider (the engine writes
+ * "Google Gemini"; requests say "gemini").
+ */
+export function isGroundedScanResult(result: ScanResult): boolean {
+  return (typeof result.provider === 'string' && /gemini/i.test(result.provider)) || holdsGroundedResults(result);
 }
 
 /** A cache hit: the result as it was stored, and when it was checked. */

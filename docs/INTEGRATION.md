@@ -621,7 +621,8 @@ Content-Type: application/json
 
 A webhook receives only its owner's events. The owner is the API key that registered it (and, behind faultline-web's server key, the `x-faultline-user-ref` user sent with the registration). At send time, an event goes to a webhook when the scan's key and the webhook's key are in the same tenant (tenancy is read when the event fires, not when the webhook was registered), or when they are the same key and user. Nothing else matches:
 
-- a webhook registered by a key that has since been deleted receives nothing;
+- a webhook registered by a key that has since been deleted, disabled or expired receives nothing, and a deleted, disabled or expired key's scans send nothing;
+- ownership is checked again before every retry;
 - two keys outside any tenant do not share webhooks;
 - the server key without a user ref receives nothing;
 - `claim.verdict_changed` comes from the claim index shared by every caller, so it has no single owner and is sent to no webhook;

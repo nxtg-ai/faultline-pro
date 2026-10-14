@@ -120,7 +120,7 @@ describe('dispatchWebhook() — rate limiter integration', () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
     vi.stubGlobal('fetch', mockFetch);
 
-    await dispatchWebhook(wh, 'scan.complete', { test: true });
+    await dispatchWebhook(wh, 'scan.complete', { test: true }, 'public');
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
@@ -129,7 +129,7 @@ describe('dispatchWebhook() — rate limiter integration', () => {
     const wh = makeWebhook();
     for (let i = 0; i < rl.limitPerMinute; i++) rl.check(wh.id);
 
-    await dispatchWebhook(wh, 'scan.complete', {});
+    await dispatchWebhook(wh, 'scan.complete', {}, 'public');
 
     const log = getWebhookDeliveryLog().list(wh.id);
     expect(log.length).toBeGreaterThanOrEqual(1);
@@ -144,7 +144,7 @@ describe('dispatchWebhook() — rate limiter integration', () => {
     const wh = makeWebhook({ id: 'wh-rl11' });
     for (let i = 0; i < rl.limitPerMinute; i++) rl.check(wh.id);
 
-    await dispatchWebhook(wh, 'scan.failed', {});
+    await dispatchWebhook(wh, 'scan.failed', {}, 'public');
 
     const log = getWebhookDeliveryLog().list(wh.id);
     const record = log.find(r => r.error === 'rate limited');
@@ -160,7 +160,7 @@ describe('dispatchWebhook() — rate limiter integration', () => {
     for (let i = 0; i < rl.limitPerMinute; i++) rl.check(wh.id);
 
     // Currently blocked
-    await dispatchWebhook(wh, 'scan.complete', {});
+    await dispatchWebhook(wh, 'scan.complete', {}, 'public');
     const blockedLog = getWebhookDeliveryLog().list(wh.id);
     expect(blockedLog.find(r => r.error === 'rate limited')!.delivered).toBe(false);
 
@@ -170,7 +170,7 @@ describe('dispatchWebhook() — rate limiter integration', () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
     vi.stubGlobal('fetch', mockFetch);
 
-    await dispatchWebhook(wh, 'scan.complete', {});
+    await dispatchWebhook(wh, 'scan.complete', {}, 'public');
     expect(mockFetch).toHaveBeenCalledOnce();
     const resumedLog = getWebhookDeliveryLog().list(wh.id);
     expect(resumedLog.find(r => r.delivered)!.delivered).toBe(true);
@@ -200,7 +200,7 @@ describe('WebhookRateLimiter — env + cross-webhook', () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
     vi.stubGlobal('fetch', mockFetch);
 
-    await dispatchWebhook(whB, 'scan.complete', {});
+    await dispatchWebhook(whB, 'scan.complete', {}, 'public');
     expect(mockFetch).toHaveBeenCalledOnce(); // wh-B fires normally
   });
 

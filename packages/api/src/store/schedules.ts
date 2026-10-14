@@ -15,6 +15,7 @@ import { randomUUID } from 'node:crypto';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { getNotificationStore, type NotificationEventType } from './notifications.js';
 import { fetchOutboundFollow } from '../lib/outbound-url.js';
+import { isGroundedScanResult } from './cache.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -378,12 +379,15 @@ async function dispatchScheduleNotification(
 ): Promise<void> {
   try {
     const eventType: NotificationEventType = runResult.error ? 'scan.failed' : 'scan.completed';
+    const grounded = _scanResult !== null && typeof _scanResult === 'object'
+      && isGroundedScanResult(_scanResult as Record<string, unknown>);
     const payload: Record<string, unknown> = {
       scheduleId:   schedule.id,
       scheduleName: schedule.name,
       ranAt:        runResult.ranAt,
       durationMs:   runResult.durationMs,
-      overallRisk:  runResult.overallRisk,
+      // Derived from the verdicts: left out when they are Gemini Grounded Results.
+      ...(grounded ? { grounded: true } : { overallRisk: runResult.overallRisk }),
       claimCount:   runResult.claimCount,
       provider:     runResult.provider,
       source:       schedule.url ?? 'direct text',

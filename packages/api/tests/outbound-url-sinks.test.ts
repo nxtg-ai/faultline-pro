@@ -162,7 +162,7 @@ describe('send paths re-check at send time', () => {
   it('dispatchWebhook: a registered host that now resolves private is not fetched, and is not retried', async () => {
     const webhook = makeWebhook({ url: 'https://was-public.example.com/hook', maxAttempts: 3 });
     resolveAllTo('127.0.0.1');
-    await dispatchWebhook(webhook, 'scan.complete', { ok: true });
+    await dispatchWebhook(webhook, 'scan.complete', { ok: true }, 'public');
     expect(fetchSpy).not.toHaveBeenCalled();
     const log = getWebhookDeliveryLog().list(webhook.id);
     expect(log).toHaveLength(1);
@@ -172,7 +172,7 @@ describe('send paths re-check at send time', () => {
 
   it('dispatchWebhook: a public host is fetched once with redirect: manual', async () => {
     const webhook = makeWebhook({ url: 'https://hooks.example.com/hook' });
-    await dispatchWebhook(webhook, 'scan.complete', { ok: true });
+    await dispatchWebhook(webhook, 'scan.complete', { ok: true }, 'public');
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect((fetchSpy.mock.calls[0] as [string, RequestInit])[1].redirect).toBe('manual');
   });
@@ -314,7 +314,7 @@ describe('real loopback servers (guard on, policy admits 127.0.0.1, real undici 
 
   it('dispatchWebhook records a 302 as the status and never requests the Location', async () => {
     const webhook = makeWebhook({ url: pair.redirectorUrl, maxAttempts: 1 });
-    await dispatchWebhook(webhook, 'scan.complete', { ok: true });
+    await dispatchWebhook(webhook, 'scan.complete', { ok: true }, 'public');
     const log = getWebhookDeliveryLog().list(webhook.id);
     expect(log).toHaveLength(1);
     expect(log[0]?.statusCode).toBe(302);
