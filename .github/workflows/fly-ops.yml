@@ -86,6 +86,27 @@ jobs:
           flyctl releases -a "$APP" --json > releases.json
           python3 -c "import json;d=json.load(open('releases.json'));print('count',len(d));print('keys',sorted(d[0].keys()) if d else []);[print(json.dumps({k:v for k,v in r.items() if k.lower() in ('version','createdat','created_at','status','description','reason','imageref','user')}, default=str)) for r in d]"
 
+      - name: Release history (all pages, Fly GraphQL API)
+        if: inputs.action == 'releases'
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          tok = os.environ["FLY_API_TOKEN"].strip()
+          auth = tok if tok.startswith("FlyV1 ") else "Bearer " + tok
+          q = 'query($after:String){ app(name:"faultline-api"){ releases(first:100, after:$after){ nodes{ version createdAt status } pageInfo{ hasNextPage endCursor } } } }'
+          after, rows = None, []
+          while True:
+              req = urllib.request.Request("https://api.fly.io/graphql", data=json.dumps({"query": q, "variables": {"after": after}}).encode(),
+                                           headers={"Authorization": auth, "Content-Type": "application/json"})
+              d = json.load(urllib.request.urlopen(req, timeout=30))
+              if d.get("errors"): print("errors", d["errors"]); break
+              r = d["data"]["app"]["releases"]; rows += r["nodes"]
+              if not r["pageInfo"]["hasNextPage"]: break
+              after = r["pageInfo"]["endCursor"]
+          print("all releases", len(rows))
+          for n in sorted(rows, key=lambda x: x["version"]): print("REL", n["version"], n["createdAt"], n["status"])
+          PY
+
       - name: Recent logs (buffer only, request lines)
         if: inputs.action == 'logs'
         run: flyctl logs -a "$APP" --no-tail | grep -E 'GET|POST|graphql|claims' | tail -n 2000 || true
