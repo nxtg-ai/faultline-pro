@@ -25,6 +25,35 @@ export interface Source {
    * Consumed by the inc-2 NLI gate; safe to omit elsewhere.
    */
   snippet?: string;
+  /**
+   * The passage of the fetched page that best matches the claim, with the fetch
+   * time (evidence/passage.ts). Taken from the page's own bytes, never from the
+   * model's reply; `snippet` above is model-derived and is not evidence.
+   */
+  evidence?: SourceEvidence;
+}
+
+/** What fetching one cited source found (Honor System #3, GoPMO 1.18.11.3 P1b). */
+export interface SourceEvidence {
+  /**
+   * ok: a passage matched. no_match: the page was read and no sentence matched
+   * the claim. http_error: the page answered non-2xx. unsupported_type: not
+   * HTML or plain text (a PDF, an image). blocked: the URL or a redirect target
+   * was refused (private address, not http/https). fetch_failed: network error
+   * or timeout.
+   */
+  status: 'ok' | 'no_match' | 'http_error' | 'unsupported_type' | 'blocked' | 'fetch_failed';
+  /** The matched passage, at most 400 characters; null unless status is ok. */
+  passage: string | null;
+  /** When the fetch finished or failed (ISO 8601). */
+  fetchedAt: string;
+  /** The URL the page was finally read from, when redirects changed it. */
+  finalUri?: string;
+  httpStatus?: number;
+  /** SHA-256 (hex) of the bytes read, so the page can be re-checked later. */
+  contentSha256?: string;
+  /** True when the page was longer than the read cap and only its start was read. */
+  truncated?: boolean;
 }
 
 /**

@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 // The lib entry avoids pdf-parse's debug harness in index.js.
 import pdf from 'pdf-parse/lib/pdf-parse.js';
-import { generatePdfReport, provenanceLine } from '../src/store/pdf-report.js';
+import { evidenceLine, generatePdfReport, provenanceLine } from '../src/store/pdf-report.js';
 
 const SCAN = {
   input: 'The Eiffel Tower was completed in 1889.',
@@ -15,7 +15,10 @@ const SCAN = {
       claimId: 'c1',
       status: 'supported',
       explanation: 'Completed for the 1889 World Fair.',
-      sources: [{ title: 'Kestrelvane Archive', uri: 'https://kestrelvane.example/eiffel' }],
+      sources: [{
+        title: 'Kestrelvane Archive', uri: 'https://kestrelvane.example/eiffel',
+        evidence: { status: 'ok', passage: 'The tower was completed in March 1889 for the Exposition.', fetchedAt: '2026-10-14T03:01:05.000Z' },
+      }],
       provenance: { provider: 'gemini', model: 'gemini-2.5-flash-001', verifiedAt: '2026-10-14T03:01:02.000Z', retriever: 'gemini-grounding', retrievedAt: '2026-10-14T03:01:02.000Z' },
     },
   },
@@ -34,6 +37,15 @@ describe('provenanceLine', () => {
   });
 });
 
+describe('evidenceLine', () => {
+  it('quotes a matched passage with its fetch time, and says why nothing was quoted otherwise', () => {
+    expect(evidenceLine({ status: 'ok', passage: 'P.', fetchedAt: 'T' })).toBe('"P." (page read T)');
+    expect(evidenceLine({ status: 'no_match', passage: null, fetchedAt: 'T' })).toBe('No passage quoted: page read, no sentence matched the claim (T)');
+    expect(evidenceLine({ status: 'blocked', passage: null, fetchedAt: 'T' })).toBe('No passage quoted: address refused (T)');
+    expect(evidenceLine(undefined)).toBeNull();
+  });
+});
+
 describe('API PDF', () => {
   it('prints who checked each claim and when, and each source URI', async () => {
     const buf = await generatePdfReport(SCAN as never);
@@ -44,6 +56,9 @@ describe('API PDF', () => {
     expect(flat).toContain('2026-10-14T03:01:02.000Z');
     expect(flat).toContain('https://kestrelvane.example/eiffel');
     expect(flat).toContain('Kestrelvane Archive');
+    // P1b: the passage read from the page, with the time it was read.
+    expect(flat).toContain('The tower was completed in March 1889 for the Exposition.');
+    expect(flat).toContain('page read 2026-10-14T03:01:05.000Z');
   });
 
   it('a verdict without provenance prints no Checked by line', async () => {

@@ -51,6 +51,8 @@ A change is not done until, in the same commit or PR: `CHANGELOG.md` `[Unrelease
 - faultline-web needs **unprefixed** `KV_REST_API_URL` and `KV_REST_API_TOKEN` (Upstash Redis via the Vercel Marketplace). A Vercel storage connection made with a custom prefix (it was `fp_kv_`) leaves them unset, and the rate limiters, anon quota and shared scans fail open. That was the state from at least 2026-05-18 until 2026-10-01 (the old store was also later uninstalled). fw restored it 2026-10-01 (faultline-web PR 52): store faultline-web-kv, no prefix, daily spend alert. **Before calling a cross-repo item open, read /alignment (`~/ASIF/governance/alignment/<date>.jsonl`) for the owning lane's posts; the owner may already have closed it.** fp's Vercel token gets 403 on env vars and integrations: Asif or fw change those.
 - Git under conda: `env -u LD_LIBRARY_PATH PATH=/usr/bin:/bin /usr/bin/git`.
 
+- `FAULTLINE_EVIDENCE_FETCH=off` (Fly secret or env) stops the API fetching cited pages for evidence passages (GoPMO 1.18.11.3 P1b). Default on. Every fetch goes through `fetchOutboundFollow` (private addresses and every redirect hop refused, 6 s and 1.5 MB per page). The API test suite sets it off in `packages/api/vitest.config.ts`; `tests/evidence-routes.test.ts` turns it on with a stubbed network.
+
 ## Live probes (zero or near-zero spend)
 
 - Consensus gate: `POST https://faultline-api.fly.dev/scan/stream` with the server key, `x-user-tier: pro`, body `{"text":"…","provider":"mock","pipelineConfig":{"extractionProvider":"mock","consensus":true,"consensusProviders":["mock"]}}` → `403 consensus_not_in_plan`; `x-user-tier: enterprise` → 200.

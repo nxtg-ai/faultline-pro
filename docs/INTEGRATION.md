@@ -381,6 +381,22 @@ interface VerificationResult {
 }
 ```
 
+**Evidence passages.** On `POST /scan`, `GET`/`POST /scan/stream`, the full scan (`/scan/full`) and `POST /scan/template/:id`, each cited source carries `evidence` (GraphQL, batch, compliance-gate and deep scans do not yet): the API fetched the page (following Google's grounding redirect to the publisher, refusing private addresses at every hop) and quotes the sentence that best matches the claim, taken from the page's own bytes, never from the model's reply.
+
+```typescript
+evidence?: {
+  status: 'ok' | 'no_match' | 'http_error' | 'unsupported_type' | 'blocked' | 'fetch_failed';
+  passage: string | null;   // at most 400 characters; null unless status is 'ok'
+  fetchedAt: string;        // ISO 8601, when the fetch finished or failed
+  finalUri?: string;        // the publisher URL after redirects
+  httpStatus?: number;
+  contentSha256?: string;   // SHA-256 of the bytes read, to re-check the page later
+  truncated?: boolean;      // the page was longer than 1.5 MB; only its start was read
+}
+```
+
+`ok` means a sentence on the page shares enough words with the claim (at least two, and at least 40% of the claim's content words) to be the best quote; it is not a judgment that the page supports the claim. The verdict's `status` is that judgment. `no_match` means the page was read and no sentence shared enough words with the claim; Faultline never fills that gap with a model-written quote. A source's older `snippet` field, when present, is model-derived and is not evidence. Fetching adds up to 6 seconds per claim (sources are fetched in parallel). The API PDF quotes each passage with the time the page was read.
+
 **Provenance.** Every verdict whose check ran names the provider and model that produced it and the time, bound at the provider call. The provider id is always the one the engine resolved. A cached result keeps its original `verifiedAt`, so a cache hit shows how old the verdict is. The API PDF prints one "Checked by" line per claim and each source's URI.
 
 **Search Suggestions (Gemini grounded verdicts).** When a verdict came from Gemini with Grounding with Google Search, it carries `searchEntryPoint.renderedContent` (HTML and CSS from Google) and `webSearchQueries`, passed through unaltered from that verdict's own grounded request. Google's grounding terms require the suggestion to be displayed, unaltered, wherever that verdict's explanation or sources are shown to the end user, and grounded results to be shown only to the end user who submitted the prompt. Render `renderedContent` as given (for example in a sandboxed iframe or a shadow root); do not restyle, trim or re-host it. The fields are on every surface that returns a verdict: `GET`/`POST /scan/stream` (`claim_verified.verdict`), `POST /scan` (`verifications[id]`) and `GET /scan/full/:jobId` (`progress[].verdict`). Faultline never writes them to disk.

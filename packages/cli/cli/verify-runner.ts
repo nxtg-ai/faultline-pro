@@ -15,6 +15,7 @@ import { OpenAIWebSearchRetriever } from '../providers/openai_web_search_retriev
 import { consensusVerify, type NamedProvider } from '../consensus/consensus_engine.js';
 import { classifyApiError } from '../providers/extraction-error.js';
 import { guardVerdict } from '../lib/verdict-guard.js';
+import { attachEvidence, type EvidenceOptions } from '../evidence/passage.js';
 
 /** Claims verified at the same time within one scan. */
 export const VERIFY_CONCURRENCY = 8;
@@ -243,6 +244,8 @@ export interface RunVerificationOptions {
   flagExhaustedRetries?: boolean;
   /** Claims verified at the same time (default VERIFY_CONCURRENCY; see resolveVerifyConcurrency). */
   concurrency?: number;
+  /** When set, each verdict's cited sources are fetched for evidence passages before it is reported (GoPMO 1.18.11.3 P1b). */
+  evidence?: EvidenceOptions;
 }
 
 /** What one verify-stage run produced. */
@@ -340,7 +343,8 @@ export async function runVerification(
     while (cursor < claims.length && !signal?.aborted) {
       const i = cursor++;
       onProgress?.(`Verifying claim ${i + 1}/${claims.length}...`);
-      const result = guardVerdict(await verifyOneClaim(claims[i], verifier, flagExhaustedRetries), claims[i].id);
+      const checked = guardVerdict(await verifyOneClaim(claims[i], verifier, flagExhaustedRetries), claims[i].id);
+      const result = options.evidence ? await attachEvidence(checked, claims[i].text, options.evidence) : checked;
       verifications[claims[i].id] = result;
       results[i] = result;
       onClaimVerified?.(claims[i], result, i, claims.length);

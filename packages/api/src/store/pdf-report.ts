@@ -26,9 +26,31 @@ export interface PdfVerification {
   claimId:     string;
   status:      string;
   explanation: string;
-  sources:     Array<{ title: string; uri: string }>;
+  sources:     Array<{ title: string; uri: string; evidence?: PdfSourceEvidence }>;
   /** Who produced the verdict and when (engine VerdictProvenance). */
   provenance?: { provider: string; model: string; verifiedAt: string; retriever?: string; retrievedAt?: string };
+}
+
+/** What fetching a cited source found (engine SourceEvidence). */
+export interface PdfSourceEvidence {
+  status: string;
+  passage: string | null;
+  fetchedAt: string;
+}
+
+const EVIDENCE_STATUS_TEXT: Record<string, string> = {
+  no_match: 'page read, no sentence matched the claim',
+  http_error: 'page returned an error',
+  unsupported_type: 'not an HTML or text page',
+  blocked: 'address refused',
+  fetch_failed: 'page could not be fetched',
+};
+
+/** The quoted passage with its fetch time, or why none was quoted; null when the source carries no evidence. */
+export function evidenceLine(e: PdfSourceEvidence | undefined): string | null {
+  if (!e || typeof e.fetchedAt !== 'string' || typeof e.status !== 'string') return null;
+  if (e.status === 'ok' && typeof e.passage === 'string') return `"${e.passage}" (page read ${e.fetchedAt})`;
+  return `No passage quoted: ${EVIDENCE_STATUS_TEXT[e.status] ?? e.status} (${e.fetchedAt})`;
 }
 
 /** One line naming who checked a claim and when, or null when the verdict carries no provenance. */
@@ -511,6 +533,17 @@ function drawClaimAnalysis(
             })
             .restore();
           doc.moveDown(0.15);
+          // Evidence passage from the fetched page (Honor System #3, GoPMO 1.18.11.3 P1b)
+          const quoted = evidenceLine(src.evidence);
+          if (quoted) {
+            doc.save()
+              .fontSize(8)
+              .font('Helvetica-Oblique')
+              .fillColor(COLORS.text)
+              .text(quoted, COLORS.pageGutter + 28, doc.y, { width: COLORS.pageWidth - 38 })
+              .restore();
+            doc.moveDown(0.15);
+          }
         });
       }
     }

@@ -1,3 +1,4 @@
+import type { EvidenceOptions } from '../evidence/passage.js';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import type { Claim, VerificationResult, AnalysisState } from '../types.js';
@@ -66,6 +67,11 @@ export interface ScanOptions {
    * 'full' runs quick, so a bad value can never lift the cost bound.
    */
   mode?: ScanMode;
+  /**
+   * Fetch each cited source and attach the best-matching passage from the page
+   * (evidence/passage.ts). Off unless set; the API passes its guarded fetch.
+   */
+  evidence?: EvidenceOptions;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -136,6 +142,8 @@ export interface VerifyFullScanOptions {
   text?: string;
   minConfidence?: number;
   ruleNames?: string[];
+  /** Attach evidence passages from each cited source (see ScanOptions.evidence). */
+  evidence?: EvidenceOptions;
 }
 
 function calculateRisk(
@@ -286,13 +294,14 @@ export async function scan(
   if (options?.mode === 'full') {
     return runFullVerification(claims, verifier, {
       provider: extractionProvider.name, text, minConfidence, ruleNames, onProgress, onClaim: onClaimVerified,
+      evidence: options?.evidence,
     });
   }
 
   const verifyCap = resolveVerifyCap(options?.verifyCap);
   const rankedEligible = rankEligibleClaims(claims);
   const toVerify = rankedEligible.slice(0, verifyCap);
-  const { verifications } = await runVerification(toVerify, verifier, { onProgress, onClaimVerified });
+  const { verifications } = await runVerification(toVerify, verifier, { onProgress, onClaimVerified, evidence: options?.evidence });
 
   onProgress?.('Generating report...');
   const overallRisk = calculateRisk(verifications);
@@ -361,6 +370,7 @@ interface FullVerificationContext {
   onClaim?: ScanClaimCallback;
   signal?: AbortSignal;
   concurrency?: number;
+  evidence?: EvidenceOptions;
 }
 
 /** The full-scan core shared by scan(mode 'full') and verifyFullScan. */
@@ -376,6 +386,7 @@ async function runFullVerification(
     signal: context.signal,
     concurrency: context.concurrency,
     flagExhaustedRetries: true,
+    evidence: context.evidence,
   });
 
   context.onProgress?.('Generating report...');
