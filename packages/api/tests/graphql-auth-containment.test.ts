@@ -52,7 +52,7 @@ describe('GraphQL needs a key on every method and URL', () => {
     delete process.env.FAULTLINE_GRAPHQL;
   });
 
-  const variants: Array<[string, () => Parameters<FastifyInstance['inject']>[0]]> = [
+  const variants: Array<[string, () => Record<string, unknown>]> = [
     ['POST /graphql', () => ({ method: 'POST', url: '/graphql', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query: SCANS_QUERY }) })],
     ['POST /graphql?x=1', () => ({ method: 'POST', url: '/graphql?x=1', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query: SCANS_QUERY }) })],
     ['POST /graphql/', () => ({ method: 'POST', url: '/graphql/', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query: SCANS_QUERY }) })],
@@ -62,7 +62,7 @@ describe('GraphQL needs a key on every method and URL', () => {
 
   it.each(variants)('GQ-1. %s with no key gets no data', async (_name, req) => {
     seedPrivateScan('someone-else');
-    const res = await server.inject(req());
+    const res = await server.inject(req() as never);
     expect(res.body).not.toContain(PRIVATE);
     expect([401, 404]).toContain(res.statusCode);
   });
