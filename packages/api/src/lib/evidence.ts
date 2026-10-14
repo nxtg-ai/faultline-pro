@@ -29,13 +29,28 @@ export function apiEvidenceOptions(): EvidenceOptions | undefined {
  */
 export const PASSAGE_SEARCH_DEFAULT_MODEL = 'gpt-4o-mini';
 
+/**
+ * Models measured under the authorized 1.5 cents per checked claim. Any other
+ * FAULTLINE_PASSAGE_SEARCH_MODEL value leaves the leg off rather than spend
+ * past the cap (gpt-4.1-mini measured 1.4 to 1.7 cents, 2026-10-14).
+ */
+export const PASSAGE_SEARCH_MODELS_UNDER_CAP: readonly string[] = ['gpt-4o-mini'];
+
+/** Deadline for the leg's search call; a stalled search must not stall the claim. */
+export const PASSAGE_SEARCH_TIMEOUT_MS = 12_000;
+
 export function apiIndependentEvidenceOptions(): IndependentEvidenceOptions | undefined {
   if ((process.env.FAULTLINE_PASSAGE_LEG ?? '').toLowerCase() !== 'on') return undefined;
+  // The evidence kill switch stops every page fetch, this leg's included.
+  if (apiEvidenceOptions() === undefined) return undefined;
   const key = process.env.OPENAI_API_KEY ?? '';
   if (!key) return undefined;
   const model = process.env.FAULTLINE_PASSAGE_SEARCH_MODEL || PASSAGE_SEARCH_DEFAULT_MODEL;
+  if (!PASSAGE_SEARCH_MODELS_UNDER_CAP.includes(model)) return undefined;
   return {
-    retriever: new OpenAIWebSearchRetriever(key, { model }),
+    retriever: new OpenAIWebSearchRetriever(key, { model, timeoutMs: PASSAGE_SEARCH_TIMEOUT_MS }),
     fetch: (url, init) => fetchOutboundFollow(url, init, EVIDENCE_MAX_REDIRECTS),
+    // Only a Gemini-grounded verdict lacks page passages; consensus already searches with OpenAI.
+    appliesTo: (result) => result.provenance?.retriever === 'gemini-grounding',
   };
 }

@@ -49,9 +49,13 @@ export class OpenAIWebSearchRetriever implements Retriever {
   /** The model that runs the web_search call (recorded in provenance and usage). */
   readonly model: string;
 
+  /** Deadline for one search request in ms; absent means no deadline (the consensus path's behaviour). */
+  private readonly timeoutMs?: number;
+
   /** `opts.model` overrides FAULTLINE_OPENAI_SEARCH_MODEL and the default. */
-  constructor(apiKey: string, opts: { model?: string } = {}) {
+  constructor(apiKey: string, opts: { model?: string; timeoutMs?: number } = {}) {
     this.apiKey = apiKey;
+    this.timeoutMs = opts.timeoutMs;
     this.model =
       opts.model ||
       (typeof process !== 'undefined' ? process.env?.FAULTLINE_OPENAI_SEARCH_MODEL : undefined) ||
@@ -94,6 +98,7 @@ export class OpenAIWebSearchRetriever implements Retriever {
         tools: [{ type: 'web_search' }],
         input,
       }),
+      ...(this.timeoutMs ? { signal: AbortSignal.timeout(this.timeoutMs) } : {}),
     });
 
     if (!response.ok) {

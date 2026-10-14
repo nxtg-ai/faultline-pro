@@ -75,6 +75,14 @@ describe('attachIndependentEvidence', () => {
     expect(retriever.retrieve).not.toHaveBeenCalled();
   });
 
+  it('appliesTo false: the verdict is returned as given and no search is made', async () => {
+    const retriever = retrieverOf([{ title: 'x', uri: 'https://x.example/' }]);
+    const base = verdict();
+    const v = await attachIndependentEvidence(base, CLAIM_TEXT, { retriever, fetch: vi.fn() as never, appliesTo: () => false });
+    expect(v).toBe(base);
+    expect(retriever.retrieve).not.toHaveBeenCalled();
+  });
+
   it('a retriever that throws or finds nothing yields an empty list, which says so', async () => {
     const throwing = retrieverOf(() => { throw new Error('down'); });
     const v = await attachIndependentEvidence(verdict(), CLAIM_TEXT, { retriever: throwing, fetch: vi.fn() as never });

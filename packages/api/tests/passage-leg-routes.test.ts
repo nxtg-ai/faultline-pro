@@ -145,6 +145,53 @@ describe('passage leg', () => {
   }, 30_000);
 });
 
+describe('passage leg guards (Fable review findings)', () => {
+  async function postAs(provider: 'gemini' | 'mock'): Promise<Record<string, any>> {
+    const server = buildServer();
+    await server.ready();
+    try {
+      const apiKey = getKeyStore().create('Pro', ['pro', 'scan']).key;
+      const res = await server.inject({ method: 'POST', url: '/scan', headers: { 'x-api-key': apiKey, 'content-type': 'application/json' },
+        payload: { text: 'The Eiffel Tower was completed in 1889.', provider } });
+      expect(res.statusCode).toBe(200);
+      return res.json();
+    } finally {
+      await server.close();
+    }
+  }
+
+  it('FAULTLINE_EVIDENCE_FETCH=off also stops the leg (L1)', async () => {
+    process.env.FAULTLINE_PASSAGE_LEG = 'on';
+    process.env.FAULTLINE_EVIDENCE_FETCH = 'off';
+    const body = await postAs('gemini');
+    expect(body.verifications.c1.independentEvidence).toBeUndefined();
+    expect(openaiBodies).toHaveLength(0);
+  }, 30_000);
+
+  it('a model not measured under the cap leaves the leg off (L2)', async () => {
+    process.env.FAULTLINE_PASSAGE_LEG = 'on';
+    process.env.FAULTLINE_PASSAGE_SEARCH_MODEL = 'gpt-4.1-mini';
+    const body = await postAs('gemini');
+    expect(body.verifications.c1.independentEvidence).toBeUndefined();
+    expect(openaiBodies).toHaveLength(0);
+  }, 30_000);
+
+  it('a verdict that is not Gemini-grounded gets no search, so a mock scan spends nothing (L3)', async () => {
+    process.env.FAULTLINE_PASSAGE_LEG = 'on';
+    const body = await postAs('mock');
+    for (const v of Object.values(body.verifications as Record<string, any>)) expect(v.independentEvidence).toBeUndefined();
+    expect(openaiBodies).toHaveLength(0);
+  }, 30_000);
+
+  it('the search call carries a deadline (M1)', async () => {
+    process.env.FAULTLINE_PASSAGE_LEG = 'on';
+    await postAs('gemini');
+    const call = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.find((c) => String(c[0]).startsWith('https://api.openai.com/'));
+    expect(call).toBeDefined();
+    expect((call![1] as RequestInit).signal).toBeInstanceOf(AbortSignal);
+  }, 30_000);
+});
+
 describe('price of the passage leg', () => {
   it('a gpt-4o-mini web_search leg includes the 1 cent call fee; a non-grounding leg does not', () => {
     const search = priceLeg({ provider: 'openai', model: 'gpt-4o-mini', callType: 'web_search', inputTokens: 8174, outputTokens: 300, isGrounding: true });

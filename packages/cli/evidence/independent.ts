@@ -22,6 +22,8 @@ export interface IndependentEvidenceOptions {
   /** Result pages fetched per claim at most (default 3). */
   maxSources?: number;
   timeoutMs?: number;
+  /** Run the leg only for verdicts this accepts (the API: Gemini-grounded verdicts only). Absent: every verdict. */
+  appliesTo?: (result: VerificationResult) => boolean;
 }
 
 /**
@@ -35,6 +37,7 @@ export async function attachIndependentEvidence(
   opts: IndependentEvidenceOptions,
 ): Promise<VerificationResult> {
   if (result.apiError === true) return result;
+  if (opts.appliesTo && !opts.appliesTo(result)) return result;
   let found: Array<{ title: string; uri: string }> = [];
   try {
     found = await opts.retriever.retrieve(claimText);

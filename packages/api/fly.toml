@@ -10,6 +10,10 @@ primary_region = "lax"
 [env]
   NODE_ENV = "production"
   PORT = "3000"
+  # Independent passage leg (GoPMO 1.18.11.3; emma-soul al:e615798a8e8109c0): on after a
+  # transcript-blind Fable seat PASS (docs/reviews/2026-10-14-passage-leg-fable-seat.md).
+  # Remove this line, or set FAULTLINE_EVIDENCE_FETCH=off, to stop it.
+  FAULTLINE_PASSAGE_LEG = "on"
 
 [http_service]
   internal_port = 3000
