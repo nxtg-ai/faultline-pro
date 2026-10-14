@@ -82,7 +82,9 @@ jobs:
       # with times, and whatever recent log buffer Fly still holds.
       - name: Releases (deploy history)
         if: inputs.action == 'releases'
-        run: flyctl releases -a "$APP" --json | python3 -c "import sys,json; [print(r.get('Version'), r.get('CreatedAt'), r.get('Status'), r.get('Description','')[:60]) for r in json.load(sys.stdin)]"
+        run: |
+          flyctl releases -a "$APP" --json > releases.json
+          python3 -c "import json;d=json.load(open('releases.json'));print('count',len(d));print('keys',sorted(d[0].keys()) if d else []);[print(json.dumps({k:v for k,v in r.items() if k.lower() in ('version','createdat','created_at','status','description','reason','imageref','user')}, default=str)) for r in d]"
 
       - name: Recent logs (buffer only, request lines)
         if: inputs.action == 'logs'
