@@ -192,7 +192,7 @@ Accepts PDF, PNG, JPEG, or WebP. OCR extracts text, then runs the standard scan 
 
 Same as `/scan` but additionally validates source URLs found in the text and returns scored evidence links.
 
-**Request / Response**: Same as `POST /scan`, with an extra `evidenceLinks` field in the response containing URL scores.
+**Request / Response**: Same as `POST /scan`, with an extra `evidenceLinks` field in the response containing URL scores. Each source is HEAD-probed through the outbound guard as `FaultlineEvidence/1.0 (+https://faultline.nxtg.ai)`, at most 3 redirects, asking the site's robots.txt before each hop. A source that was deliberately not probed carries `notChecked`: `provider_terms` for a Google grounding Link (never requested; Google's terms forbid "using Links to identify destination pages for crawling or scraping"), `robots` when the site's robots.txt disallows it. Such a source reads `available: false` with `statusCode: 0`; that means not checked, not missing. With the default provider (`gemini`) every source is a grounding Link, so all read `provider_terms`.
 
 ---
 

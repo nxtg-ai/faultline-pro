@@ -26,6 +26,7 @@ import {
 } from '../src/lib/outbound-url.js';
 import { buildEvidenceLinks, resetUrlFetcher, validateSourceUrl } from '../src/lib/url-validator.js';
 import { buildServer } from '../src/server.js';
+import { clearRobotsCache, EVIDENCE_USER_AGENT } from '@nxtg/faultline/evidence/robots.js';
 import { resetCache } from '../src/store/cache.js';
 
 // The scan engine is mocked so /scan/deep returns whatever sources the "model"
@@ -92,6 +93,7 @@ beforeEach(() => {
   vi.stubEnv('FAULTLINE_OUTBOUND_ALLOW_PRIVATE', '');
   resetOutboundFetch();
   resetUrlFetcher();
+  clearRobotsCache();
 });
 
 afterEach(() => {
@@ -138,28 +140,32 @@ describe('url-validator: redirect hops are guarded one by one', () => {
 
   it('UVG-03 a public source redirecting to 169.254.169.254 → first hop only, reported unreachable', async () => {
     admitLoopbackOneAsPublic();
-    start = await startCountingServer('127.0.0.1', (res) => {
+    start = await startCountingServer('127.0.0.1', (res, _port, path) => {
+      if (path === '/robots.txt') { res.writeHead(404).end(); return; }
       res.writeHead(302, { location: 'http://169.254.169.254/latest/meta-data/iam/' }).end();
     });
     const resolver = resolveFrom({ 'source.test': '127.0.0.1' });
     const result = await validateSourceUrl(`http://source.test:${start.port}/doc`, 'Doc', 'documented fact');
     expect(result.statusCode).toBe(0);
     expect(result.available).toBe(false);
-    expect(start.requests.map((r) => `${r.method} ${r.url}`)).toEqual(['HEAD /doc']);
-    // Pre-check + connect-time lookup for hop 1 only; the metadata literal is refused before any lookup or socket.
-    expect(resolver.mock.calls.map((call) => call[0])).toEqual(['source.test', 'source.test']);
+    // robots.txt is asked first, then the page; the metadata hop is refused before its robots.txt or any socket.
+    expect(start.requests.map((r) => `${r.method} ${r.url}`)).toEqual(['GET /robots.txt', 'HEAD /doc']);
+    const looked = resolver.mock.calls.map((call) => call[0]);
+    expect(looked.length).toBeGreaterThan(0);
+    expect(looked.every((h) => h === 'source.test')).toBe(true);
   });
 
   it('UVG-04 a redirect to a hostname that resolves private → the private server sees zero connections', async () => {
     admitLoopbackOneAsPublic();
     privateTarget = await startCountingServer('127.0.0.2', ok);
-    start = await startCountingServer('127.0.0.1', (res) => {
-      res.writeHead(301, { location: `http://internal-hop.test:${privateTarget.port}/secret` }).end();
+    start = await startCountingServer('127.0.0.1', (res, _port, path) => {
+      if (path === '/robots.txt') { res.writeHead(404).end(); return; }
+      res.writeHead(301, { location: `http://internal-hop.test:${privateTarget!.port}/secret` }).end();
     });
     resolveFrom({ 'source.test': '127.0.0.1', 'internal-hop.test': '127.0.0.2' });
     const result = await validateSourceUrl(`http://source.test:${start.port}/doc`, 'Doc', 'documented fact');
     expect(result.statusCode).toBe(0);
-    expect(start.requests).toHaveLength(1);
+    expect(start.requests.filter((r) => r.method === 'HEAD')).toHaveLength(1);
     expect(privateTarget.connections).toBe(0);
   });
 
@@ -174,7 +180,7 @@ describe('url-validator: redirect hops are guarded one by one', () => {
     const result = await validateSourceUrl(`http://source.test:${start.port}/doc`, 'Doc', 'documented fact');
     expect(result.statusCode).toBe(200);
     expect(result.available).toBe(true);
-    expect(start.requests.map((r) => `${r.method} ${r.url}`)).toEqual(['HEAD /doc', 'HEAD /landing']);
+    expect(start.requests.map((r) => `${r.method} ${r.url}`)).toEqual(['GET /robots.txt', 'HEAD /doc', 'GET /robots.txt', 'HEAD /landing']);
   });
 
   it('UVG-06 more than 3 redirect hops → reported unreachable after exactly 4 requests', async () => {
@@ -186,7 +192,9 @@ describe('url-validator: redirect hops are guarded one by one', () => {
     const result = await validateSourceUrl(`http://loop.test:${start.port}/doc`, 'Doc', 'documented fact');
     expect(result.statusCode).toBe(0);
     expect(result.available).toBe(false);
-    expect(start.requests).toHaveLength(4); // the original request + 3 followed hops
+    // One robots.txt for the origin (cached), then the original request + 3 followed hops.
+    expect(start.requests.filter((r) => r.method === 'HEAD')).toHaveLength(4);
+    expect(start.requests.filter((r) => r.url === '/robots.txt')).toHaveLength(1);
   });
 });
 
@@ -205,9 +213,46 @@ describe('url-validator: a normal public source still validates', () => {
     expect(result.available).toBe(true);
     expect(result.lastModified).toBeDefined();
     expect(result.evidenceScore).toBe(100); // 50 available + 30 title match + 20 recency
-    expect(target.requests).toHaveLength(1);
-    expect(target.requests[0]?.method).toBe('HEAD');
-    expect(target.requests[0]?.headers['user-agent']).toBe('Faultline-EvidenceBot/1.0');
+    expect(target.requests.map((r) => `${r.method} ${r.url}`)).toEqual(['GET /robots.txt', 'HEAD /article']);
+    // The named user agent with its contact URL, on robots.txt and on the probe.
+    for (const r of target.requests) expect(r.headers['user-agent']).toBe(EVIDENCE_USER_AGENT);
+  });
+});
+
+describe('url-validator: provider terms and robots.txt (emma-soul al:07b45f0562efbbf0, al:15b443bc1ccf7a4e)', () => {
+  let target: CountingServer;
+  afterEach(async () => { await stop(target); });
+
+  it('UVG-10 a page robots.txt disallows is never probed: notChecked robots', async () => {
+    admitLoopbackOneAsPublic();
+    target = await startCountingServer('127.0.0.1', (res, _port, path) => {
+      if (path === '/robots.txt') res.writeHead(200, { 'content-type': 'text/plain' }).end('User-agent: FaultlineEvidence\nDisallow: /private\n');
+      else ok(res);
+    });
+    resolveFrom({ 'journal.test': '127.0.0.1' });
+    const result = await validateSourceUrl(`http://journal.test:${target.port}/private/paper`, 'Paper', 'paper');
+    expect(result).toEqual(expect.objectContaining({ statusCode: 0, available: false, notChecked: 'robots' }));
+    expect(target.requests.map((r) => `${r.method} ${r.url}`)).toEqual(['GET /robots.txt']);
+  });
+
+  it('UVG-11 a Google grounding Link is never requested: notChecked provider_terms, no lookup, no socket', async () => {
+    target = await startCountingServer('127.0.0.1', ok);
+    const resolver = resolveFrom({});
+    const result = await validateSourceUrl('https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc', 'g', 'claim');
+    expect(result).toEqual(expect.objectContaining({ statusCode: 0, available: false, notChecked: 'provider_terms' }));
+    expect(resolver).not.toHaveBeenCalled();
+  });
+
+  it('UVG-12 a redirect onto the Google grounding host is not followed', async () => {
+    admitLoopbackOneAsPublic();
+    target = await startCountingServer('127.0.0.1', (res, _port, path) => {
+      if (path === '/doc') res.writeHead(302, { location: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/x' }).end();
+      else ok(res);
+    });
+    const resolver = resolveFrom({ 'source.test': '127.0.0.1' });
+    const result = await validateSourceUrl(`http://source.test:${target.port}/doc`, 'Doc', 'claim');
+    expect(result.notChecked).toBe('provider_terms');
+    expect(resolver.mock.calls.map((c) => c[0])).not.toContain('vertexaisearch.cloud.google.com');
   });
 });
 
@@ -237,7 +282,7 @@ describe('buildEvidenceLinks with mixed sources (the /scan/deep shape)', () => {
     expect(links).toHaveLength(1);
     expect(links[0]?.sources.map((s) => s.statusCode)).toEqual([200, 0, 0, 0]);
     expect(links[0]?.sources.map((s) => s.available)).toEqual([true, false, false, false]);
-    expect(target.connections).toBe(1);
+    expect(target.requests.map((r) => `${r.method} ${r.url}`)).toEqual(['GET /robots.txt', 'HEAD /ok']);
   });
 });
 
@@ -276,5 +321,21 @@ describe('POST /scan/deep with model-returned private sources', () => {
     } finally {
       await server.close();
     }
+  });
+});
+
+describe('url-validator: a robots.txt that redirects to a private address', () => {
+  let start: CountingServer;
+  afterEach(async () => { await stop(start); });
+
+  it('UVG-13 the robots.txt redirect is refused by the guard, and the page is not probed', async () => {
+    admitLoopbackOneAsPublic();
+    start = await startCountingServer('127.0.0.1', (res) => {
+      res.writeHead(302, { location: 'http://169.254.169.254/latest/meta-data/' }).end();
+    });
+    resolveFrom({ 'source.test': '127.0.0.1' });
+    const result = await validateSourceUrl(`http://source.test:${start.port}/doc`, 'Doc', 'claim');
+    expect(result.statusCode).toBe(0);
+    expect(start.requests.map((r) => `${r.method} ${r.url}`)).toEqual(['GET /robots.txt']);
   });
 });

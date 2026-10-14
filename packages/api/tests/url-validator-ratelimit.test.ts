@@ -21,6 +21,14 @@ import {
   resetUrlFetcher,
 } from '../src/lib/url-validator.js';
 import { resolveTier } from '../src/plugins/ratelimit.js';
+import { clearRobotsCache } from '@nxtg/faultline/evidence/robots.js';
+
+/** The page answer for every URL except robots.txt, which answers 404 (no rules). */
+function pageOr404Robots(page: unknown) {
+  return async (url: string) => (String(url).endsWith('/robots.txt')
+    ? ({ ok: false, status: 404, body: null, headers: { forEach: vi.fn(), get: () => null } } as unknown as Response)
+    : (page as Response));
+}
 import { getKeyStore, resetKeyStore } from '../src/store/keys.js';
 
 // ===========================================================================
@@ -32,6 +40,7 @@ describe('url-validator — default _fetcher (lines 20-30)', () => {
     vi.stubGlobal('fetch', vi.fn());
     // Reset to the default fetcher (the one under test) so stubs are used
     resetUrlFetcher();
+    clearRobotsCache();
   });
 
   afterEach(() => {
@@ -41,11 +50,11 @@ describe('url-validator — default _fetcher (lines 20-30)', () => {
   });
 
   it('UV1: 200 response → available=true, evidenceScore >= 50', async () => {
-    vi.mocked(fetch).mockResolvedValue({
+    vi.mocked(fetch).mockImplementation(pageOr404Robots({
       ok: true,
       status: 200,
       headers: { forEach: vi.fn(), get: () => null },
-    } as unknown as Response);
+    } as unknown as Response));
 
     const result = await validateSourceUrl('https://example.com/study', 'Study', 'test claim');
     expect(result.available).toBe(true);
@@ -54,11 +63,11 @@ describe('url-validator — default _fetcher (lines 20-30)', () => {
   });
 
   it('UV2: 404 response → available=false, evidenceScore < 50', async () => {
-    vi.mocked(fetch).mockResolvedValue({
+    vi.mocked(fetch).mockImplementation(pageOr404Robots({
       ok: false,
       status: 404,
       headers: { forEach: vi.fn(), get: () => null },
-    } as unknown as Response);
+    } as unknown as Response));
 
     const result = await validateSourceUrl('https://example.com/missing', 'Missing', 'test');
     expect(result.available).toBe(false);
@@ -80,11 +89,11 @@ describe('url-validator — default _fetcher (lines 20-30)', () => {
     setUrlFetcher(async () => ({ status: 999, headers: {} }));
     resetUrlFetcher(); // installs the default (with real fetch)
 
-    vi.mocked(fetch).mockResolvedValue({
+    vi.mocked(fetch).mockImplementation(pageOr404Robots({
       ok: true,
       status: 200,
       headers: { forEach: vi.fn(), get: () => null },
-    } as unknown as Response);
+    } as unknown as Response));
 
     const result = await validateSourceUrl('https://example.com', 'Example', 'test');
     expect(result.statusCode).toBe(200); // default fetcher used, not the 999 stub
