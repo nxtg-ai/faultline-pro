@@ -30,7 +30,7 @@ import { getNotificationStore, resetNotificationStore, sendWeeklySummaries } fro
 import { getTemplateStore, resetTemplateStore } from '../src/store/templates.js';
 import { resetClaimIndex } from '../src/store/claims.js';
 import { getScheduleStore, getScheduleRunner, resetScheduleStore } from '../src/store/schedules.js';
-import { dispatchWebhook, getWebhookDeliveryLog, resetWebhookDeliveryLog } from '../src/store/webhooks.js';
+import { dispatchWebhook, getWebhookDeliveryLog, resetWebhookDeliveryLog, sanitizeErrorText } from '../src/store/webhooks.js';
 import type { FastifyInstance } from 'fastify';
 
 const CLAIM_TEXT = 'The Eiffel Tower was completed in 1889.';
@@ -834,5 +834,26 @@ describe('fire-time filter and the schedule webhookUrl', () => {
     await getScheduleRunner().runSchedule(s);
     await flush();
     expect(deliveries().filter((d) => d.url === 'https://a.example.com/sched')).toEqual([]);
+  });
+
+  it('WO-23. a batch scan.failed reaches its own tenant only', async () => {
+    const a = tenantAdminKey('Tenant A');
+    const b = tenantAdminKey('Tenant B');
+    await register(server, a.key.key, 'https://a.example.com/hook', ['scan.failed']);
+    await register(server, b.key.key, 'https://b.example.com/hook', ['scan.failed']);
+    const { scan } = await import('@nxtg/faultline/cli/scan.js');
+    vi.mocked(scan).mockRejectedValue(new Error('provider down'));
+    await server.inject({ method: 'POST', url: '/scan/batch', headers: { 'x-api-key': a.key.key, 'content-type': 'application/json' }, body: JSON.stringify({ texts: [CLAIM_TEXT] }) });
+    await flush();
+    const urls = deliveries().map((d) => d.url);
+    expect(urls).toContain('https://a.example.com/hook');
+    expect(urls).not.toContain('https://b.example.com/hook');
+  });
+
+  it('WO-24. a grounding link inside an allow-listed Faultline error is still removed', () => {
+    const out = sanitizeErrorText(`All providers failed; last answer cited ${GROUNDING_URI} and https://example.org/ok`);
+    expect(out).not.toContain('vertexaisearch');
+    expect(out).toContain('[link removed]');
+    expect(out).toContain('https://example.org/ok');
   });
 });
