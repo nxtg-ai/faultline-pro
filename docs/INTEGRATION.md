@@ -367,8 +367,13 @@ interface VerificationResult {
     title: string;
     uri: string;
   }>;
+  // Google Search Suggestions, present only on a Gemini grounded verdict (see below)
+  searchEntryPoint?: { renderedContent: string };
+  webSearchQueries?: string[];
 }
 ```
+
+**Search Suggestions (Gemini grounded verdicts).** When a verdict came from Gemini with Grounding with Google Search, it carries `searchEntryPoint.renderedContent` (HTML and CSS from Google) and `webSearchQueries`, passed through unaltered from that verdict's own grounded request. Google's grounding terms require the suggestion to be displayed, unaltered, wherever that verdict's explanation or sources are shown to the end user, and grounded results to be shown only to the end user who submitted the prompt. Render `renderedContent` as given (for example in a sandboxed iframe or a shadow root); do not restyle, trim or re-host it. The fields are on every surface that returns a verdict: `GET`/`POST /scan/stream` (`claim_verified.verdict`), `POST /scan` (`verifications[id]`) and `GET /scan/full/:jobId` (`progress[].verdict`). Faultline never writes them to disk.
 
 **Status meanings**:
 
@@ -760,6 +765,8 @@ export interface VerificationResult {
   status: VerdictStatus;
   explanation: string;
   sources: Array<{ title: string; uri: string }>;
+  searchEntryPoint?: { renderedContent: string }; // Gemini grounded verdicts only; render unaltered
+  webSearchQueries?: string[];
 }
 
 export interface ScanResult {

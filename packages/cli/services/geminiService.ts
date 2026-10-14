@@ -220,6 +220,7 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
       // Set only on the non-JSON fallback above, so every other result keeps
       // its exact previous shape (prereg G0 §3: the `mixed` confound).
       ...(parseFallback ? { parseFallback: true } : {}),
+      ...searchSuggestionsOf(response.candidates?.[0]?.groundingMetadata),
     };
 
   } catch (error) {
@@ -236,6 +237,28 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
       apiError: true,
     };
   }
+};
+
+/**
+ * The Search Suggestions of one grounded response, unaltered, or {} when the
+ * response carries none. Google's grounding terms require the suggestion chip
+ * (`searchEntryPoint.renderedContent`, HTML and CSS) to be displayed as given
+ * wherever the grounded result is shown, so nothing here trims or rewrites it.
+ * fw renders it next to the verdict (fw al:da4e96a09515f831, GoPMO 1.18.11.3).
+ */
+export const searchSuggestionsOf = (
+  metadata: unknown,
+): { searchEntryPoint?: { renderedContent: string }; webSearchQueries?: string[] } => {
+  if (!metadata || typeof metadata !== 'object') return {};
+  const m = metadata as { searchEntryPoint?: { renderedContent?: unknown }; webSearchQueries?: unknown };
+  const out: { searchEntryPoint?: { renderedContent: string }; webSearchQueries?: string[] } = {};
+  const rendered = m.searchEntryPoint?.renderedContent;
+  if (typeof rendered === 'string' && rendered.length > 0) out.searchEntryPoint = { renderedContent: rendered };
+  if (Array.isArray(m.webSearchQueries)) {
+    const queries = m.webSearchQueries.filter((q): q is string => typeof q === 'string');
+    if (queries.length > 0) out.webSearchQueries = queries;
+  }
+  return out;
 };
 
 /**

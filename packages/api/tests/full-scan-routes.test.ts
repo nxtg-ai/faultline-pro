@@ -657,6 +657,29 @@ describe('GET /scan/full/:jobId answers', () => {
 describe('persistence', () => {
   const PLANTED = 'Zanzibarquokka7731 marks the planted input';
 
+  // Google's grounding terms: Search Suggestions are shown unaltered with the
+  // grounded verdict, and grounded output is never cached (fw al:da4e96a09515f831).
+  it('Search Suggestions reach the submitter unaltered and never reach the ledger', async () => {
+    const CHIP = '<style>.chip{}</style><div class="chip">Okapiquill4417 suggestion</div>';
+    useFixtureProvider(async (c) => ({
+      ...supported(c),
+      searchEntryPoint: { renderedContent: CHIP },
+      webSearchQueries: ['okapiquill4417 query'],
+    }));
+    const jobId = await startJob(sentences(3), 'idem-chip');
+    const live = await untilTerminal(jobId);
+    const served = live.progress.filter((p: Json) => p.status === 'served');
+    expect(served).toHaveLength(3);
+    for (const p of served) {
+      expect(p.verdict.searchEntryPoint).toEqual({ renderedContent: CHIP });
+      expect(p.verdict.webSearchQueries).toEqual(['okapiquill4417 query']);
+    }
+    const raw = readFileSync(ledgerFile, 'utf8');
+    expect(raw.length).toBeGreaterThan(0);
+    expect(raw).not.toContain('Okapiquill4417');
+    expect(raw).not.toContain('okapiquill4417');
+  });
+
   it('a terminal job survives a restart without its result, and the ledger holds no user content', async () => {
     useFixtureProvider(async (c) => (c.id === 'c3' ? apiError(c, 'timeout') : supported(c)));
     const text = `${PLANTED} sentence one. ${sentences(9)}`;

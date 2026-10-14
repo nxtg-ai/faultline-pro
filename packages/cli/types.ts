@@ -95,6 +95,17 @@ export interface VerificationResult {
    */
   parseFallback?: boolean;
   /**
+   * Google Search Suggestions for the grounded prompt behind this verdict,
+   * passed through unaltered from `candidates[0].groundingMetadata`. Google's
+   * grounding terms require them to be shown, unaltered, wherever this
+   * verdict's explanation or sources are shown to the end user. Present only
+   * on a Gemini Grounding with Google Search verdict that returned them;
+   * absent on every other path. Never persisted to disk by Faultline.
+   */
+  searchEntryPoint?: { renderedContent: string };
+  /** The Google Search queries the grounded prompt ran (same source, same rule). */
+  webSearchQueries?: string[];
+  /**
    * Consensus metadata — present only on fused multi-provider verdicts emitted
    * by the consensus engine. Absent on the single-provider path (additive,
    * backward-compatible).
