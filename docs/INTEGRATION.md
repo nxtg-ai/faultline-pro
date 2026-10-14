@@ -663,6 +663,8 @@ function verifySignature(body: string, signature: string, secret: string): boole
 A GraphQL endpoint is available as an alternative to REST for clients that prefer it.
 
 **Endpoint**: `POST /graphql`
+
+Every request needs `x-api-key`, whatever its method or query string. A key reads only its own `scans` and `usage`; `keys`, `audit`, `createKey`, `deleteKey`, `scan` and `scanBatch` need an admin key (GraphQL scans skip the REST rate limit and provider spend cap, so they are not open to plan keys).
 **Auth**: `x-api-key` header (same as REST)
 
 **Schema overview**:
