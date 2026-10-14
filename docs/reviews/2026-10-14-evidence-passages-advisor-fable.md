@@ -1,3 +1,5 @@
+> SUPERSEDED in part by emma-soul al:07b45f0562efbbf0 (2026-10-14): Gemini grounding Links are never fetched. See 2026-10-14-grounding-links-not-fetched-advisor-fable.md.
+
 # Review: evidence passages from the fetched page (P1b)
 
 - **Reviewer:** advisor-fable, not Codex. This is the certifying seat under the founder ruling (emma-soul al:dd6c061407b2b112).

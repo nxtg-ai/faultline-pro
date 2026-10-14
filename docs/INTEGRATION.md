@@ -381,13 +381,14 @@ interface VerificationResult {
 }
 ```
 
-**Evidence passages.** On `POST /scan`, `GET`/`POST /scan/stream`, the full scan (`/scan/full`) and `POST /scan/template/:id`, each cited source carries `evidence` (GraphQL, batch, compliance-gate and deep scans do not yet): the API fetched the page (following Google's grounding redirect to the publisher, refusing private addresses at every hop) and quotes the sentence that best matches the claim, taken from the page's own bytes, never from the model's reply.
+**Evidence passages.** On `POST /scan`, `GET`/`POST /scan/stream`, the full scan (`/scan/full`) and `POST /scan/template/:id`, each cited source carries `evidence` (GraphQL, batch, compliance-gate and deep scans do not yet). For a source from a retriever whose terms allow it, the API fetched the page (refusing private addresses at every redirect hop) and quotes the sentence that best matches the claim, taken from the page's own bytes, never from the model's reply. **A link from Gemini Grounding with Google Search is never fetched**: Google's grounding terms forbid "using Links to identify destination pages for crawling or scraping", so such a source reads `{"status":"not_fetched","reason":"provider_terms","passage":null}`. Show that as "passage not retrieved (provider terms)", never as an empty slot or "nothing found": `no_match` and `not_fetched` are different facts. Today every hosted scan verifies with Gemini, so its sources carry `not_fetched` until a second retriever whose terms allow fetching is added beside it.
 
 ```typescript
 evidence?: {
-  status: 'ok' | 'no_match' | 'http_error' | 'unsupported_type' | 'blocked' | 'fetch_failed';
+  status: 'ok' | 'no_match' | 'http_error' | 'unsupported_type' | 'blocked' | 'fetch_failed' | 'not_fetched';
+  reason?: 'provider_terms'; // with not_fetched: a Gemini grounding Link, never requested
   passage: string | null;   // at most 400 characters; null unless status is 'ok'
-  fetchedAt: string;        // ISO 8601, when the fetch finished or failed
+  fetchedAt?: string;       // ISO 8601, when the fetch finished or failed; absent when nothing was fetched
   finalUri?: string;        // the publisher URL after redirects
   httpStatus?: number;
   contentSha256?: string;   // SHA-256 of the bytes read, to re-check the page later

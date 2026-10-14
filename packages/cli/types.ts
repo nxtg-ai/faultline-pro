@@ -40,13 +40,20 @@ export interface SourceEvidence {
    * the claim. http_error: the page answered non-2xx. unsupported_type: not
    * HTML or plain text (a PDF, an image). blocked: the URL or a redirect target
    * was refused (private address, not http/https). fetch_failed: network error
-   * or timeout.
+   * or timeout. not_fetched: deliberately not requested (see `reason`).
    */
-  status: 'ok' | 'no_match' | 'http_error' | 'unsupported_type' | 'blocked' | 'fetch_failed';
+  status: 'ok' | 'no_match' | 'http_error' | 'unsupported_type' | 'blocked' | 'fetch_failed' | 'not_fetched';
+  /**
+   * Why a source was not fetched. provider_terms: the link came from Gemini
+   * Grounding with Google Search, whose terms forbid "using Links to identify
+   * destination pages for crawling or scraping" (emma-soul ruling
+   * al:07b45f0562efbbf0, 2026-10-14). Present only with status not_fetched.
+   */
+  reason?: 'provider_terms';
   /** The matched passage, at most 400 characters; null unless status is ok. */
   passage: string | null;
-  /** When the fetch finished or failed (ISO 8601). */
-  fetchedAt: string;
+  /** When the fetch finished or failed (ISO 8601). Absent when nothing was fetched. */
+  fetchedAt?: string;
   /** The URL the page was finally read from, when redirects changed it. */
   finalUri?: string;
   httpStatus?: number;

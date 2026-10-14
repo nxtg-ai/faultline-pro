@@ -9,6 +9,7 @@ import {
   attachEvidence,
   contentTokens,
   fetchSourceEvidence,
+  isGeminiGroundingSource,
   htmlToText,
   pickPassage,
   type EvidenceFetch,
@@ -65,7 +66,14 @@ describe('text and matching', () => {
 });
 
 describe('fetchSourceEvidence', () => {
-  const source = { title: 'Kestrelvane', uri: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc' };
+  const source = { title: 'Kestrelvane', uri: 'https://links.example/r/abc' };
+
+  it('refuses a Google grounding Link itself, without a request (defense in depth)', async () => {
+    const f = fetchOf(() => htmlResponse(PAGE));
+    const ev = await fetchSourceEvidence({ title: 'g', uri: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc' }, CLAIM_TEXT, { fetch: f });
+    expect(ev).toEqual({ status: 'not_fetched', reason: 'provider_terms', passage: null });
+    expect(f).not.toHaveBeenCalled();
+  });
 
   it('reads the page, hashes the bytes and records the final URL and fetch time', async () => {
     const before = Date.now();
@@ -150,6 +158,38 @@ describe('attachEvidence', () => {
     const bare = verdict({ sources: [] });
     expect(await attachEvidence(bare, CLAIM_TEXT, { fetch: f })).toBe(bare);
     expect(f).not.toHaveBeenCalled();
+  });
+});
+
+describe('Gemini grounding Links are never fetched (provider terms)', () => {
+  const GROUNDED = 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc';
+  const base: VerificationResult = { claimId: 'c1', status: 'supported', explanation: 'ok', sources: [] };
+
+  it('a gemini-grounding verdict marks every source not_fetched / provider_terms and sends no request', async () => {
+    const f = fetchOf(() => htmlResponse(PAGE));
+    const v = await attachEvidence({
+      ...base,
+      sources: [{ title: 'a', uri: GROUNDED }, { title: 'b', uri: 'https://plain.example/x' }],
+      provenance: { provider: 'gemini', model: 'm', verifiedAt: 'T', retriever: 'gemini-grounding', retrievedAt: 'T' },
+    }, CLAIM_TEXT, { fetch: f });
+    expect(f).not.toHaveBeenCalled();
+    for (const s of v.sources) expect(s.evidence).toEqual({ status: 'not_fetched', reason: 'provider_terms', passage: null });
+  });
+
+  it('a grounding redirect link is not fetched even without provenance; other links still are', async () => {
+    const f = fetchOf(() => htmlResponse(PAGE));
+    const v = await attachEvidence({ ...base, sources: [{ title: 'a', uri: GROUNDED }, { title: 'b', uri: 'https://plain.example/x' }] }, CLAIM_TEXT, { fetch: f });
+    expect(v.sources[0].evidence).toEqual({ status: 'not_fetched', reason: 'provider_terms', passage: null });
+    expect(v.sources[1].evidence!.status).toBe('ok');
+    expect(f).toHaveBeenCalledTimes(1);
+    expect((f as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe('https://plain.example/x');
+  });
+
+  it('isGeminiGroundingSource: consensus with an OpenAI retriever is not Gemini', () => {
+    const consensus = { ...base, provenance: { provider: 'consensus', model: 'x', verifiedAt: 'T', retriever: 'openai-web-search', retrievedAt: 'T' } };
+    expect(isGeminiGroundingSource(consensus, { title: 't', uri: 'https://plain.example/x' })).toBe(false);
+    expect(isGeminiGroundingSource(consensus, { title: 't', uri: GROUNDED })).toBe(true);
+    expect(isGeminiGroundingSource(base, { title: 't', uri: 'not a url' })).toBe(false);
   });
 });
 

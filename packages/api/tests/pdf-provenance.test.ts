@@ -42,6 +42,7 @@ describe('evidenceLine', () => {
     expect(evidenceLine({ status: 'ok', passage: 'P.', fetchedAt: 'T' })).toBe('"P." (page read T)');
     expect(evidenceLine({ status: 'no_match', passage: null, fetchedAt: 'T' })).toBe('No passage quoted: page read, no sentence matched the claim (T)');
     expect(evidenceLine({ status: 'blocked', passage: null, fetchedAt: 'T' })).toBe('No passage quoted: address refused (T)');
+    expect(evidenceLine({ status: 'not_fetched', reason: 'provider_terms', passage: null })).toBe('Passage not retrieved (provider terms)');
     expect(evidenceLine(undefined)).toBeNull();
   });
 });

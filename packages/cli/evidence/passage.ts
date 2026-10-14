@@ -137,6 +137,8 @@ export async function fetchSourceEvidence(source: Source, claimText: string, opt
   if (typeof source.uri !== 'string' || !/^https?:\/\//i.test(source.uri)) {
     return { status: 'blocked', passage: null, fetchedAt: stamp() };
   }
+  // Defense in depth: a Google grounding Link is never requested, whoever calls this.
+  if (isGroundingRedirect(source.uri)) return { status: 'not_fetched', reason: 'provider_terms', passage: null };
   let res: Response;
   try {
     res = await opts.fetch(source.uri, {
@@ -179,13 +181,41 @@ export async function fetchSourceEvidence(source: Source, claimText: string, opt
   };
 }
 
+const GROUNDING_REDIRECT_HOST = 'vertexaisearch.cloud.google.com';
+
+/**
+ * True when a source's link came from Gemini Grounding with Google Search:
+ * the verdict's retriever is gemini-grounding, or the link is a Google
+ * grounding redirect. Google's terms forbid "using Links to identify
+ * destination pages for crawling or scraping", so such a link is never
+ * fetched (emma-soul ruling al:07b45f0562efbbf0, 2026-10-14).
+ */
+export function isGeminiGroundingSource(result: VerificationResult, source: Source): boolean {
+  return result.provenance?.retriever === 'gemini-grounding' || isGroundingRedirect(source.uri);
+}
+
+function isGroundingRedirect(uri: string): boolean {
+  try {
+    return new URL(uri).hostname.toLowerCase() === GROUNDING_REDIRECT_HOST;
+  } catch {
+    return false;
+  }
+}
+
+const NOT_FETCHED: SourceEvidence = { status: 'not_fetched', reason: 'provider_terms', passage: null };
+
 /**
  * The verdict with each cited source's evidence attached, fetched in
- * parallel. A verdict whose check never ran, or that cites nothing, is
- * returned as given. The verdict's status and explanation never change.
+ * parallel. A Gemini-grounded source is marked not_fetched (provider_terms)
+ * and never requested. A verdict whose check never ran, or that cites
+ * nothing, is returned as given. The verdict's status and explanation never
+ * change.
  */
 export async function attachEvidence(result: VerificationResult, claimText: string, opts: EvidenceOptions): Promise<VerificationResult> {
   if (result.apiError === true || !Array.isArray(result.sources) || result.sources.length === 0) return result;
-  const sources = await Promise.all(result.sources.map(async (s) => ({ ...s, evidence: await fetchSourceEvidence(s, claimText, opts) })));
+  const sources = await Promise.all(result.sources.map(async (s) => ({
+    ...s,
+    evidence: isGeminiGroundingSource(result, s) ? { ...NOT_FETCHED } : await fetchSourceEvidence(s, claimText, opts),
+  })));
   return { ...result, sources };
 }

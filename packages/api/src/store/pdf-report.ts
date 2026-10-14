@@ -35,7 +35,8 @@ export interface PdfVerification {
 export interface PdfSourceEvidence {
   status: string;
   passage: string | null;
-  fetchedAt: string;
+  fetchedAt?: string;
+  reason?: string;
 }
 
 const EVIDENCE_STATUS_TEXT: Record<string, string> = {
@@ -48,7 +49,10 @@ const EVIDENCE_STATUS_TEXT: Record<string, string> = {
 
 /** The quoted passage with its fetch time, or why none was quoted; null when the source carries no evidence. */
 export function evidenceLine(e: PdfSourceEvidence | undefined): string | null {
-  if (!e || typeof e.fetchedAt !== 'string' || typeof e.status !== 'string') return null;
+  if (!e || typeof e.status !== 'string') return null;
+  // A Gemini-grounded link is never fetched (Google's grounding terms): say so, never "nothing found".
+  if (e.status === 'not_fetched') return e.reason === 'provider_terms' ? 'Passage not retrieved (provider terms)' : 'Passage not retrieved';
+  if (typeof e.fetchedAt !== 'string') return null;
   if (e.status === 'ok' && typeof e.passage === 'string') return `"${e.passage}" (page read ${e.fetchedAt})`;
   return `No passage quoted: ${EVIDENCE_STATUS_TEXT[e.status] ?? e.status} (${e.fetchedAt})`;
 }

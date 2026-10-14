@@ -1,9 +1,14 @@
 // Validates: N-234 (evidence passage from fetched page bytes on the API, GoPMO 1.18.11.3 P1b; EP4 recert 02-codex-evidence.md row 3)
 /**
- * POST /scan attaches, to each cited source, the passage of the fetched page
- * that matches the claim. The fetch is the API's guarded one: a cited link that
- * redirects to a private address is refused, never read. Only the Google SDK
- * and the outbound network are mocked; route, engine and guard are real.
+ * POST /scan evidence on cited sources.
+ *
+ * - A Gemini-grounded link is never fetched: Google's grounding terms forbid
+ *   "using Links to identify destination pages for crawling or scraping"
+ *   (emma-soul ruling al:07b45f0562efbbf0). It reads not_fetched / provider_terms.
+ * - A link from any other retriever is fetched through the API's guarded fetch,
+ *   which refuses a redirect to a private address before it is requested.
+ * Only the Google SDK, a fixture provider and the outbound network are mocked;
+ * route, engine and guard are real.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -45,6 +50,21 @@ import { resetCache } from '../src/store/cache.js';
 import { resetProviderSpendLedger } from '../src/store/provider-spend.js';
 import { resetGroundingAllowanceLedger, uninstallGroundingCounter } from '../src/store/grounding-allowance.js';
 import { setOutboundFetch, resetOutboundFetch, setOutboundResolver, resetOutboundResolver } from '../src/lib/outbound-url.js';
+import { registerProvider } from '@nxtg/faultline/providers/registry.js';
+
+// A non-Gemini retriever: its links are plain publisher-side redirects, not Google grounding Links.
+const OTHER_REDIRECT = 'https://links.example/r/kestrel';
+const OTHER_PRIVATE_HOP = 'https://links.example/r/internal';
+registerProvider('mock', () => ({
+  name: 'Other retriever fixture',
+  modelId: 'fixture-v1',
+  extractClaims: async () => [{ id: 'c1', text: 'The Eiffel Tower was completed in 1889.', type: 'fact', importance: 5 }],
+  verifyClaim: async (c: { id: string }) => ({
+    claimId: c.id, status: 'supported', explanation: 'Opened on 31 March 1889 to great acclaim.',
+    sources: [{ title: 'kestrelvane.example', uri: OTHER_REDIRECT }, { title: 'internal.example', uri: OTHER_PRIVATE_HOP }],
+  }),
+  generateCritiqueAndPrompt: async () => ({ critique: '', improvedPrompt: '' }),
+}) as never);
 
 const PAGE = '<html><body><p>Construction finished in March 1889, and the Eiffel Tower was completed in time for the Exposition.</p></body></html>';
 const ENV_KEYS = ['FAULTLINE_GROUNDING_LEDGER', 'FAULTLINE_PROVIDER_SPEND_LEDGER', 'GEMINI_API_KEY', 'FAULTLINE_CONSENSUS', 'FAULTLINE_EVIDENCE_FETCH', 'FAULTLINE_OUTBOUND_ALLOW_PRIVATE'];
@@ -77,8 +97,8 @@ beforeEach(() => {
   setOutboundResolver(async (host) => [{ address: host === 'internal.example' ? '10.0.0.7' : '93.184.216.34', family: 4 }]);
   setOutboundFetch(async (url) => {
     requested.push(url);
-    if (url === REDIRECT) return respond(null, 302, { location: 'https://kestrelvane.example/eiffel' }, url);
-    if (url === PRIVATE_HOP) return respond(null, 302, { location: 'https://internal.example/admin' }, url);
+    if (url === REDIRECT || url === OTHER_REDIRECT) return respond(null, 302, { location: 'https://kestrelvane.example/eiffel' }, url);
+    if (url === PRIVATE_HOP || url === OTHER_PRIVATE_HOP) return respond(null, 302, { location: 'https://internal.example/admin' }, url);
     if (url === 'https://kestrelvane.example/eiffel') return respond(PAGE, 200, { 'content-type': 'text/html' }, url);
     return respond('not found', 404, { 'content-type': 'text/plain' }, url);
   });
@@ -97,7 +117,7 @@ afterEach(() => {
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
-async function postScan(): Promise<Record<string, any>> {
+async function postScan(provider: 'gemini' | 'mock'): Promise<Record<string, any>> {
   const server = buildServer();
   await server.ready();
   try {
@@ -105,7 +125,7 @@ async function postScan(): Promise<Record<string, any>> {
     const res = await server.inject({
       method: 'POST', url: '/scan',
       headers: { 'x-api-key': apiKey, 'content-type': 'application/json' },
-      payload: { text: 'The Eiffel Tower was completed in 1889.', provider: 'gemini' },
+      payload: { text: 'The Eiffel Tower was completed in 1889.', provider },
     });
     expect(res.statusCode).toBe(200);
     return res.json();
@@ -115,8 +135,18 @@ async function postScan(): Promise<Record<string, any>> {
 }
 
 describe('POST /scan evidence passages', () => {
-  it('follows the grounding redirect, reads the publisher page and quotes it, not the model', async () => {
-    const body = await postScan();
+  it('a Gemini-grounded link is never fetched: not_fetched / provider_terms, never no_match', async () => {
+    const body = await postScan('gemini');
+    const sources = body.verifications.c1.sources;
+    expect(sources).toHaveLength(2);
+    for (const s of sources) {
+      expect(s.evidence).toEqual({ status: 'not_fetched', reason: 'provider_terms', passage: null });
+    }
+    expect(requested).toHaveLength(0);
+  }, 30_000);
+
+  it('a link from another retriever is fetched and quoted from the page, not the model', async () => {
+    const body = await postScan('mock');
     const [publisher, internal] = body.verifications.c1.sources;
     expect(publisher.evidence.status).toBe('ok');
     expect(publisher.evidence.passage).toBe('Construction finished in March 1889, and the Eiffel Tower was completed in time for the Exposition.');
@@ -126,13 +156,13 @@ describe('POST /scan evidence passages', () => {
     expect(publisher.evidence.fetchedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     // The redirect to a private address is refused before it is requested.
     expect(internal.evidence).toMatchObject({ status: 'blocked', passage: null });
-    expect(requested).toContain(PRIVATE_HOP);
+    expect(requested).toContain(OTHER_PRIVATE_HOP);
     expect(requested).not.toContain('https://internal.example/admin');
   }, 30_000);
 
   it('FAULTLINE_EVIDENCE_FETCH=off fetches nothing and attaches no evidence', async () => {
     process.env.FAULTLINE_EVIDENCE_FETCH = 'off';
-    const body = await postScan();
+    const body = await postScan('mock');
     expect(body.verifications.c1.sources.length).toBeGreaterThan(0);
     for (const s of body.verifications.c1.sources) expect(s.evidence).toBeUndefined();
     expect(requested).toHaveLength(0);
