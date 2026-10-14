@@ -19,6 +19,7 @@ import { getApprovalStore, resetApprovalStore } from '../src/store/approvals.js'
 import { resetNotificationStore } from '../src/store/notifications.js';
 import { resetUsageMeter } from '../src/store/usage.js';
 import { resetAuditLogger } from '../src/store/audit.js';
+import { resetScanOwnerStore } from '../src/store/scan-owners.js';
 
 // Scans run on the engine's own mock provider (provider: 'mock').
 const ADMIN = 'admin-secret';
@@ -36,7 +37,7 @@ beforeEach(async () => {
   process.env.FAULTLINE_API_KEY = ADMIN;
   resetKeyStore(); resetScanQueue(); resetTemplateStore(); resetCostStore(); resetComplianceHistoryStore();
   resetRateLimiter(); resetRateLimitAlertStore(); resetScanStore(); resetApprovalStore();
-  resetNotificationStore(); resetUsageMeter(); resetAuditLogger();
+  resetNotificationStore(); resetUsageMeter(); resetAuditLogger(); resetScanOwnerStore();
   keyA = getKeyStore().create('tenant-a', ['scan', 'report', 'upload', 'pro']);
   keyB = getKeyStore().create('tenant-b', ['scan', 'report', 'upload', 'pro']);
   server = buildServer();
@@ -213,6 +214,32 @@ describe('M5 approvals need a stored scan the caller owns', () => {
     expect((await as(keyA.key, 'POST', '/scans/undefined/approve', {})).statusCode).toBe(404);
     expect((await as(ADMIN, 'POST', '/scans/undefined/approve', {})).statusCode).toBe(404);
     expect(getApprovalStore().getAll()).toEqual([]);
+  });
+});
+
+describe('M5 approvals on a scanId returned by POST /scan (codex seat on f509bb6, F1)', () => {
+  it('the owner and admin approve and list a REST scan id; another key gets 404', async () => {
+    const scanned = await as(keyA.key, 'POST', '/scan', { text: `${CANARY} The Earth orbits the Sun.`, provider: 'mock' });
+    expect(scanned.statusCode).toBe(200);
+    const scanId = JSON.parse(scanned.body).scanId as string;
+    expect(scanId).toMatch(/^scan-/);
+
+    expect((await as(keyB.key, 'POST', `/scans/${scanId}/approve`, { decision: 'approved' })).statusCode).toBe(404);
+    expect((await as(keyB.key, 'GET', `/scans/${scanId}/approvals`)).statusCode).toBe(404);
+
+    expect((await as(keyA.key, 'POST', `/scans/${scanId}/approve`, { decision: 'approved' })).statusCode).toBe(201);
+    expect((await as(ADMIN, 'POST', `/scans/${scanId}/approve`, { decision: 'rejected' })).statusCode).toBe(201);
+    const listed = await as(keyA.key, 'GET', `/scans/${scanId}/approvals`);
+    expect(listed.statusCode).toBe(200);
+    expect(JSON.parse(listed.body).total).toBe(2);
+  });
+
+  it('two keys scanning get distinct scan ids, each approvable only by its owner', async () => {
+    const a = JSON.parse((await as(keyA.key, 'POST', '/scan', { text: 'Water boils at 100 C at sea level.', provider: 'mock' })).body).scanId;
+    const b = JSON.parse((await as(keyB.key, 'POST', '/scan', { text: 'Water boils at 100 C at sea level.', provider: 'mock' })).body).scanId;
+    expect(a).not.toBe(b);
+    expect((await as(keyB.key, 'POST', `/scans/${a}/approve`, {})).statusCode).toBe(404);
+    expect((await as(keyA.key, 'POST', `/scans/${b}/approve`, {})).statusCode).toBe(404);
   });
 });
 

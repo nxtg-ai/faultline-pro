@@ -4,7 +4,8 @@ import { rateLimitScan } from '../plugins/ratelimit.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { getAnalyticsStore } from '../store/analytics.js';
 import type { RiskLevel } from '../store/analytics.js';
-import { fireWebhookEvent, withScanId } from '../store/webhooks.js';
+import { fireWebhookEvent } from '../store/webhooks.js';
+import { issueScanId } from '../lib/scan-access.js';
 import { getCircuitBreaker } from '../store/circuit-breaker.js';
 import type { Provider } from '../store/circuit-breaker.js';
 import { getScanCache } from '../store/cache.js';
@@ -49,7 +50,7 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
         const cached: Record<string, unknown> = { ...hit.result, cache: { hit: true, checkedAt: hit.checkedAt } };
         reply.header('X-Cache', 'HIT');
         getAnalyticsStore().record(keyId, (cached as { overallRisk: string }).overallRisk as RiskLevel);
-        const delivered = withScanId(cached);
+        const delivered = issueScanId(cached, request.keyId);
         fireWebhookEvent('scan.complete', delivered, requestOwner(request));
         return reply.status(200).send(delivered);
       }
@@ -78,7 +79,7 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
 
           if (caller !== null) getScanCache().set(caller, text, `deep:${effectiveProvider}`, enriched as unknown as Record<string, unknown>);
           getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
-          const delivered = withScanId(enriched);
+          const delivered = issueScanId(enriched, request.keyId);
           fireWebhookEvent('scan.complete', delivered, requestOwner(request));
 
           return reply.status(200).send(delivered);

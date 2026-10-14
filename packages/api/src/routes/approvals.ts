@@ -20,7 +20,7 @@ import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { getApprovalStore, type ApprovalDecision } from '../store/approvals.js';
 import { getTenantStore } from '../store/tenants.js';
-import { ownedScan } from '../lib/scan-access.js';
+import { ownsScanId } from '../lib/scan-access.js';
 
 const VALID_DECISIONS: ApprovalDecision[] = ['approved', 'rejected'];
 
@@ -35,8 +35,8 @@ export async function approvalsRoutes(fastify: FastifyInstance): Promise<void> {
     { config: { access: 'owner' }, preHandler: requireApiKey },
     async (request, reply) => {
       const { id: scanId } = request.params as { id: string };
-      // Only a stored scan the caller owns (admin: any stored scan); unknown and not-yours read alike.
-      if (!ownedScan(scanId, request.keyId)) return reply.status(404).send({ error: 'Scan not found.' });
+      // Only a scan the caller owns, stored or returned by a REST scan route (admin: any); unknown and not-yours read alike.
+      if (!ownsScanId(scanId, request.keyId)) return reply.status(404).send({ error: 'Scan not found.' });
       const body = (request.body ?? {}) as Record<string, unknown>;
       const keyId = request.keyId ?? 'unknown';
 
@@ -70,8 +70,8 @@ export async function approvalsRoutes(fastify: FastifyInstance): Promise<void> {
     { config: { access: 'owner' }, preHandler: requireApiKey },
     async (request, reply) => {
       const { id: scanId } = request.params as { id: string };
-      // Only a stored scan the caller owns (admin: any stored scan); unknown and not-yours read alike.
-      if (!ownedScan(scanId, request.keyId)) return reply.status(404).send({ error: 'Scan not found.' });
+      // Only a scan the caller owns, stored or returned by a REST scan route (admin: any); unknown and not-yours read alike.
+      if (!ownsScanId(scanId, request.keyId)) return reply.status(404).send({ error: 'Scan not found.' });
       const approvals = getApprovalStore().getByScanId(scanId);
       return reply.send({ scanId, approvals, total: approvals.length });
     },
