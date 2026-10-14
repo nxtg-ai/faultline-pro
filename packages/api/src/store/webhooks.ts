@@ -3,7 +3,8 @@ import { FAULTLINE_API_VERSION } from '../version.js';
 import { fetchOutbound, OutboundUrlBlockedError } from '../lib/outbound-url.js';
 import { resolveRequestTenantId } from '../plugins/auth.js';
 import { getKeyStore } from './keys.js';
-import { holdsGroundedResults } from './cache.js';
+import { isGroundedScanResult } from './cache.js';
+import { isGroundingRedirect } from '@nxtg/faultline/evidence/grounding.js';
 
 export type WebhookEvent = 'scan.complete' | 'scan.failed' | 'job.complete' | 'job.failed' | 'claim.verdict_changed' | 'compliance.deadline_approaching' | 'compliance.gate_failed';
 
@@ -28,7 +29,7 @@ export interface Webhook {
   createdAt: string;
 }
 
-export type WebhookPublic = Omit<Webhook, 'secret' | 'ownerCaller'>;
+export type WebhookPublic = Omit<Webhook, 'secret' | 'ownerCaller' | 'ownerKeyId'>;
 
 export interface WebhookPayload {
   event: WebhookEvent;
@@ -201,7 +202,7 @@ class WebhookStore {
     const all = tenantId
       ? this.webhooks.filter((w) => w.tenantId === tenantId)
       : this.webhooks;
-    return all.map(({ secret: _secret, ownerCaller: _caller, ...rest }) => rest);
+    return all.map(({ secret: _secret, ownerCaller: _caller, ownerKeyId: _key, ...rest }) => rest);
   }
 
   delete(id: string): boolean {
@@ -244,6 +245,7 @@ export async function dispatchWebhook(
   webhook: Webhook,
   event: WebhookEvent,
   data: unknown,
+  owner: WebhookEventOwner,
   timestamp?: string,
 ): Promise<void> {
   // Circuit-breaker check — bail out if circuit is open
@@ -294,6 +296,16 @@ export async function dispatchWebhook(
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     await _sleep(attempt === 0 ? 0 : retryDelayMs);
+    // Ownership is re-read before every attempt: a key can leave the tenant,
+    // or be deleted or disabled, while a retry waits (codex seat, 859a348).
+    if (!webhookMayReceive(webhook, owner)) {
+      getWebhookDeliveryLog().push({
+        id: randomUUID(), webhookId: webhook.id, event, url: webhook.url,
+        timestamp: new Date().toISOString(), attempt: attempt + 1, statusCode: null,
+        delivered: false, latencyMs: 0, error: 'owner no longer matches',
+      });
+      return;
+    }
     const start = Date.now();
     let statusCode: number | null = null;
     let delivered = false;
@@ -525,14 +537,25 @@ export type WebhookEventOwner = { keyId: string; caller: string | null } | 'publ
  * server key without a user ref, a key outside any tenant, a webhook with no
  * owner and an owner key that no longer exists all match nothing.
  */
+/**
+ * True when `keyId` can still authenticate: the server key while it is
+ * configured, or a keystore key that exists, is not disabled and has not expired.
+ */
+export function keyIsLive(keyId: string): boolean {
+  if (keyId === 'admin') return Boolean(process.env.FAULTLINE_API_KEY);
+  const key = getKeyStore().validateById(keyId);
+  if (!key || key.disabled) return false;
+  return !(key.expiresAt && new Date(key.expiresAt) <= new Date());
+}
+
 export function webhookMayReceive(webhook: Webhook, owner: WebhookEventOwner): boolean {
   if (owner === 'public') return true;
   if (owner === null) return false;
   const ownerKeyId = webhook.ownerKeyId;
   if (ownerKeyId === undefined) return false;
-  // A revoked or deleted key's webhooks stop receiving. The server key ('admin')
-  // is not in the keystore.
-  if (ownerKeyId !== 'admin' && getKeyStore().validateById(ownerKeyId) === null) return false;
+  // Both keys must still be live: a deleted, disabled or expired key neither
+  // receives nor emits (Opus and codex seats, 859a348).
+  if (!keyIsLive(ownerKeyId) || !keyIsLive(owner.keyId)) return false;
   const webhookTenant = resolveRequestTenantId(ownerKeyId);
   const eventTenant = resolveRequestTenantId(owner.keyId);
   if (webhookTenant !== undefined && webhookTenant === eventTenant) return true;
@@ -550,10 +573,6 @@ function scanResultIn(data: unknown): Record<string, unknown> | null {
   return null;
 }
 
-function isGroundedScan(result: Record<string, unknown>): boolean {
-  return result.provider === 'gemini' || holdsGroundedResults(result);
-}
-
 /**
  * The payload a webhook may carry. A result that holds Gemini Grounded Results
  * goes to no webhook, the owner's included: Google's terms let it be shown only
@@ -563,7 +582,7 @@ function isGroundedScan(result: Record<string, unknown>): boolean {
  */
 export function webhookSafeData(event: WebhookEvent, data: unknown): unknown {
   const result = scanResultIn(data);
-  if (!result || !isGroundedScan(result)) return data;
+  if (!result || !isGroundedScanResult(result)) return sanitizeErrorField(data);
   const claims = Array.isArray(result.claims) ? result.claims : [];
   const verifications = result.verifications && typeof result.verifications === 'object'
     ? Object.keys(result.verifications as object).length : 0;
@@ -580,12 +599,30 @@ export function webhookSafeData(event: WebhookEvent, data: unknown): unknown {
   };
 }
 
+const ERROR_TEXT_MAX = 300;
+const URL_IN_TEXT = /https?:\/\/[^\s"'<>)]+/gi;
+
+/**
+ * An error string bound for a caller's URL: Google grounding Links removed and
+ * capped, so a provider error that quotes grounded output carries no source or
+ * long passage (codex seat, 859a348; no engine error does this today).
+ */
+export function sanitizeErrorText(text: string): string {
+  const stripped = text.replace(URL_IN_TEXT, (u) => (isGroundingRedirect(u) ? '[grounding link removed]' : u));
+  return stripped.length > ERROR_TEXT_MAX ? `${stripped.slice(0, ERROR_TEXT_MAX)}…` : stripped;
+}
+
+function sanitizeErrorField(data: unknown): unknown {
+  if (!data || typeof data !== 'object' || typeof (data as { error?: unknown }).error !== 'string') return data;
+  return { ...(data as Record<string, unknown>), error: sanitizeErrorText((data as { error: string }).error) };
+}
+
 export function fireWebhookEvent(event: WebhookEvent, data: unknown, owner: WebhookEventOwner): void {
   const targets = getWebhookStore().getByEvent(event).filter((w) => webhookMayReceive(w, owner));
   if (targets.length === 0) return;
   const timestamp = new Date().toISOString();
   const payload = webhookSafeData(event, data);
   for (const webhook of targets) {
-    void dispatchWebhook(webhook, event, payload, timestamp);
+    void dispatchWebhook(webhook, event, payload, owner, timestamp);
   }
 }

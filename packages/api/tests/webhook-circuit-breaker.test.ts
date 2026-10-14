@@ -127,7 +127,7 @@ describe('dispatchWebhook() — circuit breaker integration', () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
     vi.stubGlobal('fetch', mockFetch);
 
-    await dispatchWebhook(wh, 'scan.complete', {});
+    await dispatchWebhook(wh, 'scan.complete', {}, 'public');
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
@@ -136,7 +136,7 @@ describe('dispatchWebhook() — circuit breaker integration', () => {
     const wh = makeWebhook({ id: 'wh-cb11' });
     for (let i = 0; i < cb.failureThreshold; i++) cb.recordFailure(wh.id);
 
-    await dispatchWebhook(wh, 'scan.failed', {});
+    await dispatchWebhook(wh, 'scan.failed', {}, 'public');
 
     const log = getWebhookDeliveryLog().list(wh.id);
     const record = log.find(r => r.error === 'circuit open');
@@ -152,7 +152,7 @@ describe('dispatchWebhook() — circuit breaker integration', () => {
     const cb = getWebhookCircuitBreaker();
     const wh = makeWebhook({ id: 'wh-cb12' });
 
-    await dispatchWebhook(wh, 'scan.complete', {});
+    await dispatchWebhook(wh, 'scan.complete', {}, 'public');
     expect(cb.failureCount(wh.id)).toBe(1);
   });
 
@@ -166,7 +166,7 @@ describe('dispatchWebhook() — circuit breaker integration', () => {
     cb.recordFailure(wh.id);
     expect(cb.failureCount(wh.id)).toBe(2);
 
-    await dispatchWebhook(wh, 'scan.complete', {});
+    await dispatchWebhook(wh, 'scan.complete', {}, 'public');
     expect(cb.failureCount(wh.id)).toBe(0); // success reset
   });
 });
@@ -186,7 +186,7 @@ describe('WebhookCircuitBreaker — isolation + reset', () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
     vi.stubGlobal('fetch', mockFetch);
 
-    await dispatchWebhook(whB, 'scan.complete', {});
+    await dispatchWebhook(whB, 'scan.complete', {}, 'public');
     expect(mockFetch).toHaveBeenCalledOnce(); // wh-B fires normally
   });
 
@@ -203,7 +203,7 @@ describe('WebhookCircuitBreaker — isolation + reset', () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
     vi.stubGlobal('fetch', mockFetch);
 
-    await dispatchWebhook(wh, 'scan.complete', {});
+    await dispatchWebhook(wh, 'scan.complete', {}, 'public');
     expect(mockFetch).toHaveBeenCalledOnce();
   });
 });

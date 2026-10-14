@@ -26,6 +26,9 @@ import { resetUsageMeter } from '../src/store/usage.js';
 import { resetAnalytics } from '../src/store/analytics.js';
 import { resetCache } from '../src/store/cache.js';
 import { getJobStore, getJobScheduler, resetJobStore } from '../src/store/jobs.js';
+import { getNotificationStore, resetNotificationStore } from '../src/store/notifications.js';
+import { getScheduleStore, getScheduleRunner, resetScheduleStore } from '../src/store/schedules.js';
+import { dispatchWebhook } from '../src/store/webhooks.js';
 import type { FastifyInstance } from 'fastify';
 
 const CLAIM_TEXT = 'The Eiffel Tower was completed in 1889.';
@@ -78,6 +81,8 @@ function resetAll() {
   resetAnalytics();
   resetCache();
   resetJobStore();
+  resetNotificationStore();
+  resetScheduleStore();
 }
 
 /** URLs fetch was called with, and the parsed bodies. */
@@ -319,5 +324,221 @@ describe('a Gemini-grounded result reaches no webhook', () => {
     expect(sent[0].raw).not.toContain(CLAIM_TEXT);
     expect(sent[0].raw).not.toContain('vertexaisearch');
     expect(sent[0].raw).not.toContain(EXPLANATION);
+  });
+});
+
+// ── Seat findings on 859a348 (Opus blind seat, codex fresh exec) ─────────────
+
+describe('ownership holds for the whole delivery, on every route, for live keys only', () => {
+  let server: FastifyInstance;
+
+  beforeEach(async () => {
+    resetAll();
+    _setSleepFn(async () => {});
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
+    const { scan } = await import('@nxtg/faultline/cli/scan.js');
+    vi.mocked(scan).mockReset().mockResolvedValue(PLAIN_RESULT as never);
+    server = buildServer();
+    await server.ready();
+  });
+
+  afterEach(async () => {
+    _setSleepFn(async () => {});
+    await server.close();
+    vi.unstubAllGlobals();
+    delete process.env.FAULTLINE_API_KEY;
+  });
+
+  it('WO-10. a retry is not sent once the webhook owner has left the tenant (checked before every attempt)', async () => {
+    const a = tenantAdminKey('Tenant A');
+    const b = getKeyStore().create('Moves to B', ['scan', 'admin']);
+    getTenantStore().addKey(a.tenant.id, b.id);
+    const bTenant = getTenantStore().create('Tenant B', []);
+    const hook = getWebhookStore().create('https://b.example.com/hook', ['scan.complete'], 's', undefined, 3, 500,
+      { keyId: b.id, caller: `${b.id}\u0000${b.id}` });
+    vi.mocked(fetch).mockResolvedValue({ ok: false, status: 503 } as Response);
+    _setSleepFn(async (ms) => {
+      if (ms > 0) { getTenantStore().removeKey(a.tenant.id, b.id); getTenantStore().addKey(bTenant.id, b.id); }
+    });
+    await dispatchWebhook(hook, 'scan.complete', PLAIN_RESULT, { keyId: a.key.id, caller: `${a.key.id}\u0000${a.key.id}` });
+    expect(vi.mocked(fetch).mock.calls.length).toBe(1);
+  });
+
+  it('WO-11. a scan whose key is deleted while it runs sends nothing to its former tenant', async () => {
+    const a = tenantAdminKey('Tenant A');
+    const other = getKeyStore().create('Tenant A other', ['scan', 'admin']);
+    getTenantStore().addKey(a.tenant.id, other.id);
+    await register(server, other.key, 'https://a2.example.com/hook', ['scan.complete']);
+    const { scan } = await import('@nxtg/faultline/cli/scan.js');
+    vi.mocked(scan).mockImplementationOnce(async () => { getKeyStore().delete(a.key.id); return PLAIN_RESULT as never; });
+    await scanAs(server, a.key.key, { text: CLAIM_TEXT, provider: 'mock' });
+    await flush();
+    expect(deliveries()).toEqual([]);
+  });
+
+  it('WO-12. a disabled or expired owner key\'s webhook receives nothing', async () => {
+    const a = tenantAdminKey('Tenant A');
+    const scanner = getKeyStore().create('Tenant A scanner', ['scan']);
+    getTenantStore().addKey(a.tenant.id, scanner.id);
+    await register(server, a.key.key, 'https://a.example.com/hook', ['scan.complete']);
+
+    getKeyStore().validateById(a.key.id)!.disabled = true;
+    await scanAs(server, scanner.key, { text: CLAIM_TEXT, provider: 'mock' });
+    await flush();
+    expect(deliveries()).toEqual([]);
+
+    getKeyStore().validateById(a.key.id)!.disabled = false;
+    getKeyStore().validateById(a.key.id)!.expiresAt = '2020-01-01T00:00:00.000Z';
+    await scanAs(server, scanner.key, { text: `${CLAIM_TEXT} again`, provider: 'mock' });
+    await flush();
+    expect(deliveries()).toEqual([]);
+  });
+
+  it('WO-13. a job\'s job.complete reaches its creator\'s tenant only', async () => {
+    const a = tenantAdminKey('Tenant A');
+    const b = tenantAdminKey('Tenant B');
+    getWebhookStore().create('https://a.example.com/hook', ['job.complete'], 's', undefined, 3, 500, { keyId: a.key.id, caller: `${a.key.id}\u0000${a.key.id}` });
+    getWebhookStore().create('https://b.example.com/hook', ['job.complete'], 's', undefined, 3, 500, { keyId: b.key.id, caller: `${b.key.id}\u0000${b.key.id}` });
+    const res = await server.inject({
+      method: 'POST', url: '/jobs',
+      headers: { 'x-api-key': a.key.key, 'content-type': 'application/json' },
+      body: JSON.stringify({ text: CLAIM_TEXT, provider: 'mock', schedule: '*/5 * * * *' }),
+    });
+    expect(res.statusCode).toBe(201);
+    await getJobScheduler().triggerJob(JSON.parse(res.body).id);
+    await flush();
+    expect(deliveries().map((d) => d.url)).toEqual(['https://a.example.com/hook']);
+  });
+
+  it.each([
+    ['batch', async (srv: FastifyInstance, key: string) => srv.inject({ method: 'POST', url: '/scan/batch', headers: { 'x-api-key': key, 'content-type': 'application/json' }, body: JSON.stringify({ texts: [CLAIM_TEXT] }) })],
+    ['deep', async (srv: FastifyInstance, key: string) => srv.inject({ method: 'POST', url: '/scan/deep', headers: { 'x-api-key': key, 'content-type': 'application/json' }, body: JSON.stringify({ text: CLAIM_TEXT, provider: 'mock' }) })],
+    ['cache hit', async (srv: FastifyInstance, key: string) => {
+      await srv.inject({ method: 'POST', url: '/scan', headers: { 'x-api-key': key, 'content-type': 'application/json' }, body: JSON.stringify({ text: CLAIM_TEXT, provider: 'mock' }) });
+      vi.mocked(fetch).mockClear();
+      const hit = await srv.inject({ method: 'POST', url: '/scan', headers: { 'x-api-key': key, 'content-type': 'application/json' }, body: JSON.stringify({ text: CLAIM_TEXT, provider: 'mock' }) });
+      expect(hit.headers['x-cache']).toBe('HIT');
+      return hit;
+    }],
+  ])('WO-14. %s: tenant B\'s webhook receives nothing from tenant A\'s scan', async (_name, run) => {
+    const a = tenantAdminKey('Tenant A');
+    const b = tenantAdminKey('Tenant B');
+    await register(server, a.key.key, 'https://a.example.com/hook', ['scan.complete']);
+    await register(server, b.key.key, 'https://b.example.com/hook', ['scan.complete']);
+    const res = await run(server, a.key.key);
+    expect(res.statusCode).toBe(200);
+    await flush();
+    const urls = deliveries().map((d) => d.url);
+    expect(urls).toContain('https://a.example.com/hook');
+    expect(urls).not.toContain('https://b.example.com/hook');
+  });
+
+  it('WO-15. registration response and listing carry neither owner key nor caller', async () => {
+    const a = tenantAdminKey('Tenant A');
+    const res = await server.inject({
+      method: 'POST', url: '/webhooks',
+      headers: { 'x-api-key': a.key.key, 'content-type': 'application/json' },
+      body: JSON.stringify({ url: 'https://a.example.com/hook', events: ['scan.complete'] }),
+    });
+    expect(res.body).not.toContain(a.key.id);
+    const list = await server.inject({ method: 'GET', url: '/webhooks', headers: { 'x-api-key': ADMIN } });
+    expect(list.statusCode).toBe(200);
+    expect(list.body).not.toContain(a.key.id);
+  });
+
+  it('WO-16. another key cannot make a webhook send a payload signed with its secret', async () => {
+    const a = tenantAdminKey('Tenant A');
+    const b = getKeyStore().create('Tenant B scanner', ['scan']);
+    const hook = await register(server, a.key.key, 'https://a.example.com/hook', ['scan.complete']);
+    const res = await server.inject({ method: 'POST', url: `/webhooks/test/${hook.id}`, headers: { 'x-api-key': b.key, 'content-type': 'application/json' }, body: '{}' });
+    expect(res.statusCode).toBe(404);
+    await flush();
+    expect(deliveries()).toEqual([]);
+    const own = await server.inject({ method: 'POST', url: `/webhooks/test/${hook.id}`, headers: { 'x-api-key': a.key.key, 'content-type': 'application/json' }, body: '{}' });
+    expect(own.statusCode).toBe(200);
+  });
+
+  it('WO-17. a scan.failed error loses any Google grounding Link and is capped', async () => {
+    const a = tenantAdminKey('Tenant A');
+    await register(server, a.key.key, 'https://a.example.com/hook', ['scan.failed']);
+    const owner = { keyId: a.key.id, caller: `${a.key.id}\u0000${a.key.id}` };
+    fireWebhookEvent('scan.failed', { error: `provider said: ${EXPLANATION} see ${GROUNDING_URI} ${'x'.repeat(600)}` }, owner);
+    await flush();
+    const sent = deliveries();
+    expect(sent.length).toBe(1);
+    expect(sent[0].raw).not.toContain('vertexaisearch');
+    expect(((sent[0].body.data as { error: string }).error).length).toBeLessThanOrEqual(301);
+  });
+});
+
+describe('notification settings belong to their key', () => {
+  let server: FastifyInstance;
+
+  beforeEach(async () => {
+    resetAll();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
+    const { scan } = await import('@nxtg/faultline/cli/scan.js');
+    vi.mocked(scan).mockReset().mockResolvedValue(GROUNDED_RESULT as never);
+    server = buildServer();
+    await server.ready();
+  });
+
+  afterEach(async () => {
+    await server.close();
+    vi.unstubAllGlobals();
+    delete process.env.FAULTLINE_API_KEY;
+  });
+
+  it('WN-1. key B cannot set, read, test or delete key A\'s notification settings or history', async () => {
+    const a = getKeyStore().create('A', ['scan']);
+    const b = getKeyStore().create('B', ['scan']);
+    const hb = { 'x-api-key': b.key, 'content-type': 'application/json' };
+    const put = await server.inject({ method: 'PUT', url: `/notifications/prefs/${a.id}`, headers: hb, body: JSON.stringify({ events: ['scan.completed'], webhookUrl: 'https://b.example.com/steal' }) });
+    expect(put.statusCode).toBe(403);
+    expect(getNotificationStore().getPrefs(a.id)).toBeFalsy();
+    for (const [method, url] of [['GET', `/notifications/prefs/${a.id}`], ['DELETE', `/notifications/prefs/${a.id}`], ['POST', `/notifications/test/${a.id}`], ['GET', `/notifications/history?keyId=${a.id}`]] as const) {
+      const res = await server.inject({ method, url, headers: { 'x-api-key': b.key } });
+      expect(res.statusCode, `${method} ${url}`).toBe(403);
+    }
+    getNotificationStore().setPrefs(a.id, ['scan.completed'], 'https://a.example.com/n', null);
+    const list = await server.inject({ method: 'GET', url: '/notifications/prefs', headers: { 'x-api-key': b.key } });
+    expect(list.body).not.toContain(a.id);
+    const own = await server.inject({ method: 'PUT', url: `/notifications/prefs/${b.id}`, headers: hb, body: JSON.stringify({ events: ['scan.completed'], webhookUrl: 'https://b.example.com/n' }) });
+    expect([200, 201]).toContain(own.statusCode);
+  });
+
+  it('WN-2. a scheduled scan of Gemini-grounded verdicts notifies without the verdict-derived risk', async () => {
+    const a = getKeyStore().create('A', ['scan']);
+    getNotificationStore().setPrefs(a.id, ['scan.completed'], 'https://a.example.com/n', null);
+    const s = getScheduleStore().create({ name: 'nightly', cron: '0 9 * * *', text: CLAIM_TEXT }, a.id);
+    await getScheduleRunner().runSchedule(s);
+    await flush();
+    const sent = deliveries().filter((d) => d.url === 'https://a.example.com/n');
+    expect(sent.length).toBe(1);
+    expect(sent[0].body.grounded).toBe(true);
+    expect(sent[0].body).not.toHaveProperty('overallRisk');
+    expect(sent[0].raw).not.toContain(EXPLANATION);
+  });
+
+  it('WG-5. a compliance gate failure on grounded verdicts sends only that it failed', async () => {
+    const { evaluateComplianceGate } = await import('@nxtg/faultline/cli/compliance-report.js');
+    vi.mocked(evaluateComplianceGate).mockReturnValueOnce({ pass: false, articles: [{ article: 'Art. 13', status: 'non-compliant' }], nonCompliantCount: 1, totalArticles: 1, threshold: 60 } as never);
+    const a = tenantAdminKey('Tenant A');
+    getWebhookStore().create('https://a.example.com/hook', ['compliance.gate_failed'], 's', undefined, 3, 500, { keyId: a.key.id, caller: `${a.key.id}\u0000${a.key.id}` });
+    const res = await server.inject({ method: 'POST', url: '/scan/compliance-gate', headers: { 'x-api-key': a.key.key, 'content-type': 'application/json' }, body: JSON.stringify({ text: CLAIM_TEXT, provider: 'gemini', projectName: 'P1' }) });
+    expect(res.statusCode).toBe(422);
+    await flush();
+    const sent = deliveries();
+    expect(sent.length).toBe(1);
+    const data = sent[0].body.data as Record<string, unknown>;
+    expect(data.grounded).toBe(true);
+    for (const k of ['overallRisk', 'complianceScore', 'failedArticles', 'nonCompliantCount']) expect(data).not.toHaveProperty(k);
+  });
+
+  it('WG-6. a result naming the provider as the engine does ("Google Gemini") is treated as grounded', () => {
+    const real = { ...PLAIN_RESULT, provider: 'Google Gemini' };
+    const out = webhookSafeData('scan.complete', real) as Record<string, unknown>;
+    expect(out.grounded).toBe(true);
+    expect(JSON.stringify(out)).not.toContain(CLAIM_TEXT);
   });
 });
