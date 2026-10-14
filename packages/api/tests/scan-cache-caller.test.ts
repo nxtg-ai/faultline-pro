@@ -153,6 +153,7 @@ describe('holdsGroundedResults', () => {
     expect(holdsGroundedResults(v({ provenance: { provider: 'consensus', retriever: 'gemini-grounding' } }))).toBe(true);
     expect(holdsGroundedResults(v({ provenance: { provider: 'gemini' } }))).toBe(true);
     expect(holdsGroundedResults(v({ sources: [{ uri: 'https://VERTEXAISEARCH.cloud.google.com/grounding-api-redirect/z' }] }))).toBe(true);
+    expect(holdsGroundedResults(v({ provenance: { provider: 'openai' }, sources: [{ uri: 'https://vertexaisearch.cloud.google.com./grounding-api-redirect/z' }] }))).toBe(true);
     expect(holdsGroundedResults(v({ provenance: { provider: 'openai' }, sources: [{ uri: 'https://publisher.example/a' }] }))).toBe(false);
     expect(getScanCache().set('k', 't', 'p', v({ provenance: { provider: 'gemini', model: 'm', verifiedAt: 'T' } }) as never)).toBe(false);
   });

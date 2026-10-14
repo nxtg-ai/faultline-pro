@@ -403,16 +403,16 @@ describe('POST /cache/warmup/:id/run', () => {
     delete process.env.ADMIN_API_KEY;
   });
 
-  it('warms a single target and returns 200', async () => {
+  it('is retired (EP4 item 7): answers 410 with the reason and never runs the warmer', async () => {
     const t = createTarget();
     const res = await server.inject({
       method: 'POST', url: `/cache/warmup/${t.id}/run`, headers: ADMIN_HEADERS,
     });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(410);
     const body = JSON.parse(res.body);
+    expect(body.error).toBe('cache_warmup_retired');
     expect(body.targetId).toBe(t.id);
-    expect(body.cacheHit).toBe(true);
-    expect(body.run.status).toBe('done');
+    expect(getCacheWarmer().warmOne).not.toHaveBeenCalled();
   });
 
   it('returns 404 for unknown id', async () => {
@@ -420,20 +420,6 @@ describe('POST /cache/warmup/:id/run', () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it('returns 502 when warmOne returns error status', async () => {
-    vi.restoreAllMocks();
-    vi.spyOn(getCacheWarmer(), 'warmOne').mockResolvedValue({
-      runId: 'err-run',
-      startedAt: new Date().toISOString(),
-      completedAt: new Date().toISOString(),
-      durationMs: 10,
-      status: 'error',
-      error: 'provider unavailable',
-    });
-    const t = createTarget({ name: 'Err target', text: 'err text' });
-    const res = await server.inject({ method: 'POST', url: `/cache/warmup/${t.id}/run`, headers: ADMIN_HEADERS });
-    expect(res.statusCode).toBe(502);
-  });
 });
 
 describe('POST /cache/warmup/run', () => {
@@ -459,14 +445,11 @@ describe('POST /cache/warmup/run', () => {
     delete process.env.ADMIN_API_KEY;
   });
 
-  it('returns 207 with warm results', async () => {
+  it('is retired (EP4 item 7): answers 410 with the reason and never runs the warmer', async () => {
     const res = await server.inject({ method: 'POST', url: '/cache/warmup/run', headers: ADMIN_HEADERS });
-    expect(res.statusCode).toBe(207);
-    const body = JSON.parse(res.body);
-    expect(body.succeeded).toBe(1);
-    expect(body.failed).toBe(0);
-    expect(body.results).toHaveLength(1);
-    expect(body.triggeredAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(res.statusCode).toBe(410);
+    expect(JSON.parse(res.body).error).toBe('cache_warmup_retired');
+    expect(getCacheWarmer().warmAll).not.toHaveBeenCalled();
   });
 
   it('returns 401 without auth', async () => {

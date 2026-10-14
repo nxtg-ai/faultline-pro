@@ -4,11 +4,11 @@
  * POST   /cache/warmup                  — register a warmup target (admin)
  * GET    /cache/warmup                  — list all targets (admin)
  * GET    /cache/warmup/summary          — aggregate stats (admin)
- * POST   /cache/warmup/run              — warm ALL enabled targets now (admin)
+ * POST   /cache/warmup/run              — RETIRED: 410 (the scan cache is per caller; EP4 item 7)
  * GET    /cache/warmup/:id              — get a single target (admin)
  * PATCH  /cache/warmup/:id             — update target (admin)
  * DELETE /cache/warmup/:id             — delete target (admin)
- * POST   /cache/warmup/:id/run         — warm a specific target now (admin)
+ * POST   /cache/warmup/:id/run         — RETIRED: 410 (404 for an unknown id)
  * GET    /cache/warmup/:id/history     — run history for a target (admin)
  */
 
@@ -16,7 +16,7 @@ import type { FastifyInstance } from 'fastify';
 import { requireAdmin } from '../plugins/auth.js';
 import {
   getWarmupStore,
-  getCacheWarmer,
+  WARMUP_RETIRED,
   type WarmupProvider,
 } from '../store/cache-warmup.js';
 import { getScanHistory } from '../store/scan-history.js';
@@ -83,23 +83,8 @@ export async function cacheWarmupRoutes(fastify: FastifyInstance): Promise<void>
       schema: { tags: ['Cache'], summary: 'Warm all enabled cache warmup targets now (admin)' },
     },
     async (_request, reply) => {
-      // Fire-and-forget for large warmup sets; return 202 immediately
-      const results = await getCacheWarmer().warmAll();
-      const succeeded = results.filter(r => r.run.status === 'done').length;
-      const failed    = results.filter(r => r.run.status === 'error').length;
-      return reply.status(207).send({
-        message:   `Warmed ${succeeded} target(s), ${failed} error(s).`,
-        succeeded,
-        failed,
-        results:   results.map(r => ({
-          targetId:   r.targetId,
-          name:       r.name,
-          status:     r.run.status,
-          durationMs: r.run.durationMs,
-          error:      r.run.error,
-        })),
-        triggeredAt: new Date().toISOString(),
-      });
+      // Retired (EP4 Amendment 2 item 7): the scan cache is per caller, so a warm-up serves no one.
+      return reply.status(410).send({ error: 'cache_warmup_retired', message: WARMUP_RETIRED });
     },
   );
 
@@ -258,13 +243,8 @@ export async function cacheWarmupRoutes(fastify: FastifyInstance): Promise<void>
     async (request, reply) => {
       const target = getWarmupStore().get(request.params.id);
       if (!target) return reply.status(404).send({ error: 'Warmup target not found.' });
-      const run = await getCacheWarmer().warmOne(request.params.id);
-      return reply.status(run.status === 'done' ? 200 : 502).send({
-        targetId:   target.id,
-        name:       target.name,
-        run,
-        cacheHit:   run.status === 'done',
-      });
+      // Retired (EP4 Amendment 2 item 7): the scan cache is per caller, so a warm-up serves no one.
+      return reply.status(410).send({ error: 'cache_warmup_retired', message: WARMUP_RETIRED, targetId: target.id });
     },
   );
 
