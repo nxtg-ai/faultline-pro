@@ -29,7 +29,7 @@ export async function riskRegisterRoutes(fastify: FastifyInstance): Promise<void
    */
   fastify.post(
     '/scan/risk-register',
-    { preHandler: requireAdmin },
+    { config: { access: 'admin' }, preHandler: requireAdmin },
     async (request, reply) => {
       const body = (request.body ?? {}) as Record<string, unknown>;
 

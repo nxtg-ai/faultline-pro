@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { requireApiKey } from '../plugins/auth.js';
+import { isAdminKeyId, requireApiKey, scanHistoryKeyScope } from '../plugins/auth.js';
 import { getCostStore } from '../store/costs.js';
 
 interface CostsQuery {
@@ -18,6 +18,7 @@ export async function costsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: CostsQuery }>(
     '/costs',
     {
+      config: { access: 'owner' },
       preHandler: requireApiKey,
       schema: {
         tags: ['Analytics'],
@@ -35,7 +36,15 @@ export async function costsRoutes(fastify: FastifyInstance): Promise<void> {
       },
     },
     async (request, reply) => {
-      const { keyId, provider, from, to } = request.query;
+      const { provider, from, to } = request.query;
+      // A non-admin key sees only its own rows; ?keyId selects a key for admin only.
+      let keyId = request.query.keyId;
+      if (!isAdminKeyId(request.keyId)) {
+        if (keyId !== undefined && keyId !== request.keyId) {
+          return reply.status(403).send({ error: 'forbidden', message: 'A key can only read its own costs.' });
+        }
+        keyId = scanHistoryKeyScope(request);
+      }
       const store = getCostStore();
       const filter = { keyId, provider, from, to };
       const costs = store.getCosts(filter);
@@ -47,6 +56,7 @@ export async function costsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: PercentilesQuery }>(
     '/costs/percentiles',
     {
+      config: { access: 'key' },
       preHandler: requireApiKey,
       schema: {
         tags: ['Analytics'],

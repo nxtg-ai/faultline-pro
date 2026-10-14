@@ -4,11 +4,11 @@
  * ids. Any valid key could read another key's stored scan text through the
  * PDF and compliance-gate routes (post-deploy Opus seat on 0ae37a0).
  */
-import { isAdminKeyId } from '../plugins/auth.js';
+import { keyOwnsOrAdmin } from './ownership.js';
 import { getScanStore, type StoredScan } from '../store/scans.js';
 
 export function ownedScan(id: string, keyId: string | undefined): StoredScan | undefined {
   const stored = getScanStore().getById(id);
   if (!stored) return undefined;
-  return isAdminKeyId(keyId) || stored.keyId === keyId ? stored : undefined;
+  return keyOwnsOrAdmin(keyId, stored.keyId) ? stored : undefined;
 }

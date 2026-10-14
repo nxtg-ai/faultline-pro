@@ -59,6 +59,14 @@ A change is not done until, in the same commit or PR: `CHANGELOG.md` `[Unrelease
 
 `FAULTLINE_CUSTOMER_KEYS` is unset in production: the engine issues only admin keys, and `PATCH /keys/:id` cannot re-scope a key to non-admin permissions (emma-soul al:837ec6cea3437a7d; PATCH gap found by the post-deploy seat, al:cb6b01db985c2056). Set it to `on` only after the tenancy change (every stored object owned, one ownership guard, a route-table test) has passed two reviews and emma-soul rules it open.
 
+**How a new route declares access.** Every route sets `config: { access }` (`packages/api/src/lib/route-access.ts`): `public` (no key, and the route must be on `PUBLIC_ROUTES`), `admin`, `owner` (any key, the handler returns or changes only the caller's stored objects) or `key` (any key, nothing stored per key comes back). The server's `onRoute` hook throws at registration on a route with no declaration, on an unlisted `public` route, or on a declaration that contradicts the route's own `requireApiKey`/`requireAdmin`, and it runs the key check in `onRequest`, before schema validation. A route that stores something records `request.keyId` on it; reads go through `ownsOrAdmin` / `ownedOnly` (`lib/ownership.ts`), `ownedScan` (`lib/scan-access.ts`) or `scanHistoryKeyScope` (`plugins/auth.ts`). An object with no owner is admin-only. `packages/api/tests/tenancy-route-table.test.ts` enumerates every route, checks default-deny with no key and runs a two-key canary sweep; add a seed body there (`SEED_BODIES`) if a new `owner` creator needs one.
+
+**Reopen checklist** (all before `FAULTLINE_CUSTOMER_KEYS=on`):
+1. Two PASS seats on the tenancy change, and emma-soul's ruling.
+2. The route-table test green on the deployed commit, with no route added since that lacks a seed or probe it needs.
+3. Decide the key-revival LOW (seat on b5fa978): a key disabled while issuance was closed can be re-enabled with `PATCH /keys/:id/enable`, and `PATCH /keys/:id` with `expiresAt: null` revives an expired key. Either is a way to bring back a non-admin key without issuing one. Decide whether those stay open, then reopen.
+4. Decide the anonymous aggregate counters (route audit LOW): `GET /health/deep`, `/queue/status` and `/notifications` answer with no key and show fleet counts (active keys, audit entries, monthly scans, queue sizes, configured notification keys). They are on `PUBLIC_ROUTES` under their own heading; move them to `admin` or strip the counts if customers should not see fleet size.
+
 ## Live probes (zero or near-zero spend)
 
 - Auth header is `x-api-key: <key>`. `Authorization: Bearer` answers 401.

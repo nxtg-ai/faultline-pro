@@ -418,6 +418,7 @@ export async function missionControlRoutes(fastify: FastifyInstance): Promise<vo
   fastify.get(
     '/mission-control/status',
     {
+      config: { access: 'admin' },
       preHandler: [requireAdmin],
       schema: {
         tags: ['Monitoring'],
@@ -432,6 +433,7 @@ export async function missionControlRoutes(fastify: FastifyInstance): Promise<vo
   fastify.get(
     '/mission-control',
     {
+      config: { access: 'admin' },
       preHandler: [requireAdmin],
       schema: {
         tags: ['Monitoring'],

@@ -441,6 +441,7 @@ export async function analyticsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/analytics/overview',
     {
+      config: { access: 'key' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Analytics'],
@@ -458,6 +459,7 @@ export async function analyticsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/analytics',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Analytics'],

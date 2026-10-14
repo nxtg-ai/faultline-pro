@@ -156,6 +156,7 @@ export async function weakestRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: WeakestBody }>(
     '/weakest',
     {
+      config: { access: 'key' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Analysis'],

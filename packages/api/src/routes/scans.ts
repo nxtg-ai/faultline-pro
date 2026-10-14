@@ -9,6 +9,7 @@ export async function scansRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: { text_hash?: string; text?: string; limit?: string } }>(
     '/scans/timeline',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Claims'],
@@ -45,6 +46,7 @@ export async function scansRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: { text_hash?: string } }>(
     '/scans/timeline/view',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Claims'],
@@ -62,6 +64,7 @@ export async function scansRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: { staleDays?: string; tenantId?: string } }>(
     '/scans/usage',
     {
+      config: { access: 'owner' },
       preHandler: requireApiKey,
       schema: {
         tags: ['Claims'],
@@ -94,6 +97,7 @@ export async function scansRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: { staleDays?: string } }>(
     '/scans/stale/view',
     {
+      config: { access: 'owner' },
       preHandler: requireApiKey,
       schema: { tags: ['Claims'], summary: 'Scan hygiene dashboard (HTML)' },
     },
@@ -184,6 +188,7 @@ export async function scansRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.delete<{ Querystring: { days?: string } }>(
     '/scans/stale',
     {
+      config: { access: 'admin' },
       preHandler: requireAdmin,
       schema: {
         tags: ['Claims'],
@@ -207,6 +212,7 @@ export async function scansRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: { days?: string; tenantId?: string } }>(
     '/scans/stale',
     {
+      config: { access: 'owner' },
       preHandler: requireApiKey,
       schema: {
         tags: ['Claims'],
@@ -241,6 +247,7 @@ export async function scansRoutes(fastify: FastifyInstance): Promise<void> {
   }>(
     '/scans/search',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Claims'],

@@ -194,6 +194,7 @@ export async function adminVerifyRoutes(fastify: FastifyInstance): Promise<void>
   fastify.post<{ Body: VerifyClaimsBody }>(
     '/admin/verify-claims',
     {
+      config: { access: 'admin' },
       preHandler: [requireAdmin, rateLimitScan, enforceProviderSpendCap],
       schema: {
         tags: ['Admin'],

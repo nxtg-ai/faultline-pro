@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { getTemplateStore } from '../store/templates.js';
+import { ownedOnly, ownsOrAdmin } from '../lib/ownership.js';
 
 type Provider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
 
@@ -29,23 +30,25 @@ export async function templateRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: CreateTemplateBody }>(
     '/templates',
     {
+      config: { access: 'owner' },
       preHandler: requireApiKey,
       schema: { tags: ['Templates'], summary: 'Create a reusable scan configuration template', body: CREATE_SCHEMA },
     },
     async (request, reply) => {
       const { name, provider, rules, failOn, description } = request.body;
-      const template = getTemplateStore().create(name, { provider, rules, failOn, description });
+      const template = getTemplateStore().create(name, { provider, rules, failOn, description }, request.keyId);
       return reply.status(201).send(template);
     },
   );
 
-  fastify.get('/templates', { preHandler: requireApiKey, schema: { tags: ['Templates'], summary: 'List all saved scan templates' } }, async (_request, reply) => {
-    return reply.status(200).send(getTemplateStore().list());
+  fastify.get('/templates', { config: { access: 'owner' }, preHandler: requireApiKey, schema: { tags: ['Templates'], summary: "List the caller's saved scan templates (admin: all)" } }, async (request, reply) => {
+    return reply.status(200).send(ownedOnly(request, getTemplateStore().list(), (t) => t.keyId));
   });
 
   fastify.delete<{ Params: { id: string } }>(
     '/templates/:id',
     {
+      config: { access: 'owner' },
       preHandler: requireApiKey,
       schema: {
         tags: ['Templates'],
@@ -58,10 +61,11 @@ export async function templateRoutes(fastify: FastifyInstance): Promise<void> {
       },
     },
     async (request, reply) => {
-      const deleted = getTemplateStore().delete(request.params.id);
-      if (!deleted) {
+      const template = getTemplateStore().get(request.params.id);
+      if (!template || !ownsOrAdmin(request, template.keyId)) {
         return reply.status(404).send({ error: 'Template not found.' });
       }
+      getTemplateStore().delete(template.id);
       return reply.status(204).send();
     },
   );

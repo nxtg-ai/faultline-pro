@@ -69,6 +69,7 @@ export async function pluginMarketplaceRoutes(fastify: FastifyInstance): Promise
   fastify.post<{ Body: PublishInput }>(
     '/plugins/publish',
     {
+      config: { access: 'key' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Plugins'],
@@ -111,6 +112,7 @@ export async function pluginMarketplaceRoutes(fastify: FastifyInstance): Promise
   }>(
     '/plugins/search',
     {
+      config: { access: 'public' },
       schema: {
         tags: ['Plugins'],
         summary: 'Search the plugin marketplace',
@@ -143,6 +145,7 @@ export async function pluginMarketplaceRoutes(fastify: FastifyInstance): Promise
   fastify.get<{ Params: { id: string } }>(
     '/plugins/:id',
     {
+      config: { access: 'public' },
       schema: {
         tags: ['Plugins'],
         summary: 'Get a plugin listing by ID',
@@ -162,6 +165,7 @@ export async function pluginMarketplaceRoutes(fastify: FastifyInstance): Promise
   fastify.post<{ Body: { name: string } }>(
     '/plugins/install',
     {
+      config: { access: 'key' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Plugins'],

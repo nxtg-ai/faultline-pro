@@ -10,6 +10,7 @@ export async function pdfReportRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: PdfScanResult }>(
     '/scan/report/pdf',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Reports'],
@@ -84,6 +85,7 @@ export async function pdfReportRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Params: { id: string } }>(
     '/scan/report/pdf/:id',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Reports'],

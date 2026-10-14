@@ -62,6 +62,7 @@ export async function diffRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: DiffBody }>(
     '/scan/diff',
     {
+      config: { access: 'key' },
       preHandler: [requireApiKey, rateLimitScan],
       schema: { tags: ['Scan'], summary: 'Diff two texts — new/removed/changed claims with inline view', body: BODY_SCHEMA },
     },

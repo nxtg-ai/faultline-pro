@@ -277,6 +277,7 @@ export async function euReportRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: EuReportBody }>(
     '/scan/eu-report',
     {
+      config: { access: 'key' },
       preHandler: requireApiKey,
       schema: { tags: ['Compliance'], summary: 'Generate EU AI Act compliance PDF report', body: BODY_SCHEMA },
     },

@@ -81,6 +81,7 @@ import { getAuditLogger, hashInput } from './store/audit.js';
 import { getUsageMeter } from './store/usage.js';
 import { stopFullScanJobPruning } from './store/full-scan-jobs.js';
 import { FAULTLINE_API_VERSION } from './version.js';
+import { applyRouteAccess } from './lib/route-access.js';
 
 const MAX_FILE_SIZE = 10_485_760; // 10MB
 
@@ -95,6 +96,11 @@ export function buildServer() {
   const fastify = Fastify({
     logger: false,
   });
+
+  // Every route declares its access, and the key check runs in onRequest,
+  // before schema validation (lib/route-access.ts). Added before any plugin
+  // registers so it sees every route, the plugins' own included.
+  fastify.addHook('onRoute', applyRouteAccess);
 
   fastify.register(cors, {
     origin: (origin, cb) => {

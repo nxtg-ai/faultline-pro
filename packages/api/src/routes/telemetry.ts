@@ -273,6 +273,7 @@ if(!apiKey){
 export async function telemetryRoutes(fastify: FastifyInstance): Promise<void> {
   // HTML dashboard — auth handled client-side via ?key= param + JSON fetch
   fastify.get('/telemetry', {
+    config: { access: 'public' },
     schema: { tags: ['Analytics'], summary: 'HTML telemetry dashboard (team view)' },
   }, async (_req, reply) => {
     reply.header('Content-Type', 'text/html; charset=utf-8');
@@ -281,6 +282,7 @@ export async function telemetryRoutes(fastify: FastifyInstance): Promise<void> {
 
   // JSON aggregate stats — auth required
   fastify.get('/telemetry/dashboard', {
+    config: { access: 'key' },
     preHandler: [requireApiKey],
     schema: { tags: ['Analytics'], summary: 'JSON telemetry aggregate stats (auth required)' },
   }, async () => {
@@ -289,6 +291,7 @@ export async function telemetryRoutes(fastify: FastifyInstance): Promise<void> {
 
   // Public opt-in status
   fastify.get('/telemetry/status', {
+    config: { access: 'public' },
     schema: { tags: ['Analytics'], summary: 'Telemetry opt-in status (public)' },
   }, async () => {
     return {
@@ -300,6 +303,7 @@ export async function telemetryRoutes(fastify: FastifyInstance): Promise<void> {
 
   // Machine-readable privacy policy
   fastify.get('/telemetry/privacy', {
+    config: { access: 'public' },
     schema: { tags: ['Analytics'], summary: 'Machine-readable telemetry privacy policy (public)' },
   }, async () => {
     return {

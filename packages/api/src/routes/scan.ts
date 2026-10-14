@@ -16,6 +16,7 @@ import type { Provider } from '../store/circuit-breaker.js';
 import { getAuditLogger } from '../store/audit.js';
 import { getScanCache } from '../store/cache.js';
 import { cacheCaller, requestOwner } from '../lib/cache-caller.js';
+import { ownsOrAdmin } from '../lib/ownership.js';
 import { getTemplateStore } from '../store/templates.js';
 import { getClaimIndex } from '../store/claims.js';
 import { getCostStore, emitScanCostEvent, appendScanCostLog, resolveTier, buildManagedCostEvent } from '../store/costs.js';
@@ -97,6 +98,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: ScanBody }>(
     '/scan',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap],
       schema: { tags: ['Scan'], summary: 'Scan text for claim verification', body: BODY_SCHEMA },
     },
@@ -335,6 +337,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Params: { id: string }; Body: ScanTemplateBody }>(
     '/scan/template/:id',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap],
       schema: {
         tags: ['Scan'],
@@ -349,7 +352,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request, reply) => {
       const template = getTemplateStore().get(request.params.id);
-      if (!template) {
+      if (!template || !ownsOrAdmin(request, template.keyId)) {
         return reply.status(404).send({ error: 'Template not found.' });
       }
 

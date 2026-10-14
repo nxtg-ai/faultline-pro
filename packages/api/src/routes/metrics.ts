@@ -10,7 +10,7 @@ export async function metricsRoutes(fastify: FastifyInstance): Promise<void> {
   // keys, audit size and risk mix tell an outsider how the business runs, and
   // nothing scrapes this endpoint, so it needs the admin key rather than a
   // reduced public version.
-  fastify.get('/metrics', { preHandler: [requireApiKey, requireAdmin], schema: { tags: ['Monitoring'], summary: 'Prometheus-format metrics: scan counts, active keys, risk distribution' } }, async (_request, reply) => {
+  fastify.get('/metrics', { config: { access: 'admin' }, preHandler: [requireApiKey, requireAdmin], schema: { tags: ['Monitoring'], summary: 'Prometheus-format metrics: scan counts, active keys, risk distribution' } }, async (_request, reply) => {
     const dashboard = getAnalyticsStore().getDashboard();
     const activeKeys = getKeyStore().size;
     const auditEntries = getAuditLogger().getEntries().length;

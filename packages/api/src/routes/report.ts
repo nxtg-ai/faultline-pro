@@ -205,6 +205,7 @@ export async function reportRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: ReportBody }>(
     '/scan/report',
     {
+      config: { access: 'key' },
       preHandler: requireApiKey,
       schema: { tags: ['Reports'], summary: 'Generate PDF compliance report from scan result', body: BODY_SCHEMA },
     },

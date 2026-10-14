@@ -48,6 +48,7 @@ export async function orgRoutes(fastify: FastifyInstance): Promise<void> {
   }>(
     '/orgs',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Organizations'],
@@ -79,6 +80,7 @@ export async function orgRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/orgs',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: { tags: ['Organizations'], summary: 'List organizations for the current key' },
     },
@@ -92,6 +94,7 @@ export async function orgRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Params: { id: string } }>(
     '/orgs/:id',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Organizations'],
@@ -115,6 +118,7 @@ export async function orgRoutes(fastify: FastifyInstance): Promise<void> {
   }>(
     '/orgs/:id',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Organizations'],
@@ -152,6 +156,7 @@ export async function orgRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.delete<{ Params: { id: string } }>(
     '/orgs/:id',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Organizations'],
@@ -175,6 +180,7 @@ export async function orgRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Params: { id: string } }>(
     '/orgs/:id/members',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Organizations'],
@@ -198,6 +204,7 @@ export async function orgRoutes(fastify: FastifyInstance): Promise<void> {
   }>(
     '/orgs/:id/members/invite',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Organizations'],
@@ -246,6 +253,7 @@ export async function orgRoutes(fastify: FastifyInstance): Promise<void> {
   }>(
     '/orgs/invites/:token/accept',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Organizations'],
@@ -275,6 +283,7 @@ export async function orgRoutes(fastify: FastifyInstance): Promise<void> {
   }>(
     '/orgs/:id/members/:memberId/role',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Organizations'],
@@ -313,6 +322,7 @@ export async function orgRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.delete<{ Params: { id: string; memberId: string } }>(
     '/orgs/:id/members/:memberId',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Organizations'],
@@ -349,6 +359,7 @@ export async function orgRoutes(fastify: FastifyInstance): Promise<void> {
   }>(
     '/orgs/:id/keys',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Organizations'],
@@ -406,6 +417,7 @@ export async function orgRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Params: { id: string } }>(
     '/orgs/:id/keys',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Organizations'],
@@ -426,6 +438,7 @@ export async function orgRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.delete<{ Params: { id: string; keyId: string } }>(
     '/orgs/:id/keys/:keyId',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Organizations'],
@@ -457,6 +470,7 @@ export async function orgRoutes(fastify: FastifyInstance): Promise<void> {
   }>(
     '/orgs/:id/usage',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Organizations'],
@@ -489,6 +503,7 @@ export async function orgRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Params: { id: string } }>(
     '/orgs/:id/invites',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Organizations'],

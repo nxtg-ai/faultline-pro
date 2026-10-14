@@ -28,6 +28,7 @@ export async function jobRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: CreateJobBody }>(
     '/jobs',
     {
+      config: { access: 'owner' },
       preHandler: requireApiKey,
       schema: { tags: ['Jobs'], summary: 'Create a scheduled scan job', body: POST_SCHEMA },
     },
@@ -42,7 +43,7 @@ export async function jobRoutes(fastify: FastifyInstance): Promise<void> {
 
   // A key lists and deletes only the jobs it created; an admin key, any job.
   // Before, any key could read every job's text and callback URL (codex seat, 84cf8c8).
-  fastify.get('/jobs', { preHandler: requireApiKey, schema: { tags: ['Jobs'], summary: "List your key's scheduled scan jobs (admin: all)" } }, async (request, reply) => {
+  fastify.get('/jobs', { config: { access: 'owner' }, preHandler: requireApiKey, schema: { tags: ['Jobs'], summary: "List your key's scheduled scan jobs (admin: all)" } }, async (request, reply) => {
     const store = getJobStore();
     return reply.status(200).send(isAdminKeyId(request.keyId) ? store.list() : store.listOwnedBy(request.keyId ?? ''));
   });
@@ -50,6 +51,7 @@ export async function jobRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.delete<{ Params: { id: string } }>(
     '/jobs/:id',
     {
+      config: { access: 'owner' },
       preHandler: requireApiKey,
       schema: {
         tags: ['Jobs'],

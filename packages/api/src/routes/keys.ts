@@ -31,7 +31,7 @@ interface CreateKeyBody {
 export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: CreateKeyBody }>(
     '/keys',
-    { preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Create a new API key', body: CREATE_BODY_SCHEMA } },
+    { config: { access: 'admin' }, preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Create a new API key', body: CREATE_BODY_SCHEMA } },
     async (request, reply) => {
       const { name, permissions, expiresAt } = request.body;
       if (!mayIssueKey(permissions)) return reply.status(403).send(CUSTOMER_KEYS_CLOSED);
@@ -41,7 +41,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
-  fastify.get('/keys', { preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'List all API keys (secrets redacted)' } }, async (_request, reply) => {
+  fastify.get('/keys', { config: { access: 'admin' }, preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'List all API keys (secrets redacted)' } }, async (_request, reply) => {
     const store = getKeyStore();
     const keys = store.list().map(({ key: _key, previousKey: _prev, ...rest }) => rest);
     return reply.status(200).send(keys);
@@ -50,6 +50,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: { dormantDays?: string; expiringSoonDays?: string } }>(
     '/keys/usage',
     {
+      config: { access: 'admin' },
       preHandler: requireAdmin,
       schema: {
         tags: ['Keys'],
@@ -84,6 +85,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: { dormantDays?: string; expiringSoonDays?: string } }>(
     '/keys/usage/view',
     {
+      config: { access: 'admin' },
       preHandler: requireAdmin,
       schema: { tags: ['Keys'], summary: 'Key hygiene dashboard (HTML)' },
     },
@@ -174,6 +176,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: { days?: string } }>(
     '/keys/dormant',
     {
+      config: { access: 'admin' },
       preHandler: requireAdmin,
       schema: {
         tags: ['Keys'],
@@ -197,6 +200,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: { days?: string } }>(
     '/keys/expiring-soon',
     {
+      config: { access: 'admin' },
       preHandler: requireAdmin,
       schema: {
         tags: ['Keys'],
@@ -219,7 +223,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
 
   fastify.get<{ Params: { id: string } }>(
     '/keys/:id',
-    { preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Get a single API key by ID (secret redacted)' } },
+    { config: { access: 'admin' }, preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Get a single API key by ID (secret redacted)' } },
     async (request, reply) => {
       const store = getKeyStore();
       const entry = store.validateById(request.params.id);
@@ -231,7 +235,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
 
   fastify.delete<{ Params: { id: string } }>(
     '/keys/:id',
-    { preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Delete an API key by ID' } },
+    { config: { access: 'admin' }, preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Delete an API key by ID' } },
     async (request, reply) => {
       const store = getKeyStore();
       const deleted = store.delete(request.params.id);
@@ -261,6 +265,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: BulkDeleteBody }>(
     '/keys/bulk-delete',
     {
+      config: { access: 'admin' },
       preHandler: requireAdmin,
       schema: {
         tags: ['Keys'],
@@ -306,6 +311,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: BulkDisableBody }>(
     '/keys/bulk-disable',
     {
+      config: { access: 'admin' },
       preHandler: requireAdmin,
       schema: {
         tags: ['Keys'],
@@ -347,6 +353,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: BulkEnableBody }>(
     '/keys/bulk-enable',
     {
+      config: { access: 'admin' },
       preHandler: requireAdmin,
       schema: {
         tags: ['Keys'],
@@ -390,7 +397,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
 
   fastify.patch<{ Params: { id: string }; Body: PatchKeyBody }>(
     '/keys/:id',
-    { preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Update key name and/or permissions', body: PATCH_BODY_SCHEMA } },
+    { config: { access: 'admin' }, preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Update key name and/or permissions', body: PATCH_BODY_SCHEMA } },
     async (request, reply) => {
       // Re-scoping a key is issuing one: an admin key PATCHed down to ["scan"]
       // would be a customer key minted past the freeze (seat al:cb6b01db985c2056 M1).
@@ -410,6 +417,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Params: { id: string } }>(
     '/keys/:id/rotate',
     {
+      config: { access: 'admin' },
       preHandler: requireAdmin,
       schema: {
         tags: ['Keys'],
@@ -468,7 +476,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
 
   fastify.patch<{ Params: { id: string } }>(
     '/keys/:id/disable',
-    { preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Disable an API key — rejects auth without deleting the key' } },
+    { config: { access: 'admin' }, preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Disable an API key — rejects auth without deleting the key' } },
     async (request, reply) => {
       const store = getKeyStore();
       const ok = store.disable(request.params.id);
@@ -480,7 +488,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
 
   fastify.patch<{ Params: { id: string } }>(
     '/keys/:id/enable',
-    { preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Re-enable a previously disabled API key' } },
+    { config: { access: 'admin' }, preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Re-enable a previously disabled API key' } },
     async (request, reply) => {
       const store = getKeyStore();
       const ok = store.enable(request.params.id);
@@ -494,6 +502,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Params: { id: string } }>(
     '/keys/:id/rotation-status',
     {
+      config: { access: 'admin' },
       preHandler: requireAdmin,
       schema: {
         tags: ['Keys'],

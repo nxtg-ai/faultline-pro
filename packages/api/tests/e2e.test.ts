@@ -369,9 +369,23 @@ describe('E2E smoke — full API surface', () => {
       body: JSON.stringify({ name: 'template-scan-key', permissions: ['scan'] }),
     });
     const { key } = JSON.parse(keyRes.body);
+    // A template is used only by the key that created it (rule 2, M1).
+    const own = await server.inject({
+      method: 'POST', url: '/templates',
+      headers: { 'x-api-key': key, ...JSON_HDR },
+      body: JSON.stringify({ name: 'e2e-scan-key-template', provider: 'mock', failOn: 'high' }),
+    });
+    expect(own.statusCode).toBe(201);
+    const ownTemplateId = JSON.parse(own.body).id;
+    const foreign = await server.inject({
+      method: 'POST', url: `/scan/template/${templateId}`,
+      headers: { 'x-api-key': key, ...JSON_HDR },
+      body: JSON.stringify({ text: 'AI generated the universe in 2023.' }),
+    });
+    expect(foreign.statusCode).toBe(404);
 
     const res = await server.inject({
-      method: 'POST', url: `/scan/template/${templateId}`,
+      method: 'POST', url: `/scan/template/${ownTemplateId}`,
       headers: { 'x-api-key': key, ...JSON_HDR },
       body: JSON.stringify({ text: 'AI generated the universe in 2023.' }),
     });

@@ -9,7 +9,7 @@ import { getGroundingAllowanceStatus } from '../store/grounding-allowance.js';
 import { getFullScanJobStore } from '../store/full-scan-jobs.js';
 
 export async function usageRoutes(fastify: FastifyInstance): Promise<void> {
-  fastify.get('/usage', { preHandler: requireApiKey, schema: { tags: ['Analytics'], summary: 'Per-key daily scan usage counts + monthly quota' } }, async (request, reply) => {
+  fastify.get('/usage', { config: { access: 'owner' }, preHandler: requireApiKey, schema: { tags: ['Analytics'], summary: 'Per-key daily scan usage counts + monthly quota' } }, async (request, reply) => {
     const keyId = request.keyId ?? 'unknown';
     const meter = getUsageMeter();
 

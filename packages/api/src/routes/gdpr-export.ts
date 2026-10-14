@@ -28,6 +28,7 @@ export async function gdprExportRoutes(fastify: FastifyInstance): Promise<void> 
   fastify.get(
     '/tenants/:id/export',
     {
+      config: { access: 'admin' },
       preHandler: requireAdmin,
       schema: {
         tags: ['Tenants'],

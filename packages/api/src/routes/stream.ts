@@ -116,6 +116,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: { text?: string; provider?: string } }>(
     '/scan/stream',
     {
+      config: { access: 'key' },
       preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap],
       schema: {
         tags: ['Scan'],
@@ -238,6 +239,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: StreamPostBody }>(
     '/scan/stream',
     {
+      config: { access: 'key' },
       preHandler: [requireApiKey, enforceConsensusEntitlement, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap],
       schema: {
         tags: ['Scan'],

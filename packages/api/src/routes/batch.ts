@@ -73,6 +73,7 @@ export async function batchRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: BatchScanBody }>(
     '/scan/batch',
     {
+      config: { access: 'key' },
       preHandler: [requireApiKey],
       schema: { tags: ['Scan'], summary: 'Batch scan multiple texts (1–10)', body: BODY_SCHEMA },
     },

@@ -31,6 +31,7 @@ export async function cacheWarmupRoutes(fastify: FastifyInstance): Promise<void>
   }>(
     '/cache/warmup',
     {
+      config: { access: 'admin' },
       preHandler: [requireAdmin],
       schema: {
         tags: ['Cache'],
@@ -65,6 +66,7 @@ export async function cacheWarmupRoutes(fastify: FastifyInstance): Promise<void>
   fastify.get(
     '/cache/warmup/summary',
     {
+      config: { access: 'admin' },
       preHandler: [requireAdmin],
       schema: { tags: ['Cache'], summary: 'Cache warmup aggregate statistics (admin)' },
     },
@@ -79,6 +81,7 @@ export async function cacheWarmupRoutes(fastify: FastifyInstance): Promise<void>
   fastify.post(
     '/cache/warmup/run',
     {
+      config: { access: 'admin' },
       preHandler: [requireAdmin],
       schema: { tags: ['Cache'], summary: 'Warm all enabled cache warmup targets now (admin)' },
     },
@@ -94,6 +97,7 @@ export async function cacheWarmupRoutes(fastify: FastifyInstance): Promise<void>
   fastify.get<{ Querystring: { enabled?: string } }>(
     '/cache/warmup',
     {
+      config: { access: 'admin' },
       preHandler: [requireAdmin],
       schema: {
         tags: ['Cache'],
@@ -118,6 +122,7 @@ export async function cacheWarmupRoutes(fastify: FastifyInstance): Promise<void>
   fastify.get<{ Querystring: { limit?: string } }>(
     '/cache/warmup/suggestions',
     {
+      config: { access: 'admin' },
       preHandler: [requireAdmin],
       schema: {
         tags: ['Cache'],
@@ -160,6 +165,7 @@ export async function cacheWarmupRoutes(fastify: FastifyInstance): Promise<void>
   fastify.get<{ Params: { id: string } }>(
     '/cache/warmup/:id',
     {
+      config: { access: 'admin' },
       preHandler: [requireAdmin],
       schema: {
         tags: ['Cache'],
@@ -183,6 +189,7 @@ export async function cacheWarmupRoutes(fastify: FastifyInstance): Promise<void>
   }>(
     '/cache/warmup/:id',
     {
+      config: { access: 'admin' },
       preHandler: [requireAdmin],
       schema: {
         tags: ['Cache'],
@@ -213,6 +220,7 @@ export async function cacheWarmupRoutes(fastify: FastifyInstance): Promise<void>
   fastify.delete<{ Params: { id: string } }>(
     '/cache/warmup/:id',
     {
+      config: { access: 'admin' },
       preHandler: [requireAdmin],
       schema: {
         tags: ['Cache'],
@@ -233,6 +241,7 @@ export async function cacheWarmupRoutes(fastify: FastifyInstance): Promise<void>
   fastify.post<{ Params: { id: string } }>(
     '/cache/warmup/:id/run',
     {
+      config: { access: 'admin' },
       preHandler: [requireAdmin],
       schema: {
         tags: ['Cache'],
@@ -254,6 +263,7 @@ export async function cacheWarmupRoutes(fastify: FastifyInstance): Promise<void>
   fastify.get<{ Params: { id: string }; Querystring: { limit?: string } }>(
     '/cache/warmup/:id/history',
     {
+      config: { access: 'admin' },
       preHandler: [requireAdmin],
       schema: {
         tags: ['Cache'],
