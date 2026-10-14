@@ -7,7 +7,7 @@
  * requested, so a cited link cannot bounce the server onto its own network.
  * FAULTLINE_EVIDENCE_FETCH=off turns the fetch off without a deploy of code.
  */
-import type { EvidenceOptions } from '@nxtg/faultline/evidence/passage.js';
+import { isGeminiGroundingSource, type EvidenceOptions } from '@nxtg/faultline/evidence/passage.js';
 import type { IndependentEvidenceOptions } from '@nxtg/faultline/evidence/independent.js';
 import { OpenAIWebSearchRetriever } from '@nxtg/faultline/providers/openai_web_search_retriever.js';
 import { fetchOutbound } from './outbound-url.js';
@@ -48,7 +48,10 @@ export function apiIndependentEvidenceOptions(): IndependentEvidenceOptions | un
   return {
     retriever: new OpenAIWebSearchRetriever(key, { model, timeoutMs: PASSAGE_SEARCH_TIMEOUT_MS }),
     fetch: (url, init) => fetchOutbound(url, init),
-    // Only a Gemini-grounded verdict lacks page passages; consensus already searches with OpenAI.
-    appliesTo: (result) => result.provenance?.retriever === 'gemini-grounding',
+    // Only a verdict whose sources may not be fetched lacks page passages: a
+    // Gemini-grounded verdict, or any verdict citing Google grounding Links
+    // (Fable seat, item 5: such a verdict otherwise ships with no evidence).
+    appliesTo: (result) => result.provenance?.retriever === 'gemini-grounding'
+      || (Array.isArray(result.sources) && result.sources.some((s) => isGeminiGroundingSource(result, s))),
   };
 }

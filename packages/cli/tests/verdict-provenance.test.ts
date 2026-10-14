@@ -154,3 +154,30 @@ describe('consensus', () => {
     }
   });
 });
+
+// Runs last: it replaces the built-in 'gemini' provider in this process.
+describe('Fable seat item 5 findings, pinned', () => {
+  let savedKey: string | undefined;
+  beforeAll(() => { savedKey = process.env.GEMINI_API_KEY; process.env.GEMINI_API_KEY = 'fixture-unused'; });
+  afterAll(() => { if (savedKey === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = savedKey; });
+
+  it('a provider id that is an Object.prototype key gets no retriever', async () => {
+    registerFixture('constructor', (c) => ({ claimId: c.id, status: 'supported', explanation: 'ok', sources: [] }));
+    const r = await scan(CLAIM.text, 'constructor');
+    expect(r.verifications.c1.provenance!.retriever).toBeUndefined();
+    expect(r.verifications.c1.provenance!.retrievedAt).toBeUndefined();
+  });
+
+  it('even the gemini id cannot backdate its retrieval: retrievedAt is the call-site time', async () => {
+    registerFixture('gemini', (c) => ({
+      claimId: c.id, status: 'supported', explanation: 'ok', sources: [],
+      provenance: { provider: 'gemini', model: 'm', verifiedAt: '2026-01-01T00:00:00.000Z', retriever: 'gemini-grounding', retrievedAt: '2026-01-01T00:00:00.000Z' },
+    }));
+    const before = Date.now();
+    const r = await scan(CLAIM.text, 'gemini');
+    const p = r.verifications.c1.provenance!;
+    expect(p.retriever).toBe('gemini-grounding');
+    expect(Date.parse(p.retrievedAt!)).toBeGreaterThanOrEqual(before);
+    expect(Date.parse(p.verifiedAt)).toBeGreaterThanOrEqual(before);
+  });
+});

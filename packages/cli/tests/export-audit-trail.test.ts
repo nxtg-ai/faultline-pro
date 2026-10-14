@@ -97,3 +97,25 @@ describe('CSV', () => {
     expect(row).toContain('Completed in 1889 for the Fair.');
   });
 });
+
+describe('item 6 seat findings, pinned', () => {
+  it('a claim whose check never ran has status null in the guard JSON, not its placeholder "unverified"', () => {
+    const parsed = JSON.parse(formatGuardJson(evaluateGuard(scanOf(verdict('unverified', { apiError: true, provenance: undefined }))), undefined));
+    expect(parsed.claims[0].verdict).toBe('UNCHECKED');
+    expect(parsed.claims[0].status).toBeNull();
+  });
+
+  it('the gate line names the verdict word and the --fail-on word', () => {
+    const out = formatGuardReport(evaluateGuard(scanOf(verdict('contradicted')), 'refuted'), 'refuted');
+    expect(out).toMatch(/1 CONTRADICTED \(refuted\)/);
+  });
+
+  it('a scan with no claims still writes a row as wide as the header', () => {
+    const entry: HistoryEntry = {
+      timestamp: '2026-10-14T05:00:05.000Z', file: 'f.txt', provider: 'gemini', overallRisk: 'low',
+      findingCount: 0, claimCount: 0, verificationCount: 0, ruleFindings: [], scanResult: { ...scanOf(verdict('supported')), claims: [], verifications: {} },
+    };
+    const [header, row] = renderCsv([entry]).trim().split('\n');
+    expect(row.split(',')).toHaveLength(header.split(',').length);
+  });
+});

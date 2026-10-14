@@ -95,8 +95,8 @@ export interface ConsensusRig {
 export interface Verifier {
   provider: LLMProvider;
   consensusRig: ConsensusRig | null;
-  /** The provider id the verify stage resolved to (e.g. 'gemini'); names the verdict's provenance. */
-  providerName?: string;
+  /** The provider id the verify stage resolved to (e.g. 'gemini'); names the verdict's provenance and selects its retriever. */
+  providerName: string;
 }
 
 /** The provider names each stage resolves to. */
@@ -305,7 +305,7 @@ const ENGINE_RETRIEVERS: Readonly<Record<string, string>> = Object.freeze({ gemi
 function withProvenance(result: VerificationResult, verifier: Verifier, returnedAt: string): VerificationResult {
   if (!result || typeof result !== 'object' || result.apiError === true) return result;
   const own = result.provenance;
-  const provider = verifier.providerName ?? verifier.provider.name;
+  const provider = verifier.providerName;
   const retriever = Object.prototype.hasOwnProperty.call(ENGINE_RETRIEVERS, provider) ? ENGINE_RETRIEVERS[provider] : undefined;
   return {
     ...result,

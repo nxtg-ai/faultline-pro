@@ -48,7 +48,7 @@ export function isFailOn(value: string): value is FailOn {
 
 export interface GuardClaim extends ClaimVerdict {
   importance: number;
-  /** The engine's own verdict word (supported, contradicted, mixed, unverified, skipped), or null when no check ran. */
+  /** The engine's own verdict word (supported, contradicted, mixed, unverified, skipped), or null when no check ran (no record, or apiError). */
   status: string | null;
   /** Who checked it and when, and what each source said when read. */
   audit: AuditTrail;
@@ -77,7 +77,8 @@ export function evaluateGuard(result: ScanResult, failOn?: FailOn): GuardReport 
     return {
       ...toClaimVerdict(c.text, v),
       importance: c.importance ?? 0,
-      status: typeof v?.status === 'string' ? v.status : null,
+      // A check that never ran has no verdict word, whatever placeholder status it carries.
+      status: v && v.apiError !== true && typeof v.status === 'string' ? v.status : null,
       audit: auditTrail(v),
     };
   });
@@ -188,7 +189,8 @@ export function formatGuardReport(report: GuardReport, failOn?: FailOn): string 
         'cannot be trusted. The gate fails closed rather than passing unchecked claims.',
     );
   } else {
-    const names = report.tripped.map((t) => guardLabel(t));
+    // Each count names the verdict word and, in brackets, the --fail-on word it tripped.
+    const names = report.tripped.map((t) => `${guardLabel(t)} (${t.verdict.toLowerCase()})`);
     const counts = [...new Set(names)].map((v) => `${names.filter((n) => n === v).length} ${v}`);
     lines.push(`✗ Gate FAILED (--fail-on ${failOn}) — ${counts.join(', ')}.`);
   }

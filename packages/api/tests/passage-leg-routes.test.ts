@@ -43,6 +43,7 @@ import { resetGroundingAllowanceLedger, uninstallGroundingCounter } from '../src
 import { setOutboundFetch, resetOutboundFetch, setOutboundResolver, resetOutboundResolver } from '../src/lib/outbound-url.js';
 import { clearRobotsCache } from '@nxtg/faultline/evidence/robots.js';
 import { priceLeg } from '../src/store/consensus-cost.js';
+import { apiIndependentEvidenceOptions } from '../src/lib/evidence.js';
 
 const PAGE = '<html><body><p>The Eiffel Tower was completed in March 1889 for the Exposition Universelle.</p></body></html>';
 const ENV_KEYS = ['FAULTLINE_GROUNDING_LEDGER', 'FAULTLINE_PROVIDER_SPEND_LEDGER', 'GEMINI_API_KEY', 'OPENAI_API_KEY', 'FAULTLINE_CONSENSUS',
@@ -185,6 +186,15 @@ describe('passage leg guards (Fable review findings)', () => {
     for (const v of Object.values(body.verifications as Record<string, any>)) expect(v.independentEvidence).toBeUndefined();
     expect(openaiBodies).toHaveLength(0);
   }, 30_000);
+
+  it('item 5 seat: a non-Gemini verdict citing only Google grounding Links still gets the leg, so it never ships with no evidence', () => {
+    process.env.FAULTLINE_PASSAGE_LEG = 'on';
+    const opts = apiIndependentEvidenceOptions()!;
+    const base = { claimId: 'c1', status: 'supported' as const, explanation: 'ok' };
+    expect(opts.appliesTo!({ ...base, sources: [{ title: 'g', uri: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/z' }], provenance: { provider: 'mock', model: 'm', verifiedAt: 'T' } })).toBe(true);
+    expect(opts.appliesTo!({ ...base, sources: [{ title: 'p', uri: 'https://publisher.example/a' }], provenance: { provider: 'mock', model: 'm', verifiedAt: 'T' } })).toBe(false);
+    expect(opts.appliesTo!({ ...base, sources: [], provenance: { provider: 'gemini', model: 'm', verifiedAt: 'T', retriever: 'gemini-grounding', retrievedAt: 'T' } })).toBe(true);
+  });
 
   it('the search call carries a deadline (M1)', async () => {
     process.env.FAULTLINE_PASSAGE_LEG = 'on';

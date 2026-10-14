@@ -21,7 +21,8 @@ const PROVIDER_KEY_ENV: Record<string, string> = {
  */
 export function resolveApiKey(name: string): string {
   if (name === 'mock') return '';
-  const envVar = PROVIDER_KEY_ENV[name] || 'GEMINI_API_KEY';
+  // Own keys only: a provider named after an Object.prototype key ('constructor') must not read the prototype.
+  const envVar = Object.prototype.hasOwnProperty.call(PROVIDER_KEY_ENV, name) ? PROVIDER_KEY_ENV[name] : 'GEMINI_API_KEY';
   const key = process.env[envVar] || '';
   if (!key) {
     const hint = name === 'gemini'
