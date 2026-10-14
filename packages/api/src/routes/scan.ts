@@ -10,7 +10,7 @@ import { getUsageMeter } from '../store/usage.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { getAnalyticsStore } from '../store/analytics.js';
 import type { RiskLevel } from '../store/analytics.js';
-import { fireWebhookEvent } from '../store/webhooks.js';
+import { fireWebhookEvent, withScanId } from '../store/webhooks.js';
 import { getCircuitBreaker } from '../store/circuit-breaker.js';
 import type { Provider } from '../store/circuit-breaker.js';
 import { getAuditLogger } from '../store/audit.js';
@@ -145,8 +145,9 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
             complianceScore: compReport.complianceScore,
             compliancePass: compGate.pass,
           }, verifyPolicy.tier);
-          fireWebhookEvent('scan.complete', enriched, requestOwner(request));
-          return reply.status(200).send(enriched);
+          const delivered = withScanId(enriched);
+          fireWebhookEvent('scan.complete', delivered, requestOwner(request));
+          return reply.status(200).send(delivered);
         } catch (err) {
           // Missing API key for a specified provider
           if (err instanceof Error && err.message.startsWith('No API key found for')) {
@@ -187,8 +188,9 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
           // Said in the result itself, so a cached verdict never reads as fresh.
           cache: { hit: true, checkedAt: hit.checkedAt },
         }, verifyPolicy.tier);
-        fireWebhookEvent('scan.complete', cachedEnriched, requestOwner(request));
-        return reply.status(200).send(cachedEnriched);
+        const delivered = withScanId(cachedEnriched);
+        fireWebhookEvent('scan.complete', delivered, requestOwner(request));
+        return reply.status(200).send(delivered);
       }
       reply.header('X-Cache', 'MISS');
 
@@ -292,8 +294,9 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
             complianceScore: compReport.complianceScore,
             compliancePass: compGate.pass,
           }, verifyPolicy.tier);
-          fireWebhookEvent('scan.complete', enriched, requestOwner(request));
-          return reply.status(200).send(enriched);
+          const delivered = withScanId(enriched, scanId);
+          fireWebhookEvent('scan.complete', delivered, requestOwner(request));
+          return reply.status(200).send(delivered);
         } catch (err) {
           if (isInvalidVerdictError(err)) throw err;
           cb.recordFailure(p);
@@ -361,9 +364,10 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
 
       getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
       getUsageMeter().increment(keyId); // count toward monthly cap (item 1)
-      fireWebhookEvent('scan.complete', result, requestOwner(request));
+      const delivered = withScanId(result);
+      fireWebhookEvent('scan.complete', delivered, requestOwner(request));
 
-      return reply.status(200).send(result);
+      return reply.status(200).send(delivered);
     },
   );
 }

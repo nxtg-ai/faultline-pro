@@ -202,7 +202,7 @@ describe('send paths re-check at send time', () => {
   });
 
   it('job scheduler: a public job webhookUrl is fetched with redirect: manual', async () => {
-    const job = getJobStore().create({ text: 'claim', schedule: 'every 1h', webhookUrl: 'https://hooks.example.com/job' });
+    const job = getJobStore().create({ text: 'claim', schedule: 'every 1h', webhookUrl: 'https://hooks.example.com/job', owner: { keyId: 'admin', caller: null } });
     await getJobScheduler().triggerJob(job.id);
     await new Promise((resolve) => setImmediate(resolve));
     expect(fetchSpy).toHaveBeenCalledTimes(1);
@@ -210,10 +210,10 @@ describe('send paths re-check at send time', () => {
   });
 
   it('notifications: a per-key webhookUrl that now resolves private records the refusal, no fetch', async () => {
-    getNotificationStore().setPrefs('key-1', ['scan.failed'], 'https://was-public.example.com/n', null);
+    getNotificationStore().setPrefs('admin', ['scan.failed'], 'https://was-public.example.com/n', null);
     resolveAllTo('192.168.0.10');
-    await getNotificationStore().dispatch('scan.failed', { error: 'x' }, 'key-1');
-    const history = getNotificationStore().getHistory('key-1');
+    await getNotificationStore().dispatch('scan.failed', { error: 'x' }, 'admin');
+    const history = getNotificationStore().getHistory('admin');
     expect(history).toHaveLength(1);
     expect(history[0]?.delivered).toBe(false);
     expect(history[0]?.error).toMatch(/^Outbound URL blocked/);

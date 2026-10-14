@@ -69,7 +69,7 @@ import { approvalsRoutes } from './routes/approvals.js';
 import { weakestRoutes } from './routes/weakest.js';
 import { critiqueRoutes } from './routes/critique.js';
 import { adminVerifyRoutes } from './routes/admin-verify.js';
-import { getNotificationStore } from './store/notifications.js';
+import { sendWeeklySummaries } from './store/notifications.js';
 import { getKeyExpiryNotifier } from './store/key-expiry-notifier.js';
 import { getKeyRotationNotifier } from './store/key-rotation-notifier.js';
 import { getKeyStore } from './store/keys.js';
@@ -257,16 +257,7 @@ export function buildServer() {
 
       const now = new Date();
       if (now.getUTCDay() === 0 && now.getUTCHours() === 9 && now.getUTCMinutes() === 0) {
-        const prefs = getNotificationStore().listPrefs().filter(p => p.events.includes('weekly.summary'));
-        const summaries = prefs.map(p => ({
-          keyId:       p.keyId,
-          scanCount:   0, // usage meter does not expose per-key totals yet
-          errorCount:  0,
-          topProvider: 'gemini',
-        }));
-        if (summaries.length > 0) {
-          void getNotificationStore().dispatch('weekly.summary', { summaries }).catch(() => undefined);
-        }
+        void sendWeeklySummaries();
       }
     }, 60_000);
   });

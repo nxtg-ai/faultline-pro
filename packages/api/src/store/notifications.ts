@@ -24,7 +24,7 @@
 import { randomUUID } from 'node:crypto';
 import { getTenantStore } from './tenants.js';
 import { fetchOutbound } from '../lib/outbound-url.js';
-import { sanitizeErrorText } from './webhooks.js';
+import { sanitizeErrorText, keyIsLive } from './webhooks.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -202,6 +202,13 @@ class NotificationStore {
       error:       null,
     };
 
+    // A deleted, disabled or expired key's notifications stop (codex seat, 84cf8c8).
+    if (webhookUrl && keyId !== '*' && !keyIsLive(keyId)) {
+      record.error = 'key-not-live';
+      this.pushRecord(record);
+      return;
+    }
+
     if (webhookUrl) {
       try {
         // Guarded at send time: covers per-key URLs (DNS may have changed) and FAULTLINE_NOTIFY_WEBHOOK.
@@ -261,4 +268,16 @@ export async function notifyWeeklySummary(summaries: Array<{ keyId: string; scan
   for (const summary of summaries) {
     await getNotificationStore().dispatch('weekly.summary', { ...summary, week: new Date().toISOString().slice(0, 10) }, summary.keyId).catch(() => undefined);
   }
+}
+
+/**
+ * The weekly summary: each subscribed key gets its own summary only. It was
+ * one broadcast listing every subscriber's keyId to every subscriber (Opus
+ * seat, 84cf8c8, pre-existing).
+ */
+export async function sendWeeklySummaries(): Promise<void> {
+  const summaries = getNotificationStore().listPrefs()
+    .filter((p) => p.events.includes('weekly.summary'))
+    .map((p) => ({ keyId: p.keyId, scanCount: 0, errorCount: 0, topProvider: 'gemini' })); // per-key totals are not tracked yet
+  await notifyWeeklySummary(summaries);
 }
