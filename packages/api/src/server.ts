@@ -209,22 +209,30 @@ export function buildServer() {
   fastify.register(critiqueRoutes);
   fastify.register(adminVerifyRoutes);
 
-  fastify.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
-    if (request.url === '/graphql' && request.method === 'POST') {
-      const { requireApiKey } = await import('./plugins/auth.js');
-      await requireApiKey(request, reply);
-    }
-  });
+  // GraphQL is OFF (emma-soul al:95753eecd4a6025b, CRITICAL). Its key check
+  // fired only on an exact POST /graphql, so a query string or a GET reached
+  // every resolver with no key, including createKey. With the route not
+  // registered, every /graphql method and URL variant answers 404. It comes
+  // back only with the scoped fix, after two review passes; tests opt in with
+  // FAULTLINE_GRAPHQL=on.
+  if (process.env.FAULTLINE_GRAPHQL === 'on') {
+    fastify.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
+      if (request.url === '/graphql' && request.method === 'POST') {
+        const { requireApiKey } = await import('./plugins/auth.js');
+        await requireApiKey(request, reply);
+      }
+    });
 
-  fastify.register(mercurius, {
-    schema: gqlSchema,
-    resolvers: gqlResolvers,
-    graphiql: false,
-    context: (request: FastifyRequest) => {
-      const keyId = request.keyId ?? 'anonymous';
-      return { keyId };
-    },
-  });
+    fastify.register(mercurius, {
+      schema: gqlSchema,
+      resolvers: gqlResolvers,
+      graphiql: false,
+      context: (request: FastifyRequest) => {
+        const keyId = request.keyId ?? 'anonymous';
+        return { keyId };
+      },
+    });
+  }
 
   fastify.addHook('onReady', async () => {
     getJobScheduler().start();

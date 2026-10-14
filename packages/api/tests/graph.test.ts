@@ -30,19 +30,25 @@ const FACTS_ONLY = [
 describe('GET /scan/:id/graph', () => {
   let server: FastifyInstance;
 
+  // The graph holds claim text, so it needs a key (containment, emma-soul al:6a0c831cb6ed0d62).
+  const H = { 'x-api-key': 'graph-test-key' };
+
   beforeEach(() => {
+    process.env.FAULTLINE_API_KEY = 'graph-test-key';
     resetScanStore();
     server = buildServer();
   });
 
   afterEach(async () => {
     await server.close();
+    delete process.env.FAULTLINE_API_KEY;
   });
 
   it('returns 404 for unknown scan id', async () => {
     const res = await server.inject({
       method: 'GET',
       url: '/scan/does-not-exist/graph',
+      headers: H,
     });
     expect(res.statusCode).toBe(404);
     const body = JSON.parse(res.body);
@@ -59,6 +65,7 @@ describe('GET /scan/:id/graph', () => {
     const res = await server.inject({
       method: 'GET',
       url: `/scan/${stored.id}/graph`,
+      headers: H,
     });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
@@ -72,7 +79,7 @@ describe('GET /scan/:id/graph', () => {
       claims: MULTI_TYPE_CLAIMS,
     });
 
-    const res = await server.inject({ method: 'GET', url: `/scan/${stored.id}/graph` });
+    const res = await server.inject({ method: 'GET', url: `/scan/${stored.id}/graph`, headers: H });
     const body = JSON.parse(res.body);
     expect(body.mermaid).toMatch(/^graph TD/);
   });
@@ -82,7 +89,7 @@ describe('GET /scan/:id/graph', () => {
       claims: MULTI_TYPE_CLAIMS,
     });
 
-    const res = await server.inject({ method: 'GET', url: `/scan/${stored.id}/graph` });
+    const res = await server.inject({ method: 'GET', url: `/scan/${stored.id}/graph`, headers: H });
     const body = JSON.parse(res.body);
     for (const claim of MULTI_TYPE_CLAIMS) {
       expect(body.mermaid).toContain(claim.id);
@@ -94,7 +101,7 @@ describe('GET /scan/:id/graph', () => {
       claims: MULTI_TYPE_CLAIMS,
     });
 
-    const res = await server.inject({ method: 'GET', url: `/scan/${stored.id}/graph` });
+    const res = await server.inject({ method: 'GET', url: `/scan/${stored.id}/graph`, headers: H });
     const body = JSON.parse(res.body);
     // Highest-importance fact (f1) should connect to interpretation i1
     expect(body.mermaid).toContain('f1 --> i1');
@@ -105,7 +112,7 @@ describe('GET /scan/:id/graph', () => {
       claims: MULTI_TYPE_CLAIMS,
     });
 
-    const res = await server.inject({ method: 'GET', url: `/scan/${stored.id}/graph` });
+    const res = await server.inject({ method: 'GET', url: `/scan/${stored.id}/graph`, headers: H });
     const body = JSON.parse(res.body);
     // i1 → o1
     expect(body.mermaid).toContain('i1 --> o1');
@@ -116,7 +123,7 @@ describe('GET /scan/:id/graph', () => {
       claims: MULTI_TYPE_CLAIMS,
     });
 
-    const res = await server.inject({ method: 'GET', url: `/scan/${stored.id}/graph` });
+    const res = await server.inject({ method: 'GET', url: `/scan/${stored.id}/graph`, headers: H });
     const body = JSON.parse(res.body);
     expect(body.claimCount).toBe(4);
   });
@@ -126,7 +133,7 @@ describe('GET /scan/:id/graph', () => {
       claims: MULTI_TYPE_CLAIMS,
     });
 
-    const res = await server.inject({ method: 'GET', url: `/scan/${stored.id}/graph` });
+    const res = await server.inject({ method: 'GET', url: `/scan/${stored.id}/graph`, headers: H });
     const body = JSON.parse(res.body);
     expect(body.scannedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
@@ -134,7 +141,7 @@ describe('GET /scan/:id/graph', () => {
   it('handles scan with no claims — returns empty graph', async () => {
     const stored = getScanStore().record('test-key', 'Empty', { claims: [] });
 
-    const res = await server.inject({ method: 'GET', url: `/scan/${stored.id}/graph` });
+    const res = await server.inject({ method: 'GET', url: `/scan/${stored.id}/graph`, headers: H });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.claimCount).toBe(0);
@@ -146,20 +153,18 @@ describe('GET /scan/:id/graph', () => {
       claims: FACTS_ONLY,
     });
 
-    const res = await server.inject({ method: 'GET', url: `/scan/${stored.id}/graph` });
+    const res = await server.inject({ method: 'GET', url: `/scan/${stored.id}/graph`, headers: H });
     const body = JSON.parse(res.body);
     expect(body.claimCount).toBe(2);
     // No interpretation or opinion edges
     expect(body.mermaid).not.toContain('-->');
   });
 
-  it('does not require API key', async () => {
-    delete process.env.FAULTLINE_API_KEY;
-    const server2 = buildServer();
+  it('requires an API key', async () => {
     const stored = getScanStore().record('test-key', 'Text', { claims: FACTS_ONLY });
-    const res = await server2.inject({ method: 'GET', url: `/scan/${stored.id}/graph` });
-    await server2.close();
-    expect(res.statusCode).toBe(200);
+    const res = await server.inject({ method: 'GET', url: `/scan/${stored.id}/graph` });
+    expect(res.statusCode).toBe(401);
+    expect(res.body).not.toContain('mermaid');
   });
 
   it('mermaid labels contain claim type and importance', async () => {
@@ -167,7 +172,7 @@ describe('GET /scan/:id/graph', () => {
       claims: [{ id: 'f1', text: 'Test claim text.', type: 'fact', importance: 5 }],
     });
 
-    const res = await server.inject({ method: 'GET', url: `/scan/${stored.id}/graph` });
+    const res = await server.inject({ method: 'GET', url: `/scan/${stored.id}/graph`, headers: H });
     const body = JSON.parse(res.body);
     expect(body.mermaid).toContain('fact');
     expect(body.mermaid).toContain('5');
@@ -181,7 +186,7 @@ describe('GET /scan/:id/graph', () => {
       ],
     });
 
-    const res = await server.inject({ method: 'GET', url: `/scan/${stored.id}/graph` });
+    const res = await server.inject({ method: 'GET', url: `/scan/${stored.id}/graph`, headers: H });
     const body = JSON.parse(res.body);
     expect(body.mermaid).not.toContain('<script>');
     expect(body.mermaid).not.toContain('</script>');

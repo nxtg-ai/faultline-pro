@@ -80,12 +80,14 @@ describe('GraphQL query bounds', () => {
 
   beforeEach(async () => {
     process.env.FAULTLINE_API_KEY = 'test-admin-key';
+    process.env.FAULTLINE_GRAPHQL = 'on'; // GraphQL is off unless opted in
     server = buildServer();
     await server.ready();
   });
 
   afterEach(async () => {
     await server.close();
+    delete process.env.FAULTLINE_GRAPHQL;
     delete process.env.FAULTLINE_API_KEY;
   });
 

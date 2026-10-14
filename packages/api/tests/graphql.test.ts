@@ -30,6 +30,7 @@ describe('GraphQL API', () => {
 
   beforeEach(() => {
     process.env.FAULTLINE_API_KEY = 'test-key';
+    process.env.FAULTLINE_GRAPHQL = 'on'; // GraphQL is off unless opted in
     resetCache();
     resetScanStore();
     resetKeyStore();
@@ -40,6 +41,7 @@ describe('GraphQL API', () => {
 
   afterEach(async () => {
     await server.close();
+    delete process.env.FAULTLINE_GRAPHQL;
     delete process.env.FAULTLINE_API_KEY;
   });
 

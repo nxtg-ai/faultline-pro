@@ -658,6 +658,8 @@ function verifySignature(body: string, signature: string, secret: string): boole
 
 ## 10. GraphQL API
 
+> **Switched off since 2026-10-14.** Every request to `/graphql` answers `404` until a scoped authorization fix passes review (see CHANGELOG). Use the REST endpoints.
+
 A GraphQL endpoint is available as an alternative to REST for clients that prefer it.
 
 **Endpoint**: `POST /graphql`
@@ -735,7 +737,7 @@ These are available if your UI needs them.
 | `GET /claims/:id/attribution`, `GET /claims/:id/explain` | API key | One claim's sources, verdict history and reasoning |
 | `GET /scans/timeline` | API key | Re-scan history for a given text, from your key's scans only (admin: all keys) |
 | `GET /scans/search` | API key | Full-text search over your key's scan history (admin: all keys). `tenantId` narrows, never widens |
-| `GET /scan/:id/graph` | None | Mermaid claim graph for a scan |
+| `GET /scan/:id/graph` | API key | Mermaid claim graph for one of your key's scans (admin: any) |
 | `GET /providers/health` | API key | Circuit breaker state + error rates per provider |
 | `GET /templates` | API key | List saved scan templates |
 | `POST /templates` | API key | Create a scan template |
