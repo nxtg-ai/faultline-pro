@@ -4,6 +4,10 @@ import { resetCache } from '../src/store/cache.js';
 import { resetClaimIndex, getClaimIndex, computeAttributionConfidence } from '../src/store/claims.js';
 import type { FastifyInstance } from 'fastify';
 
+/** The caller every claim here belongs to: the server key plus a faultline-web user (the claim index is per caller). */
+const TEST_CLAIM_CALLER = 'admin\u0000claimtestuser01';
+
+
 const MOCK_RESULT_WITH_SOURCES = {
   input: 'The Earth orbits the Sun.',
   provider: 'mock',
@@ -53,7 +57,7 @@ describe('GET /claims/:id/attribution', () => {
   });
 
   it('returns 404 for unknown claim id', async () => {
-    const res = await server.inject({ method: 'GET', url: '/claims/does-not-exist/attribution', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: '/claims/does-not-exist/attribution', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.statusCode).toBe(404);
     const body = JSON.parse(res.body);
     expect(typeof body.error).toBe('string');
@@ -64,23 +68,23 @@ describe('GET /claims/:id/attribution', () => {
     await server.inject({
       method: 'POST',
       url: '/scan',
-      headers: { 'x-api-key': 'attr-test-key', 'content-type': 'application/json' },
+      headers: { 'x-api-key': 'attr-test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' },
       payload: JSON.stringify({ text: 'The Earth orbits the Sun.', provider: 'mock' }),
     });
 
     // Get trending to find the claim id
-    const trending = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const trending = await server.inject({ method: 'GET', url: '/claims/trending', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     const trendingBody = JSON.parse(trending.body);
     expect(trendingBody.trending.length).toBeGreaterThan(0);
 
     // Get id directly from the index
     const index = getClaimIndex();
-    const records = index.getTrending(1);
+    const records = index.getTrending(TEST_CLAIM_CALLER, 1);
     expect(records.length).toBeGreaterThan(0);
     const claimId = records[0].id;
     expect(claimId).toBeTruthy();
 
-    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/attribution`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/attribution`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.id).toBe(claimId);
@@ -93,15 +97,15 @@ describe('GET /claims/:id/attribution', () => {
     await server.inject({
       method: 'POST',
       url: '/scan',
-      headers: { 'x-api-key': 'attr-test-key', 'content-type': 'application/json' },
+      headers: { 'x-api-key': 'attr-test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' },
       payload: JSON.stringify({ text: 'Earth orbits Sun.', provider: 'mock' }),
     });
 
     const index = getClaimIndex();
-    const records = index.getTrending(1);
+    const records = index.getTrending(TEST_CLAIM_CALLER, 1);
     const claimId = records[0].id;
 
-    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/attribution`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/attribution`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
 
     expect(body.id).toBeTruthy();
@@ -121,17 +125,17 @@ describe('GET /claims/:id/attribution', () => {
     await server.inject({
       method: 'POST',
       url: '/scan',
-      headers: { 'x-api-key': 'attr-test-key', 'content-type': 'application/json' },
+      headers: { 'x-api-key': 'attr-test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' },
       payload: JSON.stringify({ text: 'Earth test.', provider: 'mock' }),
     });
 
     const index = getClaimIndex();
     // Find a record that has sources (c1 = "The Earth orbits the Sun.")
-    const records = index.getTrending(10);
+    const records = index.getTrending(TEST_CLAIM_CALLER, 10);
     const withSources = records.find((r) => r.sources.length > 0);
     if (!withSources) return; // no sources in this run (cache hit scenario)
 
-    const res = await server.inject({ method: 'GET', url: `/claims/${withSources.id}/attribution`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: `/claims/${withSources.id}/attribution`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
     if (body.attributionChain.sources.length > 0) {
       const src = body.attributionChain.sources[0];
@@ -144,8 +148,8 @@ describe('GET /claims/:id/attribution', () => {
 
   it('attributionConfidence is 0 for new unsourced claim', () => {
     const index = getClaimIndex();
-    index.ingest([{ id: 'x1', text: 'Unsourced claim.', type: 'opinion' }], {}, 'scan-x');
-    const record = index.getTrending(1)[0];
+    index.ingest([{ id: 'x1', text: 'Unsourced claim.', type: 'opinion' }], {}, 'scan-x', TEST_CLAIM_CALLER);
+    const record = index.getTrending(TEST_CLAIM_CALLER, 1)[0];
     expect(record).toBeDefined();
     const conf = computeAttributionConfidence(record);
     expect(conf).toBe(0);
@@ -156,9 +160,8 @@ describe('GET /claims/:id/attribution', () => {
     index.ingest(
       [{ id: 'y1', text: 'Sourced fact.', type: 'fact' }],
       { y1: { status: 'supported', sources: [{ title: 'Source A', uri: 'https://a.com' }] } },
-      'scan-y',
-    );
-    const record = index.getTrending(1)[0];
+      'scan-y', TEST_CLAIM_CALLER);
+    const record = index.getTrending(TEST_CLAIM_CALLER, 1)[0];
     const conf = computeAttributionConfidence(record);
     // +40 (has source) +10 (fact) +10 (supported) = 60
     expect(conf).toBeGreaterThanOrEqual(50);
@@ -176,10 +179,9 @@ describe('GET /claims/:id/attribution', () => {
       index.ingest(
         [{ id: `f${i}`, text: 'Well established fact.', type: 'fact' }],
         { [`f${i}`]: { status: 'supported', sources } },
-        `scan-${i}`,
-      );
+        `scan-${i}`, TEST_CLAIM_CALLER);
     }
-    const record = index.getById([...index.getTrending(1)][0].id)!;
+    const record = index.getById([...index.getTrending(TEST_CLAIM_CALLER, 1)][0].id, TEST_CLAIM_CALLER)!;
     const conf = computeAttributionConfidence(record);
     // +40 (sources) +20 (3+ sources) +20 (3+ scans) +10 (supported) +10 (fact) = 100
     expect(conf).toBe(100);
@@ -187,14 +189,14 @@ describe('GET /claims/:id/attribution', () => {
 
   it('getById returns undefined for unknown id', () => {
     const index = getClaimIndex();
-    expect(index.getById('nonexistent')).toBeUndefined();
+    expect(index.getById('nonexistent', TEST_CLAIM_CALLER)).toBeUndefined();
   });
 
   it('getById returns record after ingest', () => {
     const index = getClaimIndex();
-    index.ingest([{ id: 'z1', text: 'Test claim.', type: 'fact' }], {}, 'scan-z');
-    const records = index.getTrending(1);
-    const found = index.getById(records[0].id);
+    index.ingest([{ id: 'z1', text: 'Test claim.', type: 'fact' }], {}, 'scan-z', TEST_CLAIM_CALLER);
+    const records = index.getTrending(TEST_CLAIM_CALLER, 1);
+    const found = index.getById(records[0].id, TEST_CLAIM_CALLER);
     expect(found).toBeDefined();
     expect(found!.originalText).toBe('Test claim.');
   });
@@ -202,9 +204,9 @@ describe('GET /claims/:id/attribution', () => {
   it('sources are deduplicated across multiple scans', () => {
     const index = getClaimIndex();
     const sources = [{ title: 'Same Source', uri: 'https://same.com' }];
-    index.ingest([{ id: 'a1', text: 'Dedup test claim.' }], { a1: { status: 'supported', sources } }, 'scan-1');
-    index.ingest([{ id: 'a2', text: 'Dedup test claim.' }], { a2: { status: 'supported', sources } }, 'scan-2');
-    const record = index.getTrending(1)[0];
+    index.ingest([{ id: 'a1', text: 'Dedup test claim.' }], { a1: { status: 'supported', sources } }, 'scan-1', TEST_CLAIM_CALLER);
+    index.ingest([{ id: 'a2', text: 'Dedup test claim.' }], { a2: { status: 'supported', sources } }, 'scan-2', TEST_CLAIM_CALLER);
+    const record = index.getTrending(TEST_CLAIM_CALLER, 1)[0];
     // Same URI should not be duplicated
     expect(record.sources.length).toBe(1);
     expect(record.frequency).toBe(2);
@@ -212,17 +214,17 @@ describe('GET /claims/:id/attribution', () => {
 
   it('claim id is stable across re-ingests', () => {
     const index = getClaimIndex();
-    index.ingest([{ id: 'b1', text: 'Stable id claim.' }], {}, 'scan-1');
-    const id1 = index.getTrending(1)[0].id;
-    index.ingest([{ id: 'b2', text: 'Stable id claim.' }], {}, 'scan-2');
-    const id2 = index.getTrending(1)[0].id;
+    index.ingest([{ id: 'b1', text: 'Stable id claim.' }], {}, 'scan-1', TEST_CLAIM_CALLER);
+    const id1 = index.getTrending(TEST_CLAIM_CALLER, 1)[0].id;
+    index.ingest([{ id: 'b2', text: 'Stable id claim.' }], {}, 'scan-2', TEST_CLAIM_CALLER);
+    const id2 = index.getTrending(TEST_CLAIM_CALLER, 1)[0].id;
     expect(id1).toBe(id2);
   });
 
   it('requires an API key: an indexed claim is not readable without one', async () => {
     const index = getClaimIndex();
-    index.ingest([{ id: 'c1', text: 'Private claim.' }], {}, 'scan-1');
-    const claimId = index.getTrending(1)[0].id;
+    index.ingest([{ id: 'c1', text: 'Private claim.' }], {}, 'scan-1', TEST_CLAIM_CALLER);
+    const claimId = index.getTrending(TEST_CLAIM_CALLER, 1)[0].id;
 
     const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/attribution` });
     expect(res.statusCode).toBe(401);
@@ -233,15 +235,15 @@ describe('GET /claims/:id/attribution', () => {
     await server.inject({
       method: 'POST',
       url: '/scan',
-      headers: { 'x-api-key': 'attr-test-key', 'content-type': 'application/json' },
+      headers: { 'x-api-key': 'attr-test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' },
       payload: JSON.stringify({ text: 'Earth orbits.', provider: 'mock' }),
     });
 
     const index = getClaimIndex();
-    const records = index.getTrending(5);
+    const records = index.getTrending(TEST_CLAIM_CALLER, 5);
     const factClaim = records.find((r) => r.claimType === 'fact');
     if (factClaim) {
-      const res = await server.inject({ method: 'GET', url: `/claims/${factClaim.id}/attribution`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+      const res = await server.inject({ method: 'GET', url: `/claims/${factClaim.id}/attribution`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
       const body = JSON.parse(res.body);
       expect(body.claimType).toBe('fact');
     }

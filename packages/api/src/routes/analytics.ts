@@ -5,6 +5,7 @@
  * GET /analytics/overview — aggregate JSON for all chart panels (public)
  */
 
+import { cacheCaller } from '../lib/cache-caller.js';
 import type { FastifyInstance } from 'fastify';
 import { getScanHistory } from '../store/scan-history.js';
 import { getScanCache } from '../store/cache.js';
@@ -37,7 +38,7 @@ function lastNDays(n: number): string[] {
 /**
  * @param keyId scan-history key scope: the caller's keyId, or undefined for admin (fleet-wide).
  */
-function computeOverview(keyId?: string) {
+function computeOverview(keyId: string | undefined, claimCaller: string | null) {
   const DAYS = 30;
   const window = lastNDays(DAYS);
   const windowSet = new Set(window);
@@ -97,7 +98,7 @@ function computeOverview(keyId?: string) {
   const cacheStats = getScanCache().stats();
 
   // Claim categories from ClaimIndex
-  const claimStats = getClaimIndex().getStats();
+  const claimStats = getClaimIndex().getStats(claimCaller);
   const claimCategories = Object.entries(claimStats.claimTypes)
     .sort((a, b) => b[1] - a[1])
     .map(([type, count]) => ({ type, count }));
@@ -447,7 +448,7 @@ export async function analyticsRoutes(fastify: FastifyInstance): Promise<void> {
       },
     },
     async (request, reply) => {
-      return reply.send(computeOverview(scanHistoryKeyScope(request)));
+      return reply.send(computeOverview(scanHistoryKeyScope(request), cacheCaller(request)));
     },
   );
 

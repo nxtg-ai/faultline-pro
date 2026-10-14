@@ -29,6 +29,10 @@ import { getClaimIndex, resetClaimIndex } from '../src/store/claims.js';
 import { resetProviderSpendLedger } from '../src/store/provider-spend.js';
 import { resetGroundingAllowanceLedger, uninstallGroundingCounter } from '../src/store/grounding-allowance.js';
 
+/** The caller every claim here belongs to: the server key plus a faultline-web user (the claim index is per caller). */
+const TEST_CLAIM_CALLER = 'admin\u0000claimtestuser01';
+
+
 const CLAIM = { id: 'c1', text: 'Fixture fact for the allowlist.', type: 'fact', importance: 5 };
 
 function result(status: string, overallRisk = 'low'): Record<string, unknown> {
@@ -75,8 +79,11 @@ describe('POST /scan: the examiner probe A1', () => {
     const server = buildServer();
     await server.ready();
     try {
-      const apiKey = getKeyStore().create('Pro', ['pro', 'scan']).key;
-      const req = { method: 'POST' as const, url: '/scan', headers: { 'x-api-key': apiKey, 'content-type': 'application/json' }, payload: { text: 'Fixture fact for the allowlist.', provider: 'mock' } };
+      const keyRec = getKeyStore().create('Pro', ['pro', 'scan']);
+      const apiKey = keyRec.key;
+      // A keystore key's own caller (the claim index is per caller).
+      const caller = `${keyRec.id}\u0000${keyRec.id}`;
+      const req = { method: 'POST' as const, url: '/scan', headers: { 'x-api-key': apiKey, 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' }, payload: { text: 'Fixture fact for the allowlist.', provider: 'mock' } };
       const a = await server.inject(req);
       expect(a.statusCode).toBe(502);
       expect(a.json()).toEqual({ error: 'An unexpected error occurred.', code: 'invalid_verdict' });
@@ -88,7 +95,7 @@ describe('POST /scan: the examiner probe A1', () => {
       expect(b.headers['x-cache']).toBe('MISS');
       expect(mockScan).toHaveBeenCalledTimes(2);
       expect(getScanHistory().size).toBe(0);
-      expect(getClaimIndex().getStats().totalClaims).toBe(0);
+      expect(getClaimIndex().getStats(caller).totalClaims).toBe(0);
 
       // A valid result from the real (mock-provider) engine is stored and served as before.
       mockScan.mockImplementation((...args: unknown[]) => real.scan!(...args));
@@ -97,7 +104,7 @@ describe('POST /scan: the examiner probe A1', () => {
       const statuses = Object.values(c.json().verifications as Record<string, { status: string }>).map((v) => v.status);
       expect(statuses.length).toBeGreaterThan(0);
       expect(getScanHistory().size).toBe(1);
-      expect(getClaimIndex().getStats().totalClaims).toBeGreaterThan(0);
+      expect(getClaimIndex().getStats(caller).totalClaims).toBeGreaterThan(0);
     } finally {
       await server.close();
     }
@@ -122,9 +129,9 @@ describe('each store refuses an invalid verdict at its write method', () => {
 
   it('claim index', () => {
     const verifications = (result(PROBE).verifications) as Record<string, { status?: string }>;
-    expect(() => getClaimIndex().ingest([CLAIM], verifications, 'scan-1')).toThrow(/invalid verdict/);
-    expect(getClaimIndex().getStats().totalClaims).toBe(0);
-    getClaimIndex().ingest([CLAIM], (result('unverified').verifications) as never, 'scan-2');
-    expect(getClaimIndex().getStats().totalClaims).toBe(1);
+    expect(() => getClaimIndex().ingest([CLAIM], verifications, 'scan-1', TEST_CLAIM_CALLER)).toThrow(/invalid verdict/);
+    expect(getClaimIndex().getStats(TEST_CLAIM_CALLER).totalClaims).toBe(0);
+    getClaimIndex().ingest([CLAIM], (result('unverified').verifications) as never, 'scan-2', TEST_CLAIM_CALLER);
+    expect(getClaimIndex().getStats(TEST_CLAIM_CALLER).totalClaims).toBe(1);
   });
 });

@@ -4,6 +4,10 @@ import { resetCache } from '../src/store/cache.js';
 import { resetClaimIndex, getClaimIndex } from '../src/store/claims.js';
 import type { FastifyInstance } from 'fastify';
 
+/** The caller every claim here belongs to: the server key plus a faultline-web user (the claim index is per caller). */
+const TEST_CLAIM_CALLER = 'admin\u0000claimtestuser01';
+
+
 const MOCK_RESULT = {
   input: 'The Earth orbits the Sun.',
   provider: 'mock',
@@ -57,16 +61,16 @@ describe('GET /claims/:id/explain', () => {
     await server.inject({
       method: 'POST',
       url: '/scan',
-      headers: { 'x-api-key': 'explain-test-key', 'content-type': 'application/json' },
+      headers: { 'x-api-key': 'explain-test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' },
       payload: JSON.stringify({ text: 'The Earth orbits the Sun.', provider: 'mock' }),
     });
 
     const index = getClaimIndex();
-    const records = index.getTrending(1);
+    const records = index.getTrending(TEST_CLAIM_CALLER, 1);
     expect(records.length).toBeGreaterThan(0);
     const claimId = records[0].id;
 
-    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/explain`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/explain`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.claim).toBeDefined();
@@ -80,7 +84,7 @@ describe('GET /claims/:id/explain', () => {
 
   // EX2: 404 for unknown id
   it('EX2: returns 404 for unknown claim id', async () => {
-    const res = await server.inject({ method: 'GET', url: '/claims/does-not-exist/explain', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: '/claims/does-not-exist/explain', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.statusCode).toBe(404);
     const body = JSON.parse(res.body);
     expect(typeof body.error).toBe('string');
@@ -91,14 +95,14 @@ describe('GET /claims/:id/explain', () => {
     await server.inject({
       method: 'POST',
       url: '/scan',
-      headers: { 'x-api-key': 'explain-test-key', 'content-type': 'application/json' },
+      headers: { 'x-api-key': 'explain-test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' },
       payload: JSON.stringify({ text: 'Earth orbits Sun.', provider: 'mock' }),
     });
 
     const index = getClaimIndex();
-    const claimId = index.getTrending(1)[0].id;
+    const claimId = index.getTrending(TEST_CLAIM_CALLER, 1)[0].id;
 
-    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/explain`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/explain`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
 
     expect(typeof body.claim).toBe('string');
@@ -115,14 +119,14 @@ describe('GET /claims/:id/explain', () => {
     await server.inject({
       method: 'POST',
       url: '/scan',
-      headers: { 'x-api-key': 'explain-test-key', 'content-type': 'application/json' },
+      headers: { 'x-api-key': 'explain-test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' },
       payload: JSON.stringify({ text: 'Earth orbits Sun.', provider: 'mock' }),
     });
 
     const index = getClaimIndex();
-    const claimId = index.getTrending(1)[0].id;
+    const claimId = index.getTrending(TEST_CLAIM_CALLER, 1)[0].id;
 
-    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/explain`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/explain`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
 
     expect(body.reasoningChain.length).toBeGreaterThan(0);
@@ -134,10 +138,10 @@ describe('GET /claims/:id/explain', () => {
   // EX5: evidenceFound is an array (empty when no sources)
   it('EX5: evidenceFound is an array, empty when claim has no sources', () => {
     const index = getClaimIndex();
-    index.ingest([{ id: 'nosrc1', text: 'Unsourced claim.', type: 'opinion' }], {}, 'scan-ns');
-    const claimId = index.getTrending(1)[0].id;
+    index.ingest([{ id: 'nosrc1', text: 'Unsourced claim.', type: 'opinion' }], {}, 'scan-ns', TEST_CLAIM_CALLER);
+    const claimId = index.getTrending(TEST_CLAIM_CALLER, 1)[0].id;
 
-    const explanation = index.explain(claimId);
+    const explanation = index.explain(claimId, TEST_CLAIM_CALLER);
     expect(explanation).not.toBeNull();
     expect(Array.isArray(explanation!.evidenceFound)).toBe(true);
     expect(explanation!.evidenceFound.length).toBe(0);
@@ -148,14 +152,14 @@ describe('GET /claims/:id/explain', () => {
     await server.inject({
       method: 'POST',
       url: '/scan',
-      headers: { 'x-api-key': 'explain-test-key', 'content-type': 'application/json' },
+      headers: { 'x-api-key': 'explain-test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' },
       payload: JSON.stringify({ text: 'Earth orbits Sun.', provider: 'mock' }),
     });
 
     const index = getClaimIndex();
-    const claimId = index.getTrending(1)[0].id;
+    const claimId = index.getTrending(TEST_CLAIM_CALLER, 1)[0].id;
 
-    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/explain`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/explain`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
 
     expect(body.suggestions.length).toBeGreaterThan(0);
@@ -166,14 +170,14 @@ describe('GET /claims/:id/explain', () => {
     await server.inject({
       method: 'POST',
       url: '/scan',
-      headers: { 'x-api-key': 'explain-test-key', 'content-type': 'application/json' },
+      headers: { 'x-api-key': 'explain-test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' },
       payload: JSON.stringify({ text: 'Earth orbits Sun.', provider: 'mock' }),
     });
 
     const index = getClaimIndex();
-    const claimId = index.getTrending(1)[0].id;
+    const claimId = index.getTrending(TEST_CLAIM_CALLER, 1)[0].id;
 
-    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/explain`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: `/claims/${claimId}/explain`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
 
     expect(body.confidence).toBeGreaterThanOrEqual(0);
@@ -192,11 +196,10 @@ describe('GET /claims/:id/explain', () => {
       index.ingest(
         [{ id: `ws${i}`, text: 'Well established fact.', type: 'fact' }],
         { [`ws${i}`]: { status: 'supported', sources } },
-        `scan-ws-${i}`,
-      );
+        `scan-ws-${i}`, TEST_CLAIM_CALLER);
     }
-    const claimId = index.getTrending(1)[0].id;
-    const explanation = index.explain(claimId);
+    const claimId = index.getTrending(TEST_CLAIM_CALLER, 1)[0].id;
+    const explanation = index.explain(claimId, TEST_CLAIM_CALLER);
     expect(explanation).not.toBeNull();
     expect(explanation!.confidence).toBeGreaterThanOrEqual(60);
     const hasNoAction = explanation!.suggestions.some((s) => s.includes('no action required'));
@@ -209,10 +212,9 @@ describe('GET /claims/:id/explain', () => {
     index.ingest(
       [{ id: 'uv1', text: 'Some unverified claim.', type: 'opinion' }],
       { uv1: { status: 'unverified', sources: [] } },
-      'scan-uv',
-    );
-    const claimId = index.getTrending(1)[0].id;
-    const explanation = index.explain(claimId);
+      'scan-uv', TEST_CLAIM_CALLER);
+    const claimId = index.getTrending(TEST_CLAIM_CALLER, 1)[0].id;
+    const explanation = index.explain(claimId, TEST_CLAIM_CALLER);
     expect(explanation).not.toBeNull();
     const hasSourceAdvice = explanation!.suggestions.some(
       (s) => s.toLowerCase().includes('source'),
@@ -223,7 +225,7 @@ describe('GET /claims/:id/explain', () => {
   // EX10: explain() unit test — null for unknown id
   it('EX10: explain() returns null for unknown id', () => {
     const index = getClaimIndex();
-    expect(index.explain('nonexistent-id')).toBeNull();
+    expect(index.explain('nonexistent-id', TEST_CLAIM_CALLER)).toBeNull();
   });
 
   // EX11: reasoningChain includes the verdict string
@@ -232,10 +234,9 @@ describe('GET /claims/:id/explain', () => {
     index.ingest(
       [{ id: 'rv1', text: 'Verdict chain claim.', type: 'fact' }],
       { rv1: { status: 'contradicted', sources: [] } },
-      'scan-rv',
-    );
-    const claimId = index.getTrending(1)[0].id;
-    const explanation = index.explain(claimId);
+      'scan-rv', TEST_CLAIM_CALLER);
+    const claimId = index.getTrending(TEST_CLAIM_CALLER, 1)[0].id;
+    const explanation = index.explain(claimId, TEST_CLAIM_CALLER);
     expect(explanation).not.toBeNull();
     const hasVerdict = explanation!.reasoningChain.some((step) =>
       step.includes('contradicted'),
@@ -256,10 +257,9 @@ describe('GET /claims/:id/explain', () => {
           ],
         },
       },
-      'scan-ef',
-    );
-    const claimId = index.getTrending(1)[0].id;
-    const explanation = index.explain(claimId);
+      'scan-ef', TEST_CLAIM_CALLER);
+    const claimId = index.getTrending(TEST_CLAIM_CALLER, 1)[0].id;
+    const explanation = index.explain(claimId, TEST_CLAIM_CALLER);
     expect(explanation).not.toBeNull();
     expect(explanation!.evidenceFound.length).toBeGreaterThan(0);
     const entry = explanation!.evidenceFound[0];

@@ -4,6 +4,10 @@ import { resetCache } from '../src/store/cache.js';
 import { resetClaimIndex, getClaimIndex } from '../src/store/claims.js';
 import type { FastifyInstance } from 'fastify';
 
+/** The caller every claim here belongs to: the server key plus a faultline-web user (the claim index is per caller). */
+const TEST_CLAIM_CALLER = 'admin\u0000claimtestuser01';
+
+
 const SCAN_RESULT_BASE = {
   input: 'The moon landing occurred in 1969.',
   provider: 'mock',
@@ -68,7 +72,7 @@ describe('GET /claims (search)', () => {
 
   // CS7: GET /claims returns empty array when no claims
   it('CS7: returns 200 with empty claims array on cold start', async () => {
-    const res = await server.inject({ method: 'GET', url: '/claims', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: '/claims', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(Array.isArray(body.claims)).toBe(true);
@@ -81,11 +85,11 @@ describe('GET /claims (search)', () => {
     await server.inject({
       method: 'POST',
       url: '/scan',
-      headers: { 'x-api-key': 'test-key', 'content-type': 'application/json' },
+      headers: { 'x-api-key': 'test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' },
       payload: JSON.stringify({ text: 'Moon landing.', provider: 'mock' }),
     });
 
-    const res = await server.inject({ method: 'GET', url: '/claims', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: '/claims', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(Array.isArray(body.claims)).toBe(true);
@@ -98,11 +102,11 @@ describe('GET /claims (search)', () => {
     await server.inject({
       method: 'POST',
       url: '/scan',
-      headers: { 'x-api-key': 'test-key', 'content-type': 'application/json' },
+      headers: { 'x-api-key': 'test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' },
       payload: JSON.stringify({ text: 'Shape test.', provider: 'mock' }),
     });
 
-    const res = await server.inject({ method: 'GET', url: '/claims', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: '/claims', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
     expect(body.claims.length).toBeGreaterThan(0);
     const claim = body.claims[0];
@@ -123,11 +127,11 @@ describe('GET /claims (search)', () => {
     await server.inject({
       method: 'POST',
       url: '/scan',
-      headers: { 'x-api-key': 'test-key', 'content-type': 'application/json' },
+      headers: { 'x-api-key': 'test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' },
       payload: JSON.stringify({ text: 'Moon text.', provider: 'mock' }),
     });
 
-    const res = await server.inject({ method: 'GET', url: '/claims?text=moon+landing', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: '/claims?text=moon+landing', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.claims.length).toBeGreaterThan(0);
@@ -141,11 +145,11 @@ describe('GET /claims (search)', () => {
     await server.inject({
       method: 'POST',
       url: '/scan',
-      headers: { 'x-api-key': 'test-key', 'content-type': 'application/json' },
+      headers: { 'x-api-key': 'test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' },
       payload: JSON.stringify({ text: 'Moon test.', provider: 'mock' }),
     });
 
-    const res = await server.inject({ method: 'GET', url: '/claims?text=zzznomatch', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: '/claims?text=zzznomatch', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.claims.length).toBe(0);
@@ -157,11 +161,11 @@ describe('GET /claims (search)', () => {
     await server.inject({
       method: 'POST',
       url: '/scan',
-      headers: { 'x-api-key': 'test-key', 'content-type': 'application/json' },
+      headers: { 'x-api-key': 'test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' },
       payload: JSON.stringify({ text: 'Verdict test.', provider: 'mock' }),
     });
 
-    const resSupported = await server.inject({ method: 'GET', url: '/claims?verdict=supported', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const resSupported = await server.inject({ method: 'GET', url: '/claims?verdict=supported', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(resSupported.statusCode).toBe(200);
     const bodySupported = JSON.parse(resSupported.body);
     for (const claim of bodySupported.claims) {
@@ -173,11 +177,11 @@ describe('GET /claims (search)', () => {
     await server.inject({
       method: 'POST',
       url: '/scan',
-      headers: { 'x-api-key': 'test-key', 'content-type': 'application/json' },
+      headers: { 'x-api-key': 'test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' },
       payload: JSON.stringify({ text: 'Verdict test 2.', provider: 'mock' }),
     });
 
-    const resUnverified = await server.inject({ method: 'GET', url: '/claims?verdict=unverified', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const resUnverified = await server.inject({ method: 'GET', url: '/claims?verdict=unverified', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(resUnverified.statusCode).toBe(200);
     const bodyUnverified = JSON.parse(resUnverified.body);
     expect(bodyUnverified.claims.length).toBeGreaterThan(0);
@@ -191,13 +195,13 @@ describe('GET /claims (search)', () => {
     await server.inject({
       method: 'POST',
       url: '/scan',
-      headers: { 'x-api-key': 'test-key', 'content-type': 'application/json' },
+      headers: { 'x-api-key': 'test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' },
       payload: JSON.stringify({ text: 'Date test.', provider: 'mock' }),
     });
 
     // A from date far in the future should return nothing
     const futureDate = '2099-01-01T00:00:00.000Z';
-    const res = await server.inject({ method: 'GET', url: `/claims?from=${encodeURIComponent(futureDate)}`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: `/claims?from=${encodeURIComponent(futureDate)}`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.claims.length).toBe(0);
@@ -207,12 +211,12 @@ describe('GET /claims (search)', () => {
     await server.inject({
       method: 'POST',
       url: '/scan',
-      headers: { 'x-api-key': 'test-key', 'content-type': 'application/json' },
+      headers: { 'x-api-key': 'test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' },
       payload: JSON.stringify({ text: 'Date test from.', provider: 'mock' }),
     });
 
     const pastDate = '2000-01-01T00:00:00.000Z';
-    const res = await server.inject({ method: 'GET', url: `/claims?from=${encodeURIComponent(pastDate)}`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: `/claims?from=${encodeURIComponent(pastDate)}`, headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.claims.length).toBeGreaterThan(0);
@@ -223,10 +227,10 @@ describe('GET /claims (search)', () => {
     // Ingest enough claims via direct index manipulation
     const idx = getClaimIndex();
     for (let i = 0; i < 10; i++) {
-      idx.ingest([{ id: `lim${i}`, text: `Limit test claim number ${i}` }], {}, `scan-lim-${i}`);
+      idx.ingest([{ id: `lim${i}`, text: `Limit test claim number ${i}` }], {}, `scan-lim-${i}`, TEST_CLAIM_CALLER);
     }
 
-    const res = await server.inject({ method: 'GET', url: '/claims?limit=2', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: '/claims?limit=2', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.claims.length).toBeLessThanOrEqual(2);
@@ -237,10 +241,10 @@ describe('GET /claims (search)', () => {
   it('CS5: limit is capped at 200', async () => {
     const idx = getClaimIndex();
     for (let i = 0; i < 210; i++) {
-      idx.ingest([{ id: `cap${i}`, text: `Cap test claim number ${i}` }], {}, `scan-cap-${i}`);
+      idx.ingest([{ id: `cap${i}`, text: `Cap test claim number ${i}` }], {}, `scan-cap-${i}`, TEST_CLAIM_CALLER);
     }
 
-    const res = await server.inject({ method: 'GET', url: '/claims?limit=999', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: '/claims?limit=999', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.claims.length).toBeLessThanOrEqual(200);
@@ -251,12 +255,12 @@ describe('GET /claims (search)', () => {
     await server.inject({
       method: 'POST',
       url: '/scan',
-      headers: { 'x-api-key': 'test-key', 'content-type': 'application/json' },
+      headers: { 'x-api-key': 'test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' },
       payload: JSON.stringify({ text: 'Source filter test.', provider: 'mock' }),
     });
 
     // c1 has source uri https://nasa.gov/moon
-    const res = await server.inject({ method: 'GET', url: '/claims?source=nasa.gov', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: '/claims?source=nasa.gov', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.claims.length).toBeGreaterThan(0);
@@ -271,11 +275,11 @@ describe('GET /claims (search)', () => {
     await server.inject({
       method: 'POST',
       url: '/scan',
-      headers: { 'x-api-key': 'test-key', 'content-type': 'application/json' },
+      headers: { 'x-api-key': 'test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' },
       payload: JSON.stringify({ text: 'Source none test.', provider: 'mock' }),
     });
 
-    const res = await server.inject({ method: 'GET', url: '/claims?source=zzznomatch', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: '/claims?source=zzznomatch', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.claims.length).toBe(0);
@@ -291,10 +295,9 @@ describe('GET /claims (search)', () => {
         { id: 'tot3', text: 'Total test claim three' },
       ],
       {},
-      'scan-total',
-    );
+      'scan-total', TEST_CLAIM_CALLER);
 
-    const res = await server.inject({ method: 'GET', url: '/claims', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: '/claims', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.total).toBe(body.claims.length);
@@ -302,7 +305,7 @@ describe('GET /claims (search)', () => {
 
   // CS10: Multiple scans, GET /claims returns all deduplicated claims
   it('CS10: multiple scans return deduplicated claims', async () => {
-    const headers = { 'x-api-key': 'test-key', 'content-type': 'application/json' };
+    const headers = { 'x-api-key': 'test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' };
     const payload = JSON.stringify({ text: 'Dedup test.', provider: 'mock' });
 
     await server.inject({ method: 'POST', url: '/scan', headers, payload });
@@ -315,7 +318,7 @@ describe('GET /claims (search)', () => {
       payload: JSON.stringify({ text: 'Water boils.', provider: 'mock' }),
     });
 
-    const res = await server.inject({ method: 'GET', url: '/claims', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: '/claims', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     // Should have claims from both scans
@@ -329,14 +332,14 @@ describe('GET /claims (search)', () => {
   });
 
   it('CS10: repeated scan of same text increments frequency, not claim count', async () => {
-    const headers = { 'x-api-key': 'test-key', 'content-type': 'application/json' };
+    const headers = { 'x-api-key': 'test-key', 'x-faultline-user-ref': 'claimtestuser01', 'content-type': 'application/json' };
     const payload = JSON.stringify({ text: 'Freq dedup test.', provider: 'mock' });
 
     await server.inject({ method: 'POST', url: '/scan', headers, payload });
     resetCache();
     await server.inject({ method: 'POST', url: '/scan', headers, payload });
 
-    const res = await server.inject({ method: 'GET', url: '/claims', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! } });
+    const res = await server.inject({ method: 'GET', url: '/claims', headers: { 'x-api-key': process.env.FAULTLINE_API_KEY! , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
 
     // SCAN_RESULT_BASE has 2 unique claims; repeated scan should not duplicate them

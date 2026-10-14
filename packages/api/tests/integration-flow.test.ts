@@ -46,6 +46,10 @@ import { resetWarmupStore, resetCacheWarmer } from '../src/store/cache-warmup.js
 import { resetScheduleStore } from '../src/store/schedules.js';
 import type { FastifyInstance } from 'fastify';
 
+/** The caller every claim here belongs to: the server key plus a faultline-web user (the claim index is per caller). */
+const TEST_CLAIM_CALLER = 'admin\u0000user_testref1';
+
+
 // ── Mock scan engine ──────────────────────────────────────────────────────────
 // MOCK JUSTIFIED: @nxtg/faultline/cli/scan.js calls external LLM providers.
 // These tests exercise the HTTP route pipeline (auth, cache, webhooks, audit,
@@ -93,12 +97,13 @@ const TEXT_B = 'The product has 10 million users in Q3 2024.';
 const JSON_H = { 'content-type': 'application/json' };
 
 function ah() { return { 'x-api-key': ADMIN_SECRET, ...JSON_H, 'x-faultline-user-ref': 'user_testref1' }; }
-function kh(secret: string) { return { 'x-api-key': secret, ...JSON_H }; }
+function kh(secret: string) { return { 'x-api-key': secret, 'x-faultline-user-ref': 'claimtestuser01', ...JSON_H }; }
 
 // ── Shared state that flows between scenarios ─────────────────────────────────
 
 let server: FastifyInstance;
 let scanKey:  string;   // regular scan-only key (created in F1)
+let scanKeyId: string;  // its id: the claim index is per caller, and F1.2 scans as this key
 let orgId:    string;   // org created in F8
 let orgKey:   string;   // org-scoped API key secret (created in F8)
 
@@ -152,6 +157,7 @@ describe('F1: Full scan pipeline', () => {
     const body = JSON.parse(res.body);
     expect(body.key).toMatch(/^[0-9a-f]{64}$/);
     scanKey = body.key;
+    scanKeyId = body.id;
   });
 
   it('F1.2 POST /scan with valid key returns claims and risk (Gate 2: non-empty)', async () => {
@@ -168,7 +174,7 @@ describe('F1: Full scan pipeline', () => {
   });
 
   it('F1.3 ClaimIndex contains the ingested claims (Gate 2)', () => {
-    const results = getClaimIndex().search({ text: 'revenue' });
+    const results = getClaimIndex().search(`${scanKeyId}\u0000${scanKeyId}`, { text: 'revenue' });
     expect(results.length).toBeGreaterThan(0); // Gate 2
     expect(results[0].originalText.toLowerCase()).toContain('revenue');
   });
@@ -280,7 +286,7 @@ describe('F3: Webhook delivery on scan.complete', () => {
   it('F3.3 DELETE /webhooks/:id cleans up', async () => {
     const res = await server.inject({
       method: 'DELETE', url: `/webhooks/${webhookId}`,
-      headers: { 'x-api-key': ADMIN_SECRET },
+      headers: { 'x-api-key': ADMIN_SECRET , 'x-faultline-user-ref': 'claimtestuser01'},
     });
     expect(res.statusCode).toBe(204);
   });
@@ -340,14 +346,14 @@ describe('F4: Audit trail completeness', () => {
 describe('F5: Verdict propagation into ClaimIndex', () => {
   it('F5.1 ClaimIndex stats show mixed verdicts after scan (Gate 2)', () => {
     // F1.2 scanned TEXT_A: c1=supported, c2=unverified
-    const stats = getClaimIndex().getStats();
+    const stats = getClaimIndex().getStats(TEST_CLAIM_CALLER);
     expect(stats.totalClaims).toBeGreaterThan(0);           // Gate 2
     expect(stats.byVerdict['supported']).toBeGreaterThan(0); // Gate 2
     expect(stats.byVerdict['unverified']).toBeGreaterThan(0);
   });
 
   it('F5.2 GET /claims/stats reflects ClaimIndex state (Gate 2)', async () => {
-    const res = await server.inject({ method: 'GET', url: '/claims/stats', headers: { 'x-api-key': ADMIN_SECRET } });
+    const res = await server.inject({ method: 'GET', url: '/claims/stats', headers: { 'x-api-key': ADMIN_SECRET, 'x-faultline-user-ref': 'user_testref1' } });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.totalClaims).toBeGreaterThan(0);  // Gate 2
@@ -563,7 +569,7 @@ describe('F9: Schedule trigger flow', () => {
     // No body — omit content-type to avoid Fastify's JSON parser failing on empty body
     const res = await server.inject({
       method: 'POST', url: `/schedules/${scheduleId}/trigger`,
-      headers: { 'x-api-key': ADMIN_SECRET },
+      headers: { 'x-api-key': ADMIN_SECRET , 'x-faultline-user-ref': 'claimtestuser01'},
     });
     expect(res.statusCode).toBe(202);
     const body = JSON.parse(res.body);
