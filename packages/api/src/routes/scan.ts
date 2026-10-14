@@ -15,7 +15,7 @@ import { getCircuitBreaker } from '../store/circuit-breaker.js';
 import type { Provider } from '../store/circuit-breaker.js';
 import { getAuditLogger } from '../store/audit.js';
 import { getScanCache } from '../store/cache.js';
-import { cacheCaller } from '../lib/cache-caller.js';
+import { cacheCaller, requestOwner } from '../lib/cache-caller.js';
 import { getTemplateStore } from '../store/templates.js';
 import { getClaimIndex } from '../store/claims.js';
 import { getCostStore, emitScanCostEvent, appendScanCostLog, resolveTier, buildManagedCostEvent } from '../store/costs.js';
@@ -145,7 +145,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
             complianceScore: compReport.complianceScore,
             compliancePass: compGate.pass,
           }, verifyPolicy.tier);
-          fireWebhookEvent('scan.complete', enriched);
+          fireWebhookEvent('scan.complete', enriched, requestOwner(request));
           return reply.status(200).send(enriched);
         } catch (err) {
           // Missing API key for a specified provider
@@ -187,7 +187,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
           // Said in the result itself, so a cached verdict never reads as fresh.
           cache: { hit: true, checkedAt: hit.checkedAt },
         }, verifyPolicy.tier);
-        fireWebhookEvent('scan.complete', cachedEnriched);
+        fireWebhookEvent('scan.complete', cachedEnriched, requestOwner(request));
         return reply.status(200).send(cachedEnriched);
       }
       reply.header('X-Cache', 'MISS');
@@ -196,7 +196,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
       const chain = cb.getChain(provider as Provider | undefined);
 
       if (chain.length === 0) {
-        fireWebhookEvent('scan.failed', { error: 'All providers circuit-broken.' });
+        fireWebhookEvent('scan.failed', { error: 'All providers circuit-broken.' }, requestOwner(request));
         return reply.status(503).send({ error: 'All providers are currently unavailable. Please retry later.' });
       }
 
@@ -292,7 +292,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
             complianceScore: compReport.complianceScore,
             compliancePass: compGate.pass,
           }, verifyPolicy.tier);
-          fireWebhookEvent('scan.complete', enriched);
+          fireWebhookEvent('scan.complete', enriched, requestOwner(request));
           return reply.status(200).send(enriched);
         } catch (err) {
           if (isInvalidVerdictError(err)) throw err;
@@ -320,7 +320,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
         cacheHit:    false,
         errorCode:   extractionFailed ? 502 : 500,
       });
-      fireWebhookEvent('scan.failed', { error: lastError });
+      fireWebhookEvent('scan.failed', { error: lastError }, requestOwner(request));
       void notifyScanFailed(keyId, lastError, attempted[attempted.length - 1] ?? effectiveProvider);
       if (extractionFailed) return sendExtractionFailed(reply, lastFailure as ExtractionError);
       return reply.status(500).send({ error: lastError });
@@ -361,7 +361,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
 
       getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
       getUsageMeter().increment(keyId); // count toward monthly cap (item 1)
-      fireWebhookEvent('scan.complete', result);
+      fireWebhookEvent('scan.complete', result, requestOwner(request));
 
       return reply.status(200).send(result);
     },

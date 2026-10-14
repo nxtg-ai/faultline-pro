@@ -268,9 +268,14 @@ describe('POST /scan/batch — Analytics + webhooks', () => {
 
   it('A1. POST /scan/batch fires webhooks — fetch called for each succeeded scan', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
-    getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret');
+    getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret', undefined, 3, 500,
+      { keyId: 'admin', caller: 'admin\u0000fptestuser0001' });
 
-    const res = await batchPost(server, { texts: ['text one', 'text two'] });
+    const res = await server.inject({
+      method: 'POST', url: '/scan/batch',
+      headers: { 'x-api-key': 'admin-secret', 'content-type': 'application/json', 'x-faultline-user-ref': 'fptestuser0001' },
+      body: JSON.stringify({ texts: ['text one', 'text two'] }),
+    });
     expect(res.statusCode).toBe(200);
 
     // Allow microtask queue / async dispatch to flush

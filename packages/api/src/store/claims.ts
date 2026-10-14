@@ -139,7 +139,7 @@ class ClaimIndex {
             previousVerdict,
             currentVerdict: status,
             changedAt: now,
-          });
+          }, null);
         }
       }
     }

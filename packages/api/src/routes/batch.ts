@@ -5,6 +5,7 @@ import { isExtractionError } from '@nxtg/faultline/providers/extraction-error.js
 import { getAnalyticsStore } from '../store/analytics.js';
 import type { RiskLevel } from '../store/analytics.js';
 import { fireWebhookEvent } from '../store/webhooks.js';
+import { requestOwner } from '../lib/cache-caller.js';
 import { getRateLimiter } from '../store/ratelimit.js';
 import { getKeyStore } from '../store/keys.js';
 import { getUsageMeter } from '../store/usage.js';
@@ -129,7 +130,7 @@ export async function batchRoutes(fastify: FastifyInstance): Promise<void> {
           results.push(result);
           getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
           getUsageMeter().increment(keyId);
-          fireWebhookEvent('scan.complete', result);
+          fireWebhookEvent('scan.complete', result, requestOwner(request));
         } else {
           results.push(null);
           const message =
@@ -140,7 +141,7 @@ export async function batchRoutes(fastify: FastifyInstance): Promise<void> {
           errors.push(isExtractionError(outcome.reason)
             ? { index: i, error: message, reason: outcome.reason.reason }
             : { index: i, error: message });
-          fireWebhookEvent('scan.failed', { index: i, error: message });
+          fireWebhookEvent('scan.failed', { index: i, error: message }, requestOwner(request));
         }
       }
 

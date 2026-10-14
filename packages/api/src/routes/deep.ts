@@ -8,7 +8,7 @@ import { fireWebhookEvent } from '../store/webhooks.js';
 import { getCircuitBreaker } from '../store/circuit-breaker.js';
 import type { Provider } from '../store/circuit-breaker.js';
 import { getScanCache } from '../store/cache.js';
-import { cacheCaller } from '../lib/cache-caller.js';
+import { cacheCaller, requestOwner } from '../lib/cache-caller.js';
 import { buildEvidenceLinks } from '../lib/url-validator.js';
 
 const BODY_SCHEMA = {
@@ -48,7 +48,7 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
         const cached: Record<string, unknown> = { ...hit.result, cache: { hit: true, checkedAt: hit.checkedAt } };
         reply.header('X-Cache', 'HIT');
         getAnalyticsStore().record(keyId, (cached as { overallRisk: string }).overallRisk as RiskLevel);
-        fireWebhookEvent('scan.complete', cached);
+        fireWebhookEvent('scan.complete', cached, requestOwner(request));
         return reply.status(200).send(cached);
       }
       reply.header('X-Cache', 'MISS');
@@ -57,7 +57,7 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
       const chain = cb.getChain(provider);
 
       if (chain.length === 0) {
-        fireWebhookEvent('scan.failed', { error: 'All providers circuit-broken.' });
+        fireWebhookEvent('scan.failed', { error: 'All providers circuit-broken.' }, requestOwner(request));
         return reply.status(503).send({ error: 'All providers are currently unavailable.' });
       }
 
@@ -76,7 +76,7 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
 
           if (caller !== null) getScanCache().set(caller, text, `deep:${effectiveProvider}`, enriched as unknown as Record<string, unknown>);
           getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
-          fireWebhookEvent('scan.complete', enriched);
+          fireWebhookEvent('scan.complete', enriched, requestOwner(request));
 
           return reply.status(200).send(enriched);
         } catch (err) {
@@ -85,7 +85,7 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
         }
       }
 
-      fireWebhookEvent('scan.failed', { error: lastError });
+      fireWebhookEvent('scan.failed', { error: lastError }, requestOwner(request));
       return reply.status(500).send({ error: lastError });
     },
   );

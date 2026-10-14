@@ -1,6 +1,9 @@
 import { createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { FAULTLINE_API_VERSION } from '../version.js';
 import { fetchOutbound, OutboundUrlBlockedError } from '../lib/outbound-url.js';
+import { resolveRequestTenantId } from '../plugins/auth.js';
+import { getKeyStore } from './keys.js';
+import { holdsGroundedResults } from './cache.js';
 
 export type WebhookEvent = 'scan.complete' | 'scan.failed' | 'job.complete' | 'job.failed' | 'claim.verdict_changed' | 'compliance.deadline_approaching' | 'compliance.gate_failed';
 
@@ -10,6 +13,14 @@ export interface Webhook {
   events: WebhookEvent[];
   secret: string;
   tenantId: string | undefined;
+  /**
+   * The API key that registered the webhook, and its caller (cacheCaller:
+   * key plus, behind the server key, the faultline-web user). Null caller:
+   * registered by the server key with no valid user ref. Both undefined:
+   * created without an owner, so it receives only public events.
+   */
+  ownerKeyId?: string;
+  ownerCaller?: string | null;
   /** Max delivery attempts per event (1–5, default 3). */
   maxAttempts: number;
   /** Delay in ms between retry attempts (0–30 000, default 500). First attempt always immediate. */
@@ -17,7 +28,7 @@ export interface Webhook {
   createdAt: string;
 }
 
-export type WebhookPublic = Omit<Webhook, 'secret'>;
+export type WebhookPublic = Omit<Webhook, 'secret' | 'ownerCaller'>;
 
 export interface WebhookPayload {
   event: WebhookEvent;
@@ -167,13 +178,17 @@ export function resetWebhookCircuitBreaker(): void {
 class WebhookStore {
   private webhooks: Webhook[] = [];
 
-  create(url: string, events: WebhookEvent[], secret?: string, tenantId?: string, maxAttempts = 3, retryDelayMs = 500): Webhook {
+  create(
+    url: string, events: WebhookEvent[], secret?: string, tenantId?: string, maxAttempts = 3, retryDelayMs = 500,
+    owner?: { keyId: string; caller: string | null },
+  ): Webhook {
     const entry: Webhook = {
       id: randomUUID(),
       url,
       events,
       secret: secret ?? randomBytes(32).toString('hex'),
       tenantId,
+      ...(owner ? { ownerKeyId: owner.keyId, ownerCaller: owner.caller } : {}),
       maxAttempts,
       retryDelayMs,
       createdAt: new Date().toISOString(),
@@ -186,7 +201,7 @@ class WebhookStore {
     const all = tenantId
       ? this.webhooks.filter((w) => w.tenantId === tenantId)
       : this.webhooks;
-    return all.map(({ secret: _secret, ...rest }) => rest);
+    return all.map(({ secret: _secret, ownerCaller: _caller, ...rest }) => rest);
   }
 
   delete(id: string): boolean {
@@ -492,11 +507,85 @@ export function resetWebhookDeliveryLog(): void {
   deliveryLogInstance = new WebhookDeliveryLog();
 }
 
-export function fireWebhookEvent(event: WebhookEvent, data: unknown): void {
-  const targets = getWebhookStore().getByEvent(event);
+/**
+ * Who an event belongs to.
+ * - `{ keyId, caller }`: the API key behind the scan and its caller (cacheCaller).
+ * - `'public'`: the payload holds no caller data (the fixed regulatory calendar).
+ * - `null`: no owner can be named (the shared claim index): delivered to no one.
+ */
+export type WebhookEventOwner = { keyId: string; caller: string | null } | 'public' | null;
+
+/**
+ * True when `webhook` may receive an event owned by `owner`, decided at send
+ * time, not at registration (emma-soul al:3dd437daabb68ad9 item 1).
+ *
+ * Rule: a webhook receives an event when its owner and the event's owner are in
+ * the same tenant (both defined and equal, each re-read now from its key), or
+ * are the same caller (both non-null and equal). Nothing else matches: the
+ * server key without a user ref, a key outside any tenant, a webhook with no
+ * owner and an owner key that no longer exists all match nothing.
+ */
+export function webhookMayReceive(webhook: Webhook, owner: WebhookEventOwner): boolean {
+  if (owner === 'public') return true;
+  if (owner === null) return false;
+  const ownerKeyId = webhook.ownerKeyId;
+  if (ownerKeyId === undefined) return false;
+  // A revoked or deleted key's webhooks stop receiving. The server key ('admin')
+  // is not in the keystore.
+  if (ownerKeyId !== 'admin' && getKeyStore().validateById(ownerKeyId) === null) return false;
+  const webhookTenant = resolveRequestTenantId(ownerKeyId);
+  const eventTenant = resolveRequestTenantId(owner.keyId);
+  if (webhookTenant !== undefined && webhookTenant === eventTenant) return true;
+  const webhookCaller = webhook.ownerCaller ?? null;
+  return webhookCaller !== null && webhookCaller === owner.caller;
+}
+
+/** The scan result inside an event's data: the data itself, or `data.result` (job.complete). */
+function scanResultIn(data: unknown): Record<string, unknown> | null {
+  if (!data || typeof data !== 'object') return null;
+  const d = data as Record<string, unknown>;
+  if ('verifications' in d || 'claims' in d) return d;
+  const inner = d.result;
+  if (inner && typeof inner === 'object' && ('verifications' in inner || 'claims' in inner)) return inner as Record<string, unknown>;
+  return null;
+}
+
+function isGroundedScan(result: Record<string, unknown>): boolean {
+  return result.provider === 'gemini' || holdsGroundedResults(result);
+}
+
+/**
+ * The payload a webhook may carry. A result that holds Gemini Grounded Results
+ * goes to no webhook, the owner's included: Google's terms let it be shown only
+ * to the end user who submitted the prompt (emma-soul al:3dd437daabb68ad9 item 2).
+ * The webhook gets a minimal event instead: the scan or job id, a status and
+ * counts; no claim text, verdict, explanation or source.
+ */
+export function webhookSafeData(event: WebhookEvent, data: unknown): unknown {
+  const result = scanResultIn(data);
+  if (!result || !isGroundedScan(result)) return data;
+  const claims = Array.isArray(result.claims) ? result.claims : [];
+  const verifications = result.verifications && typeof result.verifications === 'object'
+    ? Object.keys(result.verifications as object).length : 0;
+  const d = data as Record<string, unknown>;
+  const scanId = typeof result.scanId === 'string' ? result.scanId : typeof result.id === 'string' ? result.id : null;
+  return {
+    ...(typeof d.jobId === 'string' ? { jobId: d.jobId } : {}),
+    scanId,
+    status: event.endsWith('.failed') ? 'failed' : 'complete',
+    grounded: true,
+    claimCount: claims.length,
+    checkedCount: verifications,
+    note: 'Gemini grounded results are shown only to the user who ran the scan; read them from the scan response.',
+  };
+}
+
+export function fireWebhookEvent(event: WebhookEvent, data: unknown, owner: WebhookEventOwner): void {
+  const targets = getWebhookStore().getByEvent(event).filter((w) => webhookMayReceive(w, owner));
   if (targets.length === 0) return;
   const timestamp = new Date().toISOString();
+  const payload = webhookSafeData(event, data);
   for (const webhook of targets) {
-    void dispatchWebhook(webhook, event, data, timestamp);
+    void dispatchWebhook(webhook, event, payload, timestamp);
   }
 }
