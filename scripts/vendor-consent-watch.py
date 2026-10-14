@@ -170,6 +170,14 @@ def sender_domain(from_header):
     return m.group(1).lower() if m else "unknown"
 
 
+def domain_match_ok(watch, sd):
+    """A watched-domain hit counts only when the sender's own domain is that domain or a subdomain.
+    Thread and To matches pass through: a reply in our thread may come from any address."""
+    if watch not in WATCH_DOMAINS:
+        return True
+    return sd == watch or sd.endswith("." + watch)
+
+
 def main():
     os.makedirs(STATE_DIR, exist_ok=True)
     seen = set()
@@ -209,9 +217,13 @@ def main():
                 continue
             _, dd = m.uid("FETCH", uid, "(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])")
             h = email.message_from_bytes(dd[0][1])
+            seen.add(u)
+            # Zoho's IMAP FROM search also matches the display name ("Donald Brave" hit brave.com,
+            # uid 1040), so a domain match must be the sender's actual domain.
+            if not domain_match_ok(domain, sender_domain(text(h["From"]))):
+                continue
             found.append({"uid": u, "domain": domain, "from": text(h["From"]),
                           "subject": text(h["Subject"])[:140], "date": h["Date"]})
-            seen.add(u)
     m.logout()
     for f in found:
         f["sender_domain"] = sender_domain(f["from"])

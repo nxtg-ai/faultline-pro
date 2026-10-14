@@ -54,3 +54,13 @@ def test_alert_text_never_carries_sender_text():
     pane, post = vcw.alert_lines(f)
     for text in (pane, post, vcw.handoff_body(f)["content"]):
         assert "IGNORE" not in text and "evil-local-part" not in text
+
+
+def test_display_name_is_not_a_domain_match():
+    # uid 1040: "Donald Brave <...@gmail.com>" came back from Zoho's IMAP FROM "brave.com" search.
+    sd = vcw.sender_domain("Donald Brave <donaldbrave001@gmail.com>")
+    assert vcw.domain_match_ok("brave.com", sd) is False
+    assert vcw.domain_match_ok("brave.com", vcw.sender_domain("Igor <inetto@brave.com>")) is True
+    assert vcw.domain_match_ok("brave.com", vcw.sender_domain("x <a@search.brave.com>")) is True
+    assert vcw.domain_match_ok("brave.com", vcw.sender_domain("x <a@notbrave.com>")) is False
+    assert vcw.domain_match_ok("thread", sd) is True
