@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { aggregate, renderAggregatedReport, type AggregatedReport } from '../cli/aggregate';
@@ -355,6 +355,10 @@ describe('faultline aggregate CLI', () => {
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'faultline-agg-'));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it('should require --dir flag', async () => {

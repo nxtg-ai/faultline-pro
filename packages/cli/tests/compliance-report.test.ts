@@ -5,8 +5,8 @@
 // Validates: N-207 (art6ConformityRequired CI gate flag — CG1–CG5)
 // Validates: N-208 (Art. 52 articleEvidence + Art. 6 testCategoryMappings — TCA1–TCA2, A52-1–A52-6)
 // Validates: N-209 (Art. 53 GPAI provider obligations articleEvidence — A53-1–A53-3)
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { writeFileSync, mkdtempSync, existsSync } from 'node:fs';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { writeFileSync, mkdtempSync, existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -1150,6 +1150,10 @@ describe('CLI: compliance-report command', () => {
     tmpDir = mkdtempSync(join(tmpdir(), 'faultline-cr-test-'));
   });
 
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
   it('requires --input or --text flag', async () => {
     const { exitCode, output } = await main(['compliance-report']);
     expect(exitCode).toBe(1);
@@ -1610,6 +1614,10 @@ describe('CLI: compliance-report --diff', () => {
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'faultline-diff-test-'));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it('compares two scan files and shows diff', async () => {
@@ -2111,6 +2119,10 @@ describe('loadComplianceConfig()', () => {
     tmpDir = mkdtempSync(join(tmpdir(), 'faultline-cfg-'));
   });
 
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
   it('CF1: returns null when no config file exists', () => {
     const result = loadComplianceConfig(join(tmpDir, 'nonexistent.json'));
     expect(result).toBeNull();
@@ -2166,6 +2178,10 @@ describe('CLI --ci with config file', () => {
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'faultline-ci-cfg-'));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it('CF8: --config loads project name from config file', async () => {
@@ -2350,6 +2366,10 @@ describe('compliance-report --format markdown', () => {
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'faultline-md-'));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it('MD-CLI1: outputs markdown to stdout', async () => {
@@ -2562,6 +2582,10 @@ describe('compliance-report --format sarif', () => {
     tmpDir = mkdtempSync(join(tmpdir(), 'faultline-sarif-'));
   });
 
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
   it('SF-CLI1: outputs valid SARIF JSON to stdout', async () => {
     const scanPath = join(tmpDir, 'scan.json');
     writeFileSync(scanPath, JSON.stringify(makeScan()));
@@ -2728,6 +2752,10 @@ describe('compliance-report --format html', () => {
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'faultline-html-'));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it('HT-CLI1: writes HTML file by default', async () => {
