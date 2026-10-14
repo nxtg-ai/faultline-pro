@@ -16,11 +16,19 @@
  */
 import { createHash } from 'node:crypto';
 import type { Source, SourceEvidence, VerificationResult } from '../types.js';
+import { EVIDENCE_USER_AGENT, robotsVerdict } from './robots.js';
+import { isGroundingRedirect } from './grounding.js';
 
+/**
+ * Fetches ONE hop and never follows a redirect: a 3xx comes back as the
+ * response. The engine follows redirects itself so that robots.txt is asked
+ * on every hop. The API passes its guarded fetchOutbound, which also refuses
+ * a private address on every hop.
+ */
 export type EvidenceFetch = (url: string, init: RequestInit) => Promise<Response>;
 
 export interface EvidenceOptions {
-  /** The fetch to use. The API passes its guarded fetchOutboundFollow. */
+  /** The single-hop fetch to use (see EvidenceFetch). */
   fetch: EvidenceFetch;
   /** Per-source deadline in ms (default 6000). */
   timeoutMs?: number;
@@ -30,8 +38,10 @@ export interface EvidenceOptions {
 
 const DEFAULT_TIMEOUT_MS = 6000;
 const DEFAULT_MAX_BYTES = 1_500_000;
-const PASSAGE_MAX_CHARS = 400;
-const USER_AGENT = 'FaultlineEvidence/1.0 (+https://faultline.nxtg.ai)';
+/** A stored passage is at most this many characters (Unicode code points), ellipsis included (emma-soul al:15b443bc1ccf7a4e). */
+export const PASSAGE_MAX_CHARS = 300;
+export const EVIDENCE_MAX_REDIRECTS = 5;
+const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 const TEXT_TYPES = ['text/html', 'application/xhtml+xml', 'text/plain'];
 
 const STOPWORDS = new Set([
@@ -77,7 +87,7 @@ export function htmlToText(html: string): string {
 /**
  * The page sentence that shares the most content tokens with the claim, with
  * the next sentence appended when the first is short, cut at PASSAGE_MAX_CHARS.
- * Null when no sentence shares at least max(2, 40% of the claim's tokens).
+ * Null when no sentence shares at least max(2, 50% of the claim's tokens).
  */
 /** A candidate must read as prose: long enough, and not markup, JSON or wiki template text. */
 const MIN_SENTENCE_CHARS = 40;
@@ -109,9 +119,19 @@ export function pickPassage(pageText: string, claimText: string): string | null 
   if (best < 0 || bestShared < need) return null;
   let passage = sentences[best];
   if (passage.length < 80 && sentences[best + 1]) passage = `${passage} ${sentences[best + 1]}`;
-  if (passage.length > PASSAGE_MAX_CHARS) {
-    const cut = passage.slice(0, PASSAGE_MAX_CHARS);
-    passage = `${cut.slice(0, Math.max(cut.lastIndexOf(' '), PASSAGE_MAX_CHARS - 40))}…`;
+  // Counted in code points, and cut only between whole characters (graphemes),
+  // so neither a surrogate pair nor a letter and its accent are split.
+  if (Array.from(passage).length > PASSAGE_MAX_CHARS) {
+    let cut = '';
+    let points = 0;
+    for (const { segment } of GRAPHEMES.segment(passage)) {
+      const n = Array.from(segment).length;
+      if (points + n > PASSAGE_MAX_CHARS - 1) break;
+      cut += segment;
+      points += n;
+    }
+    const space = cut.lastIndexOf(' ');
+    passage = `${space >= cut.length - 40 ? cut.slice(0, space) : cut}…`;
   }
   return passage;
 }
@@ -145,7 +165,12 @@ async function readCapped(res: Response, maxBytes: number): Promise<{ bytes: Uin
 const isBlocked = (err: unknown): boolean =>
   err instanceof Error && (err.name === 'OutboundUrlBlockedError' || /blocked|not allowed|private address/i.test(err.message));
 
-/** Fetch one source and find its passage. Never throws. */
+/**
+ * Fetch one source and find its passage. Never throws. Redirects are followed
+ * here, at most EVIDENCE_MAX_REDIRECTS, and before each hop is requested the
+ * hop is refused if it is a Google grounding Link (provider_terms) or if that
+ * site's robots.txt disallows FaultlineEvidence (robots).
+ */
 export async function fetchSourceEvidence(source: Source, claimText: string, opts: EvidenceOptions): Promise<SourceEvidence> {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES;
@@ -153,19 +178,40 @@ export async function fetchSourceEvidence(source: Source, claimText: string, opt
   if (typeof source.uri !== 'string' || !/^https?:\/\//i.test(source.uri)) {
     return { status: 'blocked', passage: null, fetchedAt: stamp() };
   }
-  // Defense in depth: a Google grounding Link is never requested, whoever calls this.
-  if (isGroundingRedirect(source.uri)) return { status: 'not_fetched', reason: 'provider_terms', passage: null };
+  // One deadline for the whole source: every robots.txt wait and every hop come out of it.
+  const signal = AbortSignal.timeout(timeoutMs);
+  let current = source.uri;
+  const hopped = () => (current !== source.uri ? { finalUri: current } : {});
   let res: Response;
-  try {
-    res = await opts.fetch(source.uri, {
-      method: 'GET',
-      headers: { 'user-agent': USER_AGENT, accept: 'text/html,application/xhtml+xml,text/plain;q=0.9' },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-  } catch (err) {
-    return { status: isBlocked(err) ? 'blocked' : 'fetch_failed', passage: null, fetchedAt: stamp() };
+  for (let hop = 0; ; hop++) {
+    // Defense in depth: a Google grounding Link is never requested, whoever calls this.
+    if (isGroundingRedirect(current)) return { status: 'not_fetched', reason: 'provider_terms', passage: null, ...hopped() };
+    if (!/^https?:\/\//i.test(current)) return { status: 'blocked', passage: null, fetchedAt: stamp(), ...hopped() };
+    try {
+      const robots = await robotsVerdict(current, opts.fetch, { signal });
+      if (robots === 'disallow') return { status: 'not_fetched', reason: 'robots', passage: null, ...hopped() };
+      // RFC 9309 2.3.1.4: robots.txt unreachable means fetch nothing there.
+      if (robots === 'unreachable') return { status: 'fetch_failed', passage: null, fetchedAt: stamp(), ...hopped() };
+      res = await opts.fetch(current, {
+        method: 'GET',
+        redirect: 'manual',
+        headers: { 'user-agent': EVIDENCE_USER_AGENT, accept: 'text/html,application/xhtml+xml,text/plain;q=0.9' },
+        signal,
+      });
+    } catch (err) {
+      return { status: isBlocked(err) ? 'blocked' : 'fetch_failed', passage: null, fetchedAt: stamp(), ...hopped() };
+    }
+    const location = res.headers.get('location');
+    if (res.status < 300 || res.status >= 400 || !location) break;
+    await res.body?.cancel().catch(() => undefined);
+    if (hop >= EVIDENCE_MAX_REDIRECTS) return { status: 'fetch_failed', passage: null, fetchedAt: stamp(), httpStatus: res.status, ...hopped() };
+    try {
+      current = new URL(location, current).toString();
+    } catch {
+      return { status: 'fetch_failed', passage: null, fetchedAt: stamp(), httpStatus: res.status, ...hopped() };
+    }
   }
-  const finalUri = res.url && res.url !== source.uri ? { finalUri: res.url } : {};
+  const finalUri = hopped();
   if (!res.ok) {
     await res.body?.cancel().catch(() => undefined);
     return { status: 'http_error', passage: null, fetchedAt: stamp(), httpStatus: res.status, ...finalUri };
@@ -197,8 +243,6 @@ export async function fetchSourceEvidence(source: Source, claimText: string, opt
   };
 }
 
-const GROUNDING_REDIRECT_HOST = 'vertexaisearch.cloud.google.com';
-
 /**
  * True when a source's link came from Gemini Grounding with Google Search:
  * the verdict's retriever is gemini-grounding, or the link is a Google
@@ -208,14 +252,6 @@ const GROUNDING_REDIRECT_HOST = 'vertexaisearch.cloud.google.com';
  */
 export function isGeminiGroundingSource(result: VerificationResult, source: Source): boolean {
   return result.provenance?.retriever === 'gemini-grounding' || isGroundingRedirect(source.uri);
-}
-
-function isGroundingRedirect(uri: string): boolean {
-  try {
-    return new URL(uri).hostname.toLowerCase() === GROUNDING_REDIRECT_HOST;
-  } catch {
-    return false;
-  }
 }
 
 const NOT_FETCHED: SourceEvidence = { status: 'not_fetched', reason: 'provider_terms', passage: null };

@@ -1,22 +1,20 @@
 /**
  * The evidence fetch the API gives the scan engine (GoPMO 1.18.11.3 P1b).
  *
- * Every cited source is fetched through fetchOutboundFollow, which refuses a
- * private or non-http(s) address and checks every redirect hop before it is
+ * The engine follows redirects itself (at most 5) so it can ask each hop's
+ * robots.txt first; every hop it requests, robots.txt included, goes through
+ * fetchOutbound, which refuses a private or non-http(s) address before it is
  * requested, so a cited link cannot bounce the server onto its own network.
- * Google's grounding links redirect once to the publisher; 5 hops is ample.
  * FAULTLINE_EVIDENCE_FETCH=off turns the fetch off without a deploy of code.
  */
 import type { EvidenceOptions } from '@nxtg/faultline/evidence/passage.js';
 import type { IndependentEvidenceOptions } from '@nxtg/faultline/evidence/independent.js';
 import { OpenAIWebSearchRetriever } from '@nxtg/faultline/providers/openai_web_search_retriever.js';
-import { fetchOutboundFollow } from './outbound-url.js';
-
-export const EVIDENCE_MAX_REDIRECTS = 5;
+import { fetchOutbound } from './outbound-url.js';
 
 export function apiEvidenceOptions(): EvidenceOptions | undefined {
   if ((process.env.FAULTLINE_EVIDENCE_FETCH ?? '').toLowerCase() === 'off') return undefined;
-  return { fetch: (url, init) => fetchOutboundFollow(url, init, EVIDENCE_MAX_REDIRECTS) };
+  return { fetch: (url, init) => fetchOutbound(url, init) };
 }
 
 /**
@@ -49,7 +47,7 @@ export function apiIndependentEvidenceOptions(): IndependentEvidenceOptions | un
   if (!PASSAGE_SEARCH_MODELS_UNDER_CAP.includes(model)) return undefined;
   return {
     retriever: new OpenAIWebSearchRetriever(key, { model, timeoutMs: PASSAGE_SEARCH_TIMEOUT_MS }),
-    fetch: (url, init) => fetchOutboundFollow(url, init, EVIDENCE_MAX_REDIRECTS),
+    fetch: (url, init) => fetchOutbound(url, init),
     // Only a Gemini-grounded verdict lacks page passages; consensus already searches with OpenAI.
     appliesTo: (result) => result.provenance?.retriever === 'gemini-grounding',
   };

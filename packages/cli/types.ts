@@ -52,17 +52,20 @@ export interface SourceEvidence {
    * the claim. http_error: the page answered non-2xx. unsupported_type: not
    * HTML or plain text (a PDF, an image). blocked: the URL or a redirect target
    * was refused (private address, not http/https). fetch_failed: network error
-   * or timeout. not_fetched: deliberately not requested (see `reason`).
+   * or timeout, or the site's robots.txt could not be read (RFC 9309: then
+   * nothing there is fetched). not_fetched: deliberately not requested (see `reason`).
    */
   status: 'ok' | 'no_match' | 'http_error' | 'unsupported_type' | 'blocked' | 'fetch_failed' | 'not_fetched';
   /**
    * Why a source was not fetched. provider_terms: the link came from Gemini
    * Grounding with Google Search, whose terms forbid "using Links to identify
    * destination pages for crawling or scraping" (emma-soul ruling
-   * al:07b45f0562efbbf0, 2026-10-14). Present only with status not_fetched.
+   * al:07b45f0562efbbf0, 2026-10-14). robots: that site's robots.txt
+   * disallows FaultlineEvidence for the page or a redirect hop (emma-soul
+   * al:15b443bc1ccf7a4e). Present only with status not_fetched.
    */
-  reason?: 'provider_terms';
-  /** The matched passage, at most 400 characters; null unless status is ok. */
+  reason?: 'provider_terms' | 'robots';
+  /** The matched passage, at most 300 Unicode code points, ellipsis included; null unless status is ok. */
   passage: string | null;
   /** When the fetch finished or failed (ISO 8601). Absent when nothing was fetched. */
   fetchedAt?: string;

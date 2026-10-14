@@ -4,9 +4,10 @@
  * independentEvidence, kept apart from the verdict's own sources, labelled with
  * that retriever, its model and the search time.
  */
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import { attachIndependentEvidence } from '../evidence/independent.js';
 import type { EvidenceFetch } from '../evidence/passage.js';
+import { clearRobotsCache } from '../evidence/robots.js';
 import { OpenAIWebSearchRetriever } from '../providers/openai_web_search_retriever.js';
 import { scan } from '../cli/scan.js';
 import { registerProvider } from '../providers/registry.js';
@@ -20,6 +21,15 @@ const GROUNDED = 'https://vertexaisearch.cloud.google.com/grounding-api-redirect
 function html(body: string): Response {
   return new Response(body, { status: 200, headers: { 'content-type': 'text/html' } });
 }
+
+/** A page fetch; robots.txt answers 404 (no rules) and is left out of `pages`. */
+function pageFetch(fn: (url: string) => Response): EvidenceFetch {
+  return vi.fn(async (url: string) => (url.endsWith('/robots.txt') ? new Response('', { status: 404 }) : fn(url))) as unknown as EvidenceFetch;
+}
+const pages = (f: EvidenceFetch): string[] =>
+  (f as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0])).filter((u) => !u.endsWith('/robots.txt'));
+
+beforeEach(() => clearRobotsCache());
 
 function retrieverOf(found: Array<Source & { snippet?: string }> | (() => never)) {
   return {
@@ -42,7 +52,7 @@ describe('attachIndependentEvidence', () => {
       { title: 'Kestrel', uri: 'https://kestrel.example/a', snippet: 'MODEL WORDS that are not evidence' },
       { title: 'Plain', uri: 'https://plain.example/b' },
     ]);
-    const f = vi.fn(async (url: string) => (url.includes('kestrel') ? html(PAGE) : html('<p>Nothing relevant here.</p>'))) as unknown as EvidenceFetch;
+    const f = pageFetch((url) => (url.includes('kestrel') ? html(PAGE) : html('<p>Nothing relevant here.</p>')));
     const base = verdict();
     const v = await attachIndependentEvidence(base, CLAIM_TEXT, { retriever, fetch: f });
     expect(v.sources).toEqual(base.sources);
@@ -62,10 +72,10 @@ describe('attachIndependentEvidence', () => {
 
   it('fetches at most 3 result pages by default', async () => {
     const retriever = retrieverOf([1, 2, 3, 4, 5].map((n) => ({ title: `${n}`, uri: `https://p${n}.example/` })));
-    const f = vi.fn(async () => html(PAGE)) as unknown as EvidenceFetch;
+    const f = pageFetch(() => html(PAGE));
     const v = await attachIndependentEvidence(verdict(), CLAIM_TEXT, { retriever, fetch: f });
     expect(v.independentEvidence!.sources).toHaveLength(3);
-    expect(f).toHaveBeenCalledTimes(3);
+    expect(pages(f)).toHaveLength(3);
   });
 
   it('a verdict whose check never ran pays for no search', async () => {
@@ -120,7 +130,7 @@ describe('through scan()', () => {
       generateCritiqueAndPrompt: async () => ({ critique: '', improvedPrompt: '' }),
     }) as never);
     const retriever = retrieverOf([{ title: 'Kestrel', uri: 'https://kestrel.example/a' }]);
-    const f = vi.fn(async () => html(PAGE)) as unknown as EvidenceFetch;
+    const f = pageFetch(() => html(PAGE));
     const seen: VerificationResult[] = [];
     const r = await scan(CLAIM_TEXT, 'independent-fixture', undefined, undefined, undefined, (_c, v) => { seen.push(v); }, undefined, { independentEvidence: { retriever, fetch: f } });
     expect(seen[0].independentEvidence!.sources[0].evidence!.status).toBe('ok');

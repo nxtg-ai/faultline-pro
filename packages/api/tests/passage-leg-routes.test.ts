@@ -41,6 +41,7 @@ import { resetCache } from '../src/store/cache.js';
 import { resetProviderSpendLedger } from '../src/store/provider-spend.js';
 import { resetGroundingAllowanceLedger, uninstallGroundingCounter } from '../src/store/grounding-allowance.js';
 import { setOutboundFetch, resetOutboundFetch, setOutboundResolver, resetOutboundResolver } from '../src/lib/outbound-url.js';
+import { clearRobotsCache } from '@nxtg/faultline/evidence/robots.js';
 import { priceLeg } from '../src/store/consensus-cost.js';
 
 const PAGE = '<html><body><p>The Eiffel Tower was completed in March 1889 for the Exposition Universelle.</p></body></html>';
@@ -64,6 +65,7 @@ beforeEach(() => {
   resetKeyStore();
   resetCache();
   pageRequests.length = 0;
+  clearRobotsCache();
   openaiBodies.length = 0;
   setOutboundResolver(async () => [{ address: '93.184.216.34', family: 4 }]);
   setOutboundFetch(async (url) => {
@@ -124,7 +126,8 @@ describe('passage leg', () => {
     expect(v.independentEvidence.sources[0]).toMatchObject({ title: 'Kestrel Archive', uri: 'https://kestrel.example/eiffel' });
     expect(v.independentEvidence.sources[0].evidence.status).toBe('ok');
     expect(v.independentEvidence.sources[0].evidence.passage).toBe('The Eiffel Tower was completed in March 1889 for the Exposition Universelle.');
-    expect(pageRequests).toEqual(['https://kestrel.example/eiffel']);
+    // The publisher's robots.txt is asked first, then the page.
+    expect(pageRequests).toEqual(['https://kestrel.example/robots.txt', 'https://kestrel.example/eiffel']);
     expect(openaiBodies).toHaveLength(1);
     expect(openaiBodies[0].model).toBe('gpt-4o-mini');
     expect(openaiBodies[0].tools).toEqual([{ type: 'web_search' }]);

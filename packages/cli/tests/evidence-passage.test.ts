@@ -3,7 +3,7 @@
  * The passage comes from the page that was fetched, never from the model's
  * reply, and carries the fetch time and a hash of the bytes read.
  */
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import { createHash } from 'node:crypto';
 import {
   attachEvidence,
@@ -14,6 +14,7 @@ import {
   pickPassage,
   type EvidenceFetch,
 } from '../evidence/passage.js';
+import { clearRobotsCache } from '../evidence/robots.js';
 import { scan } from '../cli/scan.js';
 import { registerProvider } from '../providers/registry.js';
 import type { Claim, VerificationResult } from '../types.js';
@@ -31,7 +32,14 @@ function htmlResponse(body: string, init: { status?: number; type?: string; url?
   return res;
 }
 
-const fetchOf = (fn: (url: string) => Response | Promise<Response>): EvidenceFetch => vi.fn(async (url: string) => fn(url));
+// robots.txt answers 404 (no rules) unless a test says otherwise; evidence-robots.test.ts covers the rules.
+const fetchOf = (fn: (url: string) => Response | Promise<Response>): EvidenceFetch =>
+  vi.fn(async (url: string) => (url.endsWith('/robots.txt') ? new Response('', { status: 404 }) : fn(url)));
+/** The page requests a fetch received, robots.txt requests left out. */
+const pages = (f: EvidenceFetch): Array<[string, RequestInit]> =>
+  (f as ReturnType<typeof vi.fn>).mock.calls.filter((c) => !String(c[0]).endsWith('/robots.txt')) as Array<[string, RequestInit]>;
+
+beforeEach(() => clearRobotsCache());
 
 describe('text and matching', () => {
   it('htmlToText drops script, style and head, decodes entities and keeps visible text', () => {
@@ -68,10 +76,11 @@ describe('text and matching', () => {
     expect(pickPassage('The tower is tall.', CLAIM_TEXT)).toBeNull();
   });
 
-  it('pickPassage caps a long passage at 400 characters with an ellipsis', () => {
+  it('pickPassage caps a long passage at 300 characters, ellipsis included', () => {
     const long = `Eiffel Tower completed 1889 ${'and more words follow here '.repeat(40)}.`;
     const p = pickPassage(long, CLAIM_TEXT)!;
-    expect(p.length).toBeLessThanOrEqual(401);
+    expect(p.length).toBeLessThanOrEqual(300);
+    expect(p.length).toBeGreaterThan(250);
     expect(p.endsWith('…')).toBe(true);
   });
 });
@@ -88,7 +97,9 @@ describe('fetchSourceEvidence', () => {
 
   it('reads the page, hashes the bytes and records the final URL and fetch time', async () => {
     const before = Date.now();
-    const f = fetchOf(() => htmlResponse(PAGE, { url: 'https://kestrelvane.example/eiffel' }));
+    const f = fetchOf((url) => (url === source.uri
+      ? new Response(null, { status: 302, headers: { location: 'https://kestrelvane.example/eiffel' } })
+      : htmlResponse(PAGE)));
     const ev = await fetchSourceEvidence(source, CLAIM_TEXT, { fetch: f });
     expect(ev.status).toBe('ok');
     expect(ev.passage).toContain('Eiffel Tower was completed in time');
@@ -97,8 +108,10 @@ describe('fetchSourceEvidence', () => {
     expect(ev.contentSha256).toBe(createHash('sha256').update(PAGE).digest('hex'));
     expect(ev.fetchedAt).toMatch(ISO);
     expect(Date.parse(ev.fetchedAt)).toBeGreaterThanOrEqual(before);
-    const init = (f as ReturnType<typeof vi.fn>).mock.calls[0][1] as RequestInit;
+    expect(pages(f).map((c) => c[0])).toEqual([source.uri, 'https://kestrelvane.example/eiffel']);
+    const init = pages(f)[1][1];
     expect(init.method).toBe('GET');
+    expect(init.redirect).toBe('manual');
     expect((init.headers as Record<string, string>)['user-agent']).toMatch(/^FaultlineEvidence\//);
     expect(init.signal).toBeInstanceOf(AbortSignal);
   });
@@ -123,7 +136,9 @@ describe('fetchSourceEvidence', () => {
     const blockedErr = Object.assign(new Error('Outbound URL blocked: private address'), { name: 'OutboundUrlBlockedError' });
     expect((await fetchSourceEvidence(source, CLAIM_TEXT, { fetch: fetchOf(() => { throw blockedErr; }) })).status).toBe('blocked');
     expect((await fetchSourceEvidence(source, CLAIM_TEXT, { fetch: fetchOf(() => { throw new TypeError('fetch failed'); }) })).status).toBe('fetch_failed');
-    const slow: EvidenceFetch = (_u, init) => new Promise((_r, reject) => init.signal!.addEventListener('abort', () => reject(new DOMException('timeout', 'TimeoutError'))));
+    const slow: EvidenceFetch = async (u, init) => (u.endsWith('/robots.txt')
+      ? new Response('', { status: 404 })
+      : new Promise((_r, reject) => init.signal!.addEventListener('abort', () => reject(new DOMException('timeout', 'TimeoutError')))));
     expect((await fetchSourceEvidence(source, CLAIM_TEXT, { fetch: slow, timeoutMs: 30 })).status).toBe('fetch_failed');
   });
 
@@ -154,7 +169,7 @@ describe('attachEvidence', () => {
   it('fetches every cited source in parallel and never changes status or explanation', async () => {
     const f = fetchOf((url) => url.includes('a.example') ? htmlResponse(PAGE) : htmlResponse('<p>Nothing relevant.</p>'));
     const v = await attachEvidence(verdict(), CLAIM_TEXT, { fetch: f });
-    expect(f).toHaveBeenCalledTimes(2);
+    expect(pages(f)).toHaveLength(2);
     expect(v.status).toBe('supported');
     expect(v.explanation).toBe(verdict().explanation);
     expect(v.sources[0].evidence!.status).toBe('ok');
@@ -192,8 +207,7 @@ describe('Gemini grounding Links are never fetched (provider terms)', () => {
     const v = await attachEvidence({ ...base, sources: [{ title: 'a', uri: GROUNDED }, { title: 'b', uri: 'https://plain.example/x' }] }, CLAIM_TEXT, { fetch: f });
     expect(v.sources[0].evidence).toEqual({ status: 'not_fetched', reason: 'provider_terms', passage: null });
     expect(v.sources[1].evidence!.status).toBe('ok');
-    expect(f).toHaveBeenCalledTimes(1);
-    expect((f as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe('https://plain.example/x');
+    expect(pages(f).map((c) => c[0])).toEqual(['https://plain.example/x']);
   });
 
   it('isGeminiGroundingSource: consensus with an OpenAI retriever is not Gemini', () => {
@@ -226,6 +240,6 @@ describe('through scan()', () => {
 
     const plain = await scan(CLAIM_TEXT, 'evidence-fixture');
     expect(plain.verifications.c1.sources[0].evidence).toBeUndefined();
-    expect(f).toHaveBeenCalledTimes(1);
+    expect(pages(f)).toHaveLength(1);
   });
 });

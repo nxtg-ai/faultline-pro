@@ -51,6 +51,7 @@ import { resetProviderSpendLedger } from '../src/store/provider-spend.js';
 import { resetGroundingAllowanceLedger, uninstallGroundingCounter } from '../src/store/grounding-allowance.js';
 import { setOutboundFetch, resetOutboundFetch, setOutboundResolver, resetOutboundResolver } from '../src/lib/outbound-url.js';
 import { registerProvider } from '@nxtg/faultline/providers/registry.js';
+import { clearRobotsCache } from '@nxtg/faultline/evidence/robots.js';
 
 // A non-Gemini retriever: its links are plain publisher-side redirects, not Google grounding Links.
 const OTHER_REDIRECT = 'https://links.example/r/kestrel';
@@ -71,6 +72,7 @@ const ENV_KEYS = ['FAULTLINE_GROUNDING_LEDGER', 'FAULTLINE_PROVIDER_SPEND_LEDGER
 let savedEnv: Record<string, string | undefined>;
 let tmpDir: string;
 const requested: string[] = [];
+let publisherRobots: string | null = null;
 
 function respond(body: string | null, status: number, headers: Record<string, string>, url: string): Response {
   const res = new Response(body, { status, headers });
@@ -93,12 +95,15 @@ beforeEach(() => {
   resetKeyStore();
   resetCache();
   requested.length = 0;
+  publisherRobots = null;
+  clearRobotsCache();
   // DNS: the publisher is public; internal.example resolves to a private address.
   setOutboundResolver(async (host) => [{ address: host === 'internal.example' ? '10.0.0.7' : '93.184.216.34', family: 4 }]);
   setOutboundFetch(async (url) => {
     requested.push(url);
     if (url === REDIRECT || url === OTHER_REDIRECT) return respond(null, 302, { location: 'https://kestrelvane.example/eiffel' }, url);
     if (url === PRIVATE_HOP || url === OTHER_PRIVATE_HOP) return respond(null, 302, { location: 'https://internal.example/admin' }, url);
+    if (url === 'https://kestrelvane.example/robots.txt' && publisherRobots !== null) return respond(publisherRobots, 200, { 'content-type': 'text/plain' }, url);
     if (url === 'https://kestrelvane.example/eiffel') return respond(PAGE, 200, { 'content-type': 'text/html' }, url);
     return respond('not found', 404, { 'content-type': 'text/plain' }, url);
   });
@@ -158,6 +163,18 @@ describe('POST /scan evidence passages', () => {
     expect(internal.evidence).toMatchObject({ status: 'blocked', passage: null });
     expect(requested).toContain(OTHER_PRIVATE_HOP);
     expect(requested).not.toContain('https://internal.example/admin');
+    // Its robots.txt is refused by the same guard, before it is requested.
+    expect(requested).not.toContain('https://internal.example/robots.txt');
+    expect(requested).toContain('https://kestrelvane.example/robots.txt');
+  }, 30_000);
+
+  it('a page the publisher\'s robots.txt disallows is never requested: not_fetched / robots', async () => {
+    publisherRobots = 'User-agent: FaultlineEvidence\nDisallow: /eiffel\n';
+    const body = await postScan('mock');
+    const [publisher] = body.verifications.c1.sources;
+    expect(publisher.evidence).toEqual({ status: 'not_fetched', reason: 'robots', passage: null, finalUri: 'https://kestrelvane.example/eiffel' });
+    expect(requested).toContain('https://kestrelvane.example/robots.txt');
+    expect(requested).not.toContain('https://kestrelvane.example/eiffel');
   }, 30_000);
 
   it('FAULTLINE_EVIDENCE_FETCH=off fetches nothing and attaches no evidence', async () => {
