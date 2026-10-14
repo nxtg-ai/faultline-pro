@@ -204,13 +204,13 @@ describe('formatGuardReport', () => {
   it('says it is advisory when no gate is set', () => {
     const out = formatGuardReport(evaluateGuard(refuted), undefined);
     expect(out).toMatch(/Advisory mode/);
-    expect(out).toMatch(/REFUTED/);
+    expect(out).toMatch(/\[!!\] CONTRADICTED/);
   });
 
   it('explains a verdict failure', () => {
     const out = formatGuardReport(evaluateGuard(refuted, 'refuted'), 'refuted');
     expect(out).toMatch(/Gate FAILED/);
-    expect(out).toMatch(/1 REFUTED/);
+    expect(out).toMatch(/1 CONTRADICTED/);
   });
 
   it('explains a degraded failure as untrustworthy rather than as a bad claim', () => {

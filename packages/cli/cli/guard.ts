@@ -21,6 +21,7 @@
 
 import type { ScanResult } from './scan.js';
 import { toClaimVerdict, isRealVerdict, type Verdict, type ClaimVerdict } from './verdict.js';
+import { auditTrail, type AuditTrail } from './audit-trail.js';
 
 /** What a `--fail-on` value gates against. */
 export type FailOn = 'refuted' | 'unsupported';
@@ -47,6 +48,10 @@ export function isFailOn(value: string): value is FailOn {
 
 export interface GuardClaim extends ClaimVerdict {
   importance: number;
+  /** The engine's own verdict word (supported, contradicted, mixed, unverified, skipped), or null when no check ran. */
+  status: string | null;
+  /** Who checked it and when, and what each source said when read. */
+  audit: AuditTrail;
 }
 
 export interface GuardReport {
@@ -67,10 +72,15 @@ export interface GuardReport {
 
 /** Build the guard's view of a scan, and decide the exit code. */
 export function evaluateGuard(result: ScanResult, failOn?: FailOn): GuardReport {
-  const claims: GuardClaim[] = (result.claims ?? []).map((c) => ({
-    ...toClaimVerdict(c.text, result.verifications?.[c.id]),
-    importance: c.importance ?? 0,
-  }));
+  const claims: GuardClaim[] = (result.claims ?? []).map((c) => {
+    const v = result.verifications?.[c.id];
+    return {
+      ...toClaimVerdict(c.text, v),
+      importance: c.importance ?? 0,
+      status: typeof v?.status === 'string' ? v.status : null,
+      audit: auditTrail(v),
+    };
+  });
 
   const uncheckedCount = claims.filter((c) => c.verdict === 'UNCHECKED').length;
   // Trust the engine's own flag first; fall back to our count so a missing
@@ -114,6 +124,22 @@ const MARK: Record<Verdict, string> = {
   UNCHECKED: '[--]',
 };
 
+/**
+ * The word a person reads for a claim: the engine's verdict, never "VERIFIED"
+ * (a supported claim is supported by the sources found, not proven; EP4
+ * Amendment 2). A claim whose check never ran reads NOT CHECKED.
+ */
+export function guardLabel(c: Pick<GuardClaim, 'verdict' | 'status'>): string {
+  if (c.verdict === 'UNCHECKED') return 'NOT CHECKED';
+  return (c.status ?? c.verdict).toUpperCase();
+}
+
+function checkedByLine(p: AuditTrail['provenance']): string | null {
+  if (!p) return null;
+  const via = p.retriever ? `, sources from ${p.retriever} at ${p.retrievedAt ?? p.verifiedAt}` : '';
+  return `checked by ${p.provider} (${p.model}) at ${p.verifiedAt}${via}`;
+}
+
 function truncate(s: string, n: number): string {
   const flat = s.replace(/\s+/g, ' ').trim();
   return flat.length <= n ? flat : `${flat.slice(0, n - 1)}…`;
@@ -133,9 +159,11 @@ export function formatGuardReport(report: GuardReport, failOn?: FailOn): string 
     lines.push('');
   } else {
     for (const c of report.claims) {
-      lines.push(`  ${MARK[c.verdict]} ${c.verdict.padEnd(11)} ${truncate(c.claim, 88)}`);
+      lines.push(`  ${MARK[c.verdict]} ${guardLabel(c).padEnd(12)} ${truncate(c.claim, 88)}`);
       if (c.note) lines.push(`       ${truncate(c.note, 96)}`);
       if (c.evidence_url) lines.push(`       source: ${c.evidence_url}`);
+      const checked = checkedByLine(c.audit.provenance);
+      if (checked) lines.push(`       ${checked}`);
       if (c.verdict === 'UNCHECKED' && c.unchecked_reason === 'provider_error') {
         lines.push('       NOT CHECKED — the provider errored. This is not a verdict.');
       }
@@ -160,7 +188,7 @@ export function formatGuardReport(report: GuardReport, failOn?: FailOn): string 
         'cannot be trusted. The gate fails closed rather than passing unchecked claims.',
     );
   } else {
-    const names = report.tripped.map((t) => t.verdict);
+    const names = report.tripped.map((t) => guardLabel(t));
     const counts = [...new Set(names)].map((v) => `${names.filter((n) => n === v).length} ${v}`);
     lines.push(`✗ Gate FAILED (--fail-on ${failOn}) — ${counts.join(', ')}.`);
   }
@@ -188,6 +216,10 @@ export function formatGuardJson(report: GuardReport, failOn?: FailOn): string {
         evidence_urls: c.evidence_urls,
         note: c.note,
         unchecked_reason: c.unchecked_reason ?? null,
+        status: c.status,
+        provenance: c.audit.provenance,
+        sources: c.audit.sources,
+        independent_evidence: c.audit.independentEvidence,
       })),
     },
     null,

@@ -1,5 +1,6 @@
 import type { ComplianceReport } from '../compliance/report_generator.js';
 import type { ScanResult } from './scan.js';
+import { auditTrail } from './audit-trail.js';
 
 export type OutputFormat = 'json' | 'markdown' | 'html' | 'sarif';
 
@@ -613,6 +614,8 @@ function renderSarifReport(data: ScanResult, options?: SarifOptions): string {
         claimText: claim?.text,
         verificationStatus: vResult.status,
         ...(confidence !== undefined && { confidence }),
+        // Who checked it and when, and what each source said when read (EP4 Amendment 2 item 6).
+        ...auditTrail(vResult),
       },
     });
   }

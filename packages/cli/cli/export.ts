@@ -12,6 +12,7 @@
 
 import type { HistoryEntry } from '../history/store.js';
 import type { Claim, VerificationResult } from '../types.js';
+import { auditTrail } from './audit-trail.js';
 
 export type ExportFormat = 'csv' | 'json' | 'ndjson';
 
@@ -54,6 +55,14 @@ const CSV_HEADERS = [
   'sources_count',
   'rule_findings_count',
   'latency_ms',
+  // Who checked it and when, and what each source said (EP4 Amendment 2 item 6). Appended, so earlier columns keep their positions.
+  'checked_by_provider',
+  'checked_by_model',
+  'verified_at',
+  'retriever',
+  'retrieved_at',
+  'evidence_json',
+  'independent_evidence_json',
 ] as const;
 
 function csvEscape(val: unknown): string {
@@ -67,6 +76,20 @@ function csvEscape(val: unknown): string {
 
 function csvRow(fields: unknown[]): string {
   return fields.map(csvEscape).join(',');
+}
+
+/** The seven audit columns for one verdict; empty when nothing was recorded. */
+function auditColumns(vr: VerificationResult | undefined): string[] {
+  const { provenance: p, sources, independentEvidence } = auditTrail(vr);
+  return [
+    p?.provider ?? '',
+    p?.model ?? '',
+    p?.verifiedAt ?? '',
+    p?.retriever ?? '',
+    p?.retrievedAt ?? '',
+    sources.length > 0 ? JSON.stringify(sources) : '',
+    independentEvidence ? JSON.stringify(independentEvidence) : '',
+  ];
 }
 
 // ── Flat scan summary (JSON / NDJSON) ─────────────────────────────────────────
@@ -140,6 +163,7 @@ export function renderCsv(entries: HistoryEntry[]): string {
         0,
         entry.findingCount,
         '',
+        '', '', '', '', '', '', '',
       ]));
       continue;
     }
@@ -161,6 +185,7 @@ export function renderCsv(entries: HistoryEntry[]): string {
         vr?.sources?.length ?? 0,
         entry.findingCount,
         '',                         // latency not stored in CLI HistoryEntry
+        ...auditColumns(vr),
       ]));
     }
   }
