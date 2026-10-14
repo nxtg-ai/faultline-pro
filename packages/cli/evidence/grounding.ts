@@ -13,9 +13,13 @@ export const GROUNDING_REDIRECT_HOST = 'vertexaisearch.cloud.google.com';
  * 2026-10-14: the dotted spelling got past an exact compare.
  */
 export function isGroundingRedirect(uri: string): boolean {
-  try {
-    return new URL(uri).hostname.toLowerCase().replace(/\.+$/, '') === GROUNDING_REDIRECT_HOST;
-  } catch {
-    return false;
+  const raw = uri.trim();
+  // Also a protocol-relative link (//host/...) and a link with no scheme (host/...).
+  const candidates = [raw, raw.startsWith('//') ? `https:${raw}` : `https://${raw}`];
+  for (const c of candidates) {
+    try {
+      if (new URL(c).hostname.toLowerCase().replace(/\.+$/, '') === GROUNDING_REDIRECT_HOST) return true;
+    } catch { /* not a URL in this form */ }
   }
+  return false;
 }

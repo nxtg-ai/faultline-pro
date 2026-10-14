@@ -11,6 +11,8 @@ import { resetCache } from '../src/store/cache.js';
 import { resetClaimIndex, getClaimIndex } from '../src/store/claims.js';
 import { resetKeyStore, getKeyStore } from '../src/store/keys.js';
 import type { FastifyInstance } from 'fastify';
+import { isGroundingRedirect } from '@nxtg/faultline/evidence/grounding.js';
+import { isGroundedVerification } from '../src/store/cache.js';
 
 const GROUNDING_URI = 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/AbC';
 const PLAIN = 'The Eiffel Tower is in Paris.';
@@ -118,5 +120,63 @@ describe('claim index is per caller and never holds Grounded Results', () => {
     const res = await get('/analytics/overview', b.key);
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body).claimCategories).toEqual([]);
+  });
+
+  // ── Seat findings on 33c1084 (seat A here, seat B on CLX9), both PASS ──────
+
+  it('CI-7. a verdict flip shows only in its own caller\'s verdictChanged, never another\'s', async () => {
+    const a = getKeyStore().create('A', ['scan']);
+    const b = getKeyStore().create('B', ['scan']);
+    const supported = result(PLAIN, { status: 'supported' });
+    const contradicted = result(PLAIN, { status: 'contradicted' });
+    mockScan.mockResolvedValueOnce(supported).mockResolvedValueOnce(supported).mockResolvedValueOnce(contradicted);
+    await scanAs(a.key, 'a first');
+    await scanAs(b.key, 'b first');
+    await scanAs(b.key, 'b second');
+    const forB = JSON.parse((await get('/claims/trending', b.key)).body).verdictChanged;
+    const forA = JSON.parse((await get('/claims/trending', a.key)).body).verdictChanged;
+    expect(forB.length).toBe(1);
+    expect(forA).toEqual([]);
+  });
+
+  it('CI-8. a scan that fails over to Gemini stores nothing, even when its verdicts carry no provenance', async () => {
+    const a = getKeyStore().create('A', ['scan']);
+    // openai first, then the chain falls back to gemini (PROVIDER_CHAIN order)
+    mockScan.mockRejectedValueOnce(new Error('openai down')).mockResolvedValueOnce(result(GROUNDED, {}, 'Google Gemini'));
+    await scanAs(a.key, 'failover input', 'openai');
+    expect(getClaimIndex().getStats(`${a.id}\u0000${a.id}`).totalClaims).toBe(0);
+  });
+
+  it.each([
+    ['provenance provider only, any case', { provenance: { provider: 'Gemini', model: 'm', verifiedAt: 'x' } }],
+    ['provenance retriever only, any case', { provenance: { provider: 'consensus', model: 'm', verifiedAt: 'x', retriever: 'Gemini-Grounding' } }],
+    ['a consensus model string naming Gemini', { provenance: { provider: 'consensus', model: 'openai:gpt+gemini:2.5', verifiedAt: 'x' } }],
+    ['webSearchQueries without Search Suggestions', { webSearchQueries: ['q'] }],
+    ['a protocol-relative grounding link', { sources: [{ title: 't', uri: '//vertexaisearch.cloud.google.com/grounding-api-redirect/X' }] }],
+    ['a grounding link with no scheme', { sources: [{ title: 't', uri: 'vertexaisearch.cloud.google.com/grounding-api-redirect/X' }] }],
+  ])('CI-9. one marker alone is enough: %s', (_name, marker) => {
+    expect(isGroundedVerification({ status: 'supported', sources: [], ...marker })).toBe(true);
+    const caller = 'k\u0000k';
+    getClaimIndex().ingest([{ id: 'c1', text: GROUNDED }], { c1: { status: 'supported', sources: [], ...marker } as never }, 's', caller, 'mock');
+    expect(getClaimIndex().search(caller, {})).toEqual([]);
+  });
+
+  it.each(['Gemini', 'GEMINI', 'Google Gemini', 'gemini-2.5-flash'])('CI-10. a result whose provider is spelled %s is not stored', (provider) => {
+    const caller = 'k\u0000k';
+    getClaimIndex().ingest([{ id: 'c1', text: PLAIN }], { c1: { status: 'supported', sources: [] } }, 's', caller, provider);
+    expect(getClaimIndex().search(caller, {})).toEqual([]);
+  });
+
+  it('CI-11. the grounding host check is not fooled by a path, and still matches other links correctly', () => {
+    expect(isGroundingRedirect('//vertexaisearch.cloud.google.com/x')).toBe(true);
+    expect(isGroundingRedirect('vertexaisearch.cloud.google.com/x')).toBe(true);
+    expect(isGroundingRedirect('https://example.org/vertexaisearch.cloud.google.com')).toBe(false);
+    expect(isGroundingRedirect('example.org/x')).toBe(false);
+  });
+
+  it('CI-12. caller strings cannot collide with another caller\'s record key', () => {
+    getClaimIndex().ingest([{ id: 'c1', text: 'a\u0000b' }], { c1: { status: 'supported', sources: [] } }, 's', 'k1\u0000k1', 'mock');
+    getClaimIndex().ingest([{ id: 'c1', text: 'b' }], { c1: { status: 'supported', sources: [] } }, 's', 'k1\u0000k1\u0000a', 'mock');
+    expect(getClaimIndex().search('k1\u0000k1', {})[0].frequency).toBe(1);
   });
 });

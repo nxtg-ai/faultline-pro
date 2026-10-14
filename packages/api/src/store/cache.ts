@@ -48,9 +48,12 @@ export function holdsGroundedResults(result: ScanResult): boolean {
  */
 export function isGroundedVerification(v: unknown): boolean {
   if (!v || typeof v !== 'object') return false;
-  const prov = (v as { provenance?: { retriever?: unknown; provider?: unknown } }).provenance;
-  if (prov?.retriever === 'gemini-grounding' || prov?.provider === 'gemini') return true;
-  if ((v as { searchEntryPoint?: unknown }).searchEntryPoint !== undefined) return true;
+  const prov = (v as { provenance?: { retriever?: unknown; provider?: unknown; model?: unknown } }).provenance;
+  const names = (x: unknown) => typeof x === 'string' && /gemini/i.test(x);
+  // Any spelling: provider, retriever or a (consensus) model string naming Gemini.
+  if (names(prov?.retriever) || names(prov?.provider) || names(prov?.model)) return true;
+  const g = v as { searchEntryPoint?: unknown; webSearchQueries?: unknown };
+  if (g.searchEntryPoint !== undefined || g.webSearchQueries !== undefined) return true;
   const sources = (v as { sources?: Array<{ uri?: unknown }> }).sources;
   return Array.isArray(sources) && sources.some((s) => typeof s?.uri === 'string' && isGroundingRedirect(s.uri));
 }

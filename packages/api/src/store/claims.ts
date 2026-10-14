@@ -90,13 +90,15 @@ class ClaimIndex {
         throw new InvalidVerdictError(`claim ${claim.id}: ${problem}`);
       }
     }
-    if (caller === null || provider === 'gemini') return;
+    // Any Gemini spelling ("gemini", "Gemini", "Google Gemini", a model id): the whole result is grounded.
+    if (caller === null || /gemini/i.test(provider ?? '')) return;
     const now = new Date().toISOString();
 
     for (const claim of claims) {
       if (isGroundedVerification(verifications[claim.id])) continue;
       const normalized = claim.text.trim().toLowerCase();
-      const key = `${caller}\u0000${normalized}`;
+      // Unambiguous for any caller or claim text (a NUL in either cannot shift the split).
+      const key = JSON.stringify([caller, normalized]);
       const status = verifications[claim.id]?.status ?? 'unverified';
       const rawSources = verifications[claim.id]?.sources ?? [];
       const claimType = claim.type ?? 'fact';
