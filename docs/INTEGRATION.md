@@ -61,6 +61,29 @@ Content-Type: application/json
 
 **Permission values**: `scan` `report` `upload` `admin` `pro`
 
+**Claim cap and billing fields.** A non-admin key carries `claimCap`, the number of claims it may have verified per calendar month (UTC), and `stripeCustomerId` (`cus_...`), the Stripe customer its metered claims are reported to. An admin sets both at issuance (`POST /keys`) or later with `PATCH /keys/:id`; `null` clears a field. A key with no `claimCap` is refused (`402 claim_cap_reached`, `cap: 0`) unless the server sets a default cap. The server key and admin keys are not metered.
+
+```http
+POST /keys
+x-api-key: {admin-key}
+Content-Type: application/json
+
+{ "name": "acme-prod", "permissions": ["scan"], "claimCap": 5000, "stripeCustomerId": "cus_ABC123" }
+```
+
+### Claim metering
+
+The billable unit is **one claim that received a verdict**: `supported`, `contradicted`, `mixed` or `unverified`. A claim whose check could not run (`apiError: true`), a failed extraction, a timeout or a provider call that failed and was retried elsewhere does not count. A cached verdict delivered to you counts like a fresh one.
+
+Before any verification work a route reserves the most claims it may verify (a `/scan` reserves its verify cap, 8, because the claim count is unknown before extraction; `/scan/batch` reserves 8 per text; `/scan/diff` 16; a full scan reserves its estimate's fact claims, and the estimate itself reserves nothing). If `used + reserved + requested` would exceed your cap the request is refused before any provider is called:
+
+```json
+HTTP/1.1 402 Payment Required
+{ "error": "claim_cap_reached", "cap": 5000, "used": 4996, "remaining": 4 }
+```
+
+After the run the claims that got a verdict are counted and the unused part of the reservation is released, so a 3-claim text costs 3. Routes that queue work (`POST /jobs`, `POST /schedules`, `POST /schedules/:id/trigger`, `POST /queue/scans`, `POST /scan/bulk`) answer the same `402` when the key cannot cover one run, and each run reserves again when it executes; a run over the cap fails with `claim_cap_reached` and calls no provider. Read your position from `GET /usage` (`claims`, below).
+
 ---
 
 ## 2. Quick Start
@@ -481,6 +504,7 @@ All errors return JSON with this shape:
 | `404` | `NOT_FOUND` | Resource not found |
 | `429` | `RATE_LIMIT_EXCEEDED` | Too many requests for this key |
 | `500` | `INTERNAL_ERROR` | Unexpected server error |
+| `402` | `claim_cap_reached` | Your key's monthly claim cap cannot cover this request. Body `{"error":"claim_cap_reached","cap":N,"used":N,"remaining":N}`. Nothing was verified. See §1 Claim metering. |
 | `502` | `extraction_failed` | Claim extraction failed at the provider (body `{"error":"extraction_failed","reason":"rate_limited"\|"provider_unavailable"\|"timeout"\|"invalid_output"\|"provider_error"}`). Nothing was checked; retry. `/scan/stream` sends the same fields in its `{"type":"error"}` event. Before 2026-10-13 a failed extraction was hidden and the scan ran on one synthetic claim per sentence. |
 | `502` | `invalid_verdict` | `POST /scan` only. The result carried a verdict status outside the stored allowlist (`supported`, `contradicted`, `mixed`, `unverified`, plus `skipped` for a claim not sent to verification), a source without a string `uri`, or an `overallRisk` outside `low`/`medium`/`high`/`critical`. Body `{"error":"An unexpected error occurred.","code":"invalid_verdict"}`. Nothing was stored or cached. Inside a scan the engine already replaces a malformed verdict with `unverified` plus `apiError: true`, `apiErrorReason: "provider_error"`, so this status means a value got past the engine. |
 | `503` | `SERVICE_UNAVAILABLE` | No providers configured, or all circuit-broken |
@@ -761,7 +785,7 @@ These are available if your UI needs them.
 | `GET /status.json` | None | Machine-readable uptime, incidents, stats |
 | `GET /metrics` | Admin | Prometheus-format metrics (admin key only) |
 | `GET /dashboard` | Admin | Scan counts, risk distribution, provider status |
-| `GET /usage` | API key | Per-day scan counts for your key, and `quota` (monthly scan cap position). Admin keys also get `providerBudget` (the fleet provider-spend position) |
+| `GET /usage` | API key | Per-day scan counts for your key, and `quota` (monthly scan cap position). A metered key also gets `claims` `{period, cap, used, reserved, remaining, byVerdict: {supported, contradicted, mixed, unverified}}`, its claim-meter position this month (UTC). Admin keys also get `providerBudget` (the fleet provider-spend position) and `claimMeter` (fleet claim totals for the month plus `sync`: Stripe meter-event sync state, `meterSyncLagRows` and `oldestUnsentAgeSeconds`) |
 | `POST /critique` | API key | Critique plus improved prompt for failed claims. Makes a paid LLM call, so it is rate limited and covered by the provider-spend cap and ledger. `provider` must be one of the `/scan` providers (unknown name: `400`). See `docs/provider-spend-cap.md` |
 | `GET /claims` | API key | Your own claim database (searchable, filterable); Gemini-grounded verdicts are not stored |
 | `GET /claims/trending` | API key | Trending + emerging claims, your own |
