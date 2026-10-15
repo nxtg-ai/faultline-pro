@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { requireApiKey } from '../plugins/auth.js';
+import { requireApiKey, isAdminRequest } from '../plugins/auth.js';
 import { getScanQueue, tierToPriority } from '../store/scan-queue.js';
 import { getKeyStore } from '../store/keys.js';
 import { ownsOrAdmin } from '../lib/ownership.js';
@@ -161,11 +161,12 @@ export async function queueRoutes(fastify: FastifyInstance): Promise<void> {
         security: [],
       },
     },
-    async (_request, reply) => {
+    async (request, reply) => {
       const stats = getScanQueue().getStats();
       const concurrency = Math.max(1, Number(process.env.FAULTLINE_QUEUE_CONCURRENCY ?? 3));
       return reply.send({
-        ...stats,
+        // Queue sizes are fleet counters: admin only (emma-soul ruling Dx3 e2909e46, item 4).
+        ...(isAdminRequest(request) ? stats : {}),
         maxConcurrency: concurrency,
         priorityLevels: [
           { priority: 0, tier: 'admin',   description: 'Highest priority — processed first' },

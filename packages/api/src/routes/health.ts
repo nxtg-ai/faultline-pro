@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getKeyStore } from '../store/keys.js';
+import { isAdminRequest } from '../plugins/auth.js';
 import { getAuditLogger } from '../store/audit.js';
 import { getRateLimiter } from '../store/ratelimit.js';
 import { getUsageMeter } from '../store/usage.js';
@@ -26,12 +27,14 @@ export interface StatusPayload {
   uptimeFormatted: string;
   overallStatus: 'operational' | 'degraded';
   providers: ProviderStatus[];
-  responseTimes: { label: string; p50Ms: number; count: number }[];
+  responseTimes: { label: string; p50Ms: number; count?: number }[];
   incidents: { timestamp: string; type: string; description: string }[];
-  scanStats: { today: number; week: number; month: number };
+  /** Scan volume: admin only (fleet size is not public). */
+  scanStats?: { today: number; week: number; month: number };
 }
 
-function buildStatusPayload(): StatusPayload {
+/** `admin` false strips fleet counters: scan volume and per-bucket request counts. */
+function buildStatusPayload(admin: boolean): StatusPayload {
   const uptimeMs = getUptimeMs();
   const auditEntries = getAuditLogger().getEntries();
   const dashboard = getAnalyticsStore().getDashboard();
@@ -54,9 +57,9 @@ function buildStatusPayload(): StatusPayload {
     uptimeFormatted: formatUptime(uptimeMs),
     overallStatus,
     providers,
-    responseTimes,
+    responseTimes: admin ? responseTimes : responseTimes.map(({ label, p50Ms }) => ({ label, p50Ms })),
     incidents,
-    scanStats: dashboard.scans,
+    ...(admin ? { scanStats: dashboard.scans } : {}),
   };
 }
 
@@ -229,9 +232,9 @@ function render(d){
 
   // Stats
   document.getElementById('uptime').textContent = d.uptimeFormatted ?? '—';
-  document.getElementById('scans-today').textContent  = (d.scanStats?.today  ?? 0).toLocaleString();
-  document.getElementById('scans-week').textContent   = (d.scanStats?.week   ?? 0).toLocaleString();
-  document.getElementById('scans-month').textContent  = (d.scanStats?.month  ?? 0).toLocaleString();
+  document.getElementById('scans-today').textContent  = (d.scanStats ? d.scanStats.today.toLocaleString() : '\u2014');
+  document.getElementById('scans-week').textContent   = (d.scanStats ? d.scanStats.week.toLocaleString() : '\u2014');
+  document.getElementById('scans-month').textContent  = (d.scanStats ? d.scanStats.month.toLocaleString() : '\u2014');
 
   // Providers
   const pg = document.getElementById('providers');
@@ -247,7 +250,7 @@ function render(d){
   }).join('');
 
   // Chart
-  const hasData = d.responseTimes && d.responseTimes.some(b => b.count > 0);
+  const hasData = d.responseTimes && d.responseTimes.some(b => (b.count ?? (b.p50Ms > 0 ? 1 : 0)) > 0);
   const ca = document.getElementById('chart-area');
   if(hasData){
     const peak = Math.max(...d.responseTimes.map(b => b.p50Ms));
@@ -309,8 +312,9 @@ export function engineCommit(): string | null {
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 export async function healthRoutes(fastify: FastifyInstance): Promise<void> {
-  fastify.get('/health', { config: { access: 'public' }, schema: { tags: ['Monitoring'], summary: 'Basic health check — subsystem and provider status' } }, async (_request, _reply) => {
+  fastify.get('/health', { config: { access: 'public' }, schema: { tags: ['Monitoring'], summary: 'Basic health check — subsystem and provider status' } }, async (request, _reply) => {
     const keyCount = getKeyStore().size;
+    const admin = isAdminRequest(request);
     const providers = {
       gemini:     Boolean(process.env.GEMINI_API_KEY),
       openai:     Boolean(process.env.OPENAI_API_KEY),
@@ -325,21 +329,23 @@ export async function healthRoutes(fastify: FastifyInstance): Promise<void> {
       stage: RELEASE_STAGE,
       commit: engineCommit(),
       subsystems: {
-        keyStore:   { status: 'ok', activeKeys: keyCount },
+        keyStore:   { status: 'ok', ...(admin ? { activeKeys: keyCount } : {}) },
         scanEngine: { status: anyProvider ? 'ok' : 'degraded', providersConfigured: Object.values(providers).filter(Boolean).length },
       },
       providers,
     };
   });
 
-  fastify.get('/health/deep', { config: { access: 'public' }, schema: { tags: ['Monitoring'], summary: 'Deep health check — all subsystems with entry counts and analytics' } }, async (_request, _reply) => {
+  fastify.get('/health/deep', { config: { access: 'public' }, schema: { tags: ['Monitoring'], summary: 'Deep health check — all subsystems with entry counts and analytics' } }, async (request, _reply) => {
     const dashboard = getAnalyticsStore().getDashboard();
+    // Fleet counters for admin only; a no-key or customer caller gets the statuses.
+    const admin = isAdminRequest(request);
     const subsystems = {
-      keyStore:   { status: 'ok' as const, activeKeys: getKeyStore().size },
-      auditLog:   { status: 'ok' as const, entries: getAuditLogger().getEntries().length },
+      keyStore:   { status: 'ok' as const, ...(admin ? { activeKeys: getKeyStore().size } : {}) },
+      auditLog:   { status: 'ok' as const, ...(admin ? { entries: getAuditLogger().getEntries().length } : {}) },
       rateLimiter:{ status: 'ok' as const },
       usageMeter: { status: 'ok' as const },
-      analytics:  { status: 'ok' as const, totalScans: dashboard.scans.month },
+      analytics:  { status: 'ok' as const, ...(admin ? { totalScans: dashboard.scans.month } : {}) },
     };
     const allOk = Object.values(subsystems).every((s) => s.status === 'ok');
     const providers = {
@@ -357,8 +363,8 @@ export async function healthRoutes(fastify: FastifyInstance): Promise<void> {
   });
 
   // Machine-readable status JSON (polled by the status page)
-  fastify.get('/status.json', { config: { access: 'public' }, schema: { tags: ['Monitoring'], summary: 'Machine-readable status payload (JSON)' } }, async (_request, _reply) => {
-    return buildStatusPayload();
+  fastify.get('/status.json', { config: { access: 'public' }, schema: { tags: ['Monitoring'], summary: 'Machine-readable status payload (JSON)' } }, async (request, _reply) => {
+    return buildStatusPayload(isAdminRequest(request));
   });
 
   // Human-readable status page (auto-refreshes via JS)

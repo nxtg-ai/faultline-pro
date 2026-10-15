@@ -175,7 +175,7 @@ describe('GET /queue/status', () => {
   });
 
   it('includes expected stat fields', async () => {
-    const res = await server.inject({ method: 'GET', url: '/queue/status' });
+    const res = await server.inject({ method: 'GET', url: '/queue/status', headers: { 'x-api-key': 'admin-secret' } });
     const body = JSON.parse(res.body);
     expect(body).toHaveProperty('pending');
     expect(body).toHaveProperty('processing');
@@ -264,7 +264,7 @@ describe('POST /queue/scans', () => {
       headers: { 'x-api-key': 'admin-secret' },
       payload: { text: 'hello world' },
     });
-    const statsRes = await server.inject({ method: 'GET', url: '/queue/status' });
+    const statsRes = await server.inject({ method: 'GET', url: '/queue/status', headers: { 'x-api-key': 'admin-secret' } });
     const stats = JSON.parse(statsRes.body);
     expect(stats.total).toBeGreaterThanOrEqual(1);
   });

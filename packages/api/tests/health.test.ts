@@ -34,7 +34,7 @@ describe('GET /health — subsystem info', () => {
   });
 
   it('H2. /health subsystems.keyStore.activeKeys is a non-negative integer', async () => {
-    const res = await server.inject({ method: 'GET', url: '/health' });
+    const res = await server.inject({ method: 'GET', url: '/health', headers: { 'x-api-key': 'test-key' } });
     const body = JSON.parse(res.body);
     expect(typeof body.subsystems.keyStore.activeKeys).toBe('number');
     expect(body.subsystems.keyStore.activeKeys).toBeGreaterThanOrEqual(0);

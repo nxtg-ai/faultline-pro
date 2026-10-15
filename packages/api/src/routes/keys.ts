@@ -1,5 +1,6 @@
 import { mayIssueKey, CUSTOMER_KEYS_CLOSED } from '../lib/key-issuance.js';
-import type { FastifyInstance } from 'fastify';
+import { getAuditLogger } from '../store/audit.js';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { requireAdmin } from '../plugins/auth.js';
 import { esc } from '../lib/html.js';
 import { getKeyStore, ROTATION_GRACE_HOURS } from '../store/keys.js';
@@ -292,6 +293,25 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
+  /**
+   * Reviving a key (re-enabling it, or changing or clearing its expiry) is an
+   * admin action and leaves an audit row naming the key and how, so a key a
+   * customer lost cannot come back unseen (emma-soul ruling Dx3 e2909e46, item 3).
+   */
+  function auditRevival(request: FastifyRequest, keyIds: string[], how: string): void {
+    for (const id of keyIds) {
+      getAuditLogger().log({
+        timestamp: new Date().toISOString(),
+        keyId: request.keyId ?? 'unknown',
+        endpoint: '/keys/revival',
+        method: request.method,
+        statusCode: 200,
+        latencyMs: 0,
+        note: `key revived: ${id} (${how})`,
+      });
+    }
+  }
+
   // ── Bulk disable / enable ──────────────────────────────────────────────────
 
   const BULK_DISABLE_BODY_SCHEMA = {
@@ -370,6 +390,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       const changed = store.bulkEnable(ids);
+      auditRevival(request, changed, 'bulk-enable');
       return reply.status(200).send({ enabled: changed.length, ids: changed });
     },
   );
@@ -407,6 +428,9 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
       const store = getKeyStore();
       const updated = store.update(request.params.id, request.body);
       if (!updated) return reply.status(404).send({ error: 'Key not found.' });
+      if (request.body.expiresAt !== undefined) {
+        auditRevival(request, [updated.id], request.body.expiresAt === null ? 'expiresAt cleared' : `expiresAt set to ${request.body.expiresAt}`);
+      }
       const { key: _key, previousKey: _prev, ...rest } = updated;
       return reply.status(200).send(rest);
     },
@@ -493,6 +517,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
       const store = getKeyStore();
       const ok = store.enable(request.params.id);
       if (!ok) return reply.status(404).send({ error: 'Key not found.' });
+      auditRevival(request, [request.params.id], 'enable');
       const entry = store.validateById(request.params.id);
       return reply.status(200).send({ id: entry!.id, name: entry!.name, disabled: false });
     },

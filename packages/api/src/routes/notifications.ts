@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { requireApiKey, isAdminKeyId, scanHistoryKeyScope } from '../plugins/auth.js';
+import { requireApiKey, isAdminKeyId, scanHistoryKeyScope, isAdminRequest } from '../plugins/auth.js';
 import { ownedOnly, ownsOrAdmin } from '../lib/ownership.js';
 import {
   getNotificationStore,
@@ -286,11 +286,13 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
         security: [],
       },
     },
-    async (_request, reply) => {
+    async (request, reply) => {
       const evtTypes = ALL_EVENT_TYPES;
-      const prefsCount = getNotificationStore().listPrefs().length;
-      const recentHistory = getNotificationStore().getHistory(undefined, 10);
-      const deliveredCount = recentHistory.filter(r => r.delivered).length;
+      // Subscriber and delivery counts are fleet counters: admin only (emma-soul ruling Dx3 e2909e46, item 4).
+      const admin = isAdminRequest(request);
+      const prefsCount = admin ? String(getNotificationStore().listPrefs().length) : '\u2014';
+      const recentHistory = admin ? getNotificationStore().getHistory(undefined, 10) : [];
+      const deliveredCount = admin ? String(recentHistory.filter(r => r.delivered).length) : '\u2014';
 
       reply.header('Content-Type', 'text/html; charset=utf-8');
       return reply.send(`<!DOCTYPE html>

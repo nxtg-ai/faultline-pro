@@ -64,8 +64,9 @@ A change is not done until, in the same commit or PR: `CHANGELOG.md` `[Unrelease
 **Reopen checklist** (all before `FAULTLINE_CUSTOMER_KEYS=on`):
 1. Two PASS seats on the tenancy change, and emma-soul's ruling.
 2. The route-table test green on the deployed commit, with no route added since that lacks a seed or probe it needs.
-3. Decide the key-revival LOW (seat on b5fa978): a key disabled while issuance was closed can be re-enabled with `PATCH /keys/:id/enable`, and `PATCH /keys/:id` with `expiresAt: null` revives an expired key. Either is a way to bring back a non-admin key without issuing one. Decide whether those stay open, then reopen.
-4. Decide the anonymous aggregate counters (route audit LOW): `GET /health/deep`, `/queue/status` and `/notifications` answer with no key and show fleet counts (active keys, audit entries, monthly scans, queue sizes, configured notification keys). They are on `PUBLIC_ROUTES` under their own heading; move them to `admin` or strip the counts if customers should not see fleet size.
+3. Key revival (DONE, emma-soul ruling Dx3 e2909e46): `PATCH /keys/:id/enable`, `POST /keys/bulk-enable` and an `expiresAt` change on `PATCH /keys/:id` stay open, admin-only, and each writes an audit row `key revived: <id> (<how>)` (`tests/key-reopen-conditions.test.ts`).
+4. Fleet counters (DONE, same ruling): `/health`, `/health/deep`, `/status.json` (and the `/status` page), `/queue/status` and `/notifications` keep their statuses for everyone and show counts (active keys, audit entries, scan volume, request counts, queue sizes, notification counts) only to a caller sending an admin key. A customer key gets the stripped view. Probe with no key to check.
+5. Then set `FAULTLINE_CUSTOMER_KEYS=on` (Fly secret via `fly-ops.yml`), run the production two-key canary (A creates through every per-key route, B reads every per-key route and aggregate), revoke both keys, and post counts and the commit. Any cross-key result: set the flag off at once and tell emma-soul.
 
 ## Live probes (zero or near-zero spend)
 

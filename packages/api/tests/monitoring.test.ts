@@ -63,14 +63,14 @@ describe('Monitoring & Health Dashboard', () => {
   });
 
   it('subsystems.keyStore has activeKeys as number', async () => {
-    const res = await server.inject({ method: 'GET', url: '/health/deep' });
+    const res = await server.inject({ method: 'GET', url: '/health/deep', headers: { 'x-api-key': 'admin-secret' } });
     const body = JSON.parse(res.body);
     expect(body.subsystems.keyStore).toBeDefined();
     expect(typeof body.subsystems.keyStore.activeKeys).toBe('number');
   });
 
   it('subsystems.auditLog has entries as number', async () => {
-    const res = await server.inject({ method: 'GET', url: '/health/deep' });
+    const res = await server.inject({ method: 'GET', url: '/health/deep', headers: { 'x-api-key': 'admin-secret' } });
     const body = JSON.parse(res.body);
     expect(body.subsystems.auditLog).toBeDefined();
     expect(typeof body.subsystems.auditLog.entries).toBe('number');
@@ -84,7 +84,7 @@ describe('Monitoring & Health Dashboard', () => {
   });
 
   it('subsystems.analytics has totalScans as number', async () => {
-    const res = await server.inject({ method: 'GET', url: '/health/deep' });
+    const res = await server.inject({ method: 'GET', url: '/health/deep', headers: { 'x-api-key': 'admin-secret' } });
     const body = JSON.parse(res.body);
     expect(body.subsystems.analytics).toBeDefined();
     expect(typeof body.subsystems.analytics.totalScans).toBe('number');

@@ -89,6 +89,21 @@ export async function requireAdmin(request: FastifyRequest, reply: FastifyReply)
 }
 
 /**
+ * True when a request on a public route carries an admin key (the server's
+ * FAULTLINE_API_KEY or a keystore key with 'admin'). Public routes run no key
+ * check, so this reads the header itself. Used to keep fleet counters (key
+ * count, scan volume, queue and notification sizes) for admin only: a customer
+ * must not see fleet size (emma-soul ruling Dx3 e2909e46, item 4).
+ */
+export function isAdminRequest(request: FastifyRequest): boolean {
+  const providedKey = request.headers['x-api-key'];
+  if (typeof providedKey !== 'string' || providedKey === '') return false;
+  const configuredKey = process.env.FAULTLINE_API_KEY;
+  if (configuredKey && safeEqual(providedKey, configuredKey)) return true;
+  return getKeyStore().validateKey(providedKey)?.permissions.includes('admin') ?? false;
+}
+
+/**
  * Resolves the tenantId for a request's keyId.
  * Returns undefined for admin keys ('admin'), missing keyIds, or keys not
  * associated with any tenant.

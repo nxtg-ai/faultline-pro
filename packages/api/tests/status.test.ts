@@ -201,8 +201,10 @@ describe('GET /status.json', () => {
     expect(res.headers['content-type']).toContain('application/json');
   });
 
-  it('response has all required top-level fields', async () => {
-    const res = await server.inject({ method: 'GET', url: '/status.json' });
+  it('response has all required top-level fields (scanStats for admin only)', async () => {
+    process.env.FAULTLINE_API_KEY = 'status-admin';
+    const res = await server.inject({ method: 'GET', url: '/status.json', headers: { 'x-api-key': 'status-admin' } });
+    delete process.env.FAULTLINE_API_KEY;
     const body = JSON.parse(res.body);
     expect(body).toHaveProperty('generatedAt');
     expect(body).toHaveProperty('uptimeMs');
