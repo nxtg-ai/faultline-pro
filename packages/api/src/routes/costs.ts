@@ -73,7 +73,8 @@ export async function costsRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request, reply) => {
       const days = parseInt(request.query.days ?? '30', 10);
-      const result = getCostStore().getPercentiles(isNaN(days) || days <= 0 ? 30 : days, request.query.tier);
+      // A non-admin key sees percentiles over its own scans only (emma-soul seat on 914d85d, F1).
+      const result = getCostStore().getPercentiles(isNaN(days) || days <= 0 ? 30 : days, request.query.tier, scanHistoryKeyScope(request));
       return reply.status(200).send(result);
     },
   );

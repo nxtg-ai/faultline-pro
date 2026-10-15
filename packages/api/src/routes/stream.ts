@@ -206,7 +206,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
           tier: resolveTierFromRequest(keyId, request.headers['x-user-tier']),
           latencyMs: Date.now() - startTime,
         });
-        getCostStore().recordManaged(costEvent);
+        getCostStore().recordManaged(costEvent, keyId);
         emitScanCostEvent(costEvent);
         appendScanCostLog(costEvent);
         recordProviderSpend(costEvent); // A-110 item 1 — append-only provider-spend ledger
@@ -321,7 +321,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
           tier: resolveTierFromRequest(keyId, request.headers['x-user-tier']),
           latencyMs: Date.now() - startTime,
         });
-        getCostStore().recordManaged(costEvent);
+        getCostStore().recordManaged(costEvent, keyId);
         emitScanCostEvent(costEvent);
         appendScanCostLog(costEvent);
         recordProviderSpend(costEvent); // A-110 item 1 — append-only provider-spend ledger

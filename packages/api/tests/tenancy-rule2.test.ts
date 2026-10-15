@@ -243,6 +243,26 @@ describe('M5 approvals on a scanId returned by POST /scan (codex seat on f509bb6
   });
 });
 
+describe('aggregates count only the caller (emma-soul seat on 914d85d, F1 and F2)', () => {
+  it('F1: /costs/percentiles counts only the caller\'s scans; admin counts every key', async () => {
+    for (let i = 0; i < 3; i++) {
+      expect((await as(keyA.key, 'POST', '/scan', { text: `Percentile scan ${i}: the Eiffel Tower is in Paris.`, provider: 'mock' })).statusCode).toBe(200);
+    }
+    expect(JSON.parse((await as(keyB.key, 'GET', '/costs/percentiles')).body).count).toBe(0);
+    expect(JSON.parse((await as(keyA.key, 'GET', '/costs/percentiles')).body).count).toBe(3);
+    expect(JSON.parse((await as(ADMIN, 'GET', '/costs/percentiles')).body).count).toBe(3);
+  });
+
+  it('F2: /analytics/overview shows the fleet-wide cache stats to admin only', async () => {
+    await as(keyA.key, 'POST', '/scan', { text: 'Cache scan: the Eiffel Tower is in Paris.', provider: 'mock' });
+    const asB = JSON.parse((await as(keyB.key, 'GET', '/analytics/overview')).body);
+    expect(asB).not.toHaveProperty('cacheStats');
+    expect(asB.summary).not.toHaveProperty('cacheHitRate');
+    const asAdmin = JSON.parse((await as(ADMIN, 'GET', '/analytics/overview')).body);
+    expect(asAdmin.cacheStats).toMatchObject({ misses: expect.any(Number) });
+  });
+});
+
 describe('M6 notification history filters are admin-only', () => {
   it('M6: a non-admin key cannot filter by tenant or by another key', async () => {
     expect((await as(keyB.key, 'GET', '/notifications/history?tenantId=t-1')).statusCode).toBe(403);

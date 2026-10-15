@@ -196,6 +196,60 @@ async function crossKeySweep(app: FastifyInstance, rows: RouteRow[], a: { id: st
 }
 
 
+/** Leaf path -> value of a JSON body; a non-JSON body is one leaf. */
+function flatten(body: string): Map<string, string> {
+  const out = new Map<string, string>();
+  let parsed: unknown;
+  try { parsed = JSON.parse(body); } catch { out.set('$body', body); return out; }
+  const walk = (v: unknown, path: string): void => {
+    if (v && typeof v === 'object') {
+      const entries = Array.isArray(v) ? v.map((x, i) => [String(i), x] as const) : Object.entries(v);
+      out.set(`${path}#size`, String(entries.length));
+      for (const [k, x] of entries) walk(x, `${path}.${k}`);
+    } else out.set(path, JSON.stringify(v));
+  };
+  walk(parsed, '$');
+  return out;
+}
+
+const changed = (x: Map<string, string>, y: Map<string, string>): Set<string> =>
+  new Set([...new Set([...x.keys(), ...y.keys()])].filter((k) => x.get(k) !== y.get(k)));
+
+/**
+ * Differential arm (emma-soul seat on 914d85d): B reads every parameterless keyed
+ * GET twice (the control round marks fields that move on their own, such as clocks
+ * and B's own counters), A then scans and seeds, and B reads again. Any other field
+ * that moved was moved by A: an aggregate that counts another key's activity.
+ */
+async function differentialSweep(app: FastifyInstance, rows: RouteRow[], a: { id: string; key: string }, b: { id: string; key: string }) {
+  const reads = rows.filter((r) => (r.access === 'owner' || r.access === 'key') && r.method === 'GET' && !hasParams(r.url));
+  const round = async () => {
+    const snap = new Map<string, Map<string, string>>();
+    for (const r of reads) {
+      const res = await inject(app, b.key, 'GET', r.url);
+      if (res.statusCode < 300) snap.set(r.url, flatten(res.body));
+    }
+    return snap;
+  };
+  const r1 = await round();
+  const r2 = await round();
+  for (let i = 0; i < 3; i++) {
+    await inject(app, a.key, 'POST', '/scan', { text: `${CANARY} differential scan ${i}: the Eiffel Tower is in Paris.`, provider: 'mock' });
+  }
+  await seed(app, rows, a, new Set());
+  const r3 = await round();
+  const violations: Violation[] = [];
+  for (const [url, after] of r3) {
+    const before = r2.get(url);
+    const first = r1.get(url);
+    if (!before || !first) continue;
+    const noisy = changed(first, before);
+    const moved = [...changed(before, after)].filter((k) => !noisy.has(k));
+    if (moved.length > 0) violations.push({ route: `GET ${url}`, reason: `moved after A acted: ${moved.slice(0, 5).join(', ')}` });
+  }
+  return { violations, read: reads.length, compared: r3.size };
+}
+
 /** Non-public routes that answer something other than 401/403 with no key. */
 async function noKeyViolations(app: FastifyInstance, rows: RouteRow[]): Promise<string[]> {
   const open: string[] = [];
@@ -299,6 +353,22 @@ describe('route table: cross-key sweep', () => {
     // A's objects survived B's sweep.
     expect(getScanQueue().get(queued.id)?.status).toBe('pending');
     expect(getTemplateStore().list().filter((t) => t.keyId === keyA.id).length).toBeGreaterThan(0);
+  });
+
+  it('differential: no keyed GET moves for key B when key A acts (aggregate leaks)', async () => {
+    await boot();
+    const { violations, read, compared } = await differentialSweep(app, rows, keyA, keyB);
+    expect(read).toBeGreaterThanOrEqual(30);
+    expect(compared).toBeGreaterThanOrEqual(25);
+    expect(violations).toEqual([]);
+  });
+
+  it('red control: the differential arm flags a route that counts every key', async () => {
+    await boot((f) => {
+      f.get('/zz-fleet-count', { config: { access: 'key' } }, async () => ({ templates: getTemplateStore().list().length }));
+    });
+    const { violations } = await differentialSweep(app, rows, keyA, keyB);
+    expect(violations.map((v) => v.route)).toContain('GET /zz-fleet-count');
   });
 
   it('red control: the sweep flags a deliberately unguarded data route', async () => {

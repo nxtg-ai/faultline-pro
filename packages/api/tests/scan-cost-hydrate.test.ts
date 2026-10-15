@@ -148,7 +148,8 @@ describe('GET /costs/percentiles', () => {
     const { getKeyStore } = await import('../src/store/keys.js');
     const f = Fastify();
     await f.register(costsRoutes);
-    const key = getKeyStore().create('pct-test');
+    // Hydrated events carry no owner key, so they count for admin only (emma-soul seat on 914d85d, F1).
+    const key = getKeyStore().create('pct-test', ['admin', 'scan']);
     return { f, key: key.key };
   }
 

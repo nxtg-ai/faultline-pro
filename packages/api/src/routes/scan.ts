@@ -231,7 +231,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
             tier: resolveTier(keyId),
             latencyMs: Date.now() - startTime,
           });
-          getCostStore().recordManaged(costEvent);
+          getCostStore().recordManaged(costEvent, keyId);
           emitScanCostEvent(costEvent);
           appendScanCostLog(costEvent);
           recordProviderSpend(costEvent); // A-110 item 1 — append-only provider-spend ledger
