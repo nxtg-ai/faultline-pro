@@ -1,6 +1,7 @@
 import { apiEvidenceOptions, apiIndependentEvidenceOptions } from '../lib/evidence.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { extractForFullScan, verifyFullScan, type FullScanResult } from '@nxtg/faultline/cli/scan.js';
+import { billableVerdictCount } from '@nxtg/faultline/lib/verdict-guard.js';
 import { partitionForFullScan } from '@nxtg/faultline/cli/full-scan.js';
 import { captureUsage, type UsageLeg } from '@nxtg/faultline/lib/usage-sink.js';
 import { requireApiKey } from '../plugins/auth.js';
@@ -158,6 +159,8 @@ interface FullScanCostInput {
   claimCount: number;
   tier: ManagedScanCostEvent['tier'];
   latencyMs: number;
+  /** Claims in this step and how many got a provider verdict (the cost log's per-claim counts). */
+  claims: { extracted: number; verified: number };
 }
 
 /**
@@ -221,6 +224,7 @@ async function runFullScanJob(store: FullScanJobStore, job: FullScanJob): Promis
     claimCount: outcome.ok ? outcome.value.verification.verifiedClaims : job.verdicts.filter(Boolean).length,
     tier: job.tier,
     latencyMs: Date.now() - startedAt,
+    claims: { extracted: job.verdicts.length, verified: billableVerdictCount(job.verdicts) },
   });
   if (outcome.ok === false) {
     store.finish(job, 'failed');
@@ -269,6 +273,7 @@ export async function fullScanRoutes(fastify: FastifyInstance): Promise<void> {
         claimCount: 0,
         tier: resolveEntitledTier(keyId, request.headers['x-user-tier']),
         latencyMs: Date.now() - startedAt,
+        claims: { extracted: outcome.ok ? outcome.value.claims.length : 0, verified: 0 },
       });
       if (outcome.ok === false) {
         if (isMissingProviderKey(outcome.error)) {

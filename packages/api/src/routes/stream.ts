@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { billableVerdictCount } from '@nxtg/faultline/lib/verdict-guard.js';
 import type { PipelineConfig } from '@nxtg/faultline/cli/scan.js';
 import { getCostStore, emitScanCostEvent, appendScanCostLog, resolveTierFromRequest, buildManagedCostEvent } from '../store/costs.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
@@ -205,6 +206,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
           claimCount,
           tier: resolveTierFromRequest(keyId, request.headers['x-user-tier']),
           latencyMs: Date.now() - startTime,
+          claims: { extracted: claimCount, verified: billableVerdictCount(result.verifications) },
         });
         getCostStore().recordManaged(costEvent, keyId);
         emitScanCostEvent(costEvent);
@@ -320,6 +322,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
           claimCount,
           tier: resolveTierFromRequest(keyId, request.headers['x-user-tier']),
           latencyMs: Date.now() - startTime,
+          claims: { extracted: claimCount, verified: billableVerdictCount(result.verifications) },
         });
         getCostStore().recordManaged(costEvent, keyId);
         emitScanCostEvent(costEvent);

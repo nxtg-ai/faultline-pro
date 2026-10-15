@@ -10,6 +10,7 @@ import {
 } from '../store/costs.js';
 import { recordProviderSpend } from '../store/provider-spend.js';
 import { getProvider } from '@nxtg/faultline/providers/registry.js';
+import { billableVerdictCount } from '@nxtg/faultline/lib/verdict-guard.js';
 import type { LLMProvider } from '@nxtg/faultline/providers/base_provider.js';
 import { DEFAULT_SCAN_PROVIDER, resolveApiKey } from '@nxtg/faultline/cli/provider-keys.js';
 import { captureUsage, type UsageLeg } from '@nxtg/faultline/lib/usage-sink.js';
@@ -175,6 +176,7 @@ function recordBatchSpend(runs: ClaimRun[], claims: VerifyClaimInput[], provider
     text: claims.map((claim) => claim.text).join('\n'),
     provider: providerName,
     claimCount: runs.filter((run) => !run.outcome.apiError).length,
+    claims: { extracted: claims.length, verified: billableVerdictCount(runs.map((run) => run.outcome)) },
     tier: resolveTier(keyId),
     latencyMs: Date.now() - startMs,
     // A benchmark batch, not a scan: kept out of per-scan percentiles, still counted as spend below.

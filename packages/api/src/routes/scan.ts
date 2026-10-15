@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { apiEvidenceOptions, apiIndependentEvidenceOptions } from '../lib/evidence.js';
-import { assertValidScanResult, isInvalidVerdictError } from '@nxtg/faultline/lib/verdict-guard.js';
+import { assertValidScanResult, isInvalidVerdictError, billableVerdictCount } from '@nxtg/faultline/lib/verdict-guard.js';
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey, resolveRequestTenantId } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
@@ -230,6 +230,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
             claimCount: groundingCalls,
             tier: resolveTier(keyId),
             latencyMs: Date.now() - startTime,
+            claims: { extracted: Array.isArray(result.claims) ? result.claims.length : 0, verified: billableVerdictCount(result.verifications) },
           });
           getCostStore().recordManaged(costEvent, keyId);
           emitScanCostEvent(costEvent);

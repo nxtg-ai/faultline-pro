@@ -91,6 +91,8 @@ export function buildManagedCostEvent(
     latencyMs: number;
     cacheHit?: boolean;
     kind?: ManagedScanCostEvent['kind'];
+    /** Per-call claim counts, so cost per claim can be read from the log. */
+    claims?: { extracted: number; verified: number };
   },
 ): ManagedScanCostEvent {
   const usage = summarizeScanUsage(legs);
@@ -125,6 +127,7 @@ export function buildManagedCostEvent(
     latencyMs: opts.latencyMs,
     cacheHit: opts.cacheHit ?? false,
     ...(opts.kind ? { kind: opts.kind } : {}),
+    ...(opts.claims ? { claimsExtracted: opts.claims.extracted, claimsVerified: opts.claims.verified } : {}),
   };
 }
 
@@ -148,6 +151,10 @@ export interface ManagedScanCostEvent {
    * which can be 200+ claims). Absent = 'scan'. Per-scan percentiles count 'scan' only.
    */
   kind?: 'scan' | 'admin-verify' | 'full-scan';
+  /** Claims extracted (or submitted) in this call; absent on events logged before counts existed. */
+  claimsExtracted?: number;
+  /** Claims that got a provider verdict, `unverified` included (isBillableVerdict); absent on old events. */
+  claimsVerified?: number;
   /**
    * The API key that ran the scan, kept in memory only (not in the scan-cost log), so
    * /costs/percentiles can show a key its own scans. Events without it (hydrated from
@@ -218,9 +225,9 @@ export function emitScanCostEvent(event: ManagedScanCostEvent): void {
  */
 export const SCAN_COST_LOG_PATH = '/var/log/faultline/scan-cost.jsonl';
 
-export function appendScanCostLog(event: ManagedScanCostEvent, logPath = SCAN_COST_LOG_PATH): void {
-  if (process.env.VITEST || process.env.NODE_ENV === 'test') return;
-  const row = JSON.stringify({
+/** One scan-cost log row (snake_case, as the log has always been written). */
+export function scanCostLogRow(event: ManagedScanCostEvent): string {
+  return JSON.stringify({
     ts:             event.ts,
     scan_id:        event.scanId,
     user_tier:      event.tier,
@@ -234,7 +241,14 @@ export function appendScanCostLog(event: ManagedScanCostEvent, logPath = SCAN_CO
     usd_estimate:   event.costUsd,
     cache_hit:      event.cacheHit ?? false,
     kind:           event.kind ?? 'scan',
+    claim_count:    event.claimsExtracted ?? null,
+    verified_count: event.claimsVerified ?? null,
   });
+}
+
+export function appendScanCostLog(event: ManagedScanCostEvent, logPath = SCAN_COST_LOG_PATH): void {
+  if (process.env.VITEST || process.env.NODE_ENV === 'test') return;
+  const row = scanCostLogRow(event);
   appendFile(logPath, row + '\n').catch(() => { /* fire-and-forget */ });
 }
 
@@ -415,6 +429,8 @@ export function loadScanCostLog(logPath = SCAN_COST_LOG_PATH): ManagedScanCostEv
         latencyMs: num(r.wall_ms),
         cacheHit: r.cache_hit === true,
         kind: r.kind === 'admin-verify' || r.kind === 'full-scan' ? r.kind : 'scan',
+        ...(typeof r.claim_count === 'number' ? { claimsExtracted: r.claim_count } : {}),
+        ...(typeof r.verified_count === 'number' ? { claimsVerified: r.verified_count } : {}),
       });
     } catch {
       /* skip a malformed row */

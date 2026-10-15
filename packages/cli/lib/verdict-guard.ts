@@ -134,3 +134,22 @@ export class InvalidVerdictError extends Error {
 
 export const isInvalidVerdictError = (err: unknown): err is InvalidVerdictError =>
   err instanceof Error && (err as { code?: unknown }).code === 'invalid_verdict';
+
+/**
+ * A claim that got a provider verdict, `unverified` included (the search was
+ * run and paid for). A provider error, a malformed verdict (flagged `apiError`)
+ * or a UI state (`loading`, `skipped`) is not one. This is the unit the cost
+ * log counts per scan (`verified_count`).
+ */
+export function isBillableVerdict(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as { status?: unknown; apiError?: unknown };
+  return isVerdictStatus(v.status) && v.apiError !== true;
+}
+
+/** How many entries of a scan's `verifications` (object or array) are billable verdicts. */
+export function billableVerdictCount(verifications: unknown): number {
+  if (!verifications || typeof verifications !== 'object') return 0;
+  const list = Array.isArray(verifications) ? verifications : Object.values(verifications);
+  return list.filter(isBillableVerdict).length;
+}

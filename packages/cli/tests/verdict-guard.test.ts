@@ -139,3 +139,21 @@ describe('CLI disk history', () => {
     }
   });
 });
+
+describe('billable verdicts (cost log verified_count, GoPMO 1.18.11.7.3)', () => {
+  it('counts verdicts including unverified; not provider errors, UI states or junk', async () => {
+    const { isBillableVerdict, billableVerdictCount } = await import('../lib/verdict-guard.js');
+    expect(isBillableVerdict({ status: 'supported' })).toBe(true);
+    expect(isBillableVerdict({ status: 'unverified' })).toBe(true);
+    expect(isBillableVerdict({ status: 'unverified', apiError: true })).toBe(false);
+    expect(isBillableVerdict({ status: 'skipped' })).toBe(false);
+    expect(isBillableVerdict({ status: 'loading' })).toBe(false);
+    expect(isBillableVerdict({ status: 'ROYALLY_CERTIFIED' })).toBe(false);
+    expect(isBillableVerdict(null)).toBe(false);
+    const v = { a: { status: 'supported' }, b: { status: 'unverified' }, c: { status: 'unverified', apiError: true }, d: { status: 'skipped' } };
+    expect(billableVerdictCount(v)).toBe(2);
+    expect(billableVerdictCount(Object.values(v))).toBe(2);
+    expect(billableVerdictCount([undefined, { status: 'mixed' }])).toBe(1);
+    expect(billableVerdictCount(undefined)).toBe(0);
+  });
+});
