@@ -1,5 +1,5 @@
 // Validates: node 1.18.11.7.6 (claim meter: ledger, reservations, hydration, dedupe)
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -15,7 +15,7 @@ import {
 import { billableClaims, meteredScan, ClaimCapReachedError } from '../src/lib/claim-meter.js';
 import { getKeyStore, resetKeyStore } from '../src/store/keys.js';
 
-const ENV_KEYS = ['FAULTLINE_CLAIM_METER_LEDGER', 'FAULTLINE_CLAIM_METER_SYNC_LEDGER', 'FAULTLINE_DEFAULT_CLAIM_CAP', 'FAULTLINE_CUSTOMER_KEYS'];
+const ENV_KEYS = ['FAULTLINE_CLAIM_METER_LEDGER', 'FAULTLINE_CLAIM_METER_SYNC_LEDGER', 'FAULTLINE_DEFAULT_CLAIM_CAP'];
 let saved: Record<string, string | undefined>;
 let dir: string;
 let ledger: string;
@@ -29,6 +29,9 @@ function rows(): ClaimMeterRow[] {
   return readFileSync(ledger, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as ClaimMeterRow);
 }
 
+beforeAll(() => { process.env.FAULTLINE_CUSTOMER_KEYS = 'on'; });
+afterAll(() => { delete process.env.FAULTLINE_CUSTOMER_KEYS; });
+
 beforeEach(() => {
   saved = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
   dir = mkdtempSync(join(tmpdir(), 'fl-claim-meter-'));
@@ -37,7 +40,6 @@ beforeEach(() => {
   process.env.FAULTLINE_CLAIM_METER_LEDGER = ledger;
   process.env.FAULTLINE_CLAIM_METER_SYNC_LEDGER = syncLedger;
   delete process.env.FAULTLINE_DEFAULT_CLAIM_CAP;
-  process.env.FAULTLINE_CUSTOMER_KEYS = 'on';
   resetClaimMeter();
   resetKeyStore();
 });

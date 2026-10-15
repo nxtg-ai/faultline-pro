@@ -11,7 +11,7 @@
 //     may reach the provider, even after the runners are driven.
 //  Red control: a route added to the test server that calls the engine without
 //  the meter is found in step 1 and flagged in step 2.
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import type { FastifyInstance, RouteOptions } from 'fastify';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -57,15 +57,17 @@ registerProvider('mock', () => ({
 const RED_CONTROL = 'POST /test/unmetered-scan';
 const ENV_KEYS = [
   'FAULTLINE_API_KEY', 'FAULTLINE_DEFAULT_CLAIM_CAP', 'FAULTLINE_CLAIM_METER_LEDGER', 'FAULTLINE_CLAIM_METER_SYNC_LEDGER',
-  'FAULTLINE_PROVIDER_SPEND_LEDGER', 'FAULTLINE_FULL_JOBS_LEDGER', 'FAULTLINE_GROUNDING_LEDGER', 'FAULTLINE_CUSTOMER_KEYS',
+  'FAULTLINE_PROVIDER_SPEND_LEDGER', 'FAULTLINE_FULL_JOBS_LEDGER', 'FAULTLINE_GROUNDING_LEDGER',
 ];
 let saved: Record<string, string | undefined>;
 let dir: string;
 
-beforeAll(() => {
+beforeAll(() => { process.env.FAULTLINE_CUSTOMER_KEYS = 'on'; });
+afterAll(() => { delete process.env.FAULTLINE_CUSTOMER_KEYS; });
+
+beforeEach(() => {
   saved = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
   dir = mkdtempSync(join(tmpdir(), 'fl-claim-route-table-'));
-  process.env.FAULTLINE_CUSTOMER_KEYS = 'on';
   process.env.FAULTLINE_API_KEY = 'claim-route-table-server-key';
   delete process.env.FAULTLINE_DEFAULT_CLAIM_CAP;
   process.env.FAULTLINE_CLAIM_METER_LEDGER = join(dir, 'claim-meter.jsonl');
@@ -77,7 +79,7 @@ beforeAll(() => {
   resetKeyStore();
 });
 
-afterAll(() => {
+afterEach(() => {
   for (const k of ENV_KEYS) {
     if (saved[k] === undefined) delete process.env[k];
     else process.env[k] = saved[k];
