@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey, isAdminRequest } from '../plugins/auth.js';
+import { engineVerifyCap, requireClaimHeadroom } from '../plugins/claim-meter.js';
 import { getScanQueue, tierToPriority } from '../store/scan-queue.js';
 import { getKeyStore } from '../store/keys.js';
 import { ownsOrAdmin } from '../lib/ownership.js';
@@ -38,7 +39,7 @@ export async function queueRoutes(fastify: FastifyInstance): Promise<void> {
     '/queue/scans',
     {
       config: { access: 'owner' },
-      preHandler: [requireApiKey],
+      preHandler: [requireApiKey, requireClaimHeadroom(engineVerifyCap())],
       schema: {
         tags: ['Jobs'],
         summary: 'Enqueue a scan for async processing',

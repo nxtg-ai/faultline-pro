@@ -9,6 +9,11 @@ import { getNotificationStore } from '../store/notifications.js';
 
 const VALID_PERMISSIONS: Permission[] = ['scan', 'report', 'upload', 'admin', 'pro'];
 
+/** Claims per calendar month (UTC) a key may have verified (node 1.18.11.7.6). */
+const CLAIM_CAP_SCHEMA = { type: 'integer', minimum: 0, maximum: 100_000_000 } as const;
+/** A Stripe customer id (`cus_...`). Format-checked so no free text reaches the billing sink. */
+const STRIPE_CUSTOMER_SCHEMA = { type: 'string', pattern: '^cus_[A-Za-z0-9]{1,64}$' } as const;
+
 const CREATE_BODY_SCHEMA = {
   type: 'object',
   required: ['name'],
@@ -19,6 +24,8 @@ const CREATE_BODY_SCHEMA = {
       items: { type: 'string', enum: VALID_PERMISSIONS },
     },
     expiresAt: { type: 'string', format: 'date-time' },
+    claimCap: CLAIM_CAP_SCHEMA,
+    stripeCustomerId: STRIPE_CUSTOMER_SCHEMA,
   },
   additionalProperties: false,
 } as const;
@@ -27,6 +34,8 @@ interface CreateKeyBody {
   name: string;
   permissions?: Permission[];
   expiresAt?: string;
+  claimCap?: number;
+  stripeCustomerId?: string;
 }
 
 export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
@@ -34,10 +43,10 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
     '/keys',
     { config: { access: 'admin' }, preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Create a new API key', body: CREATE_BODY_SCHEMA } },
     async (request, reply) => {
-      const { name, permissions, expiresAt } = request.body;
+      const { name, permissions, expiresAt, claimCap, stripeCustomerId } = request.body;
       if (!mayIssueKey(permissions)) return reply.status(403).send(CUSTOMER_KEYS_CLOSED);
       const store = getKeyStore();
-      const entry = store.create(name, permissions, expiresAt);
+      const entry = store.create(name, permissions, expiresAt, { claimCap, stripeCustomerId });
       return reply.status(201).send(entry);
     },
   );
@@ -406,6 +415,8 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
         items: { type: 'string', enum: VALID_PERMISSIONS },
       },
       expiresAt: { type: ['string', 'null'] },
+      claimCap: { ...CLAIM_CAP_SCHEMA, type: ['integer', 'null'] },
+      stripeCustomerId: { ...STRIPE_CUSTOMER_SCHEMA, type: ['string', 'null'] },
     },
     additionalProperties: false,
   } as const;
@@ -414,6 +425,8 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
     name?: string;
     permissions?: Permission[];
     expiresAt?: string | null;
+    claimCap?: number | null;
+    stripeCustomerId?: string | null;
   }
 
   fastify.patch<{ Params: { id: string }; Body: PatchKeyBody }>(

@@ -30,6 +30,7 @@ import { captureUsage } from '@nxtg/faultline/lib/usage-sink.js';
 import { resolveVerifyPolicy, withVerificationTier } from '../plugins/verify-cap.js';
 import { isExtractionError, type ExtractionError } from '@nxtg/faultline/providers/extraction-error.js';
 import { sendExtractionFailed } from '../lib/extraction-failure.js';
+import { commitClaims, planVerifyCap, reserveClaims } from '../plugins/claim-meter.js';
 
 
 const PROVIDER_ENUM = ['gemini', 'openai', 'claude', 'perplexity', 'mock'] as const;
@@ -101,7 +102,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan',
     {
       config: { access: 'owner' },
-      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap],
+      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap, reserveClaims(planVerifyCap)],
       schema: { tags: ['Scan'], summary: 'Scan text for claim verification', body: BODY_SCHEMA },
     },
     async (request, reply) => {
@@ -150,6 +151,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
             compliancePass: compGate.pass,
           }, verifyPolicy.tier);
           const delivered = issueScanId(enriched, request.keyId);
+          commitClaims(request, delivered.scanId, result, effectiveProvider);
           fireWebhookEvent('scan.complete', delivered, requestOwner(request));
           return reply.status(200).send(delivered);
         } catch (err) {
@@ -193,6 +195,8 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
           cache: { hit: true, checkedAt: hit.checkedAt },
         }, verifyPolicy.tier);
         const delivered = issueScanId(cachedEnriched, request.keyId);
+        // A cached verdict delivered to the caller bills like a fresh one.
+        commitClaims(request, delivered.scanId, cached, effectiveProvider);
         fireWebhookEvent('scan.complete', delivered, requestOwner(request));
         return reply.status(200).send(delivered);
       }
@@ -302,6 +306,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
             compliancePass: compGate.pass,
           }, verifyPolicy.tier);
           const delivered = issueScanId(enriched, request.keyId, scanId);
+          commitClaims(request, delivered.scanId, result, p);
           fireWebhookEvent('scan.complete', delivered, requestOwner(request));
           return reply.status(200).send(delivered);
         } catch (err) {
@@ -341,7 +346,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan/template/:id',
     {
       config: { access: 'owner' },
-      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap],
+      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap, reserveClaims(planVerifyCap)],
       schema: {
         tags: ['Scan'],
         summary: 'Scan text using a saved template',
@@ -373,6 +378,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
       getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
       getUsageMeter().increment(keyId); // count toward monthly cap (item 1)
       const delivered = issueScanId(result, request.keyId);
+      commitClaims(request, delivered.scanId, result, effectiveProvider);
       fireWebhookEvent('scan.complete', delivered, requestOwner(request));
 
       return reply.status(200).send(delivered);

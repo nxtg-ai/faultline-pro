@@ -3,6 +3,7 @@ import { requireApiKey, scanHistoryKeyScope } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { esc } from '../lib/html.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { commitClaims, engineVerifyCap, reserveClaims } from '../plugins/claim-meter.js';
 import { getScanStore } from '../store/scans.js';
 import { ownedScan } from '../lib/scan-access.js';
 import { getComplianceHistoryStore } from '../store/compliance-history.js';
@@ -202,7 +203,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
     '/scan/compliance-gate',
     {
       config: { access: 'owner' },
-      preHandler: [requireApiKey, rateLimitScan],
+      preHandler: [requireApiKey, rateLimitScan, reserveClaims(engineVerifyCap())],
       schema: {
         tags: ['Compliance'],
         summary: 'Scan text and evaluate EU AI Act compliance gate (pass/fail)',
@@ -218,6 +219,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
 
       const result = await scan(text, provider);
       const stored = getScanStore().record(keyId, text, result as unknown as Record<string, unknown>);
+      commitClaims(request, stored.id, result, provider ?? 'gemini');
       const report = buildEuComplianceReport(result, { projectName });
       const gate = evaluateComplianceGate(report, { threshold, strict });
 

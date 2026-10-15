@@ -13,6 +13,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
+import { engineVerifyCap, requireClaimHeadroom } from '../plugins/claim-meter.js';
 import { outboundUrlRefusal } from '../lib/outbound-url.js';
 import {
   getScheduleStore,
@@ -67,7 +68,7 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
     '/schedules',
     {
       config: { access: 'owner' },
-      preHandler: [requireApiKey],
+      preHandler: [requireApiKey, requireClaimHeadroom(engineVerifyCap())],
       schema: {
         tags: ['Schedules'],
         summary: 'Create a recurring scan schedule',
@@ -215,7 +216,7 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
     '/schedules/:id/trigger',
     {
       config: { access: 'owner' },
-      preHandler: [requireApiKey],
+      preHandler: [requireApiKey, requireClaimHeadroom(engineVerifyCap())],
       schema: {
         tags: ['Schedules'],
         summary: 'Manually trigger a schedule run immediately',

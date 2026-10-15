@@ -3,6 +3,7 @@ import PDFDocument from 'pdfkit';
 import { requireApiKey } from '../plugins/auth.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import type { ScanResult } from '@nxtg/faultline/cli/scan.js';
+import { commitClaims, engineVerifyCap, meterScanId, reserveClaims } from '../plugins/claim-meter.js';
 
 const BODY_SCHEMA = {
   type: 'object',
@@ -206,7 +207,7 @@ export async function reportRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan/report',
     {
       config: { access: 'key' },
-      preHandler: requireApiKey,
+      preHandler: [requireApiKey, reserveClaims(engineVerifyCap())],
       schema: { tags: ['Reports'], summary: 'Generate PDF compliance report from scan result', body: BODY_SCHEMA },
     },
     async (request, reply) => {
@@ -216,6 +217,7 @@ export async function reportRoutes(fastify: FastifyInstance): Promise<void> {
       try {
         const result = await scan(text, provider);
         const pdf = await buildPdf(result, projectName ?? 'Faultline Scan', scanDate);
+        commitClaims(request, meterScanId('report'), result, provider ?? 'gemini');
 
         return reply
           .status(200)

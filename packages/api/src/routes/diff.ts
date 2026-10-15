@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { commitClaims, engineVerifyCap, meterScanId, reserveClaims } from '../plugins/claim-meter.js';
 
 type Provider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
 
@@ -63,7 +64,7 @@ export async function diffRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan/diff',
     {
       config: { access: 'key' },
-      preHandler: [requireApiKey, rateLimitScan],
+      preHandler: [requireApiKey, rateLimitScan, reserveClaims(engineVerifyCap(2))],
       schema: { tags: ['Scan'], summary: 'Diff two texts — new/removed/changed claims with inline view', body: BODY_SCHEMA },
     },
     async (request, reply) => {
@@ -74,6 +75,9 @@ export async function diffRoutes(fastify: FastifyInstance): Promise<void> {
         scan(before, effectiveProvider),
         scan(after, effectiveProvider),
       ]) as unknown as [ScanResult, ScanResult];
+      // Both scans' verdicts reach the caller (claims and changed verdicts).
+      commitClaims(request, meterScanId('diff'), scanBefore, effectiveProvider);
+      commitClaims(request, meterScanId('diff'), scanAfter, effectiveProvider);
 
       const beforeByText = new Map(scanBefore.claims.map(c => [normalize(c.text), c]));
       const afterByText  = new Map(scanAfter.claims.map(c => [normalize(c.text), c]));

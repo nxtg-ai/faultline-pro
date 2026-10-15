@@ -7,9 +7,36 @@ import { nextMonthResetEpoch } from '../plugins/usage-cap.js';
 import { getProviderSpendLedger, getProviderSpendStatus } from '../store/provider-spend.js';
 import { getGroundingAllowanceStatus } from '../store/grounding-allowance.js';
 import { getFullScanJobStore } from '../store/full-scan-jobs.js';
+import { claimCapFor, isMeteredKey } from '../lib/claim-meter.js';
+import { getClaimMeter } from '../store/claim-meter.js';
+import { getStripeMeterSink } from '../store/claim-meter-sync.js';
+import { currentMonth } from '../store/provider-spend.js';
+import { VERDICT_STATUSES } from '@nxtg/faultline/lib/verdict-guard.js';
+
+/** Every verdict at 0, so the shape is the same before the first claim. */
+function verdictCounts(byVerdict: Record<string, number>): Record<string, number> {
+  return { ...Object.fromEntries(VERDICT_STATUSES.map((v) => [v, 0])), ...byVerdict };
+}
+
+/** A metered key's claim position this month (node 1.18.11.7.6). */
+function claimsBlock(keyId: string) {
+  const meter = getClaimMeter();
+  const period = currentMonth();
+  const cap = claimCapFor(keyId);
+  const { used, byVerdict } = meter.usageFor(keyId, period);
+  const reserved = meter.reservedFor(keyId);
+  return { period, cap, used, reserved, remaining: Math.max(0, cap - used - reserved), byVerdict: verdictCounts(byVerdict) };
+}
+
+/** Fleet claim totals and how far Stripe sync is behind (admin only). */
+function claimMeterBlock() {
+  const meter = getClaimMeter();
+  const totals = meter.totals();
+  return { ...totals, byVerdict: verdictCounts(totals.byVerdict), sync: { ...getStripeMeterSink().getStatus(), ...meter.lag() } };
+}
 
 export async function usageRoutes(fastify: FastifyInstance): Promise<void> {
-  fastify.get('/usage', { config: { access: 'owner' }, preHandler: requireApiKey, schema: { tags: ['Analytics'], summary: 'Per-key daily scan usage counts + monthly quota' } }, async (request, reply) => {
+  fastify.get('/usage', { config: { access: 'owner' }, preHandler: requireApiKey, schema: { tags: ['Analytics'], summary: 'Per-key daily scan usage counts, monthly quota and claim meter' } }, async (request, reply) => {
     const keyId = request.keyId ?? 'unknown';
     const meter = getUsageMeter();
 
@@ -43,6 +70,9 @@ export async function usageRoutes(fastify: FastifyInstance): Promise<void> {
     // (emma-soul condition 4, GoPMO 1.18.11.3.12). `alert` = refunded units above
     // 10% of charged units; fp then reports the cause. Admin only: fleet-wide.
     const fullScanRefunds = isAdmin ? getFullScanJobStore().refundSummary() : undefined;
+    // Claim meter: a metered key sees its own month; admin sees fleet totals and sync lag.
+    const claims = isMeteredKey(request.keyId) ? claimsBlock(request.keyId) : undefined;
+    const claimMeter = isAdmin ? claimMeterBlock() : undefined;
 
     return reply.status(200).send({
       keyId,
@@ -51,6 +81,8 @@ export async function usageRoutes(fastify: FastifyInstance): Promise<void> {
       ...(providerBudget ? { providerBudget } : {}),
       ...(groundingAllowance ? { groundingAllowance } : {}),
       ...(fullScanRefunds ? { fullScanRefunds } : {}),
+      ...(claims ? { claims } : {}),
+      ...(claimMeter ? { claimMeter } : {}),
     });
   });
 }

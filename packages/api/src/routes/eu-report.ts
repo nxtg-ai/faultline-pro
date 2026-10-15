@@ -3,6 +3,7 @@ import PDFDocument from 'pdfkit';
 import { requireApiKey } from '../plugins/auth.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import type { ScanResult } from '@nxtg/faultline/cli/scan.js';
+import { commitClaims, engineVerifyCap, meterScanId, reserveClaims } from '../plugins/claim-meter.js';
 
 // ── EU AI Act Article Reference Data ────────────────────────────────────────
 
@@ -278,7 +279,7 @@ export async function euReportRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan/eu-report',
     {
       config: { access: 'key' },
-      preHandler: requireApiKey,
+      preHandler: [requireApiKey, reserveClaims(engineVerifyCap())],
       schema: { tags: ['Compliance'], summary: 'Generate EU AI Act compliance PDF report', body: BODY_SCHEMA },
     },
     async (request, reply) => {
@@ -287,6 +288,7 @@ export async function euReportRoutes(fastify: FastifyInstance): Promise<void> {
       try {
         const result = await scan(text, provider);
         const pdf = await buildEuPdf(result, projectName ?? 'EU AI Act Assessment', scanDate);
+        commitClaims(request, meterScanId('eu-report'), result, provider ?? 'gemini');
         return reply
           .status(200)
           .header('Content-Type', 'application/pdf')

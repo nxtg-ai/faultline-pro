@@ -4,6 +4,7 @@ import { fireWebhookEvent, webhookSafeData, keyIsLive } from './webhooks.js';
 import type { WebhookEventOwner } from './webhooks.js';
 import { getAuditLogger } from './audit.js';
 import { fetchOutbound } from '../lib/outbound-url.js';
+import { ENGINE_VERIFY_CAP, meteredScan } from '../lib/claim-meter.js';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -152,14 +153,16 @@ class JobScheduler {
   private async runJob(job: Job): Promise<void> {
     const now = new Date().toISOString();
     try {
-      const result = await scan(job.text, job.provider);
+      // Each run is metered against the creator's key; over its cap the run fails unscanned.
+      const owner = getJobStore().ownerOf(job.id);
+      const ownerKeyId = owner !== null && owner !== 'public' ? owner.keyId : undefined;
+      const result = await meteredScan(ownerKeyId, ENGINE_VERIFY_CAP, `job-${job.id}-${randomUUID()}`, job.provider, () => scan(job.text, job.provider));
       const nextRunAt = new Date(Date.now() + job.intervalMs).toISOString();
       getJobStore().update(job.id, {
         lastRunAt: now,
         nextRunAt,
         runCount: job.runCount + 1,
       });
-      const owner = getJobStore().ownerOf(job.id);
       if (job.webhookUrl) {
         // Sent only while the creator's key is live, checked after the scan ran
         // (codex seat, 84cf8c8). A job with no recorded owner sends nothing.

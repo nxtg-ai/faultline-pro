@@ -11,6 +11,8 @@ import { rateLimitScan } from '../plugins/ratelimit.js';
 import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { isServerKeyId, resolveEntitledTier } from '../plugins/consensus-entitlement.js';
 import { recordProviderSpend } from '../store/provider-spend.js';
+import { claimCapReachedBody, committedClaim, reserveClaimsFor } from '../lib/claim-meter.js';
+import type { ClaimReservation } from '../store/claim-meter.js';
 import { getUsageMeter } from '../store/usage.js';
 import {
   getCostStore,
@@ -23,6 +25,7 @@ import {
   getFullScanJobStore,
   describeJob,
   describeLedgerRow,
+  type ClaimProgress,
   type FullScanJob,
   type FullScanJobStore,
   type StartedJob,
@@ -233,6 +236,22 @@ async function runFullScanJob(store: FullScanJobStore, job: FullScanJob): Promis
   store.finish(job, job.controller.signal.aborted ? 'stopped' : 'done', outcome.value);
 }
 
+// ── Claim meter ─────────────────────────────────────────────────────────────
+
+/**
+ * Commit a finished job's served claims (a verdict, `unverified` included) and
+ * release the rest of its reservation. A failed job served nothing.
+ */
+function settleJobClaims(reservation: ClaimReservation, job: FullScanJob, progress: ClaimProgress[]): void {
+  const served = progress.flatMap((p) => {
+    if (p.status !== 'served') return [];
+    const claim = committedClaim(p.claimId, p.verdict, job.provider);
+    return claim ? [claim] : [];
+  });
+  reservation.commit(job.jobId, served);
+  reservation.release();
+}
+
 // ── Routes ──────────────────────────────────────────────────────────────────
 
 const accepted = (job: StartedJob) => ({ jobId: job.jobId, units: job.units, factClaims: job.factClaims });
@@ -343,11 +362,16 @@ export async function fullScanRoutes(fastify: FastifyInstance): Promise<void> {
       // A job whose terminal row cannot reach the disk would read as job_lost after a
       // restart and be refunded in full although served: refuse it before any spend.
       if (!store.ledgerWritable()) return reply.status(503).send({ error: 'ledger_unavailable' });
+      // The claim meter reserves the estimate's fact claims (an estimate reserves nothing).
+      const metered = reserveClaimsFor(request.keyId, estimate.factClaims);
+      if (metered.ok === false) return reply.status(402).send(claimCapReachedBody(metered));
 
       const job = store.startJob(estimate, {
         idempotencyKey,
         tier: resolveEntitledTier(keyId, request.headers['x-user-tier']),
       });
+      const reservation = metered.reservation;
+      if (reservation) job.onTerminal = (finished, progress) => settleJobClaims(reservation, finished, progress);
       // Counted here, once per job: the server.ts onResponse hook counts only /scan and /scan/upload.
       getUsageMeter().increment(keyId);
       store.enqueue(job, (queued) => runFullScanJob(store, queued));

@@ -17,6 +17,7 @@ import { getNotificationStore, type NotificationEventType } from './notification
 import { fetchOutbound, fetchOutboundFollow } from '../lib/outbound-url.js';
 import { keyIsLive, sanitizeErrorText } from './webhooks.js';
 import { isGroundedScanResult } from './cache.js';
+import { ENGINE_VERIFY_CAP, meteredScan } from '../lib/claim-meter.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -342,7 +343,8 @@ class ScheduleRunner {
       }
       inputSize = inputText.length;
 
-      const result = await scan(inputText, schedule.provider);
+      // Each run is metered against the schedule's key; over its cap the run fails unscanned.
+      const result = await meteredScan(schedule.keyId, ENGINE_VERIFY_CAP, `schedule-${schedule.id}-${randomUUID()}`, schedule.provider, () => scan(inputText, schedule.provider));
       const durationMs = Date.now() - start;
       const runResult: Omit<ScheduleRunResult, 'runId'> = {
         ranAt,

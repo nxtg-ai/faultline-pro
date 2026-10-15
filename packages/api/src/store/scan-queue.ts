@@ -15,6 +15,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { ENGINE_VERIFY_CAP, meteredScan } from '../lib/claim-meter.js';
 
 export type QueueItemStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
 export type QueuePriority = 0 | 1 | 2;
@@ -140,7 +141,9 @@ class ScanQueue {
   private async processItem(item: ScanQueueItem): Promise<void> {
     this.processingCount++;
     try {
-      const result = await scan(item.text, item.provider as Parameters<typeof scan>[1]);
+      // Metered when it runs, against the key that queued it.
+      const result = await meteredScan(item.keyId, ENGINE_VERIFY_CAP, `queue-${item.id}`, item.provider,
+        () => scan(item.text, item.provider as Parameters<typeof scan>[1]));
       item.status = 'completed';
       item.result = result;
     } catch (err) {

@@ -5,6 +5,8 @@ import { ownsOrAdmin } from '../lib/ownership.js';
 import { getBulkJobStore } from '../store/bulk-jobs.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import type { Provider } from '../store/jobs.js';
+import { ENGINE_VERIFY_CAP, meteredScan } from '../lib/claim-meter.js';
+import { engineVerifyCap, requireClaimHeadroom } from '../plugins/claim-meter.js';
 
 const ALLOWED_EXTENSIONS = new Set(['.txt', '.md', '.json']);
 
@@ -17,6 +19,7 @@ async function processBulkJob(
   jobId: string,
   zipBuffer: Buffer,
   provider: Provider,
+  keyId: string | undefined,
 ): Promise<void> {
   const store = getBulkJobStore();
   store.update(jobId, { status: 'running' });
@@ -34,11 +37,12 @@ async function processBulkJob(
     .getEntries()
     .filter((e) => !e.isDirectory && ALLOWED_EXTENSIONS.has(getExtension(e.entryName)));
 
-  for (const entry of entries) {
+  for (const [index, entry] of entries.entries()) {
     const filename = entry.entryName;
     try {
       const text = entry.getData().toString('utf8');
-      const result = await scan(text, provider);
+      // Each file is metered on its own; once the key's cap is reached the rest fail unscanned.
+      const result = await meteredScan(keyId, ENGINE_VERIFY_CAP, `bulk-${jobId}-${index}`, provider, () => scan(text, provider));
       store.recordFileResult(jobId, {
         filename,
         status: 'done',
@@ -58,7 +62,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
   // POST /scan/bulk — accepts ZIP archive, returns jobId immediately (202)
   fastify.post<{ Querystring: { provider?: string } }>(
     '/scan/bulk',
-    { config: { access: 'owner' }, preHandler: requireApiKey, schema: { tags: ['Jobs'], summary: 'Upload ZIP of documents for async bulk scan' } },
+    { config: { access: 'owner' }, preHandler: [requireApiKey, requireClaimHeadroom(engineVerifyCap())], schema: { tags: ['Jobs'], summary: 'Upload ZIP of documents for async bulk scan' } },
     async (request, reply) => {
       let zipBuffer: Buffer | null = null;
 
@@ -107,7 +111,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       // Fire-and-forget background processing
-      void processBulkJob(job.id, zipBuffer, provider);
+      void processBulkJob(job.id, zipBuffer, provider, request.keyId);
 
       return reply.status(202).send({ jobId: job.id });
     },

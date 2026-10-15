@@ -133,6 +133,12 @@ export interface FullScanJob {
   finishedAt?: string;
   /** Set at finish: whether the terminal row reached the ledger, so a restart keeps it. */
   durable?: boolean;
+  /**
+   * Called once when the job reaches a terminal status, with each fact claim's
+   * final state (the claim meter commits the served ones). Every terminal path
+   * runs through `finish`, including a job the queue finishes without running.
+   */
+  onTerminal?: (job: FullScanJob, progress: ClaimProgress[]) => void;
 }
 
 /** One terminal job on disk. Counts and ids only (see the header). */
@@ -622,6 +628,13 @@ class FullScanJobStore {
     job.claims = [];
     job.text = '';
     job.durable = this.persist(ledgerRowFor(job as FullScanJob & { status: TerminalStatus; finishedAt: string }));
+    const onTerminal = job.onTerminal;
+    job.onTerminal = undefined;
+    try {
+      onTerminal?.(job, claimProgress(job));
+    } catch {
+      // A failing hook never changes the job's terminal status.
+    }
   }
 
   /**

@@ -22,6 +22,16 @@ export interface ApiKey {
   lastUsedAt?: string;
   /** ISO datetime after which the key is automatically rejected */
   expiresAt?: string;
+  /** Claims this key may have verified per calendar month (UTC). Unset: FAULTLINE_DEFAULT_CLAIM_CAP, else refused. */
+  claimCap?: number;
+  /** Stripe customer the key's metered claims are reported against. */
+  stripeCustomerId?: string;
+}
+
+/** Billing fields an admin sets at issuance or with PATCH /keys/:id. */
+export interface KeyBillingFields {
+  claimCap?: number;
+  stripeCustomerId?: string;
 }
 
 export interface KeyUsageStat {
@@ -52,7 +62,7 @@ export interface RotationResult {
 class KeyStore {
   private keys: ApiKey[] = [];
 
-  create(name: string, permissions: Permission[] = ['scan'], expiresAt?: string): ApiKey {
+  create(name: string, permissions: Permission[] = ['scan'], expiresAt?: string, billing: KeyBillingFields = {}): ApiKey {
     const entry: ApiKey = {
       id: randomUUID(),
       key: randomBytes(32).toString('hex'),
@@ -60,6 +70,8 @@ class KeyStore {
       permissions,
       createdAt: new Date().toISOString(),
       ...(expiresAt ? { expiresAt } : {}),
+      ...(billing.claimCap !== undefined ? { claimCap: billing.claimCap } : {}),
+      ...(billing.stripeCustomerId !== undefined ? { stripeCustomerId: billing.stripeCustomerId } : {}),
     };
     this.keys.push(entry);
     return entry;
@@ -219,7 +231,13 @@ class KeyStore {
     return new Date(entry.expiresAt) <= new Date();
   }
 
-  update(id: string, patch: { name?: string; permissions?: Permission[]; expiresAt?: string | null }): ApiKey | null {
+  update(id: string, patch: {
+    name?: string;
+    permissions?: Permission[];
+    expiresAt?: string | null;
+    claimCap?: number | null;
+    stripeCustomerId?: string | null;
+  }): ApiKey | null {
     const entry = this.keys.find((k) => k.id === id);
     if (!entry) return null;
     if (patch.name !== undefined) entry.name = patch.name;
@@ -231,6 +249,11 @@ class KeyStore {
         entry.expiresAt = patch.expiresAt;
       }
     }
+    // null clears a billing field; a cleared claimCap falls back to the env default or refuses.
+    if (patch.claimCap === null) delete entry.claimCap;
+    else if (patch.claimCap !== undefined) entry.claimCap = patch.claimCap;
+    if (patch.stripeCustomerId === null) delete entry.stripeCustomerId;
+    else if (patch.stripeCustomerId !== undefined) entry.stripeCustomerId = patch.stripeCustomerId;
     return entry;
   }
 

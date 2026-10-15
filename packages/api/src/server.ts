@@ -82,6 +82,8 @@ import { getUsageMeter } from './store/usage.js';
 import { stopFullScanJobPruning } from './store/full-scan-jobs.js';
 import { FAULTLINE_API_VERSION } from './version.js';
 import { applyRouteAccess } from './lib/route-access.js';
+import { releaseClaims } from './plugins/claim-meter.js';
+import { startClaimMeterSync, stopClaimMeterSync } from './store/claim-meter-sync.js';
 
 const MAX_FILE_SIZE = 10_485_760; // 10MB
 
@@ -250,6 +252,8 @@ export function buildServer() {
     // Skip during tests to avoid fetch mock contamination
     if (process.env.NODE_ENV !== 'test') {
       getNpmMetricsStore().startPolling(3_600_000);
+      // Claim meter -> Stripe meter events; a no-op while STRIPE_SECRET_KEY is unset.
+      startClaimMeterSync();
     }
 
     // Weekly summary notification — fires every Sunday 09:00 UTC
@@ -278,6 +282,7 @@ export function buildServer() {
     getNpmMetricsStore().stopPolling();
     resetNpmMetricsStore();
     stopFullScanJobPruning();
+    stopClaimMeterSync();
   });
 
   fastify.addHook('onRequest', async (request: FastifyRequest) => {
@@ -286,6 +291,8 @@ export function buildServer() {
   });
 
   fastify.addHook('onResponse', async (request: FastifyRequest, reply: FastifyReply) => {
+    // Free any claims the request reserved and did not commit (every error path).
+    releaseClaims(request);
     const startMs = (request as FastifyRequest & { _startMs?: number })._startMs ?? Date.now();
     const latencyMs = Date.now() - startMs;
     const keyId = request.keyId ?? 'unknown';

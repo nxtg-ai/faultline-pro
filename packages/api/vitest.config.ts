@@ -11,7 +11,17 @@ export default defineConfig({
     // Evidence fetching (GoPMO 1.18.11.3 P1b) is off for the suite so a mocked
     // verdict citing a URL never reaches the network; tests/evidence-routes.test.ts
     // turns it on with a stubbed fetch.
-    env: { FAULTLINE_OUTBOUND_ALLOW_PRIVATE: '1', FAULTLINE_EVIDENCE_FETCH: 'off' },
+    // The claim meter refuses a customer key with no claimCap (fail closed). The
+    // suite's customer keys scan freely under a large default cap, and its rows
+    // go to /dev/null; the claim-meter tests delete the default to prove the
+    // refusal and point the ledgers at temp files.
+    env: {
+      FAULTLINE_OUTBOUND_ALLOW_PRIVATE: '1',
+      FAULTLINE_EVIDENCE_FETCH: 'off',
+      FAULTLINE_DEFAULT_CLAIM_CAP: '100000000',
+      FAULTLINE_CLAIM_METER_LEDGER: '/dev/null',
+      FAULTLINE_CLAIM_METER_SYNC_LEDGER: '/dev/null',
+    },
     coverage: {
       provider: 'v8',
       include: ['src/**'],

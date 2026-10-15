@@ -11,6 +11,7 @@ import type { Provider } from '../store/circuit-breaker.js';
 import { getScanCache } from '../store/cache.js';
 import { cacheCaller, requestOwner } from '../lib/cache-caller.js';
 import { buildEvidenceLinks } from '../lib/url-validator.js';
+import { commitClaims, engineVerifyCap, reserveClaims } from '../plugins/claim-meter.js';
 
 const BODY_SCHEMA = {
   type: 'object',
@@ -35,7 +36,7 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan/deep',
     {
       config: { access: 'key' },
-      preHandler: [requireApiKey, rateLimitScan],
+      preHandler: [requireApiKey, rateLimitScan, reserveClaims(engineVerifyCap())],
       schema: { tags: ['Scan'], summary: 'Deep scan with URL evidence validation and scoring', body: BODY_SCHEMA },
     },
     async (request, reply) => {
@@ -51,6 +52,8 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
         reply.header('X-Cache', 'HIT');
         getAnalyticsStore().record(keyId, (cached as { overallRisk: string }).overallRisk as RiskLevel);
         const delivered = issueScanId(cached, request.keyId);
+        // A cached verdict delivered to the caller bills like a fresh one.
+        commitClaims(request, delivered.scanId, cached, effectiveProvider);
         fireWebhookEvent('scan.complete', delivered, requestOwner(request));
         return reply.status(200).send(delivered);
       }
@@ -80,6 +83,7 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
           if (caller !== null) getScanCache().set(caller, text, `deep:${effectiveProvider}`, enriched as unknown as Record<string, unknown>);
           getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
           const delivered = issueScanId(enriched, request.keyId);
+          commitClaims(request, delivered.scanId, result, p);
           fireWebhookEvent('scan.complete', delivered, requestOwner(request));
 
           return reply.status(200).send(delivered);
