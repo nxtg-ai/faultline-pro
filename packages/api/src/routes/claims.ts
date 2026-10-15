@@ -17,6 +17,7 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
   }>(
     '/claims',
     {
+      config: { access: 'owner' },
       // Claim text and verdicts are caller data: a key is required (emma-soul al:6a0c831cb6ed0d62).
       preHandler: requireApiKey,
       schema: {
@@ -57,7 +58,7 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
-  fastify.get('/claims/trending', { preHandler: requireApiKey, schema: { tags: ['Claims'], summary: 'Trending claims by frequency and emerging in last 24h' } }, async (request, reply) => {
+  fastify.get('/claims/trending', { config: { access: 'owner' }, preHandler: requireApiKey, schema: { tags: ['Claims'], summary: 'Trending claims by frequency and emerging in last 24h' } }, async (request, reply) => {
     const index = getClaimIndex();
     const caller = cacheCaller(request);
 
@@ -84,6 +85,7 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Params: { id: string } }>(
     '/claims/:id/attribution',
     {
+      config: { access: 'owner' },
       preHandler: requireApiKey,
       schema: {
         tags: ['Claims'],
@@ -123,6 +125,7 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Params: { id: string } }>(
     '/claims/:id/explain',
     {
+      config: { access: 'owner' },
       preHandler: requireApiKey,
       schema: {
         tags: ['Claims'],
@@ -149,7 +152,7 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
    */
   fastify.get(
     '/claims/stats',
-    { preHandler: requireApiKey, schema: { tags: ['Claims'], summary: 'Aggregate statistics across all verified claims' } },
+    { config: { access: 'owner' }, preHandler: requireApiKey, schema: { tags: ['Claims'], summary: 'Aggregate statistics across all verified claims' } },
     async (request, reply) => {
       return reply.send(getClaimIndex().getStats(cacheCaller(request)));
     },
@@ -161,7 +164,7 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
    */
   fastify.get(
     '/claims/view',
-    { schema: { tags: ['Claims'], summary: 'Claim database search UI (HTML)' } },
+    { config: { access: 'public' }, schema: { tags: ['Claims'], summary: 'Claim database search UI (HTML)' } },
     async (_request, reply) => {
       reply.header('Content-Type', 'text/html; charset=utf-8');
       return reply.send(buildClaimsHtml());

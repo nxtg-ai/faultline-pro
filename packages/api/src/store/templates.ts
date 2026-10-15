@@ -8,6 +8,8 @@ export interface ScanTemplate {
   failOn?: string;
   description?: string;
   createdAt: string;
+  /** The key that created it; undefined for a template stored before owners were recorded (admin-only). */
+  keyId?: string;
 }
 
 interface CreateTemplateOptions {
@@ -20,12 +22,13 @@ interface CreateTemplateOptions {
 class TemplateStore {
   private templates = new Map<string, ScanTemplate>();
 
-  create(name: string, options: CreateTemplateOptions = {}): ScanTemplate {
+  create(name: string, options: CreateTemplateOptions = {}, keyId?: string): ScanTemplate {
     const template: ScanTemplate = {
       id: randomUUID(),
       name,
       ...options,
       createdAt: new Date().toISOString(),
+      ...(keyId !== undefined ? { keyId } : {}),
     };
     this.templates.set(template.id, template);
     return template;

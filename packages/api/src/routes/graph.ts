@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import { requireApiKey, isAdminKeyId } from '../plugins/auth.js';
+import { requireApiKey } from '../plugins/auth.js';
+import { ownsOrAdmin } from '../lib/ownership.js';
 import { getScanStore } from '../store/scans.js';
 
 interface ClaimNode {
@@ -73,6 +74,7 @@ export async function graphRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Params: { id: string } }>(
     '/scan/:id/graph',
     {
+      config: { access: 'owner' },
       // Claim text from a stored scan: a key is required (emma-soul al:95753eecd4a6025b),
       // and a non-admin key sees only its own scans. Unknown and not-yours read the same.
       preHandler: requireApiKey,
@@ -88,7 +90,7 @@ export async function graphRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request, reply) => {
       const stored = getScanStore().getById(request.params.id);
-      if (!stored || !(isAdminKeyId(request.keyId) || stored.keyId === request.keyId)) {
+      if (!stored || !ownsOrAdmin(request, stored.keyId)) {
         return reply.status(404).send({ error: 'Scan not found.' });
       }
 

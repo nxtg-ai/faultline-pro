@@ -35,7 +35,7 @@ interface CreateWebhookBody {
 export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: CreateWebhookBody }>(
     '/webhooks',
-    { preHandler: requireAdmin, schema: { tags: ['Webhooks'], summary: 'Register a new webhook endpoint and event subscription', body: CREATE_BODY_SCHEMA } },
+    { config: { access: 'admin' }, preHandler: requireAdmin, schema: { tags: ['Webhooks'], summary: 'Register a new webhook endpoint and event subscription', body: CREATE_BODY_SCHEMA } },
     async (request, reply) => {
       const { url, events, secret, maxAttempts, retryDelayMs } = request.body;
       const refusal = await outboundUrlRefusal(url);
@@ -49,7 +49,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
 
   fastify.get<{ Querystring: { tenantId?: string } }>(
     '/webhooks',
-    { preHandler: requireAdmin, schema: { tags: ['Webhooks'], summary: 'List all registered webhook subscriptions' } },
+    { config: { access: 'admin' }, preHandler: requireAdmin, schema: { tags: ['Webhooks'], summary: 'List all registered webhook subscriptions' } },
     async (request, reply) => {
       return reply.status(200).send(getWebhookStore().list(request.query.tenantId));
     },
@@ -57,7 +57,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
 
   fastify.delete<{ Params: { id: string } }>(
     '/webhooks/:id',
-    { preHandler: requireAdmin, schema: { tags: ['Webhooks'], summary: 'Delete a webhook subscription by ID' } },
+    { config: { access: 'admin' }, preHandler: requireAdmin, schema: { tags: ['Webhooks'], summary: 'Delete a webhook subscription by ID' } },
     async (request, reply) => {
       const deleted = getWebhookStore().delete(request.params.id);
       if (!deleted) {
@@ -72,7 +72,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /webhooks/test — HTML tester page (public)
   fastify.get(
     '/webhooks/test',
-    { preHandler: [requireAdmin], schema: { tags: ['Webhooks'], summary: 'Webhook test tool (HTML)' } },
+    { config: { access: 'admin' }, preHandler: [requireAdmin], schema: { tags: ['Webhooks'], summary: 'Webhook test tool (HTML)' } },
     async (_request, reply) => {
       const registeredHooks = getWebhookStore().list();
       reply.header('Content-Type', 'text/html; charset=utf-8');
@@ -84,6 +84,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: { url: string; event?: string; secret?: string } }>(
     '/webhooks/test',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Webhooks'],
@@ -115,6 +116,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Params: { id: string }; Body: { event?: string } }>(
     '/webhooks/test/:id',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Webhooks'],
@@ -150,6 +152,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: { webhookId?: string } }>(
     '/webhooks/test/history',
     {
+      config: { access: 'admin' },
       // Lists every webhook's URL and test results, so admin only, like /webhooks/deliveries.
       preHandler: [requireApiKey, requireAdmin],
       schema: {
@@ -172,6 +175,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: { limit?: string } }>(
     '/webhooks/deliveries',
     {
+      config: { access: 'admin' },
       preHandler: requireAdmin,
       schema: {
         tags: ['Webhooks'],
@@ -194,6 +198,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: { limit?: string } }>(
     '/webhooks/deliveries/view',
     {
+      config: { access: 'admin' },
       preHandler: requireAdmin,
       schema: { tags: ['Webhooks'], summary: 'Webhook delivery log dashboard (HTML)' },
     },
@@ -212,6 +217,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Params: { id: string }; Querystring: { limit?: string } }>(
     '/webhooks/:id/deliveries',
     {
+      config: { access: 'admin' },
       preHandler: requireAdmin,
       schema: {
         tags: ['Webhooks'],

@@ -116,6 +116,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: { text?: string; provider?: string } }>(
     '/scan/stream',
     {
+      config: { access: 'key' },
       preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap],
       schema: {
         tags: ['Scan'],
@@ -205,7 +206,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
           tier: resolveTierFromRequest(keyId, request.headers['x-user-tier']),
           latencyMs: Date.now() - startTime,
         });
-        getCostStore().recordManaged(costEvent);
+        getCostStore().recordManaged(costEvent, keyId);
         emitScanCostEvent(costEvent);
         appendScanCostLog(costEvent);
         recordProviderSpend(costEvent); // A-110 item 1 — append-only provider-spend ledger
@@ -238,6 +239,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: StreamPostBody }>(
     '/scan/stream',
     {
+      config: { access: 'key' },
       preHandler: [requireApiKey, enforceConsensusEntitlement, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap],
       schema: {
         tags: ['Scan'],
@@ -319,7 +321,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
           tier: resolveTierFromRequest(keyId, request.headers['x-user-tier']),
           latencyMs: Date.now() - startTime,
         });
-        getCostStore().recordManaged(costEvent);
+        getCostStore().recordManaged(costEvent, keyId);
         emitScanCostEvent(costEvent);
         appendScanCostLog(costEvent);
         recordProviderSpend(costEvent); // A-110 item 1 — append-only provider-spend ledger

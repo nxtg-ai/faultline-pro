@@ -309,7 +309,7 @@ export function engineCommit(): string | null {
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 export async function healthRoutes(fastify: FastifyInstance): Promise<void> {
-  fastify.get('/health', { schema: { tags: ['Monitoring'], summary: 'Basic health check — subsystem and provider status' } }, async (_request, _reply) => {
+  fastify.get('/health', { config: { access: 'public' }, schema: { tags: ['Monitoring'], summary: 'Basic health check — subsystem and provider status' } }, async (_request, _reply) => {
     const keyCount = getKeyStore().size;
     const providers = {
       gemini:     Boolean(process.env.GEMINI_API_KEY),
@@ -332,7 +332,7 @@ export async function healthRoutes(fastify: FastifyInstance): Promise<void> {
     };
   });
 
-  fastify.get('/health/deep', { schema: { tags: ['Monitoring'], summary: 'Deep health check — all subsystems with entry counts and analytics' } }, async (_request, _reply) => {
+  fastify.get('/health/deep', { config: { access: 'public' }, schema: { tags: ['Monitoring'], summary: 'Deep health check — all subsystems with entry counts and analytics' } }, async (_request, _reply) => {
     const dashboard = getAnalyticsStore().getDashboard();
     const subsystems = {
       keyStore:   { status: 'ok' as const, activeKeys: getKeyStore().size },
@@ -357,12 +357,12 @@ export async function healthRoutes(fastify: FastifyInstance): Promise<void> {
   });
 
   // Machine-readable status JSON (polled by the status page)
-  fastify.get('/status.json', { schema: { tags: ['Monitoring'], summary: 'Machine-readable status payload (JSON)' } }, async (_request, _reply) => {
+  fastify.get('/status.json', { config: { access: 'public' }, schema: { tags: ['Monitoring'], summary: 'Machine-readable status payload (JSON)' } }, async (_request, _reply) => {
     return buildStatusPayload();
   });
 
   // Human-readable status page (auto-refreshes via JS)
-  fastify.get('/status', { schema: { tags: ['Monitoring'], summary: 'HTML status page — uptime, providers, response time chart, incidents' } }, async (_request, reply) => {
+  fastify.get('/status', { config: { access: 'public' }, schema: { tags: ['Monitoring'], summary: 'HTML status page — uptime, providers, response time chart, incidents' } }, async (_request, reply) => {
     reply.header('Content-Type', 'text/html; charset=utf-8');
     return STATUS_HTML;
   });

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { requireApiKey } from '../plugins/auth.js';
+import { requireApiKey, scanHistoryKeyScope } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { esc } from '../lib/html.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
@@ -201,6 +201,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
   fastify.post<{ Body: ComplianceGateBody }>(
     '/scan/compliance-gate',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey, rateLimitScan],
       schema: {
         tags: ['Compliance'],
@@ -230,6 +231,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
         nonCompliantCount: gate.nonCompliantCount,
         totalArticles: gate.totalArticles,
         threshold: gate.threshold,
+        keyId,
       });
 
       // Fire webhook alert on compliance gate failure
@@ -260,6 +262,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
   fastify.get<{ Params: { id: string }; Querystring: { projectName?: string; threshold?: string; strict?: string } }>(
     '/scan/:id/compliance',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Compliance'],
@@ -299,6 +302,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
   fastify.post<{ Body: { beforeId: string; afterId: string; projectName?: string } }>(
     '/scan/compliance-diff',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Compliance'],
@@ -336,6 +340,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
   fastify.get<{ Params: { id: string }; Querystring: { label?: string; projectName?: string } }>(
     '/scan/:id/compliance/badge',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Compliance'],
@@ -378,6 +383,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
   fastify.get<{ Querystring: { projectName?: string; limit?: string; since?: string } }>(
     '/compliance/history',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Compliance'],
@@ -396,6 +402,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
       const limit = request.query.limit ? parseInt(request.query.limit, 10) : undefined;
       const entries = getComplianceHistoryStore().query({
         projectName: request.query.projectName,
+        keyId: scanHistoryKeyScope(request),
         limit,
         since: request.query.since,
       });
@@ -407,6 +414,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
   fastify.get<{ Querystring: { projectName: string } }>(
     '/compliance/trend',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Compliance'],
@@ -421,7 +429,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
       },
     },
     async (request, reply) => {
-      const trend = getComplianceHistoryStore().trend(request.query.projectName);
+      const trend = getComplianceHistoryStore().trend(request.query.projectName, scanHistoryKeyScope(request));
       return reply.send(trend);
     },
   );
@@ -430,6 +438,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
   fastify.get<{ Querystring: { format?: string; projectName?: string; since?: string } }>(
     '/compliance/export',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Compliance'],
@@ -447,6 +456,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
     async (request, reply) => {
       const entries = getComplianceHistoryStore().query({
         projectName: request.query.projectName,
+        keyId: scanHistoryKeyScope(request),
         since: request.query.since,
         limit: 5000,  // Export up to full store capacity
       });
@@ -474,6 +484,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
   fastify.get(
     '/compliance/dashboard',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Compliance'],
@@ -482,9 +493,10 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
     },
     async (request, reply) => {
       const store = getComplianceHistoryStore();
-      const history = store.query({ limit: 20 });
+      const scope = scanHistoryKeyScope(request);
+      const history = store.query({ limit: 20, keyId: scope });
       const latest = history.length > 0 ? history[history.length - 1] : null;
-      const all = store.query({});
+      const all = store.query({ keyId: scope });
       const total = all.length;
       const passCount = all.filter(e => e.pass).length;
 

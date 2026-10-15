@@ -253,6 +253,7 @@ export async function fullScanRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: EstimateBody }>(
     '/scan/full/estimate',
     {
+      config: { access: 'key' },
       preHandler: [requireApiKey, rateLimitScan, limitFullScanEstimates, enforceProviderSpendCap],
       schema: { tags: ['Scan'], summary: 'Price a full scan: extract claims, count fact claims and units', body: ESTIMATE_BODY },
     },
@@ -305,6 +306,7 @@ export async function fullScanRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: StartBody }>(
     '/scan/full',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey, rateLimitScan, enforceProviderSpendCap],
       schema: { tags: ['Scan'], summary: 'Start a full scan from an estimate (Idempotency-Key required)', body: START_BODY },
     },
@@ -351,6 +353,7 @@ export async function fullScanRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Params: JobParams }>(
     '/scan/full/:jobId',
     {
+      config: { access: 'owner' },
       preHandler: requireApiKey,
       schema: { tags: ['Scan'], summary: 'Poll a full scan: status, per-claim progress, units', params: JOB_PARAMS },
     },
@@ -360,6 +363,7 @@ export async function fullScanRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Params: JobParams }>(
     '/scan/full/:jobId/stop',
     {
+      config: { access: 'owner' },
       preHandler: requireApiKey,
       schema: { tags: ['Scan'], summary: 'Stop a full scan; claims never started are unserved', params: JOB_PARAMS },
     },

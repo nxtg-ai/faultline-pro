@@ -117,6 +117,7 @@ export async function critiqueRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: CritiqueRequestBody }>(
     '/critique',
     {
+      config: { access: 'key' },
       // Critique is a paid LLM call on our env keys, so it sits behind the same
       // per-minute burst limiter and fleet spend cap as a scan. It shares the
       // key's burst bucket with scans. The per-key monthly SCAN quota

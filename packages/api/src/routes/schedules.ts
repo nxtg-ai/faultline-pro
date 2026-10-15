@@ -66,6 +66,7 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: CreateScheduleInput }>(
     '/schedules',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Schedules'],
@@ -96,6 +97,7 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/schedules',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: { tags: ['Schedules'], summary: 'List recurring scan schedules' },
     },
@@ -112,6 +114,7 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/schedules/view',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: { tags: ['Schedules'], summary: 'Recurring scan schedule dashboard (HTML)' },
     },
@@ -127,6 +130,7 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Params: { id: string } }>(
     '/schedules/:id',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Schedules'],
@@ -150,6 +154,7 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.patch<{ Params: { id: string }; Body: Partial<typeof PATCH_SCHEMA['properties']> }>(
     '/schedules/:id',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Schedules'],
@@ -184,6 +189,7 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.delete<{ Params: { id: string } }>(
     '/schedules/:id',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Schedules'],
@@ -208,6 +214,7 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Params: { id: string } }>(
     '/schedules/:id/trigger',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Schedules'],
@@ -237,6 +244,7 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Params: { id: string }; Querystring: { limit?: string } }>(
     '/schedules/:id/history',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Schedules'],

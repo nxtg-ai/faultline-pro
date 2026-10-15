@@ -15,6 +15,7 @@ export async function rulesRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/rules',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Claims'],
@@ -65,6 +66,7 @@ export async function rulesRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/rules',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Claims'],
@@ -82,6 +84,7 @@ export async function rulesRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Params: { id: string } }>(
     '/rules/:id',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Claims'],
@@ -106,6 +109,7 @@ export async function rulesRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.patch<{ Params: { id: string } }>(
     '/rules/:id',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Claims'],
@@ -146,6 +150,7 @@ export async function rulesRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.delete<{ Params: { id: string } }>(
     '/rules/:id',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Claims'],
@@ -170,6 +175,7 @@ export async function rulesRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Params: { id: string }; Body: { claims: ClaimShape[] } }>(
     '/rules/:id/test',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Claims'],
@@ -220,6 +226,7 @@ export async function rulesRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: { claims: ClaimShape[] } }>(
     '/rules/apply',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Claims'],
@@ -248,6 +255,7 @@ export async function rulesRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/rules/examples',
     {
+      config: { access: 'public' },
       schema: {
         tags: ['Claims'],
         summary: 'Example custom rule definitions (JSON and YAML)',

@@ -94,8 +94,9 @@ function computeOverview(keyId: string | undefined, claimCaller: string | null) 
     return { date, avgMs: ms.length > 0 ? Math.round(ms.reduce((s, v) => s + v, 0) / ms.length) : null };
   });
 
-  // Cache stats
-  const cacheStats = getScanCache().stats();
+  // Cache stats are fleet-wide (one cache across keys), so only admin sees them
+  // (emma-soul seat on 914d85d, F2).
+  const cacheStats = keyId === undefined ? getScanCache().stats() : undefined;
 
   // Claim categories from ClaimIndex
   const claimStats = getClaimIndex().getStats(claimCaller);
@@ -116,19 +117,21 @@ function computeOverview(keyId: string | undefined, claimCaller: string | null) 
     riskTrend,
     trustTrend,
     latencyTrend,
-    cacheStats: {
-      size:    cacheStats.size,
-      hits:    cacheStats.hits,
-      misses:  cacheStats.misses,
-      hitRate: Math.round(cacheStats.hitRate * 100),
-    },
+    ...(cacheStats ? {
+      cacheStats: {
+        size:    cacheStats.size,
+        hits:    cacheStats.hits,
+        misses:  cacheStats.misses,
+        hitRate: Math.round(cacheStats.hitRate * 100),
+      },
+    } : {}),
     claimCategories,
     summary: {
       totalScans,
       totalClaims:      claimStats.totalClaims,
       avgClaimsPerScan: avgClaims,
       mostUsedProvider: mostUsed,
-      cacheHitRate:     Math.round(cacheStats.hitRate * 100),
+      ...(cacheStats ? { cacheHitRate: Math.round(cacheStats.hitRate * 100) } : {}),
       accuracyRate:     Math.round(claimStats.accuracyRate * 100),
     },
   };
@@ -282,7 +285,7 @@ async function load(){
   document.getElementById('s-scans').textContent    = fmt(data.summary.totalScans);
   document.getElementById('s-claims').textContent   = fmt(data.summary.totalClaims);
   document.getElementById('s-avg').textContent      = fmt(data.summary.avgClaimsPerScan);
-  document.getElementById('s-cache').innerHTML      = data.summary.cacheHitRate+'<span style="font-size:16px">%</span>';
+  document.getElementById('s-cache').innerHTML      = data.summary.cacheHitRate === undefined ? '\u2014' : data.summary.cacheHitRate+'<span style="font-size:16px">%</span>';
   document.getElementById('s-accuracy').innerHTML   = data.summary.accuracyRate+'<span style="font-size:16px">%</span>';
   document.getElementById('s-provider').textContent = data.summary.mostUsedProvider || '—';
   document.getElementById('ts').textContent         = 'Last updated ' + new Date().toLocaleTimeString();
@@ -395,7 +398,10 @@ async function load(){
     },
   });
 
-  // Cache doughnut ring
+  // Cache doughnut ring (admin only: the scan cache is fleet-wide)
+  if (!data.cacheStats) {
+    ['cache-pct','c-size','c-hits','c-misses','c-rate'].forEach(function(id){ document.getElementById(id).textContent = '\u2014'; });
+  } else {
   const hr = data.cacheStats.hitRate;
   new Chart(document.getElementById('chart-cache'),{
     type:'doughnut',
@@ -418,6 +424,7 @@ async function load(){
   document.getElementById('c-hits').textContent    = fmt(data.cacheStats.hits);
   document.getElementById('c-misses').textContent  = fmt(data.cacheStats.misses);
   document.getElementById('c-rate').textContent    = hr+'%';
+  }
 
   document.getElementById('loading').classList.add('gone');
 }
@@ -441,6 +448,7 @@ export async function analyticsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/analytics/overview',
     {
+      config: { access: 'key' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Analytics'],
@@ -458,6 +466,7 @@ export async function analyticsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/analytics',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Analytics'],

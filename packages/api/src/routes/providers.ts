@@ -37,6 +37,7 @@ export async function providerRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: RegisterBody }>(
     '/providers/register',
     {
+      config: { access: 'admin' },
       preHandler: [requireAdmin],
       schema: { tags: ['Providers'], summary: 'Register a custom external provider plugin (admin)', body: REGISTER_SCHEMA },
     },
@@ -68,7 +69,7 @@ export async function providerRoutes(fastify: FastifyInstance): Promise<void> {
    */
   fastify.get(
     '/providers/health',
-    { preHandler: [requireApiKey], schema: { tags: ['Providers'], summary: 'Health metrics for all built-in and plugin providers (JSON)' } },
+    { config: { access: 'key' }, preHandler: [requireApiKey], schema: { tags: ['Providers'], summary: 'Health metrics for all built-in and plugin providers (JSON)' } },
     async (_request, reply) => {
       const registry = getProviderRegistry();
       const cb = getCircuitBreaker();
@@ -104,6 +105,7 @@ export async function providerRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/providers/health/view',
     {
+      config: { access: 'key' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Providers'],
@@ -123,6 +125,7 @@ export async function providerRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Params: { name: string }; Body: { reason?: string } }>(
     '/providers/:name/disable',
     {
+      config: { access: 'admin' },
       preHandler: [requireAdmin],
       schema: {
         tags: ['Providers'],
@@ -159,6 +162,7 @@ export async function providerRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Params: { name: string } }>(
     '/providers/:name/enable',
     {
+      config: { access: 'admin' },
       preHandler: [requireAdmin],
       schema: {
         tags: ['Providers'],

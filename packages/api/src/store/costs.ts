@@ -148,6 +148,12 @@ export interface ManagedScanCostEvent {
    * which can be 200+ claims). Absent = 'scan'. Per-scan percentiles count 'scan' only.
    */
   kind?: 'scan' | 'admin-verify' | 'full-scan';
+  /**
+   * The API key that ran the scan, kept in memory only (not in the scan-cost log), so
+   * /costs/percentiles can show a key its own scans. Events without it (hydrated from
+   * the log, or written before owners were recorded) count for admin only.
+   */
+  ownerKeyId?: string;
 }
 
 const VALID_TIERS = new Set<ManagedScanCostEvent['tier']>(['enterprise', 'pro', 'personal', 'free', 'anon', 'userkey']);
@@ -329,8 +335,8 @@ class CostStore {
     return { totalTokens, totalCostUsd, byProvider, byDate };
   }
 
-  recordManaged(event: ManagedScanCostEvent): void {
-    this.managedData.push(event);
+  recordManaged(event: ManagedScanCostEvent, ownerKeyId?: string): void {
+    this.managedData.push(ownerKeyId ? { ...event, ownerKeyId } : event);
   }
 
   getManagedEvents(days = 30): ManagedScanCostEvent[] {
@@ -338,13 +344,15 @@ class CostStore {
     return this.managedData.filter((e) => e.ts >= cutoff);
   }
 
-  getPercentiles(days = 30, tier?: ManagedScanCostEvent['tier']): CostPercentiles {
+  /** `keyId` undefined = every key's scans (admin); a string = only that key's scans. */
+  getPercentiles(days = 30, tier?: ManagedScanCostEvent['tier'], keyId?: string): CostPercentiles {
     // Per-scan percentiles describe scans only: an admin-verify batch is up to 25 claims, not one scan.
     // Legacy admin batches logged before `kind` existed carry no kind, still read as scans here,
     // and age out of the 30-day window.
     const events = this.getManagedEvents(days)
       .filter((e) => (e.kind ?? 'scan') === 'scan')
-      .filter((e) => !tier || e.tier === tier);
+      .filter((e) => !tier || e.tier === tier)
+      .filter((e) => keyId === undefined || e.ownerKeyId === keyId);
     const costs = events.map((e) => e.costUsd).sort((a, b) => a - b);
     const walls = events.map((e) => e.latencyMs).sort((a, b) => a - b);
     return {

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { requireApiKey, isAdminKeyId } from '../plugins/auth.js';
+import { requireApiKey, isAdminKeyId, scanHistoryKeyScope } from '../plugins/auth.js';
+import { ownedOnly, ownsOrAdmin } from '../lib/ownership.js';
 import {
   getNotificationStore,
   ALL_EVENT_TYPES,
@@ -20,7 +21,7 @@ import { outboundUrlRefusal } from '../lib/outbound-url.js';
  */
 async function requireOwnKeyOrAdmin(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const target = (request.params as { keyId?: string }).keyId;
-  if (target === undefined || isAdminKeyId(request.keyId) || target === request.keyId) return;
+  if (target === undefined || ownsOrAdmin(request, target)) return;
   reply.status(403).send({ error: 'forbidden', message: "A key can only read or change its own notification settings." });
 }
 
@@ -67,6 +68,7 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
   fastify.get(
     '/notifications/prefs',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Monitoring'],
@@ -76,7 +78,7 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
     },
     async (request, reply) => {
       const all = getNotificationStore().listPrefs();
-      const prefs = isAdminKeyId(request.keyId) ? all : all.filter((p) => p.keyId === request.keyId);
+      const prefs = ownedOnly(request, all, (p) => p.keyId);
       return reply.send({ prefs, eventTypes: ALL_EVENT_TYPES });
     },
   );
@@ -85,6 +87,7 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
   fastify.get<{ Params: { keyId: string } }>(
     '/notifications/prefs/:keyId',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey, requireOwnKeyOrAdmin],
       schema: {
         tags: ['Monitoring'],
@@ -113,6 +116,7 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
   fastify.put<{ Params: { keyId: string }; Body: PrefsBody }>(
     '/notifications/prefs/:keyId',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey, requireOwnKeyOrAdmin],
       schema: {
         tags: ['Monitoring'],
@@ -158,6 +162,7 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
   fastify.delete<{ Params: { keyId: string } }>(
     '/notifications/prefs/:keyId',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey, requireOwnKeyOrAdmin],
       schema: {
         tags: ['Monitoring'],
@@ -181,6 +186,7 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
   fastify.get<{ Querystring: { keyId?: string; limit?: string; tenantId?: string } }>(
     '/notifications/history',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Monitoring'],
@@ -198,13 +204,14 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
     },
     async (request, reply) => {
       const limit = Math.min(500, Number(request.query.limit ?? 100));
-      // A non-admin key sees only its own history; asking for another key's is refused.
+      // A non-admin key sees only its own history; asking for another key's, or
+      // filtering by tenant, is refused (the filters are admin-only).
       let keyId = request.query.keyId;
       if (!isAdminKeyId(request.keyId)) {
-        if (keyId !== undefined && keyId !== request.keyId) {
+        if ((keyId !== undefined && keyId !== request.keyId) || request.query.tenantId !== undefined) {
           return reply.status(403).send({ error: 'forbidden', message: "A key can only read its own notification history." });
         }
-        keyId = request.keyId;
+        keyId = scanHistoryKeyScope(request);
       }
       const records = getNotificationStore().getHistory(keyId, limit, request.query.tenantId);
       return reply.send({ total: records.length, records });
@@ -215,6 +222,7 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
   fastify.post<{ Params: { keyId: string } }>(
     '/notifications/test/:keyId',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey, requireOwnKeyOrAdmin],
       schema: {
         tags: ['Monitoring'],
@@ -251,6 +259,7 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
   fastify.get(
     '/notifications/events',
     {
+      config: { access: 'public' },
       schema: {
         tags: ['Monitoring'],
         summary: 'List available notification event types (public)',
@@ -270,6 +279,7 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
   fastify.get(
     '/notifications',
     {
+      config: { access: 'public' },
       schema: {
         tags: ['Monitoring'],
         summary: 'Notification system overview (HTML)',

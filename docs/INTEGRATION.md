@@ -44,6 +44,8 @@ x-api-key: fl_your_key_here
 
 **Customer keys are not being issued yet.** Until per-key data isolation is finished on every route, `POST /keys`, `POST /orgs/:id/keys` and GraphQL `createKey` refuse any key without the `admin` permission (`403 customer_keys_closed`), and `PATCH /keys/:id` refuses to change a key's permissions to a non-admin set; operator (admin) keys can still be created, and an org role never mints an admin key. The server flag `FAULTLINE_CUSTOMER_KEYS=on` reopens issuance once that work is reviewed.
 
+**Per-key isolation.** Everything the API stores belongs to the key that created it: stored scans, queued scans, scheduled jobs and schedules, bulk and full-scan jobs, templates, rules, compliance history, cost rows, approvals, notification preferences and history, and claim-index entries. A non-admin key reads, lists, changes and uses only its own; another key's object answers `404` exactly like one that does not exist, and lists leave it out. `GET /costs?keyId=` and `GET /notifications/history?keyId=&tenantId=` filters are admin-only (`403` for another key's id or any tenant filter). `GET /rate-limits.json` shows a key only its own row and alerts. Approving a scan (`POST /scans/:id/approve`) needs a stored scan of the calling key. An admin key (the server key or a key with the `admin` permission) sees everything, including records stored before owners were recorded, which no other key can reach. A request with no key gets `401` (or `403` on admin routes) before its body is validated.
+
 **Getting a key for your team**: Make a `POST /keys` request with your admin key. The new key's secret is shown **once** in the response — store it immediately.
 
 ```http

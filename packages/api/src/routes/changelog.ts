@@ -153,6 +153,7 @@ a:hover{text-decoration:underline}
 
 export async function changelogRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get('/changelog', {
+    config: { access: 'public' },
     schema: { tags: ['Monitoring'], summary: 'HTML changelog — auto-generated from git tags' },
   }, async (_req, reply) => {
     const blocks = getChangelog();
@@ -161,12 +162,14 @@ export async function changelogRoutes(fastify: FastifyInstance): Promise<void> {
   });
 
   fastify.get('/changelog.json', {
+    config: { access: 'public' },
     schema: { tags: ['Monitoring'], summary: 'JSON changelog data' },
   }, async () => {
     return getChangelog();
   });
 
   fastify.get('/changelog.md', {
+    config: { access: 'public' },
     schema: { tags: ['Monitoring'], summary: 'Markdown changelog' },
   }, async (_req, reply) => {
     const blocks = getChangelog();

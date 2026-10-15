@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { getScanQueue, tierToPriority } from '../store/scan-queue.js';
 import { getKeyStore } from '../store/keys.js';
+import { ownsOrAdmin } from '../lib/ownership.js';
 import type { QueuePriority } from '../store/scan-queue.js';
 
 type ScanProvider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
@@ -36,6 +37,7 @@ export async function queueRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: EnqueueBody }>(
     '/queue/scans',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Jobs'],
@@ -73,6 +75,7 @@ export async function queueRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Params: { id: string } }>(
     '/queue/scans/:id',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Jobs'],
@@ -87,7 +90,7 @@ export async function queueRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request, reply) => {
       const item = getScanQueue().get(request.params.id);
-      if (!item) return reply.status(404).send({ error: 'Queue item not found.' });
+      if (!item || !ownsOrAdmin(request, item.keyId)) return reply.status(404).send({ error: 'Queue item not found.' });
 
       const position = item.status === 'pending' ? getScanQueue().getPosition(item.id) : null;
       return reply.send({ ...item, position });
@@ -98,6 +101,7 @@ export async function queueRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: { limit?: string } }>(
     '/queue/scans',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Jobs'],
@@ -121,6 +125,7 @@ export async function queueRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.delete<{ Params: { id: string } }>(
     '/queue/scans/:id',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Jobs'],
@@ -134,8 +139,9 @@ export async function queueRoutes(fastify: FastifyInstance): Promise<void> {
       },
     },
     async (request, reply) => {
+      // Ownership before status: another key's item reads as not found, not 409.
       const item = getScanQueue().get(request.params.id);
-      if (!item) return reply.status(404).send({ error: 'Queue item not found.' });
+      if (!item || !ownsOrAdmin(request, item.keyId)) return reply.status(404).send({ error: 'Queue item not found.' });
       if (item.status !== 'pending') {
         return reply.status(409).send({ error: `Cannot cancel item with status '${item.status}'.` });
       }
@@ -148,6 +154,7 @@ export async function queueRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/queue/status',
     {
+      config: { access: 'public' },
       schema: {
         tags: ['Jobs'],
         summary: 'Scan queue aggregate status (public)',
@@ -173,6 +180,7 @@ export async function queueRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/queue',
     {
+      config: { access: 'public' },
       schema: {
         tags: ['Jobs'],
         summary: 'Scan queue dashboard (HTML, public)',

@@ -120,6 +120,7 @@ export async function exportRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: ExportBody }>(
     '/export',
     {
+      config: { access: 'key' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Scans'],
