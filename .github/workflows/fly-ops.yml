@@ -29,6 +29,8 @@ on:
           - create-ledger-volume
           - releases
           - logs
+          - customer-keys-on
+          - customer-keys-off
 
 permissions:
   contents: read
@@ -58,6 +60,18 @@ jobs:
       - name: Secrets (names only)
         if: inputs.action == 'secrets-list'
         run: flyctl secrets list -a "$APP"
+
+      # Customer API keys (FAULTLINE_CUSTOMER_KEYS). "on" only under emma-soul's
+      # reopen ruling (Dx3 e2909e46); "off" is the kill switch if the production
+      # two-key canary shows any cross-key result. Setting it restarts the machine,
+      # which empties the in-memory keystore.
+      - name: Customer keys on
+        if: inputs.action == 'customer-keys-on'
+        run: flyctl secrets set FAULTLINE_CUSTOMER_KEYS=on -a "$APP"
+
+      - name: Customer keys off
+        if: inputs.action == 'customer-keys-off'
+        run: flyctl secrets unset FAULTLINE_CUSTOMER_KEYS -a "$APP"
 
       - name: Scale to one machine
         if: inputs.action == 'scale-to-one'
