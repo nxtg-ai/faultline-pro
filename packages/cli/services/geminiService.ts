@@ -143,9 +143,7 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
     Claim: "${claim.text}"
 
     1. Search for evidence.
-    2. Determine if the claim holds up ("supported"), fails ("contradicted"), is inconclusive ("mixed"), or cannot be settled from what the search found ("unverified").
-
-    UNVERIFIED RULE: "contradicted" requires a source that states the claim is false. If no source you found addresses the claim, output status "unverified". Absence of evidence is never "contradicted".
+    2. Determine if the claim holds up ("supported"), fails ("contradicted"), or is inconclusive ("mixed").
 
     CALIBRATION RULE — apply before returning status:
     Use "mixed" when ANY of these conditions hold:
@@ -332,11 +330,9 @@ export const verifyClaimGrounded = async (
     Retrieved sources:
     ${sourceBlock}
 
-    Determine if the claim holds up ("supported"), fails ("contradicted"), is
-    inconclusive ("mixed"), or cannot be settled from the sources ("unverified").
-    If the sources are empty or insufficient, judge from your own knowledge and
-    lean "mixed" when uncertain.
-    UNVERIFIED RULE: "contradicted" requires a source above, or knowledge you are sure of, that states the claim is false. If nothing settles the claim, output status "unverified". Absence of evidence is never "contradicted".
+    Determine if the claim holds up ("supported"), fails ("contradicted"), or is
+    inconclusive ("mixed"). If the sources are empty or insufficient, judge from
+    your own knowledge and lean "mixed" when uncertain.
 
     Return strictly a JSON object. No markdown, no preamble.
     { "status": "supported" | "contradicted" | "mixed" | "unverified", "explanation": "Concise assessment (max 2 sentences)." }

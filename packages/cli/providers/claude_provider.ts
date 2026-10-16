@@ -78,10 +78,9 @@ Stress-test this claim:
 
 Claim: "${claim.text}"
 
-Determine if the claim holds up ("supported"), fails ("contradicted"), is inconclusive ("mixed"), or cannot be settled from the evidence ("unverified").
+Determine if the claim holds up ("supported"), fails ("contradicted"), or is inconclusive ("mixed").
 
 You have NO access to live web search or external sources for this assessment — judge using only your parametric knowledge.
-UNVERIFIED RULE: "contradicted" requires that you know the claim is false. If you know of nothing that settles the claim, output status "unverified". Absence of evidence is never "contradicted".
 CALIBRATION RULE: If you are uncertain or the claim is ambiguous, output status: "mixed" and explain the uncertainty explicitly. Never commit to "supported" or "contradicted" when uncertain.
 HONESTY RULE: Do NOT claim your verdict is "based on sources", "based on multiple reliable sources", or cite any evidence — there are NO external sources attached to this verdict. Speak only from your own knowledge.
 
