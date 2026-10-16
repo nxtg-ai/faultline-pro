@@ -9,6 +9,7 @@
  */
 // Validates: N-234 (verdict honesty, GoPMO 1.18.7.3.1)
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createHash } from 'node:crypto';
 import type { Claim } from '../types';
 
 const sdk = vi.hoisted(() => ({ reply: {} as Record<string, unknown>, prompts: [] as string[] }));
@@ -34,7 +35,15 @@ import { createPerplexityProvider } from '../providers/perplexity_provider';
 
 const CLAIM: Claim = { id: 'c4', text: 'The underlying pro se complaint had cited 32 cases.', type: 'fact', importance: 3 };
 const NO_RESULTS = '{"status":"contradicted","explanation":"No search results were found that identify an underlying pro se complaint citing 32 cases."}';
-const RULE = /UNVERIFIED RULE: "contradicted" requires .* Absence of evidence is never "contradicted"\./;
+/** sha256 (first 16 hex) of each verify prompt for CLAIM, as measured by G0 on 47b72f0 (BA 0.763). */
+const FINGERPRINTS = {
+  geminiGrounded: 'a02663d97aeb677f',
+  geminiConsensus: 'a32aa1bab5a7acde',
+  sharedConsensus: 'b122686a73d834a9',
+  openai: '0fda1aedb7347549',
+  claude: 'a10708b4c1450e76',
+  perplexity: '904b182957b1e4ff',
+};
 
 beforeEach(() => {
   sdk.prompts = [];
@@ -73,23 +82,19 @@ describe('grounded Gemini backstop', () => {
   });
 });
 
-describe('every verify prompt states the unverified rule', () => {
+// Ruling Dx3 67cd2d8b: a prompt or verdict-logic change is measured on G0 on a
+// branch before deploy. The 3565df7 prompt rule lowered BA 0.763 to 0.691 and was
+// reverted to the 47b72f0 wording. These fingerprints pin that wording: a change
+// fails here until its G0 run is published and the hash is updated with it.
+describe('verify prompts are the G0-measured wording (47b72f0)', () => {
   const ok = (body: unknown) => ({ ok: true, status: 200, statusText: 'OK', json: async () => body });
   const reply = '{"status":"unverified","explanation":"x"}';
+  const sha = (t: string) => createHash('sha256').update(t).digest('hex').slice(0, 16);
 
-  it('Gemini grounded verify and Gemini consensus vote', async () => {
+  it('no verify prompt carries the reverted rule, and each matches its fingerprint', async () => {
     sdk.reply = { text: reply, candidates: [] };
     await verifyClaim(CLAIM, 'k');
     await verifyClaimGrounded(CLAIM, [], 'k');
-    expect(sdk.prompts).toHaveLength(2);
-    for (const p of sdk.prompts) expect(p).toMatch(RULE);
-  });
-
-  it('the shared consensus prompt', () => {
-    expect(buildGroundedPrompt(CLAIM, [])).toMatch(RULE);
-  });
-
-  it('OpenAI, Claude and Perplexity verify', async () => {
     const bodies: string[] = [];
     mockFetch.mockImplementation(async (url: string, init: { body: string }) => {
       bodies.push(init.body);
@@ -100,7 +105,16 @@ describe('every verify prompt states the unverified rule', () => {
     await createOpenAIProvider('k').verifyClaim(CLAIM);
     await createClaudeProvider('k').verifyClaim(CLAIM);
     await createPerplexityProvider('k').verifyClaim(CLAIM);
-    expect(bodies).toHaveLength(3);
-    for (const b of bodies) expect(JSON.parse(b).messages[0].content[0]?.text ?? JSON.parse(b).messages[0].content).toMatch(RULE);
+    const text = (b: string) => { const m = JSON.parse(b).messages[0].content; return typeof m === 'string' ? m : m[0].text; };
+    const prompts = {
+      geminiGrounded: sdk.prompts[0],
+      geminiConsensus: sdk.prompts[1],
+      sharedConsensus: buildGroundedPrompt(CLAIM, []),
+      openai: text(bodies[0]),
+      claude: text(bodies[1]),
+      perplexity: text(bodies[2]),
+    };
+    for (const p of Object.values(prompts)) expect(p).not.toMatch(/UNVERIFIED RULE/);
+    expect(Object.fromEntries(Object.entries(prompts).map(([k, v]) => [k, sha(v)]))).toEqual(FINGERPRINTS);
   });
 });
