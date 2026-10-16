@@ -7,7 +7,7 @@ import type { ApiErrorReason, Claim } from '../types';
  * adds `invalid_output` for a model reply that is not a claims array (most
  * often JSON cut off mid-output on a long document).
  */
-export type ExtractionErrorReason = ApiErrorReason | 'invalid_output';
+export type ExtractionErrorReason = Exclude<ApiErrorReason, 'provider_unparseable'> | 'invalid_output';
 
 /**
  * Classify a provider-call error. Patterns follow services/verify-error.ts so
@@ -15,7 +15,7 @@ export type ExtractionErrorReason = ApiErrorReason | 'invalid_output';
  * a timeout is tested before the 5xx/unavailable class because "upstream timed
  * out (503)" is still a timeout to the caller.
  */
-export function classifyApiError(err: unknown): ApiErrorReason {
+export function classifyApiError(err: unknown): Exclude<ApiErrorReason, 'provider_unparseable'> {
   const name = err instanceof Error ? err.name : '';
   const raw = (err instanceof Error ? err.message : String(err)).toLowerCase();
   if (/\b429\b|resource_exhausted|quota|rate[ _-]?limit|too many requests/.test(raw)) return 'rate_limited';

@@ -115,7 +115,7 @@ export interface ProviderVote {
 }
 
 /** What a provider failure was, after the engine's retries: 429, 503, a timeout, or anything else. */
-export type ApiErrorReason = 'rate_limited' | 'provider_unavailable' | 'timeout' | 'provider_error';
+export type ApiErrorReason = 'rate_limited' | 'provider_unavailable' | 'timeout' | 'provider_error' | 'provider_unparseable';
 
 /**
  * Who produced a verdict and when, bound at the provider call itself (Honor
@@ -165,10 +165,11 @@ export interface VerificationResult {
    */
   apiErrorReason?: ApiErrorReason;
   /**
-   * True when the model's reply was not parseable JSON and the engine fell back
-   * to status 'mixed' (geminiService.verifyClaim). Absent otherwise. It lets a
-   * consumer tell an "inconclusive" verdict from an "unparseable" one; it never
-   * changes the status (verdict-accuracy prereg G0 §3).
+   * True when the provider's reply carried no readable verdict (not JSON, or no
+   * status from the prompt's list). Since 2026-10-16 such a claim is unchecked:
+   * status 'unverified', `apiError: true`, `apiErrorReason: 'provider_unparseable'`
+   * (providers/verdict-reply.ts). Before that Gemini reported it as 'mixed' and
+   * this flag was the only marker (verdict-accuracy prereg G0 §3). Absent otherwise.
    */
   parseFallback?: boolean;
   /**

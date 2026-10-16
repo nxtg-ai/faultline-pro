@@ -34,6 +34,14 @@ import type { ClaimStatus, VerificationResult, Source } from '../types.js';
  */
 export type Verdict = 'VERIFIED' | 'REFUTED' | 'UNSUPPORTED' | 'MIXED' | 'UNCHECKED';
 
+/** Why a claim is UNCHECKED. */
+export type UncheckedReason = 'provider_error' | 'provider_unparseable' | 'not_verifiable';
+
+/** True when the claim went unchecked because of the provider call (an error or an unreadable reply), so the scan is degraded. */
+export function isProviderUnchecked(reason: UncheckedReason | undefined | null): boolean {
+  return reason === 'provider_error' || reason === 'provider_unparseable';
+}
+
 /** The subset of verdicts that represent a completed check. */
 export const REAL_VERDICTS: readonly Verdict[] = ['VERIFIED', 'REFUTED', 'UNSUPPORTED', 'MIXED'];
 
@@ -79,10 +87,11 @@ export interface ClaimVerdict {
   /** The verifier's explanation. */
   note: string;
   /**
-   * True when this specific claim could not be checked because the provider
-   * errored. Distinct from a claim that was checked and found unsupported.
+   * Why this claim has no verdict: the provider errored ('provider_error'), its
+   * reply could not be read ('provider_unparseable', ours, not a verdict), or the
+   * claim was not verifiable. Distinct from a claim checked and found unsupported.
    */
-  unchecked_reason?: 'provider_error' | 'not_verifiable';
+  unchecked_reason?: UncheckedReason;
 }
 
 function firstUri(sources: Source[] | undefined): string | undefined {
@@ -123,7 +132,9 @@ export function toClaimVerdict(
   if (evidence_url) entry.evidence_url = evidence_url;
 
   if (verdict === 'UNCHECKED') {
-    entry.unchecked_reason = verification.apiError ? 'provider_error' : 'not_verifiable';
+    entry.unchecked_reason = !verification.apiError
+      ? 'not_verifiable'
+      : verification.apiErrorReason === 'provider_unparseable' ? 'provider_unparseable' : 'provider_error';
   }
 
   return entry;

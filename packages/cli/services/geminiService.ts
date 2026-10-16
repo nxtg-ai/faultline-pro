@@ -1,9 +1,10 @@
 
 import { GoogleGenAI } from "@google/genai";
-import type { Claim, VerificationResult, ClaimStatus } from '../types';
+import type { Claim, VerificationResult } from '../types';
 import { sanitizeVerifyError } from './verify-error';
 import { recordUsage } from '../lib/usage-sink';
 import { ExtractionError, parseExtractedClaims } from '../providers/extraction-error';
+import { readVerdictReply, unparseableVerdict } from '../providers/verdict-reply';
 
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 
@@ -182,24 +183,13 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
       && (response as { modelVersion: string }).modelVersion.length > 0
       ? (response as { modelVersion: string }).modelVersion
       : model;
-    let resultJson: any = {};
-    let parseFallback = false;
-    try {
-      const cleanedText = cleanJson(response.text || '{}');
-      if (cleanedText && cleanedText !== '{}') {
-          resultJson = JSON.parse(cleanedText);
-      } else {
-        throw new Error("Empty JSON");
-      }
-    } catch (e) {
+    const verdict = readVerdictReply(cleanJson(response.text || ''));
+    if (!verdict) {
       // Length only: the reply can quote the submitted claim, and stdout is kept
       // as operational logs on the hosted API (faultline-web privacy page, PR 61).
       console.warn(`Failed to parse JSON from verification response (${response.text?.length ?? 0} chars)`);
-      // Fallback: If text exists but isn't JSON, assume it's the explanation
-      if (response.text) {
-          resultJson = { status: 'mixed', explanation: response.text.substring(0, 150) + '...' };
-          parseFallback = true;
-      }
+      // Not a verdict: no status, no sources, no provenance (al:5b18840b0116047a item c).
+      return unparseableVerdict(claim.id);
     }
 
     const sources: Array<{ title: string; uri: string }> = [];
@@ -221,12 +211,9 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
 
     return {
       claimId: claim.id,
-      status: (resultJson.status || 'unverified') as ClaimStatus,
-      explanation: resultJson.explanation || 'No structural analysis provided.',
+      status: verdict.status,
+      explanation: verdict.explanation,
       sources: uniqueSources.slice(0, 3),
-      // Set only on the non-JSON fallback above, so every other result keeps
-      // its exact previous shape (prereg G0 §3: the `mixed` confound).
-      ...(parseFallback ? { parseFallback: true } : {}),
       ...searchSuggestionsOf(response.candidates?.[0]?.groundingMetadata),
       provenance: { provider: 'gemini', model: servedModel, verifiedAt: returnedAt, retriever: 'gemini-grounding', retrievedAt: returnedAt },
     };
@@ -349,18 +336,14 @@ export const verifyClaimGrounded = async (
     const response = await ai.models.generateContent({ model: GEMINI_MODEL, contents: prompt });
 
     recordGeminiUsage(response, false, 'grounded-verify:gemini');
-    let resultJson: any = {};
-    try {
-      const cleaned = cleanJson(response.text || '{}');
-      if (cleaned && cleaned !== '{}') resultJson = JSON.parse(cleaned);
-    } catch {
-      if (response.text) resultJson = { status: 'mixed', explanation: response.text.substring(0, 150) };
-    }
+    const verdict = readVerdictReply(cleanJson(response.text || ''));
+    // An unreadable reply is a failed vote, not a 'mixed' one (al:5b18840b0116047a item c).
+    if (!verdict) return { ...unparseableVerdict(claim.id), sources };
 
     return {
       claimId: claim.id,
-      status: (resultJson.status || 'unverified') as ClaimStatus,
-      explanation: resultJson.explanation || 'No structural analysis provided.',
+      status: verdict.status,
+      explanation: verdict.explanation,
       sources,
     };
   } catch (error) {

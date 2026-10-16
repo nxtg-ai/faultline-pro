@@ -20,7 +20,7 @@
  */
 
 import type { ScanResult } from './scan.js';
-import { toClaimVerdict, isRealVerdict, type Verdict, type ClaimVerdict } from './verdict.js';
+import { toClaimVerdict, isRealVerdict, isProviderUnchecked, type Verdict, type ClaimVerdict } from './verdict.js';
 import { auditTrail, type AuditTrail } from './audit-trail.js';
 
 /** What a `--fail-on` value gates against. */
@@ -86,7 +86,7 @@ export function evaluateGuard(result: ScanResult, failOn?: FailOn): GuardReport 
   const uncheckedCount = claims.filter((c) => c.verdict === 'UNCHECKED').length;
   // Trust the engine's own flag first; fall back to our count so a missing
   // verification record still registers as degradation.
-  const degraded = result.degraded === true || claims.some((c) => c.unchecked_reason === 'provider_error');
+  const degraded = result.degraded === true || claims.some((c) => isProviderUnchecked(c.unchecked_reason));
 
   const gate = failOn ? GATE_VERDICTS[failOn] : [];
   const tripped = claims.filter((c) => gate.includes(c.verdict));
@@ -167,6 +167,9 @@ export function formatGuardReport(report: GuardReport, failOn?: FailOn): string 
       if (checked) lines.push(`       ${checked}`);
       if (c.verdict === 'UNCHECKED' && c.unchecked_reason === 'provider_error') {
         lines.push('       NOT CHECKED — the provider errored. This is not a verdict.');
+      }
+      if (c.verdict === 'UNCHECKED' && c.unchecked_reason === 'provider_unparseable') {
+        lines.push("       NOT CHECKED — the provider's reply could not be read. This is not a verdict.");
       }
     }
     lines.push('');
