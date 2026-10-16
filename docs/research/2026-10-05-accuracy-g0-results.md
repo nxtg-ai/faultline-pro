@@ -4,9 +4,9 @@
 
 ## Headline
 
-> **2026-10-16: measured on engine 47b72f0 (2026-10-05); re-measurement in progress.** The production engine changed the verify prompts and added a no-source backstop (absence of evidence is `unverified`, never `contradicted`; ruling Dx3 d8f5c369). Every number on this page describes engine `47b72f0`. The re-run on the fixed engine is published beside this page, up or down.
+> **2026-10-16: measured on engine 47b72f0 (2026-10-05); re-measured 2026-10-16 on 3565df7 at 0.691 [0.648, 0.734].** The production engine changed the verify prompts and added a no-source backstop (absence of evidence is `unverified`, never `contradicted`; ruling Dx3 d8f5c369). Every number on this page describes engine `47b72f0`. The re-run on `3565df7` is `2026-10-16-accuracy-g0-rerun-3565df7.md`.
 
-**Balanced accuracy 0.763 (measured on engine 47b72f0 (2026-10-05); re-measurement in progress), 95% CI [0.722, 0.802]**, on the 631 binary claims. An abstention (`mixed` or `unverified`) is counted as wrong. Bootstrap: seed 20260929, 2,000 resamples.
+**Balanced accuracy 0.763 (engine 47b72f0; the live engine 3565df7 measured 0.691), 95% CI [0.722, 0.802]**, on the 631 binary claims. An abstention (`mixed` or `unverified`) is counted as wrong. Bootstrap: seed 20260929, 2,000 resamples.
 
 This measures whether the verify phase gives the right verdict for a claim it is handed. It does not measure claim extraction or the risk score.
 

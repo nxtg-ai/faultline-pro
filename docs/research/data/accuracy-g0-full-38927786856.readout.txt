@@ -1,0 +1,14 @@
+G0 verdict accuracy: out/accuracy-g0-full-38927786856.jsonl  (set full, models ['gemini-2.5-flash'], engine ['3565df7521b4819834f7079bd933b614bcc36cdd'])
+binary items n=631, failures=0, unknown statuses=0
+HEADLINE balanced accuracy (abstention wrong): 0.6910  [0.6480, 0.7335]
+  accuracy             0.7686  [0.7338, 0.8003]
+  recall_false         0.5346  [0.4573, 0.6099]
+  recall_true          0.8475  [0.8141, 0.8787]
+  false_flag_rate      0.5975  [0.5215, 0.6747]
+  coverage             0.8685  [0.8415, 0.8938]
+  selective_accuracy   0.8850  [0.8579, 0.9111]
+NEE n=30: unverified-or-mixed share 0.2667  [0.1333, 0.4333]
+time-sensitive inside n=20: BA 0.9231  [0.8182, 1.0000]
+time-sensitive outside n=611: BA 0.6760  [0.6347, 0.7171]
+confusion: {"true": {"supported": 400, "contradicted": 23, "mixed": 32, "unverified": 17, "failure": 0}, "false": {"supported": 40, "contradicted": 85, "mixed": 10, "unverified": 24, "failure": 0}, "not_enough_evidence": {"supported": 14, "contradicted": 8, "mixed": 0, "unverified": 8, "failure": 0}}
+mixed split: {"true": {"mixed_parse_fallback": 0, "mixed_inconclusive": 32}, "false": {"mixed_parse_fallback": 0, "mixed_inconclusive": 10}, "not_enough_evidence": {"mixed_parse_fallback": 0, "mixed_inconclusive": 0}}
