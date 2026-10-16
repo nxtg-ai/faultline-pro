@@ -61,7 +61,8 @@ Stress-test this claim:
 
 Claim: "${claim.text}"
 
-Determine if the claim holds up ("supported"), fails ("contradicted"), or is inconclusive ("mixed").
+Determine if the claim holds up ("supported"), fails ("contradicted"), is inconclusive ("mixed"), or cannot be settled from the evidence ("unverified").
+UNVERIFIED RULE: "contradicted" requires a source that states the claim is false. If no source you found addresses the claim, output status "unverified". Absence of evidence is never "contradicted".
 
 Return a JSON object:
 {

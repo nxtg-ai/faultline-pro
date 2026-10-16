@@ -87,7 +87,7 @@ describe('Integration: Full Pipeline (Mocked)', () => {
     // c4 → contradicted
     mockGenerateContent.mockResolvedValueOnce({
       text: JSON.stringify({ status: 'contradicted', explanation: 'Actually 330m including antenna.' }),
-      candidates: [{ groundingMetadata: { groundingChunks: [] } }],
+      candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'Refuting source', uri: 'https://refute.example/a' } }] } }],
     });
     // c5 → supported
     mockGenerateContent.mockResolvedValueOnce({
@@ -150,7 +150,7 @@ describe('Integration: Full Pipeline (Mocked)', () => {
     for (const claim of toVerify) {
       mockGenerateContent.mockResolvedValueOnce({
         text: JSON.stringify({ status: 'contradicted', explanation: 'Wrong.' }),
-        candidates: [{ groundingMetadata: { groundingChunks: [] } }],
+        candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'Refuting source', uri: 'https://refute.example/a' } }] } }],
       });
     }
 

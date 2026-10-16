@@ -56,7 +56,7 @@ describe('geminiService.ts — cleanJson branches + verifyClaim fallbacks', () =
   it('GS1: cleanJson extracts JSON from ```json code block (line 18)', async () => {
     mockGenerateContent.mockResolvedValue({
       text: '```json\n{"status":"contradicted","explanation":"The Earth is spherical."}\n```',
-      candidates: [],
+      candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'Refuting source', uri: 'https://refute.example/a' } }] } }],
     });
 
     const result = await verifyClaim(CLAIM, 'test-key');
@@ -319,7 +319,7 @@ describe('verifyClaim — N-215 calibration prompt hardening (CAL-1–CAL-5)', (
   it('CAL-5: mock returns "contradicted" for unambiguous denial → status "contradicted" preserved', async () => {
     mockGenerateContent.mockResolvedValue({
       text: '{"status":"contradicted","explanation":"Overwhelming, uncontested evidence shows the Earth is spherical."}',
-      candidates: [],
+      candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'Refuting source', uri: 'https://refute.example/a' } }] } }],
     });
 
     const result = await verifyClaim(

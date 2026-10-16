@@ -24,8 +24,9 @@ Claim: "${claim.text}"
 Retrieved sources:
 ${sourceBlock}
 
-Determine if the claim holds up ("supported"), fails ("contradicted"), or is inconclusive ("mixed").
-CALIBRATION RULE: If the sources are insufficient or the claim is ambiguous, output status "mixed" and explain the uncertainty. Never commit to "supported" or "contradicted" when uncertain.
+Determine if the claim holds up ("supported"), fails ("contradicted"), is inconclusive ("mixed"), or cannot be settled from the evidence ("unverified").
+CALIBRATION RULE: If the sources address the claim but conflict or the claim is ambiguous, output status "mixed" and explain the uncertainty. Never commit to "supported" or "contradicted" when uncertain.
+UNVERIFIED RULE: "contradicted" requires a source that states the claim is false. If no source above addresses the claim, output status "unverified". Absence of evidence is never "contradicted".
 HONESTY RULE: Base your verdict on the sources above. Do not invent or cite evidence not present in the list.
 
 Return a JSON object:

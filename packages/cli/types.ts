@@ -175,6 +175,13 @@ export interface VerificationResult {
    */
   parseFallback?: boolean;
   /**
+   * True when a grounded Gemini reply said 'contradicted' with no grounding source
+   * and the engine reported 'unverified' instead (absence of evidence is not a
+   * refutation; fw al:3dc2e0b227eaedd6). Absent otherwise. It lets the accuracy
+   * run count how often this fires and against which gold labels.
+   */
+  noSourceAbstain?: boolean;
+  /**
    * Google Search Suggestions for the grounded prompt behind this verdict,
    * passed through unaltered from `candidates[0].groundingMetadata`. Google's
    * grounding terms require them to be shown, unaltered, wherever this

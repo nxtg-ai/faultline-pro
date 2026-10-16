@@ -72,7 +72,8 @@ describe('geminiService.verifyClaim — unreadable replies', () => {
       '{"status":"supported","explanation":"Confirmed."}',
       '```json\n{"status":"contradicted","explanation":"Refuted."}\n```',
     ]) {
-      sdk.reply = { text };
+      // A grounded 'contradicted' needs a source (abstain-unverified.test.ts).
+      sdk.reply = { text, candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'S', uri: 'https://s.example/a' } }] } }] } as never;
       const result = await verifyClaim(CLAIM, 'key');
       expect(['supported', 'contradicted']).toContain(result.status);
       expect('parseFallback' in result).toBe(false);
