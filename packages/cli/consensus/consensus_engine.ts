@@ -76,6 +76,7 @@ async function runProviderVote(
       // Propagate a provider that self-reported a non-run (e.g. grounded gemini
       // caught its own 429 and returned apiError) so fusion can flag it.
       apiError: result.apiError,
+      ...(result.apiError && result.apiErrorReason ? { apiErrorReason: result.apiErrorReason } : {}),
     };
   } catch (err) {
     // Provider's grounded verify threw (quota/auth/5xx). Sanitize — never leak
@@ -136,13 +137,18 @@ export function fuseVotes(
     // cached) from "all providers returned a real 'unverified' judgment"
     // (checked, inconclusive). If any vote carried a provider error, the claim
     // was never actually checked.
-    const anyError = votes.some((v) => v.apiError);
+    const errored = votes.filter((v) => v.apiError);
+    const anyError = errored.length > 0;
+    // When every failed vote was an unreadable reply, the claim carries that reason
+    // (al:5b18840b0116047a item c); any other failure keeps the default reason.
+    const allUnparseable = anyError && errored.every((v) => v.apiErrorReason === 'provider_unparseable');
     return {
       claimId: claim.id,
       status: 'unverified',
       explanation: 'No provider returned a verdict; consensus unavailable.',
       sources,
       ...(anyError ? { apiError: true } : {}),
+      ...(allUnparseable ? { apiErrorReason: 'provider_unparseable' as const } : {}),
       consensus: { agreement: 'split', providerCount: 0, dissenting: 0 },
       providerVotes: votes,
     };

@@ -17,6 +17,8 @@ import { createPerplexityProvider } from '../providers/perplexity_provider';
 import { toClaimVerdict, isProviderUnchecked } from '../cli/verdict';
 import { evaluateGuard } from '../cli/guard';
 import { isBillableVerdict, billableVerdictCount } from '../lib/verdict-guard';
+import { consensusVerify } from '../consensus/consensus_engine';
+import type { Retriever } from '../providers/base_provider';
 
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
@@ -91,6 +93,44 @@ describe.each(['openai', 'claude'] as const)('%s verifyClaimGrounded (consensus 
     const r = await FACTORY[name]('k').verifyClaimGrounded!(CLAIM, sources);
     expect(r.apiError).toBe(true);
     expect(r.apiErrorReason).toBe('provider_unparseable');
+  });
+});
+
+// Codex seat HOLD on 3a07b32: consensus dropped the reason between vote and fused result.
+describe('consensus carries provider_unparseable end to end', () => {
+  const retriever: Retriever = { name: 'test-retriever', retrieve: async () => [{ title: 's', uri: 'https://example.org/a' }] };
+  const named = () => [
+    { name: 'openai', provider: createOpenAIProvider('k') },
+    { name: 'claude', provider: createClaudeProvider('k') },
+  ];
+
+  it('every vote unreadable: the fused claim is unchecked with reason provider_unparseable, MCP says so', async () => {
+    mockFetch.mockImplementation(async (url: string) => ok(String(url).includes('anthropic') ? REPLY.claude('prose') : REPLY.openai('prose')));
+    const fused = await consensusVerify(CLAIM, retriever, named());
+    expect(fused).toMatchObject({ status: 'unverified', apiError: true, apiErrorReason: 'provider_unparseable' });
+    expect(fused.providerVotes?.map((v) => v.apiErrorReason)).toEqual(['provider_unparseable', 'provider_unparseable']);
+    expect(toClaimVerdict(CLAIM.text, fused).unchecked_reason).toBe('provider_unparseable');
+    expect(isBillableVerdict(fused)).toBe(false);
+  });
+
+  it('one unreadable vote and one thrown error: unchecked, but not labelled unparseable', async () => {
+    mockFetch.mockImplementation(async (url: string) => {
+      if (String(url).includes('anthropic')) throw new Error('503 overloaded');
+      return ok(REPLY.openai('prose'));
+    });
+    const fused = await consensusVerify(CLAIM, retriever, named());
+    expect(fused.apiError).toBe(true);
+    expect(fused.apiErrorReason).toBeUndefined();
+    expect(toClaimVerdict(CLAIM.text, fused).unchecked_reason).toBe('provider_error');
+  });
+
+  it('one readable vote and one unreadable: the readable verdict stands, the failed vote keeps its reason', async () => {
+    mockFetch.mockImplementation(async (url: string) => ok(String(url).includes('anthropic')
+      ? REPLY.claude('{"status":"supported","explanation":"Holds."}') : REPLY.openai('prose')));
+    const fused = await consensusVerify(CLAIM, retriever, named());
+    expect(fused.status).toBe('supported');
+    expect(fused.apiError).toBeUndefined();
+    expect(fused.providerVotes?.find((v) => v.provider === 'openai')?.apiErrorReason).toBe('provider_unparseable');
   });
 });
 

@@ -110,8 +110,10 @@ export interface ProviderVote {
   status: ClaimStatus;
   sources: Source[];
   explanation?: string;
-  /** True when this provider's grounded verify never ran (quota/auth/5xx). */
+  /** True when this provider's grounded verify never ran (quota/auth/5xx) or its reply was unreadable. */
   apiError?: boolean;
+  /** The provider's own reason, when it reported one (e.g. 'provider_unparseable'). */
+  apiErrorReason?: ApiErrorReason;
 }
 
 /** What a provider failure was, after the engine's retries: 429, 503, a timeout, or anything else. */
