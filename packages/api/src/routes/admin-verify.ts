@@ -88,6 +88,7 @@ const RESPONSE_SCHEMA = {
             status: { type: 'string' },
             apiError: { type: 'boolean' },
             parseFallback: { type: 'boolean' },
+            noSourceAbstain: { type: 'boolean' },
             model: { type: ['string', 'null'] },
           },
           additionalProperties: false,
@@ -114,6 +115,8 @@ export interface VerifyClaimOutcome {
   status: ClaimStatus;
   apiError: boolean;
   parseFallback: boolean;
+  /** A grounded 'contradicted' with no source, reported as 'unverified' (VerificationResult.noSourceAbstain). */
+  noSourceAbstain: boolean;
   model: string | null;
 }
 
@@ -143,6 +146,7 @@ async function verifyOne(provider: LLMProvider, input: VerifyClaimInput): Promis
         status: result.status,
         apiError: result.apiError === true,
         parseFallback: result.parseFallback === true,
+        noSourceAbstain: result.noSourceAbstain === true,
         // A failed call produced no verdict and no engine model record.
         model: result.apiError === true ? null : modelOf(legs, provider),
       },
@@ -150,7 +154,7 @@ async function verifyOne(provider: LLMProvider, input: VerifyClaimInput): Promis
   } catch {
     return {
       legs: [],
-      outcome: { id: input.id, status: 'unverified', apiError: true, parseFallback: false, model: null },
+      outcome: { id: input.id, status: 'unverified', apiError: true, parseFallback: false, noSourceAbstain: false, model: null },
     };
   }
 }

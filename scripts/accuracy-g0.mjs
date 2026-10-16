@@ -324,6 +324,7 @@ function buildRow(item, result, attempts, engineSha) {
     status: result ? result.status : 'unverified',
     apiError: result ? result.apiError === true : true,
     parseFallback: result ? result.parseFallback === true : false,
+    noSourceAbstain: result ? result.noSourceAbstain === true : false,
     attempts,
     model: result && typeof result.model === 'string' ? result.model : null,
     engineSha,

@@ -143,7 +143,9 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
     Claim: "${claim.text}"
 
     1. Search for evidence.
-    2. Determine if the claim holds up ("supported"), fails ("contradicted"), or is inconclusive ("mixed").
+    2. Determine if the claim holds up ("supported"), fails ("contradicted"), is inconclusive ("mixed"), or cannot be settled from what the search found ("unverified").
+
+    UNVERIFIED RULE: "contradicted" requires a source that states the claim is false. If no source you found addresses the claim, output status "unverified". Absence of evidence is never "contradicted".
 
     CALIBRATION RULE — apply before returning status:
     Use "mixed" when ANY of these conditions hold:
@@ -209,11 +211,18 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
 
     const uniqueSources = sources.filter((v, i, a) => a.findIndex(t => t.uri === v.uri) === i);
 
+    // A grounded 'contradicted' needs a source that says the claim is false. With
+    // no grounding source at all the model is reporting absence of evidence, which
+    // is 'unverified', never a refutation (fw al:3dc2e0b227eaedd6, EP4 c4).
+    const noSourceAbstain = verdict.status === 'contradicted' && uniqueSources.length === 0;
+    const status = noSourceAbstain ? 'unverified' : verdict.status;
+
     return {
       claimId: claim.id,
-      status: verdict.status,
+      status,
       explanation: verdict.explanation,
       sources: uniqueSources.slice(0, 3),
+      ...(noSourceAbstain ? { noSourceAbstain: true } : {}),
       ...searchSuggestionsOf(response.candidates?.[0]?.groundingMetadata),
       provenance: { provider: 'gemini', model: servedModel, verifiedAt: returnedAt, retriever: 'gemini-grounding', retrievedAt: returnedAt },
     };
@@ -323,9 +332,11 @@ export const verifyClaimGrounded = async (
     Retrieved sources:
     ${sourceBlock}
 
-    Determine if the claim holds up ("supported"), fails ("contradicted"), or is
-    inconclusive ("mixed"). If the sources are empty or insufficient, judge from
-    your own knowledge and lean "mixed" when uncertain.
+    Determine if the claim holds up ("supported"), fails ("contradicted"), is
+    inconclusive ("mixed"), or cannot be settled from the sources ("unverified").
+    If the sources are empty or insufficient, judge from your own knowledge and
+    lean "mixed" when uncertain.
+    UNVERIFIED RULE: "contradicted" requires a source above, or knowledge you are sure of, that states the claim is false. If nothing settles the claim, output status "unverified". Absence of evidence is never "contradicted".
 
     Return strictly a JSON object. No markdown, no preamble.
     { "status": "supported" | "contradicted" | "mixed" | "unverified", "explanation": "Concise assessment (max 2 sentences)." }

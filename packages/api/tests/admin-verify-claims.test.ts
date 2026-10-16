@@ -246,8 +246,8 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
     const body = res.json();
     expect(body.provider).toBe('gemini');
     expect(body.results).toEqual([
-      { id: '10', status: 'contradicted', apiError: false, parseFallback: false, model: 'gemini-2.5-flash' },
-      { id: '11', status: 'supported', apiError: false, parseFallback: false, model: 'gemini-2.5-flash' },
+      { id: '10', status: 'contradicted', apiError: false, parseFallback: false, noSourceAbstain: false, model: 'gemini-2.5-flash' },
+      { id: '11', status: 'supported', apiError: false, parseFallback: false, noSourceAbstain: false, model: 'gemini-2.5-flash' },
     ]);
     expect(sdk.calls).toBe(2);
   });
@@ -256,14 +256,14 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
   it('reports a non-JSON model reply as apiError with parseFallback, never as mixed', async () => {
     const res = await post({ claims: [{ id: '3', text: 'NOT-JSON reply please.' }] });
     expect(res.json().results[0]).toEqual({
-      id: '3', status: 'unverified', apiError: true, parseFallback: true, model: null,
+      id: '3', status: 'unverified', apiError: true, parseFallback: true, noSourceAbstain: false, model: null,
     });
   });
 
   it('reports a provider failure as apiError, never as a verdict', async () => {
     const res = await post({ claims: [{ id: '4', text: 'THROW-ME now.' }, { id: '5', text: 'Fine claim.' }] });
     const [failed, ok] = res.json().results;
-    expect(failed).toEqual({ id: '4', status: 'unverified', apiError: true, parseFallback: false, model: null });
+    expect(failed).toEqual({ id: '4', status: 'unverified', apiError: true, parseFallback: false, noSourceAbstain: false, model: null });
     expect(ok).toMatchObject({ id: '5', status: 'supported', apiError: false });
   });
 
@@ -278,7 +278,7 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
     for (const forbidden of ['explanation', 'sources', 'searchEntryPoint', 'groundingMetadata', 'claimId']) {
       expect(keys.has(forbidden)).toBe(false);
     }
-    expect([...keys].sort()).toEqual(['apiError', 'id', 'model', 'parseFallback', 'provider', 'results', 'status']);
+    expect([...keys].sort()).toEqual(['apiError', 'id', 'model', 'noSourceAbstain', 'parseFallback', 'provider', 'results', 'status']);
   });
 
   it('keeps at most 4 claims in flight at once', async () => {

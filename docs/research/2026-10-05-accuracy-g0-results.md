@@ -4,7 +4,9 @@
 
 ## Headline
 
-**Balanced accuracy 0.763, 95% CI [0.722, 0.802]**, on the 631 binary claims. An abstention (`mixed` or `unverified`) is counted as wrong. Bootstrap: seed 20260929, 2,000 resamples.
+> **2026-10-16: measured on engine 47b72f0 (2026-10-05); re-measurement in progress.** The production engine changed the verify prompts and added a no-source backstop (absence of evidence is `unverified`, never `contradicted`; ruling Dx3 d8f5c369). Every number on this page describes engine `47b72f0`. The re-run on the fixed engine is published beside this page, up or down.
+
+**Balanced accuracy 0.763 (measured on engine 47b72f0 (2026-10-05); re-measurement in progress), 95% CI [0.722, 0.802]**, on the 631 binary claims. An abstention (`mixed` or `unverified`) is counted as wrong. Bootstrap: seed 20260929, 2,000 resamples.
 
 This measures whether the verify phase gives the right verdict for a claim it is handed. It does not measure claim extraction or the risk score.
 

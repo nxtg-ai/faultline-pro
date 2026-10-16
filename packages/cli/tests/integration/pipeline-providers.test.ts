@@ -118,7 +118,7 @@ describe('Integration: Multi-Provider Pipeline', () => {
       // c2 → contradicted
       mockGenerateContent.mockResolvedValueOnce({
         text: JSON.stringify({ status: 'contradicted', explanation: 'Actually 99.97C.' }),
-        candidates: [{ groundingMetadata: { groundingChunks: [] } }],
+        candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'Refuting source', uri: 'https://refute.example/a' } }] } }],
       });
 
       const provider = getProvider('gemini-key', 'gemini');
@@ -333,7 +333,7 @@ describe('Integration: Multi-Provider Pipeline', () => {
       // c1 succeeds
       mockGenerateContent.mockResolvedValueOnce({
         text: JSON.stringify({ status: 'contradicted', explanation: 'Wrong.' }),
-        candidates: [{ groundingMetadata: { groundingChunks: [] } }],
+        candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'Refuting source', uri: 'https://refute.example/a' } }] } }],
       });
       // c2 fails
       mockGenerateContent.mockRejectedValueOnce(new Error('Timeout'));

@@ -199,7 +199,7 @@ describe('accuracy-g0 runner: a complete run', () => {
     expect(written).toHaveLength(100);
     expect(written.map((row) => row.id)).toEqual([...SUBSAMPLE_IDS].sort((a, b) => a - b));
     expect(Object.keys(written[0]).sort()).toEqual(
-      ['apiError', 'attempts', 'engineSha', 'gold', 'id', 'model', 'parseFallback', 'status', 'ts'],
+      ['apiError', 'attempts', 'engineSha', 'gold', 'id', 'model', 'noSourceAbstain', 'parseFallback', 'status', 'ts'],
     );
     expect(written.every((row) => row.engineSha === state.commit && row.model === 'gemini-2.5-flash')).toBe(true);
     expect(written.every((row) => row.gold === 'true' || row.gold === 'false')).toBe(true);
