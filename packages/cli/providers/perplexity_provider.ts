@@ -1,7 +1,8 @@
-import type { Claim, VerificationResult, ClaimStatus } from '../types';
+import type { Claim, VerificationResult } from '../types';
 import type { LLMProvider, ImageInput, CritiqueResult, ProviderFactory } from './base_provider';
 import { sanitizeVerifyError } from '../services/verify-error';
 import { ExtractionError, parseExtractedClaims } from './extraction-error';
+import { readVerdictReply, unparseableVerdict } from './verdict-reply';
 
 /**
  * Perplexity provider — implements the LLMProvider interface using Perplexity's API.
@@ -71,12 +72,13 @@ Return a JSON object:
 
     try {
       const result = await this.callAPIWithCitations(content, 'user');
-      const resultJson = JSON.parse(result.content);
+      const verdict = readVerdictReply(result.content);
+      if (!verdict) return unparseableVerdict(claim.id);
 
       return {
         claimId: claim.id,
-        status: (resultJson.status || 'unverified') as ClaimStatus,
-        explanation: resultJson.explanation || 'No structural analysis provided.',
+        status: verdict.status,
+        explanation: verdict.explanation,
         sources: result.citations.map(url => ({ title: url, uri: url })),
       };
     } catch (error) {

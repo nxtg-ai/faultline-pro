@@ -1,9 +1,10 @@
-import type { Claim, VerificationResult, ClaimStatus, Source } from '../types';
+import type { Claim, VerificationResult, Source } from '../types';
 import type { LLMProvider, ImageInput, CritiqueResult, ProviderFactory } from './base_provider';
 import { buildGroundedPrompt } from './grounded_prompt';
 import { sanitizeVerifyError } from '../services/verify-error';
 import { ExtractionError, parseExtractedClaims } from './extraction-error';
 import { recordUsage } from '../lib/usage-sink';
+import { readVerdictReply, unparseableVerdict } from './verdict-reply';
 
 /**
  * Claude provider — implements the LLMProvider interface using Anthropic's API.
@@ -91,12 +92,13 @@ Return strictly a JSON object:
 
     try {
       const response = await this.callAPI([{ type: 'text', text: prompt }], 'user');
-      const resultJson = JSON.parse(this.extractJson(response));
+      const verdict = readVerdictReply(this.extractJson(response));
+      if (!verdict) return unparseableVerdict(claim.id);
 
       return {
         claimId: claim.id,
-        status: (resultJson.status || 'unverified') as ClaimStatus,
-        explanation: resultJson.explanation || 'No structural analysis provided.',
+        status: verdict.status,
+        explanation: verdict.explanation,
         sources: [],
       };
     } catch (error) {
@@ -109,11 +111,12 @@ Return strictly a JSON object:
 
   async verifyClaimGrounded(claim: Claim, sources: Source[]): Promise<VerificationResult> {
     const response = await this.callAPI([{ type: 'text', text: buildGroundedPrompt(claim, sources) }], 'user');
-    const resultJson = JSON.parse(this.extractJson(response));
+    const verdict = readVerdictReply(this.extractJson(response));
+    if (!verdict) return { ...unparseableVerdict(claim.id), sources };
     return {
       claimId: claim.id,
-      status: (resultJson.status || 'unverified') as ClaimStatus,
-      explanation: resultJson.explanation || 'No structural analysis provided.',
+      status: verdict.status,
+      explanation: verdict.explanation,
       // LOCK A: cite the SHARED retrieved set, not sources:[].
       sources,
     };

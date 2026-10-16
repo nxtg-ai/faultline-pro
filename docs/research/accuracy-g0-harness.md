@@ -26,7 +26,7 @@ How to run and score the pre-registered verdict-accuracy baseline. The spec is `
 - `provider` is optional. The default is the one a production non-consensus scan uses, `gemini` (`DEFAULT_SCAN_PROVIDER` in `packages/cli/cli/provider-keys.ts`, shared with `scan()`). A provider with no key on the server answers `503 provider_not_configured` before any call.
 - Each claim becomes `{id, text, type: 'fact', importance: 3}` and goes to `verificationProvider.verifyClaim`, the call `scan()` makes, with at most 4 in flight. One call per claim and no retry: retries belong to the runner, which checks the allowance first.
 - Response: `{ "provider": "gemini", "results": [{ "id", "status", "apiError", "parseFallback", "model" }] }`, in request order. A response schema drops any other field, so no explanation, source or grounded text can leave the route (Google grounding terms).
-- `apiError: true` means the call did not produce a verdict (the provider failed). `parseFallback: true` means the model's reply was not JSON and the engine returned `mixed` for that reason (prereg §3). `model` is the model string the engine recorded for the call, `null` when the call failed.
+- `apiError: true` means the call did not produce a verdict (the provider failed). `parseFallback: true` means the model's reply carried no readable verdict. Up to 2026-10-16 (engine before the provider_unparseable change, including the G0 run on 47b72f0) the engine returned `mixed` for it (prereg §3); since then the claim is `apiError: true` with `parseFallback: true`, so a re-run scores it as a failure. `model` is the model string the engine recorded for the call, `null` when the call failed.
 
 Gates and ledgers, the same as a scan:
 
@@ -89,7 +89,7 @@ One JSON object per item, written as soon as the item is final:
 | `gold` | `true`, `false` or `not_enough_evidence`, copied from the gold file |
 | `status` | `supported`, `contradicted`, `mixed` or `unverified` |
 | `apiError` | `true` when no verdict was produced after retries: a failure (§3) |
-| `parseFallback` | `true` when `mixed` came from an unparseable reply |
+| `parseFallback` | `true` when the reply was unreadable (`mixed` before 2026-10-16, `apiError` since) |
 | `attempts` | Calls made for this item, 1 to 4 |
 | `model` | The engine's model string for the call, `null` on a failure |
 | `engineSha` | The deployed commit |

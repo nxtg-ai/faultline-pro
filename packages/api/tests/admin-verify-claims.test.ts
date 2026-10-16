@@ -252,10 +252,11 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
     expect(sdk.calls).toBe(2);
   });
 
-  it('flags a non-JSON model reply as parseFallback with status mixed', async () => {
+  // Since 2026-10-16 (al:5b18840b0116047a item c) an unreadable reply is no verdict: apiError, never 'mixed'.
+  it('reports a non-JSON model reply as apiError with parseFallback, never as mixed', async () => {
     const res = await post({ claims: [{ id: '3', text: 'NOT-JSON reply please.' }] });
     expect(res.json().results[0]).toEqual({
-      id: '3', status: 'mixed', apiError: false, parseFallback: true, model: 'gemini-2.5-flash',
+      id: '3', status: 'unverified', apiError: true, parseFallback: true, model: null,
     });
   });
 

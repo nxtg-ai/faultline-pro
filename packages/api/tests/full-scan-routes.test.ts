@@ -971,7 +971,7 @@ describe('GET /usage fullScanRefunds (admin)', () => {
       unitsRefunded: 1,
       refundRate: 0.1,
       alert: false,
-      reasons: { rate_limited: 11, provider_unavailable: 0, timeout: 0, provider_error: 0, not_attempted: 0 },
+      reasons: { rate_limited: 11, provider_unavailable: 0, timeout: 0, provider_error: 0, provider_unparseable: 0, not_attempted: 0 },
       ledgerWriteFailures: 0,
       admissionClosed: false,
     });
