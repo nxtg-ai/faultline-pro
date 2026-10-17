@@ -48,7 +48,7 @@ Every arm uses the same verifier: `gemini-2.5-flash` on the production Gemini ke
 
 | Arm | Evidence source | How it runs |
 |---|---|---|
-| **G** (baseline) | Google Search grounding, today's production engine | **Accuracy and cost:** the committed, independently verified G0 run `data/accuracy-g0-full-20261005T174223Z.jsonl` (engine `47b72f0`, BA 0.7633 [0.7223, 0.8020], measured on engine 47b72f0 (2026-10-05); re-measured 2026-10-16 on 3565df7 at 0.691 [0.648, 0.734]). It is not re-run, which saves 661 grounded prompts. **Latency and drift anchor:** the 100 ids in `data/accuracy-g0-verify-subsample-ids.json`, re-run through `POST /admin/verify-claims` **one claim per request**, in the same window as the other arms. |
+| **G** (baseline) | Google Search grounding, today's production engine | **Accuracy and cost:** the committed, independently verified G0 run `data/accuracy-g0-full-20261005T174223Z.jsonl` (engine `47b72f0`, BA 0.7633 [0.7223, 0.8020], measured on engine 47b72f0 (2026-10-05); re-measured on the live engine 6af8cef at 0.706 [0.665, 0.750], 2026-10-17). It is not re-run, which saves 661 grounded prompts. **Latency and drift anchor:** the 100 ids in `data/accuracy-g0-verify-subsample-ids.json`, re-run through `POST /admin/verify-claims` **one claim per request**, in the same window as the other arms. |
 | **C** | Cloudflare Web Search, `provider: ceramic` | Harness, §6 |
 | **E** | Cloudflare Web Search, `provider: exa` | Harness, §6 |
 | **L** | Cloudflare Web Search, `provider: linkup` | Harness, §6 |

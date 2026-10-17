@@ -1,6 +1,6 @@
 # Accuracy G0 re-run on engine 3565df7 (abstention fix)
 
-> **Superseded in production 2026-10-16:** engine `6af8cef` restores the `47b72f0` prompt wording and keeps the backstop (ruling Dx3 67cd2d8b). Its G0 run is queued for after the Pacific grounding-day reset (2026-10-17 07:00Z); until then the deployed engine's balanced accuracy is not measured.
+> **Superseded in production 2026-10-16:** engine `6af8cef` restores the `47b72f0` prompt wording and keeps the backstop (ruling Dx3 67cd2d8b). Measured 2026-10-17: balanced accuracy 0.706 [0.665, 0.750], `2026-10-17-accuracy-g0-6af8cef.md`. **That page corrects the attribution below:** most of this page's drop is the backstop (an abstention scored as wrong), and drift between days explains part of the rest; the prompt text's own effect is not separated by this design.
 
 **Status (2026-10-16): MEASURED, NOT YET VERIFIED BY ANOTHER LANE.** Same pre-registered protocol, gold set, scorer and seed as the first run (`docs/research/2026-10-05-accuracy-g0-results.md`, engine `47b72f0`). Ruling Dx3 d8f5c369: run on the fixed engine right after deploy and publish the new balanced accuracy with the sha, up or down.
 
