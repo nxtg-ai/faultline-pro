@@ -3,6 +3,7 @@ import PDFDocument from 'pdfkit';
 import { requireApiKey } from '../plugins/auth.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import type { ScanResult } from '@nxtg/faultline/cli/scan.js';
+import { evidenceLine, type PdfSourceEvidence } from '../store/pdf-report.js';
 
 const BODY_SCHEMA = {
   type: 'object',
@@ -189,6 +190,25 @@ function buildPdf(result: ScanResult, projectName: string, scanDate: string): Pr
           .text(source, col.source, rowY, { width: 110 });
 
         rowY += 18;
+      }
+
+      // Per-source URL and evidence, the same lines the full PDF report prints (GoPMO 1.18.11.5.6, recert P7).
+      const cited = claims.filter((c) => (result.verifications[c.id]?.sources ?? []).length > 0);
+      if (cited.length > 0) {
+        doc.x = 50;
+        doc.y = rowY + 12;
+        doc.font('Helvetica-Bold').fontSize(11).fillColor(DARK).text('Sources and evidence', 50);
+        for (const claim of cited) {
+          doc.moveDown(0.4);
+          doc.font('Helvetica-Bold').fontSize(8.5).fillColor(DARK)
+            .text(claim.text.length > 120 ? claim.text.substring(0, 117) + '...' : claim.text, 50, undefined, { width: doc.page.width - 100 });
+          for (const src of result.verifications[claim.id]?.sources ?? []) {
+            doc.font('Helvetica').fontSize(8).fillColor(GRAY)
+              .text(`${src.title ?? 'Source'}: ${src.uri}`, 60, undefined, { width: doc.page.width - 110 });
+            const quoted = evidenceLine((src as { evidence?: PdfSourceEvidence }).evidence);
+            if (quoted) doc.text(quoted, 70, undefined, { width: doc.page.width - 120 });
+          }
+        }
       }
     }
 
