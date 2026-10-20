@@ -45,7 +45,10 @@ def test_vendor_reply_path_unchanged():
     assert body["priority"] == "P1"
     pane, post = vcw.alert_lines(f)
     assert pane.startswith("[vendor-consent-watch] VENDOR REPLY (exa.ai match)")
-    assert "SUSPENDED" in post
+    # emma-soul ruling al:d586be0473f9cc1b: the A1 competitor arms were dropped 2026-10-13, so no
+    # vendor alert may page anyone with a hold that does not exist.
+    for text in (pane, post, body["content"]):
+        assert "SUSPENDED" not in text and "written consent" not in text
 
 
 def test_alert_text_never_carries_sender_text():

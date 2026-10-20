@@ -100,7 +100,7 @@ def handoff_body(f):
         "content": (f"From fp vendor-consent-watch: vendor reply in a Faultline Pro thread, sender domain "
                     f"{f['sender_domain']} (watch match {f['domain']}), Zoho INBOX uid {f['uid']}. fp reads it in full, "
                     f"answers in-thread from faultline.pro@nxtg.ai, posts a one-line receipt, then acks this "
-                    f"handoff. Prereg A1 arms stay SUSPENDED until written consent is confirmed."),
+                    f"handoff."),
         "handoff_status": "OPEN", "from_machine": "NXTG-AI", "to_machine": "NXTG-AI",
         "subject": f"[fp] VENDOR REPLY {f['domain']}: sender domain {f['sender_domain']}", "priority": "P1",
         "project_ids": ["P-08"], "source_ref": LEDGER,
@@ -120,7 +120,7 @@ def alert_lines(f):
             f"Zoho INBOX uid {f['uid']}. Dx3 handoff {hid}.")
     return (f"[vendor-consent-watch] {line} Read it in the Zoho inbox, answer in-thread from faultline.pro@, "
             f"post a receipt, ack the handoff.",
-            line + " fp answers in-thread from faultline.pro@; prereg A1 arms stay SUSPENDED until written consent.")
+            line + " fp answers in-thread from faultline.pro@.")
 
 
 def mint_handoff(f):
