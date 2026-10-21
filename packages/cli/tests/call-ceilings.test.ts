@@ -199,21 +199,44 @@ describe('each request carries its row of the table', () => {
 });
 
 describe('static guard: no model call outside the table', () => {
+  // Codex review of 4f4157b, finding 1: the first guard matched only `fetch('https://api.` and
+  // `generateContent(` in two flat directories, so a double-quoted URL, a URL held in a variable,
+  // whitespace before the parenthesis or a nested module passed unseen. The guard now walks the
+  // whole CLI package, ignores comments, and counts every source LINE that names a model host or
+  // a model SDK call, plus every fetch call in services/ and providers/. Any new line of either
+  // kind fails until the contract above drives it.
   const cliRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
-  const CALL_SITE = /generateContent\(|fetch\('https:\/\/api\./g;
+  const MODEL_CALL = /generateContent(?:Stream)?\s*\(|api\.openai\.com|api\.anthropic\.com|api\.perplexity\.ai|generativelanguage\.googleapis\.com|\.messages\.create\s*\(|completions\.create\s*\(|responses\.create\s*\(/;
+  const ANY_FETCH = /\bfetch\s*\(/;
 
-  function callSitesIn(dir: string): Record<string, number> {
-    const counts: Record<string, number> = {};
-    for (const name of readdirSync(join(cliRoot, dir))) {
-      if (!name.endsWith('.ts') || name.endsWith('.test.ts')) continue;
-      const n = (readFileSync(join(cliRoot, dir, name), 'utf8').match(CALL_SITE) ?? []).length;
-      if (n > 0) counts[`${dir}/${name}`] = n;
-    }
-    return counts;
+  function stripComments(src: string): string {
+    return src.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' ')).replace(/(^|[^:'"`])\/\/.*$/gm, '$1');
   }
 
-  it('the call sites in services/ and providers/ are exactly the ones the contract drives', () => {
-    const found = { ...callSitesIn('services'), ...callSitesIn('providers') };
+  function callLines(rel: string, src: string): number {
+    const fetchCounts = rel.startsWith('services/') || rel.startsWith('providers/');
+    return stripComments(src).split('\n').filter((line) => MODEL_CALL.test(line) || (fetchCounts && ANY_FETCH.test(line))).length;
+  }
+
+  function walk(dir: string, out: string[] = []): string[] {
+    for (const entry of readdirSync(join(cliRoot, dir), { withFileTypes: true })) {
+      const rel = dir ? `${dir}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        if (['node_modules', 'tests', 'dist', 'coverage', '.stryker-tmp'].includes(entry.name)) continue;
+        walk(rel, out);
+      } else if (/\.(ts|mts|js|mjs)$/.test(entry.name) && !/\.(test|spec)\.|\.d\.ts$/.test(entry.name)) {
+        out.push(rel);
+      }
+    }
+    return out;
+  }
+
+  it('every model-call line in the CLI package is one the contract drives', () => {
+    const found: Record<string, number> = {};
+    for (const rel of walk('')) {
+      const n = callLines(rel, readFileSync(join(cliRoot, rel), 'utf8'));
+      if (n > 0) found[rel] = n;
+    }
     const driven: Record<string, number> = {};
     for (const site of new Set(CASES.map((c) => c.site))) {
       const file = site.split('#')[0];
@@ -221,5 +244,20 @@ describe('static guard: no model call outside the table', () => {
     }
     expect(found).toEqual(driven);
     expect(Object.values(found).reduce((a, b) => a + b, 0)).toBe(10);
+  });
+
+  it.each([
+    ['a double-quoted URL', 'providers/x.ts', 'export const p = () => fetch("https://api.openai.com/v1/chat/completions");'],
+    ['a URL held in a variable', 'providers/x.ts', "const URL = 'https://api.anthropic.com/v1/messages';\nexport const p = () => fetch(URL);"],
+    ['whitespace before the parenthesis', 'services/x.ts', 'await ai.models.generateContent ({ model });'],
+    ['a streaming call', 'consensus/x.ts', 'await ai.models.generateContentStream({ model });'],
+    ['an SDK chat call outside services/', 'cli/x.ts', 'await client.chat.completions.create({ model });'],
+    ['a fetch to any host in providers/', 'providers/deep/x.ts', 'await fetch(endpoint, { method: "POST" });'],
+  ])('the scanner sees %s', (_label, rel, src) => {
+    expect(callLines(rel, src)).toBeGreaterThan(0);
+  });
+
+  it('the scanner ignores a model host named only in a comment', () => {
+    expect(callLines('providers/x.ts', '// Gemini generateContent: finishReason\n/* fetch("https://api.openai.com") */\nconst a = 1;')).toBe(0);
   });
 });
