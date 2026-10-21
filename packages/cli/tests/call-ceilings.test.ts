@@ -9,6 +9,7 @@
  * fails here until it is added to the table and to CASES.
  */
 // Validates: N-234 (cost ceilings, GoPMO 1.18.11.7.18)
+import ts from 'typescript';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -199,23 +200,58 @@ describe('each request carries its row of the table', () => {
 });
 
 describe('static guard: no model call outside the table', () => {
-  // Codex review of 4f4157b, finding 1: the first guard matched only `fetch('https://api.` and
-  // `generateContent(` in two flat directories, so a double-quoted URL, a URL held in a variable,
-  // whitespace before the parenthesis or a nested module passed unseen. The guard now walks the
-  // whole CLI package, ignores comments, and counts every source LINE that names a model host or
-  // a model SDK call, plus every fetch call in services/ and providers/. Any new line of either
-  // kind fails until the contract above drives it.
+  // Codex reviews of 4f4157b and b5e3a38: a text matcher missed a double-quoted URL, a URL held in
+  // a variable, a nested module, and a newline before the parenthesis, and misread a comment after
+  // a quote. The guard now parses every CLI source file with the TypeScript compiler and counts
+  // call expressions: fetch (in services/ and providers/), generateContent / generateContentStream,
+  // and messages / completions / responses .create, plus any string that names a model host and is
+  // not the URL argument of a counted call. Comments are not nodes, so they cannot count.
   const cliRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
-  const MODEL_CALL = /generateContent(?:Stream)?\s*\(|api\.openai\.com|api\.anthropic\.com|api\.perplexity\.ai|generativelanguage\.googleapis\.com|\.messages\.create\s*\(|completions\.create\s*\(|responses\.create\s*\(/;
-  const ANY_FETCH = /\bfetch\s*\(/;
+  const MODEL_HOST = /api\.openai\.com|api\.anthropic\.com|api\.perplexity\.ai|generativelanguage\.googleapis\.com/;
 
-  function stripComments(src: string): string {
-    return src.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' ')).replace(/(^|[^:'"`])\/\/.*$/gm, '$1');
+  function calleeName(expr: ts.Expression): { name: string; owner: string } | null {
+    if (ts.isIdentifier(expr)) return { name: expr.text, owner: '' };
+    if (ts.isPropertyAccessExpression(expr)) {
+      const owner = expr.expression;
+      const ownerName = ts.isPropertyAccessExpression(owner) ? owner.name.text : ts.isIdentifier(owner) ? owner.text : '';
+      return { name: expr.name.text, owner: ownerName };
+    }
+    if (ts.isParenthesizedExpression(expr)) return calleeName(expr.expression);
+    return null;
   }
 
-  function callLines(rel: string, src: string): number {
+  function callSites(rel: string, src: string): number {
     const fetchCounts = rel.startsWith('services/') || rel.startsWith('providers/');
-    return stripComments(src).split('\n').filter((line) => MODEL_CALL.test(line) || (fetchCounts && ANY_FETCH.test(line))).length;
+    const kind = /\.(js|mjs)$/.test(rel) ? ts.ScriptKind.JS : ts.ScriptKind.TS;
+    const file = ts.createSourceFile(rel, src, ts.ScriptTarget.Latest, true, kind);
+    const counted = new Set<ts.Node>();
+    let n = 0;
+    const visitCalls = (node: ts.Node): void => {
+      if (ts.isCallExpression(node)) {
+        const callee = calleeName(node.expression);
+        const isModelCall = callee !== null && (
+          (callee.name === 'fetch' && fetchCounts)
+          || callee.name === 'generateContent' || callee.name === 'generateContentStream'
+          || (callee.name === 'create' && ['messages', 'completions', 'responses'].includes(callee.owner)));
+        if (isModelCall) {
+          n += 1;
+          for (const arg of node.arguments) counted.add(arg);
+        }
+      }
+      ts.forEachChild(node, visitCalls);
+    };
+    visitCalls(file);
+    const visitStrings = (node: ts.Node): void => {
+      if ((ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateHead(node)
+        || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) && MODEL_HOST.test(node.text)) {
+        let owner: ts.Node | undefined = node;
+        while (owner && !counted.has(owner)) owner = owner.parent;
+        if (!owner) n += 1;
+      }
+      ts.forEachChild(node, visitStrings);
+    };
+    visitStrings(file);
+    return n;
   }
 
   function walk(dir: string, out: string[] = []): string[] {
@@ -231,10 +267,10 @@ describe('static guard: no model call outside the table', () => {
     return out;
   }
 
-  it('every model-call line in the CLI package is one the contract drives', () => {
+  it('every model call in the CLI package is one the contract drives', () => {
     const found: Record<string, number> = {};
     for (const rel of walk('')) {
-      const n = callLines(rel, readFileSync(join(cliRoot, rel), 'utf8'));
+      const n = callSites(rel, readFileSync(join(cliRoot, rel), 'utf8'));
       if (n > 0) found[rel] = n;
     }
     const driven: Record<string, number> = {};
@@ -249,15 +285,22 @@ describe('static guard: no model call outside the table', () => {
   it.each([
     ['a double-quoted URL', 'providers/x.ts', 'export const p = () => fetch("https://api.openai.com/v1/chat/completions");'],
     ['a URL held in a variable', 'providers/x.ts', "const URL = 'https://api.anthropic.com/v1/messages';\nexport const p = () => fetch(URL);"],
-    ['whitespace before the parenthesis', 'services/x.ts', 'await ai.models.generateContent ({ model });'],
+    ['a URL assembled in a template', 'cli/x.ts', 'const host = "api"; export const u = `https://api.perplexity.ai/${host}`;'],
+    ['whitespace before the parenthesis', 'services/x.ts', 'await ai.models.generateContent \t({ model });'],
+    ['a newline before the parenthesis', 'services/x.ts', 'export const probe = (ai: any) => ai.models.generateContent\n  ({ model: "fixture" });'],
     ['a streaming call', 'consensus/x.ts', 'await ai.models.generateContentStream({ model });'],
     ['an SDK chat call outside services/', 'cli/x.ts', 'await client.chat.completions.create({ model });'],
-    ['a fetch to any host in providers/', 'providers/deep/x.ts', 'await fetch(endpoint, { method: "POST" });'],
+    ['an SDK messages call', 'cli/x.ts', 'await client.messages.create ({ model });'],
+    ['a fetch to any host in a nested provider module', 'providers/deep/er/x.ts', 'await fetch (endpoint, { method: "POST" });'],
   ])('the scanner sees %s', (_label, rel, src) => {
-    expect(callLines(rel, src)).toBeGreaterThan(0);
+    expect(callSites(rel, src)).toBeGreaterThan(0);
   });
 
-  it('the scanner ignores a model host named only in a comment', () => {
-    expect(callLines('providers/x.ts', '// Gemini generateContent: finishReason\n/* fetch("https://api.openai.com") */\nconst a = 1;')).toBe(0);
+  it.each([
+    ['line and block comments', '// Gemini generateContent: finishReason\n/* fetch("https://api.openai.com") */\nconst a = 1;'],
+    ['a line comment right after a quote', 'export const label = "fixture"// fetch("https://api.openai.com/v1/chat/completions");'],
+    ['a fetch outside services/ and providers/ to a non-model host', 'const r = await fetch("https://example.com");'],
+  ])('the scanner ignores %s', (_label, src) => {
+    expect(callSites('cli/x.ts', src)).toBe(0);
   });
 });
