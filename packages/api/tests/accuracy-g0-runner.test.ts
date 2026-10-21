@@ -31,6 +31,7 @@ const KEY = ['runner', 'ADMINKEY', 'must-never-print', '4242'].join('-');
 
 interface FakeState {
   usageExtra?: Record<string, unknown>;
+  dropVerifyOnce?: boolean;
   groundedPrompts: number;
   commit: string | null;
   version: string;
@@ -97,6 +98,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   }
   if (req.method === 'POST' && req.url === '/admin/verify-claims') {
     state.verifyCalls += 1;
+    if (state.dropVerifyOnce) { state.dropVerifyOnce = false; req.socket.destroy(); return; }
     if (state.verifyStatus !== 200) return send(res, state.verifyStatus, state.verifyBody ?? {});
     const { claims } = JSON.parse(await readBody(req)) as { claims: Array<{ id: string; text: string }> };
     const results = claims.map(({ id }) => {
@@ -425,6 +427,25 @@ describe('accuracy-g0 runner: allowance shared with production (--allowance-api,
       expect(r.out).toMatch(/counter was reset/);
       expect(state.verifyCalls).toBe(1);
     } finally { await prod.close(); }
+  });
+
+  it('branch mode stops (exit 1) instead of re-sending a batch that did not answer', async () => {
+    const prod = await fakeProduction(0);
+    try {
+      state.dropVerifyOnce = true;
+      const r = await run(['--set', 'verify-subsample', '--out', join(dir, 'sub.jsonl'), '--allowance-api', prod.url]);
+      expect(r.code).toBe(1);
+      expect(r.out).toMatch(/did not answer/);
+      expect(state.verifyCalls).toBe(1);
+    } finally { await prod.close(); }
+  });
+
+  it('deployed mode still retries a batch that did not answer (prereg section 6)', async () => {
+    state.dropVerifyOnce = true;
+    const r = await run(['--set', 'verify-subsample', '--out', join(dir, 'sub.jsonl')]);
+    expect(r.code).toBe(0);
+    expect(rows(join(dir, 'sub.jsonl'))).toHaveLength(100);
+    expect(state.verifyCalls).toBe(5);
   });
 
   it('deployed mode (no flag) keeps the original check: write failures on its own /usage do not stop it', async () => {

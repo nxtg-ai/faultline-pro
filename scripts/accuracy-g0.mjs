@@ -343,13 +343,19 @@ function sleep(ms) {
 }
 
 /** POST one batch. Returns results by id, or null when the whole call failed. */
-async function postBatch(request, batch) {
+async function postBatch(request, batch, stopOnNoAnswer = false) {
   let response;
   try {
     response = await request('POST', '/admin/verify-claims', {
       claims: batch.map((item) => ({ id: String(item.id), text: item.claim })),
     });
   } catch {
+    // Branch mode (--allowance-api): a batch that did not answer may still be spending on the
+    // engine, and its spend is recorded only when it finishes, so re-sending it could pass the
+    // spend bound. Stop instead (opus seat on 462fc29, F3). Deployed mode keeps the prereg retry.
+    if (stopOnNoAnswer) {
+      throw new RunStop(EXIT.ERROR, 'STOP: a batch did not answer (network error or timeout); its provider calls may still be running, so the run stops rather than re-send it. Resume with --resume after the engine is idle.');
+    }
     return null; // network error or timeout: every item in the batch is an apiError attempt
   }
   const { status, json } = response;
@@ -417,7 +423,7 @@ async function runBatches({ request, allowance, options, pending, engine, done, 
     const calls = batch.map((item) => ({ id: item.id, attempt: (attempts.get(item.id) ?? 0) + 1 }));
     recordCalls(ledger, calls);
     for (const { id, attempt } of calls) attempts.set(id, attempt);
-    const results = await postBatch(request, batch);
+    const results = await postBatch(request, batch, allowance.length > 1);
     const rows = [];
     const retry = [];
     for (const item of batch) {
