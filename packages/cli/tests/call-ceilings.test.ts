@@ -252,8 +252,15 @@ describe('static guard: no model call outside the table', () => {
         if ((name === 'fetch' && fetchCounts) || SDK_METHODS.has(name)) isRef = true;
         if (name === 'create') {
           const access = node.parent;
-          const owner = ts.isPropertyAccessExpression(access) && access.name === node ? access.expression
+          let owner: ts.Node | null = ts.isPropertyAccessExpression(access) && access.name === node ? access.expression
             : ts.isElementAccessExpression(access) && access.argumentExpression === node ? access.expression : null;
+          // `const { create: send } = client.messages`: the owner is the destructured initializer
+          // (codex re-review of 1debc98).
+          if (!owner && ts.isBindingElement(access) && (access.propertyName === node || (!access.propertyName && access.name === node))) {
+            const decl = access.parent?.parent;
+            if (decl && ts.isVariableDeclaration(decl) && decl.initializer) owner = decl.initializer;
+            if (decl && ts.isParameter(decl) && decl.initializer) owner = decl.initializer;
+          }
           if (owner && CREATE_OWNERS.has(nameOf(owner) ?? '')) isRef = true;
         }
       }
@@ -326,6 +333,9 @@ describe('static guard: no model call outside the table', () => {
     ['a bracketed owner of create', 'cli/x.ts', 'await client["messages"].create({ model });'],
     ['bracketed globalThis fetch', 'providers/x.ts', 'await globalThis["fetch"](endpoint);'],
     ['optional chaining', 'services/x.ts', 'await ai?.models?.generateContent?.({ model });'],
+    ['create destructured from messages', 'cli/x.ts', 'export const probe = (client: any) => { const { create: send } = client.messages; return send.call(client.messages, {}); };'],
+    ['create destructured from responses', 'cli/x.ts', 'export const probe = (client: any) => { const { create } = client.responses; return create({}); };'],
+    ['create destructured from chat.completions', 'cli/x.ts', 'export const probe = (client: any) => { const { create: send } = client.chat.completions; return send({}); };'],
   ])('the scanner sees %s', (_label, rel, src) => {
     expect(callSites(rel, src)).toBeGreaterThan(0);
   });
@@ -334,6 +344,7 @@ describe('static guard: no model call outside the table', () => {
     ['line and block comments', '// Gemini generateContent: finishReason\n/* fetch("https://api.openai.com") */\nconst a = 1;'],
     ['a line comment right after a quote', 'export const label = "fixture"// fetch("https://api.openai.com/v1/chat/completions");'],
     ['a fetch outside services/ and providers/ to a non-model host', 'const r = await fetch("https://example.com");'],
+    ['a create destructured from something that is not an SDK owner', 'const { create } = Object; const o = create(null);'],
   ])('the scanner ignores %s', (_label, src) => {
     expect(callSites('cli/x.ts', src)).toBe(0);
   });
