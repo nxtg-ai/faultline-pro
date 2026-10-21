@@ -119,6 +119,8 @@ const EXTRACTION_ERROR_CODES: Record<ExtractionErrorReason, ErrorCode> = {
   timeout: 'TIMEOUT',
   provider_unavailable: 'PROVIDER_UNAVAILABLE',
   invalid_output: 'PARSE_ERROR',
+  // No new code: the telemetry schema is fixed; a cut-off claim list is an unusable reply.
+  output_truncated: 'PARSE_ERROR',
   provider_error: 'API_ERROR',
 };
 

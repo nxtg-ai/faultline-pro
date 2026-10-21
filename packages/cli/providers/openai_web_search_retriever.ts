@@ -1,6 +1,8 @@
 import type { Source } from '../types';
 import type { Retriever } from './base_provider';
 import { recordUsage } from '../lib/usage-sink';
+import { CALL_CEILINGS } from './call-ceilings';
+import { isResponsesTruncated, OutputTruncatedError } from './output-truncation';
 
 /**
  * OpenAIWebSearchRetriever — provider-agnostic grounding via OpenAI's Responses
@@ -41,6 +43,8 @@ interface OutputItem {
 
 interface ResponsesPayload {
   output?: OutputItem[];
+  status?: string;
+  incomplete_details?: { reason?: string } | null;
 }
 
 export class OpenAIWebSearchRetriever implements Retriever {
@@ -79,8 +83,10 @@ export class OpenAIWebSearchRetriever implements Retriever {
   }
 
   /**
-   * Call the OpenAI Responses API with the web_search tool. Isolated for easy
-   * mocking in tests (mirrors OpenAIProvider.callAPI).
+   * Call the OpenAI Responses API with the web_search tool, capped at the
+   * retrieve ceiling (providers/call-ceilings.ts). Throws OutputTruncatedError
+   * when the reply stopped there. Isolated for easy mocking in tests (mirrors
+   * OpenAIProvider.callAPI).
    */
   async callAPI(claimText: string): Promise<ResponsesPayload> {
     const input =
@@ -96,6 +102,7 @@ export class OpenAIWebSearchRetriever implements Retriever {
       body: JSON.stringify({
         model: this.model,
         tools: [{ type: 'web_search' }],
+        max_output_tokens: CALL_CEILINGS.openaiResponses.retrieve.maxOutputTokens,
         input,
       }),
       ...(this.timeoutMs ? { signal: AbortSignal.timeout(this.timeoutMs) } : {}),
@@ -119,6 +126,8 @@ export class OpenAIWebSearchRetriever implements Retriever {
       outputTokens: usage?.output_tokens ?? 0,
       isGrounding: true,
     });
+    // A search cut off at its ceiling is a failed retrieval: retrieve() turns the throw into [].
+    if (isResponsesTruncated(payload)) throw new OutputTruncatedError('openai-web-search', 'retrieve');
     return payload;
   }
 }

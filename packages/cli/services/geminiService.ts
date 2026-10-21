@@ -4,7 +4,9 @@ import type { Claim, VerificationResult } from '../types';
 import { sanitizeVerifyError } from './verify-error';
 import { recordUsage } from '../lib/usage-sink';
 import { ExtractionError, parseExtractedClaims } from '../providers/extraction-error';
-import { readVerdictReply, unparseableVerdict } from '../providers/verdict-reply';
+import { readVerdictReply, truncatedVerdict, unparseableVerdict } from '../providers/verdict-reply';
+import { geminiCeilingConfig } from '../providers/call-ceilings';
+import { isGeminiTruncated, OutputTruncatedError } from '../providers/output-truncation';
 
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 
@@ -110,6 +112,7 @@ export const extractClaims = async (text: string, apiKey: string, image?: { data
       model,
       contents: { parts },
       config: {
+        ...geminiCeilingConfig('extract'),
         responseMimeType: "application/json",
         responseSchema: {
           type: 'ARRAY',
@@ -131,6 +134,9 @@ export const extractClaims = async (text: string, apiKey: string, image?: { data
   }
 
   recordGeminiUsage(response, false, 'extraction');
+  // Checked before the empty-reply test: a reply cut at its ceiling is a truncated
+  // extraction, never fewer claims and never "unreadable" (GoPMO 1.18.11.7.18).
+  if (isGeminiTruncated(response)) throw new ExtractionError('output_truncated', new OutputTruncatedError('gemini', 'extract'));
   // An empty reply (a blocked or cut-off response) is a failed extraction, not "no claims".
   if (!response.text?.trim()) throw new ExtractionError('invalid_output', new Error('empty extraction reply'));
   return parseExtractedClaims(cleanJson(response.text));
@@ -175,12 +181,15 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
       model,
       contents: prompt,
       config: {
+        ...geminiCeilingConfig('verify'),
         tools: [{ googleSearch: {} }],
         // responseMimeType cannot be used with googleSearch, so we rely on the prompt and cleanJson
       }
     });
 
     recordGeminiUsage(response, true, 'grounded-verify:gemini');
+    // A reply cut at its ceiling is not a verdict, even if the part that arrived parses.
+    if (isGeminiTruncated(response)) return truncatedVerdict(claim.id);
     // The grounded request searched and judged in one call, so retrieval and
     // verdict share this moment (Honor System #2, GoPMO 1.18.11.3 P1a).
     const returnedAt = new Date().toISOString();
@@ -287,10 +296,12 @@ export const retrieveSources = async (claimText: string, apiKey: string): Promis
     const response = await ai.models.generateContent({
       model: GEMINI_MODEL,
       contents: prompt,
-      config: { tools: [{ googleSearch: {} }] },
+      config: { ...geminiCeilingConfig('retrieve'), tools: [{ googleSearch: {} }] },
     });
 
     recordGeminiUsage(response, true, 'grounded-retrieve:gemini');
+    // A cut-off retrieval is a failed retrieval, handled like the API error below.
+    if (isGeminiTruncated(response)) throw new OutputTruncatedError('gemini', 'retrieve');
     const sources: Array<{ title: string; uri: string }> = [];
     const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
     if (chunks) {
@@ -345,9 +356,15 @@ export const verifyClaimGrounded = async (
 
   try {
     const ai = getClient(apiKey);
-    const response = await ai.models.generateContent({ model: GEMINI_MODEL, contents: prompt });
+    const response = await ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: prompt,
+      config: geminiCeilingConfig('verifyGrounded'),
+    });
 
     recordGeminiUsage(response, false, 'grounded-verify:gemini');
+    // A cut-off vote is a failed vote with its own reason, not a verdict.
+    if (isGeminiTruncated(response)) return { ...truncatedVerdict(claim.id), sources };
     const verdict = readVerdictReply(cleanJson(response.text || ''));
     // An unreadable reply is a failed vote, not a 'mixed' one (al:5b18840b0116047a item c).
     if (!verdict) return { ...unparseableVerdict(claim.id), sources };
@@ -395,9 +412,11 @@ export const generateCritiqueAndPrompt = async (originalText: string, failedClai
     const response = await ai.models.generateContent({
       model,
       contents: prompt,
-      config: { responseMimeType: "application/json" }
+      config: { ...geminiCeilingConfig('critique'), responseMimeType: "application/json" }
     });
     recordGeminiUsage(response, false, 'critique:gemini');
+    // A cut-off critique takes the fallback below, like any failed critique.
+    if (isGeminiTruncated(response)) throw new OutputTruncatedError('gemini', 'critique');
     const cleanedText = cleanJson(response.text || '{}');
     return JSON.parse(cleanedText);
   } catch (error) {
