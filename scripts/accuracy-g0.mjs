@@ -56,6 +56,11 @@ export const DAILY_GROUNDED_CAP = 1000;
  * With --allowance-api, production keeps spending the same key while a batch is in flight, so the
  * guard leaves this many prompts for it (codex review of f5d637c, finding 1). Production served 0
  * grounded prompts on 2026-10-20 by 03:50Z (admin GET /usage); 100 is headroom, not a forecast.
+ * ACCEPTED RESIDUAL (codex re-review of f68d2f1, finding 1): the reads are snapshots, so production
+ * spending more than 100 grounded prompts during one in-flight batch (about a minute) would carry
+ * the day past 1,000. No reservation can be shared with production, so this is stated, not closed.
+ * The 1,000 is the prereg's own lever below Google's 1,500 free daily prompts; the cost of an
+ * overshoot is the per-prompt grounding price on the excess.
  */
 export const PRODUCTION_HEADROOM = 100;
 /** Prereg §6: the route takes up to 25 claims. */
@@ -244,14 +249,16 @@ async function readHealth(request) {
   return { commit, version: json.version ?? null };
 }
 
-async function readGroundedPrompts(request) {
+async function readGroundedPrompts(request, strict = false) {
   const { status, json } = await request('GET', '/usage');
   const allowance = json?.groundingAllowance;
   const count = allowance?.groundedPrompts;
   if (status !== 200 || typeof count !== 'number') {
     throw new RunStop(EXIT.ERROR, `GET /usage answered ${status} without groundingAllowance.groundedPrompts (is the key the admin key?)`);
   }
-  // A count the guard cannot trust stops the run rather than letting it spend (codex review of f5d637c).
+  // Branch mode only (strict): a count the guard cannot trust stops the run rather than letting it
+  // spend (codex review of f5d637c). Deployed mode keeps the original check, unchanged.
+  if (!strict) return { count, day: allowance.day, resetsAt: allowance.resetsAt };
   if (!Number.isSafeInteger(count) || count < 0 || typeof allowance.day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(allowance.day)) {
     throw new RunStop(EXIT.ERROR, `GET /usage answered an unusable allowance (count ${count}, day ${allowance.day})`);
   }
@@ -269,7 +276,7 @@ async function readGroundedPrompts(request) {
  */
 async function guardAllowance(requests, batchSize, log) {
   const reads = [];
-  for (const request of requests) reads.push(await readGroundedPrompts(request));
+  for (const request of requests) reads.push(await readGroundedPrompts(request, requests.length > 1));
   const days = [...new Set(reads.map((read) => read.day))];
   if (days.length > 1) {
     throw new RunStop(EXIT.ALLOWANCE_STOP, `STOP (allowance guard): the engines report different allowance days (${days.join(', ')}). Resume with --resume.`);

@@ -30,6 +30,7 @@ const SUBSAMPLE_IDS: number[] = JSON.parse(
 const KEY = ['runner', 'ADMINKEY', 'must-never-print', '4242'].join('-');
 
 interface FakeState {
+  usageExtra?: Record<string, unknown>;
   groundedPrompts: number;
   commit: string | null;
   version: string;
@@ -66,6 +67,7 @@ function freshState(): FakeState {
     attemptsById: new Map(),
     verifyStatus: 200,
     runStartCalls: 0,
+    usageExtra: undefined,
   };
 }
 
@@ -90,7 +92,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     const full = state.capAfterCallsThisRun !== undefined && state.verifyCalls - state.runStartCalls >= state.capAfterCallsThisRun;
     return send(res, 200, {
       keyId: 'admin',
-      groundingAllowance: { day: '2026-10-02', groundedPrompts: full ? 1000 : state.groundedPrompts, resetsAt: '2026-10-03T07:00:00.000Z' },
+      groundingAllowance: { day: '2026-10-02', groundedPrompts: full ? 1000 : state.groundedPrompts, resetsAt: '2026-10-03T07:00:00.000Z', ...(state.usageExtra ?? {}) },
     });
   }
   if (req.method === 'POST' && req.url === '/admin/verify-claims') {
@@ -409,6 +411,13 @@ describe('accuracy-g0 runner: allowance shared with production (--allowance-api,
         expect(state.verifyCalls).toBe(0);
       } finally { await prod.close(); }
     }
+  });
+
+  it('deployed mode (no flag) keeps the original check: write failures on its own /usage do not stop it', async () => {
+    state.usageExtra = { ledgerWriteFailures: 1 };
+    const r = await run(['--set', 'verify-subsample', '--out', join(dir, 'sub.jsonl')]);
+    expect(r.code).toBe(0);
+    expect(rows(join(dir, 'sub.jsonl'))).toHaveLength(100);
   });
 
   it('without the flag, production is not consulted (the existing single-engine guard)', async () => {
