@@ -14,7 +14,7 @@ export const GEMINI_MODEL: string =
 
 /**
  * BLG-005 defect-1: emit real Gemini SDK usage to the active scan's usage sink.
- * The SDK response carries usageMetadata (promptTokenCount/candidatesTokenCount);
+ * The SDK response carries usageMetadata (prompt, candidates, tool-use prompt and thoughts counts);
  * the engine previously discarded it. No-op outside a captureUsage() scope.
  * `isGrounding` = true only when this call used the googleSearch tool (bills the
  * per-grounded-prompt surcharge); false for extraction and shared-source verify.
@@ -25,11 +25,16 @@ function recordGeminiUsage(response: any, isGrounding: boolean, callType: string
     provider: 'gemini',
     model: GEMINI_MODEL,
     callType,
-    inputTokens: u.promptTokenCount ?? 0,
-    outputTokens: u.candidatesTokenCount ?? 0,
+    // Google bills tool-use prompt tokens as input and thinking tokens as output; neither is in
+    // promptTokenCount or candidatesTokenCount. One grounded call on 2026-10-21 reported 25/79 there
+    // and 122 tool-use + 120 thinking tokens beside them (GoPMO 1.18.11.7.18).
+    inputTokens: count(u.promptTokenCount) + count(u.toolUsePromptTokenCount),
+    outputTokens: count(u.candidatesTokenCount) + count(u.thoughtsTokenCount),
     isGrounding,
   });
 }
+
+const count = (n: unknown): number => (typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : 0);
 
 // Helper to sanitize JSON strings by finding the first { or [ and last } or ]
 const cleanJson = (text: string): string => {
