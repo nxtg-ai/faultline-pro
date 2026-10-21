@@ -108,9 +108,12 @@ jobs:
           # the queue and spent after midnight is caught by its update time, not its creation time.
           SINCE=$(python3 -c "from datetime import datetime,timezone,timedelta; from zoneinfo import ZoneInfo; n=datetime.now(ZoneInfo('America/Los_Angeles')); print((n.replace(hour=0,minute=0,second=0,microsecond=0)-timedelta(minutes=180)).astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'))")
           # Every page, summed: one page of 100 can hide an older run behind newer cancelled ones.
+          # pipefail: a failed page must fail the step, never read as zero other runs.
+          set -o pipefail
           OTHERS=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/workflows/accuracy-g0.yml/runs?per_page=100" \
             --jq "[.workflow_runs[] | select(.id != ${GITHUB_RUN_ID}) | select(.status != \"completed\" or .updated_at >= \"${SINCE}\" or (.run_started_at // \"\") >= \"${SINCE}\")] | length" \
             | awk '{ s += $1 } END { print s + 0 }')
+          case "$OTHERS" in ''|*[!0-9]*) echo "::error::Could not count other Accuracy G0 runs (got '${OTHERS}'). Nothing was sent."; exit 1 ;; esac
           echo "other Accuracy G0 runs queued, running, or updated since ${SINCE}: ${OTHERS}"
           # The provider-spend cap is a UTC-month ledger, so a run that crosses a month boundary
           # would get a fresh budget halfway through. Refuse within 180 minutes (the job timeout).
