@@ -209,14 +209,18 @@ describe('static guard: no model call outside the table', () => {
   const cliRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
   const MODEL_HOST = /api\.openai\.com|api\.anthropic\.com|api\.perplexity\.ai|generativelanguage\.googleapis\.com/;
 
-  function calleeName(expr: ts.Expression): { name: string; owner: string } | null {
-    if (ts.isIdentifier(expr)) return { name: expr.text, owner: '' };
-    if (ts.isPropertyAccessExpression(expr)) {
-      const owner = expr.expression;
-      const ownerName = ts.isPropertyAccessExpression(owner) ? owner.name.text : ts.isIdentifier(owner) ? owner.text : '';
-      return { name: expr.name.text, owner: ownerName };
-    }
-    if (ts.isParenthesizedExpression(expr)) return calleeName(expr.expression);
+  // References, not calls: an alias (`const request = fetch`), a renamed destructure, `.bind` or a
+  // bracketed name all still name the transport, so counting every reference makes each of them a
+  // new site the contract must drive (codex re-review of dcfa71a, finding 1).
+  const SDK_METHODS = new Set(['generateContent', 'generateContentStream']);
+  const CREATE_OWNERS = new Set(['messages', 'completions', 'responses']);
+
+  function nameOf(node: ts.Node): string | null {
+    if (ts.isIdentifier(node) || ts.isPrivateIdentifier(node)) return node.text;
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text;
+    if (ts.isPropertyAccessExpression(node)) return node.name.text;
+    if (ts.isElementAccessExpression(node)) return nameOf(node.argumentExpression);
+    if (ts.isParenthesizedExpression(node) || ts.isNonNullExpression(node)) return nameOf(node.expression);
     return null;
   }
 
@@ -224,28 +228,49 @@ describe('static guard: no model call outside the table', () => {
     const fetchCounts = rel.startsWith('services/') || rel.startsWith('providers/');
     const kind = /\.(js|mjs)$/.test(rel) ? ts.ScriptKind.JS : ts.ScriptKind.TS;
     const file = ts.createSourceFile(rel, src, ts.ScriptTarget.Latest, true, kind);
-    const counted = new Set<ts.Node>();
+    const covered = new Set<ts.Node>();
     let n = 0;
-    const visitCalls = (node: ts.Node): void => {
-      if (ts.isCallExpression(node)) {
-        const callee = calleeName(node.expression);
-        const isModelCall = callee !== null && (
-          (callee.name === 'fetch' && fetchCounts)
-          || callee.name === 'generateContent' || callee.name === 'generateContentStream'
-          || (callee.name === 'create' && ['messages', 'completions', 'responses'].includes(callee.owner)));
-        if (isModelCall) {
-          n += 1;
-          for (const arg of node.arguments) counted.add(arg);
+    // When a counted reference is the callee of a call, that call's URL argument is not a second site.
+    const coverCall = (ref: ts.Node): void => {
+      let callee: ts.Node = ref;
+      while (callee.parent && (ts.isPropertyAccessExpression(callee.parent) || ts.isElementAccessExpression(callee.parent)
+        || ts.isParenthesizedExpression(callee.parent) || ts.isNonNullExpression(callee.parent))
+        && (callee.parent as ts.Node) !== undefined && !ts.isCallExpression(callee)) {
+        if (ts.isPropertyAccessExpression(callee.parent) && callee.parent.expression === callee) break;
+        callee = callee.parent;
+      }
+      const call = callee.parent;
+      if (call && ts.isCallExpression(call) && call.expression === callee) for (const arg of call.arguments) covered.add(arg);
+    };
+    const visit = (node: ts.Node): void => {
+      let isRef = false;
+      // A transport name as an identifier (call, alias, destructured property, bind owner) or as a
+      // bracketed string. Skip the string inside an element access: the access node counts it.
+      if ((ts.isIdentifier(node) || ((ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node))
+          && ts.isElementAccessExpression(node.parent) && node.parent.argumentExpression === node))) {
+        const name = node.text;
+        if ((name === 'fetch' && fetchCounts) || SDK_METHODS.has(name)) isRef = true;
+        if (name === 'create') {
+          const access = node.parent;
+          const owner = ts.isPropertyAccessExpression(access) && access.name === node ? access.expression
+            : ts.isElementAccessExpression(access) && access.argumentExpression === node ? access.expression : null;
+          if (owner && CREATE_OWNERS.has(nameOf(owner) ?? '')) isRef = true;
         }
       }
-      ts.forEachChild(node, visitCalls);
+      if (isRef) {
+        n += 1;
+        const target = ts.isElementAccessExpression(node.parent) && node.parent.argumentExpression === node ? node.parent
+          : ts.isPropertyAccessExpression(node.parent) && node.parent.name === node ? node.parent : node;
+        coverCall(target);
+      }
+      ts.forEachChild(node, visit);
     };
-    visitCalls(file);
+    visit(file);
     const visitStrings = (node: ts.Node): void => {
       if ((ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateHead(node)
         || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) && MODEL_HOST.test(node.text)) {
         let owner: ts.Node | undefined = node;
-        while (owner && !counted.has(owner)) owner = owner.parent;
+        while (owner && !covered.has(owner)) owner = owner.parent;
         if (!owner) n += 1;
       }
       ts.forEachChild(node, visitStrings);
@@ -292,6 +317,15 @@ describe('static guard: no model call outside the table', () => {
     ['an SDK chat call outside services/', 'cli/x.ts', 'await client.chat.completions.create({ model });'],
     ['an SDK messages call', 'cli/x.ts', 'await client.messages.create ({ model });'],
     ['a fetch to any host in a nested provider module', 'providers/deep/er/x.ts', 'await fetch (endpoint, { method: "POST" });'],
+    ['an aliased fetch', 'providers/x.ts', 'const request = fetch;\nexport const probe = (endpoint: string) => request(endpoint, { method: "POST" });'],
+    ['fetch destructured from globalThis', 'providers/x.ts', 'const { fetch: request } = globalThis; export const p = (e: string) => request(e);'],
+    ['a renamed destructured generateContent', 'services/x.ts', 'export const probe = (ai: any) => { const { generateContent: generate } = ai.models; return generate({ model: "f" }); };'],
+    ['a bound generateContent', 'services/x.ts', 'export const probe = (ai: any) => { const g = ai.models.generateContent.bind(ai.models); return g({}); };'],
+    ['bracketed generateContent', 'services/x.ts', 'export const probe = (ai: any) => ai.models["generateContent"]({ model: "f" });'],
+    ['bracketed create', 'cli/x.ts', 'await client.messages["create"]({ model });'],
+    ['a bracketed owner of create', 'cli/x.ts', 'await client["messages"].create({ model });'],
+    ['bracketed globalThis fetch', 'providers/x.ts', 'await globalThis["fetch"](endpoint);'],
+    ['optional chaining', 'services/x.ts', 'await ai?.models?.generateContent?.({ model });'],
   ])('the scanner sees %s', (_label, rel, src) => {
     expect(callSites(rel, src)).toBeGreaterThan(0);
   });
