@@ -28,6 +28,14 @@ on:
         options:
           - full
           - verify-subsample
+      engine:
+        description: 'deployed = the live Fly engine; branch = start the API from the dispatched ref on this runner (ruling 67cd2d8b: verdict-logic changes are measured on a branch before deploy)'
+        required: true
+        default: deployed
+        type: choice
+        options:
+          - deployed
+          - branch
 
 permissions:
   contents: read
@@ -43,6 +51,7 @@ jobs:
     timeout-minutes: 180
     env:
       SET: ${{ inputs.set }}
+      ENGINE: ${{ inputs.engine }}
       FAULTLINE_ADMIN_KEY: ${{ secrets.FAULTLINE_ADMIN_KEY }}
     steps:
       - name: Require the admin key secret
@@ -69,6 +78,33 @@ jobs:
       - name: Scorer self-test (it must be able to fail)
         run: python3 -m pytest scripts/tests -q
 
+      # Branch mode (GoPMO 1.18.11.7.18 A0): the engine under test is this ref, run on the runner.
+      # It spends the same Google key as production, so the runner's daily guard also reads
+      # production's grounded-prompt count (--allowance-api). Ledgers live in RUNNER_TEMP, and the
+      # provider-spend cap is enforced at USD 30 on this engine's own ledger.
+      - name: Start the branch engine
+        if: inputs.engine == 'branch'
+        env:
+          G0_GEMINI_KEY: ${{ secrets.FAULTLINE_G0_GEMINI_KEY }}
+        run: |
+          if [ -z "$G0_GEMINI_KEY" ]; then
+            echo "::error::Repo secret FAULTLINE_G0_GEMINI_KEY is not set; branch mode needs it. Nothing was sent."
+            exit 1
+          fi
+          npm ci --no-audit --no-fund
+          L="$RUNNER_TEMP/g0-engine"; mkdir -p "$L"
+          cd packages/api
+          PORT=3010 HOST=127.0.0.1 FAULTLINE_API_KEY="$FAULTLINE_ADMIN_KEY" GEMINI_API_KEY="$G0_GEMINI_KEY" \
+            FAULTLINE_GIT_SHA="$GITHUB_SHA" FAULTLINE_PROVIDER_SPEND_CAP=on FAULTLINE_PROVIDER_SPEND_CAP_USD=30 \
+            FAULTLINE_PROVIDER_SPEND_LEDGER="$L/provider-spend.jsonl" FAULTLINE_GROUNDING_LEDGER="$L/grounding.jsonl" \
+            FAULTLINE_FULL_JOBS_LEDGER="$L/full-jobs.jsonl" FAULTLINE_AUDIT_PATH="$L/audit.jsonl" \
+            nohup npx tsx src/index.ts > "$L/server.log" 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS -m 2 http://127.0.0.1:3010/health > "$L/health.json" 2>/dev/null; then break; fi
+            sleep 2
+          done
+          python3 -c "import json,sys,os; h=json.load(open(sys.argv[1])); c=h.get('commit'); print('branch engine', c); sys.exit(0 if c==os.environ['GITHUB_SHA'] else 1)" "$L/health.json"
+
       - name: Run
         id: runner
         run: |
@@ -76,7 +112,11 @@ jobs:
           OUT="out/accuracy-g0-${SET}-${GITHUB_RUN_ID}.jsonl"
           echo "out=$OUT" >> "$GITHUB_OUTPUT"
           set +e
-          node scripts/accuracy-g0.mjs --set "$SET" --out "$OUT"
+          if [ "$ENGINE" = "branch" ]; then
+            node scripts/accuracy-g0.mjs --set "$SET" --out "$OUT" --api http://127.0.0.1:3010 --allowance-api https://faultline-api.fly.dev
+          else
+            node scripts/accuracy-g0.mjs --set "$SET" --out "$OUT"
+          fi
           rc=$?
           set -e
           echo "rc=$rc" >> "$GITHUB_OUTPUT"
@@ -104,8 +144,13 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: accuracy-g0-${{ inputs.set }}-${{ github.run_id }}
-          path: out/
+          name: accuracy-g0-${{ inputs.set }}-${{ inputs.engine }}-${{ github.run_id }}
+          path: |
+            out/
+            ${{ runner.temp }}/g0-engine/provider-spend.jsonl
+            ${{ runner.temp }}/g0-engine/grounding.jsonl
+            ${{ runner.temp }}/g0-engine/health.json
+            ${{ runner.temp }}/g0-engine/server.log
           if-no-files-found: warn
 
       - name: Fail unless the run completed

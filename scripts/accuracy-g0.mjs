@@ -9,7 +9,11 @@
  * grounded text (Google grounding terms).
  *
  *   node scripts/accuracy-g0.mjs --set full|verify-subsample
- *        [--api <url>] [--out <path>] [--resume] [--engine-sha <sha>]
+ *        [--api <url>] [--out <path>] [--resume] [--engine-sha <sha>] [--allowance-api <url>]
+ *
+ * --allowance-api adds a second engine whose grounded-prompt count joins the daily guard. A branch
+ * run (engine started on the runner) shares the Google key with production, so the guard must
+ * count both (GoPMO 1.18.11.7.18, A0).
  *
  * Guards (each is a prereg rule, not a tunable):
  *   - the gold file must hash to GOLD_SHA256, else nothing is sent   (§2, §5)
@@ -78,12 +82,12 @@ class RunStop extends Error {
 
 export function parseArgs(argv) {
   const options = {
-    set: undefined, api: DEFAULT_API, out: undefined, resume: false, engineSha: undefined,
+    set: undefined, api: DEFAULT_API, out: undefined, resume: false, engineSha: undefined, allowanceApi: undefined,
     gold: GOLD_PATH, subsample: SUBSAMPLE_PATH, retryBaseMs: 2000,
   };
   const valueFlags = {
     '--set': 'set', '--api': 'api', '--out': 'out', '--engine-sha': 'engineSha',
-    '--gold': 'gold', '--subsample': 'subsample', '--retry-base-ms': 'retryBaseMs',
+    '--gold': 'gold', '--subsample': 'subsample', '--retry-base-ms': 'retryBaseMs', '--allowance-api': 'allowanceApi',
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -102,6 +106,7 @@ export function parseArgs(argv) {
   options.retryBaseMs = Number(options.retryBaseMs);
   if (!Number.isFinite(options.retryBaseMs) || options.retryBaseMs < 0) throw new Error('--retry-base-ms must be >= 0');
   options.api = options.api.replace(/\/+$/, '');
+  if (options.allowanceApi !== undefined) options.allowanceApi = options.allowanceApi.replace(/\/+$/, '');
   if (options.engineSha !== undefined) options.engineSha = normalizeSha(options.engineSha);
   options.out ??= path.join(REPO_ROOT, 'docs/research/data', `accuracy-g0-${defaultRunId(options.set)}.jsonl`);
   return options;
@@ -244,17 +249,26 @@ async function readGroundedPrompts(request) {
 
 // ── Guards ───────────────────────────────────────────────────────────────────
 
-/** Prereg §7: stop before a batch that would take today's count past 1,000. */
-async function guardAllowance(request, batchSize, log) {
-  const allowance = await readGroundedPrompts(request);
-  if (allowance.count + batchSize > DAILY_GROUNDED_CAP) {
+/**
+ * Prereg §7: stop before a batch that would take today's count past 1,000. With --allowance-api
+ * the count is the sum over every engine that spends the same Google key.
+ */
+async function guardAllowance(requests, batchSize, log) {
+  const reads = [];
+  for (const request of requests) reads.push(await readGroundedPrompts(request));
+  const days = [...new Set(reads.map((read) => read.day))];
+  if (days.length > 1) {
+    throw new RunStop(EXIT.ALLOWANCE_STOP, `STOP (allowance guard): the engines report different allowance days (${days.join(', ')}). Resume with --resume.`);
+  }
+  const count = reads.reduce((sum, read) => sum + read.count, 0);
+  if (count + batchSize > DAILY_GROUNDED_CAP) {
     throw new RunStop(
       EXIT.ALLOWANCE_STOP,
-      `STOP (allowance guard): ${allowance.count} grounded prompts on ${allowance.day} + batch of ${batchSize} would pass ${DAILY_GROUNDED_CAP}. `
-        + `Resume after ${allowance.resetsAt} with --resume.`,
+      `STOP (allowance guard): ${count} grounded prompts on ${days[0]} + batch of ${batchSize} would pass ${DAILY_GROUNDED_CAP}. `
+        + `Resume after ${reads[0].resetsAt} with --resume.`,
     );
   }
-  log(`allowance ${allowance.count}/${DAILY_GROUNDED_CAP} on ${allowance.day}`);
+  log(`allowance ${count}/${DAILY_GROUNDED_CAP} on ${days[0]}${reads.length > 1 ? ` (${reads.map((read) => read.count).join(' + ')})` : ''}`);
 }
 
 /** Resolve the engine identity at start; refuse when it cannot be established. */
@@ -351,14 +365,14 @@ function closeExhausted(pending, attempts, options, engine, log) {
   return pending.filter((item) => (attempts.get(item.id) ?? 0) < MAX_CALLS);
 }
 
-async function runBatches({ request, options, pending, engine, done, attempts, log }) {
+async function runBatches({ request, allowance, options, pending, engine, done, attempts, log }) {
   let model = [...done.values()].find((row) => row.model)?.model ?? null;
   const queue = closeExhausted(pending, attempts, options, engine, log);
   const ledger = ledgerPath(options.out);
   let retryRound = 0;
   while (queue.length > 0) {
     const batch = queue.splice(0, BATCH_SIZE);
-    await guardAllowance(request, batch.length, log);
+    await guardAllowance(allowance, batch.length, log);
     await guardEngine(request, engine);
     const calls = batch.map((item) => ({ id: item.id, attempt: (attempts.get(item.id) ?? 0) + 1 }));
     recordCalls(ledger, calls);
@@ -435,7 +449,8 @@ export async function runAccuracy(options, deps = {}) {
     }
     const pending = items.filter((item) => !done.has(item.id));
     log(`set ${options.set}: ${items.length} items, ${done.size} already written, ${pending.length} to run; engine ${engine.engineSha}; out ${options.out}`);
-    await runBatches({ request, options, pending, engine, done, attempts, log });
+    const allowance = [request, ...(options.allowanceApi ? [makeClient(options.allowanceApi, key)] : [])];
+    await runBatches({ request, allowance, options, pending, engine, done, attempts, log });
     summarize(options.out, items.length, log);
     return EXIT.OK;
   } catch (error) {

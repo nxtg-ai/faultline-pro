@@ -11,7 +11,7 @@ How to run and score the pre-registered verdict-accuracy baseline. The spec is `
 | Route | `packages/api/src/routes/admin-verify.ts` | `POST /admin/verify-claims`, admin key only. Verifies 1 to 25 claims as given. |
 | Runner | `scripts/accuracy-g0.mjs` | Checks the gold hash, sends batches, applies the guards, writes one JSONL row per item and one attempt-ledger line per provider call. Node 20, no dependencies. |
 | Scorer | `scripts/accuracy-g0-score.py` | Computes the §4 metrics with bootstrap CIs, checks §5 validity, compares two runs for §8. Python 3 and numpy. |
-| Workflow | `.github/workflows/accuracy-g0.yml` | `workflow_dispatch` with `set: full | verify-subsample` (A1). Runs the scorer tests, the runner, then the scorer, and uploads the outputs. |
+| Workflow | `.github/workflows/accuracy-g0.yml` | `workflow_dispatch` with `set: full | verify-subsample` (A1) and `engine: deployed | branch`. Runs the scorer tests, the runner, then the scorer, and uploads the outputs. |
 | Engine commit | `GET /health` → `commit` | The git sha the deployed image was built from (`FAULTLINE_GIT_SHA`, passed by `fly-deploy.yml`). `null` until the first deploy after this change. |
 
 ## The route
@@ -55,11 +55,13 @@ node scripts/accuracy-g0.mjs --set verify-subsample
 node scripts/accuracy-g0.mjs --set full --out docs/research/data/accuracy-g0-full-<runid>.jsonl --resume
 ```
 
-Options: `--api <url>` (default `https://faultline-api.fly.dev`), `--out <path>` (default `docs/research/data/accuracy-g0-<set>-<UTC timestamp>.jsonl`), `--resume`, `--engine-sha <sha>` (only used when `/health` reports no commit).
+Options: `--api <url>` (default `https://faultline-api.fly.dev`), `--out <path>` (default `docs/research/data/accuracy-g0-<set>-<UTC timestamp>.jsonl`), `--resume`, `--engine-sha <sha>` (only used when `/health` reports no commit), `--allowance-api <url>` (a second engine whose grounded-prompt count joins the daily guard; see branch mode below).
 
 The admin key comes from `FAULTLINE_ADMIN_KEY`, else the `FAULTLINE_API_KEY=` line of `~/.config/faultline/hosted-api-key.env`. It goes only into the `x-api-key` header and is never printed (a test checks stdout and stderr).
 
 Through GitHub Actions (A1): dispatch **Accuracy G0** with `set`. It needs the repo secret `FAULTLINE_ADMIN_KEY` and fails at its first step without it. The outputs are uploaded as the artifact `accuracy-g0-<set>-<run id>`; the run id is the instrument. A `verify-subsample` dispatch is paired automatically with the committed full run when exactly one `docs/research/data/accuracy-g0-full-*.jsonl` exists.
+
+**Branch mode** (GoPMO 1.18.11.7.18 A0; ruling Dx3 67cd2d8b: prompt or verdict-logic changes are measured on G0 on a branch before deploy). Dispatch with `engine: branch` on the branch to measure (`gh workflow run accuracy-g0.yml --ref <branch> -f set=full -f engine=branch`). The job starts the API from that ref on the runner (port 3010, ledgers in `RUNNER_TEMP`, provider-spend cap enforced at USD 30 on that engine's own ledger, `/health` must report the dispatched sha) and points the runner at it. The branch engine spends the same Google key as production, so the runner also reads production's `/usage` (`--allowance-api https://faultline-api.fly.dev`) and stops before the sum of both counts would pass 1,000; it also stops if the two report different allowance days. Needs the repo secret `FAULTLINE_G0_GEMINI_KEY`. The artifact is `accuracy-g0-<set>-branch-<run id>` and adds the branch engine's spend and grounding ledgers, `/health` read and server log. `engine: deployed` (the default) is the original mode, unchanged.
 
 ## Guards
 

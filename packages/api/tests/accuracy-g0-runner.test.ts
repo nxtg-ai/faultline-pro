@@ -337,6 +337,67 @@ describe('accuracy-g0 runner: grounding allowance guard (prereg §7)', () => {
   });
 });
 
+describe('accuracy-g0 runner: allowance shared with production (--allowance-api, GoPMO 1.18.11.7.18 A0)', () => {
+  // A branch engine on the runner spends the same Google key as production, so the daily guard
+  // must count both. This fake "production" only answers GET /usage.
+  async function fakeProduction(groundedPrompts: number, day = '2026-10-02'): Promise<{ url: string; close: () => Promise<void>; usageCalls: () => number }> {
+    let usageCalls = 0;
+    const prod = createServer((req, res) => {
+      if (req.method === 'GET' && req.url === '/usage') {
+        usageCalls += 1;
+        return send(res, 200, { keyId: 'admin', groundingAllowance: { day, groundedPrompts, resetsAt: '2026-10-03T07:00:00.000Z' } });
+      }
+      return send(res, 404, { error: 'not found' });
+    });
+    await new Promise<void>((r) => prod.listen(0, '127.0.0.1', () => r()));
+    return {
+      url: `http://127.0.0.1:${(prod.address() as AddressInfo).port}`,
+      close: () => new Promise<void>((r) => prod.close(() => r())),
+      usageCalls: () => usageCalls,
+    };
+  }
+
+  it('stops with exit 3 when production plus the branch engine would pass 1,000', async () => {
+    const prod = await fakeProduction(960);
+    try {
+      // batch 1: 960 + 0 + 25 = 985 runs; batch 2: 960 + 25 + 25 = 1010 stops
+      const r = await run(['--set', 'verify-subsample', '--out', join(dir, 'sub.jsonl'), '--allowance-api', prod.url]);
+      expect(r.code).toBe(3);
+      expect(r.out).toMatch(/allowance guard/);
+      expect(state.verifyCalls).toBe(1);
+      expect(prod.usageCalls()).toBeGreaterThanOrEqual(2);
+      expect(r.out).not.toContain(KEY);
+    } finally { await prod.close(); }
+  });
+
+  it('runs to completion when the sum stays under 1,000, and logs both counts', async () => {
+    const prod = await fakeProduction(100);
+    try {
+      const r = await run(['--set', 'verify-subsample', '--out', join(dir, 'sub.jsonl'), '--allowance-api', prod.url]);
+      expect(r.code).toBe(0);
+      expect(rows(join(dir, 'sub.jsonl'))).toHaveLength(100);
+      expect(r.out).toMatch(/allowance \d+\/1000 on 2026-10-02 \(\d+ \+ 100\)/);
+    } finally { await prod.close(); }
+  });
+
+  it('stops before any verify call when the two engines report different allowance days', async () => {
+    const prod = await fakeProduction(0, '2026-10-03');
+    try {
+      const r = await run(['--set', 'verify-subsample', '--out', join(dir, 'sub.jsonl'), '--allowance-api', prod.url]);
+      expect(r.code).toBe(3);
+      expect(r.out).toMatch(/different allowance days/);
+      expect(state.verifyCalls).toBe(0);
+    } finally { await prod.close(); }
+  });
+
+  it('without the flag, production is not consulted (the existing single-engine guard)', async () => {
+    state.groundedPrompts = 960;
+    const r = await run(['--set', 'verify-subsample', '--out', join(dir, 'sub.jsonl')]);
+    expect(r.code).toBe(3);
+    expect(state.verifyCalls).toBe(1);
+  });
+});
+
 describe('accuracy-g0 runner: invalid-run checks (prereg §5)', () => {
   it('stops with exit 4 when the engine model changes mid-run', async () => {
     state.model = (call) => (call === 1 ? 'gemini-2.5-flash' : 'gemini-3.0-pro');
