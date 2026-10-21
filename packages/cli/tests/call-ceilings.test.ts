@@ -168,7 +168,7 @@ describe('the ceiling table', () => {
         extract: { maxOutputTokens: 16384 }, verify: { maxOutputTokens: 1024 },
         verifyGrounded: { maxOutputTokens: 1024 }, critique: { maxOutputTokens: 2048 },
       },
-      perplexity: { extract: { maxOutputTokens: 16384 }, verify: { maxOutputTokens: 1024 }, critique: { maxOutputTokens: 2048 } },
+      perplexity: { extract: { maxOutputTokens: 8192 }, verify: { maxOutputTokens: 1024 }, critique: { maxOutputTokens: 2048 } },
     });
   });
 

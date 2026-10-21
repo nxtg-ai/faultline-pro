@@ -43,7 +43,11 @@ export function isResponsesTruncated(payload: unknown): boolean {
   return p?.status === 'incomplete' && p.incomplete_details?.reason === 'max_output_tokens';
 }
 
-/** Anthropic Messages: `stop_reason === 'max_tokens'`. */
+/**
+ * Anthropic Messages: `stop_reason === 'max_tokens'`, or `'model_context_window_exceeded'` (newer
+ * models stop there when the context fills; the reply is cut off either way).
+ */
 export function isClaudeTruncated(data: unknown): boolean {
-  return (data as { stop_reason?: unknown } | null)?.stop_reason === 'max_tokens';
+  const reason = (data as { stop_reason?: unknown } | null)?.stop_reason;
+  return reason === 'max_tokens' || reason === 'model_context_window_exceeded';
 }

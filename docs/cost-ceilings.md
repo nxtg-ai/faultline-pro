@@ -28,7 +28,7 @@ The numbers were sized from a sample run on 2026-10-21. The basis column is the 
 | Claude (`max_tokens`) | extract | | 16384 | sample n=1: 369 for 6 claims; was 4096 for every call, which could cut a long extraction |
 | Claude | verify, verifyClaimGrounded | | 1024 | sample n=10: max 184 |
 | Claude | critique | | 2048 | not sampled for this provider; same reference as the OpenAI critique row |
-| Perplexity (`max_tokens`) | extract | | 16384 | not measured (no key on the build host); same values as the OpenAI chat rows for the same prompts |
+| Perplexity (`max_tokens`) | extract | | 8192 | not measured (no key on the build host); held at sonar-pro's documented 8k output maximum (https://docs.perplexity.ai/getting-started/models/models/sonar-pro) |
 | Perplexity | verify | | 1024 | as above |
 | Perplexity | critique | | 2048 | as above |
 

@@ -83,7 +83,7 @@ export const CALL_CEILINGS = deepFreeze({
   },
   /** providers/perplexity_provider.ts, Chat Completions (sonar-pro); field max_tokens. */
   perplexity: {
-    extract: { maxOutputTokens: 16384, basis: PERPLEXITY_BASIS },
+    extract: { maxOutputTokens: 8192, basis: `${PERPLEXITY_BASIS}; extract held at 8192 because sonar-pro's documented output maximum is 8k (https://docs.perplexity.ai/getting-started/models/models/sonar-pro), and a request above a model's maximum may be refused rather than clamped` },
     verify: { maxOutputTokens: 1024, basis: PERPLEXITY_BASIS },
     critique: { maxOutputTokens: 2048, basis: PERPLEXITY_BASIS },
   },

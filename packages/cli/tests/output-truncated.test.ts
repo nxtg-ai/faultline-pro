@@ -94,6 +94,8 @@ describe('the wire readers', () => {
       expect(isResponsesTruncated(r)).toBe(false);
     }
     expect(isClaudeTruncated({ stop_reason: 'max_tokens' })).toBe(true);
+    expect(isClaudeTruncated({ stop_reason: 'model_context_window_exceeded' })).toBe(true);
+    expect(isClaudeTruncated({ stop_reason: 'end_turn' })).toBe(false);
     for (const r of [{ stop_reason: 'end_turn' }, {}, null]) expect(isClaudeTruncated(r)).toBe(false);
   });
 
