@@ -106,7 +106,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       const fail = attempt <= (state.failFirst.get(n) ?? 0);
       if (!fail) state.groundedPrompts += 1;
       return fail
-        ? { id, status: 'unverified', apiError: true, parseFallback: false, model: null }
+        ? { id, status: 'unverified', apiError: true, apiErrorReason: n % 2 === 0 ? 'output_truncated' : 'not a label!', parseFallback: false, model: null }
         : { id, status: n % 3 === 0 ? 'contradicted' : 'supported', apiError: false, parseFallback: n % 7 === 0, model: state.model(state.verifyCalls) };
     });
     return send(res, 200, { provider: 'gemini', results });
@@ -201,7 +201,7 @@ describe('accuracy-g0 runner: a complete run', () => {
     expect(written).toHaveLength(100);
     expect(written.map((row) => row.id)).toEqual([...SUBSAMPLE_IDS].sort((a, b) => a - b));
     expect(Object.keys(written[0]).sort()).toEqual(
-      ['apiError', 'attempts', 'engineSha', 'gold', 'id', 'model', 'noSourceAbstain', 'parseFallback', 'status', 'ts'],
+      ['apiError', 'apiErrorReason', 'attempts', 'engineSha', 'gold', 'id', 'model', 'noSourceAbstain', 'parseFallback', 'status', 'ts'],
     );
     expect(written.every((row) => row.engineSha === state.commit && row.model === 'gemini-2.5-flash')).toBe(true);
     expect(written.every((row) => row.gold === 'true' || row.gold === 'false')).toBe(true);
@@ -232,6 +232,9 @@ describe('accuracy-g0 runner: retries (prereg §6)', () => {
     expect(byId.get(neverRecovers)).toMatchObject({ apiError: true, status: 'unverified', attempts: 4, model: null });
     expect(state.attemptsById.get(neverRecovers)).toBe(4);
     expect(byId.get(SUBSAMPLE_IDS[2])).toMatchObject({ attempts: 1 });
+    // The reason label travels to the row; anything that is not a short snake_case label is dropped.
+    expect(byId.get(neverRecovers)!.apiErrorReason).toBe(neverRecovers % 2 === 0 ? 'output_truncated' : null);
+    expect(byId.get(recovers)!.apiErrorReason).toBeNull();
   });
 });
 

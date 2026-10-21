@@ -376,6 +376,9 @@ function buildRow(item, result, attempts, engineSha) {
     apiError: result ? result.apiError === true : true,
     parseFallback: result ? result.parseFallback === true : false,
     noSourceAbstain: result ? result.noSourceAbstain === true : false,
+    // Why an unchecked item went unchecked (output_truncated, provider_unparseable, ...): a label,
+    // never text. It lets a readout separate a binding ceiling from other failures (GoPMO 1.18.11.7.18).
+    apiErrorReason: result && typeof result.apiErrorReason === 'string' && /^[a-z_]{1,40}$/.test(result.apiErrorReason) ? result.apiErrorReason : null,
     attempts,
     model: result && typeof result.model === 'string' ? result.model : null,
     engineSha,
