@@ -202,10 +202,12 @@ describe('each request carries its row of the table', () => {
 describe('static guard: no model call outside the table', () => {
   // Codex reviews of 4f4157b and b5e3a38: a text matcher missed a double-quoted URL, a URL held in
   // a variable, a nested module, and a newline before the parenthesis, and misread a comment after
-  // a quote. The guard now parses every CLI source file with the TypeScript compiler and counts
-  // call expressions: fetch (in services/ and providers/), generateContent / generateContentStream,
-  // and messages / completions / responses .create, plus any string that names a model host and is
-  // not the URL argument of a counted call. Comments are not nodes, so they cannot count.
+  // a quote; later reviews found aliases, destructuring, .bind and bracketed names. The guard now
+  // parses every CLI source file with the TypeScript compiler and counts every REFERENCE (called,
+  // aliased, destructured, bound or bracketed) to fetch (in services/ and providers/),
+  // generateContent / generateContentStream, and create on messages / completions / responses, plus
+  // any string that names a model host and is not the URL argument of a counted call. Comments are
+  // not nodes, so they cannot count. Boundary: literal names; a name built at run time is out of reach.
   const cliRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
   const MODEL_HOST = /api\.openai\.com|api\.anthropic\.com|api\.perplexity\.ai|generativelanguage\.googleapis\.com/;
 
