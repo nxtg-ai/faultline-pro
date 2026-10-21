@@ -53,3 +53,21 @@ export function unparseableVerdict(claimId: string): VerificationResult {
     parseFallback: true,
   };
 }
+
+/**
+ * The unchecked result for a claim whose verify reply stopped at its output-token
+ * ceiling (providers/call-ceilings.ts, GoPMO 1.18.11.7.18). Same unchecked shape as
+ * an unreadable reply, reason 'output_truncated': a cut-off reply is never a verdict,
+ * even when the part that arrived happens to parse. No `parseFallback`: that flag
+ * counts unreadable replies for the accuracy run, and this reply was cut, not unreadable.
+ */
+export function truncatedVerdict(claimId: string): VerificationResult {
+  return {
+    claimId,
+    status: 'unverified',
+    explanation: "The provider's reply was cut off at its output limit, so this claim was not checked.",
+    sources: [],
+    apiError: true,
+    apiErrorReason: 'output_truncated',
+  };
+}

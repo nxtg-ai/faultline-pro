@@ -171,6 +171,9 @@ export function formatGuardReport(report: GuardReport, failOn?: FailOn): string 
       if (c.verdict === 'UNCHECKED' && c.unchecked_reason === 'provider_unparseable') {
         lines.push("       NOT CHECKED — the provider's reply could not be read. This is not a verdict.");
       }
+      if (c.verdict === 'UNCHECKED' && c.unchecked_reason === 'output_truncated') {
+        lines.push("       NOT CHECKED — the provider's reply was cut off at its output limit. This is not a verdict.");
+      }
     }
     lines.push('');
   }

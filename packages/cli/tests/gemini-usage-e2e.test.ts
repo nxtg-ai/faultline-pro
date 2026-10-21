@@ -31,7 +31,7 @@ vi.mock('@google/genai', () => ({
         await tick(); // real async boundary — ALS store must survive it
         return {
           text: '[{"id":"1","text":"The Eiffel Tower was completed in 1889.","type":"fact","importance":3}]',
-          usageMetadata: { promptTokenCount: 150, candidatesTokenCount: 40 },
+          usageMetadata: { promptTokenCount: 150, candidatesTokenCount: 40, toolUsePromptTokenCount: 30, thoughtsTokenCount: 60 },
         };
       },
     };
@@ -55,6 +55,16 @@ describe('gemini SDK usage propagation (e2e through scan())', () => {
     expect(legs.length).toBeGreaterThan(0);
     expect(legs.every((l) => l.provider === 'gemini')).toBe(true);
     // the REAL SDK-reported usageMetadata (150/40), not a text-length estimate
-    expect(legs.some((l) => l.model === 'gemini-2.5-flash' && l.inputTokens === 150 && l.outputTokens === 40)).toBe(true);
+    // input = prompt 150 + tool-use prompt 30; output = candidates 40 + thoughts 60 (both billed by Google)
+    expect(legs.some((l) => l.model === 'gemini-2.5-flash' && l.inputTokens === 180 && l.outputTokens === 100)).toBe(true);
+  });
+
+  it('GUE-02: thinking and tool-use prompt tokens are counted on every gemini leg, never dropped', async () => {
+    const { legs } = await captureUsage(() => scan(TEXT, 'gemini'));
+    expect(legs.length).toBeGreaterThan(0);
+    for (const l of legs) {
+      expect(l.inputTokens).toBe(180);
+      expect(l.outputTokens).toBe(100);
+    }
   });
 });

@@ -116,8 +116,13 @@ export interface ProviderVote {
   apiErrorReason?: ApiErrorReason;
 }
 
-/** What a provider failure was, after the engine's retries: 429, 503, a timeout, or anything else. */
-export type ApiErrorReason = 'rate_limited' | 'provider_unavailable' | 'timeout' | 'provider_error' | 'provider_unparseable';
+/**
+ * What a provider failure was, after the engine's retries: 429, 503, a timeout, or anything else.
+ * Two are about the reply rather than the call: 'provider_unparseable' (no readable verdict) and
+ * 'output_truncated' (the reply stopped at its output-token ceiling, providers/call-ceilings.ts).
+ */
+export type ApiErrorReason =
+  | 'rate_limited' | 'provider_unavailable' | 'timeout' | 'provider_error' | 'provider_unparseable' | 'output_truncated';
 
 /**
  * Who produced a verdict and when, bound at the provider call itself (Honor
@@ -163,7 +168,9 @@ export interface VerificationResult {
    * Why a claim got no verdict: set only together with `apiError: true`, by the
    * engine's retry ladder after its final attempt. A full scan reports it per
    * unserved claim so a refund can say what was lost (emma-soul refund ruling,
-   * GoPMO 1.18.11.3.12). Absent on a real verdict and on a consensus result.
+   * GoPMO 1.18.11.3.12). A provider also sets it on a reply it could not use
+   * ('provider_unparseable', 'output_truncated'). Absent on a real verdict; on a
+   * consensus result only when every failed vote carried the same reply reason.
    */
   apiErrorReason?: ApiErrorReason;
   /**

@@ -4,7 +4,9 @@ import { buildGroundedPrompt } from './grounded_prompt';
 import { sanitizeVerifyError } from '../services/verify-error';
 import { recordUsage } from '../lib/usage-sink';
 import { ExtractionError, parseExtractedClaims } from './extraction-error';
-import { readVerdictReply, unparseableVerdict } from './verdict-reply';
+import { readVerdictReply, truncatedVerdict, unparseableVerdict } from './verdict-reply';
+import { CALL_CEILINGS, type OpenAIChatPurpose } from './call-ceilings';
+import { isChatCompletionTruncated, isOutputTruncatedError, OutputTruncatedError } from './output-truncation';
 
 /**
  * OpenAI provider — implements the LLMProvider interface using OpenAI's API.
@@ -53,7 +55,7 @@ Return a JSON object with a "claims" key containing an array where each object h
 
     let response: string;
     try {
-      response = await this.callAPI(content, 'user');
+      response = await this.callAPI(content, 'user', 'extract');
     } catch (error) {
       throw ExtractionError.fromProviderError(error);
     }
@@ -82,7 +84,7 @@ Return a JSON object:
     }];
 
     try {
-      const response = await this.callAPI(content, 'user');
+      const response = await this.callAPI(content, 'user', 'verify');
       const verdict = readVerdictReply(response);
       if (!verdict) return unparseableVerdict(claim.id);
 
@@ -93,6 +95,7 @@ Return a JSON object:
         sources: [],
       };
     } catch (error) {
+      if (isOutputTruncatedError(error)) return truncatedVerdict(claim.id);
       const msg = error instanceof Error ? error.message : String(error);
       if (msg.includes('429')) throw error;
       console.error(`Error verifying claim ${claim.id} (OpenAI):`, error);
@@ -102,7 +105,14 @@ Return a JSON object:
 
   async verifyClaimGrounded(claim: Claim, sources: Source[]): Promise<VerificationResult> {
     const content = [{ type: 'text' as const, text: buildGroundedPrompt(claim, sources) }];
-    const response = await this.callAPI(content, 'user');
+    let response: string;
+    try {
+      response = await this.callAPI(content, 'user', 'verifyGrounded');
+    } catch (error) {
+      // A cut-off vote keeps its reason; any other failure still throws to the consensus engine.
+      if (isOutputTruncatedError(error)) return { ...truncatedVerdict(claim.id), sources };
+      throw error;
+    }
     const verdict = readVerdictReply(response);
     if (!verdict) return { ...unparseableVerdict(claim.id), sources };
     return {
@@ -132,7 +142,7 @@ Return a JSON object: { "critique": string, "improvedPrompt": string }`,
     }];
 
     try {
-      const response = await this.callAPI(content, 'user');
+      const response = await this.callAPI(content, 'user', 'critique');
       return JSON.parse(response);
     } catch (error) {
       return {
@@ -143,10 +153,12 @@ Return a JSON object: { "critique": string, "improvedPrompt": string }`,
   }
 
   /**
-   * Call the OpenAI Chat Completions API with JSON mode.
+   * Call the OpenAI Chat Completions API with JSON mode, capped at the
+   * purpose's output ceiling (providers/call-ceilings.ts). Throws
+   * OutputTruncatedError when the reply stopped at that ceiling.
    * Isolated for easy mocking in tests.
    */
-  async callAPI(content: any[], role: string): Promise<string> {
+  async callAPI(content: any[], role: string, purpose: OpenAIChatPurpose): Promise<string> {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -156,6 +168,7 @@ Return a JSON object: { "critique": string, "improvedPrompt": string }`,
       body: JSON.stringify({
         model: this.modelId,
         response_format: { type: 'json_object' },
+        max_completion_tokens: CALL_CEILINGS.openai[purpose].maxOutputTokens,
         messages: [{ role, content }],
       }),
     });
@@ -174,6 +187,7 @@ Return a JSON object: { "critique": string, "improvedPrompt": string }`,
       outputTokens: data.usage?.completion_tokens ?? 0,
       isGrounding: false,
     });
+    if (isChatCompletionTruncated(data)) throw new OutputTruncatedError('openai', purpose);
     return data.choices?.[0]?.message?.content || '';
   }
 }

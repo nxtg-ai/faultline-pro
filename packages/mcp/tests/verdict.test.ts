@@ -98,6 +98,15 @@ describe('toClaimVerdict', () => {
     expect(result.unchecked_reason).toBe('provider_error');
   });
 
+  it('labels a reply cut off at its output ceiling as output_truncated (GoPMO 1.18.11.7.18)', () => {
+    const result = toClaimVerdict(
+      'X',
+      verification({ status: 'unverified', apiError: true, apiErrorReason: 'output_truncated', sources: [] }),
+    );
+    expect(result.verdict).toBe('UNCHECKED');
+    expect(result.unchecked_reason).toBe('output_truncated');
+  });
+
   it('labels a skipped claim as not_verifiable', () => {
     const result = toClaimVerdict('I think blue is nice.', verification({ status: 'skipped' }));
     expect(result.verdict).toBe('UNCHECKED');
