@@ -340,12 +340,12 @@ describe('accuracy-g0 runner: grounding allowance guard (prereg §7)', () => {
 describe('accuracy-g0 runner: allowance shared with production (--allowance-api, GoPMO 1.18.11.7.18 A0)', () => {
   // A branch engine on the runner spends the same Google key as production, so the daily guard
   // must count both. This fake "production" only answers GET /usage.
-  async function fakeProduction(groundedPrompts: number, day = '2026-10-02'): Promise<{ url: string; close: () => Promise<void>; usageCalls: () => number }> {
+  async function fakeProduction(groundedPrompts: number, day = '2026-10-02', extra: Record<string, unknown> = {}): Promise<{ url: string; close: () => Promise<void>; usageCalls: () => number }> {
     let usageCalls = 0;
     const prod = createServer((req, res) => {
       if (req.method === 'GET' && req.url === '/usage') {
         usageCalls += 1;
-        return send(res, 200, { keyId: 'admin', groundingAllowance: { day, groundedPrompts, resetsAt: '2026-10-03T07:00:00.000Z' } });
+        return send(res, 200, { keyId: 'admin', groundingAllowance: { day, groundedPrompts, resetsAt: '2026-10-03T07:00:00.000Z', ...extra } });
       }
       return send(res, 404, { error: 'not found' });
     });
@@ -357,10 +357,10 @@ describe('accuracy-g0 runner: allowance shared with production (--allowance-api,
     };
   }
 
-  it('stops with exit 3 when production plus the branch engine would pass 1,000', async () => {
-    const prod = await fakeProduction(960);
+  it('stops with exit 3 when production plus the branch engine plus the production headroom would pass 1,000', async () => {
+    const prod = await fakeProduction(860);
     try {
-      // batch 1: 960 + 0 + 25 = 985 runs; batch 2: 960 + 25 + 25 = 1010 stops
+      // headroom 100: batch 1: 860 + 0 + 25 + 100 = 985 runs; batch 2: 860 + 25 + 25 + 100 = 1010 stops
       const r = await run(['--set', 'verify-subsample', '--out', join(dir, 'sub.jsonl'), '--allowance-api', prod.url]);
       expect(r.code).toBe(3);
       expect(r.out).toMatch(/allowance guard/);
@@ -388,6 +388,27 @@ describe('accuracy-g0 runner: allowance shared with production (--allowance-api,
       expect(r.out).toMatch(/different allowance days/);
       expect(state.verifyCalls).toBe(0);
     } finally { await prod.close(); }
+  });
+
+  it('leaves 100 prompts of headroom for production: 880 in production stops before the first batch', async () => {
+    const prod = await fakeProduction(880);
+    try {
+      const r = await run(['--set', 'verify-subsample', '--out', join(dir, 'sub.jsonl'), '--allowance-api', prod.url]);
+      expect(r.code).toBe(3);
+      expect(r.out).toMatch(/production headroom 100/);
+      expect(state.verifyCalls).toBe(0);
+    } finally { await prod.close(); }
+  });
+
+  it('stops (exit 1, no verify call) on a count it cannot trust: negative, or with ledger write failures', async () => {
+    for (const prod of [await fakeProduction(-1000), await fakeProduction(0, '2026-10-02', { ledgerWriteFailures: 2 })]) {
+      try {
+        state.verifyCalls = 0;
+        const r = await run(['--set', 'verify-subsample', '--out', join(dir, `sub-${Math.random()}.jsonl`), '--allowance-api', prod.url]);
+        expect(r.code).toBe(1);
+        expect(state.verifyCalls).toBe(0);
+      } finally { await prod.close(); }
+    }
   });
 
   it('without the flag, production is not consulted (the existing single-engine guard)', async () => {

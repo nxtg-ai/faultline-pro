@@ -52,6 +52,12 @@ export const SUBSAMPLE_PATH = path.join(REPO_ROOT, 'docs/research/data/accuracy-
 export const DEFAULT_API = 'https://faultline-api.fly.dev';
 /** Prereg §7: the lever-1 daily cap on grounded prompts, leaving room for production. */
 export const DAILY_GROUNDED_CAP = 1000;
+/**
+ * With --allowance-api, production keeps spending the same key while a batch is in flight, so the
+ * guard leaves this many prompts for it (codex review of f5d637c, finding 1). Production served 0
+ * grounded prompts on 2026-10-20 by 03:50Z (admin GET /usage); 100 is headroom, not a forecast.
+ */
+export const PRODUCTION_HEADROOM = 100;
 /** Prereg §6: the route takes up to 25 claims. */
 export const BATCH_SIZE = 25;
 /** Prereg §6: retry any apiError item up to 3 times. */
@@ -240,11 +246,19 @@ async function readHealth(request) {
 
 async function readGroundedPrompts(request) {
   const { status, json } = await request('GET', '/usage');
-  const count = json?.groundingAllowance?.groundedPrompts;
+  const allowance = json?.groundingAllowance;
+  const count = allowance?.groundedPrompts;
   if (status !== 200 || typeof count !== 'number') {
     throw new RunStop(EXIT.ERROR, `GET /usage answered ${status} without groundingAllowance.groundedPrompts (is the key the admin key?)`);
   }
-  return { count, day: json.groundingAllowance.day, resetsAt: json.groundingAllowance.resetsAt };
+  // A count the guard cannot trust stops the run rather than letting it spend (codex review of f5d637c).
+  if (!Number.isSafeInteger(count) || count < 0 || typeof allowance.day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(allowance.day)) {
+    throw new RunStop(EXIT.ERROR, `GET /usage answered an unusable allowance (count ${count}, day ${allowance.day})`);
+  }
+  if (typeof allowance.ledgerWriteFailures === 'number' && allowance.ledgerWriteFailures > 0) {
+    throw new RunStop(EXIT.ERROR, `GET /usage reports ${allowance.ledgerWriteFailures} grounding-ledger write failures, so its count is not complete`);
+  }
+  return { count, day: allowance.day, resetsAt: allowance.resetsAt };
 }
 
 // ── Guards ───────────────────────────────────────────────────────────────────
@@ -261,10 +275,11 @@ async function guardAllowance(requests, batchSize, log) {
     throw new RunStop(EXIT.ALLOWANCE_STOP, `STOP (allowance guard): the engines report different allowance days (${days.join(', ')}). Resume with --resume.`);
   }
   const count = reads.reduce((sum, read) => sum + read.count, 0);
-  if (count + batchSize > DAILY_GROUNDED_CAP) {
+  const headroom = reads.length > 1 ? PRODUCTION_HEADROOM : 0;
+  if (count + batchSize + headroom > DAILY_GROUNDED_CAP) {
     throw new RunStop(
       EXIT.ALLOWANCE_STOP,
-      `STOP (allowance guard): ${count} grounded prompts on ${days[0]} + batch of ${batchSize} would pass ${DAILY_GROUNDED_CAP}. `
+      `STOP (allowance guard): ${count} grounded prompts on ${days[0]} + batch of ${batchSize}${headroom ? ` + production headroom ${headroom}` : ''} would pass ${DAILY_GROUNDED_CAP}. `
         + `Resume after ${reads[0].resetsAt} with --resume.`,
     );
   }

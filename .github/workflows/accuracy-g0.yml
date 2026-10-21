@@ -39,6 +39,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 # Two dispatches at once would double-spend the grounding allowance.
 concurrency:
@@ -80,8 +81,28 @@ jobs:
 
       # Branch mode (GoPMO 1.18.11.7.18 A0): the engine under test is this ref, run on the runner.
       # It spends the same Google key as production, so the runner's daily guard also reads
-      # production's grounded-prompt count (--allowance-api). Ledgers live in RUNNER_TEMP, and the
-      # provider-spend cap is enforced at USD 30 on this engine's own ledger.
+      # production's grounded-prompt count (--allowance-api). Ledgers live in RUNNER_TEMP. The spend
+      # cap is checked before each batch, not reserved, so one batch can cross it (codex finding 4):
+      # it is set to USD 28 so that a 25-claim batch (about USD 0.91 at the 6af8cef run's ledger rate
+      # of USD 24.10 for 661 claims) keeps the run under the ruling's USD 30. The server log is not
+      # uploaded: a provider error can quote reply text (codex findings 3 and 6).
+      # The branch engine's grounding ledger starts empty on every dispatch, so a second G0 run on
+      # the same Pacific day would not see the first one's prompts (codex review of f5d637c,
+      # finding 7). Branch mode therefore refuses if any other Accuracy G0 run started today.
+      - name: One G0 run per Pacific grounding day
+        if: inputs.engine == 'branch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SINCE=$(python3 -c "from datetime import datetime,timezone; from zoneinfo import ZoneInfo; n=datetime.now(ZoneInfo('America/Los_Angeles')); print(n.replace(hour=0,minute=0,second=0,microsecond=0).astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'))")
+          OTHERS=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/accuracy-g0.yml/runs?created=>=${SINCE}&per_page=100" \
+            --jq "[.workflow_runs[] | select(.id != ${GITHUB_RUN_ID})] | length")
+          echo "other Accuracy G0 runs since ${SINCE}: ${OTHERS}"
+          if [ "$OTHERS" != "0" ]; then
+            echo "::error::Another Accuracy G0 run started this Pacific day; its grounded prompts are not visible to a fresh branch engine. Dispatch after the next reset. Nothing was sent."
+            exit 1
+          fi
+
       - name: Start the branch engine
         if: inputs.engine == 'branch'
         env:
@@ -95,7 +116,7 @@ jobs:
           L="$RUNNER_TEMP/g0-engine"; mkdir -p "$L"
           cd packages/api
           PORT=3010 HOST=127.0.0.1 FAULTLINE_API_KEY="$FAULTLINE_ADMIN_KEY" GEMINI_API_KEY="$G0_GEMINI_KEY" \
-            FAULTLINE_GIT_SHA="$GITHUB_SHA" FAULTLINE_PROVIDER_SPEND_CAP=on FAULTLINE_PROVIDER_SPEND_CAP_USD=30 \
+            FAULTLINE_GIT_SHA="$GITHUB_SHA" FAULTLINE_PROVIDER_SPEND_CAP=on FAULTLINE_PROVIDER_SPEND_CAP_USD=28 \
             FAULTLINE_PROVIDER_SPEND_LEDGER="$L/provider-spend.jsonl" FAULTLINE_GROUNDING_LEDGER="$L/grounding.jsonl" \
             FAULTLINE_FULL_JOBS_LEDGER="$L/full-jobs.jsonl" FAULTLINE_AUDIT_PATH="$L/audit.jsonl" \
             nohup npx tsx src/index.ts > "$L/server.log" 2>&1 &
@@ -144,13 +165,19 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: accuracy-g0-${{ inputs.set }}-${{ inputs.engine }}-${{ github.run_id }}
+          name: accuracy-g0-${{ inputs.set }}-${{ github.run_id }}
+          path: out/
+          if-no-files-found: warn
+
+      - name: Upload the branch engine's ledgers
+        if: always() && inputs.engine == 'branch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: accuracy-g0-${{ inputs.set }}-branch-engine-${{ github.run_id }}
           path: |
-            out/
             ${{ runner.temp }}/g0-engine/provider-spend.jsonl
             ${{ runner.temp }}/g0-engine/grounding.jsonl
             ${{ runner.temp }}/g0-engine/health.json
-            ${{ runner.temp }}/g0-engine/server.log
           if-no-files-found: warn
 
       - name: Fail unless the run completed
