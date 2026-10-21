@@ -274,9 +274,24 @@ async function readGroundedPrompts(request, strict = false) {
  * Prereg §7: stop before a batch that would take today's count past 1,000. With --allowance-api
  * the count is the sum over every engine that spends the same Google key.
  */
+// The highest same-day count each engine has reported in this process. A lower read later means the
+// engine's counter was reset (a lost ledger), so its count no longer covers the day (codex
+// re-review of a2af549, finding 7).
+const highestSeen = new Map();
+
 async function guardAllowance(requests, batchSize, log) {
   const reads = [];
   for (const request of requests) reads.push(await readGroundedPrompts(request, requests.length > 1));
+  if (requests.length > 1) {
+    reads.forEach((read, i) => {
+      const key = `${i}:${read.day}`;
+      const prior = highestSeen.get(key);
+      if (prior !== undefined && read.count < prior) {
+        throw new RunStop(EXIT.ERROR, `STOP: engine ${i} reported ${read.count} grounded prompts on ${read.day} after reporting ${prior}; its counter was reset, so the daily guard cannot trust it`);
+      }
+      highestSeen.set(key, Math.max(prior ?? 0, read.count));
+    });
+  }
   const days = [...new Set(reads.map((read) => read.day))];
   if (days.length > 1) {
     throw new RunStop(EXIT.ALLOWANCE_STOP, `STOP (allowance guard): the engines report different allowance days (${days.join(', ')}). Resume with --resume.`);

@@ -83,10 +83,12 @@ jobs:
       # It spends the same Google key as production, so the runner's daily guard also reads
       # production's grounded-prompt count (--allowance-api). Ledgers live in RUNNER_TEMP. The spend
       # cap is checked before each batch, not reserved, so one batch can cross it (codex findings 4):
-      # it is set to USD 28. Worst case for one 25-claim batch with the call ceilings: 25 x (USD 0.035
-      # grounding + 5,120 output tokens x USD 2.50/M + 10,000 input tokens x USD 0.30/M) = USD 1.27
-      # (rates: packages/api/src/store/consensus-cost.ts; 10,000 input is above the 2,270 measured max
-      # of prompt plus tool-use tokens, 2026-10-21 sample). 28 + 1.27 < 30. The server log is not
+      # it is set to USD 28, so a run ends at USD 28 plus at most one batch. With the call ceilings a
+      # 25-claim batch's grounding and output are bounded: 25 x (USD 0.035 + 5,120 tokens x USD
+      # 2.50/M) = USD 1.195 (rates: packages/api/src/store/consensus-cost.ts). Input tokens are NOT
+      # capped (Google adds search text as tool-use input): the run stays under USD 30 unless the
+      # last batch averages over 107,000 input tokens per call; the measured maximum is 2,270
+      # (40-call sample, 2026-10-21). This is a stated bound, not a guarantee. The server log is not
       # uploaded: a provider error can quote reply text (codex findings 3 and 6).
       # The branch engine's grounding ledger starts empty on every dispatch, so a second G0 run on
       # the same Pacific day would not see the first one's prompts (codex review of f5d637c,
@@ -101,12 +103,13 @@ jobs:
             echo "::error::Branch mode does not allow re-runs (attempt ${GITHUB_RUN_ATTEMPT}); dispatch a new run after the next reset. Nothing was sent."
             exit 1
           fi
-          # Look back to 180 minutes (the job timeout) before Pacific midnight, so a run that started
-          # late yesterday and spends after midnight still counts.
+          # Another run counts if it is still queued or running, or if it was last updated after 180
+          # minutes (the job timeout) before Pacific midnight: a run created yesterday that waited in
+          # the queue and spent after midnight is caught by its update time, not its creation time.
           SINCE=$(python3 -c "from datetime import datetime,timezone,timedelta; from zoneinfo import ZoneInfo; n=datetime.now(ZoneInfo('America/Los_Angeles')); print((n.replace(hour=0,minute=0,second=0,microsecond=0)-timedelta(minutes=180)).astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'))")
-          OTHERS=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/accuracy-g0.yml/runs?created=>=${SINCE}&per_page=100" \
-            --jq "[.workflow_runs[] | select(.id != ${GITHUB_RUN_ID})] | length")
-          echo "other Accuracy G0 runs since ${SINCE}: ${OTHERS}"
+          OTHERS=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/accuracy-g0.yml/runs?per_page=100" \
+            --jq "[.workflow_runs[] | select(.id != ${GITHUB_RUN_ID}) | select(.status != \"completed\" or .updated_at >= \"${SINCE}\" or (.run_started_at // \"\") >= \"${SINCE}\")] | length")
+          echo "other Accuracy G0 runs queued, running, or updated since ${SINCE}: ${OTHERS}"
           if [ "$OTHERS" != "0" ]; then
             echo "::error::Another Accuracy G0 run started this Pacific day; its grounded prompts are not visible to a fresh branch engine. Dispatch after the next reset. Nothing was sent."
             exit 1

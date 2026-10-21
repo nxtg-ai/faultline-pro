@@ -342,12 +342,13 @@ describe('accuracy-g0 runner: grounding allowance guard (prereg §7)', () => {
 describe('accuracy-g0 runner: allowance shared with production (--allowance-api, GoPMO 1.18.11.7.18 A0)', () => {
   // A branch engine on the runner spends the same Google key as production, so the daily guard
   // must count both. This fake "production" only answers GET /usage.
-  async function fakeProduction(groundedPrompts: number, day = '2026-10-02', extra: Record<string, unknown> = {}): Promise<{ url: string; close: () => Promise<void>; usageCalls: () => number }> {
+  async function fakeProduction(groundedPrompts: number | ((call: number) => number), day = '2026-10-02', extra: Record<string, unknown> = {}): Promise<{ url: string; close: () => Promise<void>; usageCalls: () => number }> {
     let usageCalls = 0;
     const prod = createServer((req, res) => {
       if (req.method === 'GET' && req.url === '/usage') {
         usageCalls += 1;
-        return send(res, 200, { keyId: 'admin', groundingAllowance: { day, groundedPrompts, resetsAt: '2026-10-03T07:00:00.000Z', ...extra } });
+        const count = typeof groundedPrompts === 'function' ? groundedPrompts(usageCalls) : groundedPrompts;
+        return send(res, 200, { keyId: 'admin', groundingAllowance: { day, groundedPrompts: count, resetsAt: '2026-10-03T07:00:00.000Z', ...extra } });
       }
       return send(res, 404, { error: 'not found' });
     });
@@ -411,6 +412,16 @@ describe('accuracy-g0 runner: allowance shared with production (--allowance-api,
         expect(state.verifyCalls).toBe(0);
       } finally { await prod.close(); }
     }
+  });
+
+  it('stops (exit 1) when production reports a lower count than before on the same day: its counter was reset', async () => {
+    const prod = await fakeProduction((call) => (call === 1 ? 500 : 0));
+    try {
+      const r = await run(['--set', 'verify-subsample', '--out', join(dir, 'sub.jsonl'), '--allowance-api', prod.url]);
+      expect(r.code).toBe(1);
+      expect(r.out).toMatch(/counter was reset/);
+      expect(state.verifyCalls).toBe(1);
+    } finally { await prod.close(); }
   });
 
   it('deployed mode (no flag) keeps the original check: write failures on its own /usage do not stop it', async () => {
