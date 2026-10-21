@@ -107,9 +107,17 @@ jobs:
           # minutes (the job timeout) before Pacific midnight: a run created yesterday that waited in
           # the queue and spent after midnight is caught by its update time, not its creation time.
           SINCE=$(python3 -c "from datetime import datetime,timezone,timedelta; from zoneinfo import ZoneInfo; n=datetime.now(ZoneInfo('America/Los_Angeles')); print((n.replace(hour=0,minute=0,second=0,microsecond=0)-timedelta(minutes=180)).astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'))")
-          OTHERS=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/accuracy-g0.yml/runs?per_page=100" \
-            --jq "[.workflow_runs[] | select(.id != ${GITHUB_RUN_ID}) | select(.status != \"completed\" or .updated_at >= \"${SINCE}\" or (.run_started_at // \"\") >= \"${SINCE}\")] | length")
+          # Every page, summed: one page of 100 can hide an older run behind newer cancelled ones.
+          OTHERS=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/workflows/accuracy-g0.yml/runs?per_page=100" \
+            --jq "[.workflow_runs[] | select(.id != ${GITHUB_RUN_ID}) | select(.status != \"completed\" or .updated_at >= \"${SINCE}\" or (.run_started_at // \"\") >= \"${SINCE}\")] | length" \
+            | awk '{ s += $1 } END { print s + 0 }')
           echo "other Accuracy G0 runs queued, running, or updated since ${SINCE}: ${OTHERS}"
+          # The provider-spend cap is a UTC-month ledger, so a run that crosses a month boundary
+          # would get a fresh budget halfway through. Refuse within 180 minutes (the job timeout).
+          if python3 -c "from datetime import datetime,timezone,timedelta; n=datetime.now(timezone.utc); import sys; sys.exit(0 if (n+timedelta(minutes=180)).month != n.month else 1)"; then
+            echo "::error::The UTC month ends within the job timeout, so the spend cap would reset mid-run. Dispatch after the month boundary. Nothing was sent."
+            exit 1
+          fi
           if [ "$OTHERS" != "0" ]; then
             echo "::error::Another Accuracy G0 run started this Pacific day; its grounded prompts are not visible to a fresh branch engine. Dispatch after the next reset. Nothing was sent."
             exit 1
