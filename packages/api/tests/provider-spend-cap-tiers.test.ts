@@ -5,12 +5,15 @@
  * Free and anonymous traffic is refused with 503. Paid tiers pass this gate:
  * their own per-key caps bound them. The tier comes from the trusted resolver,
  * so `x-user-tier` counts only from the server's own key; a free keystore key
- * that sends `x-user-tier: pro` is still refused.
+ * that sends `x-user-tier: pro` is still refused. The server's own key with no
+ * tier header (absent or empty) counts as free for this gate: the web front end
+ * sends some calls that way, and such a caller cannot be told apart from free
+ * traffic.
  *
  * One test per route that carries the gate. Each route's request body is valid
  * for that route, so a refusal is the gate and not schema validation.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -22,6 +25,14 @@ import { resetUsageMeter } from '../src/store/usage.js';
 import { recordProviderSpend, resetProviderSpendLedger } from '../src/store/provider-spend.js';
 import { resolveSpendCapTier, SPEND_CAP_TIERS } from '../src/plugins/provider-spend-cap.js';
 import type { ManagedScanCostEvent } from '../src/store/costs.js';
+import { getProvider } from '@nxtg/faultline/providers/registry.js';
+
+// A pass-through spy, so a test can prove a refused call never reached a provider.
+vi.mock('@nxtg/faultline/providers/registry.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@nxtg/faultline/providers/registry.js')>();
+  return { ...actual, getProvider: vi.fn(actual.getProvider) };
+});
+const getProviderSpy = vi.mocked(getProvider);
 
 const SERVER_KEY = 'server-key-spend-cap-tiers';
 const ENV_KEYS = [
@@ -59,6 +70,7 @@ beforeEach(() => {
   resetKeyStore();
   resetRateLimiter();
   resetUsageMeter();
+  getProviderSpy.mockClear();
   server = buildServer();
 });
 afterEach(async () => {
@@ -142,7 +154,10 @@ describe('resolveSpendCapTier', () => {
 
     expect(resolveSpendCapTier(undefined)).toBe('anon');
     expect(resolveSpendCapTier('')).toBe('anon');
-    expect(resolveSpendCapTier('admin')).toBe('enterprise');
+    expect(resolveSpendCapTier('admin')).toBe('free'); // no tier header: counted as free
+    expect(resolveSpendCapTier('admin', '')).toBe('free');
+    expect(resolveSpendCapTier('admin', [])).toBe('free');
+    expect(resolveSpendCapTier('admin', 'enterprise')).toBe('enterprise');
     expect(resolveSpendCapTier('admin', 'free')).toBe('free');
     expect(resolveSpendCapTier('admin', 'anon')).toBe('anon');
     expect(resolveSpendCapTier('admin', 'pro')).toBe('pro');
@@ -176,8 +191,9 @@ describe('fleet provider-spend cap: free and anonymous traffic only', () => {
       expectBudgetRefusal(await send(route, SERVER_KEY, { 'x-user-tier': 'anon' }), 'server key, x-user-tier: anon');
       // The server key forwarding a paid plan passes.
       expectPassed(await send(route, SERVER_KEY, { 'x-user-tier': 'pro' }), 'server key, x-user-tier: pro');
-      // The server key with no header is an internal (enterprise) call and passes.
-      expectPassed(await send(route, SERVER_KEY), 'server key, no header');
+      // The server key with no tier header cannot be told apart from free traffic.
+      expectBudgetRefusal(await send(route, SERVER_KEY), 'server key, no header');
+      expectBudgetRefusal(await send(route, SERVER_KEY, { 'x-user-tier': '' }), 'server key, empty header');
       // An admin keystore key passes; a header from it is ignored.
       expectPassed(await send(route, admin.key, { 'x-user-tier': 'free' }), 'admin keystore key');
 
@@ -192,6 +208,48 @@ describe('fleet provider-spend cap: free and anonymous traffic only', () => {
       }
     });
   }
+
+  it('server key, no x-user-tier, POST /critique: refused with 503 and the provider is never called', async () => {
+    exhaustBudget();
+    process.env.FAULTLINE_PROVIDER_SPEND_CAP = 'on';
+    const route = ROUTES.find((r) => r.url === '/critique')!;
+    expect(route).toBeDefined();
+    expectBudgetRefusal(await send(route, SERVER_KEY), 'server key, no header, /critique');
+    expect(getProviderSpy).not.toHaveBeenCalled();
+  });
+
+  it('server key, no x-user-tier, POST /scan: refused with 503', async () => {
+    exhaustBudget();
+    process.env.FAULTLINE_PROVIDER_SPEND_CAP = 'on';
+    expectBudgetRefusal(await send(ROUTES[0], SERVER_KEY), 'server key, no header, /scan');
+    expect(getProviderSpy).not.toHaveBeenCalled();
+  });
+
+  it('server key, empty x-user-tier: refused with 503', async () => {
+    exhaustBudget();
+    process.env.FAULTLINE_PROVIDER_SPEND_CAP = 'on';
+    expectBudgetRefusal(await send(ROUTES[0], SERVER_KEY, { 'x-user-tier': '' }), 'server key, empty header, /scan');
+    const critique = ROUTES.find((r) => r.url === '/critique')!;
+    expectBudgetRefusal(await send(critique, SERVER_KEY, { 'x-user-tier': '' }), 'server key, empty header, /critique');
+    expect(getProviderSpy).not.toHaveBeenCalled();
+  });
+
+  it('server key, x-user-tier: pro: passes the gate', async () => {
+    exhaustBudget();
+    process.env.FAULTLINE_PROVIDER_SPEND_CAP = 'on';
+    expectPassed(await send(ROUTES[0], SERVER_KEY, { 'x-user-tier': 'pro' }), 'server key, pro, /scan');
+    const critique = ROUTES.find((r) => r.url === '/critique')!;
+    expectPassed(await send(critique, SERVER_KEY, { 'x-user-tier': 'pro' }), 'server key, pro, /critique');
+  });
+
+  it('free keystore key sending x-user-tier: pro: refused with 503', async () => {
+    exhaustBudget();
+    process.env.FAULTLINE_PROVIDER_SPEND_CAP = 'on';
+    const free = getKeyStore().create('Free Key', ['scan']);
+    expect(getKeyStore().size).toBe(1);
+    expectBudgetRefusal(await send(ROUTES[0], free.key, { 'x-user-tier': 'pro' }), 'free key spoofing pro');
+    expect(getProviderSpy).not.toHaveBeenCalled();
+  });
 
   it('with enforcement off, every caller passes an exhausted budget', async () => {
     exhaustBudget(); // FAULTLINE_PROVIDER_SPEND_CAP not set

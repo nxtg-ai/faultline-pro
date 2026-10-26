@@ -503,7 +503,7 @@ describe('POST /admin/verify-claims — the ledgers a scan writes', () => {
     expect(getGroundingAllowanceStatus().groundedPrompts).toBe(0);
   });
 
-  it('an internal call (server key, no plan header) passes an exhausted budget: the cap covers free and anonymous traffic only', async () => {
+  it('the server key with no plan header is refused by an exhausted budget; with a paid plan header it passes', async () => {
     process.env.FAULTLINE_PROVIDER_SPEND_CAP_USD = '1';
     process.env.FAULTLINE_PROVIDER_SPEND_CAP = 'on';
     recordProviderSpend({
@@ -511,7 +511,16 @@ describe('POST /admin/verify-claims — the ledgers a scan writes', () => {
       provider: 'gemini', modelId: 'gemini-2.5-flash', inputTokens: 1, outputTokens: 1,
       groundingCalls: 0, costUsd: 1.5, latencyMs: 1,
     });
-    const res = await post({ claims: claims(1), provider: 'mock' });
+    // No plan header: the caller cannot be told apart from free traffic.
+    const refused = await post({ claims: claims(1), provider: 'mock' });
+    expect(refused.statusCode).toBe(503);
+    expect(refused.json().error).toMatch(/provider budget exhausted/i);
+    const res = await server.inject({
+      method: 'POST',
+      url: '/admin/verify-claims',
+      headers: { 'content-type': 'application/json', 'x-api-key': ADMIN_KEY, 'x-user-tier': 'enterprise' },
+      payload: { claims: claims(1), provider: 'mock' },
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json().results).toHaveLength(1);
   });

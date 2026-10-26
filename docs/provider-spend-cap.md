@@ -23,10 +23,12 @@ The tier is the **trusted** tier (`resolveSpendCapTier` in `packages/api/src/plu
 |---|---|
 | No API key | `anon`. Every gated route checks the key first, so this case is defensive. |
 | The server's own key (`FAULTLINE_API_KEY`) with `x-user-tier` | the forwarded plan. An unknown value counts as `free`. |
-| The server's own key, no `x-user-tier` | `enterprise` (an internal call) |
+| The server's own key, no `x-user-tier` (absent or empty) | `free` |
 | A keystore key with the `pro` permission | `pro` |
 | A keystore key with the `admin` permission | `enterprise` (an operator key) |
 | Any other keystore key | `free`, the same tier the rate limiter and the monthly quota give it |
+
+A server-key request with no tier header is treated as free for this gate, because the caller cannot be told apart from free traffic; paid callers through the server key must send their tier.
 
 `x-user-tier` from any key other than the server's own is ignored, so a free key that sends `x-user-tier: pro` is still refused. `resolveTierFromRequest` (in `store/costs.ts`) trusts that header from every caller and must never feed this gate.
 

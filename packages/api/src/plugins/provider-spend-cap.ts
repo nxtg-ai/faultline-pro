@@ -19,9 +19,15 @@ const SPEND_CAP_TIER_SET = new Set<Tier>(SPEND_CAP_TIERS);
  *
  * - No key at all counts as anonymous. Every gated route runs requireApiKey or
  *   requireAdmin first, so this branch is defensive.
- * - The server's own key: `resolveEntitledTier` as is. It honours `x-user-tier`
- *   from that key alone, fails closed to 'free' on an unknown value, and reads
- *   no header as an internal (enterprise) call.
+ * - The server's own key with `x-user-tier`: `resolveEntitledTier` as is. It
+ *   honours the header from that key alone and fails closed to 'free' on an
+ *   unknown value.
+ * - The server's own key with no tier header (absent or empty): 'free'. The web
+ *   front end sends some calls (critique, for one) through the server key with
+ *   no header, so such a caller cannot be told apart from free traffic. Paid
+ *   callers through the server key must send their tier. `resolveEntitledTier`
+ *   still reads no header as an internal (enterprise) call for consensus and
+ *   the verify cap; only this gate differs.
  * - A keystore key: the tier its own permissions grant; any header is ignored.
  *   `resolveEntitledTier` names a keystore key without the 'pro' permission
  *   'personal', which is its catch-all, not proof of a paid plan. The rate
@@ -32,8 +38,12 @@ const SPEND_CAP_TIER_SET = new Set<Tier>(SPEND_CAP_TIERS);
  */
 export function resolveSpendCapTier(keyId: string | undefined, headerTier?: string | string[]): Tier {
   if (!keyId) return 'anon';
+  if (isServerKeyId(keyId)) {
+    const raw = Array.isArray(headerTier) ? headerTier[0] : headerTier;
+    if (raw === undefined || raw === '') return 'free';
+    return resolveEntitledTier(keyId, headerTier);
+  }
   const tier = resolveEntitledTier(keyId, headerTier);
-  if (isServerKeyId(keyId)) return tier;
   if (tier === 'pro' || tier === 'enterprise') return tier;
   if (isAdminKeyId(keyId)) return 'enterprise';
   return 'free';
