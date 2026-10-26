@@ -222,6 +222,100 @@ describe('OpenAIWebSearchRetriever', () => {
     });
   });
 
+  describe('retrieveWithStatus (stubbed fetch)', () => {
+    const jsonReply = (body: unknown) => ({ ok: true, status: 200, statusText: 'OK', json: async () => body });
+
+    it('hits: a 2xx reply with citations returns its sources', async () => {
+      mockFetch.mockResolvedValueOnce(makeResponse('SPANSPAN facts', [
+        { type: 'url_citation', title: 'Britannica', url: 'https://britannica.com/x', start_index: 0, end_index: 8 },
+      ]));
+      const out = await new OpenAIWebSearchRetriever('test-key').retrieveWithStatus('claim');
+      expect(out.sources.length).toBeGreaterThan(0);
+      expect(out.status).toBe('hits');
+      expect(out.sources[0].uri).toBe('https://britannica.com/x');
+      expect(out.detail).toBeUndefined();
+    });
+
+    it('zero: a well-formed 2xx reply that cites nothing', async () => {
+      mockFetch.mockResolvedValueOnce(makeResponse('No sources were found.', []));
+      const out = await new OpenAIWebSearchRetriever('test-key').retrieveWithStatus('claim');
+      expect(out).toEqual({ status: 'zero', sources: [] });
+    });
+
+    it('timeout: the call was aborted by its deadline', async () => {
+      mockFetch.mockRejectedValueOnce(new DOMException('The operation timed out.', 'TimeoutError'));
+      const r = new OpenAIWebSearchRetriever('test-key', { timeoutMs: 5 });
+      const out = await r.retrieveWithStatus('claim');
+      expect(out.status).toBe('timeout');
+      expect(out.sources).toEqual([]);
+      mockFetch.mockRejectedValueOnce(new DOMException('The operation was aborted.', 'AbortError'));
+      expect((await r.retrieveWithStatus('claim')).status).toBe('timeout');
+      mockFetch.mockRejectedValueOnce(new DOMException('The operation timed out.', 'TimeoutError'));
+      await expect(r.retrieve('claim')).resolves.toEqual([]);
+    });
+
+    it('provider_error: an HTTP 500, with the status code as the only detail', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 500, statusText: 'Internal Server Error' });
+      const out = await new OpenAIWebSearchRetriever('test-key').retrieveWithStatus('claim');
+      expect(out).toEqual({ status: 'provider_error', sources: [], detail: 'http 500' });
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 500, statusText: 'Internal Server Error' });
+      await expect(new OpenAIWebSearchRetriever('test-key').retrieve('claim')).resolves.toEqual([]);
+    });
+
+    it('provider_error: a network error', async () => {
+      mockFetch.mockRejectedValueOnce(new TypeError('fetch failed'));
+      const out = await new OpenAIWebSearchRetriever('test-key').retrieveWithStatus('claim');
+      expect(out).toEqual({ status: 'provider_error', sources: [], detail: 'network error' });
+    });
+
+    it('provider_error: a missing API key, with no request made', async () => {
+      const r = new OpenAIWebSearchRetriever('');
+      expect(await r.retrieveWithStatus('claim')).toEqual({ status: 'provider_error', sources: [], detail: 'missing api key' });
+      await expect(r.retrieve('claim')).resolves.toEqual([]);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('parse_error: a 2xx reply that is not JSON, or has no output list', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 200, statusText: 'OK', json: async () => { throw new SyntaxError('Unexpected token <'); } });
+      const r = new OpenAIWebSearchRetriever('test-key');
+      expect(await r.retrieveWithStatus('claim')).toEqual({ status: 'parse_error', sources: [], detail: 'bad json' });
+      mockFetch.mockResolvedValueOnce(jsonReply({ output: 'not-a-list' }));
+      expect(await r.retrieveWithStatus('claim')).toEqual({ status: 'parse_error', sources: [], detail: 'unexpected shape' });
+      mockFetch.mockResolvedValueOnce(jsonReply({ output: [{ type: 'message', content: 'not-a-list' }] }));
+      expect((await r.retrieveWithStatus('claim')).status).toBe('parse_error');
+      mockFetch.mockResolvedValueOnce(jsonReply(null));
+      await expect(r.retrieve('claim')).resolves.toEqual([]);
+    });
+
+    it('policy_block: a Responses refusal or a content-filter stop', async () => {
+      mockFetch.mockResolvedValueOnce(jsonReply({
+        output: [{ type: 'message', content: [{ type: 'refusal', refusal: 'I cannot help with that.' }] }],
+      }));
+      const r = new OpenAIWebSearchRetriever('test-key');
+      const out = await r.retrieveWithStatus('claim');
+      expect(out).toEqual({ status: 'policy_block', sources: [], detail: 'refusal' });
+      // The refusal text is the provider's words: it never reaches the outcome.
+      expect(JSON.stringify(out)).not.toContain('cannot help');
+      mockFetch.mockResolvedValueOnce(jsonReply({ status: 'incomplete', incomplete_details: { reason: 'content_filter' }, output: [] }));
+      expect(await r.retrieveWithStatus('claim')).toEqual({ status: 'policy_block', sources: [], detail: 'content filter' });
+      mockFetch.mockResolvedValueOnce(jsonReply({ output: [{ type: 'message', content: [{ type: 'refusal', refusal: 'no' }] }] }));
+      await expect(r.retrieve('claim')).resolves.toEqual([]);
+    });
+
+    it('a cut-off reply is provider_error, and the debug line names only the status', async () => {
+      process.env.FAULTLINE_DEBUG = '1';
+      const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      mockFetch.mockResolvedValueOnce(jsonReply({ status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' }, output: [] }));
+      const out = await new OpenAIWebSearchRetriever('test-key').retrieveWithStatus('SECRET CLAIM TEXT');
+      expect(out).toEqual({ status: 'provider_error', sources: [], detail: 'output truncated' });
+      const logged = write.mock.calls.map((c) => String(c[0])).join('');
+      expect(logged.length).toBeGreaterThan(0);
+      expect(logged).toContain('provider_error');
+      expect(logged).not.toContain('SECRET CLAIM TEXT');
+      write.mockRestore();
+    });
+  });
+
   it('exposes a stable retriever name', () => {
     expect(new OpenAIWebSearchRetriever('k').name).toBe('openai-web-search');
   });

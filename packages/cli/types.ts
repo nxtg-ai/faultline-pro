@@ -33,8 +33,23 @@ export interface Source {
   evidence?: SourceEvidence;
 }
 
+/**
+ * How a secondary search ended, so "it ran and found nothing" never reads like
+ * "it failed". hits: at least one source came back. zero: the call succeeded
+ * and returned no sources. timeout: the call was stopped by its deadline.
+ * provider_error: an HTTP error, a network error, a missing API key, or any
+ * other thrown error. parse_error: a 2xx reply that could not be read as
+ * sources (bad JSON or an unexpected shape). policy_block: the provider, or our
+ * own guard, refused the request on content or safety policy.
+ */
+export type RetrievalStatus = 'hits' | 'zero' | 'timeout' | 'provider_error' | 'parse_error' | 'policy_block';
+
 /** Passages from a second retriever, kept apart from the verdict's own sources. */
 export interface IndependentEvidence {
+  /** How the search ended. An empty `sources` list means nothing was found only when this is `zero`. */
+  status: RetrievalStatus;
+  /** A short reason for a status other than hits, e.g. 'http 500'. Never a response body, a secret or claim text. */
+  detail?: string;
   /** The retriever's name, e.g. 'openai-web-search'. */
   retriever: string;
   /** The model that ran the search, when the retriever reports one. */

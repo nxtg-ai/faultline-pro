@@ -110,7 +110,8 @@ function streamErrorEvent(err: unknown): Record<string, unknown> {
  * Event sequence:
  *   data: {"type":"start","claimCount":N,"provider":"mock"}        ← on first claim verified
  *   data: {"type":"claim_verified","index":0,"claim":{...},"verdict":{...}}  × N
- *   data: {"type":"complete","overallRisk":"low","claimCount":N,"verification":{tier,cap,eligibleClaims,verifiedClaims,uncheckedClaims,uncheckedClaimIds}}
+ *   data: {"type":"complete","overallRisk":"low","claimCount":N,"verification":{tier,cap,eligibleClaims,verifiedClaims,uncheckedClaims,uncheckedClaimIds},"evidenceCoverage":{...}}
+ *   (evidenceCoverage only when the independent search ran; same value as POST /scan)
  *   data: {"type":"error","message":"..."}  (on failure only; plus "error":"extraction_failed","reason" when extraction failed)
  */
 export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
@@ -196,6 +197,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
           overallRisk: result.overallRisk,
           claimCount,
           verification: withVerificationTier(result, verifyPolicy.tier).verification,
+          ...(result.evidenceCoverage ? { evidenceCoverage: result.evidenceCoverage } : {}),
         });
 
         // BLG-CLX9-20260703-005: real measured fan-out cost (was a text-length
@@ -235,7 +237,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
    * Event sequence:
    *   data: {"type":"start","claimCount":N,"provider":"..."}
    *   data: {"type":"claim_verified","index":N,"claim":{...},"verdict":{...}}  × N
-   *   data: {"type":"complete","overallRisk":"low|medium|high|critical","claimCount":N,"verification":{...}}
+   *   data: {"type":"complete","overallRisk":"low|medium|high|critical","claimCount":N,"verification":{...},"evidenceCoverage":{...}}
    *   data: {"type":"error","message":"..."}  (on failure only; plus "error":"extraction_failed","reason" when extraction failed)
    */
   fastify.post<{ Body: StreamPostBody }>(
@@ -312,6 +314,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
           overallRisk: result.overallRisk,
           claimCount,
           verification: withVerificationTier(result, verifyPolicy.tier).verification,
+          ...(result.evidenceCoverage ? { evidenceCoverage: result.evidenceCoverage } : {}),
         });
 
         // BLG-CLX9-20260703-005: real measured fan-out cost (was a text-length

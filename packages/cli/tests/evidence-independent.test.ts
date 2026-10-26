@@ -100,6 +100,55 @@ describe('attachIndependentEvidence', () => {
     expect(v.independentEvidence!.retriever).toBe('fixture-search');
   });
 
+  it('a retriever that throws yields status provider_error with empty sources', async () => {
+    const throwing = retrieverOf(() => { throw new Error('down'); });
+    const f = vi.fn() as never;
+    const v = await attachIndependentEvidence(verdict(), CLAIM_TEXT, { retriever: throwing, fetch: f });
+    expect(v.independentEvidence).toBeDefined();
+    expect(v.independentEvidence!.status).toBe('provider_error');
+    expect(v.independentEvidence!.sources).toEqual([]);
+    expect(JSON.stringify(v.independentEvidence)).not.toContain('down');
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it('a retriever returning [] yields status zero', async () => {
+    const v = await attachIndependentEvidence(verdict(), CLAIM_TEXT, { retriever: retrieverOf([]), fetch: vi.fn() as never });
+    expect(v.independentEvidence).toBeDefined();
+    expect(v.independentEvidence!.status).toBe('zero');
+    expect(v.independentEvidence!.sources).toEqual([]);
+    expect(v.independentEvidence!.detail).toBeUndefined();
+  });
+
+  it('a retriever returning sources yields status hits', async () => {
+    const f = pageFetch(() => html(PAGE));
+    const v = await attachIndependentEvidence(verdict(), CLAIM_TEXT, { retriever: retrieverOf([{ title: 'K', uri: 'https://k.example/' }]), fetch: f });
+    expect(v.independentEvidence!.sources.length).toBeGreaterThan(0);
+    expect(v.independentEvidence!.status).toBe('hits');
+  });
+
+  it('uses retrieveWithStatus when the retriever has it, and carries its status and detail', async () => {
+    const retriever = {
+      name: 'status-search',
+      retrieve: vi.fn(async () => []),
+      retrieveWithStatus: vi.fn(async () => ({ status: 'timeout' as const, sources: [], detail: 'deadline reached' })),
+    };
+    const f = vi.fn() as never;
+    const v = await attachIndependentEvidence(verdict(), CLAIM_TEXT, { retriever, fetch: f });
+    expect(v.independentEvidence).toBeDefined();
+    expect(v.independentEvidence!.status).toBe('timeout');
+    expect(v.independentEvidence!.detail).toBe('deadline reached');
+    expect(v.independentEvidence!.sources).toEqual([]);
+    expect(retriever.retrieve).not.toHaveBeenCalled();
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it('a retrieveWithStatus that throws is still provider_error', async () => {
+    const retriever = { name: 'status-search', retrieve: vi.fn(async () => []), retrieveWithStatus: vi.fn(async () => { throw new Error('x'); }) };
+    const v = await attachIndependentEvidence(verdict(), CLAIM_TEXT, { retriever, fetch: vi.fn() as never });
+    expect(v.independentEvidence).toBeDefined();
+    expect(v.independentEvidence!.status).toBe('provider_error');
+  });
+
   it('a Google grounding Link returned by the second retriever is still never fetched', async () => {
     const retriever = retrieverOf([{ title: 'g', uri: GROUNDED }]);
     const f = vi.fn(async () => html(PAGE)) as unknown as EvidenceFetch;

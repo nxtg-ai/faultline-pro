@@ -1,8 +1,8 @@
 import type { Source } from '../types';
-import type { Retriever } from './base_provider';
+import type { Retriever, RetrievalOutcome } from './base_provider';
 import { recordUsage } from '../lib/usage-sink';
 import { CALL_CEILINGS } from './call-ceilings';
-import { isResponsesTruncated, OutputTruncatedError } from './output-truncation';
+import { isOutputTruncatedError, isResponsesTruncated, OutputTruncatedError } from './output-truncation';
 
 /**
  * OpenAIWebSearchRetriever — provider-agnostic grounding via OpenAI's Responses
@@ -33,6 +33,8 @@ interface UrlCitation {
 interface OutputContent {
   type?: string;
   text?: string;
+  /** Set on a { type:'refusal' } item: the model declined the request. */
+  refusal?: string;
   annotations?: UrlCitation[];
 }
 
@@ -66,20 +68,27 @@ export class OpenAIWebSearchRetriever implements Retriever {
       DEFAULT_MODEL;
   }
 
+  /** The sources, or [] when the search failed or found nothing. Never throws (the consensus engine relies on that). */
   async retrieve(claimText: string): Promise<Source[]> {
-    if (!this.apiKey) return [];
+    return (await this.retrieveWithStatus(claimText)).sources;
+  }
+
+  /** The search with how it ended (see RetrievalStatus). Never throws. */
+  async retrieveWithStatus(claimText: string): Promise<RetrievalOutcome> {
+    if (!this.apiKey) return { status: 'provider_error', sources: [], detail: 'missing api key' };
+    let data: ResponsesPayload;
     try {
-      const data = await this.callAPI(claimText);
-      return parseResponsesSources(data, MAX_RESULTS);
+      data = await this.callAPI(claimText);
     } catch (err) {
-      // Retrieval must never throw into the consensus engine — [] degrades the
+      // Retrieval must never throw into the consensus engine: [] degrades the
       // claim to parametric judgement, surfaced honestly by the providers.
+      const outcome = classifyRetrievalError(err);
       if (typeof process !== 'undefined' && process.env?.FAULTLINE_DEBUG) {
-        const msg = err instanceof Error ? err.message : String(err);
-        process.stderr.write(`[openai-web-search] retrieve failed: ${msg}\n`);
+        process.stderr.write(`[openai-web-search] retrieve failed: ${outcome.status} (${outcome.detail})\n`);
       }
-      return [];
+      return outcome;
     }
+    return classifyResponsesPayload(data, MAX_RESULTS);
   }
 
   /**
@@ -108,11 +117,14 @@ export class OpenAIWebSearchRetriever implements Retriever {
       ...(this.timeoutMs ? { signal: AbortSignal.timeout(this.timeoutMs) } : {}),
     });
 
-    if (!response.ok) {
-      throw new Error(`OpenAI Responses API error: ${response.status} ${response.statusText}`);
-    }
+    if (!response.ok) throw new RetrievalHttpError(response.status, response.statusText);
 
-    const payload = (await response.json()) as ResponsesPayload;
+    let payload: ResponsesPayload;
+    try {
+      payload = (await response.json()) as ResponsesPayload;
+    } catch {
+      throw new RetrievalParseError();
+    }
     // BLG-005 defect-1+2: the web_search retrieval leg is ~84–90% of per-scan
     // cost and sits behind the Retriever seam (NOT the LLMProvider fan-out) —
     // capture it here or production undercounts by ~10×. isGrounding bills the
@@ -130,6 +142,61 @@ export class OpenAIWebSearchRetriever implements Retriever {
     if (isResponsesTruncated(payload)) throw new OutputTruncatedError('openai-web-search', 'retrieve');
     return payload;
   }
+}
+
+/** The Responses API answered non-2xx. */
+export class RetrievalHttpError extends Error {
+  readonly status: number;
+  constructor(status: number, statusText: string) {
+    super(`OpenAI Responses API error: ${status} ${statusText}`);
+    this.name = 'RetrievalHttpError';
+    this.status = status;
+  }
+}
+
+/** A 2xx reply whose body was not JSON. */
+export class RetrievalParseError extends Error {
+  constructor() {
+    super('OpenAI Responses API reply was not valid JSON');
+    this.name = 'RetrievalParseError';
+  }
+}
+
+/**
+ * The status for a search that threw. The detail is a fixed phrase, never the
+ * error message, so no response text reaches a report.
+ */
+export function classifyRetrievalError(err: unknown): RetrievalOutcome {
+  const name = typeof err === 'object' && err !== null ? (err as { name?: unknown }).name : undefined;
+  if (name === 'TimeoutError' || name === 'AbortError') return { status: 'timeout', sources: [], detail: 'deadline reached' };
+  if (err instanceof RetrievalHttpError) return { status: 'provider_error', sources: [], detail: `http ${err.status}` };
+  if (err instanceof RetrievalParseError) return { status: 'parse_error', sources: [], detail: 'bad json' };
+  if (isOutputTruncatedError(err)) return { status: 'provider_error', sources: [], detail: 'output truncated' };
+  if (err instanceof TypeError) return { status: 'provider_error', sources: [], detail: 'network error' };
+  return { status: 'provider_error', sources: [], detail: 'request failed' };
+}
+
+/**
+ * The status for a 2xx Responses payload. A refusal or a content-filter stop is
+ * policy_block. A payload with no output list, or a message with no content
+ * list, is parse_error. A well-formed reply that cites nothing is zero.
+ */
+export function classifyResponsesPayload(data: ResponsesPayload, maxResults = MAX_RESULTS): RetrievalOutcome {
+  if (typeof data !== 'object' || data === null || !Array.isArray(data.output)) {
+    return { status: 'parse_error', sources: [], detail: 'unexpected shape' };
+  }
+  if (data.incomplete_details?.reason === 'content_filter') {
+    return { status: 'policy_block', sources: [], detail: 'content filter' };
+  }
+  const messages = data.output.filter((it) => it?.type === 'message');
+  if (messages.some((m) => Array.isArray(m.content) && m.content.some((c) => c?.type === 'refusal'))) {
+    return { status: 'policy_block', sources: [], detail: 'refusal' };
+  }
+  if (messages.length > 0 && !Array.isArray(messages[0].content)) {
+    return { status: 'parse_error', sources: [], detail: 'unexpected shape' };
+  }
+  const sources = parseResponsesSources(data, maxResults);
+  return sources.length > 0 ? { status: 'hits', sources } : { status: 'zero', sources: [] };
 }
 
 /**
