@@ -77,6 +77,25 @@ describe('scan-level evidence coverage', () => {
     expect(count(md, '(independent search: provider_error)')).toBe(3);
   });
 
+  it('a 200 reply that says the search failed is counted as provider_error, never zero or corroborated', async () => {
+    openaiFetch.mockImplementation(async () => ({
+      ok: true, status: 200, statusText: 'OK',
+      json: async () => ({
+        status: 'failed',
+        error: { code: 'server_error', message: 'SECRET CLAIM sk-secret' },
+        output: [{ type: 'message', content: [{ type: 'output_text', text: 'Partial.', annotations: [{ type: 'url_citation', title: 'P', url: 'https://partial.example/', start_index: 0, end_index: 7 }] }] }],
+      }),
+    }));
+    const pageFetch = vi.fn();
+    const r = await scan(TEXT, 'coverage-fixture', undefined, undefined, undefined, undefined, undefined, {
+      independentEvidence: { retriever: new OpenAIWebSearchRetriever('test-openai'), fetch: pageFetch as never },
+    });
+    expect(Object.keys(r.verifications).length).toBe(3);
+    expect(r.evidenceCoverage).toEqual({ state: 'partial', checked: 3, corroborated: 0, byStatus: { provider_error: 3 } });
+    expect(pageFetch).not.toHaveBeenCalled();
+    expect(JSON.stringify(r)).not.toContain('sk-secret');
+  });
+
   it('the leg did not run: no evidenceCoverage and nothing new in the report', async () => {
     const r = await scan(TEXT, 'coverage-fixture');
     expect(Object.keys(r.verifications).length).toBe(3);

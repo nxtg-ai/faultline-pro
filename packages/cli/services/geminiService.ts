@@ -7,6 +7,7 @@ import { ExtractionError, parseExtractedClaims } from '../providers/extraction-e
 import { readVerdictReply, truncatedVerdict, unparseableVerdict } from '../providers/verdict-reply';
 import { geminiCeilingConfig } from '../providers/call-ceilings';
 import { isGeminiTruncated, OutputTruncatedError } from '../providers/output-truncation';
+import type { RetrievalOutcome } from '../providers/base_provider';
 
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 
@@ -282,42 +283,93 @@ export const searchSuggestionsOf = (
  * tool — the same grounding mechanism `verifyClaim` uses, but exposed as a
  * pure retrieval primitive for the consensus engine's Retriever seam.
  *
- * Returns up to 3 de-duplicated sources. Returns [] on any API error (the
+ * Returns up to 3 de-duplicated sources. Returns [] on any failure (the
  * consensus engine treats an empty retrieval as "no shared evidence", and
  * every provider then judges from parametric knowledge against that empty set).
+ * A caller that must tell a failure from an empty search uses
+ * retrieveSourcesWithStatus.
  */
-export const retrieveSources = async (claimText: string, apiKey: string): Promise<Array<{ title: string; uri: string }>> => {
-  if (!apiKey || !claimText) return [];
+export const retrieveSources = async (claimText: string, apiKey: string): Promise<Array<{ title: string; uri: string }>> =>
+  (await retrieveSourcesWithStatus(claimText, apiKey)).sources;
+
+/** Candidate stops that mean the model or Google's filters withheld the answer. */
+const GEMINI_POLICY_STOPS = new Set(['SAFETY', 'BLOCKLIST', 'PROHIBITED_CONTENT', 'SPII', 'RECITATION', 'IMAGE_SAFETY']);
+
+const GEMINI_PARSE_ERROR: RetrievalOutcome = { status: 'parse_error', sources: [], detail: 'unexpected shape' };
+
+/**
+ * The same search, with how it ended. Never throws. A missing key, an upstream
+ * error, a cut-off reply, a safety stop or a reply that is not a candidate
+ * list never reads as zero: zero is a completed reply with no grounding chunks.
+ * Details are fixed phrases; no error text, claim text or key is carried or logged.
+ */
+export const retrieveSourcesWithStatus = async (claimText: string, apiKey: string): Promise<RetrievalOutcome> => {
+  if (!apiKey) return { status: 'provider_error', sources: [], detail: 'missing api key' };
+  if (!claimText) return { status: 'provider_error', sources: [], detail: 'no claim text' };
 
   const prompt = `Search the web for evidence relevant to this claim. Return a one-sentence summary of what you found.\n\nClaim: "${claimText}"`;
 
+  let response: unknown;
   try {
     const ai = getClient(apiKey);
-    const response = await ai.models.generateContent({
+    response = await ai.models.generateContent({
       model: GEMINI_MODEL,
       contents: prompt,
       config: { ...geminiCeilingConfig('retrieve'), tools: [{ googleSearch: {} }] },
     });
-
-    recordGeminiUsage(response, true, 'grounded-retrieve:gemini');
-    // A cut-off retrieval is a failed retrieval, handled like the API error below.
-    if (isGeminiTruncated(response)) throw new OutputTruncatedError('gemini', 'retrieve');
-    const sources: Array<{ title: string; uri: string }> = [];
-    const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
-    if (chunks) {
-      chunks.forEach((chunk: any) => {
-        if (chunk.web) {
-          sources.push({ title: chunk.web.title || 'Source', uri: chunk.web.uri });
-        }
-      });
-    }
-    const uniqueSources = sources.filter((v, i, a) => a.findIndex(t => t.uri === v.uri) === i);
-    return uniqueSources.slice(0, 3);
   } catch (error) {
-    console.error(`Error retrieving sources for claim:`, error);
-    return [];
+    return logRetrieveFailure(classifyGeminiRetrieveError(error));
   }
+
+  recordGeminiUsage(response, true, 'grounded-retrieve:gemini');
+  const outcome = classifyGeminiRetrieval(response);
+  return outcome.status === 'hits' || outcome.status === 'zero' ? outcome : logRetrieveFailure(outcome);
 };
+
+function classifyGeminiRetrieveError(error: unknown): RetrievalOutcome {
+  const e = (typeof error === 'object' && error !== null ? error : {}) as { name?: unknown; status?: unknown };
+  if (e.name === 'TimeoutError' || e.name === 'AbortError') return { status: 'timeout', sources: [], detail: 'deadline reached' };
+  if (typeof e.status === 'number' && Number.isInteger(e.status)) return { status: 'provider_error', sources: [], detail: `http ${e.status}` };
+  return { status: 'provider_error', sources: [], detail: 'request failed' };
+}
+
+/** Read a 2xx generateContent reply. Failures are read before any grounding chunk is. */
+function classifyGeminiRetrieval(response: unknown): RetrievalOutcome {
+  if (typeof response !== 'object' || response === null || Array.isArray(response)) return GEMINI_PARSE_ERROR;
+  const r = response as { candidates?: unknown; promptFeedback?: { blockReason?: unknown } | null };
+  if (r.promptFeedback && typeof r.promptFeedback === 'object' && r.promptFeedback.blockReason) {
+    return { status: 'policy_block', sources: [], detail: 'prompt blocked' };
+  }
+  if (!Array.isArray(r.candidates)) return GEMINI_PARSE_ERROR;
+  const candidate = r.candidates[0] as { finishReason?: unknown; groundingMetadata?: { groundingChunks?: unknown } | null } | undefined | null;
+  if (r.candidates.length === 0) return { status: 'provider_error', sources: [], detail: 'no candidate' };
+  if (typeof candidate !== 'object' || candidate === null) return GEMINI_PARSE_ERROR;
+  // A cut-off retrieval is a failed retrieval.
+  if (isGeminiTruncated(response)) return { status: 'provider_error', sources: [], detail: 'output truncated' };
+  const finish = candidate.finishReason;
+  if (typeof finish === 'string' && GEMINI_POLICY_STOPS.has(finish)) return { status: 'policy_block', sources: [], detail: 'safety stop' };
+  if (finish !== undefined && finish !== 'STOP') return { status: 'provider_error', sources: [], detail: 'candidate not finished' };
+
+  const chunks = candidate.groundingMetadata?.groundingChunks;
+  if (chunks === undefined || chunks === null) return { status: 'zero', sources: [] };
+  if (!Array.isArray(chunks)) return GEMINI_PARSE_ERROR;
+  const sources: Array<{ title: string; uri: string }> = [];
+  for (const chunk of chunks) {
+    if (typeof chunk !== 'object' || chunk === null) return GEMINI_PARSE_ERROR;
+    const web = (chunk as { web?: { title?: unknown; uri?: unknown } }).web;
+    if (!web) continue;
+    if (typeof web.uri !== 'string') return GEMINI_PARSE_ERROR;
+    sources.push({ title: typeof web.title === 'string' && web.title ? web.title : 'Source', uri: web.uri });
+  }
+  const uniqueSources = sources.filter((v, i, a) => a.findIndex(t => t.uri === v.uri) === i).slice(0, 3);
+  return uniqueSources.length > 0 ? { status: 'hits', sources: uniqueSources } : { status: 'zero', sources: [] };
+}
+
+/** The status and its fixed detail only, never the error or the reply. */
+function logRetrieveFailure(outcome: RetrievalOutcome): RetrievalOutcome {
+  console.error(`[gemini-grounding] retrieve failed: ${outcome.status} (${outcome.detail})`);
+  return outcome;
+}
 
 /**
  * Verify a claim AGAINST a shared, pre-retrieved set of sources.

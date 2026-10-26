@@ -1,5 +1,5 @@
 import type { Source } from '../types';
-import type { Retriever, RetrievalOutcome } from './base_provider';
+import type { StatusRetriever, RetrievalOutcome } from './base_provider';
 import { recordUsage } from '../lib/usage-sink';
 import { CALL_CEILINGS } from './call-ceilings';
 import { isOutputTruncatedError, isResponsesTruncated, OutputTruncatedError } from './output-truncation';
@@ -40,16 +40,19 @@ interface OutputContent {
 
 interface OutputItem {
   type?: string;
+  /** Set on a { type:'web_search_call' } item: 'failed' when the search itself failed. */
+  status?: string;
   content?: OutputContent[];
 }
 
 interface ResponsesPayload {
   output?: OutputItem[];
   status?: string;
+  error?: { code?: string; message?: string } | null;
   incomplete_details?: { reason?: string } | null;
 }
 
-export class OpenAIWebSearchRetriever implements Retriever {
+export class OpenAIWebSearchRetriever implements StatusRetriever {
   readonly name = 'openai-web-search';
   private readonly apiKey: string;
   /** The model that runs the web_search call (recorded in provenance and usage). */
@@ -125,6 +128,9 @@ export class OpenAIWebSearchRetriever implements Retriever {
     } catch {
       throw new RetrievalParseError();
     }
+    // JSON null, a list or a bare value is not a Responses payload: say so
+    // before anything below reads a field off it.
+    if (!isObject(payload)) throw new RetrievalShapeError();
     // BLG-005 defect-1+2: the web_search retrieval leg is ~84–90% of per-scan
     // cost and sits behind the Retriever seam (NOT the LLMProvider fan-out) —
     // capture it here or production undercounts by ~10×. isGrounding bills the
@@ -162,6 +168,14 @@ export class RetrievalParseError extends Error {
   }
 }
 
+/** A 2xx reply that was JSON but not an object (null, a list or a bare value). */
+export class RetrievalShapeError extends Error {
+  constructor() {
+    super('OpenAI Responses API reply was not an object');
+    this.name = 'RetrievalShapeError';
+  }
+}
+
 /**
  * The status for a search that threw. The detail is a fixed phrase, never the
  * error message, so no response text reaches a report.
@@ -171,32 +185,75 @@ export function classifyRetrievalError(err: unknown): RetrievalOutcome {
   if (name === 'TimeoutError' || name === 'AbortError') return { status: 'timeout', sources: [], detail: 'deadline reached' };
   if (err instanceof RetrievalHttpError) return { status: 'provider_error', sources: [], detail: `http ${err.status}` };
   if (err instanceof RetrievalParseError) return { status: 'parse_error', sources: [], detail: 'bad json' };
+  if (err instanceof RetrievalShapeError) return { status: 'parse_error', sources: [], detail: 'unexpected shape' };
   if (isOutputTruncatedError(err)) return { status: 'provider_error', sources: [], detail: 'output truncated' };
   if (err instanceof TypeError) return { status: 'provider_error', sources: [], detail: 'network error' };
   return { status: 'provider_error', sources: [], detail: 'request failed' };
 }
 
+/** Response statuses that end a search without a usable answer. */
+const TERMINAL_FAILURES = new Set(['failed', 'cancelled', 'incomplete']);
+
+const PARSE_ERROR: RetrievalOutcome = { status: 'parse_error', sources: [], detail: 'unexpected shape' };
+
 /**
- * The status for a 2xx Responses payload. A refusal or a content-filter stop is
- * policy_block. A payload with no output list, or a message with no content
- * list, is parse_error. A well-formed reply that cites nothing is zero.
+ * The status for a 2xx Responses payload. Failures are read first, so a
+ * message that cites pages never turns a failed search into hits:
+ *
+ * - a content-filter stop is policy_block;
+ * - a response status of failed, cancelled or incomplete, a response error
+ *   object, or a web_search_call item that failed is provider_error (or
+ *   timeout or policy_block when the error code says so);
+ * - a refusal is policy_block;
+ * - a payload that is not an object, an output that is not a list of objects,
+ *   a message whose content is not a list of objects, an output_text block
+ *   whose text is not a string or whose annotations are not a list, or a
+ *   url_citation whose url is not a string, is parse_error.
+ *
+ * Only a reply that passes all of that and cites nothing is zero. Details are
+ * fixed phrases: no error message, code or response text is carried.
  */
 export function classifyResponsesPayload(data: ResponsesPayload, maxResults = MAX_RESULTS): RetrievalOutcome {
-  if (typeof data !== 'object' || data === null || !Array.isArray(data.output)) {
-    return { status: 'parse_error', sources: [], detail: 'unexpected shape' };
-  }
-  if (data.incomplete_details?.reason === 'content_filter') {
+  if (!isObject(data) || !Array.isArray(data.output)) return PARSE_ERROR;
+  if (isObject(data.incomplete_details) && data.incomplete_details.reason === 'content_filter') {
     return { status: 'policy_block', sources: [], detail: 'content filter' };
   }
-  const messages = data.output.filter((it) => it?.type === 'message');
-  if (messages.some((m) => Array.isArray(m.content) && m.content.some((c) => c?.type === 'refusal'))) {
-    return { status: 'policy_block', sources: [], detail: 'refusal' };
+  if (data.error !== undefined && data.error !== null) return classifyResponseError(data.error);
+  if (typeof data.status === 'string' && TERMINAL_FAILURES.has(data.status)) {
+    return { status: 'provider_error', sources: [], detail: `response ${data.status}` };
   }
-  if (messages.length > 0 && !Array.isArray(messages[0].content)) {
-    return { status: 'parse_error', sources: [], detail: 'unexpected shape' };
+  if (!data.output.every(isObject)) return PARSE_ERROR;
+  if (data.output.some((it) => it.type === 'web_search_call' && it.status === 'failed')) {
+    return { status: 'provider_error', sources: [], detail: 'search call failed' };
   }
+  const messages = data.output.filter((it) => it.type === 'message');
+  if (!messages.every((m) => Array.isArray(m.content) && m.content.every(isObject))) return PARSE_ERROR;
+  const blocks = messages.flatMap((m) => m.content as OutputContent[]);
+  if (blocks.some((c) => c.type === 'refusal')) return { status: 'policy_block', sources: [], detail: 'refusal' };
+  if (!blocks.every(isWellFormedBlock)) return PARSE_ERROR;
   const sources = parseResponsesSources(data, maxResults);
   return sources.length > 0 ? { status: 'hits', sources } : { status: 'zero', sources: [] };
+}
+
+/** A response error object, named by its code only: the message may echo the request. */
+function classifyResponseError(error: unknown): RetrievalOutcome {
+  const code = isObject(error) && typeof error.code === 'string' ? error.code.toLowerCase() : '';
+  if (code.includes('timeout') || code.includes('timed_out')) return { status: 'timeout', sources: [], detail: 'response timed out' };
+  if (/content_filter|content_policy|safety|policy_violation/.test(code)) {
+    return { status: 'policy_block', sources: [], detail: 'response blocked' };
+  }
+  return { status: 'provider_error', sources: [], detail: 'response failed' };
+}
+
+/** An output_text block must carry string text and a list of annotation objects; a url_citation, a string url. */
+function isWellFormedBlock(block: OutputContent): boolean {
+  if (block.type !== 'output_text') return true;
+  if (typeof block.text !== 'string' || !Array.isArray(block.annotations)) return false;
+  return block.annotations.every((a) => isObject(a) && (a.type !== 'url_citation' || typeof a.url === 'string'));
+}
+
+function isObject(value: unknown): value is Record<string, any> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /**

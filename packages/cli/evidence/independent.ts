@@ -11,12 +11,13 @@
  * own field, labelled with its retriever, model and time, and never merged
  * into the verdict's sources.
  */
-import type { RetrievalOutcome, Retriever } from '../providers/base_provider.js';
+import type { RetrievalOutcome, StatusRetriever } from '../providers/base_provider.js';
 import type { IndependentEvidence, VerificationResult } from '../types.js';
 import { fetchSourceEvidence, type EvidenceFetch } from './passage.js';
 
 export interface IndependentEvidenceOptions {
-  retriever: Retriever & { readonly model?: string };
+  /** Must report how its search ended: [] from retrieve() cannot tell a failure from an empty search. */
+  retriever: StatusRetriever & { readonly model?: string };
   /** The guarded fetch used for the retriever's result pages. */
   fetch: EvidenceFetch;
   /** Result pages fetched per claim at most (default 3). */
@@ -58,18 +59,19 @@ export async function attachIndependentEvidence(
 }
 
 /**
- * The retriever's own status when it reports one. Otherwise read from
- * retrieve(): a throw is provider_error, [] is zero, anything else is hits.
+ * The retriever's own status. A retriever without retrieveWithStatus (only
+ * reachable from untyped code) is provider_error, never zero: its retrieve()
+ * returns [] for a failure as well as for an empty search. A throw is
+ * provider_error.
  */
-async function searchWithStatus(retriever: Retriever, claimText: string): Promise<RetrievalOutcome> {
+async function searchWithStatus(retriever: StatusRetriever, claimText: string): Promise<RetrievalOutcome> {
+  if (typeof retriever.retrieveWithStatus !== 'function') {
+    return { status: 'provider_error', sources: [], detail: 'no retrieval status' };
+  }
   try {
-    if (typeof retriever.retrieveWithStatus === 'function') {
-      const outcome = await retriever.retrieveWithStatus(claimText);
-      // Pages are fetched only for hits, so a failed search never pays for a fetch.
-      return { ...outcome, sources: outcome.status === 'hits' ? outcome.sources : [] };
-    }
-    const found = await retriever.retrieve(claimText);
-    return Array.isArray(found) && found.length > 0 ? { status: 'hits', sources: found } : { status: 'zero', sources: [] };
+    const outcome = await retriever.retrieveWithStatus(claimText);
+    // Pages are fetched only for hits, so a failed search never pays for a fetch.
+    return { ...outcome, sources: outcome.status === 'hits' ? outcome.sources : [] };
   } catch {
     return { status: 'provider_error', sources: [], detail: 'request failed' };
   }

@@ -316,6 +316,117 @@ describe('OpenAIWebSearchRetriever', () => {
     });
   });
 
+  describe('retrieveWithStatus: a failed or malformed reply is never zero or hits', () => {
+    const jsonReply = (body: unknown) => ({ ok: true, status: 200, statusText: 'OK', json: async () => body });
+    const FAILED = { status: 'failed', error: { code: 'server_error', message: 'SECRET CLAIM sk-secret' }, output: [] };
+    const CITING_MESSAGE = {
+      type: 'message',
+      content: [{ type: 'output_text', text: 'Partial answer from Britannica.', annotations: [
+        { type: 'url_citation', title: 'Britannica', url: 'https://britannica.com/partial', start_index: 0, end_index: 7 },
+      ] }],
+    };
+
+    it('a 200 reply with status failed and an error object is provider_error, and carries none of the error text', async () => {
+      mockFetch.mockResolvedValueOnce(jsonReply(FAILED));
+      const out = await new OpenAIWebSearchRetriever('test-key').retrieveWithStatus('claim');
+      expect(out.status).toBe('provider_error');
+      expect(out.sources).toEqual([]);
+      expect(out.detail).toBe('response failed');
+      expect(JSON.stringify(out)).not.toContain('sk-secret');
+      expect(JSON.stringify(out)).not.toContain('SECRET CLAIM');
+    });
+
+    it('a failed response whose message cites a source is provider_error with no sources', async () => {
+      mockFetch.mockResolvedValueOnce(jsonReply({ ...FAILED, output: [CITING_MESSAGE] }));
+      const out = await new OpenAIWebSearchRetriever('test-key').retrieveWithStatus('claim');
+      expect(out.status).toBe('provider_error');
+      expect(out.sources).toEqual([]);
+      expect(JSON.stringify(out)).not.toContain('britannica.com/partial');
+    });
+
+    it('an error object alone, a cancelled response and an incomplete response are provider_error even with a citation', async () => {
+      const r = new OpenAIWebSearchRetriever('test-key');
+      for (const body of [
+        { error: { code: 'server_error', message: 'x' }, output: [CITING_MESSAGE] },
+        { status: 'cancelled', output: [CITING_MESSAGE] },
+        { status: 'incomplete', incomplete_details: { reason: 'other' }, output: [CITING_MESSAGE] },
+      ]) {
+        mockFetch.mockResolvedValueOnce(jsonReply(body));
+        const out = await r.retrieveWithStatus('claim');
+        expect(out.status).toBe('provider_error');
+        expect(out.sources).toEqual([]);
+      }
+    });
+
+    it('a response error that names a timeout or a policy stop says so', async () => {
+      const r = new OpenAIWebSearchRetriever('test-key');
+      mockFetch.mockResolvedValueOnce(jsonReply({ status: 'failed', error: { code: 'timeout', message: 'x' }, output: [] }));
+      expect(await r.retrieveWithStatus('claim')).toEqual({ status: 'timeout', sources: [], detail: 'response timed out' });
+      mockFetch.mockResolvedValueOnce(jsonReply({ status: 'failed', error: { code: 'content_policy_violation', message: 'x' }, output: [] }));
+      expect(await r.retrieveWithStatus('claim')).toEqual({ status: 'policy_block', sources: [], detail: 'response blocked' });
+    });
+
+    it('a completed response whose web_search_call failed is provider_error, not zero', async () => {
+      mockFetch.mockResolvedValueOnce(jsonReply({
+        status: 'completed',
+        output: [{ type: 'web_search_call', status: 'failed' }, { type: 'message', content: [{ type: 'output_text', text: 'Search failed.', annotations: [] }] }],
+      }));
+      const out = await new OpenAIWebSearchRetriever('test-key').retrieveWithStatus('claim');
+      expect(out).toEqual({ status: 'provider_error', sources: [], detail: 'search call failed' });
+    });
+
+    it('a failed web_search_call next to a citing message is still provider_error with no sources', async () => {
+      mockFetch.mockResolvedValueOnce(jsonReply({ status: 'completed', output: [{ type: 'web_search_call', status: 'failed' }, CITING_MESSAGE] }));
+      const out = await new OpenAIWebSearchRetriever('test-key').retrieveWithStatus('claim');
+      expect(out.status).toBe('provider_error');
+      expect(out.sources).toEqual([]);
+    });
+
+    it('an output_text block with a non-string text and non-list annotations is parse_error', async () => {
+      mockFetch.mockResolvedValueOnce(jsonReply({ output: [{ type: 'message', content: [{ type: 'output_text', text: 42, annotations: 'bad' }] }] }));
+      const out = await new OpenAIWebSearchRetriever('test-key').retrieveWithStatus('claim');
+      expect(out).toEqual({ status: 'parse_error', sources: [], detail: 'unexpected shape' });
+    });
+
+    it('other malformed source-bearing content is parse_error', async () => {
+      const r = new OpenAIWebSearchRetriever('test-key');
+      for (const body of [
+        [],
+        'a string',
+        { output: [null] },
+        { output: [{ type: 'message', content: [null] }] },
+        { output: [{ type: 'message', content: [{ type: 'output_text', text: 'ok', annotations: [null] }] }] },
+        { output: [{ type: 'message', content: [{ type: 'output_text', text: 'ok', annotations: [{ type: 'url_citation', url: 7 }] }] }] },
+        { output: [{ type: 'message', content: [{ type: 'output_text', text: 'ok' }] }] },
+        { output: [{ type: 'web_search_call' }, { type: 'message', content: [{ type: 'output_text', text: 'ok', annotations: [] }] }, { type: 'message', content: 'bad' }] },
+      ]) {
+        mockFetch.mockResolvedValueOnce(jsonReply(body));
+        expect(await r.retrieveWithStatus('claim')).toEqual({ status: 'parse_error', sources: [], detail: 'unexpected shape' });
+      }
+    });
+
+    it('a completed, well-formed reply that cites nothing is still zero, and one that cites a page is hits', async () => {
+      const r = new OpenAIWebSearchRetriever('test-key');
+      mockFetch.mockResolvedValueOnce(jsonReply({
+        status: 'completed', error: null,
+        output: [{ type: 'web_search_call', status: 'completed' }, { type: 'message', content: [{ type: 'output_text', text: 'Nothing found.', annotations: [] }] }],
+      }));
+      expect(await r.retrieveWithStatus('claim')).toEqual({ status: 'zero', sources: [] });
+      mockFetch.mockResolvedValueOnce(jsonReply({ status: 'completed', error: null, output: [{ type: 'web_search_call', status: 'completed' }, CITING_MESSAGE] }));
+      const hit = await r.retrieveWithStatus('claim');
+      expect(hit.sources.length).toBeGreaterThan(0);
+      expect(hit.status).toBe('hits');
+    });
+
+    it('a 200 reply whose JSON body is null is parse_error, not a network error', async () => {
+      mockFetch.mockResolvedValueOnce(jsonReply(null));
+      const r = new OpenAIWebSearchRetriever('test-key');
+      expect(await r.retrieveWithStatus('claim')).toEqual({ status: 'parse_error', sources: [], detail: 'unexpected shape' });
+      mockFetch.mockResolvedValueOnce(jsonReply(null));
+      await expect(r.retrieve('claim')).resolves.toEqual([]);
+    });
+  });
+
   it('exposes a stable retriever name', () => {
     expect(new OpenAIWebSearchRetriever('k').name).toBe('openai-web-search');
   });

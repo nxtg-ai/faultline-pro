@@ -57,10 +57,19 @@ export interface Retriever {
   retrieve(claimText: string): Promise<Source[]>;
   /**
    * The same search, with how it ended: a failed search is told apart from one
-   * that found nothing. Never throws. Optional: a retriever without it is read
-   * from retrieve() (a throw is provider_error, [] is zero).
+   * that found nothing. Never throws. Every built-in retriever has it; the
+   * independent evidence leg takes only a StatusRetriever.
    */
   retrieveWithStatus?(claimText: string): Promise<RetrievalOutcome>;
+}
+
+/**
+ * A retriever that reports how its search ended. Required wherever an empty
+ * result is shown to a reader, because retrieve() returns [] both for a failed
+ * search and for one that found nothing.
+ */
+export interface StatusRetriever extends Retriever {
+  retrieveWithStatus(claimText: string): Promise<RetrievalOutcome>;
 }
 
 /** What retrieveWithStatus returns. `sources` is [] for every status but hits. */

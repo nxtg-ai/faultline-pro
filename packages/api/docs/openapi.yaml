@@ -187,10 +187,13 @@ components:
       enum: [hits, zero, timeout, provider_error, parse_error, policy_block]
       description: >
         How the independent search ended. `hits`: at least one source came
-        back. `zero`: the search succeeded and found no sources. `timeout`: the
-        search was stopped by its deadline. `provider_error`: an HTTP error, a
-        network error, a missing API key or any other failure. `parse_error`:
-        a 2xx reply that could not be read as sources. `policy_block`: the
+        back. `zero`: the search completed, its reply was well formed, and it
+        found no sources. `timeout`: the search was stopped by its deadline.
+        `provider_error`: an HTTP error, a network error, a missing API key, a
+        reply that says the response or its web search failed (even when it
+        also cites pages, which are then dropped), or any other failure.
+        `parse_error`: a 2xx reply that could not be read as sources (not JSON,
+        JSON null, or malformed source content). `policy_block`: the
         request was refused on content or safety policy. An empty `sources`
         list means "nothing found" only when the status is `zero`.
       example: provider_error

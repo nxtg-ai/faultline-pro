@@ -9,6 +9,8 @@ import { attachIndependentEvidence } from '../evidence/independent.js';
 import type { EvidenceFetch } from '../evidence/passage.js';
 import { clearRobotsCache } from '../evidence/robots.js';
 import { OpenAIWebSearchRetriever } from '../providers/openai_web_search_retriever.js';
+import { GeminiGroundingRetriever } from '../providers/gemini_provider.js';
+import type { RetrievalOutcome } from '../providers/base_provider.js';
 import { scan } from '../cli/scan.js';
 import { registerProvider } from '../providers/registry.js';
 import type { Claim, Source, VerificationResult } from '../types.js';
@@ -31,11 +33,17 @@ const pages = (f: EvidenceFetch): string[] =>
 
 beforeEach(() => clearRobotsCache());
 
+/** A typed retriever: [] is a completed search that found nothing, a function throws. */
 function retrieverOf(found: Array<Source & { snippet?: string }> | (() => never)) {
+  const search = async (): Promise<Source[]> => (typeof found === 'function' ? found() : found);
   return {
     name: 'fixture-search',
     model: 'fixture-mini',
-    retrieve: vi.fn(async () => (typeof found === 'function' ? found() : found)),
+    retrieve: vi.fn(search),
+    retrieveWithStatus: vi.fn(async (): Promise<RetrievalOutcome> => {
+      const sources = await search();
+      return sources.length > 0 ? { status: 'hits', sources } : { status: 'zero', sources: [] };
+    }),
   };
 }
 
@@ -67,7 +75,7 @@ describe('attachIndependentEvidence', () => {
     expect(ie.sources[1].evidence!.status).toBe('no_match');
     // The retriever's model-written snippet is never carried as evidence.
     expect(JSON.stringify(ie)).not.toContain('MODEL WORDS');
-    expect(retriever.retrieve).toHaveBeenCalledWith(CLAIM_TEXT);
+    expect(retriever.retrieveWithStatus).toHaveBeenCalledWith(CLAIM_TEXT);
   });
 
   it('fetches at most 3 result pages by default', async () => {
@@ -82,7 +90,7 @@ describe('attachIndependentEvidence', () => {
     const retriever = retrieverOf([{ title: 'x', uri: 'https://x.example/' }]);
     const errored = verdict({ apiError: true, status: 'unverified' });
     expect(await attachIndependentEvidence(errored, CLAIM_TEXT, { retriever, fetch: vi.fn() as never })).toBe(errored);
-    expect(retriever.retrieve).not.toHaveBeenCalled();
+    expect(retriever.retrieveWithStatus).not.toHaveBeenCalled();
   });
 
   it('appliesTo false: the verdict is returned as given and no search is made', async () => {
@@ -90,7 +98,7 @@ describe('attachIndependentEvidence', () => {
     const base = verdict();
     const v = await attachIndependentEvidence(base, CLAIM_TEXT, { retriever, fetch: vi.fn() as never, appliesTo: () => false });
     expect(v).toBe(base);
-    expect(retriever.retrieve).not.toHaveBeenCalled();
+    expect(retriever.retrieveWithStatus).not.toHaveBeenCalled();
   });
 
   it('a retriever that throws or finds nothing yields an empty list, which says so', async () => {
@@ -149,6 +157,31 @@ describe('attachIndependentEvidence', () => {
     expect(v.independentEvidence!.status).toBe('provider_error');
   });
 
+  it('the built-in Gemini grounding retriever with no key is provider_error, never zero', async () => {
+    const f = vi.fn() as never;
+    const v = await attachIndependentEvidence(verdict(), CLAIM_TEXT, { retriever: new GeminiGroundingRetriever(''), fetch: f });
+    expect(v.independentEvidence).toBeDefined();
+    expect(v.independentEvidence).toMatchObject({ retriever: 'gemini-grounding', status: 'provider_error', detail: 'missing api key', sources: [] });
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it('a retriever without retrieveWithStatus is refused by the type, and read as provider_error at run time, never zero', async () => {
+    const legacy = { name: 'legacy-search', retrieve: vi.fn(async () => [] as Source[]) };
+    // @ts-expect-error independent evidence needs a retriever that reports how its search ended
+    const v = await attachIndependentEvidence(verdict(), CLAIM_TEXT, { retriever: legacy, fetch: vi.fn() as never });
+    expect(v.independentEvidence).toBeDefined();
+    expect(v.independentEvidence!.status).toBe('provider_error');
+    expect(v.independentEvidence!.detail).toBe('no retrieval status');
+    expect(v.independentEvidence!.sources).toEqual([]);
+    // [] from retrieve() cannot tell a failure from an empty search, so it is not asked.
+    expect(legacy.retrieve).not.toHaveBeenCalled();
+  });
+
+  it('every built-in retriever reports a typed outcome', () => {
+    expect(typeof new OpenAIWebSearchRetriever('k').retrieveWithStatus).toBe('function');
+    expect(typeof new GeminiGroundingRetriever('k').retrieveWithStatus).toBe('function');
+  });
+
   it('a Google grounding Link returned by the second retriever is still never fetched', async () => {
     const retriever = retrieverOf([{ title: 'g', uri: GROUNDED }]);
     const f = vi.fn(async () => html(PAGE)) as unknown as EvidenceFetch;
@@ -186,6 +219,6 @@ describe('through scan()', () => {
     expect(r.verifications.c1.independentEvidence!.retriever).toBe('fixture-search');
     const plain = await scan(CLAIM_TEXT, 'independent-fixture');
     expect(plain.verifications.c1.independentEvidence).toBeUndefined();
-    expect(retriever.retrieve).toHaveBeenCalledTimes(1);
+    expect(retriever.retrieveWithStatus).toHaveBeenCalledTimes(1);
   });
 });
