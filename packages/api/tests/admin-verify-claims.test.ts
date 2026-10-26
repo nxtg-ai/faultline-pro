@@ -33,8 +33,13 @@ vi.mock('@google/genai', () => ({
         sdk.inFlight -= 1;
         const prompt = String(params.contents);
         if (prompt.includes('THROW-ME')) throw new Error('503 model overloaded');
+        // 'TOKENS-<in>-<out>' in a claim sets that call's token counts (default 100 in, 20 out).
+        const tokens = /TOKENS-(\d+)-(\d+)/.exec(prompt);
         const grounded = {
-          usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 20 },
+          usageMetadata: {
+            promptTokenCount: tokens ? Number(tokens[1]) : 100,
+            candidatesTokenCount: tokens ? Number(tokens[2]) : 20,
+          },
           candidates: [{
             groundingMetadata: {
               groundingChunks: [{ web: { title: SOURCE_SENTINEL, uri: 'https://example.com/sentinel' } }],
@@ -81,6 +86,18 @@ let spendLedger: string;
 let server: FastifyInstance;
 
 type ClaimInput = { id: string; text: string };
+
+/** One mocked grounded Gemini call: 100 in, 20 out, one grounded prompt. */
+const GEMINI_LEG = {
+  provider: 'gemini', model: 'gemini-2.5-flash', callType: 'grounded-verify:gemini',
+  inputTokens: 100, outputTokens: 20, isGrounding: true,
+};
+const GEMINI_USAGE = {
+  inputTokens: 100, outputTokens: 20, groundingCalls: 1,
+  costUsd: buildManagedCostEvent([GEMINI_LEG], { text: 'unused', provider: 'gemini', claimCount: 1, tier: 'enterprise', latencyMs: 0, claims: { extracted: 1, verified: 1 } }).costUsd,
+  priced: true,
+};
+const UNPRICED_USAGE = { inputTokens: 0, outputTokens: 0, groundingCalls: 0, costUsd: 0, priced: false };
 
 function claims(n: number, text = 'The Eiffel Tower is in Paris.'): ClaimInput[] {
   return Array.from({ length: n }, (_, i) => ({ id: String(i), text }));
@@ -250,8 +267,8 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
     const body = res.json();
     expect(body.provider).toBe('gemini');
     expect(body.results).toEqual([
-      { id: '10', status: 'contradicted', apiError: false, parseFallback: false, noSourceAbstain: false, apiErrorReason: null, model: 'gemini-2.5-flash' },
-      { id: '11', status: 'supported', apiError: false, parseFallback: false, noSourceAbstain: false, apiErrorReason: null, model: 'gemini-2.5-flash' },
+      { id: '10', status: 'contradicted', apiError: false, parseFallback: false, noSourceAbstain: false, apiErrorReason: null, model: 'gemini-2.5-flash', usage: GEMINI_USAGE },
+      { id: '11', status: 'supported', apiError: false, parseFallback: false, noSourceAbstain: false, apiErrorReason: null, model: 'gemini-2.5-flash', usage: GEMINI_USAGE },
     ]);
     expect(sdk.calls).toBe(2);
   });
@@ -261,6 +278,8 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
     const res = await post({ claims: [{ id: '3', text: 'NOT-JSON reply please.' }] });
     expect(res.json().results[0]).toEqual({
       id: '3', status: 'unverified', apiError: true, parseFallback: true, noSourceAbstain: false, apiErrorReason: 'provider_unparseable', model: null,
+      // The unreadable reply still spent tokens, so it is priced.
+      usage: GEMINI_USAGE,
     });
   });
 
@@ -268,6 +287,7 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
     const res = await post({ claims: [{ id: '6', text: 'CUT-OFF reply.' }] });
     expect(res.json().results[0]).toEqual({
       id: '6', status: 'unverified', apiError: true, parseFallback: false, noSourceAbstain: false, apiErrorReason: 'output_truncated', model: null,
+      usage: GEMINI_USAGE,
     });
   });
 
@@ -291,7 +311,10 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
     for (const forbidden of ['explanation', 'sources', 'searchEntryPoint', 'groundingMetadata', 'claimId']) {
       expect(keys.has(forbidden)).toBe(false);
     }
-    expect([...keys].sort()).toEqual(['apiError', 'apiErrorReason', 'id', 'model', 'noSourceAbstain', 'parseFallback', 'provider', 'results', 'status']);
+    expect([...keys].sort()).toEqual([
+      'apiError', 'apiErrorReason', 'costUsd', 'groundingCalls', 'id', 'inputTokens', 'model', 'noSourceAbstain',
+      'outputTokens', 'parseFallback', 'priced', 'provider', 'results', 'status', 'usage',
+    ]);
   });
 
   it('keeps at most 4 claims in flight at once', async () => {
@@ -307,6 +330,58 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
     expect(res.json().results.map((r: { status: string; model: string }) => [r.status, r.model]))
       .toEqual([['supported', 'mock-v1'], ['supported', 'mock-v1']]);
     expect(sdk.calls).toBe(0);
+  });
+});
+
+describe('POST /admin/verify-claims — per-claim usage', () => {
+  type Usage = { inputTokens: number; outputTokens: number; groundingCalls: number; costUsd: number; priced: boolean };
+
+  it('prices each claim from its own legs, and the per-claim costs sum to the batch ledger row', async () => {
+    const res = await post({
+      claims: [
+        { id: '1', text: 'TOKENS-1834-212 A long grounded claim.' },
+        { id: '2', text: 'TOKENS-655-48 A short one.' },
+        { id: '3', text: 'TOKENS-12077-1903 A claim with a big search block.' },
+        { id: '4', text: 'THROW-ME before any usage is recorded.' },
+        { id: '5', text: 'TOKENS-401-77 NOT-JSON reply that still spent tokens.' },
+      ],
+    });
+    expect(res.statusCode).toBe(200);
+    const usages: Usage[] = res.json().results.map((r: { usage: Usage }) => r.usage);
+    expect(usages).toHaveLength(5);
+    expect(usages.map((u) => u.inputTokens)).toEqual([1834, 655, 12077, 0, 401]);
+    expect(usages.map((u) => u.outputTokens)).toEqual([212, 48, 1903, 0, 77]);
+    expect(usages.map((u) => u.priced)).toEqual([true, true, true, false, true]);
+    // Each claim differs, so a constant price per claim cannot match the batch below.
+    expect(new Set(usages.map((u) => u.costUsd)).size).toBe(5);
+
+    const rows = spendRows();
+    expect(rows).toHaveLength(1);
+    const batchCost = rows[0].costUsd as number;
+    expect(batchCost).toBeGreaterThan(0);
+    const sum = usages.reduce((total, u) => total + u.costUsd, 0);
+    expect(Math.abs(sum - batchCost)).toBeLessThan(1e-9);
+    const events = getCostStore().getManagedEvents();
+    expect(events).toHaveLength(1);
+    expect(Math.abs(events[0].costUsd - sum)).toBeLessThan(1e-9);
+    expect(events[0].inputTokens).toBe(usages.reduce((total, u) => total + u.inputTokens, 0));
+    expect(events[0].groundingCalls).toBe(usages.reduce((total, u) => total + u.groundingCalls, 0));
+  });
+
+  it('reports priced:false and costUsd 0 for a failed call and for the mock provider', async () => {
+    const failed = await post({ claims: [{ id: '1', text: 'THROW-ME now.' }, { id: '2', text: 'Fine claim.' }] });
+    const [thrown, ok] = failed.json().results;
+    expect(thrown.usage).toEqual(UNPRICED_USAGE);
+    expect(ok.usage).toEqual(GEMINI_USAGE);
+
+    const mock = await post({ claims: claims(2), provider: 'mock' });
+    expect(mock.statusCode).toBe(200);
+    const results = mock.json().results as Array<{ usage: Usage }>;
+    expect(results).toHaveLength(2);
+    for (const r of results) {
+      expect(r.usage.priced).toBe(false);
+      expect(r.usage.costUsd).toBe(0);
+    }
   });
 });
 
