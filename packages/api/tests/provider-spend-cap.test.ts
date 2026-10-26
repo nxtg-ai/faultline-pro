@@ -145,8 +145,33 @@ describe('provider-spend ledger', () => {
     recordProviderSpend(costEvent());
     const row = JSON.parse(readFileSync(tmpLedger, 'utf8').trim());
     expect(Object.keys(row).sort()).toEqual(
-      ['costUsd', 'modelId', 'month', 'provider', 'scanId', 'tier', 'ts'],
+      ['claimCount', 'costUsd', 'modelId', 'month', 'provider', 'scanId', 'tier', 'ts', 'verifiedCount'],
     );
+  });
+
+  it('writes the claim counts from the cost event, so cost per claim reads off the row', () => {
+    const recorded = recordProviderSpend(costEvent({ scanId: 'counted', costUsd: 0.3, claimsExtracted: 6, claimsVerified: 4 }));
+    expect(recorded).toMatchObject({ claimCount: 6, verifiedCount: 4 });
+    const rows = readFileSync(tmpLedger, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ scanId: 'counted', costUsd: 0.3, claimCount: 6, verifiedCount: 4 });
+  });
+
+  it('writes 0 counts as 0 and an event with no counts as null', () => {
+    recordProviderSpend(costEvent({ scanId: 'zero', claimsExtracted: 0, claimsVerified: 0 }));
+    recordProviderSpend(costEvent({ scanId: 'none' }));
+    const rows = readFileSync(tmpLedger, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ scanId: 'zero', claimCount: 0, verifiedCount: 0 });
+    expect(rows[1]).toMatchObject({ scanId: 'none', claimCount: null, verifiedCount: null });
+  });
+
+  it('an old row without claim counts hydrates and counts toward the month total', () => {
+    writeFileSync(tmpLedger, JSON.stringify({ ts: 'x', scanId: 'before-counts', month: currentMonth(), tier: 'pro', provider: 'openai', modelId: 'gpt-4o', costUsd: 2.5 }) + '\n');
+    recordProviderSpend(costEvent({ scanId: 'after-counts', costUsd: 1.25, claimsExtracted: 3, claimsVerified: 3 }));
+    expect(getProviderSpendLedger().monthTotalUsd()).toBeCloseTo(3.75, 6);
+    resetProviderSpendLedger(); // a restart reads both rows back off the file
+    expect(getProviderSpendLedger().monthTotalUsd()).toBeCloseTo(3.75, 6);
   });
 
   it('is APPEND-only — an existing ledger is extended, never rewritten', () => {

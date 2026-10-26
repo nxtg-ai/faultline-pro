@@ -17,6 +17,7 @@ const opts = {
   claimCount: 5,
   tier: 'pro' as const,
   latencyMs: 123,
+  claims: { extracted: 5, verified: 5 },
 };
 
 describe('buildManagedCostEvent', () => {

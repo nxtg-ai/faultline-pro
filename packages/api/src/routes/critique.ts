@@ -108,6 +108,8 @@ async function runCritiqueWithSpend(
     claimCount: 0,
     tier: resolveTier(keyId),
     latencyMs: Date.now() - startTime,
+    // Critique judges claims a scan already verified; it extracts and verifies none itself.
+    claims: { extracted: 0, verified: 0 },
   });
   recordProviderSpend(costEvent); // A-110 item 1: the fleet cap must see critique spend
   return result;
