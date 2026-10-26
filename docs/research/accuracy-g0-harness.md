@@ -145,15 +145,15 @@ A3 is tested on the committed 100 ids: the reviewer's all-opposite fixture (repr
 
 ## Document-scope check on the gold set
 
-A claim about the scanned document itself ("the analysis does not focus on 70B+ models") is not sent for verification: `packages/cli/lib/claim-scope.ts` `isDocumentRelative` takes it out before the verify step, in a scan, a full scan and this route (which then returns `unverified` with `documentScope: true` and no provider call). Every gold-set item is a claim about the world, so any item the check flags would be a false positive and would drop out of the accuracy run.
+A claim about the scanned document's own scope or structure ("the analysis does not focus on 70B+ models", "this report contains five sections") is not sent for verification: `packages/cli/lib/claim-scope.ts` `isDocumentRelative` takes it out before the verify step, in a scan, a full scan and this route (which then returns `unverified` with `documentScope: true` and no provider call). A sentence that reports a proposition is still checked even when its subject is a report ("the report concludes that smoking causes lung cancer"), and so is any sentence with a third-party attribution (by, from another source, according to, published in, a capitalised possessive). Every gold-set item is a claim about the world, so any item the check flags would be a false positive and would drop out of the accuracy run.
 
-Measured 2026-10-26: `isDocumentRelative` over the `claim` field of every line of `docs/research/data/factcheck-bench-subtask4-claim-factuality.jsonl` (661 lines). The file has no id field, so items are named by 1-based line number.
+Re-measured 2026-10-26 after the check was narrowed to scope and structure statements: `isDocumentRelative` over the `claim` field of every line of `docs/research/data/factcheck-bench-subtask4-claim-factuality.jsonl` (661 lines). The file has no id field, so items are named by 1-based line number.
 
 | Claims | Flagged | Flagged lines |
 |---|---|---|
 | 661 | 0 | none |
 
-No pattern needed tightening.
+The earlier, broader version of the check also flagged 0 of these 661 lines, so the gold set alone could not show its false positives on attributed world claims ("the report concludes that ..."). Those are covered by the 30-claim world table in `packages/cli/tests/claim-scope.test.ts`.
 
 ## Tests
 

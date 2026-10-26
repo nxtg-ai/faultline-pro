@@ -88,6 +88,51 @@ describe('scan: claims about the document itself', () => {
   });
 });
 
+describe('a report that states a world proposition is still checked and charged', () => {
+  const WORLD_FACTS = [
+    'Mistral 7B was released in September 2023',
+    'Llama 2 was released by Meta in July 2023',
+    'The Eiffel Tower is in Paris',
+    'Water boils at 100 degrees Celsius at sea level',
+    'Mount Everest is the highest mountain above sea level',
+    'The Pacific is the largest ocean on Earth',
+    'Canberra is the capital of Australia',
+    'The speed of light is about 300,000 kilometres per second',
+  ];
+  const ATTRIBUTED = 'The report concludes that smoking causes lung cancer';
+  const DOC_CLAIM = 'This report covers three models';
+  const MIXED = [...WORLD_FACTS, ATTRIBUTED, DOC_CLAIM].map((s) => `${s}.`).join(' ');
+
+  it('prices nine world facts in two units and leaves only the document claim uncharged', async () => {
+    const estimate = await extractForFullScan(MIXED, 'mock');
+    expect(estimate.claims.length).toBe(10);
+    expect(estimate.factClaims).toBe(9);
+    expect(estimate.notCheckable).toBe(1);
+    expect(estimate.units).toBe(2);
+  });
+
+  it('a full scan verifies the attributed proposition and not the document claim', async () => {
+    const result = await scan(MIXED, 'mock', undefined, undefined, undefined, undefined, undefined, { mode: 'full' });
+    const attributed = result.claims.find((c) => c.text === ATTRIBUTED);
+    const doc = result.claims.find((c) => c.text === DOC_CLAIM);
+    expect(attributed, 'attributed claim extracted').toBeDefined();
+    expect(doc, 'document claim extracted').toBeDefined();
+    expect(attributed?.scope).toBeUndefined();
+    expect(result.verifications[attributed!.id]?.status).toBe('supported');
+    expect(doc?.scope).toBe('document');
+    expect(result.verifications[doc!.id]).toBeUndefined();
+    expect(Object.keys(result.verifications)).toHaveLength(9);
+  });
+
+  it('a quick scan gives no verdict to "This report contains five sections"', async () => {
+    const result = await scan(`${WORLD_FACTS[0]}. This report contains five sections.`, 'mock');
+    const doc = result.claims.find((c) => c.text === 'This report contains five sections');
+    expect(doc?.scope).toBe('document');
+    expect(result.verifications[doc!.id]).toBeUndefined();
+    expect(Object.keys(result.verifications)).toHaveLength(1);
+  });
+});
+
 describe('deep-scan estimate: claims about the document itself', () => {
   it('counts 2 fact claims, not 4, and prices only those', async () => {
     const estimate = await extractForFullScan(DOCUMENT, 'mock');
