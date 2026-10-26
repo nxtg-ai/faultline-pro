@@ -1,7 +1,10 @@
-import type { Claim, VerificationResult, ClaimStatus } from '../types';
+import type { Claim, VerificationResult } from '../types';
 import type { LLMProvider, ImageInput, CritiqueResult, ProviderFactory } from './base_provider';
 import { sanitizeVerifyError } from '../services/verify-error';
 import { ExtractionError, parseExtractedClaims } from './extraction-error';
+import { readVerdictReply, truncatedVerdict, unparseableVerdict } from './verdict-reply';
+import { CALL_CEILINGS, type PerplexityPurpose } from './call-ceilings';
+import { isChatCompletionTruncated, isOutputTruncatedError, OutputTruncatedError } from './output-truncation';
 
 /**
  * Perplexity provider — implements the LLMProvider interface using Perplexity's API.
@@ -45,7 +48,7 @@ Return a JSON object with a "claims" key containing an array where each object h
 
     let response: string;
     try {
-      response = await this.callAPI(content, 'user');
+      response = await this.callAPI(content, 'user', 'extract');
     } catch (error) {
       throw ExtractionError.fromProviderError(error);
     }
@@ -70,16 +73,18 @@ Return a JSON object:
     }];
 
     try {
-      const result = await this.callAPIWithCitations(content, 'user');
-      const resultJson = JSON.parse(result.content);
+      const result = await this.callAPIWithCitations(content, 'user', 'verify');
+      const verdict = readVerdictReply(result.content);
+      if (!verdict) return unparseableVerdict(claim.id);
 
       return {
         claimId: claim.id,
-        status: (resultJson.status || 'unverified') as ClaimStatus,
-        explanation: resultJson.explanation || 'No structural analysis provided.',
+        status: verdict.status,
+        explanation: verdict.explanation,
         sources: result.citations.map(url => ({ title: url, uri: url })),
       };
     } catch (error) {
+      if (isOutputTruncatedError(error)) return truncatedVerdict(claim.id);
       const msg = error instanceof Error ? error.message : String(error);
       if (msg.includes('429')) throw error;
       console.error(`Error verifying claim ${claim.id} (Perplexity):`, error);
@@ -105,7 +110,7 @@ Return a JSON object: { "critique": string, "improvedPrompt": string }`,
     }];
 
     try {
-      const response = await this.callAPI(content, 'user');
+      const response = await this.callAPI(content, 'user', 'critique');
       return JSON.parse(response);
     } catch (error) {
       return {
@@ -116,10 +121,12 @@ Return a JSON object: { "critique": string, "improvedPrompt": string }`,
   }
 
   /**
-   * Call the Perplexity Chat Completions API with JSON mode.
+   * Call the Perplexity Chat Completions API with JSON mode, capped at the
+   * purpose's output ceiling (providers/call-ceilings.ts). Throws
+   * OutputTruncatedError when the reply stopped at that ceiling.
    * Returns message content only. Isolated for easy mocking in tests.
    */
-  async callAPI(content: any[], role: string): Promise<string> {
+  async callAPI(content: any[], role: string, purpose: PerplexityPurpose): Promise<string> {
     const response = await fetch('https://api.perplexity.ai/chat/completions', {
       method: 'POST',
       headers: {
@@ -129,6 +136,7 @@ Return a JSON object: { "critique": string, "improvedPrompt": string }`,
       body: JSON.stringify({
         model: this.modelId,
         response_format: { type: 'json_object' },
+        max_tokens: CALL_CEILINGS.perplexity[purpose].maxOutputTokens,
         messages: [{ role, content }],
       }),
     });
@@ -138,6 +146,7 @@ Return a JSON object: { "critique": string, "improvedPrompt": string }`,
     }
 
     const data = await response.json() as any;
+    if (isChatCompletionTruncated(data)) throw new OutputTruncatedError('perplexity', purpose);
     return data.choices?.[0]?.message?.content || '';
   }
 
@@ -145,7 +154,11 @@ Return a JSON object: { "critique": string, "improvedPrompt": string }`,
    * Call the Perplexity Chat Completions API and return both message content
    * and citations from the top-level response. Used exclusively by verifyClaim().
    */
-  async callAPIWithCitations(content: any[], role: string): Promise<{ content: string; citations: string[] }> {
+  async callAPIWithCitations(
+    content: any[],
+    role: string,
+    purpose: PerplexityPurpose,
+  ): Promise<{ content: string; citations: string[] }> {
     const response = await fetch('https://api.perplexity.ai/chat/completions', {
       method: 'POST',
       headers: {
@@ -155,6 +168,7 @@ Return a JSON object: { "critique": string, "improvedPrompt": string }`,
       body: JSON.stringify({
         model: this.modelId,
         response_format: { type: 'json_object' },
+        max_tokens: CALL_CEILINGS.perplexity[purpose].maxOutputTokens,
         messages: [{ role, content }],
       }),
     });
@@ -164,6 +178,7 @@ Return a JSON object: { "critique": string, "improvedPrompt": string }`,
     }
 
     const data = await response.json() as any;
+    if (isChatCompletionTruncated(data)) throw new OutputTruncatedError('perplexity', purpose);
     return {
       content: data.choices?.[0]?.message?.content || '',
       citations: Array.isArray(data.citations) ? data.citations : [],

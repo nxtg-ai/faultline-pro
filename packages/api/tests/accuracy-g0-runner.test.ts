@@ -30,6 +30,8 @@ const SUBSAMPLE_IDS: number[] = JSON.parse(
 const KEY = ['runner', 'ADMINKEY', 'must-never-print', '4242'].join('-');
 
 interface FakeState {
+  usageExtra?: Record<string, unknown>;
+  dropVerifyOnce?: boolean;
   groundedPrompts: number;
   commit: string | null;
   version: string;
@@ -66,6 +68,7 @@ function freshState(): FakeState {
     attemptsById: new Map(),
     verifyStatus: 200,
     runStartCalls: 0,
+    usageExtra: undefined,
   };
 }
 
@@ -90,11 +93,12 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     const full = state.capAfterCallsThisRun !== undefined && state.verifyCalls - state.runStartCalls >= state.capAfterCallsThisRun;
     return send(res, 200, {
       keyId: 'admin',
-      groundingAllowance: { day: '2026-10-02', groundedPrompts: full ? 1000 : state.groundedPrompts, resetsAt: '2026-10-03T07:00:00.000Z' },
+      groundingAllowance: { day: '2026-10-02', groundedPrompts: full ? 1000 : state.groundedPrompts, resetsAt: '2026-10-03T07:00:00.000Z', ...(state.usageExtra ?? {}) },
     });
   }
   if (req.method === 'POST' && req.url === '/admin/verify-claims') {
     state.verifyCalls += 1;
+    if (state.dropVerifyOnce) { state.dropVerifyOnce = false; req.socket.destroy(); return; }
     if (state.verifyStatus !== 200) return send(res, state.verifyStatus, state.verifyBody ?? {});
     const { claims } = JSON.parse(await readBody(req)) as { claims: Array<{ id: string; text: string }> };
     const results = claims.map(({ id }) => {
@@ -104,7 +108,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       const fail = attempt <= (state.failFirst.get(n) ?? 0);
       if (!fail) state.groundedPrompts += 1;
       return fail
-        ? { id, status: 'unverified', apiError: true, parseFallback: false, model: null }
+        ? { id, status: 'unverified', apiError: true, apiErrorReason: n % 2 === 0 ? 'output_truncated' : 'not a label!', parseFallback: false, model: null }
         : { id, status: n % 3 === 0 ? 'contradicted' : 'supported', apiError: false, parseFallback: n % 7 === 0, model: state.model(state.verifyCalls) };
     });
     return send(res, 200, { provider: 'gemini', results });
@@ -199,7 +203,7 @@ describe('accuracy-g0 runner: a complete run', () => {
     expect(written).toHaveLength(100);
     expect(written.map((row) => row.id)).toEqual([...SUBSAMPLE_IDS].sort((a, b) => a - b));
     expect(Object.keys(written[0]).sort()).toEqual(
-      ['apiError', 'attempts', 'engineSha', 'gold', 'id', 'model', 'parseFallback', 'status', 'ts'],
+      ['apiError', 'apiErrorReason', 'attempts', 'engineSha', 'gold', 'id', 'model', 'noSourceAbstain', 'parseFallback', 'status', 'ts'],
     );
     expect(written.every((row) => row.engineSha === state.commit && row.model === 'gemini-2.5-flash')).toBe(true);
     expect(written.every((row) => row.gold === 'true' || row.gold === 'false')).toBe(true);
@@ -230,6 +234,9 @@ describe('accuracy-g0 runner: retries (prereg §6)', () => {
     expect(byId.get(neverRecovers)).toMatchObject({ apiError: true, status: 'unverified', attempts: 4, model: null });
     expect(state.attemptsById.get(neverRecovers)).toBe(4);
     expect(byId.get(SUBSAMPLE_IDS[2])).toMatchObject({ attempts: 1 });
+    // The reason label travels to the row; anything that is not a short snake_case label is dropped.
+    expect(byId.get(neverRecovers)!.apiErrorReason).toBe(neverRecovers % 2 === 0 ? 'output_truncated' : null);
+    expect(byId.get(recovers)!.apiErrorReason).toBeNull();
   });
 });
 
@@ -334,6 +341,125 @@ describe('accuracy-g0 runner: grounding allowance guard (prereg §7)', () => {
     const r = await run(['--set', 'verify-subsample', '--out', join(dir, 'sub.jsonl')]);
     expect(r.code).toBe(3);
     expect(state.verifyCalls).toBe(0);
+  });
+});
+
+describe('accuracy-g0 runner: allowance shared with production (--allowance-api, GoPMO 1.18.11.7.18 A0)', () => {
+  // A branch engine on the runner spends the same Google key as production, so the daily guard
+  // must count both. This fake "production" only answers GET /usage.
+  async function fakeProduction(groundedPrompts: number | ((call: number) => number), day = '2026-10-02', extra: Record<string, unknown> = {}): Promise<{ url: string; close: () => Promise<void>; usageCalls: () => number }> {
+    let usageCalls = 0;
+    const prod = createServer((req, res) => {
+      if (req.method === 'GET' && req.url === '/usage') {
+        usageCalls += 1;
+        const count = typeof groundedPrompts === 'function' ? groundedPrompts(usageCalls) : groundedPrompts;
+        return send(res, 200, { keyId: 'admin', groundingAllowance: { day, groundedPrompts: count, resetsAt: '2026-10-03T07:00:00.000Z', ...extra } });
+      }
+      return send(res, 404, { error: 'not found' });
+    });
+    await new Promise<void>((r) => prod.listen(0, '127.0.0.1', () => r()));
+    return {
+      url: `http://127.0.0.1:${(prod.address() as AddressInfo).port}`,
+      close: () => new Promise<void>((r) => prod.close(() => r())),
+      usageCalls: () => usageCalls,
+    };
+  }
+
+  it('stops with exit 3 when production plus the branch engine plus the production headroom would pass 1,000', async () => {
+    const prod = await fakeProduction(860);
+    try {
+      // headroom 100: batch 1: 860 + 0 + 25 + 100 = 985 runs; batch 2: 860 + 25 + 25 + 100 = 1010 stops
+      const r = await run(['--set', 'verify-subsample', '--out', join(dir, 'sub.jsonl'), '--allowance-api', prod.url]);
+      expect(r.code).toBe(3);
+      expect(r.out).toMatch(/allowance guard/);
+      expect(state.verifyCalls).toBe(1);
+      expect(prod.usageCalls()).toBeGreaterThanOrEqual(2);
+      expect(r.out).not.toContain(KEY);
+    } finally { await prod.close(); }
+  });
+
+  it('runs to completion when the sum stays under 1,000, and logs both counts', async () => {
+    const prod = await fakeProduction(100);
+    try {
+      const r = await run(['--set', 'verify-subsample', '--out', join(dir, 'sub.jsonl'), '--allowance-api', prod.url]);
+      expect(r.code).toBe(0);
+      expect(rows(join(dir, 'sub.jsonl'))).toHaveLength(100);
+      expect(r.out).toMatch(/allowance \d+\/1000 on 2026-10-02 \(\d+ \+ 100\)/);
+    } finally { await prod.close(); }
+  });
+
+  it('stops before any verify call when the two engines report different allowance days', async () => {
+    const prod = await fakeProduction(0, '2026-10-03');
+    try {
+      const r = await run(['--set', 'verify-subsample', '--out', join(dir, 'sub.jsonl'), '--allowance-api', prod.url]);
+      expect(r.code).toBe(3);
+      expect(r.out).toMatch(/different allowance days/);
+      expect(state.verifyCalls).toBe(0);
+    } finally { await prod.close(); }
+  });
+
+  it('leaves 100 prompts of headroom for production: 880 in production stops before the first batch', async () => {
+    const prod = await fakeProduction(880);
+    try {
+      const r = await run(['--set', 'verify-subsample', '--out', join(dir, 'sub.jsonl'), '--allowance-api', prod.url]);
+      expect(r.code).toBe(3);
+      expect(r.out).toMatch(/production headroom 100/);
+      expect(state.verifyCalls).toBe(0);
+    } finally { await prod.close(); }
+  });
+
+  it('stops (exit 1, no verify call) on a count it cannot trust: negative, or with ledger write failures', async () => {
+    for (const prod of [await fakeProduction(-1000), await fakeProduction(0, '2026-10-02', { ledgerWriteFailures: 2 })]) {
+      try {
+        state.verifyCalls = 0;
+        const r = await run(['--set', 'verify-subsample', '--out', join(dir, `sub-${Math.random()}.jsonl`), '--allowance-api', prod.url]);
+        expect(r.code).toBe(1);
+        expect(state.verifyCalls).toBe(0);
+      } finally { await prod.close(); }
+    }
+  });
+
+  it('stops (exit 1) when production reports a lower count than before on the same day: its counter was reset', async () => {
+    const prod = await fakeProduction((call) => (call === 1 ? 500 : 0));
+    try {
+      const r = await run(['--set', 'verify-subsample', '--out', join(dir, 'sub.jsonl'), '--allowance-api', prod.url]);
+      expect(r.code).toBe(1);
+      expect(r.out).toMatch(/counter was reset/);
+      expect(state.verifyCalls).toBe(1);
+    } finally { await prod.close(); }
+  });
+
+  it('branch mode stops (exit 1) instead of re-sending a batch that did not answer', async () => {
+    const prod = await fakeProduction(0);
+    try {
+      state.dropVerifyOnce = true;
+      const r = await run(['--set', 'verify-subsample', '--out', join(dir, 'sub.jsonl'), '--allowance-api', prod.url]);
+      expect(r.code).toBe(1);
+      expect(r.out).toMatch(/did not answer/);
+      expect(state.verifyCalls).toBe(1);
+    } finally { await prod.close(); }
+  });
+
+  it('deployed mode still retries a batch that did not answer (prereg section 6)', async () => {
+    state.dropVerifyOnce = true;
+    const r = await run(['--set', 'verify-subsample', '--out', join(dir, 'sub.jsonl')]);
+    expect(r.code).toBe(0);
+    expect(rows(join(dir, 'sub.jsonl'))).toHaveLength(100);
+    expect(state.verifyCalls).toBe(5);
+  });
+
+  it('deployed mode (no flag) keeps the original check: write failures on its own /usage do not stop it', async () => {
+    state.usageExtra = { ledgerWriteFailures: 1 };
+    const r = await run(['--set', 'verify-subsample', '--out', join(dir, 'sub.jsonl')]);
+    expect(r.code).toBe(0);
+    expect(rows(join(dir, 'sub.jsonl'))).toHaveLength(100);
+  });
+
+  it('without the flag, production is not consulted (the existing single-engine guard)', async () => {
+    state.groundedPrompts = 960;
+    const r = await run(['--set', 'verify-subsample', '--out', join(dir, 'sub.jsonl')]);
+    expect(r.code).toBe(3);
+    expect(state.verifyCalls).toBe(1);
   });
 });
 

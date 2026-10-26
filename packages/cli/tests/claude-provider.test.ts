@@ -382,14 +382,15 @@ describe('ClaudeProvider', () => {
       expect(body.model).toBe('claude-opus-4-8');
     });
 
-    it('should set max_tokens in request body', async () => {
+    it('should set max_tokens in request body from the call-ceilings extract row', async () => {
       mockFetch.mockResolvedValueOnce(mockAnthropicResponse('[]'));
 
       const provider = createClaudeProvider('test-key');
       await provider.extractClaims('Test');
 
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(body.max_tokens).toBe(4096);
+      // Was a flat 4096 for every call (GoPMO 1.18.11.7.18); extraction now gets 16384.
+      expect(body.max_tokens).toBe(16384);
     });
 
     it('should include anthropic-version header', async () => {

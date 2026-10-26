@@ -34,6 +34,17 @@ import type { ClaimStatus, VerificationResult, Source } from '../types.js';
  */
 export type Verdict = 'VERIFIED' | 'REFUTED' | 'UNSUPPORTED' | 'MIXED' | 'UNCHECKED';
 
+/** Why a claim is UNCHECKED. */
+export type UncheckedReason = 'provider_error' | 'provider_unparseable' | 'output_truncated' | 'not_verifiable';
+
+/**
+ * True when the claim went unchecked because of the provider call (an error, an
+ * unreadable reply, or a reply cut off at its output ceiling), so the scan is degraded.
+ */
+export function isProviderUnchecked(reason: UncheckedReason | undefined | null): boolean {
+  return reason === 'provider_error' || reason === 'provider_unparseable' || reason === 'output_truncated';
+}
+
 /** The subset of verdicts that represent a completed check. */
 export const REAL_VERDICTS: readonly Verdict[] = ['VERIFIED', 'REFUTED', 'UNSUPPORTED', 'MIXED'];
 
@@ -79,15 +90,22 @@ export interface ClaimVerdict {
   /** The verifier's explanation. */
   note: string;
   /**
-   * True when this specific claim could not be checked because the provider
-   * errored. Distinct from a claim that was checked and found unsupported.
+   * Why this claim has no verdict: the provider errored ('provider_error'), its
+   * reply could not be read ('provider_unparseable', ours, not a verdict), its
+   * reply was cut off at the output ceiling ('output_truncated'), or the claim
+   * was not verifiable. Distinct from a claim checked and found unsupported.
    */
-  unchecked_reason?: 'provider_error' | 'not_verifiable';
+  unchecked_reason?: UncheckedReason;
 }
 
 function firstUri(sources: Source[] | undefined): string | undefined {
   const uri = sources?.find((s) => typeof s?.uri === 'string' && s.uri.length > 0)?.uri;
   return uri || undefined;
+}
+
+/** The reply reasons pass through by name; every call failure reads as 'provider_error'. */
+function providerUncheckedReason(reason: VerificationResult['apiErrorReason']): UncheckedReason {
+  return reason === 'provider_unparseable' || reason === 'output_truncated' ? reason : 'provider_error';
 }
 
 /** Build the MCP-facing claim entry from an engine claim + its verification. */
@@ -123,7 +141,7 @@ export function toClaimVerdict(
   if (evidence_url) entry.evidence_url = evidence_url;
 
   if (verdict === 'UNCHECKED') {
-    entry.unchecked_reason = verification.apiError ? 'provider_error' : 'not_verifiable';
+    entry.unchecked_reason = !verification.apiError ? 'not_verifiable' : providerUncheckedReason(verification.apiErrorReason);
   }
 
   return entry;

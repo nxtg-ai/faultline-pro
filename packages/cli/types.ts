@@ -110,12 +110,19 @@ export interface ProviderVote {
   status: ClaimStatus;
   sources: Source[];
   explanation?: string;
-  /** True when this provider's grounded verify never ran (quota/auth/5xx). */
+  /** True when this provider's grounded verify never ran (quota/auth/5xx) or its reply was unreadable. */
   apiError?: boolean;
+  /** The provider's own reason, when it reported one (e.g. 'provider_unparseable'). */
+  apiErrorReason?: ApiErrorReason;
 }
 
-/** What a provider failure was, after the engine's retries: 429, 503, a timeout, or anything else. */
-export type ApiErrorReason = 'rate_limited' | 'provider_unavailable' | 'timeout' | 'provider_error';
+/**
+ * What a provider failure was, after the engine's retries: 429, 503, a timeout, or anything else.
+ * Two are about the reply rather than the call: 'provider_unparseable' (no readable verdict) and
+ * 'output_truncated' (the reply stopped at its output-token ceiling, providers/call-ceilings.ts).
+ */
+export type ApiErrorReason =
+  | 'rate_limited' | 'provider_unavailable' | 'timeout' | 'provider_error' | 'provider_unparseable' | 'output_truncated';
 
 /**
  * Who produced a verdict and when, bound at the provider call itself (Honor
@@ -161,16 +168,26 @@ export interface VerificationResult {
    * Why a claim got no verdict: set only together with `apiError: true`, by the
    * engine's retry ladder after its final attempt. A full scan reports it per
    * unserved claim so a refund can say what was lost (emma-soul refund ruling,
-   * GoPMO 1.18.11.3.12). Absent on a real verdict and on a consensus result.
+   * GoPMO 1.18.11.3.12). A provider also sets it on a reply it could not use
+   * ('provider_unparseable', 'output_truncated'). Absent on a real verdict; on a
+   * consensus result only when every failed vote carried the same reply reason.
    */
   apiErrorReason?: ApiErrorReason;
   /**
-   * True when the model's reply was not parseable JSON and the engine fell back
-   * to status 'mixed' (geminiService.verifyClaim). Absent otherwise. It lets a
-   * consumer tell an "inconclusive" verdict from an "unparseable" one; it never
-   * changes the status (verdict-accuracy prereg G0 §3).
+   * True when the provider's reply carried no readable verdict (not JSON, or no
+   * status from the prompt's list). Since 2026-10-16 such a claim is unchecked:
+   * status 'unverified', `apiError: true`, `apiErrorReason: 'provider_unparseable'`
+   * (providers/verdict-reply.ts). Before that Gemini reported it as 'mixed' and
+   * this flag was the only marker (verdict-accuracy prereg G0 §3). Absent otherwise.
    */
   parseFallback?: boolean;
+  /**
+   * True when a grounded Gemini reply said 'contradicted' with no grounding source
+   * and the engine reported 'unverified' instead (absence of evidence is not a
+   * refutation; fw al:3dc2e0b227eaedd6). Absent otherwise. It lets the accuracy
+   * run count how often this fires and against which gold labels.
+   */
+  noSourceAbstain?: boolean;
   /**
    * Google Search Suggestions for the grounded prompt behind this verdict,
    * passed through unaltered from `candidates[0].groundingMetadata`. Google's

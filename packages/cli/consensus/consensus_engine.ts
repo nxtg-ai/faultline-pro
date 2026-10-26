@@ -5,6 +5,7 @@ import type {
   VerificationResult,
   ProviderVote,
   ConsensusMeta,
+  ApiErrorReason,
 } from '../types.js';
 import type { LLMProvider, Retriever } from '../providers/base_provider.js';
 import { sanitizeVerifyError } from '../services/verify-error.js';
@@ -76,6 +77,7 @@ async function runProviderVote(
       // Propagate a provider that self-reported a non-run (e.g. grounded gemini
       // caught its own 429 and returned apiError) so fusion can flag it.
       apiError: result.apiError,
+      ...(result.apiError && result.apiErrorReason ? { apiErrorReason: result.apiErrorReason } : {}),
     };
   } catch (err) {
     // Provider's grounded verify threw (quota/auth/5xx). Sanitize — never leak
@@ -90,6 +92,16 @@ async function runProviderVote(
       apiError: true,
     };
   }
+}
+
+/** Reasons a provider reports about its reply, as opposed to the call failing. */
+const REPLY_REASONS: ReadonlySet<ApiErrorReason> = new Set<ApiErrorReason>(['provider_unparseable', 'output_truncated']);
+
+/** The reply reason every failed vote shares, or undefined when they differ or any vote has none. */
+function sharedReplyReasonOf(errored: ProviderVote[]): ApiErrorReason | undefined {
+  const first = errored[0]?.apiErrorReason;
+  if (!first || !REPLY_REASONS.has(first)) return undefined;
+  return errored.every((v) => v.apiErrorReason === first) ? first : undefined;
 }
 
 /** Pick the plurality status among real verdicts; tie/empty handled by caller. */
@@ -136,13 +148,19 @@ export function fuseVotes(
     // cached) from "all providers returned a real 'unverified' judgment"
     // (checked, inconclusive). If any vote carried a provider error, the claim
     // was never actually checked.
-    const anyError = votes.some((v) => v.apiError);
+    const errored = votes.filter((v) => v.apiError);
+    const anyError = errored.length > 0;
+    // When every failed vote failed on its reply for the same reason (unreadable,
+    // al:5b18840b0116047a item c; or cut off at its ceiling, GoPMO 1.18.11.7.18), the
+    // claim carries that reason; any other mix keeps the default reason.
+    const sharedReplyReason = anyError ? sharedReplyReasonOf(errored) : undefined;
     return {
       claimId: claim.id,
       status: 'unverified',
       explanation: 'No provider returned a verdict; consensus unavailable.',
       sources,
       ...(anyError ? { apiError: true } : {}),
+      ...(sharedReplyReason ? { apiErrorReason: sharedReplyReason } : {}),
       consensus: { agreement: 'split', providerCount: 0, dissenting: 0 },
       providerVotes: votes,
     };

@@ -74,7 +74,7 @@ With no provider key and no `FAULTLINE_API_KEY` the server runs the `mock` provi
 | `MIXED` | evidence both supports and contradicts |
 | `UNCHECKED` | **not a verdict** — verification did not run |
 
-`UNCHECKED` is deliberately not folded into `UNSUPPORTED`. "We never checked" and "we checked and found nothing" are opposite statements, and collapsing them makes a rate-limit or an expired key look like a caught hallucination. `unchecked_reason` says which it was: `provider_error` or `not_verifiable` (opinions and non-factual statements are not checkable).
+`UNCHECKED` is deliberately not folded into `UNSUPPORTED`. "We never checked" and "we checked and found nothing" are opposite statements, and collapsing them makes a rate-limit or an expired key look like a caught hallucination. `unchecked_reason` says which it was: `provider_error` (the provider call failed), `provider_unparseable` (the provider's reply could not be read), `output_truncated` (the reply was cut off at its output-token ceiling, see `docs/cost-ceilings.md`), or `not_verifiable` (opinions and non-factual statements are not checkable).
 
 **Response fields that matter**
 

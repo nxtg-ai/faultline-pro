@@ -41,6 +41,10 @@ vi.mock('@google/genai', () => ({
             },
           }],
         };
+        if (prompt.includes('CUT-OFF')) {
+          // A complete-looking verdict, but the provider stopped at the output ceiling.
+          return { ...grounded, candidates: [{ ...grounded.candidates[0], finishReason: 'MAX_TOKENS' }], text: JSON.stringify({ status: 'supported', explanation: EXPLANATION_SENTINEL }) };
+        }
         if (prompt.includes('NOT-JSON')) {
           return { ...grounded, text: `The evidence is thin. ${EXPLANATION_SENTINEL}` };
         }
@@ -246,23 +250,33 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
     const body = res.json();
     expect(body.provider).toBe('gemini');
     expect(body.results).toEqual([
-      { id: '10', status: 'contradicted', apiError: false, parseFallback: false, model: 'gemini-2.5-flash' },
-      { id: '11', status: 'supported', apiError: false, parseFallback: false, model: 'gemini-2.5-flash' },
+      { id: '10', status: 'contradicted', apiError: false, parseFallback: false, noSourceAbstain: false, apiErrorReason: null, model: 'gemini-2.5-flash' },
+      { id: '11', status: 'supported', apiError: false, parseFallback: false, noSourceAbstain: false, apiErrorReason: null, model: 'gemini-2.5-flash' },
     ]);
     expect(sdk.calls).toBe(2);
   });
 
-  it('flags a non-JSON model reply as parseFallback with status mixed', async () => {
+  // Since 2026-10-16 (al:5b18840b0116047a item c) an unreadable reply is no verdict: apiError, never 'mixed'.
+  it('reports a non-JSON model reply as apiError with parseFallback, never as mixed', async () => {
     const res = await post({ claims: [{ id: '3', text: 'NOT-JSON reply please.' }] });
     expect(res.json().results[0]).toEqual({
-      id: '3', status: 'mixed', apiError: false, parseFallback: true, model: 'gemini-2.5-flash',
+      id: '3', status: 'unverified', apiError: true, parseFallback: true, noSourceAbstain: false, apiErrorReason: 'provider_unparseable', model: null,
+    });
+  });
+
+  it('labels a reply cut off at the output ceiling output_truncated, never a verdict (GoPMO 1.18.11.7.18)', async () => {
+    const res = await post({ claims: [{ id: '6', text: 'CUT-OFF reply.' }] });
+    expect(res.json().results[0]).toEqual({
+      id: '6', status: 'unverified', apiError: true, parseFallback: false, noSourceAbstain: false, apiErrorReason: 'output_truncated', model: null,
     });
   });
 
   it('reports a provider failure as apiError, never as a verdict', async () => {
     const res = await post({ claims: [{ id: '4', text: 'THROW-ME now.' }, { id: '5', text: 'Fine claim.' }] });
     const [failed, ok] = res.json().results;
-    expect(failed).toEqual({ id: '4', status: 'unverified', apiError: true, parseFallback: false, model: null });
+    expect(failed).toMatchObject({ id: '4', status: 'unverified', apiError: true, parseFallback: false, noSourceAbstain: false, model: null });
+    expect(typeof failed.apiErrorReason).toBe('string');
+    expect(ok.apiErrorReason).toBeNull();
     expect(ok).toMatchObject({ id: '5', status: 'supported', apiError: false });
   });
 
@@ -277,7 +291,7 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
     for (const forbidden of ['explanation', 'sources', 'searchEntryPoint', 'groundingMetadata', 'claimId']) {
       expect(keys.has(forbidden)).toBe(false);
     }
-    expect([...keys].sort()).toEqual(['apiError', 'id', 'model', 'parseFallback', 'provider', 'results', 'status']);
+    expect([...keys].sort()).toEqual(['apiError', 'apiErrorReason', 'id', 'model', 'noSourceAbstain', 'parseFallback', 'provider', 'results', 'status']);
   });
 
   it('keeps at most 4 claims in flight at once', async () => {

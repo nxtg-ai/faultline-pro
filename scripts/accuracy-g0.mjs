@@ -9,7 +9,11 @@
  * grounded text (Google grounding terms).
  *
  *   node scripts/accuracy-g0.mjs --set full|verify-subsample
- *        [--api <url>] [--out <path>] [--resume] [--engine-sha <sha>]
+ *        [--api <url>] [--out <path>] [--resume] [--engine-sha <sha>] [--allowance-api <url>]
+ *
+ * --allowance-api adds a second engine whose grounded-prompt count joins the daily guard. A branch
+ * run (engine started on the runner) shares the Google key with production, so the guard must
+ * count both (GoPMO 1.18.11.7.18, A0).
  *
  * Guards (each is a prereg rule, not a tunable):
  *   - the gold file must hash to GOLD_SHA256, else nothing is sent   (§2, §5)
@@ -48,6 +52,17 @@ export const SUBSAMPLE_PATH = path.join(REPO_ROOT, 'docs/research/data/accuracy-
 export const DEFAULT_API = 'https://faultline-api.fly.dev';
 /** Prereg §7: the lever-1 daily cap on grounded prompts, leaving room for production. */
 export const DAILY_GROUNDED_CAP = 1000;
+/**
+ * With --allowance-api, production keeps spending the same key while a batch is in flight, so the
+ * guard leaves this many prompts for it (codex review of f5d637c, finding 1). Production served 0
+ * grounded prompts on 2026-10-20 by 03:50Z (admin GET /usage); 100 is headroom, not a forecast.
+ * ACCEPTED RESIDUAL (codex re-review of f68d2f1, finding 1): the reads are snapshots, so production
+ * spending more than 100 grounded prompts during one in-flight batch (about a minute) would carry
+ * the day past 1,000. No reservation can be shared with production, so this is stated, not closed.
+ * The 1,000 is the prereg's own lever below Google's 1,500 free daily prompts; the cost of an
+ * overshoot is the per-prompt grounding price on the excess.
+ */
+export const PRODUCTION_HEADROOM = 100;
 /** Prereg §6: the route takes up to 25 claims. */
 export const BATCH_SIZE = 25;
 /** Prereg §6: retry any apiError item up to 3 times. */
@@ -78,12 +93,12 @@ class RunStop extends Error {
 
 export function parseArgs(argv) {
   const options = {
-    set: undefined, api: DEFAULT_API, out: undefined, resume: false, engineSha: undefined,
+    set: undefined, api: DEFAULT_API, out: undefined, resume: false, engineSha: undefined, allowanceApi: undefined,
     gold: GOLD_PATH, subsample: SUBSAMPLE_PATH, retryBaseMs: 2000,
   };
   const valueFlags = {
     '--set': 'set', '--api': 'api', '--out': 'out', '--engine-sha': 'engineSha',
-    '--gold': 'gold', '--subsample': 'subsample', '--retry-base-ms': 'retryBaseMs',
+    '--gold': 'gold', '--subsample': 'subsample', '--retry-base-ms': 'retryBaseMs', '--allowance-api': 'allowanceApi',
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -102,6 +117,7 @@ export function parseArgs(argv) {
   options.retryBaseMs = Number(options.retryBaseMs);
   if (!Number.isFinite(options.retryBaseMs) || options.retryBaseMs < 0) throw new Error('--retry-base-ms must be >= 0');
   options.api = options.api.replace(/\/+$/, '');
+  if (options.allowanceApi !== undefined) options.allowanceApi = options.allowanceApi.replace(/\/+$/, '');
   if (options.engineSha !== undefined) options.engineSha = normalizeSha(options.engineSha);
   options.out ??= path.join(REPO_ROOT, 'docs/research/data', `accuracy-g0-${defaultRunId(options.set)}.jsonl`);
   return options;
@@ -233,28 +249,63 @@ async function readHealth(request) {
   return { commit, version: json.version ?? null };
 }
 
-async function readGroundedPrompts(request) {
+async function readGroundedPrompts(request, strict = false) {
   const { status, json } = await request('GET', '/usage');
-  const count = json?.groundingAllowance?.groundedPrompts;
+  const allowance = json?.groundingAllowance;
+  const count = allowance?.groundedPrompts;
   if (status !== 200 || typeof count !== 'number') {
     throw new RunStop(EXIT.ERROR, `GET /usage answered ${status} without groundingAllowance.groundedPrompts (is the key the admin key?)`);
   }
-  return { count, day: json.groundingAllowance.day, resetsAt: json.groundingAllowance.resetsAt };
+  // Branch mode only (strict): a count the guard cannot trust stops the run rather than letting it
+  // spend (codex review of f5d637c). Deployed mode keeps the original check, unchanged.
+  if (!strict) return { count, day: allowance.day, resetsAt: allowance.resetsAt };
+  if (!Number.isSafeInteger(count) || count < 0 || typeof allowance.day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(allowance.day)) {
+    throw new RunStop(EXIT.ERROR, `GET /usage answered an unusable allowance (count ${count}, day ${allowance.day})`);
+  }
+  if (typeof allowance.ledgerWriteFailures === 'number' && allowance.ledgerWriteFailures > 0) {
+    throw new RunStop(EXIT.ERROR, `GET /usage reports ${allowance.ledgerWriteFailures} grounding-ledger write failures, so its count is not complete`);
+  }
+  return { count, day: allowance.day, resetsAt: allowance.resetsAt };
 }
 
 // ── Guards ───────────────────────────────────────────────────────────────────
 
-/** Prereg §7: stop before a batch that would take today's count past 1,000. */
-async function guardAllowance(request, batchSize, log) {
-  const allowance = await readGroundedPrompts(request);
-  if (allowance.count + batchSize > DAILY_GROUNDED_CAP) {
+/**
+ * Prereg §7: stop before a batch that would take today's count past 1,000. With --allowance-api
+ * the count is the sum over every engine that spends the same Google key.
+ */
+// The highest same-day count each engine has reported in this process. A lower read later means the
+// engine's counter was reset (a lost ledger), so its count no longer covers the day (codex
+// re-review of a2af549, finding 7).
+const highestSeen = new Map();
+
+async function guardAllowance(requests, batchSize, log) {
+  const reads = [];
+  for (const request of requests) reads.push(await readGroundedPrompts(request, requests.length > 1));
+  if (requests.length > 1) {
+    reads.forEach((read, i) => {
+      const key = `${i}:${read.day}`;
+      const prior = highestSeen.get(key);
+      if (prior !== undefined && read.count < prior) {
+        throw new RunStop(EXIT.ERROR, `STOP: engine ${i} reported ${read.count} grounded prompts on ${read.day} after reporting ${prior}; its counter was reset, so the daily guard cannot trust it`);
+      }
+      highestSeen.set(key, Math.max(prior ?? 0, read.count));
+    });
+  }
+  const days = [...new Set(reads.map((read) => read.day))];
+  if (days.length > 1) {
+    throw new RunStop(EXIT.ALLOWANCE_STOP, `STOP (allowance guard): the engines report different allowance days (${days.join(', ')}). Resume with --resume.`);
+  }
+  const count = reads.reduce((sum, read) => sum + read.count, 0);
+  const headroom = reads.length > 1 ? PRODUCTION_HEADROOM : 0;
+  if (count + batchSize + headroom > DAILY_GROUNDED_CAP) {
     throw new RunStop(
       EXIT.ALLOWANCE_STOP,
-      `STOP (allowance guard): ${allowance.count} grounded prompts on ${allowance.day} + batch of ${batchSize} would pass ${DAILY_GROUNDED_CAP}. `
-        + `Resume after ${allowance.resetsAt} with --resume.`,
+      `STOP (allowance guard): ${count} grounded prompts on ${days[0]} + batch of ${batchSize}${headroom ? ` + production headroom ${headroom}` : ''} would pass ${DAILY_GROUNDED_CAP}. `
+        + `Resume after ${reads[0].resetsAt} with --resume.`,
     );
   }
-  log(`allowance ${allowance.count}/${DAILY_GROUNDED_CAP} on ${allowance.day}`);
+  log(`allowance ${count}/${DAILY_GROUNDED_CAP} on ${days[0]}${reads.length > 1 ? ` (${reads.map((read) => read.count).join(' + ')})` : ''}`);
 }
 
 /** Resolve the engine identity at start; refuse when it cannot be established. */
@@ -292,13 +343,19 @@ function sleep(ms) {
 }
 
 /** POST one batch. Returns results by id, or null when the whole call failed. */
-async function postBatch(request, batch) {
+async function postBatch(request, batch, stopOnNoAnswer = false) {
   let response;
   try {
     response = await request('POST', '/admin/verify-claims', {
       claims: batch.map((item) => ({ id: String(item.id), text: item.claim })),
     });
   } catch {
+    // Branch mode (--allowance-api): a batch that did not answer may still be spending on the
+    // engine, and its spend is recorded only when it finishes, so re-sending it could pass the
+    // spend bound. Stop instead (opus seat on 462fc29, F3). Deployed mode keeps the prereg retry.
+    if (stopOnNoAnswer) {
+      throw new RunStop(EXIT.ERROR, 'STOP: a batch did not answer (network error or timeout); its provider calls may still be running, so the run stops rather than re-send it. Resume with --resume after the engine is idle.');
+    }
     return null; // network error or timeout: every item in the batch is an apiError attempt
   }
   const { status, json } = response;
@@ -324,6 +381,10 @@ function buildRow(item, result, attempts, engineSha) {
     status: result ? result.status : 'unverified',
     apiError: result ? result.apiError === true : true,
     parseFallback: result ? result.parseFallback === true : false,
+    noSourceAbstain: result ? result.noSourceAbstain === true : false,
+    // Why an unchecked item went unchecked (output_truncated, provider_unparseable, ...): a label,
+    // never text. It lets a readout separate a binding ceiling from other failures (GoPMO 1.18.11.7.18).
+    apiErrorReason: result && typeof result.apiErrorReason === 'string' && /^[a-z_]{1,40}$/.test(result.apiErrorReason) ? result.apiErrorReason : null,
     attempts,
     model: result && typeof result.model === 'string' ? result.model : null,
     engineSha,
@@ -350,19 +411,19 @@ function closeExhausted(pending, attempts, options, engine, log) {
   return pending.filter((item) => (attempts.get(item.id) ?? 0) < MAX_CALLS);
 }
 
-async function runBatches({ request, options, pending, engine, done, attempts, log }) {
+async function runBatches({ request, allowance, options, pending, engine, done, attempts, log }) {
   let model = [...done.values()].find((row) => row.model)?.model ?? null;
   const queue = closeExhausted(pending, attempts, options, engine, log);
   const ledger = ledgerPath(options.out);
   let retryRound = 0;
   while (queue.length > 0) {
     const batch = queue.splice(0, BATCH_SIZE);
-    await guardAllowance(request, batch.length, log);
+    await guardAllowance(allowance, batch.length, log);
     await guardEngine(request, engine);
     const calls = batch.map((item) => ({ id: item.id, attempt: (attempts.get(item.id) ?? 0) + 1 }));
     recordCalls(ledger, calls);
     for (const { id, attempt } of calls) attempts.set(id, attempt);
-    const results = await postBatch(request, batch);
+    const results = await postBatch(request, batch, allowance.length > 1);
     const rows = [];
     const retry = [];
     for (const item of batch) {
@@ -434,7 +495,8 @@ export async function runAccuracy(options, deps = {}) {
     }
     const pending = items.filter((item) => !done.has(item.id));
     log(`set ${options.set}: ${items.length} items, ${done.size} already written, ${pending.length} to run; engine ${engine.engineSha}; out ${options.out}`);
-    await runBatches({ request, options, pending, engine, done, attempts, log });
+    const allowance = [request, ...(options.allowanceApi ? [makeClient(options.allowanceApi, key)] : [])];
+    await runBatches({ request, allowance, options, pending, engine, done, attempts, log });
     summarize(options.out, items.length, log);
     return EXIT.OK;
   } catch (error) {

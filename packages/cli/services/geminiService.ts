@@ -1,9 +1,12 @@
 
 import { GoogleGenAI } from "@google/genai";
-import type { Claim, VerificationResult, ClaimStatus } from '../types';
+import type { Claim, VerificationResult } from '../types';
 import { sanitizeVerifyError } from './verify-error';
 import { recordUsage } from '../lib/usage-sink';
 import { ExtractionError, parseExtractedClaims } from '../providers/extraction-error';
+import { readVerdictReply, truncatedVerdict, unparseableVerdict } from '../providers/verdict-reply';
+import { geminiCeilingConfig } from '../providers/call-ceilings';
+import { isGeminiTruncated, OutputTruncatedError } from '../providers/output-truncation';
 
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 
@@ -13,7 +16,7 @@ export const GEMINI_MODEL: string =
 
 /**
  * BLG-005 defect-1: emit real Gemini SDK usage to the active scan's usage sink.
- * The SDK response carries usageMetadata (promptTokenCount/candidatesTokenCount);
+ * The SDK response carries usageMetadata (prompt, candidates, tool-use prompt and thoughts counts);
  * the engine previously discarded it. No-op outside a captureUsage() scope.
  * `isGrounding` = true only when this call used the googleSearch tool (bills the
  * per-grounded-prompt surcharge); false for extraction and shared-source verify.
@@ -24,11 +27,16 @@ function recordGeminiUsage(response: any, isGrounding: boolean, callType: string
     provider: 'gemini',
     model: GEMINI_MODEL,
     callType,
-    inputTokens: u.promptTokenCount ?? 0,
-    outputTokens: u.candidatesTokenCount ?? 0,
+    // Google bills tool-use prompt tokens as input and thinking tokens as output; neither is in
+    // promptTokenCount or candidatesTokenCount. One grounded call on 2026-10-21 reported 25/79 there
+    // and 122 tool-use + 120 thinking tokens beside them (GoPMO 1.18.11.7.18).
+    inputTokens: count(u.promptTokenCount) + count(u.toolUsePromptTokenCount),
+    outputTokens: count(u.candidatesTokenCount) + count(u.thoughtsTokenCount),
     isGrounding,
   });
 }
+
+const count = (n: unknown): number => (typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : 0);
 
 // Helper to sanitize JSON strings by finding the first { or [ and last } or ]
 const cleanJson = (text: string): string => {
@@ -104,6 +112,7 @@ export const extractClaims = async (text: string, apiKey: string, image?: { data
       model,
       contents: { parts },
       config: {
+        ...geminiCeilingConfig('extract'),
         responseMimeType: "application/json",
         responseSchema: {
           type: 'ARRAY',
@@ -125,6 +134,9 @@ export const extractClaims = async (text: string, apiKey: string, image?: { data
   }
 
   recordGeminiUsage(response, false, 'extraction');
+  // Checked before the empty-reply test: a reply cut at its ceiling is a truncated
+  // extraction, never fewer claims and never "unreadable" (GoPMO 1.18.11.7.18).
+  if (isGeminiTruncated(response)) throw new ExtractionError('output_truncated', new OutputTruncatedError('gemini', 'extract'));
   // An empty reply (a blocked or cut-off response) is a failed extraction, not "no claims".
   if (!response.text?.trim()) throw new ExtractionError('invalid_output', new Error('empty extraction reply'));
   return parseExtractedClaims(cleanJson(response.text));
@@ -169,12 +181,15 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
       model,
       contents: prompt,
       config: {
+        ...geminiCeilingConfig('verify'),
         tools: [{ googleSearch: {} }],
         // responseMimeType cannot be used with googleSearch, so we rely on the prompt and cleanJson
       }
     });
 
     recordGeminiUsage(response, true, 'grounded-verify:gemini');
+    // A reply cut at its ceiling is not a verdict, even if the part that arrived parses.
+    if (isGeminiTruncated(response)) return truncatedVerdict(claim.id);
     // The grounded request searched and judged in one call, so retrieval and
     // verdict share this moment (Honor System #2, GoPMO 1.18.11.3 P1a).
     const returnedAt = new Date().toISOString();
@@ -182,24 +197,13 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
       && (response as { modelVersion: string }).modelVersion.length > 0
       ? (response as { modelVersion: string }).modelVersion
       : model;
-    let resultJson: any = {};
-    let parseFallback = false;
-    try {
-      const cleanedText = cleanJson(response.text || '{}');
-      if (cleanedText && cleanedText !== '{}') {
-          resultJson = JSON.parse(cleanedText);
-      } else {
-        throw new Error("Empty JSON");
-      }
-    } catch (e) {
+    const verdict = readVerdictReply(cleanJson(response.text || ''));
+    if (!verdict) {
       // Length only: the reply can quote the submitted claim, and stdout is kept
       // as operational logs on the hosted API (faultline-web privacy page, PR 61).
       console.warn(`Failed to parse JSON from verification response (${response.text?.length ?? 0} chars)`);
-      // Fallback: If text exists but isn't JSON, assume it's the explanation
-      if (response.text) {
-          resultJson = { status: 'mixed', explanation: response.text.substring(0, 150) + '...' };
-          parseFallback = true;
-      }
+      // Not a verdict: no status, no sources, no provenance (al:5b18840b0116047a item c).
+      return unparseableVerdict(claim.id);
     }
 
     const sources: Array<{ title: string; uri: string }> = [];
@@ -219,14 +223,18 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
 
     const uniqueSources = sources.filter((v, i, a) => a.findIndex(t => t.uri === v.uri) === i);
 
+    // A grounded 'contradicted' needs a source that says the claim is false. With
+    // no grounding source at all the model is reporting absence of evidence, which
+    // is 'unverified', never a refutation (fw al:3dc2e0b227eaedd6, EP4 c4).
+    const noSourceAbstain = verdict.status === 'contradicted' && uniqueSources.length === 0;
+    const status = noSourceAbstain ? 'unverified' : verdict.status;
+
     return {
       claimId: claim.id,
-      status: (resultJson.status || 'unverified') as ClaimStatus,
-      explanation: resultJson.explanation || 'No structural analysis provided.',
+      status,
+      explanation: verdict.explanation,
       sources: uniqueSources.slice(0, 3),
-      // Set only on the non-JSON fallback above, so every other result keeps
-      // its exact previous shape (prereg G0 §3: the `mixed` confound).
-      ...(parseFallback ? { parseFallback: true } : {}),
+      ...(noSourceAbstain ? { noSourceAbstain: true } : {}),
       ...searchSuggestionsOf(response.candidates?.[0]?.groundingMetadata),
       provenance: { provider: 'gemini', model: servedModel, verifiedAt: returnedAt, retriever: 'gemini-grounding', retrievedAt: returnedAt },
     };
@@ -288,10 +296,12 @@ export const retrieveSources = async (claimText: string, apiKey: string): Promis
     const response = await ai.models.generateContent({
       model: GEMINI_MODEL,
       contents: prompt,
-      config: { tools: [{ googleSearch: {} }] },
+      config: { ...geminiCeilingConfig('retrieve'), tools: [{ googleSearch: {} }] },
     });
 
     recordGeminiUsage(response, true, 'grounded-retrieve:gemini');
+    // A cut-off retrieval is a failed retrieval, handled like the API error below.
+    if (isGeminiTruncated(response)) throw new OutputTruncatedError('gemini', 'retrieve');
     const sources: Array<{ title: string; uri: string }> = [];
     const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
     if (chunks) {
@@ -346,21 +356,23 @@ export const verifyClaimGrounded = async (
 
   try {
     const ai = getClient(apiKey);
-    const response = await ai.models.generateContent({ model: GEMINI_MODEL, contents: prompt });
+    const response = await ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: prompt,
+      config: geminiCeilingConfig('verifyGrounded'),
+    });
 
     recordGeminiUsage(response, false, 'grounded-verify:gemini');
-    let resultJson: any = {};
-    try {
-      const cleaned = cleanJson(response.text || '{}');
-      if (cleaned && cleaned !== '{}') resultJson = JSON.parse(cleaned);
-    } catch {
-      if (response.text) resultJson = { status: 'mixed', explanation: response.text.substring(0, 150) };
-    }
+    // A cut-off vote is a failed vote with its own reason, not a verdict.
+    if (isGeminiTruncated(response)) return { ...truncatedVerdict(claim.id), sources };
+    const verdict = readVerdictReply(cleanJson(response.text || ''));
+    // An unreadable reply is a failed vote, not a 'mixed' one (al:5b18840b0116047a item c).
+    if (!verdict) return { ...unparseableVerdict(claim.id), sources };
 
     return {
       claimId: claim.id,
-      status: (resultJson.status || 'unverified') as ClaimStatus,
-      explanation: resultJson.explanation || 'No structural analysis provided.',
+      status: verdict.status,
+      explanation: verdict.explanation,
       sources,
     };
   } catch (error) {
@@ -400,9 +412,11 @@ export const generateCritiqueAndPrompt = async (originalText: string, failedClai
     const response = await ai.models.generateContent({
       model,
       contents: prompt,
-      config: { responseMimeType: "application/json" }
+      config: { ...geminiCeilingConfig('critique'), responseMimeType: "application/json" }
     });
     recordGeminiUsage(response, false, 'critique:gemini');
+    // A cut-off critique takes the fallback below, like any failed critique.
+    if (isGeminiTruncated(response)) throw new OutputTruncatedError('gemini', 'critique');
     const cleanedText = cleanJson(response.text || '{}');
     return JSON.parse(cleanedText);
   } catch (error) {

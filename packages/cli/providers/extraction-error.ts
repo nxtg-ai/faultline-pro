@@ -1,13 +1,15 @@
 import type { ApiErrorReason, Claim } from '../types';
+import { isOutputTruncatedError } from './output-truncation';
 
 /**
  * Why a claim extraction did not produce claims.
  *
  * The provider-call reasons are the verify stage's ApiErrorReason; extraction
- * adds `invalid_output` for a model reply that is not a claims array (most
- * often JSON cut off mid-output on a long document).
+ * adds `invalid_output` for a model reply that is not a claims array. A reply
+ * the provider reports as stopped at its output-token ceiling is
+ * `output_truncated` (providers/call-ceilings.ts), never fewer claims.
  */
-export type ExtractionErrorReason = ApiErrorReason | 'invalid_output';
+export type ExtractionErrorReason = Exclude<ApiErrorReason, 'provider_unparseable'> | 'invalid_output';
 
 /**
  * Classify a provider-call error. Patterns follow services/verify-error.ts so
@@ -15,7 +17,7 @@ export type ExtractionErrorReason = ApiErrorReason | 'invalid_output';
  * a timeout is tested before the 5xx/unavailable class because "upstream timed
  * out (503)" is still a timeout to the caller.
  */
-export function classifyApiError(err: unknown): ApiErrorReason {
+export function classifyApiError(err: unknown): Exclude<ApiErrorReason, 'provider_unparseable' | 'output_truncated'> {
   const name = err instanceof Error ? err.name : '';
   const raw = (err instanceof Error ? err.message : String(err)).toLowerCase();
   if (/\b429\b|resource_exhausted|quota|rate[ _-]?limit|too many requests/.test(raw)) return 'rate_limited';
@@ -34,6 +36,7 @@ const SAFE_MESSAGES: Record<ExtractionErrorReason, string> = {
   provider_unavailable: 'Claim extraction failed: the extraction provider is unavailable. Nothing was verified; retry shortly.',
   timeout: 'Claim extraction failed: the extraction provider timed out. Nothing was verified; retry shortly.',
   invalid_output: 'Claim extraction failed: the extraction provider returned an unreadable claim list. Nothing was verified.',
+  output_truncated: 'Claim extraction failed: the extraction reply was cut off at its output limit. Nothing was verified.',
   provider_error: 'Claim extraction failed: the extraction provider returned an error. Nothing was verified.',
 };
 
@@ -56,7 +59,9 @@ export class ExtractionError extends Error {
 
   /** Wrap a provider-call failure, classifying it like the verify stage does. */
   static fromProviderError(err: unknown): ExtractionError {
-    return err instanceof ExtractionError ? err : new ExtractionError(classifyApiError(err), err);
+    if (err instanceof ExtractionError) return err;
+    if (isOutputTruncatedError(err)) return new ExtractionError('output_truncated', err);
+    return new ExtractionError(classifyApiError(err), err);
   }
 }
 

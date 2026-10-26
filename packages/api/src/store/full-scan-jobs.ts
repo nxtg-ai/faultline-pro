@@ -73,7 +73,8 @@ export type TerminalStatus = 'done' | 'stopped' | 'failed';
 /** Why a fact claim got no verdict. The engine's reasons plus 'not_attempted'. */
 export type UnservedReason = ApiErrorReason | 'not_attempted';
 export const UNSERVED_REASONS: readonly UnservedReason[] = [
-  'rate_limited', 'provider_unavailable', 'timeout', 'provider_error', 'not_attempted',
+  'rate_limited', 'provider_unavailable', 'timeout', 'provider_error', 'provider_unparseable', 'output_truncated',
+  'not_attempted',
 ];
 
 export interface UnservedClaim {

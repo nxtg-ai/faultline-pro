@@ -27,18 +27,37 @@ import type { Claim } from '../types.js';
 
 const CLAIM: Claim = { id: 'c1', text: 'The Eiffel Tower is in Paris.', type: 'fact', importance: 3 };
 
-describe('geminiService.verifyClaim — parseFallback', () => {
+describe('geminiService.verifyClaim — unreadable replies', () => {
   beforeEach(() => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
   });
 
-  it('non-JSON reply: status mixed AND parseFallback true', async () => {
+  // emma-soul al:5b18840b0116047a item c: an unreadable reply is our failure, not a
+  // verdict. Before 2026-10-16 this was status 'mixed' and billed.
+  it('non-JSON reply: unchecked, reason provider_unparseable, never mixed', async () => {
     sdk.reply = { text: 'I think this is probably true but sources disagree.' };
     const result = await verifyClaim(CLAIM, 'key');
-    expect(result.status).toBe('mixed');
+    expect(result.status).toBe('unverified');
+    expect(result.apiError).toBe(true);
+    expect(result.apiErrorReason).toBe('provider_unparseable');
     expect(result.parseFallback).toBe(true);
-    expect(result.apiError).toBeUndefined();
+    expect(result.sources).toEqual([]);
+    expect(result.provenance).toBeUndefined();
+    expect(result.explanation).not.toMatch(/sources disagree/);
+  });
+
+  it('JSON with no status, or a status outside the prompt list: unchecked, not unverified-as-verdict', async () => {
+    for (const text of ['{"explanation":"no status"}', '{"status":"probably","explanation":"x"}', '[]', '"supported"']) {
+      sdk.reply = { text };
+      const result = await verifyClaim(CLAIM, 'key');
+      expect(result.status).toBe('unverified');
+      expect(result.apiError).toBe(true);
+      expect(result.apiErrorReason).toBe('provider_unparseable');
+      expect(result.parseFallback).toBe(true);
+      expect(result.sources).toEqual([]);
+      expect(result.provenance).toBeUndefined();
+    }
   });
 
   it('JSON reply saying mixed: status mixed, no parseFallback', async () => {
@@ -53,7 +72,8 @@ describe('geminiService.verifyClaim — parseFallback', () => {
       '{"status":"supported","explanation":"Confirmed."}',
       '```json\n{"status":"contradicted","explanation":"Refuted."}\n```',
     ]) {
-      sdk.reply = { text };
+      // A grounded 'contradicted' needs a source (abstain-unverified.test.ts).
+      sdk.reply = { text, candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'S', uri: 'https://s.example/a' } }] } }] } as never;
       const result = await verifyClaim(CLAIM, 'key');
       expect(['supported', 'contradicted']).toContain(result.status);
       expect('parseFallback' in result).toBe(false);
@@ -62,11 +82,15 @@ describe('geminiService.verifyClaim — parseFallback', () => {
     }
   });
 
-  it('empty reply: unverified, not a parse fallback (no text to fall back on)', async () => {
+  it('empty reply: unchecked, reason provider_unparseable (no verdict was given)', async () => {
     sdk.reply = { text: '' };
     const result = await verifyClaim(CLAIM, 'key');
     expect(result.status).toBe('unverified');
-    expect(result.parseFallback).toBeUndefined();
+    expect(result.apiError).toBe(true);
+    expect(result.apiErrorReason).toBe('provider_unparseable');
+    expect(result.parseFallback).toBe(true);
+    expect(result.sources).toEqual([]);
+    expect(result.provenance).toBeUndefined();
   });
 
   it('provider error: apiError, not a parse fallback', async () => {

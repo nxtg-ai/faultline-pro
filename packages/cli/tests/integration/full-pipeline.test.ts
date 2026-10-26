@@ -70,7 +70,7 @@ describe('Integration: Full Pipeline — Extract → Score → Map → Report', 
     // c2 → contradicted (hiring claim is wrong)
     mockGenerateContent.mockResolvedValueOnce({
       text: JSON.stringify({ status: 'contradicted', explanation: 'Audit found bias.' }),
-      candidates: [{ groundingMetadata: { groundingChunks: [] } }],
+      candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'Refuting source', uri: 'https://refute.example/a' } }] } }],
     });
 
     const verifications: Record<string, VerificationResult> = {};
@@ -152,7 +152,7 @@ describe('Integration: Full Pipeline — Extract → Score → Map → Report', 
     for (const claim of toVerify) {
       mockGenerateContent.mockResolvedValueOnce({
         text: JSON.stringify({ status: 'contradicted', explanation: 'Completely wrong.' }),
-        candidates: [{ groundingMetadata: { groundingChunks: [] } }],
+        candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'Refuting source', uri: 'https://refute.example/a' } }] } }],
       });
     }
 
@@ -234,7 +234,7 @@ describe('Integration: Full Pipeline — Extract → Score → Map → Report', 
     // c2 → contradicted (generic)
     mockGenerateContent.mockResolvedValueOnce({
       text: JSON.stringify({ status: 'contradicted', explanation: 'Population is 2.1M.' }),
-      candidates: [{ groundingMetadata: { groundingChunks: [] } }],
+      candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'Refuting source', uri: 'https://refute.example/a' } }] } }],
     });
     // c3 → supported (generic)
     mockGenerateContent.mockResolvedValueOnce({
