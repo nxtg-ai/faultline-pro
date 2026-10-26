@@ -4,6 +4,14 @@ import { auditTrail } from './audit-trail.js';
 
 export type OutputFormat = 'json' | 'markdown' | 'html' | 'sarif';
 
+/** Heading for claims about the scanned document itself, which are never verified. */
+export const DOCUMENT_SCOPE_HEADING = 'About this document (not checked)';
+
+/** Claims about the document itself (scope 'document'), extraction order. */
+function documentScopeClaims(data: ScanResult): Array<{ id: string; text: string }> {
+  return (data.claims ?? []).filter((c) => c.scope === 'document');
+}
+
 /**
  * Render a report in the specified format.
  */
@@ -76,6 +84,16 @@ export function renderReport(data: ScanResult): string {
       const score = scoreMap.get(claimId);
       const scoreSuffix = score !== undefined ? ` (confidence: ${score.toFixed(2)})` : '';
       lines.push(`  ${icon} ${claimId}: ${result.status} — ${result.explanation}${scoreSuffix}`);
+    }
+    lines.push('');
+  }
+
+  // Claims about the document itself: listed apart, no verdict, no part in risk.
+  const aboutDocument = documentScopeClaims(data);
+  if (aboutDocument.length > 0) {
+    lines.push(`--- ${DOCUMENT_SCOPE_HEADING} ---`);
+    for (const c of aboutDocument) {
+      lines.push(`  [--] ${c.id}: ${c.text}`);
     }
     lines.push('');
   }
@@ -201,6 +219,17 @@ function renderMarkdownReport(data: ScanResult): string {
       const score = scoreMap.get(claimId);
       const scoreStr = score !== undefined ? score.toFixed(2) : '—';
       lines.push(`| ${claimId} | ${icon} ${result.status} | ${scoreStr} | ${result.explanation} |`);
+    }
+    lines.push('');
+  }
+
+  // Claims about the document itself: listed apart, no verdict, no part in risk.
+  const aboutDocument = documentScopeClaims(data);
+  if (aboutDocument.length > 0) {
+    lines.push(`## ${DOCUMENT_SCOPE_HEADING}`);
+    lines.push('');
+    for (const c of aboutDocument) {
+      lines.push(`- ${c.id}: ${c.text}`);
     }
     lines.push('');
   }

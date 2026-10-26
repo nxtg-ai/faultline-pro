@@ -1,4 +1,5 @@
 import type { Claim } from '../types.js';
+import { isDocumentRelative } from '../lib/claim-scope.js';
 
 /**
  * How many claims one scan sends to the verify stage. Every verified claim is a
@@ -24,9 +25,12 @@ export function resolveVerifyCap(cap: unknown): number {
   return cap;
 }
 
-/** A claim is worth verifying when it is a fact of importance 2 or higher. */
+/**
+ * A claim is worth verifying when it is a fact of importance 2 or higher and
+ * is about the world, not about the document itself (lib/claim-scope.ts).
+ */
 export function isEligibleForVerification(claim: Claim): boolean {
-  return claim.type === 'fact' && claim.importance >= 2;
+  return claim.type === 'fact' && claim.importance >= 2 && !isDocumentRelative(claim.text);
 }
 
 /** Eligible claims, most important first (stable sort keeps extraction order on ties). */

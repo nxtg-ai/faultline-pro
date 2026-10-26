@@ -143,6 +143,18 @@ The scorer can fail: `scripts/tests/test_accuracy_g0_score.py` checks that all-`
 
 A3 is tested on the committed 100 ids: the reviewer's all-opposite fixture (reproduced to the digit: BA difference 0.0301, CI [−0.2075, 0.2832], agreement 0.0000) is NOT REPRODUCED; identical runs, 10 and 15 balanced flips agree; 16 flips fail the floor with the CI inside the margin; 10 one-way flips on false items keep agreement at 0.90 but put the CI outside the margin. With component (i) removed, 3 tests went red; with component (ii) removed, 3 others went red; restored, all passed (2026-10-03).
 
+## Document-scope check on the gold set
+
+A claim about the scanned document itself ("the analysis does not focus on 70B+ models") is not sent for verification: `packages/cli/lib/claim-scope.ts` `isDocumentRelative` takes it out before the verify step, in a scan, a full scan and this route (which then returns `unverified` with `documentScope: true` and no provider call). Every gold-set item is a claim about the world, so any item the check flags would be a false positive and would drop out of the accuracy run.
+
+Measured 2026-10-26: `isDocumentRelative` over the `claim` field of every line of `docs/research/data/factcheck-bench-subtask4-claim-factuality.jsonl` (661 lines). The file has no id field, so items are named by 1-based line number.
+
+| Claims | Flagged | Flagged lines |
+|---|---|---|
+| 661 | 0 | none |
+
+No pattern needed tightening.
+
 ## Tests
 
 | Suite | File |
@@ -150,4 +162,5 @@ A3 is tested on the committed 100 ids: the reviewer's all-opposite fixture (repr
 | Route | `packages/api/tests/admin-verify-claims.test.ts` |
 | Runner | `packages/api/tests/accuracy-g0-runner.test.ts` |
 | `parseFallback` | `packages/cli/tests/gemini-parse-fallback.test.ts` |
+| Document scope | `packages/cli/tests/claim-scope.test.ts`, `packages/cli/tests/document-scope-pipeline.test.ts` |
 | Scorer | `scripts/tests/test_accuracy_g0_score.py` (`python3 -m pytest scripts/tests`; CI job `accuracy-g0-scorer`) |

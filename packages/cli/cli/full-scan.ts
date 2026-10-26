@@ -12,6 +12,7 @@
  */
 import type { Claim, VerificationResult } from '../types.js';
 import type { VerificationSummary } from './verify-cap.js';
+import { isDocumentRelative } from '../lib/claim-scope.js';
 
 /** Fact claims per charged unit (ruling 1.18.11.3.8: the quick scan's K = 8). */
 export const CLAIMS_PER_UNIT = 8;
@@ -21,9 +22,9 @@ export type ScanMode = 'quick' | 'full';
 
 /** Claims of a full scan split by whether they can be checked. */
 export interface FullScanPartition {
-  /** Claims of type `fact`, extraction order. These are verified. */
+  /** Claims of type `fact` about the world, extraction order. These are verified. */
   facts: Claim[];
-  /** Opinions and interpretations, extraction order. Never verified. */
+  /** Opinions, interpretations and facts about the document itself, extraction order. Never verified. */
   notCheckable: Claim[];
 }
 
@@ -60,16 +61,19 @@ export interface UnitAccounting {
 }
 
 /**
- * Split claims into facts (verified) and the rest (not checkable).
+ * Split claims into facts (verified) and the rest (not checkable). A fact about
+ * the document itself (lib/claim-scope.ts) is not checkable, so a full scan
+ * neither verifies it nor charges a unit for it.
  *
  * @example
  *   partitionForFullScan([{ type: 'fact', ... }, { type: 'opinion', ... }])
  *   // { facts: [the fact], notCheckable: [the opinion] }
  */
 export function partitionForFullScan(claims: Claim[]): FullScanPartition {
+  const isWorldFact = (c: Claim): boolean => c.type === 'fact' && !isDocumentRelative(c.text);
   return {
-    facts: claims.filter((c) => c.type === 'fact'),
-    notCheckable: claims.filter((c) => c.type !== 'fact'),
+    facts: claims.filter(isWorldFact),
+    notCheckable: claims.filter((c) => !isWorldFact(c)),
   };
 }
 
