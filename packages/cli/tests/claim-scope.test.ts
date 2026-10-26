@@ -232,6 +232,20 @@ describe('isDocumentRelative: edge inputs', () => {
     expect(isDocumentRelative('x '.repeat(50_000))).toBe(false);
     expect(Date.now() - start).toBeLessThan(2_000);
   });
+
+  it('handles a long run of punctuation inside one word in linear time', () => {
+    // A trailing-punctuation regex such as /[^A-Za-z0-9']+$/ is quadratic here.
+    const word = `${'&'.repeat(100_000)}x`;
+    const start = Date.now();
+    expect(hasAttribution(scopeTokens(word), word)).toBe(false);
+    expect(isDocumentRelative(`This report covers ${word}`)).toBe(isDocumentRelative('This report covers x'));
+    expect(Date.now() - start).toBeLessThan(2_000);
+  });
+
+  it('still reads a capitalised possessive followed by punctuation as attribution', () => {
+    const text = "This report covers Gartner's, findings.";
+    expect(hasAttribution(scopeTokens(text), text)).toBe(true);
+  });
 });
 
 describe('scopeTokens', () => {

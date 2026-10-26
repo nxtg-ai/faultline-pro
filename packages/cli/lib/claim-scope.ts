@@ -183,6 +183,22 @@ export function hasProposition(tokens: string[]): boolean {
   return tokens.some((w, i) => PROPOSITION_VERBS.has(w) || (NOUN_OR_VERB.has(w) && tokens[i + 1] === 'that'));
 }
 
+/** Letters, digits and apostrophes: the characters a word keeps at its end. */
+function isWordEndChar(ch: string): boolean {
+  return /[A-Za-z0-9'’]/.test(ch);
+}
+
+/**
+ * `raw` without its trailing punctuation ("Gartner's," -> "Gartner's"). A loop,
+ * not a `[^...]+$` regex: that regex retries from every start position and is
+ * quadratic on a long run of punctuation.
+ */
+function trimTrailingPunctuation(raw: string): string {
+  let end = raw.length;
+  while (end > 0 && !isWordEndChar(raw.charAt(end - 1))) end--;
+  return raw.slice(0, end);
+}
+
 /**
  * True when the claim names an outside source anywhere: an attribution word,
  * "et al", "from" anything other than the document itself ("from the comparison"
@@ -195,7 +211,7 @@ export function hasAttribution(tokens: string[], text: string): boolean {
     || (w === 'from' && !isDocReference(tokens, i + 1, true)));
   if (attributed) return true;
   return text.split(/\s+/).some((raw) => {
-    const word = raw.replace(/[^A-Za-z0-9'’]+$/, '');
+    const word = trimTrailingPunctuation(raw);
     const first = word.charAt(0);
     return first !== first.toLowerCase() && /['’]s?$/.test(word) && word.length > 2;
   });
