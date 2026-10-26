@@ -59,6 +59,10 @@ export interface ProviderSpendEvent {
   provider: string;
   modelId?: string;
   costUsd: number;
+  /** Claims the call handled (extracted or submitted). null only for a cost event that carried no count. */
+  claimCount: number | null;
+  /** Claims that got a billable verdict, `unverified` included. null only for a cost event that carried no count. */
+  verifiedCount: number | null;
 }
 
 /** The UTC budget period (YYYY-MM) a timestamp falls in. */
@@ -208,6 +212,8 @@ export function recordProviderSpend(event: ManagedScanCostEvent): ProviderSpendE
     provider: event.provider,
     modelId: event.modelId,
     costUsd: event.costUsd,
+    claimCount: event.claimsExtracted ?? null,
+    verifiedCount: event.claimsVerified ?? null,
   });
 }
 
