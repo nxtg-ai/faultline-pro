@@ -115,7 +115,7 @@ async function serverWithRoutes(withRedControl: boolean): Promise<{ app: Fastify
   return { app, rows: [...rows.values()].sort((a, b) => `${a.url} ${a.method}`.localeCompare(`${b.url} ${b.method}`)) };
 }
 
-const fill = (url: string, value: string) => url.replace(/:[A-Za-z]+/g, value).replace('*', value);
+const fill = (url: string, value: string) => url.replace(/:[A-Za-z]+/g, value).replaceAll('*', value);
 
 /** A value that satisfies a JSON schema, its free-text strings carrying `marker` as a sentence. */
 function sample(schema: unknown, marker: string, field = ''): unknown {
