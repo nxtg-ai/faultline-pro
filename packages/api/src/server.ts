@@ -23,6 +23,7 @@ import { reportRoutes } from './routes/report.js';
 import { uploadRoutes } from './routes/upload.js';
 import { keysRoutes } from './routes/keys.js';
 import { usageRoutes } from './routes/usage.js';
+import { usageRecordsRoutes } from './routes/usage-records.js';
 import { installGroundingCounter } from './store/grounding-allowance.js';
 import { dashboardRoutes } from './routes/dashboard.js';
 import { webhookRoutes } from './routes/webhooks.js';
@@ -83,7 +84,6 @@ import { stopFullScanJobPruning } from './store/full-scan-jobs.js';
 import { FAULTLINE_API_VERSION } from './version.js';
 import { applyRouteAccess } from './lib/route-access.js';
 import { releaseClaims } from './plugins/claim-meter.js';
-import { startClaimMeterSync, stopClaimMeterSync } from './store/claim-meter-sync.js';
 
 const MAX_FILE_SIZE = 10_485_760; // 10MB
 
@@ -169,6 +169,7 @@ export function buildServer() {
   fastify.register(uploadRoutes);
   fastify.register(keysRoutes);
   fastify.register(usageRoutes);
+  fastify.register(usageRecordsRoutes);
   fastify.register(dashboardRoutes);
   fastify.register(webhookRoutes);
   fastify.register(batchRoutes);
@@ -252,8 +253,6 @@ export function buildServer() {
     // Skip during tests to avoid fetch mock contamination
     if (process.env.NODE_ENV !== 'test') {
       getNpmMetricsStore().startPolling(3_600_000);
-      // Claim meter -> Stripe meter events; a no-op while STRIPE_SECRET_KEY is unset.
-      startClaimMeterSync();
     }
 
     // Weekly summary notification — fires every Sunday 09:00 UTC
@@ -282,7 +281,6 @@ export function buildServer() {
     getNpmMetricsStore().stopPolling();
     resetNpmMetricsStore();
     stopFullScanJobPruning();
-    stopClaimMeterSync();
   });
 
   fastify.addHook('onRequest', async (request: FastifyRequest) => {

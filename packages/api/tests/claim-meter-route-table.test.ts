@@ -1,12 +1,14 @@
-// Validates: node 1.18.11.7.6 (every verifying route goes through the claim meter)
+// Validates: claim meter and usage-record contract
+//
+// Every verifying route goes through the claim meter.
 //
 // The verifying routes are found by behaviour, not from a list:
 //  1. Every route of a built server (enumerated through Fastify's onRoute hook)
-//     is called with a customer key that has headroom, each with its own marker
+//     is called with a metered customer key that has headroom, each with its own marker
 //     in the text it submits. Background runners (scan queue, scheduled jobs)
 //     are then driven. A route is VERIFYING when the provider verified a claim
 //     carrying its marker.
-//  2. Each verifying route is called again with a customer key whose cap is 0.
+//  2. Each verifying route is called again with a metered key whose cap is 0.
 //     It must answer 402 claim_cap_reached, and no claim carrying its new marker
 //     may reach the provider, even after the runners are driven.
 //  Red control: a route added to the test server that calls the engine without
@@ -23,7 +25,7 @@ import { scan } from '@nxtg/faultline/cli/scan.js';
 import { buildServer } from '../src/server.js';
 import { requireApiKey } from '../src/plugins/auth.js';
 import { getKeyStore, resetKeyStore } from '../src/store/keys.js';
-import { resetClaimMeter } from '../src/store/claim-meter.js';
+import { getClaimMeter, resetClaimMeter } from '../src/store/claim-meter.js';
 import { resetRateLimiter } from '../src/store/ratelimit.js';
 import { resetCache } from '../src/store/cache.js';
 import { getTemplateStore } from '../src/store/templates.js';
@@ -56,7 +58,7 @@ registerProvider('mock', () => ({
 
 const RED_CONTROL = 'POST /test/unmetered-scan';
 const ENV_KEYS = [
-  'FAULTLINE_API_KEY', 'FAULTLINE_DEFAULT_CLAIM_CAP', 'FAULTLINE_CLAIM_METER_LEDGER', 'FAULTLINE_CLAIM_METER_SYNC_LEDGER',
+  'FAULTLINE_API_KEY', 'FAULTLINE_CLAIM_METER', 'FAULTLINE_CLAIM_METER_LEDGER', 'FAULTLINE_KEY_IDEMPOTENCY_LEDGER',
   'FAULTLINE_PROVIDER_SPEND_LEDGER', 'FAULTLINE_FULL_JOBS_LEDGER', 'FAULTLINE_GROUNDING_LEDGER',
 ];
 let saved: Record<string, string | undefined>;
@@ -69,9 +71,9 @@ beforeEach(() => {
   saved = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
   dir = mkdtempSync(join(tmpdir(), 'fl-claim-route-table-'));
   process.env.FAULTLINE_API_KEY = 'claim-route-table-server-key';
-  delete process.env.FAULTLINE_DEFAULT_CLAIM_CAP;
+  process.env.FAULTLINE_CLAIM_METER = '1';
   process.env.FAULTLINE_CLAIM_METER_LEDGER = join(dir, 'claim-meter.jsonl');
-  process.env.FAULTLINE_CLAIM_METER_SYNC_LEDGER = join(dir, 'claim-meter-sync.jsonl');
+  process.env.FAULTLINE_KEY_IDEMPOTENCY_LEDGER = join(dir, 'key-idempotency.jsonl');
   process.env.FAULTLINE_PROVIDER_SPEND_LEDGER = join(dir, 'provider-spend.jsonl');
   process.env.FAULTLINE_FULL_JOBS_LEDGER = join(dir, 'full-scan-jobs.jsonl');
   process.env.FAULTLINE_GROUNDING_LEDGER = join(dir, 'grounding.jsonl');
@@ -272,7 +274,7 @@ describe('every verifying route is metered', () => {
     resetState();
     const { app, rows } = await serverWithRoutes(false);
     try {
-      const roomy = getKeyStore().create('roomy', ['scan', 'pro'], undefined, { claimCap: 1_000_000 });
+      const roomy = getKeyStore().create('roomy', ['scan', 'pro'], undefined, { claimCap: 1_000_000, metered: true });
       const verifying = await findVerifyingRoutes(app, rows, roomy);
       const names = verifying.map((r) => `${r.method} ${r.url}`);
       // The sweep must actually reach the routes the meter is for (a broken sampler would pass vacuously).
@@ -284,8 +286,14 @@ describe('every verifying route is metered', () => {
       ]));
       // The estimate extracts but never verifies.
       expect(names).not.toContain('POST /scan/full/estimate');
+      // Every verifying route recorded its claims: none was dropped for an out-of-shape scanId or claimId.
+      const totals = getClaimMeter().totals();
+      expect(totals.used).toBeGreaterThan(0);
+      expect(totals.refusedIdentifiers).toBe(0);
+      const scans = new Set(getClaimMeter().page(0, 1000).records.map((r) => r.scanId));
+      expect(scans.size).toBeGreaterThanOrEqual(verifying.length);
 
-      const zero = getKeyStore().create('zero', ['scan', 'pro'], undefined, { claimCap: 0 });
+      const zero = getKeyStore().create('zero', ['scan', 'pro'], undefined, { claimCap: 0, metered: true });
       expect(await sweepZeroCap(app, verifying, zero)).toEqual([]);
     } finally {
       await app.close();
@@ -297,10 +305,10 @@ describe('every verifying route is metered', () => {
     resetState();
     const { app, rows } = await serverWithRoutes(true);
     try {
-      const roomy = getKeyStore().create('roomy', ['scan', 'pro'], undefined, { claimCap: 1_000_000 });
+      const roomy = getKeyStore().create('roomy', ['scan', 'pro'], undefined, { claimCap: 1_000_000, metered: true });
       const verifying = await findVerifyingRoutes(app, rows.filter((r) => `${r.method} ${r.url}` === RED_CONTROL || r.url === '/scan'), roomy);
       expect(verifying.map((r) => `${r.method} ${r.url}`)).toContain(RED_CONTROL);
-      const zero = getKeyStore().create('zero', ['scan', 'pro'], undefined, { claimCap: 0 });
+      const zero = getKeyStore().create('zero', ['scan', 'pro'], undefined, { claimCap: 0, metered: true });
       expect(await sweepZeroCap(app, verifying, zero)).toEqual([{ route: RED_CONTROL, reason: 'a claim reached the provider with no headroom' }]);
     } finally {
       await app.close();

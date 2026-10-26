@@ -1,9 +1,10 @@
+import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { getComplianceTemplateStore } from '../store/compliance-templates.js';
 import { requireApiKey, requireAdmin } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
-import { commitClaims, engineVerifyCap, meterScanId, reserveClaims } from '../plugins/claim-meter.js';
+import { commitClaims, engineVerifyCap, reserveClaims } from '../plugins/claim-meter.js';
 
 type Provider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
 
@@ -177,7 +178,7 @@ export async function complianceRoutes(fastify: FastifyInstance): Promise<void> 
 
       try {
         const scanResult = await scan(text, provider);
-        commitClaims(request, meterScanId('compliance'), scanResult, provider ?? 'gemini');
+        commitClaims(request, randomUUID(), scanResult, provider ?? 'gemini');
         const complianceAnalysis = store.applyTemplate(
           template,
           scanResult.claims,

@@ -11,8 +11,8 @@ import { rateLimitScan } from '../plugins/ratelimit.js';
 import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { isServerKeyId, resolveEntitledTier } from '../plugins/consensus-entitlement.js';
 import { recordProviderSpend } from '../store/provider-spend.js';
-import { claimCapReachedBody, committedClaim, reserveClaimsFor } from '../lib/claim-meter.js';
-import type { ClaimReservation } from '../store/claim-meter.js';
+import { committedClaim, jobRecordScanId, reserveClaimsFor } from '../lib/claim-meter.js';
+import { getClaimMeter, type ClaimReservation } from '../store/claim-meter.js';
 import { getUsageMeter } from '../store/usage.js';
 import {
   getCostStore,
@@ -248,8 +248,20 @@ function settleJobClaims(reservation: ClaimReservation, job: FullScanJob, progre
     const claim = committedClaim(p.claimId, p.verdict, job.provider);
     return claim ? [claim] : [];
   });
-  reservation.commit(job.jobId, served);
+  reservation.commit(jobRecordScanId(job.jobId), served);
   reservation.release();
+}
+
+/**
+ * Voids for a result its owner can never see. Called when the owner is
+ * answered `resultAvailable: false` (the verdicts were lost with the process)
+ * or `job_lost`. Unless the job's result was served first, every usage row the
+ * owner committed for the job is cancelled, once (a void identifier already
+ * recorded is skipped). A failed job commits nothing, so it has nothing to void.
+ */
+function voidUnseenResult(jobId: string, keyId: string, served: boolean): void {
+  if (served) return;
+  getClaimMeter().voidScan(keyId, jobRecordScanId(jobId));
 }
 
 // ── Routes ──────────────────────────────────────────────────────────────────
@@ -266,10 +278,20 @@ function readIdempotencyKey(request: FastifyRequest): string | null | undefined 
 function sendLookup(reply: FastifyReply, jobId: string, keyId: string, stop: boolean): FastifyReply {
   const store = getFullScanJobStore();
   const found = store.lookup(jobId, keyId);
-  if (found.kind === 'error') return reply.status(found.statusCode).send({ error: found.error });
-  if (found.kind === 'row') return reply.status(200).send(describeLedgerRow(found.row));
+  if (found.kind === 'error') {
+    if (found.error === 'job_lost') voidUnseenResult(jobId, keyId, false);
+    return reply.status(found.statusCode).send({ error: found.error });
+  }
+  if (found.kind === 'row') {
+    const view = describeLedgerRow(found.row);
+    voidUnseenResult(jobId, keyId, found.row.resultServedAt !== undefined);
+    return reply.status(200).send(view);
+  }
   if (stop) store.stop(found.job);
-  return reply.status(200).send(describeJob(found.job));
+  const view = describeJob(found.job);
+  // The owner now holds verdicts: the job's result counts as served, so it is never voided.
+  if (view.progress.some((p) => p.status === 'served')) store.markResultServed(found.job);
+  return reply.status(200).send(view);
 }
 
 export async function fullScanRoutes(fastify: FastifyInstance): Promise<void> {
@@ -364,14 +386,17 @@ export async function fullScanRoutes(fastify: FastifyInstance): Promise<void> {
       if (!store.ledgerWritable()) return reply.status(503).send({ error: 'ledger_unavailable' });
       // The claim meter reserves the estimate's fact claims (an estimate reserves nothing).
       const metered = reserveClaimsFor(request.keyId, estimate.factClaims);
-      if (metered.ok === false) return reply.status(402).send(claimCapReachedBody(metered));
+      if (metered.ok === false) return reply.status(metered.statusCode).send(metered.body);
 
       const job = store.startJob(estimate, {
         idempotencyKey,
         tier: resolveEntitledTier(keyId, request.headers['x-user-tier']),
       });
       const reservation = metered.reservation;
-      if (reservation) job.onTerminal = (finished, progress) => settleJobClaims(reservation, finished, progress);
+      if (reservation) {
+        job.metered = true;
+        job.onTerminal = (finished, progress) => settleJobClaims(reservation, finished, progress);
+      }
       // Counted here, once per job: the server.ts onResponse hook counts only /scan and /scan/upload.
       getUsageMeter().increment(keyId);
       store.enqueue(job, (queued) => runFullScanJob(store, queued));

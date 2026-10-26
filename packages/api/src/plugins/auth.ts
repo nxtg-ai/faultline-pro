@@ -1,6 +1,6 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { timingSafeEqual } from 'node:crypto';
-import { getKeyStore } from '../store/keys.js';
+import { getKeyStore, type KeyScope } from '../store/keys.js';
 import { getTenantStore } from '../store/tenants.js';
 
 /** Constant-time string comparison to prevent timing attacks on key validation. */
@@ -138,4 +138,27 @@ export function isAdminKeyId(keyId: string | undefined): boolean {
 export function scanHistoryKeyScope(request: FastifyRequest): string | undefined {
   if (isAdminKeyId(request.keyId)) return undefined;
   return request.keyId ?? NO_KEY_SCOPE;
+}
+
+/**
+ * True when the request's key holds `scope`. Admin keys (the server's own key
+ * and keystore keys with 'admin') pass every scope; any other key passes only
+ * the scopes listed on it. No keyId: false.
+ */
+export function hasScope(keyId: string | undefined, scope: KeyScope): boolean {
+  if (!keyId) return false;
+  if (isAdminKeyId(keyId)) return true;
+  return getKeyStore().validateById(keyId)?.scopes?.includes(scope) ?? false;
+}
+
+/**
+ * Prehandler: 403 `{ error: 'scope_required', scope }` unless the caller's key
+ * holds `scope`. Runs after requireApiKey (needs request.keyId).
+ */
+export function requireScope(scope: KeyScope) {
+  return async function requireScopeHook(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+    if (!hasScope(request.keyId, scope)) {
+      reply.status(403).send({ error: 'scope_required', scope });
+    }
+  };
 }

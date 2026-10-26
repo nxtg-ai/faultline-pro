@@ -162,7 +162,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
       // Server-side only: the cap comes from the entitled plan, never the request.
       const verifyPolicy = resolveVerifyPolicy(keyId, request.headers['x-user-tier']);
       // The stream issues no scanId, so its claim-meter rows get their own.
-      const meterScanId = `stream-${randomUUID()}`;
+      const meterScanId = randomUUID();
 
       try {
         const { result, legs } = await captureUsage(() => scan(
@@ -286,7 +286,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
       // Server-side only: the cap comes from the entitled plan, never the request.
       const verifyPolicy = resolveVerifyPolicy(keyId, request.headers['x-user-tier']);
       // The stream issues no scanId, so its claim-meter rows get their own.
-      const meterScanId = `stream-${randomUUID()}`;
+      const meterScanId = randomUUID();
 
       try {
         const { result, legs } = await captureUsage(() => scan(

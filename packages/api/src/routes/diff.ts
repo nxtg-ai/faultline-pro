@@ -1,8 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
-import { commitClaims, engineVerifyCap, meterScanId, reserveClaims } from '../plugins/claim-meter.js';
+import { commitClaims, engineVerifyCap, reserveClaims } from '../plugins/claim-meter.js';
 
 type Provider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
 
@@ -76,8 +77,8 @@ export async function diffRoutes(fastify: FastifyInstance): Promise<void> {
         scan(after, effectiveProvider),
       ]) as unknown as [ScanResult, ScanResult];
       // Both scans' verdicts reach the caller (claims and changed verdicts).
-      commitClaims(request, meterScanId('diff'), scanBefore, effectiveProvider);
-      commitClaims(request, meterScanId('diff'), scanAfter, effectiveProvider);
+      commitClaims(request, randomUUID(), scanBefore, effectiveProvider);
+      commitClaims(request, randomUUID(), scanAfter, effectiveProvider);
 
       const beforeByText = new Map(scanBefore.claims.map(c => [normalize(c.text), c]));
       const afterByText  = new Map(scanAfter.claims.map(c => [normalize(c.text), c]));

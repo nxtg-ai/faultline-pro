@@ -142,7 +142,7 @@ class ScanQueue {
     this.processingCount++;
     try {
       // Metered when it runs, against the key that queued it.
-      const result = await meteredScan(item.keyId, ENGINE_VERIFY_CAP, `queue-${item.id}`, item.provider,
+      const result = await meteredScan(item.keyId, ENGINE_VERIFY_CAP, randomUUID(), item.provider,
         () => scan(item.text, item.provider as Parameters<typeof scan>[1]));
       item.status = 'completed';
       item.result = result;

@@ -1,9 +1,10 @@
+import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import PDFDocument from 'pdfkit';
 import { requireApiKey } from '../plugins/auth.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import type { ScanResult } from '@nxtg/faultline/cli/scan.js';
-import { commitClaims, engineVerifyCap, meterScanId, reserveClaims } from '../plugins/claim-meter.js';
+import { commitClaims, engineVerifyCap, reserveClaims } from '../plugins/claim-meter.js';
 import { evidenceLine, type PdfSourceEvidence } from '../store/pdf-report.js';
 
 const BODY_SCHEMA = {
@@ -237,7 +238,7 @@ export async function reportRoutes(fastify: FastifyInstance): Promise<void> {
       try {
         const result = await scan(text, provider);
         const pdf = await buildPdf(result, projectName ?? 'Faultline Scan', scanDate);
-        commitClaims(request, meterScanId('report'), result, provider ?? 'gemini');
+        commitClaims(request, randomUUID(), result, provider ?? 'gemini');
 
         return reply
           .status(200)

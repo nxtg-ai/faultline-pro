@@ -140,6 +140,10 @@ export interface FullScanJob {
    * runs through `finish`, including a job the queue finishes without running.
    */
   onTerminal?: (job: FullScanJob, progress: ClaimProgress[]) => void;
+  /** True when the claim meter holds a reservation for this job (a metered key with the meter on). */
+  metered?: boolean;
+  /** When a GET first returned this job's verdicts to its owner (see FullScanLedgerRow.resultServedAt). Metered jobs only. */
+  resultServedAt?: string;
 }
 
 /** One terminal job on disk. Counts and ids only (see the header). */
@@ -159,6 +163,12 @@ export interface FullScanLedgerRow {
   /** Unserved claims by reason. */
   reasons: Partial<Record<UnservedReason, number>>;
   unserved: UnservedClaim[];
+  /**
+   * When a GET first returned this job's verdicts to its owner. Written as a
+   * second copy of the terminal row (the ledger is append-only; the last row for
+   * a job wins on reload). A served result is never voided by the claim meter.
+   */
+  resultServedAt?: string;
 }
 
 /** A started job as a replayed POST /scan/full answers it (in memory or reloaded from the ledger). */
@@ -348,6 +358,7 @@ export function ledgerRowFor(job: FullScanJob & { status: TerminalStatus; finish
     verdicts: tally(servedVerdicts, (p) => p.verdict!.status),
     reasons: tally(view.unserved, (u) => u.reason) as Partial<Record<UnservedReason, number>>,
     unserved: view.unserved,
+    ...(job.resultServedAt !== undefined ? { resultServedAt: job.resultServedAt } : {}),
   };
 }
 
@@ -636,6 +647,22 @@ class FullScanJobStore {
     } catch {
       // A failing hook never changes the job's terminal status.
     }
+  }
+
+  /**
+   * Record that the owner was shown a metered job's verdicts, once. While the job is
+   * active the mark is held in memory and goes on its terminal row; after that
+   * a copy of the terminal row carrying the mark is appended.
+   */
+  markResultServed(job: FullScanJob, now: Date = new Date()): void {
+    // Only a metered job can be voided, so only it needs the mark: other jobs' ledger rows stay as they were.
+    if (job.metered !== true || job.resultServedAt !== undefined) return;
+    job.resultServedAt = now.toISOString();
+    if (!isTerminal(job.status)) return;
+    const row = this.ledgerRows.get(job.jobId);
+    if (!row) return;
+    const served = { ...row, resultServedAt: job.resultServedAt };
+    this.persist(served);
   }
 
   /**

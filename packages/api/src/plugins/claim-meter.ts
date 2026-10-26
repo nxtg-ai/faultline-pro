@@ -1,24 +1,24 @@
-import { randomUUID } from 'node:crypto';
 import type { FastifyReply, FastifyRequest, preHandlerAsyncHookHandler } from 'fastify';
 import type { ClaimReservation } from '../store/claim-meter.js';
-import { billableClaims, claimCapReachedBody, committedClaim, ENGINE_VERIFY_CAP, reserveClaimsFor } from '../lib/claim-meter.js';
+import { billableClaims, committedClaim, ENGINE_VERIFY_CAP, recordScanId, reserveClaimsFor, type MeterRefusal } from '../lib/claim-meter.js';
 import type { VerificationResult } from '@nxtg/faultline/types.js';
 import { resolveVerifyPolicy } from './verify-cap.js';
 
 /**
- * Claim-meter prehandlers (node 1.18.11.7.6), the per-key monthly CLAIM cap.
+ * Claim-meter prehandlers, the per-key monthly CLAIM cap.
  *
- *   rateLimitScan       per-MINUTE burst throttle        → 429
- *   enforceMonthlyCap   per-KEY monthly scan quota       → 402 (dormant)
- *   enforceProviderSpend FLEET monthly USD at providers  → 503
- *   reserveClaims       per-KEY monthly claim cap        → 402 claim_cap_reached
+ *   rateLimitScan        per-MINUTE burst throttle        → 429
+ *   enforceMonthlyCap    per-KEY monthly scan quota       → 402 (dormant)
+ *   enforceProviderSpend FLEET monthly USD at providers   → 503
+ *   reserveClaims        per-KEY monthly claim cap        → 402 claim_cap_reached / claim_cap_unset
  *
  * `reserveClaims(max)` holds the most claims the route may verify BEFORE the
  * handler runs, so a refused request calls no provider. The handler commits the
  * claims that got a verdict (`commitClaims`) once the caller has them; the
  * server's onResponse hook releases whatever is still held, so every error path
  * frees its reservation. Streaming routes, which hijack the reply, release in
- * their own `finally` as well.
+ * their own `finally` as well. With the meter off, or for an unmetered key,
+ * nothing is reserved and nothing is committed.
  *
  * Must run AFTER requireApiKey (needs request.keyId) and after the other gates,
  * so a request they refuse never holds claims.
@@ -41,11 +41,11 @@ export const planVerifyCap: MaxClaims = (request) =>
 /** `scans` scans at the engine's own cap (routes that call scan() with no cap). */
 export const engineVerifyCap = (scans = 1): MaxClaims => () => scans * ENGINE_VERIFY_CAP;
 
-function refuse(reply: FastifyReply, refusal: Parameters<typeof claimCapReachedBody>[0]): void {
-  reply.status(402).send(claimCapReachedBody(refusal));
+function refuse(reply: FastifyReply, refusal: MeterRefusal): void {
+  reply.status(refusal.statusCode).send(refusal.body);
 }
 
-/** Prehandler: reserve `max(request)` claims for the request's key, or answer 402. */
+/** Prehandler: reserve `max(request)` claims for the request's key, or refuse. */
 export function reserveClaims(max: MaxClaims): preHandlerAsyncHookHandler {
   return async function reserveClaimsHook(request: FastifyRequest, reply: FastifyReply): Promise<void> {
     const outcome = reserveClaimsFor(request.keyId, max(request));
@@ -59,7 +59,7 @@ export function reserveClaims(max: MaxClaims): preHandlerAsyncHookHandler {
 
 /**
  * Prehandler for routes that queue work to run later (jobs, schedules, the scan
- * queue, bulk uploads): answer 402 now when the key could not reserve one run,
+ * queue, bulk uploads): refuse now when the key could not reserve one run,
  * holding nothing. The runner reserves for real when it runs.
  */
 export function requireClaimHeadroom(max: MaxClaims): preHandlerAsyncHookHandler {
@@ -73,11 +73,11 @@ export function requireClaimHeadroom(max: MaxClaims): preHandlerAsyncHookHandler
   };
 }
 
-/** Commit the billable claims of a delivered scan result under its scanId. */
-export function commitClaims(request: FastifyRequest, scanId: string, result: unknown, provider: string): number {
+/** Commit the billable claims of a delivered scan result under the scan id the API issued. */
+export function commitClaims(request: FastifyRequest, issuedScanId: string, result: unknown, provider: string): number {
   const reservation = request.claimReservation;
   if (!reservation) return 0;
-  return reservation.commit(scanId, billableClaims(result, provider));
+  return reservation.commit(recordScanId(issuedScanId), billableClaims(result, provider));
 }
 
 /** Commit one streamed claim verdict as it is delivered. */
@@ -93,22 +93,7 @@ export function commitStreamedClaim(
   if (reservation && claim) reservation.commit(scanId, [claim]);
 }
 
-/** A claim-meter scan id for a route whose response carries none. */
-export function meterScanId(kind: string): string {
-  return `${kind}-${randomUUID()}`;
-}
-
 /** Free whatever the request still holds. Safe to call more than once. */
 export function releaseClaims(request: FastifyRequest): void {
   request.claimReservation?.release();
-}
-
-/**
- * Hand the request's reservation to work that outlives the request (a full-scan
- * job). The request no longer releases it; the new owner must.
- */
-export function takeClaimReservation(request: FastifyRequest): ClaimReservation | undefined {
-  const reservation = request.claimReservation;
-  request.claimReservation = undefined;
-  return reservation;
 }

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import AdmZip from 'adm-zip';
 import { requireApiKey } from '../plugins/auth.js';
@@ -37,12 +38,12 @@ async function processBulkJob(
     .getEntries()
     .filter((e) => !e.isDirectory && ALLOWED_EXTENSIONS.has(getExtension(e.entryName)));
 
-  for (const [index, entry] of entries.entries()) {
+  for (const entry of entries) {
     const filename = entry.entryName;
     try {
       const text = entry.getData().toString('utf8');
       // Each file is metered on its own; once the key's cap is reached the rest fail unscanned.
-      const result = await meteredScan(keyId, ENGINE_VERIFY_CAP, `bulk-${jobId}-${index}`, provider, () => scan(text, provider));
+      const result = await meteredScan(keyId, ENGINE_VERIFY_CAP, randomUUID(), provider, () => scan(text, provider));
       store.recordFileResult(jobId, {
         filename,
         status: 'done',

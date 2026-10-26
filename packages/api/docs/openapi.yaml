@@ -53,6 +53,20 @@ components:
         type: integer
         example: 1742400000
 
+  responses:
+    ClaimMeterRefused:
+      description: >
+        Claim meter (metered keys only, while FAULTLINE_CLAIM_METER=1). The
+        request was refused before any provider call: its key's monthly claim
+        cap cannot cover the most claims it may verify (claim_cap_reached), or
+        the metered key has no claimCap (claim_cap_unset).
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: '#/components/schemas/ClaimCapReached'
+              - $ref: '#/components/schemas/ClaimCapUnset'
+
   schemas:
     # ── Core domain types ────────────────────────────────────────────────────
 
@@ -478,6 +492,34 @@ components:
           type: string
           format: date-time
           example: "2026-03-18T09:00:00.000Z"
+        metered:
+          type: boolean
+          description: >
+            True: the claim meter counts this key's claims, while the server
+            runs with FAULTLINE_CLAIM_METER=1. Absent or false: not metered.
+        claimCap:
+          type: integer
+          minimum: 0
+          description: Claims a metered key may have verified per calendar month (UTC).
+          example: 5000
+        stripeCustomerId:
+          type: string
+          pattern: '^cus_[A-Za-z0-9]{1,64}$'
+          description: Copied onto each usage row when the row is committed.
+          example: "cus_ABC123"
+        scopes:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/KeyScope'
+
+    KeyScope:
+      type: string
+      enum: [usage:read, keys:write]
+      description: >
+        `usage:read` reads GET /admin/usage-records. `keys:write` sets
+        claimCap, stripeCustomerId, metered or scopes. Admin keys pass every
+        scope; only an admin may grant scopes.
 
     ApiKeyWithSecret:
       allOf:
@@ -687,6 +729,62 @@ components:
           description: Human-readable error message.
           example: "Unauthorized. Provide a valid x-api-key header."
 
+    ClaimCapReached:
+      type: object
+      required: [error, cap, used, remaining, period, resetsAt]
+      properties:
+        error: { type: string, enum: [claim_cap_reached] }
+        cap: { type: integer, example: 5000 }
+        used:
+          type: integer
+          description: Committed usage rows minus their void rows, this key and month.
+          example: 4996
+        remaining: { type: integer, example: 4 }
+        period: { type: string, description: 'UTC month, YYYY-MM', example: "2026-11" }
+        resetsAt: { type: string, format: date-time, example: "2026-12-01T00:00:00.000Z" }
+
+    ClaimCapUnset:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string, enum: [claim_cap_unset] }
+
+    UsageRecord:
+      type: object
+      description: >
+        One row of the usage record. No claim text, evidence or key material.
+      required: [seq, ts, period, kind, keyId, stripeCustomerId, scanId, claimId, verdict, provider, identifier]
+      properties:
+        seq: { type: integer, minimum: 1, description: 'Rises by one per row from 1; never reused.' }
+        ts: { type: string, format: date-time, description: Commit time (UTC). }
+        period: { type: string, description: 'YYYY-MM (UTC) of ts.', example: "2026-11" }
+        kind: { type: string, enum: [usage, void] }
+        keyId: { type: string, description: The key id, never the key. }
+        stripeCustomerId: { type: string, nullable: true, description: The key's customer at commit time. }
+        scanId: { type: string, format: uuid }
+        claimId: { type: string, maxLength: 58 }
+        verdict: { type: string, enum: [supported, contradicted, mixed, unverified] }
+        provider: { type: string, example: gemini }
+        identifier:
+          type: string
+          maxLength: 100
+          description: '`scanId:claimId` (at most 95) for usage; `void:` plus the cancelled identifier for void.'
+        voids: { type: string, description: 'Void rows only: the usage identifier cancelled.' }
+
+    UsageRecordPage:
+      type: object
+      required: [ledgerId, records, nextAfter, hasMore]
+      properties:
+        ledgerId:
+          type: string
+          nullable: true
+          description: Written once with the record's first row; changes only if the record is re-created. Null before the first row.
+        records:
+          type: array
+          items: { $ref: '#/components/schemas/UsageRecord' }
+        nextAfter: { type: integer, description: 'The last returned seq, or `after` when none.' }
+        hasMore: { type: boolean }
+
     RateLimitErrorResponse:
       type: object
       required:
@@ -785,6 +883,7 @@ paths:
                 provider:
                   $ref: '#/components/schemas/Provider'
       responses:
+        "402": { $ref: '#/components/responses/ClaimMeterRefused' }
         "200":
           description: Scan completed successfully.
           headers:
@@ -888,6 +987,7 @@ paths:
                     Defaults to "Faultline Scan" if omitted.
                   example: "Q1 2026 AI Audit — Project Atlas"
       responses:
+        "402": { $ref: '#/components/responses/ClaimMeterRefused' }
         "200":
           description: PDF report generated successfully.
           headers:
@@ -965,6 +1065,7 @@ paths:
                 provider:
                   $ref: '#/components/schemas/Provider'
       responses:
+        "402": { $ref: '#/components/responses/ClaimMeterRefused' }
         "200":
           description: File scanned successfully.
           headers:
@@ -1062,6 +1163,7 @@ paths:
             schema:
               $ref: '#/components/schemas/BatchScanRequest'
       responses:
+        "402": { $ref: '#/components/responses/ClaimMeterRefused' }
         "200":
           description: Batch scan completed (some items may have failed — check `failed` count).
           headers:
@@ -1153,9 +1255,22 @@ paths:
 
         Default permissions when `permissions` is omitted: `["scan"]`.
 
+        Optional `Idempotency-Key` header (1 to 200 characters): the first call
+        mints; a replay with the same value returns 200 with the same `id` and
+        `key: null`. The map is kept on the ledger volume, so a deploy does not
+        forget it.
+
         **Requires admin-level API key.**
       tags:
         - Keys
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
       requestBody:
         required: true
         content:
@@ -1185,7 +1300,41 @@ paths:
                   description: >
                     Permissions to grant. Defaults to `["scan"]` if omitted.
                   example: ["scan", "report", "upload"]
+                expiresAt:
+                  type: string
+                  format: date-time
+                metered:
+                  type: boolean
+                  description: Meter this key's claims (scope keys:write).
+                claimCap:
+                  type: integer
+                  minimum: 0
+                  maximum: 100000000
+                  description: Claims per UTC month for a metered key (scope keys:write).
+                stripeCustomerId:
+                  type: string
+                  pattern: '^cus_[A-Za-z0-9]{1,64}$'
+                  description: Copied onto each usage row at commit time (scope keys:write).
+                scopes:
+                  type: array
+                  uniqueItems: true
+                  items:
+                    $ref: '#/components/schemas/KeyScope'
+                  description: Scopes to grant (admin only).
       responses:
+        "200":
+          description: >
+            Replay: this Idempotency-Key already minted a key. The same `id`,
+            with `key: null`; the plaintext is never returned again (rotate the
+            key for a fresh one). Nothing is minted.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiKey'
+                  - type: object
+                    properties:
+                      key: { type: string, nullable: true, enum: [null] }
         "201":
           description: Key created. Response includes the raw key value.
           content:
@@ -1214,6 +1363,59 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
 
   /keys/{id}:
+    patch:
+      operationId: updateKey
+      summary: Update a key's name, permissions, expiry or billing binding
+      description: >
+        `null` clears expiresAt, claimCap or stripeCustomerId. A new
+        stripeCustomerId applies to rows committed from then on; past rows keep
+        theirs. Setting metered, claimCap, stripeCustomerId or scopes needs
+        scope keys:write; granting scopes needs an admin key.
+
+        **Requires admin-level API key.**
+      tags:
+        - Keys
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100 }
+                permissions:
+                  type: array
+                  items: { type: string, enum: [scan, report, upload, admin, pro] }
+                expiresAt: { type: string, nullable: true }
+                metered: { type: boolean }
+                claimCap: { type: integer, minimum: 0, maximum: 100000000, nullable: true }
+                stripeCustomerId: { type: string, pattern: '^cus_[A-Za-z0-9]{1,64}$', nullable: true }
+                scopes:
+                  type: array
+                  uniqueItems: true
+                  items: { $ref: '#/components/schemas/KeyScope' }
+      responses:
+        "200":
+          description: The updated key (without the raw key value).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKey'
+        "400":
+          description: Request body failed schema validation.
+        "403":
+          description: Not an admin key, or a scope the caller lacks (`scope_required`, `admin_required`).
+        "404":
+          description: No key found with the given ID.
+
     delete:
       operationId: deleteKey
       summary: Delete an API key
@@ -1287,6 +1489,41 @@ paths:
                     example: "8e3f2a1b-4c7d-4e9f-a0b1-c2d3e4f5a6b7"
                   usage:
                     $ref: '#/components/schemas/UsageByDay'
+                  claims:
+                    type: object
+                    description: Metered keys only (FAULTLINE_CLAIM_METER=1). This UTC month.
+                    properties:
+                      period: { type: string, example: "2026-11" }
+                      cap: { type: integer, nullable: true }
+                      used: { type: integer }
+                      reserved: { type: integer }
+                      remaining: { type: integer, nullable: true }
+                      byVerdict:
+                        type: object
+                        properties:
+                          supported: { type: integer }
+                          contradicted: { type: integer }
+                          mixed: { type: integer }
+                          unverified: { type: integer }
+                  claimMeter:
+                    type: object
+                    description: Admin only. Fleet claim totals this month.
+                    properties:
+                      enabled: { type: boolean }
+                      period: { type: string }
+                      used: { type: integer }
+                      reserved: { type: integer }
+                      keys: { type: integer }
+                      byVerdict: { type: object, additionalProperties: { type: integer } }
+                      ledgerWriteFailures: { type: integer }
+                      refusedIdentifiers: { type: integer }
+                  usageRecords:
+                    type: object
+                    description: Admin only. Where the usage record is.
+                    properties:
+                      ledgerId: { type: string, nullable: true }
+                      lastSeq: { type: integer }
+                      rowsThisPeriod: { type: integer }
         "401":
           description: Missing or invalid API key.
           content:
@@ -1299,6 +1536,140 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+
+
+  /admin/usage-records:
+    get:
+      operationId: listUsageRecords
+      tags: [Usage]
+      summary: The usage record after a seq, for billing sync (scope usage:read)
+      description: >
+        Rows in seq order. A row is returned only once every lower seq is
+        returnable, so a reader paging with `after=nextAfter` never sees a gap.
+        Read only. Admin keys pass the scope check. A record not yet created
+        answers `ledgerId: null` and no rows.
+      parameters:
+        - name: after
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 1000, default: 500 }
+      responses:
+        "200":
+          description: One page of the usage record.
+          headers:
+            X-Usage-Record-Version:
+              schema: { type: string, enum: ["1"] }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageRecordPage'
+        "400":
+          description: after or limit out of range.
+        "401":
+          description: Missing or invalid API key.
+        "403":
+          description: The key does not hold scope usage:read (`{"error":"scope_required","scope":"usage:read"}`).
+
+  /scan/stream:
+    get:
+      tags: [Scan]
+      summary: Stream scan results via Server-Sent Events
+      description: Request and event shapes in docs/INTEGRATION.md. Each delivered verdict is committed to the claim meter as it is sent.
+      responses:
+        "200":
+          description: text/event-stream
+        "402": { $ref: '#/components/responses/ClaimMeterRefused' }
+    post:
+      tags: [Scan]
+      summary: Stream scan results via SSE (POST)
+      description: Request and event shapes in docs/INTEGRATION.md.
+      responses:
+        "200":
+          description: text/event-stream
+        "402": { $ref: '#/components/responses/ClaimMeterRefused' }
+
+  /scan/full:
+    post:
+      tags: [Scan]
+      summary: Start a full scan from an estimate (Idempotency-Key required)
+      description: >
+        Request and job shapes in docs/INTEGRATION.md. A metered key reserves
+        the estimate's fact claims; the served claims are committed when the
+        job ends. POST /scan/full/estimate verifies nothing and reserves nothing.
+      responses:
+        "202":
+          description: Job accepted.
+        "402": { $ref: '#/components/responses/ClaimMeterRefused' }
+
+  /scan/full/{jobId}:
+    get:
+      tags: [Scan]
+      summary: Poll a full scan
+      description: >
+        For a metered key, the first answer that returns verdicts marks the
+        job served. An answer of `resultAvailable: false` or 404 `job_lost`
+        for a job never served writes void rows for its committed claims, once.
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Job status, progress and units.
+        "404":
+          description: job_not_found or job_lost.
+        "410":
+          description: job_expired.
+
+  /scan/compliance-gate:
+    post:
+      tags: [Compliance]
+      summary: Scan text and evaluate EU AI Act compliance gate (pass/fail)
+      description: Request and response shapes in docs/INTEGRATION.md.
+      responses:
+        "200":
+          description: Gate result.
+        "402": { $ref: '#/components/responses/ClaimMeterRefused' }
+
+  /queue/scans:
+    post:
+      tags: [Jobs]
+      summary: Enqueue a scan for async processing
+      description: >
+        A metered key is checked for one run's headroom at submit; the run
+        reserves again when it executes and fails with claim_cap_reached over
+        the cap, calling no provider.
+      responses:
+        "202":
+          description: Queued.
+        "402": { $ref: '#/components/responses/ClaimMeterRefused' }
+
+  /schedules:
+    post:
+      tags: [Schedules]
+      summary: Create a recurring scan schedule
+      description: Checked for one run's headroom at submit; each run is metered when it executes.
+      responses:
+        "201":
+          description: Schedule created.
+        "402": { $ref: '#/components/responses/ClaimMeterRefused' }
+
+  /schedules/{id}/trigger:
+    post:
+      tags: [Schedules]
+      summary: Manually trigger a schedule run immediately
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Run result.
+        "402": { $ref: '#/components/responses/ClaimMeterRefused' }
 
   /dashboard:
     get:
@@ -1710,6 +2081,7 @@ paths:
                 text: { type: string }
                 provider: { $ref: '#/components/schemas/Provider' }
       responses:
+        "402": { $ref: '#/components/responses/ClaimMeterRefused' }
         "200":
           description: Scan result with evidence link scoring
         "401": { $ref: '#/components/responses/Unauthorized' }
@@ -1731,6 +2103,7 @@ paths:
                 after: { type: string }
                 provider: { $ref: '#/components/schemas/Provider' }
       responses:
+        "402": { $ref: '#/components/responses/ClaimMeterRefused' }
         "200":
           description: Structured diff of claims
           content:
@@ -1780,6 +2153,7 @@ paths:
                 text: { type: string }
                 provider: { $ref: '#/components/schemas/Provider' }
       responses:
+        "402": { $ref: '#/components/responses/ClaimMeterRefused' }
         "200":
           description: Scan result
         "404":
@@ -1800,6 +2174,7 @@ paths:
                 text: { type: string }
                 provider: { $ref: '#/components/schemas/Provider' }
       responses:
+        "402": { $ref: '#/components/responses/ClaimMeterRefused' }
         "200":
           description: EU AI Act PDF report
           content:
@@ -1820,6 +2195,7 @@ paths:
                 file: { type: string, format: binary }
                 provider: { $ref: '#/components/schemas/Provider' }
       responses:
+        "402": { $ref: '#/components/responses/ClaimMeterRefused' }
         "202":
           description: Bulk job accepted
           content:
@@ -1853,6 +2229,7 @@ paths:
                 text: { type: string }
                 provider: { $ref: '#/components/schemas/Provider' }
       responses:
+        "402": { $ref: '#/components/responses/ClaimMeterRefused' }
         "200":
           description: Scan result with compliance template applied
 
@@ -2017,6 +2394,7 @@ paths:
                 provider: { $ref: '#/components/schemas/Provider' }
                 webhookUrl: { type: string, format: uri }
       responses:
+        "402": { $ref: '#/components/responses/ClaimMeterRefused' }
         "201":
           description: Job created
 

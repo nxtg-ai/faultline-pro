@@ -61,28 +61,62 @@ Content-Type: application/json
 
 **Permission values**: `scan` `report` `upload` `admin` `pro`
 
-**Claim cap and billing fields.** A non-admin key carries `claimCap`, the number of claims it may have verified per calendar month (UTC), and `stripeCustomerId` (`cus_...`), the Stripe customer its metered claims are reported to. An admin sets both at issuance (`POST /keys`) or later with `PATCH /keys/:id`; `null` clears a field. A key with no `claimCap` is refused (`402 claim_cap_reached`, `cap: 0`) unless the server sets a default cap. The server key and admin keys are not metered.
+**Claim cap and billing fields.** The claim meter is off unless the server runs with `FAULTLINE_CLAIM_METER=1`. With it on, only keys created or patched with `metered: true` are metered; every other key, admin keys and the server key run exactly as with the meter off. A metered key carries `claimCap`, the number of claims it may have verified per calendar month (UTC), and may carry `stripeCustomerId` (`cus_...`), which is copied onto each usage row when the row is committed (changing it later never moves past rows). A metered key with no `claimCap` is refused with `402 {"error":"claim_cap_unset"}`; one with no `stripeCustomerId` runs and its rows carry `null`. Keys may also hold `scopes`: `usage:read` (read the usage record) and `keys:write` (set `claimCap`, `stripeCustomerId`, `metered` or `scopes`). Admin keys pass every scope, and only an admin may grant scopes. `POST /keys` and `PATCH /keys/:id` are admin-only; `null` clears `claimCap` or `stripeCustomerId`.
 
 ```http
 POST /keys
 x-api-key: {admin-key}
+Idempotency-Key: acme-subscription-0001
 Content-Type: application/json
 
-{ "name": "acme-prod", "permissions": ["scan"], "claimCap": 5000, "stripeCustomerId": "cus_ABC123" }
+{ "name": "acme-prod", "permissions": ["scan"], "metered": true, "claimCap": 5000, "stripeCustomerId": "cus_ABC123" }
 ```
+
+`Idempotency-Key` (optional, 1 to 200 characters): the first call mints the key (`201`, with the plaintext `key` once). A later call with the same value returns `200` with the same `id` and `"key": null`, and mints nothing. The plaintext is never shown again; `POST /keys/:id/rotate` issues a fresh one. The server keeps a hash of each value and the key id it minted on the ledger volume, so a deploy does not forget them. (The keystore itself is held in memory, so after a deploy the replay still answers the same `id` even though the key has to be re-created.)
 
 ### Claim metering
 
-The billable unit is **one claim that received a verdict**: `supported`, `contradicted`, `mixed` or `unverified`. A claim whose check could not run (`apiError: true`), a failed extraction, a timeout or a provider call that failed and was retried elsewhere does not count. A cached verdict delivered to you counts like a fresh one.
+The billable unit is **one claim that received a provider verdict**: `supported`, `contradicted`, `mixed` or `unverified`. A provider error (`apiError: true`), a timeout, a failed extraction, a retry the engine refunds, and a claim about the document itself (it gets no verdict) do not count. A cached verdict delivered to you counts like a fresh one.
 
-Before any verification work a route reserves the most claims it may verify (a `/scan` reserves its verify cap, 8, because the claim count is unknown before extraction; `/scan/batch` reserves 8 per text; `/scan/diff` 16; a full scan reserves its estimate's fact claims, and the estimate itself reserves nothing). If `used + reserved + requested` would exceed your cap the request is refused before any provider is called:
+Before any provider call a route reserves the most claims it may verify (a `/scan` reserves its verify cap, 8, because the claim count is unknown before extraction; `/scan/batch` 8 per text; `/scan/diff` 16; a full-scan job its estimate's fact claims; the estimate itself verifies nothing and reserves nothing). If `used + reserved + requested` would exceed your cap, the whole request is refused before any provider is called (never part-served):
 
 ```json
 HTTP/1.1 402 Payment Required
-{ "error": "claim_cap_reached", "cap": 5000, "used": 4996, "remaining": 4 }
+{ "error": "claim_cap_reached", "cap": 5000, "used": 4996, "remaining": 4, "period": "2026-11", "resetsAt": "2026-12-01T00:00:00.000Z" }
 ```
 
-After the run the claims that got a verdict are counted and the unused part of the reservation is released, so a 3-claim text costs 3. Routes that queue work (`POST /jobs`, `POST /schedules`, `POST /schedules/:id/trigger`, `POST /queue/scans`, `POST /scan/bulk`) answer the same `402` when the key cannot cover one run, and each run reserves again when it executes; a run over the cap fails with `claim_cap_reached` and calls no provider. Read your position from `GET /usage` (`claims`, below).
+`used` counts committed usage rows minus their void rows for the key and month. After the run the claims that got a verdict are committed and the unused part of the reservation is released, so a 3-claim text costs 3. Routes that queue work (`POST /jobs`, `POST /schedules`, `POST /schedules/:id/trigger`, `POST /queue/scans`, `POST /scan/bulk`) answer the same `402` when the key cannot cover one run, and each run reserves again when it executes; a run over the cap fails with `claim_cap_reached` and calls no provider. A metered key that is disabled, expired or deleted makes no new reservation: its requests are already refused at authentication (`401`), and work it queued earlier (jobs, schedules, queued and bulk scans) fails with `key_revoked` when it runs, calling no provider. Its committed rows stay. Read your position from `GET /usage` (`claims`, below).
+
+### The usage record
+
+Each committed claim is one row of an append-only record on the ledger volume (`claim-meter.jsonl`). The billing side reads it with `GET /admin/usage-records?after=<seq>&limit=<1..1000>` (default `after=0`, `limit=500`), which needs scope `usage:read`:
+
+```json
+HTTP/1.1 200 OK
+X-Usage-Record-Version: 1
+
+{
+  "ledgerId": "5b0c3d1e-2f4a-4c55-9a7e-0d1f2e3a4b5c",
+  "records": [
+    { "seq": 41, "ts": "2026-11-03T10:15:02.114Z", "period": "2026-11", "kind": "usage",
+      "keyId": "3f9c...", "stripeCustomerId": "cus_ABC123",
+      "scanId": "8d2f6a4e-1b3c-4d5e-8f90-a1b2c3d4e5f6", "claimId": "c1",
+      "verdict": "supported", "provider": "gemini",
+      "identifier": "8d2f6a4e-1b3c-4d5e-8f90-a1b2c3d4e5f6:c1" }
+  ],
+  "nextAfter": 41,
+  "hasMore": false
+}
+```
+
+- `seq` is an integer, rising by one per row from 1, never reused. Rows come back in `seq` order, and a row is returned only once every lower `seq` is returnable, so a reader paging with `after=nextAfter` never sees a gap.
+- `kind` is `usage` (one committed claim) or `void` (cancels one usage row; it carries `voids`, the cancelled usage identifier, and `identifier` = `void:` + that identifier). A duplicate identifier is written and counted once.
+- `identifier` is `scanId:claimId`, at most 95 characters (a void identifier, with its `void:` prefix, at most 100). `scanId` is a UUID: for a scan the API answered as `scan-<uuid>` it is the bare `<uuid>`; for a full-scan job `fsj_<time>_<32 hex>` it is those 32 hex characters as a UUID. A claimId longer than 58 characters is not recorded (and counted on admin `GET /usage`).
+- `ledgerId` is written once, in the record's first line, and changes only if the record is re-created; `null` before the first row. When it changes, start again from `after=0`.
+- `period` is the UTC month of `ts` (commit time). A void lowers `used` in the month of the row it cancels.
+- No claim text, evidence or key material is ever in a row. The read changes nothing. This API makes no call to Stripe.
+
+A void is written for a full-scan job whose verdicts can never reach you: after a server restart its result is gone (`resultAvailable: false`), or the job reads `404 job_lost`. If no `GET /scan/full/:jobId` ever returned the job's verdicts to you, the next such answer writes one void row per committed claim of that job, once. A job whose verdicts were returned is never voided.
 
 ---
 
@@ -504,7 +538,8 @@ All errors return JSON with this shape:
 | `404` | `NOT_FOUND` | Resource not found |
 | `429` | `RATE_LIMIT_EXCEEDED` | Too many requests for this key |
 | `500` | `INTERNAL_ERROR` | Unexpected server error |
-| `402` | `claim_cap_reached` | Your key's monthly claim cap cannot cover this request. Body `{"error":"claim_cap_reached","cap":N,"used":N,"remaining":N}`. Nothing was verified. See §1 Claim metering. |
+| `402` | `claim_cap_reached` | Your metered key's monthly claim cap cannot cover this request. Body `{"error":"claim_cap_reached","cap":N,"used":N,"remaining":N,"period":"YYYY-MM","resetsAt":"<ISO>"}`. Nothing was verified. See §1 Claim metering. |
+| `402` | `claim_cap_unset` | Your key is metered but has no `claimCap`. Body `{"error":"claim_cap_unset"}`. Nothing was verified. |
 | `502` | `extraction_failed` | Claim extraction failed at the provider (body `{"error":"extraction_failed","reason":"rate_limited"\|"provider_unavailable"\|"timeout"\|"invalid_output"\|"provider_error"\|"output_truncated"}`). `output_truncated` means the provider stopped at the output-token ceiling (`docs/cost-ceilings.md`). Nothing was checked; retry. `/scan/stream` sends the same fields in its `{"type":"error"}` event. Before 2026-10-13 a failed extraction was hidden and the scan ran on one synthetic claim per sentence. |
 | `502` | `invalid_verdict` | `POST /scan` only. The result carried a verdict status outside the stored allowlist (`supported`, `contradicted`, `mixed`, `unverified`, plus `skipped` for a claim not sent to verification), a source without a string `uri`, or an `overallRisk` outside `low`/`medium`/`high`/`critical`. Body `{"error":"An unexpected error occurred.","code":"invalid_verdict"}`. Nothing was stored or cached. Inside a scan the engine already replaces a malformed verdict with `unverified` plus `apiError: true`, `apiErrorReason: "provider_error"`, so this status means a value got past the engine. |
 | `503` | `SERVICE_UNAVAILABLE` | No providers configured, or all circuit-broken |
@@ -785,7 +820,8 @@ These are available if your UI needs them.
 | `GET /status.json` | None | Machine-readable uptime, incidents, stats |
 | `GET /metrics` | Admin | Prometheus-format metrics (admin key only) |
 | `GET /dashboard` | Admin | Scan counts, risk distribution, provider status |
-| `GET /usage` | API key | Per-day scan counts for your key, and `quota` (monthly scan cap position). A metered key also gets `claims` `{period, cap, used, reserved, remaining, byVerdict: {supported, contradicted, mixed, unverified}}`, its claim-meter position this month (UTC). Admin keys also get `providerBudget` (the fleet provider-spend position) and `claimMeter` (fleet claim totals for the month plus `sync`: Stripe meter-event sync state, `meterSyncLagRows` and `oldestUnsentAgeSeconds`) |
+| `GET /usage` | API key | Per-day scan counts for your key, and `quota` (monthly scan cap position). A metered key also gets `claims` `{period, cap, used, reserved, remaining, byVerdict: {supported, contradicted, mixed, unverified}}`, its claim-meter position this month (UTC; `cap` and `remaining` are `null` while no `claimCap` is set). Admin keys also get `providerBudget` (the fleet provider-spend position), `claimMeter` (`enabled`, fleet claim totals for the month, `ledgerWriteFailures`, `refusedIdentifiers`) and `usageRecords` `{ledgerId, lastSeq, rowsThisPeriod}` |
+| `GET /admin/usage-records` | Scope `usage:read` | The usage record after a `seq`, for billing sync. See §1 The usage record |
 | `POST /critique` | API key | Critique plus improved prompt for failed claims. Makes a paid LLM call, so it is rate limited and covered by the provider-spend cap and ledger. `provider` must be one of the `/scan` providers (unknown name: `400`). See `docs/provider-spend-cap.md` |
 | `GET /claims` | API key | Your own claim database (searchable, filterable); Gemini-grounded verdicts are not stored |
 | `GET /claims/trending` | API key | Trending + emerging claims, your own |

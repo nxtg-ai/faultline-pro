@@ -344,7 +344,7 @@ class ScheduleRunner {
       inputSize = inputText.length;
 
       // Each run is metered against the schedule's key; over its cap the run fails unscanned.
-      const result = await meteredScan(schedule.keyId, ENGINE_VERIFY_CAP, `schedule-${schedule.id}-${randomUUID()}`, schedule.provider, () => scan(inputText, schedule.provider));
+      const result = await meteredScan(schedule.keyId, ENGINE_VERIFY_CAP, randomUUID(), schedule.provider, () => scan(inputText, schedule.provider));
       const durationMs = Date.now() - start;
       const runResult: Omit<ScheduleRunResult, 'runId'> = {
         ranAt,
