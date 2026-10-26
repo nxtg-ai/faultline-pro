@@ -81,20 +81,35 @@ export function computeScanCost(
  * to the legacy text-length estimate ONLY when nothing was captured (mock /
  * offline / cache / an all-error scan) so a real scan never silently emits $0.
  */
+export interface ManagedCostOptions {
+  text: string;
+  provider: string;
+  claimCount: number;
+  tier: ManagedScanCostEvent['tier'];
+  latencyMs: number;
+  cacheHit?: boolean;
+  kind?: ManagedScanCostEvent['kind'];
+  /**
+   * Claims this call handled and how many got a billable verdict, so cost per claim
+   * can be read from the scan-cost log and the provider-spend ledger. Required: a call
+   * that handles no claims (critique) passes `{ extracted: 0, verified: 0 }`.
+   */
+  claims: { extracted: number; verified: number };
+}
+
+// Compile-time guard: fails to type-check if `claims` is ever made optional again.
+// (The package does not turn on strict null checks, so an optional `claims` would
+// otherwise still compile at every call site that leaves it out.)
+const CLAIMS_ARE_REQUIRED: {} extends Pick<ManagedCostOptions, 'claims'> ? never : true = true;
+void CLAIMS_ARE_REQUIRED;
+
+/** A cost event built for a call this process ran: it always carries both claim counts. */
+export type CountedScanCostEvent = ManagedScanCostEvent & { claimsExtracted: number; claimsVerified: number };
+
 export function buildManagedCostEvent(
   legs: UsageLeg[],
-  opts: {
-    text: string;
-    provider: string;
-    claimCount: number;
-    tier: ManagedScanCostEvent['tier'];
-    latencyMs: number;
-    cacheHit?: boolean;
-    kind?: ManagedScanCostEvent['kind'];
-    /** Per-call claim counts, so cost per claim can be read from the log. */
-    claims?: { extracted: number; verified: number };
-  },
-): ManagedScanCostEvent {
+  opts: ManagedCostOptions,
+): CountedScanCostEvent {
   const usage = summarizeScanUsage(legs);
   // Gate on real COMPOSED COST, not leg presence (Wolf BLG-005 Phase-2 fold 1).
   // Legs whose provider omitted usage (?? 0 → 0-token) still count as legs but
@@ -127,7 +142,8 @@ export function buildManagedCostEvent(
     latencyMs: opts.latencyMs,
     cacheHit: opts.cacheHit ?? false,
     ...(opts.kind ? { kind: opts.kind } : {}),
-    ...(opts.claims ? { claimsExtracted: opts.claims.extracted, claimsVerified: opts.claims.verified } : {}),
+    claimsExtracted: opts.claims.extracted,
+    claimsVerified: opts.claims.verified,
   };
 }
 
@@ -151,9 +167,13 @@ export interface ManagedScanCostEvent {
    * which can be 200+ claims). Absent = 'scan'. Per-scan percentiles count 'scan' only.
    */
   kind?: 'scan' | 'admin-verify' | 'full-scan';
-  /** Claims extracted (or submitted) in this call; absent on events logged before counts existed. */
+  /**
+   * Claims extracted (or submitted) in this call. Always set by buildManagedCostEvent;
+   * optional here only because events read back from log rows written before counts
+   * existed have none.
+   */
   claimsExtracted?: number;
-  /** Claims that got a provider verdict, `unverified` included (isBillableVerdict); absent on old events. */
+  /** Claims that got a provider verdict, `unverified` included (isBillableVerdict). Absent only on old events. */
   claimsVerified?: number;
   /**
    * The API key that ran the scan, kept in memory only (not in the scan-cost log), so
@@ -241,6 +261,7 @@ export function scanCostLogRow(event: ManagedScanCostEvent): string {
     usd_estimate:   event.costUsd,
     cache_hit:      event.cacheHit ?? false,
     kind:           event.kind ?? 'scan',
+    // null only for an event read back from a row written before counts existed.
     claim_count:    event.claimsExtracted ?? null,
     verified_count: event.claimsVerified ?? null,
   });
