@@ -11,11 +11,11 @@ Faultline decomposes AI-generated output into atomic claims, verifies each again
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 
-> **Release stage: alpha.** Usable today, with sharp edges. Verdict accuracy has been measured on a public labelled set, but that result has not yet been re-graded independently, so no accuracy figure is claimed. Anything may change before 1.0.
+> **Release stage: alpha.** Usable today, with sharp edges. No accuracy figure is claimed: verdict accuracy has not yet been re-graded independently. Anything may change before 1.0.
 
-### EU AI Act evidence the API produces
+### Governance records the API produces
 
-The hosted API ships three EU AI Act record paths as code. Art. 9: a risk register export (`POST /scan/risk-register`). Art. 12: a tamper-evident audit log manifest (`GET /audit/log/manifest`, admin keys only). Art. 14: human sign-off records (`POST /scans/:id/approve`, `GET /scans/:id/approvals`). In the manifest, each chain hash is the SHA-256 of the entry hash followed by the previous chain hash. You can recompute the chain with `openssl dgst -sha256` alone, with no Faultline tooling.
+The hosted API ships three governance records as code: a risk register export (`POST /scan/risk-register`), a tamper-evident audit log manifest (`GET /audit/log/manifest`, admin keys only), and human sign-off records (`POST /scans/:id/approve`, `GET /scans/:id/approvals`). In the manifest, each chain hash is the SHA-256 of the entry hash followed by the previous chain hash. You can recompute the chain with `openssl dgst -sha256` alone, with no Faultline tooling.
 
 ---
 
