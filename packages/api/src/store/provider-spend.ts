@@ -100,10 +100,8 @@ export function getMonthlyCapUsd(): number {
   if (Number.isFinite(n) && n >= 0 && n <= MAX_MONTHLY_CAP_USD) return n;
   if (!warnedCapOverrides.has(env)) {
     warnedCapOverrides.add(env);
-    console.warn(
-      `[provider-spend] FAULTLINE_PROVIDER_SPEND_CAP_USD is not a number from 0 to ${MAX_MONTHLY_CAP_USD}; `
-      + `using the default cap of ${RULED_MONTHLY_CAP_USD} USD.`,
-    );
+    // A fixed message: nothing from the environment reaches the log.
+    console.warn('[provider-spend] FAULTLINE_PROVIDER_SPEND_CAP_USD is not a number from 0 to 1000; using the default cap of 100 USD.');
   }
   return RULED_MONTHLY_CAP_USD;
 }
