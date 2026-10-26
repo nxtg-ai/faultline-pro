@@ -6,6 +6,7 @@ import type { Claim, VerificationResult, AnalysisState } from '../types.js';
 import { generateComplianceReport, type ComplianceReport } from '../compliance/report_generator.js';
 import { runAllRules, runRules, type Finding } from '../rules/index.js';
 import { isExtractionError, type ExtractionErrorReason } from '../providers/extraction-error.js';
+import { markDocumentScope } from '../lib/claim-scope.js';
 import {
   DEFAULT_VERIFY_CAP,
   resolveVerifyCap,
@@ -293,7 +294,7 @@ export async function scan(
 
   onProgress?.('Extracting claims...');
   const rawClaims = await extractionProvider.extractClaims(text);
-  const claims = guaranteeClaimPerSentence(text, rawClaims);
+  const claims = markDocumentScope(guaranteeClaimPerSentence(text, rawClaims));
 
   if (options?.mode === 'full') {
     return runFullVerification(claims, verifier, {
@@ -343,7 +344,7 @@ export async function extractForFullScan(
   pipelineConfig?: PipelineConfig,
 ): Promise<FullScanEstimate> {
   const extractionProvider = resolveExtractionProvider(providerName, pipelineConfig);
-  const claims = guaranteeClaimPerSentence(text, await extractionProvider.extractClaims(text));
+  const claims = markDocumentScope(guaranteeClaimPerSentence(text, await extractionProvider.extractClaims(text)));
   const { facts, notCheckable } = partitionForFullScan(claims);
   return {
     claims,
@@ -385,7 +386,9 @@ async function runFullVerification(
   verifier: Verifier,
   context: FullVerificationContext,
 ): Promise<FullScanResult> {
-  const partition = partitionForFullScan(claims);
+  // verifyFullScan takes claims from outside (a stored estimate), so label them here too.
+  const labelled = markDocumentScope(claims);
+  const partition = partitionForFullScan(labelled);
   const run = await runVerification(partition.facts, verifier, {
     onProgress: context.onProgress,
     onClaimVerified: context.onClaim,
@@ -406,7 +409,7 @@ async function runFullVerification(
   return {
     input: context.text?.substring(0, 200) ?? '',
     provider: context.provider,
-    claims,
+    claims: labelled,
     verifications: run.verifications,
     overallRisk,
     complianceReport,

@@ -8,6 +8,12 @@ export interface Claim {
   text: string;
   type: ClaimType;
   importance: number; // 1 to 5
+  /**
+   * 'document' when the claim is about the scanned document itself ("the
+   * analysis focuses on ..."), set by lib/claim-scope.ts. Such a claim is never
+   * verified and never counts toward risk. Absent for a claim about the world.
+   */
+  scope?: 'document';
   // P-08b NOTE (TQ-003): Add `dependencies?: string[]` — array of claim IDs that this
   // claim logically depends on being true. Required for true weakest-chain traversal and
   // full claim-graph visualization. Deferred from Kaggle branch to avoid complicating

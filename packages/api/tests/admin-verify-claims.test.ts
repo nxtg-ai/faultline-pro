@@ -333,6 +333,36 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
   });
 });
 
+describe('POST /admin/verify-claims — claims about the document itself', () => {
+  const DOC_CLAIM = 'The analysis does not focus on 70B+ models with small active parameter counts. FALSE-CLAIM';
+
+  it('returns unverified with the fixed explanation and makes no provider call for a document claim', async () => {
+    const res = await post({ claims: [{ id: 'doc', text: DOC_CLAIM }, { id: 'world', text: 'The Eiffel Tower is in Paris.' }] });
+    expect(res.statusCode).toBe(200);
+    const results = res.json().results as Array<Record<string, unknown>>;
+    expect(results).toHaveLength(2);
+    expect(results[0]).toEqual({
+      id: 'doc', status: 'unverified', apiError: false, parseFallback: false, noSourceAbstain: false,
+      apiErrorReason: null, model: null, documentScope: true,
+      explanation: 'About this document, not a claim about the world; not checked against the web.',
+      // No provider call, so nothing to price.
+      usage: UNPRICED_USAGE,
+    });
+    expect(results[1]).toMatchObject({ id: 'world', status: 'supported', apiError: false });
+    expect(results[1]).not.toHaveProperty('explanation');
+    expect(results[1]).not.toHaveProperty('documentScope');
+    // Only the world claim reached the provider.
+    expect(sdk.calls).toBe(1);
+  });
+
+  it('makes no provider call at all for a batch of document claims', async () => {
+    const res = await post({ claims: [{ id: 'a', text: DOC_CLAIM }, { id: 'b', text: 'The focus of the analysis is on roughly 7B-class models.' }] });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().results.map((r: { status: string }) => r.status)).toEqual(['unverified', 'unverified']);
+    expect(sdk.calls).toBe(0);
+  });
+});
+
 describe('POST /admin/verify-claims — per-claim usage', () => {
   type Usage = { inputTokens: number; outputTokens: number; groundingCalls: number; costUsd: number; priced: boolean };
 

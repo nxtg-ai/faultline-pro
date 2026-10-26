@@ -12,6 +12,7 @@ import { recordProviderSpend } from '../store/provider-spend.js';
 import { summarizeScanUsage } from '../store/consensus-cost.js';
 import { getProvider } from '@nxtg/faultline/providers/registry.js';
 import { billableVerdictCount } from '@nxtg/faultline/lib/verdict-guard.js';
+import { DOCUMENT_SCOPE_EXPLANATION, isDocumentRelative } from '@nxtg/faultline/lib/claim-scope.js';
 import type { LLMProvider } from '@nxtg/faultline/providers/base_provider.js';
 import { DEFAULT_SCAN_PROVIDER, resolveApiKey } from '@nxtg/faultline/cli/provider-keys.js';
 import { captureUsage, type UsageLeg } from '@nxtg/faultline/lib/usage-sink.js';
@@ -36,6 +37,12 @@ import type { Claim, ClaimStatus } from '@nxtg/faultline/types.js';
  * grounding allowance before each batch; retrying here would spend prompts the
  * runner's guard cannot see.
  *
+ * A claim about the document itself (lib/claim-scope.ts) is not sent to the
+ * provider: it comes back 'unverified' with `documentScope: true` and a fixed
+ * explanation, the same check a scan applies before verification. Those two
+ * fields are absent from every other result. It captured no usage, so its
+ * `usage` reports `costUsd: 0` with `priced: false`.
+ *
  * Each result also carries `usage`: that claim's own token counts, grounding
  * calls and USD cost, priced by `summarizeScanUsage`, the same function
  * `buildManagedCostEvent` prices the batch with. Pricing is a sum over legs, so
@@ -45,8 +52,9 @@ import type { Claim, ClaimStatus } from '@nxtg/faultline/types.js';
  * reports `costUsd: 0` with `priced: false`.
  *
  * Google grounding terms: the response carries our own status label, flags and
- * cost figures only. No explanation, source or other grounded text ever leaves
- * this route.
+ * cost figures only. No source or other grounded text ever leaves this route;
+ * the only explanation that does is the fixed document-scope label above,
+ * never a provider's text.
  */
 
 export const MAX_VERIFY_CLAIMS = 25;
@@ -101,6 +109,8 @@ const RESPONSE_SCHEMA = {
             noSourceAbstain: { type: 'boolean' },
             apiErrorReason: { type: ['string', 'null'] },
             model: { type: ['string', 'null'] },
+            documentScope: { type: 'boolean' },
+            explanation: { type: 'string' },
             usage: {
               type: 'object',
               properties: {
@@ -142,6 +152,10 @@ export interface VerifyClaimOutcome {
   /** Why an unchecked claim went unchecked (a label such as output_truncated); null on a verdict. */
   apiErrorReason: string | null;
   model: string | null;
+  /** Present, true, only when the claim is about the document itself and was not sent to the provider. */
+  documentScope?: true;
+  /** DOCUMENT_SCOPE_EXPLANATION, present only with documentScope. Never provider text. */
+  explanation?: string;
   /** This claim's own captured usage and cost. Cost figures only. */
   usage?: ClaimUsage;
 }
@@ -172,6 +186,16 @@ function modelOf(legs: UsageLeg[], provider: LLMProvider): string | null {
  * `apiError` (the call did not produce a verdict), never as a verdict.
  */
 async function verifyOne(provider: LLMProvider, input: VerifyClaimInput): Promise<ClaimRun> {
+  if (isDocumentRelative(input.text)) {
+    // No provider call, so no usage legs and no spend.
+    return {
+      legs: [],
+      outcome: {
+        id: input.id, status: 'unverified', apiError: false, parseFallback: false, noSourceAbstain: false,
+        apiErrorReason: null, model: null, documentScope: true, explanation: DOCUMENT_SCOPE_EXPLANATION,
+      },
+    };
+  }
   const claim: Claim = { id: input.id, text: input.text, type: 'fact', importance: 3 };
   try {
     const { result, legs } = await captureUsage(() => provider.verifyClaim(claim));
@@ -216,7 +240,8 @@ function recordBatchSpend(runs: ClaimRun[], claims: VerifyClaimInput[], provider
   const costEvent = buildManagedCostEvent(legs, {
     text: claims.map((claim) => claim.text).join('\n'),
     provider: providerName,
-    claimCount: runs.filter((run) => !run.outcome.apiError).length,
+    // A document-scope claim made no provider call, so it is not a served claim.
+    claimCount: runs.filter((run) => !run.outcome.apiError && run.outcome.documentScope !== true).length,
     claims: { extracted: claims.length, verified: billableVerdictCount(runs.map((run) => run.outcome)) },
     tier: resolveTier(keyId),
     latencyMs: Date.now() - startMs,

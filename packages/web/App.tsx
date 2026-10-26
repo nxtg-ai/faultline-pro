@@ -2,6 +2,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import type { AnalysisState, VerificationResult } from './types';
 import { extractClaims, verifyClaim, generateCritiqueAndPrompt } from './services/geminiService';
+import { planVerification, calculateRisk } from './services/verifyPlan';
 import { InputSection } from './components/InputSection';
 import { Dashboard } from './components/Dashboard';
 import { Tour } from './components/Tour';
@@ -52,17 +53,6 @@ function App() {
     setViewMode('INPUT');
   };
 
-  const calculateRisk = (verifications: Record<string, VerificationResult>, totalClaims: number): AnalysisState['overallRisk'] => {
-    const values = Object.values(verifications);
-    const contradicted = values.filter(v => v.status === 'contradicted').length;
-    const mixed = values.filter(v => v.status === 'mixed').length;
-
-    if (contradicted > 2) return 'critical';
-    if (contradicted > 0 || mixed > 2) return 'high';
-    if (mixed > 0) return 'medium';
-    return 'low';
-  };
-
   const handleAnalyze = useCallback(async (text: string, image?: { data: string, mimeType: string }) => {
     const apiKey = getApiKey();
 
@@ -81,20 +71,15 @@ function App() {
 
     try {
         // Step 1: Extraction
-        const claims = await extractClaims(text, apiKey, image);
+        const extracted = await extractClaims(text, apiKey, image);
 
-        if (claims.length === 0) {
+        if (extracted.length === 0) {
             throw new Error("No structural elements detected.");
         }
 
-        // Identify which claims are testable (Facts with importance >= 3)
-        // We do verify ALL important facts now, not just top 5, but let's cap at 8 for performance/rate-limits
-        const claimsToVerify = claims
-            .filter(c => c.type === 'fact' && c.importance >= 3)
-            .sort((a, b) => b.importance - a.importance)
-            .slice(0, 8);
-
-        const claimIdsToVerify = new Set(claimsToVerify.map(c => c.id));
+        // Testable claims: world facts with importance >= 3, capped for rate limits.
+        // Claims about the document itself are marked and never sent to a provider.
+        const { claims, claimsToVerify, initialVerifications } = planVerification(extracted);
 
         setAnalysisState(prev => ({
             ...prev,
@@ -102,28 +87,6 @@ function App() {
             progressMessage: `Mapped ${claims.length} structural elements. Stress-testing ${claimsToVerify.length} critical load-bearing facts...`,
             step: 'verifying'
         }));
-
-        // Initialize verifications state
-        // IMPORTANT: We must set a state for ALL claims, otherwise 'ClaimRow' might get stuck loading
-        const initialVerifications: Record<string, VerificationResult> = {};
-
-        claims.forEach(c => {
-             if (claimIdsToVerify.has(c.id)) {
-                 initialVerifications[c.id] = { claimId: c.id, status: 'loading', explanation: 'Queued for stress-testing...', sources: [] };
-             } else {
-                 // Mark as skipped (Opinion or Low Importance)
-                 let reason = 'Low load-bearing impact.';
-                 if (c.type === 'opinion') reason = 'Subjective opinion (not testable).';
-                 if (c.type === 'interpretation') reason = 'Interpretation (context dependent).';
-
-                 initialVerifications[c.id] = {
-                     claimId: c.id,
-                     status: 'skipped',
-                     explanation: reason,
-                     sources: []
-                 };
-             }
-        });
 
         setAnalysisState(prev => ({ ...prev, verifications: initialVerifications }));
 
@@ -145,7 +108,7 @@ function App() {
                 return {
                     ...prev,
                     verifications: updatedVerifications,
-                    overallRisk: calculateRisk(updatedVerifications, claims.length)
+                    overallRisk: calculateRisk(updatedVerifications)
                 };
             });
         }

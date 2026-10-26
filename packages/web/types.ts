@@ -8,6 +8,8 @@ export interface Claim {
   text: string;
   type: ClaimType;
   importance: number; // 1 to 5
+  /** 'document' when the claim is about the analysed text itself; never verified, never counts toward risk. */
+  scope?: 'document';
   // P-08b NOTE (TQ-003): Add `dependencies?: string[]` — array of claim IDs that this
   // claim logically depends on being true. Required for true weakest-chain traversal and
   // full claim-graph visualization. Deferred from Kaggle branch to avoid complicating
