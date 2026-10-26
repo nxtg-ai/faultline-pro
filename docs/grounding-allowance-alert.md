@@ -84,7 +84,7 @@ The same hourly read of admin `GET /usage` also reads `providerBudget` (the flee
 
 Only the highest level reached is sent on a run, so a jump straight past 100% sends one alert, not two. The de-duplication key is `<month>:provider-budget:<level>`, where the month is the server's UTC budget month, so a new month starts with no alerts sent. These keys are kept in their own list in the state file (`providerBudgetAlerted`), apart from the daily keys, so busy daily alerts cannot push a month's key out and cause a repeat. A failed send is not recorded, so the next run tries again.
 
-Each monitor row carries `providerBudget: { month, spentUsd, capUsd, percent, enforced, level, alerted, notified }`, or `null` when the response has no `providerBudget` (an older deploy); that case is not a probe failure. The exit code is unchanged: it reflects the grounding check only. The budget alert goes to Telegram only; it does not open a handoff or wake a terminal pane. The key is never printed.
+Each monitor row carries `providerBudget: { month, spentUsd, capUsd, percent, enforced, level, alerted, notified }`. A response with no `providerBudget` object (or one without numeric `spentUsd` and `capUsd` and a `month`) is a probe failure: the run writes a `PROBE_FAIL` row, sends the probe-failure alert, and exits 2, the same path as a failed fetch. Otherwise the exit code reflects the grounding check only. The budget alert goes to Telegram only; it does not open a handoff or wake a terminal pane. The key is never printed.
 
 The script exports `runGroundingCheck(deps)`, which takes `fetch`, `notify`, `apiKey`, `apiUrl`, `stateFile`, `monitorLog` and `wakeFp`. Run from the command line, it uses the production defaults as before.
 

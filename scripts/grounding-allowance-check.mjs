@@ -11,7 +11,8 @@
  *   - sends one Telegram alert per allowance-day per level (threshold, free limit),
  *   - sends one Telegram alert per budget month when the fleet provider spend
  *     reaches 90% of the monthly cap, and one more at 100%,
- *   - alerts on probe failure (first failure, then at most once a day).
+ *   - alerts on probe failure (first failure, then at most once a day). A
+ *     response with no providerBudget object is a probe failure.
  *
  * The server count lives on the Fly machine, so a redeploy restarts it at 0.
  * When the server's processStartedAt changes mid-day and its count drops, the
@@ -154,7 +155,13 @@ async function probe(deps, apiKey) {
   if (!g || typeof g.groundedPrompts !== 'number' || typeof g.day !== 'string') {
     throw new Error('GET /usage has no groundingAllowance (old deploy, or not the admin key)');
   }
-  return { g, fullScan: body?.fullScanRefunds ?? null, providerBudget: body?.providerBudget ?? null };
+  // The budget alert reads the same response. With no providerBudget the 90%
+  // and 100% alerts would be blind, so that is a probe failure too.
+  const b = body?.providerBudget;
+  if (!b || typeof b.spentUsd !== 'number' || typeof b.capUsd !== 'number' || typeof b.month !== 'string') {
+    throw new Error('GET /usage has no providerBudget (old deploy, or not the admin key)');
+  }
+  return { g, fullScan: body?.fullScanRefunds ?? null, providerBudget: b };
 }
 
 /** The highest provider-budget level reached, or null below 90%. Integer-safe at the 90% line. */
@@ -168,8 +175,8 @@ export function providerBudgetLevel(spentUsd, capUsd) {
  * Fleet provider spend against the monthly cap, from the same GET /usage read.
  * One Telegram alert per budget month per level: at 90% of the cap, and again
  * at 100%. The month is the server's (UTC), so a new month starts with no
- * alerts sent. A response without providerBudget (old deploy) is skipped, not
- * a probe failure.
+ * alerts sent. A response without providerBudget never reaches here: `probe`
+ * treats it as a probe failure (exit 2).
  */
 export function checkProviderBudget(state, b, notify) {
   if (!b || typeof b.spentUsd !== 'number' || typeof b.capUsd !== 'number' || typeof b.month !== 'string') {

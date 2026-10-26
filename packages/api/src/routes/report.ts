@@ -3,6 +3,7 @@ import PDFDocument from 'pdfkit';
 import { requireApiKey } from '../plugins/auth.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { meterScan } from '../lib/scan-quota.js';
+import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 import type { ScanResult } from '@nxtg/faultline/cli/scan.js';
@@ -229,7 +230,7 @@ export async function reportRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan/report',
     {
       config: { access: 'key' },
-      preHandler: [requireApiKey, enforceMonthlyCap],
+      preHandler: [requireApiKey, enforceMonthlyCap, enforceProviderSpendCap],
       schema: { tags: ['Reports'], summary: 'Generate PDF compliance report from scan result', body: BODY_SCHEMA },
     },
     async (request, reply) => {

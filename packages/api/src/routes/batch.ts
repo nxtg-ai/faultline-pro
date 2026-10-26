@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
+import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 import { isExtractionError } from '@nxtg/faultline/providers/extraction-error.js';
@@ -88,7 +89,7 @@ export async function batchRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan/batch',
     {
       config: { access: 'key' },
-      preHandler: [requireApiKey, enforceMonthlyCapForBatch],
+      preHandler: [requireApiKey, enforceMonthlyCapForBatch, enforceProviderSpendCap],
       schema: { tags: ['Scan'], summary: 'Batch scan multiple texts (1–10)', body: BODY_SCHEMA },
     },
     async (request, reply) => {

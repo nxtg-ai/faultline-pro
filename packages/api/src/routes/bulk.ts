@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import AdmZip from 'adm-zip';
 import { requireApiKey } from '../plugins/auth.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
+import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { ownsOrAdmin } from '../lib/ownership.js';
 import { getBulkJobStore } from '../store/bulk-jobs.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
@@ -61,7 +62,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
   // POST /scan/bulk — accepts ZIP archive, returns jobId immediately (202)
   fastify.post<{ Querystring: { provider?: string } }>(
     '/scan/bulk',
-    { config: { access: 'owner' }, preHandler: [requireApiKey, enforceMonthlyCap], schema: { tags: ['Jobs'], summary: 'Upload ZIP of documents for async bulk scan' } },
+    { config: { access: 'owner' }, preHandler: [requireApiKey, enforceMonthlyCap, enforceProviderSpendCap], schema: { tags: ['Jobs'], summary: 'Upload ZIP of documents for async bulk scan' } },
     async (request, reply) => {
       let zipBuffer: Buffer | null = null;
 

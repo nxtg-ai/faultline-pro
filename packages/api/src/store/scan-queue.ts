@@ -16,6 +16,8 @@
 import { randomUUID } from 'node:crypto';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
+import { PROVIDER_BUDGET_EXHAUSTED, providerBudgetRefuses } from '../plugins/provider-spend-cap.js';
+import type { ManagedScanCostEvent } from './costs.js';
 
 export type QueueItemStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
 export type QueuePriority = 0 | 1 | 2;
@@ -32,6 +34,8 @@ export interface ScanQueueItem {
   completedAt?: string;
   result?:      unknown;
   error?:       string;
+  /** The spend-gate tier at enqueue time. Absent on items queued before tiers were stored. */
+  spendCapTier?: ManagedScanCostEvent['tier'];
 }
 
 export interface QueueStats {
@@ -65,7 +69,13 @@ class ScanQueue {
     return Math.max(1, Number(process.env.FAULTLINE_QUEUE_CONCURRENCY ?? 3));
   }
 
-  enqueue(keyId: string, priority: QueuePriority, text: string, provider: string): ScanQueueItem {
+  enqueue(
+    keyId: string,
+    priority: QueuePriority,
+    text: string,
+    provider: string,
+    spendCapTier?: ManagedScanCostEvent['tier'],
+  ): ScanQueueItem {
     if (this.pendingIds.length >= MAX_PENDING) {
       throw new Error(`Queue is full (max ${MAX_PENDING} pending items).`);
     }
@@ -77,6 +87,7 @@ class ScanQueue {
       provider,
       status:    'pending',
       createdAt: new Date().toISOString(),
+      ...(spendCapTier ? { spendCapTier } : {}),
     };
     this.items.set(item.id, item);
     this.pendingIds.push(item.id);
@@ -141,6 +152,13 @@ class ScanQueue {
   private async processItem(item: ScanQueueItem): Promise<void> {
     this.processingCount++;
     try {
+      // No request at run time: the tier stored at enqueue decides. A refused
+      // item fails without a provider call.
+      if (providerBudgetRefuses(item.spendCapTier)) {
+        item.status = 'failed';
+        item.error = PROVIDER_BUDGET_EXHAUSTED;
+        return;
+      }
       const result = await scanWithSpend({ text: item.text, provider: item.provider, keyId: item.keyId }, () => scan(item.text, item.provider as Parameters<typeof scan>[1]));
       item.status = 'completed';
       item.result = result;

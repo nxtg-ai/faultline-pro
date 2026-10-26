@@ -18,6 +18,8 @@ import { getNotificationStore, type NotificationEventType } from './notification
 import { fetchOutbound, fetchOutboundFollow } from '../lib/outbound-url.js';
 import { keyIsLive, sanitizeErrorText } from './webhooks.js';
 import { isGroundedScanResult } from './cache.js';
+import { PROVIDER_BUDGET_EXHAUSTED, providerBudgetRefuses } from '../plugins/provider-spend-cap.js';
+import type { ManagedScanCostEvent } from './costs.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -56,6 +58,8 @@ export interface Schedule {
   runCount:     number;
   history:      ScheduleRunResult[];  // last 20 runs
   lastResult?:  ScheduleRunResult;
+  /** The spend-gate tier at creation. Absent on schedules created before tiers were stored. */
+  spendCapTier?: ManagedScanCostEvent['tier'];
 }
 
 export interface CreateScheduleInput {
@@ -175,7 +179,7 @@ export function nextCronTime(cron: string, after: Date = new Date()): Date | nul
 class ScheduleStore {
   private schedules: Map<string, Schedule> = new Map();
 
-  create(input: CreateScheduleInput, keyId: string): Schedule {
+  create(input: CreateScheduleInput, keyId: string, spendCapTier?: ManagedScanCostEvent['tier']): Schedule {
     if (this.schedules.size >= MAX_SCHEDULES) {
       throw new Error(`Schedule limit reached (max ${MAX_SCHEDULES}).`);
     }
@@ -204,6 +208,7 @@ class ScheduleStore {
       nextRunAt:    nextRun?.toISOString() ?? null,
       runCount:     0,
       history:      [],
+      ...(spendCapTier ? { spendCapTier } : {}),
     };
     this.schedules.set(schedule.id, schedule);
     return schedule;
@@ -261,8 +266,11 @@ class ScheduleStore {
     return Array.from(this.schedules.values()).filter(s => keySet.has(s.keyId));
   }
 
-  /** Record a completed run, update nextRunAt, and check maxRuns. */
-  recordRun(id: string, result: Omit<ScheduleRunResult, 'runId'>): void {
+  /**
+   * Record a run, update nextRunAt, and check maxRuns. A skipped run (refused
+   * before it started) is recorded but does not count toward maxRuns.
+   */
+  recordRun(id: string, result: Omit<ScheduleRunResult, 'runId'>, options: { skipped?: boolean } = {}): void {
     const s = this.schedules.get(id);
     if (!s) return;
     const run: ScheduleRunResult = { runId: randomUUID(), ...result };
@@ -270,7 +278,7 @@ class ScheduleStore {
     if (s.history.length > MAX_HISTORY) s.history.length = MAX_HISTORY;
     s.lastResult  = run;
     s.lastRunAt   = run.ranAt;
-    s.runCount++;
+    if (!options.skipped) s.runCount++;
     s.nextRunAt   = nextCronTime(s.cron)?.toISOString() ?? null;
     s.updatedAt   = new Date().toISOString();
     if (s.maxRuns > 0 && s.runCount >= s.maxRuns) {
@@ -322,6 +330,19 @@ class ScheduleRunner {
     let inputText: string;
     let inputSource: 'text' | 'url' = 'text';
     let inputSize = 0;
+
+    // No request at run time: the tier stored at creation decides. A refused run
+    // is recorded as failed before the URL fetch and with no provider call.
+    if (providerBudgetRefuses(schedule.spendCapTier)) {
+      const runResult: Omit<ScheduleRunResult, 'runId'> = {
+        ranAt, durationMs: 0, overallRisk: 'unknown', claimCount: 0,
+        provider: schedule.provider, error: PROVIDER_BUDGET_EXHAUSTED,
+        inputSource: schedule.url ? 'url' : 'text', inputSize: 0,
+      };
+      getScheduleStore().recordRun(schedule.id, runResult, { skipped: true });
+      await dispatchScheduleNotification(schedule, runResult, null);
+      return;
+    }
 
     try {
       // Fetch URL content if url-based schedule

@@ -49,6 +49,24 @@ export function resolveSpendCapTier(keyId: string | undefined, headerTier?: stri
   return 'free';
 }
 
+/** The reason a background run is marked failed when the budget refuses it. */
+export const PROVIDER_BUDGET_EXHAUSTED = 'provider_budget_exhausted';
+
+/**
+ * The same decision as the route gate, for work that runs with no request: the
+ * scan queue worker, scheduled jobs, schedules, and the GraphQL resolvers.
+ *
+ * True only when enforcement is on, the tier is one this gate refuses, and the
+ * month's budget is spent. `tier` is the one stored when the work was queued or
+ * created (from `resolveSpendCapTier`). An entry with no stored tier was created
+ * before tiers were stored, so it counts as capped.
+ */
+export function providerBudgetRefuses(tier: Tier | undefined): boolean {
+  if (!isProviderSpendCapEnabled()) return false;
+  if (tier !== undefined && !SPEND_CAP_TIER_SET.has(tier)) return false;
+  return getProviderSpendStatus().exhausted;
+}
+
 /**
  * Provider-spend budget prehandler — the RUNWAY gate (A-110 item 1).
  *

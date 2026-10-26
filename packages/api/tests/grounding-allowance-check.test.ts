@@ -156,12 +156,29 @@ describe('grounding-allowance-check: provider budget alert', () => {
     expect(monitorRows()[1].providerBudget).toMatchObject({ notified: true });
   });
 
-  it('a response without providerBudget is not a probe failure', async () => {
-    expect(await runWith(null)).toBe(0);
+  it('a response without providerBudget is a probe failure: exit 2 and a PROBE_FAIL row', async () => {
+    expect(await runWith(null)).toBe(2);
     expect(budgetAlerts()).toHaveLength(0);
     const rows = monitorRows();
     expect(rows).toHaveLength(1);
-    expect(rows[0].verdict).toBe('OK');
-    expect(rows[0].providerBudget).toBeNull();
+    expect(rows[0].verdict).toBe('PROBE_FAIL');
+    expect(String(rows[0].error)).toMatch(/no providerBudget/);
+    // The same failure path as a failed fetch: one probe-failure alert.
+    const failAlerts = notify.mock.calls.map((c) => c[0]).filter((m) => m.includes('grounding check FAILED'));
+    expect(failAlerts).toHaveLength(1);
+    expect(failAlerts[0]).toMatch(/no providerBudget/);
+  });
+
+  it('a providerBudget without numeric spend and cap is a probe failure too', async () => {
+    fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      ...usageBody(null), providerBudget: { month: '2026-10', enforced: true },
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    const code = await runGroundingCheck({
+      apiUrl: 'https://api.test', apiKey: API_KEY, fetch: fetchMock, notify, stateFile, monitorLog, wakeFp: false,
+    });
+    expect(code).toBe(2);
+    const rows = monitorRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].verdict).toBe('PROBE_FAIL');
   });
 });

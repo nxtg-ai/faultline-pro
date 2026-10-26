@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey, scanHistoryKeyScope } from '../plugins/auth.js';
+import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { meterScan } from '../lib/scan-quota.js';
@@ -205,7 +206,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
     '/scan/compliance-gate',
     {
       config: { access: 'owner' },
-      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap],
+      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap],
       schema: {
         tags: ['Compliance'],
         summary: 'Scan text and evaluate EU AI Act compliance gate (pass/fail)',

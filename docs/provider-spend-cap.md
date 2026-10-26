@@ -32,11 +32,51 @@ A server-key request with no tier header is treated as free for this gate, becau
 
 `x-user-tier` from any key other than the server's own is ignored, so a free key that sends `x-user-tier: pro` is still refused. `resolveTierFromRequest` (in `store/costs.ts`) trusts that header from every caller and must never feed this gate.
 
-Routes that carry the gate: `POST /scan`, `POST /scan/template/:id`, `GET /scan/stream`, `POST /scan/stream`, `POST /critique`, `POST /scan/full/estimate`, `POST /scan/full`, `POST /admin/verify-claims`.
+### Routes that carry the gate
+
+Every HTTP route whose handler can cause a model provider call runs `enforceProviderSpendCap` as a preHandler, after the key check and before any provider work:
+
+| Route | File |
+|---|---|
+| `POST /scan`, `POST /scan/template/:id` | `routes/scan.ts` |
+| `GET /scan/stream`, `POST /scan/stream` | `routes/stream.ts` |
+| `POST /scan/full/estimate`, `POST /scan/full` | `routes/full-scan.ts` |
+| `POST /scan/deep` | `routes/deep.ts` |
+| `POST /scan/diff` | `routes/diff.ts` |
+| `POST /scan/batch` | `routes/batch.ts` |
+| `POST /scan/bulk` | `routes/bulk.ts` |
+| `POST /scan/upload` | `routes/upload.ts` |
+| `POST /scan/report` | `routes/report.ts` |
+| `POST /scan/eu-report` | `routes/eu-report.ts` |
+| `POST /scan/compliance/:template` | `routes/compliance.ts` |
+| `POST /scan/compliance-gate` | `routes/compliance-gate.ts` |
+| `POST /critique` | `routes/critique.ts` |
+| `POST /admin/verify-claims` | `routes/admin-verify.ts` |
+| `POST /queue/scans` (queues a scan) | `routes/queue.ts` |
+| `POST /jobs` (creates a recurring scan) | `routes/jobs.ts` |
+| `POST /schedules` (creates a recurring scan), `POST /schedules/:id/trigger` (runs one now) | `routes/schedules.ts` |
+
+GraphQL (`/graphql`, on only with `FAULTLINE_GRAPHQL=on`) serves reads and key administration too, so the route itself is not gated. Its `scan` query and `scanBatch` mutation run the same check before the scan, with the tier read from the request, and answer a GraphQL error with `extensions.reason: "provider_budget_exhausted"`.
+
+`packages/api/tests/provider-spend-cap-coverage.test.ts` keeps this list honest. It builds the app, collects every registered route, and fails if a route is neither gated nor on its commented list of routes that never call a provider (health, usage, keys, compare of supplied results, stored-scan reads and so on). A new route that is on neither list fails the test by name.
+
+### Background runs: the queue worker, scheduled jobs and schedules
+
+These run with no request, so the route gate cannot see them at run time. The rule:
+
+1. When the work is queued or created (`POST /queue/scans`, `POST /jobs`, `POST /schedules`), the gate tier from `resolveSpendCapTier` is stored with it. The creating route also runs the gate, so a capped caller cannot queue new work once the budget is spent.
+2. When the work runs, before any provider call (and, for a URL schedule, before the URL fetch): if enforcement is on, the stored tier is one the gate refuses, and the month's budget is spent, the run is skipped and marked failed with the reason `provider_budget_exhausted`. No provider is called.
+   - Queue item: `status: "failed"`, `error: "provider_budget_exhausted"`.
+   - Scheduled job: `lastError: "provider_budget_exhausted"`, the next run time moves on, `runCount` does not change, and a `job.failed` webhook event carries the same reason.
+   - Schedule: a history entry with `error: "provider_budget_exhausted"`, a `scan.failed` notification, and the skipped run does not count toward `maxRuns`.
+3. An entry created before tiers were stored has none. It counts as capped, so it is skipped while the budget is spent.
+4. Paid tiers run as before, and nothing is skipped while enforcement is off.
+
+The shared check is `providerBudgetRefuses(tier)` in `plugins/provider-spend-cap.ts`.
 
 `GET /usage` (admin) reports the scope as `providerBudget.appliesTo: ["free", "anon"]`.
 
-The alert at 90% and 100% of the budget is in `scripts/grounding-allowance-check.mjs` (see `docs/grounding-allowance-alert.md`).
+The alert at 90% and 100% of the budget is in `scripts/grounding-allowance-check.mjs` (see `docs/grounding-allowance-alert.md`). A `GET /usage` response with no `providerBudget` object is a probe failure there (exit 2, a `PROBE_FAIL` row), not a silent skip, because the budget alert would otherwise be blind.
 
 ## Not the same thing as the usage cap
 
@@ -56,11 +96,12 @@ Three gates now run in front of a scan. They answer different questions and all 
 |---|---|
 | Append-only USD ledger + monthly rollup + cap config | `packages/api/src/store/provider-spend.ts` |
 | Enforcement prehandler (503 + budget headers) | `packages/api/src/plugins/provider-spend-cap.ts` — `enforceProviderSpendCap` |
-| Wired on all scan routes | `routes/scan.ts` (`/scan`, `/scan/template`), `routes/stream.ts` (`/scan/stream` GET+POST) |
+| Wired on every provider-calling route | see "Routes that carry the gate" above |
+| Background runs check the stored tier | `store/scan-queue.ts`, `store/jobs.ts`, `store/schedules.ts`, `graphql/resolvers.ts` |
 | Wired on `POST /critique` (b33acff) | `routes/critique.ts`: `preHandler: [requireApiKey, rateLimitScan, enforceProviderSpendCap]`, and the call's real usage is priced and ledgered |
 | Spend recorded from the real composed cost | `recordProviderSpend(costEvent)` beside `emitScanCostEvent` / `appendScanCostLog` |
 | Budget surface (ADMIN only) | `GET /usage` → `providerBudget: { month, enforced, capUsd, spentUsd, remainingUsd, exhausted, appliesTo, ledgerWriteFailures }` |
-| Tests | `packages/api/tests/provider-spend-cap.test.ts`, `packages/api/tests/critique-spend-cap.test.ts`, `packages/api/tests/provider-spend-cap-tiers.test.ts` (who is refused, per route), `packages/api/tests/grounding-allowance-check.test.ts` (the 90% and 100% alert) |
+| Tests | `packages/api/tests/provider-spend-cap.test.ts`, `packages/api/tests/critique-spend-cap.test.ts`, `packages/api/tests/provider-spend-cap-tiers.test.ts` (who is refused, per route), `packages/api/tests/provider-spend-cap-coverage.test.ts` (every route is gated or listed as provider-free; each gated route refuses a free key with no provider call), `packages/api/tests/provider-spend-cap-background.test.ts` (queue, jobs, schedules, GraphQL), `packages/api/tests/grounding-allowance-check.test.ts` (the 90% and 100% alert) |
 
 ## `POST /critique` is covered (b33acff, N-230)
 
@@ -88,7 +129,7 @@ Three gates now run in front of a scan. They answer different questions and all 
 | Env | Default | Meaning |
 |---|---|---|
 | `FAULTLINE_PROVIDER_SPEND_CAP` | *(off)* | `on`/`1`/`true`/`enabled` activates the **gate**. Dormant = ledger only. |
-| `FAULTLINE_PROVIDER_SPEND_CAP_USD` | `100` | The monthly ceiling. Garbage/negative falls back to `100` — never to unlimited. |
+| `FAULTLINE_PROVIDER_SPEND_CAP_USD` | `100` | The monthly ceiling. Only a finite number from 0 to 1000 inclusive is accepted. Anything else (not a number, trailing text, negative, above 1000, or set but empty) falls back to `100` and logs one warning that does not repeat the value. Unset is silent. |
 | `FAULTLINE_PROVIDER_SPEND_LEDGER` | `/var/log/faultline/provider-spend.jsonl` | Ledger path. |
 
 ## Activation checklist (Asif's flip)

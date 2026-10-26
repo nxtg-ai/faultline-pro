@@ -8,7 +8,7 @@
  *
  * Validates: N-230 (A-110 item 1 — $100/mo provider-spend cap, ledgered).
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -25,6 +25,8 @@ import {
   ledgerPath,
   recordProviderSpend,
   resetProviderSpendLedger,
+  resetMonthlyCapWarnings,
+  MAX_MONTHLY_CAP_USD,
 } from '../src/store/provider-spend.js';
 import type { ManagedScanCostEvent } from '../src/store/costs.js';
 
@@ -97,6 +99,49 @@ describe('provider-spend config', () => {
     for (const bad of ['banana', '-5', 'NaN', 'Infinity']) {
       process.env.FAULTLINE_PROVIDER_SPEND_CAP_USD = bad;
       expect(getMonthlyCapUsd()).toBe(100);
+    }
+  });
+
+  it('accepts only a finite number from 0 to 1000; anything else is the default with one warning', () => {
+    expect(MAX_MONTHLY_CAP_USD).toBe(1000);
+    resetMonthlyCapWarnings();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const cases: Array<[string, number, boolean]> = [
+        // [env value, cap, warns]
+        ['115', 115, false],
+        ['0', 0, false],
+        ['1000', 1000, false],
+        ['-5', 100, true],
+        ['abc', 100, true],
+        ['115abc', 100, true],
+        ['', 100, true],
+        ['1e9', 100, true],
+        ['1000.5', 100, true],
+      ];
+      expect(cases.length).toBe(9);
+      for (const [value, cap, warns] of cases) {
+        warn.mockClear();
+        process.env.FAULTLINE_PROVIDER_SPEND_CAP_USD = value;
+        expect(getMonthlyCapUsd(), `cap for ${JSON.stringify(value)}`).toBe(cap);
+        // Read again: a bad value warns once, not on every read.
+        expect(getMonthlyCapUsd(), `second read for ${JSON.stringify(value)}`).toBe(cap);
+        expect(warn.mock.calls.length, `warnings for ${JSON.stringify(value)}`).toBe(warns ? 1 : 0);
+        if (warns) {
+          const text = String(warn.mock.calls[0][0]);
+          expect(text).toMatch(/FAULTLINE_PROVIDER_SPEND_CAP_USD/);
+          expect(text).toMatch(/default cap of 100/);
+          // The value's raw text is never logged.
+          if (value !== '') expect(text).not.toContain(value);
+        }
+      }
+      // Unset is the normal case: the default, silently.
+      warn.mockClear();
+      delete process.env.FAULTLINE_PROVIDER_SPEND_CAP_USD;
+      expect(getMonthlyCapUsd()).toBe(100);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
     }
   });
 

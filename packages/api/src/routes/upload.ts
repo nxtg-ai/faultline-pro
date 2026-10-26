@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
+import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { recordDeliveredScan } from '../lib/scan-quota.js';
@@ -19,7 +20,7 @@ type Provider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
 export async function uploadRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/scan/upload',
-    { config: { access: 'key' }, preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap], schema: { tags: ['Scan'], summary: 'Upload PDF or image for OCR scan' } },
+    { config: { access: 'key' }, preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap], schema: { tags: ['Scan'], summary: 'Upload PDF or image for OCR scan' } },
     async (request, reply) => {
       let buffer: Buffer | null = null;
       let mimetype = '';
