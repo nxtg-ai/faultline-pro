@@ -482,7 +482,7 @@ describe('POST /admin/verify-claims — the ledgers a scan writes', () => {
     expect(spendRows()).toHaveLength(0);
   });
 
-  it('is refused by the provider-spend cap once the budget is exhausted, with no provider call', async () => {
+  it('is refused by the provider-spend cap when the server key forwards a free plan and the budget is exhausted, with no provider call', async () => {
     process.env.FAULTLINE_PROVIDER_SPEND_CAP_USD = '1';
     process.env.FAULTLINE_PROVIDER_SPEND_CAP = 'on';
     recordProviderSpend({
@@ -490,12 +490,30 @@ describe('POST /admin/verify-claims — the ledgers a scan writes', () => {
       provider: 'gemini', modelId: 'gemini-2.5-flash', inputTokens: 1, outputTokens: 1,
       groundingCalls: 0, costUsd: 1.5, latencyMs: 1,
     });
-    const res = await post({ claims: claims(1) });
+    const res = await server.inject({
+      method: 'POST',
+      url: '/admin/verify-claims',
+      headers: { 'content-type': 'application/json', 'x-api-key': ADMIN_KEY, 'x-user-tier': 'free' },
+      payload: { claims: claims(1) },
+    });
     expect(res.statusCode).toBe(503);
     expect(res.json().error).toMatch(/provider budget exhausted/i);
     expect(sdk.calls).toBe(0);
     expect(spendRows()).toHaveLength(1);
     expect(getGroundingAllowanceStatus().groundedPrompts).toBe(0);
+  });
+
+  it('an internal call (server key, no plan header) passes an exhausted budget: the cap covers free and anonymous traffic only', async () => {
+    process.env.FAULTLINE_PROVIDER_SPEND_CAP_USD = '1';
+    process.env.FAULTLINE_PROVIDER_SPEND_CAP = 'on';
+    recordProviderSpend({
+      scanId: 'prior', ts: new Date().toISOString(), tier: 'pro', keyMode: 'managed',
+      provider: 'gemini', modelId: 'gemini-2.5-flash', inputTokens: 1, outputTokens: 1,
+      groundingCalls: 0, costUsd: 1.5, latencyMs: 1,
+    });
+    const res = await post({ claims: claims(1), provider: 'mock' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().results).toHaveLength(1);
   });
 
   it('passes the burst rate limiter (sets X-RateLimit headers)', async () => {

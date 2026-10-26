@@ -13,6 +13,29 @@
 
 The cap is not a restriction on the agent — it is the **enabler**. Faultline may run consensus scans (and the retrieval-cost spike, `DIRECTIVE-NXTG-20260704-01`) without a per-scan ask *precisely because* every dollar lands in an append-only ledger and the ceiling is mechanical rather than a matter of judgment. Measured economics: a consensus scan costs **$0.20–0.71** (`docs/unit-economics-MEASURED-2026-07-04.md`), ~88–91% of it web-search retrieval.
 
+## Who the cap refuses: free and anonymous traffic only
+
+Once the month's budget is spent and enforcement is on, the gate refuses **free** and **anonymous** callers with the 503 below. Every other tier (`personal`, `pro`, `enterprise`, `userkey`) passes this gate. Paid keys are bounded by their own per-key limits instead: the per-minute burst limiter and the monthly scan quota. The fleet budget protects runway from traffic that no plan pays for.
+
+The tier is the **trusted** tier (`resolveSpendCapTier` in `packages/api/src/plugins/provider-spend-cap.ts`, built on `resolveEntitledTier`):
+
+| Caller | Tier for this gate |
+|---|---|
+| No API key | `anon`. Every gated route checks the key first, so this case is defensive. |
+| The server's own key (`FAULTLINE_API_KEY`) with `x-user-tier` | the forwarded plan. An unknown value counts as `free`. |
+| The server's own key, no `x-user-tier` | `enterprise` (an internal call) |
+| A keystore key with the `pro` permission | `pro` |
+| A keystore key with the `admin` permission | `enterprise` (an operator key) |
+| Any other keystore key | `free`, the same tier the rate limiter and the monthly quota give it |
+
+`x-user-tier` from any key other than the server's own is ignored, so a free key that sends `x-user-tier: pro` is still refused. `resolveTierFromRequest` (in `store/costs.ts`) trusts that header from every caller and must never feed this gate.
+
+Routes that carry the gate: `POST /scan`, `POST /scan/template/:id`, `GET /scan/stream`, `POST /scan/stream`, `POST /critique`, `POST /scan/full/estimate`, `POST /scan/full`, `POST /admin/verify-claims`.
+
+`GET /usage` (admin) reports the scope as `providerBudget.appliesTo: ["free", "anon"]`.
+
+The alert at 90% and 100% of the budget is in `scripts/grounding-allowance-check.mjs` (see `docs/grounding-allowance-alert.md`).
+
 ## Not the same thing as the usage cap
 
 Three gates now run in front of a scan. They answer different questions and all three can be active:
@@ -34,14 +57,14 @@ Three gates now run in front of a scan. They answer different questions and all 
 | Wired on all scan routes | `routes/scan.ts` (`/scan`, `/scan/template`), `routes/stream.ts` (`/scan/stream` GET+POST) |
 | Wired on `POST /critique` (b33acff) | `routes/critique.ts`: `preHandler: [requireApiKey, rateLimitScan, enforceProviderSpendCap]`, and the call's real usage is priced and ledgered |
 | Spend recorded from the real composed cost | `recordProviderSpend(costEvent)` beside `emitScanCostEvent` / `appendScanCostLog` |
-| Budget surface (ADMIN only) | `GET /usage` → `providerBudget: { month, enforced, capUsd, spentUsd, remainingUsd, exhausted }` |
-| Tests | `packages/api/tests/provider-spend-cap.test.ts` (27, run 2026-10-01), `packages/api/tests/critique-spend-cap.test.ts` (6, run 2026-10-01) |
+| Budget surface (ADMIN only) | `GET /usage` → `providerBudget: { month, enforced, capUsd, spentUsd, remainingUsd, exhausted, appliesTo, ledgerWriteFailures }` |
+| Tests | `packages/api/tests/provider-spend-cap.test.ts`, `packages/api/tests/critique-spend-cap.test.ts`, `packages/api/tests/provider-spend-cap-tiers.test.ts` (who is refused, per route), `packages/api/tests/grounding-allowance-check.test.ts` (the 90% and 100% alert) |
 
 ## `POST /critique` is covered (b33acff, N-230)
 
 `/critique` makes a paid LLM call on our provider keys. Before b33acff it sat behind the API key only, so the cap could neither see nor stop its spend.
 
-- It runs the same per-minute burst limiter (`rateLimitScan`, shared bucket with scans) and `enforceProviderSpendCap` as a scan. With enforcement on and the budget exhausted it returns 503 and never calls the provider.
+- It runs the same per-minute burst limiter (`rateLimitScan`, shared bucket with scans) and `enforceProviderSpendCap` as a scan. With enforcement on and the budget exhausted it returns 503 to free and anonymous callers and never calls the provider.
 - The call's reported usage is priced and appended to the ledger through `recordProviderSpend`, so critique spend counts toward the monthly total even while the gate is dormant.
 - A request with no failed claims makes no LLM call and writes no ledger row.
 - It does **not** run `enforceMonthlyCap`. A critique is not a scan, so it does not use up a customer's monthly scan quota.
@@ -52,7 +75,7 @@ Three gates now run in front of a scan. They answer different questions and all 
 - **The ledger is the authority; memory is the index.** The in-process month total is lazily **hydrated by summing the ledger file**, so a restart/redeploy does not silently reset the budget to $0 — the known in-memory limitation `docs/usage-cap.md` flags for `UsageMeter`. Hydration runs once per month-key per process and always precedes the first in-process increment, so a row is never double-counted.
 - **Append-only, synchronous, guarded.** A spend row is money: read-after-write must hold within a process, so the write is `appendFileSync`. It is wrapped — **a failed ledger write never fails a scan**; the in-memory total still moves (the cap still holds) and `getWriteFailures()` surfaces the drift instead of hiding it.
 - **Single source of cost.** The ledger records the `ManagedScanCostEvent` the BLG-005 cost path already composes (real provider-reported usage, priced per real model). No second estimate, so no third-parallel-table drift.
-- **No per-request exemption — every API scan is our spend.** Provider credentials come only from server env (`GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`); **there is no BYOK path through this API**, so nothing a caller can say exempts a scan from the ledger or the cap. In particular the `userkey` tier label does **not**: `x-user-tier` is a caller-supplied header (FW forwards it for telemetry classification) and `userkey` is a valid value, so keying a money decision off it would let any authenticated caller opt out of the budget for the price of one header — and leave real spend unledgered, which is exactly what the A-110 ruling forbids. `tier` is ledgered as a **label** for analytics and never read as a spend decision. Regression-tested: a spoofed `x-user-tier` still gets 503, and a `userkey`-labelled cost event is still ledgered.
+- **No caller-supplied exemption — every API scan is our spend.** The gate's scope is set by the trusted tier (see "Who the cap refuses"), never by anything the caller sends. Provider credentials come only from server env (`GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`); **there is no BYOK path through this API**, so nothing a caller can say exempts a scan from the ledger or the cap. In particular the `userkey` tier label does **not**: `x-user-tier` is a caller-supplied header (FW forwards it for telemetry classification) and `userkey` is a valid value, so keying a money decision off it would let any authenticated caller opt out of the budget for the price of one header — and leave real spend unledgered, which is exactly what the A-110 ruling forbids. `tier` is ledgered as a **label** for analytics and never read as a spend decision. Regression-tested: a free key with a spoofed `x-user-tier` still gets 503, and a `userkey`-labelled cost event is still ledgered.
 - **Zero-cost scans are not ledgered.** Cache hits, `mock`, and all-error scans compose to $0; a non-finite or negative cost is rejected rather than poisoning the total.
 - **No PII.** A row is `{ ts, scanId, month, tier, provider, modelId, costUsd, claimCount, verifiedCount }` — no keyId, no text.
 - **Claim counts on every row.** `claimCount` is how many claims the call handled (extracted by a scan or a full-scan estimate, submitted to admin verify-claims, verified by a full-scan job); `verifiedCount` is how many of those got a billable verdict (`isBillableVerdict` in `packages/cli/lib/verdict-guard.ts`). A claim is billable only when its sources were retrieved by the engine, so all four must hold: the verdict is supported, contradicted or mixed; `sources` has at least one entry; `provenance.retriever` is a non-empty string; and it is not an `apiError` claim. The engine alone sets `provenance.retriever`: the verify runner sets it from its own table of retrievers by the provider id it resolved (today only `gemini`, as `gemini-grounding`), and the consensus engine sets its own retriever's name. A retriever a provider writes on its own verdict is dropped, on a scan and on `POST /admin/verify-claims` alike. So `unverified`, a zero-source verdict, and a single-provider verdict from `mock`, `openai`, `claude` or `perplexity` (none has an engine retriever) are never billable. Cost per claim is `costUsd / claimCount` or `costUsd / verifiedCount`, read straight off the row. Critique handles no claims and writes `0` and `0`. Both are `null` only on a row whose cost event carried no counts; rows written before the fields existed have neither key. Neither field is read by hydration, so the monthly total is unchanged by them and old rows still count toward it.
@@ -71,7 +94,8 @@ Three gates now run in front of a scan. They answer different questions and all 
 1. Confirm the ledger is recording: `GET /usage` with an admin key → `providerBudget.spentUsd` advancing.
 2. (Optional) set `FAULTLINE_PROVIDER_SPEND_CAP_USD` if the ceiling changes from the ruled $100.
 3. Set `FAULTLINE_PROVIDER_SPEND_CAP=on` on the Fly app.
-4. Verify: `providerBudget.enforced: true`; an over-budget scan returns **503** with `X-Provider-Spend-Cap` / `X-Provider-Spend-Used` / `Retry-After`.
+4. Verify: `providerBudget.enforced: true`; an over-budget scan from a free or anonymous caller returns **503** with `X-Provider-Spend-Cap` / `X-Provider-Spend-Used` / `Retry-After`. Paid callers keep scanning.
+5. Paid traffic is bounded only by its per-key limits. The monthly scan quota (`FAULTLINE_USAGE_CAP`) is a separate switch and is dormant by default, and `POST /critique`, `POST /scan/full/estimate`, `POST /scan/full` and `POST /admin/verify-claims` do not run it. Decide whether to switch the quota on at the same time.
 
 ## Known limitations
 

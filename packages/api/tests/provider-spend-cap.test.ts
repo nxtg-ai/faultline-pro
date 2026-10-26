@@ -303,10 +303,10 @@ describe('enforceProviderSpendCap — integration through /scan', () => {
     expect(res.statusCode).not.toBe(503);
   });
 
-  it('returns 503 with budget headers once the monthly budget is exhausted', async () => {
+  it('returns 503 with budget headers to a free key once the monthly budget is exhausted', async () => {
     exhaustBudget();
     process.env.FAULTLINE_PROVIDER_SPEND_CAP = 'on';
-    const created = getKeyStore().create('Pro Key', ['pro', 'scan']);
+    const created = getKeyStore().create('Free Key', ['scan']);
     const res = await server.inject({
       method: 'POST',
       url: '/scan',
@@ -321,6 +321,19 @@ describe('enforceProviderSpendCap — integration through /scan', () => {
     expect(body.error).toMatch(/provider budget exhausted/i);
     expect(body.capUsd).toBe(1);
     expect(body.spentUsd).toBeCloseTo(1.5, 4);
+  });
+
+  it('lets a paid (pro) key through an exhausted budget: its own per-key caps bound it', async () => {
+    exhaustBudget();
+    process.env.FAULTLINE_PROVIDER_SPEND_CAP = 'on';
+    const created = getKeyStore().create('Pro Key', ['pro', 'scan']);
+    const res = await server.inject({
+      method: 'POST',
+      url: '/scan',
+      headers: { 'x-api-key': created.key, 'content-type': 'application/json' },
+      payload: { text: 'The sky is blue.', provider: 'mock' },
+    });
+    expect(res.statusCode).toBe(200);
   });
 
   it('lets a scan through while budget remains', async () => {
@@ -338,13 +351,13 @@ describe('enforceProviderSpendCap — integration through /scan', () => {
   });
 
   it('CANNOT be bypassed by spoofing x-user-tier — a caller-supplied header buys no exemption', async () => {
-    // Regression: the header is set by the caller and `userkey` is a VALID_TIERS
-    // member, so keying the gate off it would let any authenticated caller opt
-    // out of the budget for the price of one header.
+    // Regression: the header is set by the caller, so keying the gate off it
+    // would let a free key opt out of the budget for the price of one header.
+    // Only the server's own key may forward a plan.
     exhaustBudget();
     process.env.FAULTLINE_PROVIDER_SPEND_CAP = 'on';
-    const created = getKeyStore().create('Pro Key', ['pro', 'scan']);
-    for (const spoof of ['userkey', 'enterprise', 'anon']) {
+    const created = getKeyStore().create('Free Key', ['scan']);
+    for (const spoof of ['pro', 'userkey', 'enterprise', 'personal']) {
       const res = await server.inject({
         method: 'POST',
         url: '/scan',
@@ -358,7 +371,7 @@ describe('enforceProviderSpendCap — integration through /scan', () => {
   it('gates the streaming route too (GET /scan/stream)', async () => {
     exhaustBudget();
     process.env.FAULTLINE_PROVIDER_SPEND_CAP = 'on';
-    const created = getKeyStore().create('Pro Key', ['pro', 'scan']);
+    const created = getKeyStore().create('Free Key', ['scan']);
     const res = await server.inject({
       method: 'GET',
       url: `/scan/stream?text=${encodeURIComponent('The sky is blue.')}&provider=mock`,
