@@ -94,7 +94,7 @@ const GEMINI_LEG = {
 };
 const GEMINI_USAGE = {
   inputTokens: 100, outputTokens: 20, groundingCalls: 1,
-  costUsd: buildManagedCostEvent([GEMINI_LEG], { text: 'unused', provider: 'gemini', claimCount: 1, tier: 'enterprise', latencyMs: 0 }).costUsd,
+  costUsd: buildManagedCostEvent([GEMINI_LEG], { text: 'unused', provider: 'gemini', claimCount: 1, tier: 'enterprise', latencyMs: 0, claims: { extracted: 1, verified: 1 } }).costUsd,
   priced: true,
 };
 const UNPRICED_USAGE = { inputTokens: 0, outputTokens: 0, groundingCalls: 0, costUsd: 0, priced: false };
