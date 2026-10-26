@@ -9,6 +9,7 @@ import {
   resolveTier,
 } from '../store/costs.js';
 import { recordProviderSpend } from '../store/provider-spend.js';
+import { summarizeScanUsage } from '../store/consensus-cost.js';
 import { getProvider } from '@nxtg/faultline/providers/registry.js';
 import { billableVerdictCount } from '@nxtg/faultline/lib/verdict-guard.js';
 import type { LLMProvider } from '@nxtg/faultline/providers/base_provider.js';
@@ -35,8 +36,17 @@ import type { Claim, ClaimStatus } from '@nxtg/faultline/types.js';
  * grounding allowance before each batch; retrying here would spend prompts the
  * runner's guard cannot see.
  *
- * Google grounding terms: the response carries our own status label and flags
- * only. No explanation, source or other grounded text ever leaves this route.
+ * Each result also carries `usage`: that claim's own token counts, grounding
+ * calls and USD cost, priced by `summarizeScanUsage`, the same function
+ * `buildManagedCostEvent` prices the batch with. Pricing is a sum over legs, so
+ * the per-claim costs add up to the batch event's cost whenever the batch
+ * captured any priced usage. When it captured none (mock, every call failed),
+ * the batch event falls back to a text-length estimate while every claim here
+ * reports `costUsd: 0` with `priced: false`.
+ *
+ * Google grounding terms: the response carries our own status label, flags and
+ * cost figures only. No explanation, source or other grounded text ever leaves
+ * this route.
  */
 
 export const MAX_VERIFY_CLAIMS = 25;
@@ -44,7 +54,7 @@ export const MAX_VERIFY_CLAIM_CHARS = 2000;
 /** Upper bound on claims in flight at once (prereg §6: concurrency 4). */
 export const VERIFY_CLAIMS_CONCURRENCY = 4;
 
-const PROVIDER_ENUM = ['gemini', 'openai', 'claude', 'perplexity', 'mock'] as const;
+export const PROVIDER_ENUM = ['gemini', 'openai', 'claude', 'perplexity', 'mock'] as const;
 type VerifyProviderName = (typeof PROVIDER_ENUM)[number];
 
 const BODY_SCHEMA = {
@@ -91,6 +101,17 @@ const RESPONSE_SCHEMA = {
             noSourceAbstain: { type: 'boolean' },
             apiErrorReason: { type: ['string', 'null'] },
             model: { type: ['string', 'null'] },
+            usage: {
+              type: 'object',
+              properties: {
+                inputTokens: { type: 'number' },
+                outputTokens: { type: 'number' },
+                groundingCalls: { type: 'number' },
+                costUsd: { type: 'number' },
+                priced: { type: 'boolean' },
+              },
+              additionalProperties: false,
+            },
           },
           additionalProperties: false,
         },
@@ -121,6 +142,18 @@ export interface VerifyClaimOutcome {
   /** Why an unchecked claim went unchecked (a label such as output_truncated); null on a verdict. */
   apiErrorReason: string | null;
   model: string | null;
+  /** This claim's own captured usage and cost. Cost figures only. */
+  usage?: ClaimUsage;
+}
+
+/** One claim's usage, priced with the batch ledger's pricing code. */
+export interface ClaimUsage {
+  inputTokens: number;
+  outputTokens: number;
+  groundingCalls: number;
+  costUsd: number;
+  /** False when the claim captured no priced usage (mock, a failed call); costUsd is then 0. */
+  priced: boolean;
 }
 
 interface ClaimRun {
@@ -196,6 +229,20 @@ function recordBatchSpend(runs: ClaimRun[], claims: VerifyClaimInput[], provider
   recordProviderSpend(costEvent);
 }
 
+/** Price one claim's captured legs, the same way the batch event prices all of them. */
+export function claimUsage(legs: UsageLeg[]): ClaimUsage {
+  const usage = summarizeScanUsage(legs);
+  // The same gate as the batch event's hasRealUsage: priced means real composed cost.
+  const priced = usage.costUsd > 0;
+  return {
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
+    groundingCalls: usage.groundingCalls,
+    costUsd: priced ? usage.costUsd : 0,
+    priced,
+  };
+}
+
 function hasDuplicateIds(claims: VerifyClaimInput[]): boolean {
   return new Set(claims.map((claim) => claim.id)).size !== claims.length;
 }
@@ -233,7 +280,7 @@ export async function adminVerifyRoutes(fastify: FastifyInstance): Promise<void>
 
       return reply.status(200).send({
         provider: providerName,
-        results: runs.map((run) => run.outcome),
+        results: runs.map((run) => ({ ...run.outcome, usage: claimUsage(run.legs) })),
       });
     },
   );
