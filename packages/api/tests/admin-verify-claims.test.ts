@@ -63,7 +63,7 @@ vi.mock('@google/genai', () => ({
 import { buildServer } from '../src/server.js';
 import { resetKeyStore, getKeyStore } from '../src/store/keys.js';
 import { resetRateLimiter } from '../src/store/ratelimit.js';
-import { getCostStore, buildManagedCostEvent } from '../src/store/costs.js';
+import { getCostStore, buildManagedCostEvent, scanCostLogRow } from '../src/store/costs.js';
 import { recordProviderSpend, resetProviderSpendLedger } from '../src/store/provider-spend.js';
 import {
   getGroundingAllowanceStatus,
@@ -407,10 +407,24 @@ describe('POST /admin/verify-claims — the ledgers a scan writes', () => {
     };
     const expected = buildManagedCostEvent([leg, leg, leg], {
       text: 'unused', provider: 'gemini', claimCount: 3, tier: 'enterprise', latencyMs: 0,
+      claims: { extracted: 3, verified: 3 },
     });
     expect(expected.costUsd).toBeGreaterThan(0);
     expect(rows[0]).toMatchObject({ provider: 'gemini', modelId: 'gemini-2.5-flash', tier: 'enterprise' });
     expect(rows[0].costUsd as number).toBeCloseTo(expected.costUsd, 10);
+  });
+
+  it('both ledger rows carry the batch claim count and its billable verdict count', async () => {
+    // Three answered claims and one whose provider call fails: 4 submitted, 3 billable verdicts.
+    const res = await post({ claims: [...claims(3), { id: 'x', text: 'THROW-ME' }] });
+    expect(res.statusCode).toBe(200);
+    const rows = spendRows();
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ claimCount: 4, verifiedCount: 3 });
+    const events = getCostStore().getManagedEvents();
+    expect(events.length).toBeGreaterThan(0);
+    expect(JSON.parse(scanCostLogRow(events[0]))).toMatchObject({ scan_id: rows[0].scanId, kind: 'admin-verify', claim_count: 4, verified_count: 3 });
   });
 
   it('records the batch as kind admin-verify: provider spend still rises, scan percentiles do not', async () => {

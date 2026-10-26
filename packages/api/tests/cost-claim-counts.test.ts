@@ -24,7 +24,9 @@ describe('cost event and log row carry claim counts', () => {
     const row = JSON.parse(scanCostLogRow(event));
     expect(row).toMatchObject({ claim_count: 4, verified_count: 3 });
 
-    const old = { ...JSON.parse(scanCostLogRow(buildManagedCostEvent([], { text: 'y', provider: 'mock', claimCount: 1, tier: 'pro', latencyMs: 5 }))) };
+    // An event read back from a row written before counts existed carries neither count.
+    const { claimsExtracted: _e, claimsVerified: _v, ...legacyEvent } = buildManagedCostEvent([], { text: 'y', provider: 'mock', claimCount: 1, tier: 'pro', latencyMs: 5, claims: { extracted: 1, verified: 1 } });
+    const old = JSON.parse(scanCostLogRow(legacyEvent));
     expect(old).toMatchObject({ claim_count: null, verified_count: null });
     const path = join(dir, 'scan-cost.jsonl');
     writeFileSync(path, [JSON.stringify(row), JSON.stringify(old)].join('\n') + '\n');

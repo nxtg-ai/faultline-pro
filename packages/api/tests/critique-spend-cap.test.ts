@@ -20,6 +20,7 @@ import { recordUsage } from '@nxtg/faultline/lib/usage-sink.js';
 import { buildServer } from '../src/server.js';
 import { resetKeyStore, getKeyStore } from '../src/store/keys.js';
 import { resetRateLimiter } from '../src/store/ratelimit.js';
+import { getCostStore, resetCostStore } from '../src/store/costs.js';
 import {
   recordProviderSpend,
   resetProviderSpendLedger,
@@ -177,6 +178,20 @@ describe('POST /critique — provider-spend cap (N-230)', () => {
 
     expect(res.statusCode).toBe(200);
     expect(ledgerRows()).toHaveLength(1);
+  });
+
+  it('the ledger row carries claim counts of 0, not null: critique extracts and verifies no claims', async () => {
+    resetCostStore();
+    const key = getKeyStore().create('Pro Key', ['pro', 'scan']);
+    const res = await postCritique(key.key, true);
+
+    expect(res.statusCode).toBe(200);
+    const rows = ledgerRows();
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ claimCount: 0, verifiedCount: 0 });
+    // Critique writes no scan-cost row (it has never been a scan in /costs/percentiles).
+    expect(getCostStore().getManagedEvents()).toHaveLength(0);
   });
 
   it('no failed claims: no LLM call and no ledger row', async () => {
