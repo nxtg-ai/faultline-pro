@@ -68,6 +68,11 @@ export const EXIT = Object.freeze({ OK: 0, USAGE: 2, CAP: 3 });
 
 export class UsageError extends Error {}
 
+/** Progress, stop and report lines. They never contain the key or claim text. */
+function writeLine(stream, line) {
+  stream.write(`${line}\n`);
+}
+
 function list(value, name) {
   const items = String(value).split(',').map((s) => s.trim()).filter(Boolean);
   if (items.length === 0) throw new UsageError(`${name} is empty`);
@@ -259,7 +264,7 @@ export async function run(opts, deps = {}) {
   const fetchFn = deps.fetch ?? globalThis.fetch;
   const sleep = deps.sleep ?? ((t) => new Promise((r) => setTimeout(r, t)));
   const now = deps.now ?? (() => Date.now());
-  const log = deps.log ?? ((msg) => console.error(msg));
+  const log = deps.log ?? ((msg) => writeLine(process.stderr, msg));
   const write = deps.write ?? ((file, text) => writeFileSync(file, text));
   const thePlan = plan(opts);
 
@@ -403,13 +408,13 @@ export async function main(argv = process.argv.slice(2)) {
     opts = parseArgs(argv);
   } catch (err) {
     if (err instanceof UsageError) {
-      console.error(err.message);
+      writeLine(process.stderr, err.message);
       return EXIT.USAGE;
     }
     throw err;
   }
   const { exitCode, report } = await run(opts);
-  if (report) console.log(JSON.stringify(opts.dryRun ? report : { ...report, cells: report.cells.map(({ provider, k, nSent, nPriced, costPerClaimUsd }) => ({ provider, k, nSent, nPriced, costPerClaimUsd })) }, null, 1));
+  if (report) writeLine(process.stdout, JSON.stringify(opts.dryRun ? report : { ...report, cells: report.cells.map(({ provider, k, nSent, nPriced, costPerClaimUsd }) => ({ provider, k, nSent, nPriced, costPerClaimUsd })) }, null, 1));
   return exitCode;
 }
 
