@@ -179,6 +179,91 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Source'
+        independentEvidence:
+          $ref: '#/components/schemas/IndependentEvidence'
+
+    RetrievalStatus:
+      type: string
+      enum: [hits, zero, timeout, provider_error, parse_error, policy_block]
+      description: >
+        How the independent search ended. `hits`: at least one source came
+        back. `zero`: the search completed, its reply was well formed, and it
+        found no sources. `timeout`: the search was stopped by its deadline.
+        `provider_error`: an HTTP error, a network error, a missing API key, a
+        reply that says the response or its web search failed (even when it
+        also cites pages, which are then dropped), or any other failure.
+        `parse_error`: a 2xx reply that could not be read as sources (not JSON,
+        JSON null, or malformed source content). `policy_block`: the
+        request was refused on content or safety policy. An empty `sources`
+        list means "nothing found" only when the status is `zero`.
+      example: provider_error
+
+    IndependentEvidence:
+      type: object
+      description: >
+        Passages from a second search on the same claim, kept apart from the
+        verdict's own `sources`. Present only when the independent search ran
+        for this claim.
+      required:
+        - retriever
+        - retrievedAt
+        - status
+        - sources
+      properties:
+        retriever:
+          type: string
+          example: "openai-web-search"
+        model:
+          type: string
+          example: "gpt-4o-mini"
+        retrievedAt:
+          type: string
+          format: date-time
+        status:
+          $ref: '#/components/schemas/RetrievalStatus'
+        detail:
+          type: string
+          description: >
+            A short reason for a status other than `hits`, such as `http 500`.
+            Never a response body or claim text.
+          example: "http 500"
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/Source'
+
+    EvidenceCoverage:
+      type: object
+      description: >
+        Scan-level summary of the independent search, so a report can say
+        once that corroboration is incomplete. Present only when at least one
+        verdict carries `independentEvidence`. Returned on POST /scan, on the
+        `complete` event of /scan/stream and in the `result` of
+        GET /scan/full/{jobId}.
+      required:
+        - state
+        - checked
+        - corroborated
+        - byStatus
+      properties:
+        state:
+          type: string
+          enum: [complete, partial]
+          description: "`partial` when `corroborated` is less than `checked`."
+        checked:
+          type: integer
+          description: Verdicts that carry `independentEvidence`.
+          example: 8
+        corroborated:
+          type: integer
+          description: Of those, the verdicts whose search status is `hits`.
+          example: 0
+        byStatus:
+          type: object
+          description: Count of verdicts per RetrievalStatus; statuses not seen are absent.
+          additionalProperties:
+            type: integer
+          example: { provider_error: 8 }
 
     Finding:
       type: object
@@ -441,6 +526,8 @@ components:
           description: >
             Rule engine findings (PII, bias, toxicity, security patterns)
             detected in the input text.
+        evidenceCoverage:
+          $ref: '#/components/schemas/EvidenceCoverage'
 
     ApiKey:
       type: object

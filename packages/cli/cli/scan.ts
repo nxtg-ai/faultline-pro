@@ -2,7 +2,7 @@ import type { EvidenceOptions } from '../evidence/passage.js';
 import type { IndependentEvidenceOptions } from '../evidence/independent.js';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import type { Claim, VerificationResult, AnalysisState } from '../types.js';
+import type { Claim, VerificationResult, AnalysisState, RetrievalStatus } from '../types.js';
 import { generateComplianceReport, type ComplianceReport } from '../compliance/report_generator.js';
 import { runAllRules, runRules, type Finding } from '../rules/index.js';
 import { isExtractionError, type ExtractionErrorReason } from '../providers/extraction-error.js';
@@ -109,6 +109,41 @@ export interface ScanResult {
    * API do not carry it.
    */
   verification?: VerificationSummary | FullVerificationSummary;
+  /**
+   * How the independent search went across the scan, so a report can say once
+   * that corroboration is incomplete. Present only when at least one verdict
+   * carries `independentEvidence`.
+   */
+  evidenceCoverage?: EvidenceCoverage;
+}
+
+/** The scan-level summary of every verdict's independentEvidence status. */
+export interface EvidenceCoverage {
+  /** partial when fewer claims were corroborated than were checked. */
+  state: 'complete' | 'partial';
+  /** Verdicts that carry independentEvidence. */
+  checked: number;
+  /** Of those, the ones whose search returned sources (status hits). */
+  corroborated: number;
+  /** Count of each status seen. */
+  byStatus: Partial<Record<RetrievalStatus, number>>;
+}
+
+/** The evidence coverage of a scan, or undefined when the independent search never ran. */
+export function buildEvidenceCoverage(verifications: Record<string, VerificationResult>): EvidenceCoverage | undefined {
+  const byStatus: Partial<Record<RetrievalStatus, number>> = {};
+  let checked = 0;
+  for (const v of Object.values(verifications)) {
+    const ie = v?.independentEvidence;
+    if (!ie) continue;
+    checked++;
+    // A result read back from before statuses existed counts by what it holds.
+    const status: RetrievalStatus = ie.status ?? (ie.sources?.length > 0 ? 'hits' : 'zero');
+    byStatus[status] = (byStatus[status] ?? 0) + 1;
+  }
+  if (checked === 0) return undefined;
+  const corroborated = byStatus.hits ?? 0;
+  return { state: corroborated < checked ? 'partial' : 'complete', checked, corroborated, byStatus };
 }
 
 /** The result of a full scan run: a ScanResult with the full-mode summary. */
@@ -274,6 +309,12 @@ function findRules(text: string, ruleNames?: string[]): Finding[] {
   return ruleNames ? runRules(text, ruleNames) : runAllRules(text);
 }
 
+/** `{ evidenceCoverage }` when the independent search ran, else nothing (the field stays absent). */
+function withEvidenceCoverage(verifications: Record<string, VerificationResult>): { evidenceCoverage?: EvidenceCoverage } {
+  const evidenceCoverage = buildEvidenceCoverage(verifications);
+  return evidenceCoverage ? { evidenceCoverage } : {};
+}
+
 /** Count of verifications that ran into a provider/API error instead of a verdict. */
 function countVerificationErrors(verifications: Record<string, VerificationResult>): number {
   return Object.values(verifications).filter((v) => v.apiError).length;
@@ -324,6 +365,7 @@ export async function scan(
     verificationErrors,
     degraded: verificationErrors > 0,
     verification: buildVerificationSummary(rankedEligible, toVerify, verifyCap),
+    ...withEvidenceCoverage(verifications),
   };
 }
 
@@ -415,6 +457,7 @@ async function runFullVerification(
     degraded: verificationErrors > 0,
     verification,
     notAttemptedClaimIds: verification.uncheckedClaimIds,
+    ...withEvidenceCoverage(run.verifications),
   };
 }
 

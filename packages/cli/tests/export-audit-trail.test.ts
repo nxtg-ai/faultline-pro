@@ -17,7 +17,7 @@ import type { VerificationResult } from '../types.js';
 const PROVENANCE = { provider: 'gemini', model: 'gemini-2.5-flash-001', verifiedAt: '2026-10-14T05:00:00.000Z', retriever: 'gemini-grounding', retrievedAt: '2026-10-14T05:00:00.000Z' };
 const GROUNDED = { title: 'g', uri: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/a', evidence: { status: 'not_fetched' as const, reason: 'provider_terms' as const, passage: null } };
 const INDEPENDENT = {
-  retriever: 'openai-web-search', model: 'gpt-4o-mini', retrievedAt: '2026-10-14T05:00:01.000Z',
+  retriever: 'openai-web-search', model: 'gpt-4o-mini', retrievedAt: '2026-10-14T05:00:01.000Z', status: 'hits' as const,
   sources: [{ title: 'K', uri: 'https://kestrel.example/a', evidence: { status: 'ok' as const, passage: 'Completed in 1889 for the Fair.', fetchedAt: '2026-10-14T05:00:02.000Z', contentSha256: 'a'.repeat(64) } }],
 };
 
