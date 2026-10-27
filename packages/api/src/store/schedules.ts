@@ -13,6 +13,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scanWithSpend } from '../lib/scan-spend.js';
 import { getNotificationStore, type NotificationEventType } from './notifications.js';
 import { fetchOutbound, fetchOutboundFollow } from '../lib/outbound-url.js';
 import { keyIsLive, sanitizeErrorText } from './webhooks.js';
@@ -342,7 +343,7 @@ class ScheduleRunner {
       }
       inputSize = inputText.length;
 
-      const result = await scan(inputText, schedule.provider);
+      const result = await scanWithSpend({ text: inputText, provider: schedule.provider, keyId: schedule.keyId }, () => scan(inputText, schedule.provider));
       const durationMs = Date.now() - start;
       const runResult: Omit<ScheduleRunResult, 'runId'> = {
         ranAt,

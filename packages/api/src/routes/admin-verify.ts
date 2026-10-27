@@ -14,7 +14,8 @@ import { getProvider } from '@nxtg/faultline/providers/registry.js';
 import { billableVerdictCount } from '@nxtg/faultline/lib/verdict-guard.js';
 import type { LLMProvider } from '@nxtg/faultline/providers/base_provider.js';
 import { DEFAULT_SCAN_PROVIDER, resolveApiKey } from '@nxtg/faultline/cli/provider-keys.js';
-import { captureUsage, type UsageLeg } from '@nxtg/faultline/lib/usage-sink.js';
+import type { UsageLeg } from '@nxtg/faultline/lib/usage-sink.js';
+import { captureOutcome } from '../lib/scan-spend.js';
 import type { Claim, ClaimStatus } from '@nxtg/faultline/types.js';
 
 /**
@@ -173,27 +174,29 @@ function modelOf(legs: UsageLeg[], provider: LLMProvider): string | null {
  */
 async function verifyOne(provider: LLMProvider, input: VerifyClaimInput): Promise<ClaimRun> {
   const claim: Claim = { id: input.id, text: input.text, type: 'fact', importance: 3 };
-  try {
-    const { result, legs } = await captureUsage(() => provider.verifyClaim(claim));
+  // The legs are kept when the call throws: a call that failed after reaching the
+  // provider still spent, and the batch's spend row must count it.
+  const { outcome, legs } = await captureOutcome(() => provider.verifyClaim(claim));
+  if (outcome.ok === false) {
     return {
       legs,
-      outcome: {
-        id: input.id,
-        status: result.status,
-        apiError: result.apiError === true,
-        parseFallback: result.parseFallback === true,
-        noSourceAbstain: result.noSourceAbstain === true,
-        apiErrorReason: result.apiError === true ? (result.apiErrorReason ?? 'provider_error') : null,
-        // A failed call produced no verdict and no engine model record.
-        model: result.apiError === true ? null : modelOf(legs, provider),
-      },
-    };
-  } catch {
-    return {
-      legs: [],
       outcome: { id: input.id, status: 'unverified', apiError: true, parseFallback: false, noSourceAbstain: false, apiErrorReason: 'provider_error', model: null },
     };
   }
+  const result = outcome.value;
+  return {
+    legs,
+    outcome: {
+      id: input.id,
+      status: result.status,
+      apiError: result.apiError === true,
+      parseFallback: result.parseFallback === true,
+      noSourceAbstain: result.noSourceAbstain === true,
+      apiErrorReason: result.apiError === true ? (result.apiErrorReason ?? 'provider_error') : null,
+      // A failed call produced no verdict and no engine model record.
+      model: result.apiError === true ? null : modelOf(legs, provider),
+    },
+  };
 }
 
 /** Run `worker` over `items` with at most `limit` in flight; results keep input order. */

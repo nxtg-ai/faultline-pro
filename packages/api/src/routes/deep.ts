@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scanWithSpend } from '../lib/scan-spend.js';
 import { getAnalyticsStore } from '../store/analytics.js';
 import type { RiskLevel } from '../store/analytics.js';
 import { fireWebhookEvent } from '../store/webhooks.js';
@@ -67,7 +68,7 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
       let lastError = '';
       for (const p of chain) {
         try {
-          const result = await scan(text, p);
+          const result = await scanWithSpend({ text, provider: p, keyId }, () => scan(text, p));
           cb.recordSuccess(p);
 
           // Build evidence links from source URLs in verifications

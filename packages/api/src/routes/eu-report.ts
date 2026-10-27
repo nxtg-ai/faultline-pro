@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import PDFDocument from 'pdfkit';
 import { requireApiKey } from '../plugins/auth.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scanWithSpend } from '../lib/scan-spend.js';
 import type { ScanResult } from '@nxtg/faultline/cli/scan.js';
 
 // ── EU AI Act Article Reference Data ────────────────────────────────────────
@@ -285,7 +286,7 @@ export async function euReportRoutes(fastify: FastifyInstance): Promise<void> {
       const { text, provider, projectName } = request.body;
       const scanDate = new Date().toISOString().split('T')[0];
       try {
-        const result = await scan(text, provider);
+        const result = await scanWithSpend({ text, provider, keyId: request.keyId ?? 'unknown' }, () => scan(text, provider));
         const pdf = await buildEuPdf(result, projectName ?? 'EU AI Act Assessment', scanDate);
         return reply
           .status(200)

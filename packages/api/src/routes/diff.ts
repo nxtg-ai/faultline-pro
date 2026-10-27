@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scanWithSpend } from '../lib/scan-spend.js';
 
 type Provider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
 
@@ -70,9 +71,10 @@ export async function diffRoutes(fastify: FastifyInstance): Promise<void> {
       const { before, after, provider } = request.body;
       const effectiveProvider: Provider = provider ?? 'openai';
 
+      const keyId = request.keyId ?? 'unknown';
       const [scanBefore, scanAfter] = await Promise.all([
-        scan(before, effectiveProvider),
-        scan(after, effectiveProvider),
+        scanWithSpend({ text: before, provider: effectiveProvider, keyId }, () => scan(before, effectiveProvider)),
+        scanWithSpend({ text: after, provider: effectiveProvider, keyId }, () => scan(after, effectiveProvider)),
       ]) as unknown as [ScanResult, ScanResult];
 
       const beforeByText = new Map(scanBefore.claims.map(c => [normalize(c.text), c]));

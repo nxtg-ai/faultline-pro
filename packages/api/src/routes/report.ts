@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import PDFDocument from 'pdfkit';
 import { requireApiKey } from '../plugins/auth.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scanWithSpend } from '../lib/scan-spend.js';
 import type { ScanResult } from '@nxtg/faultline/cli/scan.js';
 import { evidenceLine, type PdfSourceEvidence } from '../store/pdf-report.js';
 
@@ -234,7 +235,7 @@ export async function reportRoutes(fastify: FastifyInstance): Promise<void> {
       const scanDate = new Date().toISOString().split('T')[0];
 
       try {
-        const result = await scan(text, provider);
+        const result = await scanWithSpend({ text, provider, keyId: request.keyId ?? 'unknown' }, () => scan(text, provider));
         const pdf = await buildPdf(result, projectName ?? 'Faultline Scan', scanDate);
 
         return reply

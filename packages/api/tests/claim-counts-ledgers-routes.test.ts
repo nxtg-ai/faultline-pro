@@ -131,6 +131,13 @@ describe('claim counts reach both ledgers', () => {
     expectCountsOnBothLedgers(EXTRACTED, VERIFIED);
   });
 
+  it('POST /scan with pipelineConfig', async () => {
+    const res = await server.inject({ method: 'POST', url: '/scan', headers, payload: { text: TEXT, provider: 'mock', pipelineConfig: { extractionProvider: 'mock' } } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().claims).toHaveLength(EXTRACTED);
+    expectCountsOnBothLedgers(EXTRACTED, VERIFIED);
+  });
+
   it('POST /scan/stream', async () => {
     const res = await server.inject({ method: 'POST', url: '/scan/stream', headers, payload: { text: TEXT, provider: 'mock' } });
     expect(res.statusCode).toBe(200);

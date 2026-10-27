@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scanWithSpend } from '../lib/scan-spend.js';
 import { fireWebhookEvent, webhookSafeData, keyIsLive } from './webhooks.js';
 import type { WebhookEventOwner } from './webhooks.js';
 import { getAuditLogger } from './audit.js';
@@ -152,14 +153,16 @@ class JobScheduler {
   private async runJob(job: Job): Promise<void> {
     const now = new Date().toISOString();
     try {
-      const result = await scan(job.text, job.provider);
+      const owner = getJobStore().ownerOf(job.id);
+      // The tier label comes from the creator's key; a job with no recorded owner is labelled as unknown.
+      const ownerKeyId = owner !== null && owner !== 'public' ? owner.keyId : 'unknown';
+      const result = await scanWithSpend({ text: job.text, provider: job.provider, keyId: ownerKeyId }, () => scan(job.text, job.provider));
       const nextRunAt = new Date(Date.now() + job.intervalMs).toISOString();
       getJobStore().update(job.id, {
         lastRunAt: now,
         nextRunAt,
         runCount: job.runCount + 1,
       });
-      const owner = getJobStore().ownerOf(job.id);
       if (job.webhookUrl) {
         // Sent only while the creator's key is live, checked after the scan ran
         // (codex seat, 84cf8c8). A job with no recorded owner sends nothing.

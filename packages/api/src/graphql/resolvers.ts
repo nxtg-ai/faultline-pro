@@ -1,4 +1,5 @@
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scanWithSpend } from '../lib/scan-spend.js';
 import { getKeyStore } from '../store/keys.js';
 import { getUsageMeter } from '../store/usage.js';
 import { getAuditLogger } from '../store/audit.js';
@@ -63,7 +64,7 @@ export const resolvers = {
     scan: async (_: unknown, args: { text: string; provider?: string }, ctx: GqlContext) => {
       requireAdmin(ctx);
       const provider = (args.provider ?? 'mock') as Provider;
-      const result = await scan(args.text, provider);
+      const result = await scanWithSpend({ text: args.text, provider, keyId: ctx.keyId }, () => scan(args.text, provider));
       const stored = getScanStore().record(ctx.keyId, args.text, result as unknown as Record<string, unknown>);
       return toScanResult(stored.id, result as unknown as Record<string, unknown>, stored.scannedAt);
     },
@@ -125,7 +126,7 @@ export const resolvers = {
       const texts = args.texts.slice(0, 20);
       const results = await Promise.all(
         texts.map(async (text) => {
-          const result = await scan(text, provider);
+          const result = await scanWithSpend({ text, provider, keyId: ctx.keyId }, () => scan(text, provider));
           const stored = getScanStore().record(ctx.keyId, text, result as unknown as Record<string, unknown>);
           return toScanResult(stored.id, result as unknown as Record<string, unknown>, stored.scannedAt);
         }),

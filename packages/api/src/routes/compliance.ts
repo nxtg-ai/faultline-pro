@@ -3,6 +3,7 @@ import { getComplianceTemplateStore } from '../store/compliance-templates.js';
 import { requireApiKey, requireAdmin } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scanWithSpend } from '../lib/scan-spend.js';
 
 type Provider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
 
@@ -175,7 +176,7 @@ export async function complianceRoutes(fastify: FastifyInstance): Promise<void> 
       const { text, provider } = request.body;
 
       try {
-        const scanResult = await scan(text, provider);
+        const scanResult = await scanWithSpend({ text, provider, keyId: request.keyId ?? 'unknown' }, () => scan(text, provider));
         const complianceAnalysis = store.applyTemplate(
           template,
           scanResult.claims,

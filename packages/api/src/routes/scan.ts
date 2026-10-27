@@ -1,14 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { apiEvidenceOptions, apiIndependentEvidenceOptions } from '../lib/evidence.js';
-import { assertValidScanResult, isInvalidVerdictError, billableVerdictCount } from '@nxtg/faultline/lib/verdict-guard.js';
+import { assertValidScanResult, isInvalidVerdictError } from '@nxtg/faultline/lib/verdict-guard.js';
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey, resolveRequestTenantId } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
-import { recordProviderSpend } from '../store/provider-spend.js';
+import { enforceConsensusEntitlement } from '../plugins/consensus-entitlement.js';
+import { scanWithSpend } from '../lib/scan-spend.js';
 import { getUsageMeter } from '../store/usage.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import type { PipelineConfig } from '@nxtg/faultline/cli/scan.js';
 import { getAnalyticsStore } from '../store/analytics.js';
 import type { RiskLevel } from '../store/analytics.js';
 import { fireWebhookEvent } from '../store/webhooks.js';
@@ -21,12 +23,11 @@ import { cacheCaller, requestOwner } from '../lib/cache-caller.js';
 import { ownsOrAdmin } from '../lib/ownership.js';
 import { getTemplateStore } from '../store/templates.js';
 import { getClaimIndex } from '../store/claims.js';
-import { getCostStore, emitScanCostEvent, appendScanCostLog, resolveTier, buildManagedCostEvent } from '../store/costs.js';
+import { getCostStore } from '../store/costs.js';
 import { getScanHistory, hashText } from '../store/scan-history.js';
 import { recordScanTelemetry } from '../store/telemetry.js';
 import { notifyScanFailed } from '../store/notifications.js';
 import { buildEuComplianceReport, evaluateComplianceGate } from '@nxtg/faultline/cli/compliance-report.js';
-import { captureUsage } from '@nxtg/faultline/lib/usage-sink.js';
 import { resolveVerifyPolicy, withVerificationTier } from '../plugins/verify-cap.js';
 import { isExtractionError, type ExtractionError } from '@nxtg/faultline/providers/extraction-error.js';
 import { sendExtractionFailed } from '../lib/extraction-failure.js';
@@ -50,6 +51,12 @@ const BODY_SCHEMA = {
         extractionProvider:   { type: 'string', enum: PROVIDER_ENUM },
         verificationProvider: { type: 'string', enum: PROVIDER_ENUM },
         synthesisProvider:    { type: 'string', enum: PROVIDER_ENUM },
+        // Grounded multi-model consensus, the same fields POST /scan/stream takes.
+        // Enterprise only: enforceConsensusEntitlement refuses the rest with a 403.
+        // Listed here so the schema never strips them and serves a single-provider
+        // scan to a caller who asked for consensus.
+        consensus:            { type: 'boolean' },
+        consensusProviders:   { type: 'array', items: { type: 'string', enum: PROVIDER_ENUM } },
       },
       additionalProperties: false,
     },
@@ -59,16 +66,10 @@ const BODY_SCHEMA = {
 
 type ScanProvider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
 
-interface PipelineConfigBody {
-  extractionProvider?: ScanProvider;
-  verificationProvider?: ScanProvider;
-  synthesisProvider?: ScanProvider;
-}
-
 interface ScanBody {
   text: string;
   provider?: ScanProvider;
-  pipelineConfig?: PipelineConfigBody;
+  pipelineConfig?: PipelineConfig;
 }
 
 const SCAN_TEMPLATE_SCHEMA = {
@@ -101,7 +102,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan',
     {
       config: { access: 'owner' },
-      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap],
+      preHandler: [requireApiKey, enforceConsensusEntitlement, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap],
       schema: { tags: ['Scan'], summary: 'Scan text for claim verification', body: BODY_SCHEMA },
     },
     async (request, reply) => {
@@ -110,7 +111,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
       const keyId = request.keyId ?? 'unknown';
       const effectiveProvider = provider ?? 'gemini';
       // Server-side only: the cap comes from the entitled plan, never the body
-      // (BODY_SCHEMA strips unknown fields, and ScanOptions is not PipelineConfig).
+      // (ScanOptions is not PipelineConfig, so no body field reaches it).
       const verifyPolicy = resolveVerifyPolicy(keyId, request.headers['x-user-tier']);
       const scanOptions = { verifyCap: verifyPolicy.cap, evidence: apiEvidenceOptions(), independentEvidence: apiIndependentEvidenceOptions() };
 
@@ -118,7 +119,9 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
       if (pipelineConfig) {
         const startTime = Date.now();
         try {
-          const result = await scan(
+          // Recorded in the provider-spend ledger like the other branch, also
+          // when the scan throws after a provider call.
+          const result = await scanWithSpend({ text, provider: effectiveProvider, keyId, startTime }, () => scan(
             text,
             effectiveProvider,
             /* minConfidence */ undefined,
@@ -127,7 +130,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
             /* onClaimVerified */ undefined,
             pipelineConfig,
             scanOptions,
-          );
+          ));
           getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
           recordScanTelemetry({
             provider:    effectiveProvider,
@@ -213,29 +216,14 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
 
       for (const p of chain) {
         try {
-          const { result, legs } = await captureUsage(() => scan(
+          // Real measured usage composed across the fan-out, in the cost store, the
+          // scan-cost log and the provider-spend ledger. A provider that fails after
+          // spending is recorded too, before the loop fails over to the next one.
+          const result = await scanWithSpend({ text, provider: p, keyId, startTime }, () => scan(
             text, p, undefined, undefined, undefined, undefined, undefined, scanOptions,
           ));
           cb.recordSuccess(p);
           getCostStore().record(keyId, p, text, resolveRequestTenantId(keyId));
-
-          // Managed-key scan cost telemetry (N-227 / DIRECTIVE-NXTG-20260506-04).
-          // BLG-CLX9-20260703-005: real measured usage composed across the fan-out
-          // (was a text-length estimate); legacy estimate is the no-legs fallback.
-          const groundingCalls = typeof result.verifications === 'object' && result.verifications !== null
-            ? Object.keys(result.verifications).length : 0;
-          const costEvent = buildManagedCostEvent(legs, {
-            text,
-            provider: p,
-            claimCount: groundingCalls,
-            tier: resolveTier(keyId),
-            latencyMs: Date.now() - startTime,
-            claims: { extracted: Array.isArray(result.claims) ? result.claims.length : 0, verified: billableVerdictCount(result.verifications) },
-          });
-          getCostStore().recordManaged(costEvent, keyId);
-          emitScanCostEvent(costEvent);
-          appendScanCostLog(costEvent);
-          recordProviderSpend(costEvent); // A-110 item 1 — append-only provider-spend ledger
           // A verdict outside the allowlist is refused before anything is stored
           // or cached (502 invalid_verdict; GoPMO 1.18.11.3 P2). The spend above is real.
           assertValidScanResult(result);
@@ -364,10 +352,10 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
 
       const keyId = request.keyId ?? 'unknown';
       const verifyPolicy = resolveVerifyPolicy(keyId, request.headers['x-user-tier']);
-      const scanned = await scan(
+      const scanned = await scanWithSpend({ text, provider: effectiveProvider, keyId }, () => scan(
         text, effectiveProvider, undefined, undefined, undefined, undefined, undefined,
         { verifyCap: verifyPolicy.cap, evidence: apiEvidenceOptions(), independentEvidence: apiIndependentEvidenceOptions() },
-      );
+      ));
       const result = withVerificationTier(scanned, verifyPolicy.tier);
 
       getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);

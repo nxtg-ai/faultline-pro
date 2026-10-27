@@ -3,7 +3,8 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { extractForFullScan, verifyFullScan, type FullScanResult } from '@nxtg/faultline/cli/scan.js';
 import { billableVerdictCount } from '@nxtg/faultline/lib/verdict-guard.js';
 import { partitionForFullScan } from '@nxtg/faultline/cli/full-scan.js';
-import { captureUsage, type UsageLeg } from '@nxtg/faultline/lib/usage-sink.js';
+import type { UsageLeg } from '@nxtg/faultline/lib/usage-sink.js';
+import { captureOutcome } from '../lib/scan-spend.js';
 import { requireApiKey } from '../plugins/auth.js';
 import { isExtractionError } from '@nxtg/faultline/providers/extraction-error.js';
 import { sendExtractionFailed } from '../lib/extraction-failure.js';
@@ -174,20 +175,6 @@ function logFullScanCost(legs: UsageLeg[], input: FullScanCostInput): void {
   emitScanCostEvent(event);
   appendScanCostLog(event);
   recordProviderSpend(event);
-}
-
-type Outcome<T> = { ok: true; value: T } | { ok: false; error: unknown };
-
-/** Run `fn` inside a usage scope and keep the legs even when it throws (a failed call can still have spent). */
-async function captureOutcome<T>(fn: () => Promise<T>): Promise<{ outcome: Outcome<T>; legs: UsageLeg[] }> {
-  const { result, legs } = await captureUsage(async (): Promise<Outcome<T>> => {
-    try {
-      return { ok: true, value: await fn() };
-    } catch (error) {
-      return { ok: false, error };
-    }
-  });
-  return { outcome: result, legs };
 }
 
 const isMissingProviderKey = (error: unknown): error is Error =>

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scanWithSpend } from '../lib/scan-spend.js';
 import { isExtractionError } from '@nxtg/faultline/providers/extraction-error.js';
 import { getAnalyticsStore } from '../store/analytics.js';
 import type { RiskLevel } from '../store/analytics.js';
@@ -46,6 +47,7 @@ function resolveTier(keyId: string): Tier {
 }
 
 async function scanWithFailover(
+  keyId: string,
   text: string,
   preferred: Provider | undefined,
 ): Promise<Awaited<ReturnType<typeof scan>>> {
@@ -56,7 +58,7 @@ async function scanWithFailover(
   let lastError: unknown;
   for (const p of chain) {
     try {
-      const result = await scan(text, p);
+      const result = await scanWithSpend({ text, provider: p, keyId }, () => scan(text, p));
       cb.recordSuccess(p);
       return result;
     } catch (err) {
@@ -118,7 +120,7 @@ export async function batchRoutes(fastify: FastifyInstance): Promise<void> {
 
       // Process all texts concurrently with failover
       const settled = await Promise.allSettled(
-        texts.map((text) => scanWithFailover(text, provider as Provider | undefined)),
+        texts.map((text) => scanWithFailover(keyId, text, provider as Provider | undefined)),
       );
 
       type ScanResult = Awaited<ReturnType<typeof scan>>;
