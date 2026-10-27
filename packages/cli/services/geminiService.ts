@@ -7,6 +7,7 @@ import { ExtractionError, classifyApiError, parseExtractedClaims } from '../prov
 import { readVerdictReply, truncatedVerdict, unparseableVerdict } from '../providers/verdict-reply';
 import { geminiCeilingConfig } from '../providers/call-ceilings';
 import { isGeminiTruncated, OutputTruncatedError } from '../providers/output-truncation';
+import { RetrievalError } from '../providers/retrieval-error';
 
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 
@@ -284,12 +285,15 @@ export const searchSuggestionsOf = (
  * tool — the same grounding mechanism `verifyClaim` uses, but exposed as a
  * pure retrieval primitive for the consensus engine's Retriever seam.
  *
- * Returns up to 3 de-duplicated sources. Returns [] on any API error (the
- * consensus engine treats an empty retrieval as "no shared evidence", and
- * every provider then judges from parametric knowledge against that empty set).
+ * Returns up to 3 de-duplicated sources, or [] when the search ran and found
+ * none. A search that could not run (no key, an API error, a reply cut off at
+ * its ceiling) throws RetrievalError with the classified reason, so the
+ * consensus engine reports the claim as not checked instead of judging it
+ * against an empty source list.
  */
 export const retrieveSources = async (claimText: string, apiKey: string): Promise<Array<{ title: string; uri: string }>> => {
-  if (!apiKey || !claimText) return [];
+  if (!apiKey) throw new RetrievalError('provider_error', new Error('no Gemini API key for the source search'));
+  if (!claimText) return [];
 
   const prompt = `Search the web for evidence relevant to this claim. Return a one-sentence summary of what you found.\n\nClaim: "${claimText}"`;
 
@@ -302,7 +306,7 @@ export const retrieveSources = async (claimText: string, apiKey: string): Promis
     });
 
     recordGeminiUsage(response, true, 'grounded-retrieve:gemini');
-    // A cut-off retrieval is a failed retrieval, handled like the API error below.
+    // A cut-off retrieval is a failed retrieval, classified in the catch below.
     if (isGeminiTruncated(response)) throw new OutputTruncatedError('gemini', 'retrieve');
     const sources: Array<{ title: string; uri: string }> = [];
     const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
@@ -316,8 +320,10 @@ export const retrieveSources = async (claimText: string, apiKey: string): Promis
     const uniqueSources = sources.filter((v, i, a) => a.findIndex(t => t.uri === v.uri) === i);
     return uniqueSources.slice(0, 3);
   } catch (error) {
-    console.error(`Error retrieving sources for claim:`, error);
-    return [];
+    const failure = RetrievalError.fromError(error);
+    // The reason only: the raw error can carry the provider payload.
+    console.error(`Source search failed: ${failure.reason}`);
+    throw failure;
   }
 };
 

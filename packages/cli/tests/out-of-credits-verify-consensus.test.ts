@@ -28,7 +28,11 @@ import { consensusVerify, type NamedProvider } from '../consensus/consensus_engi
 import { OUT_OF_CREDITS_VERIFY_MESSAGE } from '../services/verify-error.js';
 
 const claim: Claim = { id: 'c1', text: 'Water boils at 100 C at sea level.', type: 'fact', importance: 3 };
-const emptyRetriever: Retriever = { name: 'test-retriever', retrieve: async () => [] as Source[] };
+// One shared source, so the voters are asked: a search with no source asks no provider.
+const oneSourceRetriever: Retriever = {
+  name: 'test-retriever',
+  retrieve: async () => [{ title: 'Boiling point', uri: 'https://example.com/boiling' }] as Source[],
+};
 
 const ANTHROPIC_CREDIT_BODY = JSON.stringify({
   type: 'error',
@@ -113,7 +117,7 @@ describe('consensus keeps the out-of-credits reason on the vote and the fused re
 
   it('OpenAI 429 insufficient_quota voter -> the vote reads provider_out_of_credits', async () => {
     failWith(429, 'Too Many Requests', OPENAI_INSUFFICIENT_QUOTA_BODY);
-    const result = await consensusVerify(claim, emptyRetriever, [openaiVoter()]);
+    const result = await consensusVerify(claim, oneSourceRetriever, [openaiVoter()]);
     const vote = result.providerVotes?.[0] as ProviderVote;
     expect(vote).toBeDefined();
     expect(vote.apiError).toBe(true);
@@ -124,7 +128,7 @@ describe('consensus keeps the out-of-credits reason on the vote and the fused re
 
   it('every voter out of credits -> the fused result reads provider_out_of_credits', async () => {
     failWith(429, 'Too Many Requests', OPENAI_INSUFFICIENT_QUOTA_BODY);
-    const result = await consensusVerify(claim, emptyRetriever, [openaiVoter(), openaiVoter()]);
+    const result = await consensusVerify(claim, oneSourceRetriever, [openaiVoter(), openaiVoter()]);
     expect(result.providerVotes).toHaveLength(2);
     expect(result.status).toBe('unverified');
     expect(result.apiError).toBe(true);
@@ -134,7 +138,7 @@ describe('consensus keeps the out-of-credits reason on the vote and the fused re
 
   it('control: a genuine 429 rate-limit voter reads rate_limited, and the fused result is not out of credits', async () => {
     failWith(429, 'Too Many Requests', OPENAI_RATE_LIMIT_BODY);
-    const result = await consensusVerify(claim, emptyRetriever, [openaiVoter()]);
+    const result = await consensusVerify(claim, oneSourceRetriever, [openaiVoter()]);
     const vote = result.providerVotes?.[0] as ProviderVote;
     expect(vote).toBeDefined();
     expect(vote.apiErrorReason).toBe('rate_limited');
@@ -151,7 +155,7 @@ describe('consensus keeps the out-of-credits reason on the vote and the fused re
       name: 'claude',
       provider: { verifyClaimGrounded: async () => { throw new Error('Anthropic API error: 429 Too Many Requests'); } } as never,
     };
-    const result = await consensusVerify(claim, emptyRetriever, [outOfCredits, rateLimited]);
+    const result = await consensusVerify(claim, oneSourceRetriever, [outOfCredits, rateLimited]);
     expect(result.providerVotes?.map((v) => v.apiErrorReason)).toEqual(['provider_out_of_credits', 'rate_limited']);
     expect(result.apiError).toBe(true);
     expect(result.apiErrorReason).toBeUndefined();
@@ -166,7 +170,7 @@ describe('consensus keeps the out-of-credits reason on the vote and the fused re
       name: 'claude',
       provider: { verifyClaimGrounded: async () => ({ claimId: claim.id, status: 'supported' as const, explanation: 'Holds up.', sources: [] }) } as never,
     };
-    const result = await consensusVerify(claim, emptyRetriever, [outOfCredits, healthy]);
+    const result = await consensusVerify(claim, oneSourceRetriever, [outOfCredits, healthy]);
     expect(result.status).toBe('supported');
     expect(result.apiError).toBeUndefined();
     expect(result.apiErrorReason).toBeUndefined();

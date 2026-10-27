@@ -200,15 +200,15 @@ describe('OpenAIWebSearchRetriever', () => {
       ]);
     });
 
-    it('returns [] (never throws) on a non-ok API response', async () => {
+    it('rejects with RetrievalError rate_limited on a 429, not an empty list', async () => {
       mockFetch.mockResolvedValueOnce({ ok: false, status: 429, statusText: 'Too Many Requests' });
       const retriever = new OpenAIWebSearchRetriever('test-key');
-      await expect(retriever.retrieve('claim')).resolves.toEqual([]);
+      await expect(retriever.retrieve('claim')).rejects.toMatchObject({ name: 'RetrievalError', reason: 'rate_limited' });
     });
 
-    it('returns [] without calling the API when the key is empty', async () => {
+    it('rejects without calling the API when the key is empty: no key is not "found nothing"', async () => {
       const retriever = new OpenAIWebSearchRetriever('');
-      await expect(retriever.retrieve('claim')).resolves.toEqual([]);
+      await expect(retriever.retrieve('claim')).rejects.toMatchObject({ name: 'RetrievalError', reason: 'provider_error' });
       expect(mockFetch).not.toHaveBeenCalled();
     });
 

@@ -143,15 +143,10 @@ describe('consensus', () => {
     expect(Date.parse(v.provenance!.verifiedAt)).toBeGreaterThanOrEqual(Date.parse(v.provenance!.retrievedAt!));
   });
 
-  it('a failed retrieval leaves retrievedAt absent', async () => {
+  it('a failed retrieval is not checked, so it carries no provenance at all', async () => {
     const v = await consensusVerify(CLAIM, { name: 'down-retriever', retrieve: async () => { throw new Error('down'); } } as never, [voter('openai', 'gpt-x', 'supported')]);
-    if (v.apiError) {
-      expect(v.provenance).toBeUndefined();
-    } else {
-      expect(v.provenance!.provider).toBe('consensus');
-      expect('retrievedAt' in v.provenance!).toBe(false);
-      expect('retriever' in v.provenance!).toBe(false);
-    }
+    expect(v.apiError).toBe(true);
+    expect(v.provenance).toBeUndefined();
   });
 });
 
