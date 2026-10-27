@@ -89,6 +89,9 @@ function sseHeaders(reply: FastifyReply): Record<string, string> {
 
 const GENERIC_STREAM_ERROR = 'Scan failed — the verification service hit an error. Please retry.';
 const EXTRACTION_STREAM_ERROR = 'Scan failed — claims could not be extracted from the text, so nothing was verified. Please retry.';
+/** A retry cannot succeed against an empty provider account, so this text never asks for one. */
+const OUT_OF_CREDITS_STREAM_ERROR =
+  'Scan failed — the extraction provider account is out of credits, so nothing was verified. Retrying will not help until the provider account has credits again.';
 
 /**
  * The client-safe SSE error event. An extraction failure also carries
@@ -96,7 +99,10 @@ const EXTRACTION_STREAM_ERROR = 'Scan failed — claims could not be extracted f
  * of POST /scan; never the raw provider error.
  */
 function streamErrorEvent(err: unknown): Record<string, unknown> {
-  if (isExtractionError(err)) return { type: 'error', message: EXTRACTION_STREAM_ERROR, ...extractionFailedBody(err) };
+  if (isExtractionError(err)) {
+    const message = err.reason === 'provider_out_of_credits' ? OUT_OF_CREDITS_STREAM_ERROR : EXTRACTION_STREAM_ERROR;
+    return { type: 'error', message, ...extractionFailedBody(err) };
+  }
   return { type: 'error', message: GENERIC_STREAM_ERROR };
 }
 

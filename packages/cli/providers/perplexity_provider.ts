@@ -2,6 +2,7 @@ import type { Claim, VerificationResult } from '../types';
 import type { LLMProvider, ImageInput, CritiqueResult, ProviderFactory } from './base_provider';
 import { sanitizeVerifyError } from '../services/verify-error';
 import { ExtractionError, parseExtractedClaims } from './extraction-error';
+import { outOfCreditsTag, readErrorBody } from './out-of-credits';
 import { readVerdictReply, truncatedVerdict, unparseableVerdict } from './verdict-reply';
 import { CALL_CEILINGS, type PerplexityPurpose } from './call-ceilings';
 import { isChatCompletionTruncated, isOutputTruncatedError, OutputTruncatedError } from './output-truncation';
@@ -142,7 +143,9 @@ Return a JSON object: { "critique": string, "improvedPrompt": string }`,
     });
 
     if (!response.ok) {
-      throw new Error(`Perplexity API error: ${response.status} ${response.statusText}`);
+      // Only a fixed tag from the body is kept, so an empty account is not read as a rate limit.
+      const tag = outOfCreditsTag(response.status, await readErrorBody(response));
+      throw new Error(`Perplexity API error: ${response.status} ${response.statusText}${tag}`);
     }
 
     const data = await response.json() as any;
@@ -174,7 +177,9 @@ Return a JSON object: { "critique": string, "improvedPrompt": string }`,
     });
 
     if (!response.ok) {
-      throw new Error(`Perplexity API error: ${response.status} ${response.statusText}`);
+      // Only a fixed tag from the body is kept, so an empty account is not read as a rate limit.
+      const tag = outOfCreditsTag(response.status, await readErrorBody(response));
+      throw new Error(`Perplexity API error: ${response.status} ${response.statusText}${tag}`);
     }
 
     const data = await response.json() as any;

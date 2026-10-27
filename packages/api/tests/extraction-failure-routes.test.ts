@@ -81,6 +81,15 @@ function rateLimitedExtraction(): ReturnType<typeof vi.fn> {
   return extract;
 }
 
+/** OpenAI's empty-account reply, as the adapter raises it: 429 plus the out-of-credits tag from the body. */
+function outOfCreditsExtraction(): ReturnType<typeof vi.fn> {
+  const extract = vi.fn(async (): Promise<unknown[]> => {
+    throw ExtractionError.fromProviderError(new Error('OpenAI API error: 429 Too Many Requests (out_of_credits) insufficient_quota'));
+  });
+  control.extract = extract;
+  return extract;
+}
+
 function post(url: string, body: Record<string, unknown>) {
   return server.inject({
     method: 'POST', url, headers: { 'x-api-key': SERVER_KEY, 'content-type': 'application/json' }, payload: JSON.stringify(body),
@@ -204,6 +213,33 @@ describe('/scan/stream', () => {
     expect(events[1]).toMatchObject({ type: 'error', error: 'extraction_failed', reason: 'rate_limited' });
     expect(res.body).not.toContain('RESOURCE_EXHAUSTED');
     expect(events.some((e) => e.type === 'complete')).toBe(false);
+  });
+
+  it('an empty provider account (429 insufficient_quota) says out of credits, never "retry shortly"', async () => {
+    outOfCreditsExtraction();
+    const res = await post('/scan/stream', { text: TEXT, provider: 'gemini' });
+
+    expect(res.statusCode).toBe(200);
+    const events = sseEvents(res.body);
+    expect(events.length).toBe(2);
+    expect(events[1]).toMatchObject({ type: 'error', error: 'extraction_failed', reason: 'provider_out_of_credits' });
+    const message = String(events[1].message);
+    expect(message).toContain('out of credits');
+    expect(message).toContain('nothing was verified');
+    expect(message).toContain('will not help');
+    expect(message).not.toMatch(/retry shortly|please retry|rate-limited/i);
+    expect(res.body).not.toContain('insufficient_quota');
+    expect(events.some((e) => e.type === 'claim_verified' || e.type === 'complete')).toBe(false);
+    expect(verifyClaim).not.toHaveBeenCalled();
+  });
+
+  it('POST /scan: the same empty account is a 502 extraction_failed with reason provider_out_of_credits', async () => {
+    outOfCreditsExtraction();
+    const res = await post('/scan', { text: TEXT, provider: 'gemini' });
+
+    expect(res.statusCode).toBe(502);
+    expect(res.json()).toEqual({ error: 'extraction_failed', reason: 'provider_out_of_credits' });
+    expect(verifyClaim).not.toHaveBeenCalled();
   });
 
   it('a non-extraction failure keeps the generic error event (no extraction fields)', async () => {

@@ -958,7 +958,7 @@ describe('GET /usage fullScanRefunds (admin)', () => {
 
   it('sums the trailing 7 days of the ledger; exactly 10% refunded is not an alert', async () => {
     writeLedger([
-      row(newJobId(), 1, { charged: 4, served: 3, refund: 1 }, { rate_limited: 11 }),
+      row(newJobId(), 1, { charged: 4, served: 3, refund: 1 }, { rate_limited: 11, provider_out_of_credits: 2 }),
       row(newJobId(), 3, { charged: 6, served: 6, refund: 0 }),
       row(newJobId(), 8, { charged: 10, served: 0, refund: 10 }, { provider_error: 80 }),
     ]);
@@ -971,7 +971,7 @@ describe('GET /usage fullScanRefunds (admin)', () => {
       unitsRefunded: 1,
       refundRate: 0.1,
       alert: false,
-      reasons: { rate_limited: 11, provider_unavailable: 0, timeout: 0, provider_error: 0, provider_unparseable: 0, output_truncated: 0, not_attempted: 0 },
+      reasons: { rate_limited: 11, provider_out_of_credits: 2, provider_unavailable: 0, timeout: 0, provider_error: 0, provider_unparseable: 0, output_truncated: 0, not_attempted: 0 },
       ledgerWriteFailures: 0,
       admissionClosed: false,
     });

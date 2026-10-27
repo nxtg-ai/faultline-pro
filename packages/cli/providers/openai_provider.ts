@@ -4,6 +4,7 @@ import { buildGroundedPrompt } from './grounded_prompt';
 import { sanitizeVerifyError } from '../services/verify-error';
 import { recordUsage } from '../lib/usage-sink';
 import { ExtractionError, parseExtractedClaims } from './extraction-error';
+import { outOfCreditsTag, readErrorBody } from './out-of-credits';
 import { readVerdictReply, truncatedVerdict, unparseableVerdict } from './verdict-reply';
 import { CALL_CEILINGS, type OpenAIChatPurpose } from './call-ceilings';
 import { isChatCompletionTruncated, isOutputTruncatedError, OutputTruncatedError } from './output-truncation';
@@ -174,7 +175,9 @@ Return a JSON object: { "critique": string, "improvedPrompt": string }`,
     });
 
     if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
+      // Only a fixed tag from the body is kept, so an empty account is not read as a rate limit.
+      const tag = outOfCreditsTag(response.status, await readErrorBody(response));
+      throw new Error(`OpenAI API error: ${response.status} ${response.statusText}${tag}`);
     }
 
     const data = await response.json() as any;

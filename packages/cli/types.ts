@@ -118,11 +118,13 @@ export interface ProviderVote {
 
 /**
  * What a provider failure was, after the engine's retries: 429, 503, a timeout, or anything else.
+ * 'provider_out_of_credits' is a provider account with no credits left (often also a 429), which a
+ * retry cannot fix, unlike 'rate_limited' (providers/out-of-credits.ts).
  * Two are about the reply rather than the call: 'provider_unparseable' (no readable verdict) and
  * 'output_truncated' (the reply stopped at its output-token ceiling, providers/call-ceilings.ts).
  */
 export type ApiErrorReason =
-  | 'rate_limited' | 'provider_unavailable' | 'timeout' | 'provider_error' | 'provider_unparseable' | 'output_truncated';
+  | 'rate_limited' | 'provider_out_of_credits' | 'provider_unavailable' | 'timeout' | 'provider_error' | 'provider_unparseable' | 'output_truncated';
 
 /**
  * Who produced a verdict and when, bound at the provider call itself (Honor
