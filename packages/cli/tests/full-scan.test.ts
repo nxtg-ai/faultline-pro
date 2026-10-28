@@ -10,6 +10,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Claim, VerificationResult } from '../types.js';
+import { OUT_OF_CREDITS_VERIFY_MESSAGE } from '../services/verify-error.js';
 
 const { mockExtractClaims, mockVerifyClaim } = vi.hoisted(() => ({
   mockExtractClaims: vi.fn(),
@@ -430,6 +431,7 @@ describe('apiErrorReason on a claim whose provider threw on every retry', () => 
   const cases: Array<[unknown, string, string]> = [
     [new Error('429 Too Many Requests'), 'rate_limited', 'Rate limit reached. Upgrade for higher limits: https://faultline.nxtg.ai/pricing'],
     [new Error('RESOURCE_EXHAUSTED: quota'), 'rate_limited', 'Verify failed after retries.'],
+    [new Error('OpenAI API error: 429 Too Many Requests (out_of_credits)'), 'provider_out_of_credits', OUT_OF_CREDITS_VERIFY_MESSAGE],
     [new Error('HTTP 503 model overloaded'), 'provider_unavailable', 'Verify failed after retries.'],
     [new Error('Service Unavailable'), 'provider_unavailable', 'Verify failed after retries.'],
     [new Error('request timed out after 30000ms'), 'timeout', 'Verify failed after retries.'],

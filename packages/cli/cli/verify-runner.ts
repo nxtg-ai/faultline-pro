@@ -14,6 +14,7 @@ import { GeminiGroundingRetriever } from '../providers/gemini_provider.js';
 import { OpenAIWebSearchRetriever } from '../providers/openai_web_search_retriever.js';
 import { consensusVerify, type NamedProvider } from '../consensus/consensus_engine.js';
 import { classifyApiError } from '../providers/extraction-error.js';
+import { OUT_OF_CREDITS_VERIFY_MESSAGE } from '../services/verify-error.js';
 import { guardVerdict } from '../lib/verdict-guard.js';
 import { attachEvidence, type EvidenceOptions } from '../evidence/passage.js';
 import { attachIndependentEvidence, type IndependentEvidenceOptions } from '../evidence/independent.js';
@@ -271,17 +272,21 @@ export interface VerificationRun {
 export { classifyApiError };
 
 function exhaustedRetryResult(claim: Claim, err: unknown, flagApiError: boolean): VerificationResult {
+  const reason = classifyApiError(err);
   const isRateLimit = err instanceof Error
     && (err.message.includes('429') || err.message.toLowerCase().includes('rate limit'));
   const result: VerificationResult = {
     claimId: claim.id,
     status: 'unverified',
-    explanation: isRateLimit
-      ? 'Rate limit reached. Upgrade for higher limits: https://faultline.nxtg.ai/pricing'
-      : 'Verify failed after retries.',
+    // An empty provider account is tested first: a Faultline plan upgrade does not refill it.
+    explanation: reason === 'provider_out_of_credits'
+      ? OUT_OF_CREDITS_VERIFY_MESSAGE
+      : isRateLimit
+        ? 'Rate limit reached. Upgrade for higher limits: https://faultline.nxtg.ai/pricing'
+        : 'Verify failed after retries.',
     sources: [],
   };
-  return flagApiError ? { ...result, apiError: true, apiErrorReason: classifyApiError(err) } : result;
+  return flagApiError ? { ...result, apiError: true, apiErrorReason: reason } : result;
 }
 
 /**

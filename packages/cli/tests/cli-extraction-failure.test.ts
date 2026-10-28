@@ -122,6 +122,24 @@ describe('hosted transport — 502 extraction_failed', () => {
   });
 });
 
+describe('hosted transport — 502 extraction_failed, provider out of credits', () => {
+  it('says the provider account is out of credits and a retry will not help', async () => {
+    const fetchImpl = vi.fn(async () => new Response(
+      JSON.stringify({ error: 'extraction_failed', reason: 'provider_out_of_credits' }),
+      { status: 502, headers: { 'content-type': 'application/json' } },
+    )) as unknown as typeof fetch;
+
+    const err = await runScan(TEXT, undefined, { mode: 'hosted', apiUrl: 'https://api.example.test', apiKey: 'k' }, { fetchImpl })
+      .catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(HostedScanError);
+    const message = (err as HostedScanError).message;
+    expect(message).toContain('Nothing was verified');
+    expect(message).toContain('out of credits');
+    expect(message).toContain('retrying will not help');
+  });
+});
+
 describe('telemetry classifyError — ExtractionError', () => {
   it('maps each reason to its error code', () => {
     expect(classifyError(new ExtractionError('rate_limited'))).toBe('RATE_LIMIT');
@@ -129,5 +147,11 @@ describe('telemetry classifyError — ExtractionError', () => {
     expect(classifyError(new ExtractionError('provider_unavailable'))).toBe('PROVIDER_UNAVAILABLE');
     expect(classifyError(new ExtractionError('invalid_output'))).toBe('PARSE_ERROR');
     expect(classifyError(new ExtractionError('provider_error'))).toBe('API_ERROR');
+    expect(classifyError(new ExtractionError('provider_out_of_credits'))).toBe('API_ERROR');
+  });
+
+  it('a raw out-of-credits 429 is an API error, not a rate limit; a plain 429 stays a rate limit', () => {
+    expect(classifyError(new Error('OpenAI API error: 429 Too Many Requests (out_of_credits)'))).toBe('API_ERROR');
+    expect(classifyError(new Error('OpenAI API error: 429 Too Many Requests'))).toBe('RATE_LIMIT');
   });
 });

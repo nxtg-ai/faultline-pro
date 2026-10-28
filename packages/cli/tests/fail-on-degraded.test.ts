@@ -17,7 +17,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import type { VerificationResult } from '../types.js';
+import type { Claim, VerificationResult } from '../types.js';
+import { createClaudeProvider } from '../providers/claude_provider.js';
 
 const { mockExtractClaims, mockVerifyClaim } = vi.hoisted(() => ({
   mockExtractClaims: vi.fn(),
@@ -86,6 +87,66 @@ describe('--fail-on gate — fail closed on degraded verification', () => {
     expect(parsed.degraded).toBe(true);
     expect(output).not.toContain('gate FAILED'); // diagnostic must NOT leak into JSON stdout
     expect(stderrSpy.mock.calls.some((c) => String(c[0]).includes('gate FAILED'))).toBe(true);
+  });
+
+  it('single-file: when every unchecked claim is out of credits, the diagnostic says a re-run will not help', async () => {
+    mockExtractClaims.mockResolvedValue(makeClaims(2));
+    mockVerifyClaim.mockImplementation((c: { id: string }) =>
+      Promise.resolve({ ...vr('unverified', c.id, true), apiErrorReason: 'provider_out_of_credits' as const }));
+    const f = join(tmpDir, 'draft.txt');
+    writeFileSync(f, 'Acme reported record revenue in Q3. The merger closed last year.');
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    const { exitCode } = await main([
+      'scan', '--input', f, '--provider', 'mock', '--fail-on', 'high', '--history-dir', tmpDir,
+    ]);
+
+    expect(exitCode).toBe(1);
+    const diagnostic = stderrSpy.mock.calls.map((c) => String(c[0])).find((s) => s.includes('gate FAILED'));
+    expect(diagnostic).toBeDefined();
+    expect(diagnostic).toContain('out of credits');
+    expect(diagnostic).toContain('will not help');
+    expect(diagnostic).not.toContain('transient');
+  });
+
+  it('single-file: the real Claude adapter at an Anthropic 400 credit balance gives the out-of-credits diagnostic', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      type: 'error',
+      error: { type: 'invalid_request_error', message: 'Your credit balance is too low to access the Anthropic API.' },
+    }), { status: 400, statusText: 'Bad Request' })));
+    const claude = createClaudeProvider('k');
+    mockExtractClaims.mockResolvedValue(makeClaims(2));
+    mockVerifyClaim.mockImplementation((c: Claim) => claude.verifyClaim(c));
+    const f = join(tmpDir, 'draft.txt');
+    writeFileSync(f, 'Acme reported record revenue in Q3. The merger closed last year.');
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    try {
+      const { exitCode } = await main(['scan', '--input', f, '--provider', 'mock', '--fail-on', 'high', '--history-dir', tmpDir]);
+      expect(exitCode).toBe(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    const diagnostic = stderrSpy.mock.calls.map((c) => String(c[0])).find((s) => s.includes('gate FAILED'));
+    expect(diagnostic).toBeDefined();
+    expect(diagnostic).toContain('out of credits');
+    expect(diagnostic).not.toContain('transient');
+  });
+
+  it('single-file: a mix of out-of-credits and other unchecked claims keeps the transient text', async () => {
+    mockExtractClaims.mockResolvedValue(makeClaims(2));
+    mockVerifyClaim.mockImplementation((c: { id: string }) => Promise.resolve(c.id === 'c1'
+      ? { ...vr('unverified', c.id, true), apiErrorReason: 'provider_out_of_credits' as const }
+      : vr('unverified', c.id, true)));
+    const f = join(tmpDir, 'draft.txt');
+    writeFileSync(f, 'Acme reported record revenue in Q3. The merger closed last year.');
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    await main(['scan', '--input', f, '--provider', 'mock', '--fail-on', 'high', '--history-dir', tmpDir]);
+
+    const diagnostic = stderrSpy.mock.calls.map((c) => String(c[0])).find((s) => s.includes('gate FAILED'));
+    expect(diagnostic).toContain('transient');
   });
 
   it('single-file: a degraded scan with NO --fail-on gate is unaffected (exit 0)', async () => {
