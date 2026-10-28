@@ -15,6 +15,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scanWithSpend } from '../lib/scan-spend.js';
 
 export type QueueItemStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
 export type QueuePriority = 0 | 1 | 2;
@@ -140,7 +141,7 @@ class ScanQueue {
   private async processItem(item: ScanQueueItem): Promise<void> {
     this.processingCount++;
     try {
-      const result = await scan(item.text, item.provider as Parameters<typeof scan>[1]);
+      const result = await scanWithSpend({ text: item.text, provider: item.provider, keyId: item.keyId }, () => scan(item.text, item.provider as Parameters<typeof scan>[1]));
       item.status = 'completed';
       item.result = result;
     } catch (err) {

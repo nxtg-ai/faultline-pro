@@ -6,7 +6,7 @@ import { buildManagedCostEvent, resolveTier } from '../store/costs.js';
 import { recordProviderSpend } from '../store/provider-spend.js';
 import { getProvider } from '@nxtg/faultline/providers/registry.js';
 import type { LLMProvider } from '@nxtg/faultline/providers/base_provider.js';
-import { captureUsage } from '@nxtg/faultline/lib/usage-sink.js';
+import { captureOutcome } from '../lib/scan-spend.js';
 import type { Claim, VerificationResult } from '@nxtg/faultline/types.js';
 
 interface CritiqueRequestBody {
@@ -101,7 +101,9 @@ async function runCritiqueWithSpend(
   failedClaims: Claim[],
 ): Promise<CritiqueResult> {
   const startTime = Date.now();
-  const { result, legs } = await captureUsage(() => provider.generateCritiqueAndPrompt(text, failedClaims));
+  // A call that throws after reaching the provider still spent, so it is recorded before the error goes on.
+  const { outcome, legs } = await captureOutcome(() => provider.generateCritiqueAndPrompt(text, failedClaims));
+  if (outcome.ok === false && legs.length === 0) throw outcome.error;
   const costEvent = buildManagedCostEvent(legs, {
     text,
     provider: providerName,
@@ -112,7 +114,8 @@ async function runCritiqueWithSpend(
     claims: { extracted: 0, verified: 0 },
   });
   recordProviderSpend(costEvent); // A-110 item 1: the fleet cap must see critique spend
-  return result;
+  if (outcome.ok === false) throw outcome.error;
+  return outcome.value;
 }
 
 export async function critiqueRoutes(fastify: FastifyInstance): Promise<void> {

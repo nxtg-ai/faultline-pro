@@ -6,6 +6,7 @@ import { outOfCreditsTag, readErrorBody } from './out-of-credits';
 import { readVerdictReply, truncatedVerdict, unparseableVerdict } from './verdict-reply';
 import { CALL_CEILINGS, type PerplexityPurpose } from './call-ceilings';
 import { isChatCompletionTruncated, isOutputTruncatedError, OutputTruncatedError } from './output-truncation';
+import { recordUsage } from '../lib/usage-sink';
 
 /**
  * Perplexity provider — implements the LLMProvider interface using Perplexity's API.
@@ -153,6 +154,7 @@ Return a JSON object: { "critique": string, "improvedPrompt": string }`,
     }
 
     const data = await response.json() as any;
+    this.recordReplyUsage(data);
     if (isChatCompletionTruncated(data)) throw new OutputTruncatedError('perplexity', purpose);
     return data.choices?.[0]?.message?.content || '';
   }
@@ -187,11 +189,29 @@ Return a JSON object: { "critique": string, "improvedPrompt": string }`,
     }
 
     const data = await response.json() as any;
+    this.recordReplyUsage(data);
     if (isChatCompletionTruncated(data)) throw new OutputTruncatedError('perplexity', purpose);
     return {
       content: data.choices?.[0]?.message?.content || '',
       citations: Array.isArray(data.citations) ? data.citations : [],
     };
+  }
+
+  /**
+   * Record the usage a reply reports, as soon as the reply is read: before the
+   * truncation check and before any caller parses the content, so a billed call
+   * is metered even when its output turns out to be unusable. Every Sonar request
+   * runs a web search and bills a per-request fee on top of tokens, so each call
+   * is a grounding call. No-op outside a usage capture scope.
+   */
+  private recordReplyUsage(data: any): void {
+    recordUsage({
+      provider: 'perplexity',
+      model: this.modelId,
+      inputTokens: data?.usage?.prompt_tokens ?? 0,
+      outputTokens: data?.usage?.completion_tokens ?? 0,
+      isGrounding: true,
+    });
   }
 }
 

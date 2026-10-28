@@ -3,6 +3,7 @@ import { requireApiKey, scanHistoryKeyScope } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { esc } from '../lib/html.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scanWithSpend } from '../lib/scan-spend.js';
 import { getScanStore } from '../store/scans.js';
 import { ownedScan } from '../lib/scan-access.js';
 import { getComplianceHistoryStore } from '../store/compliance-history.js';
@@ -216,7 +217,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
       const { text, provider, projectName, threshold, strict } = request.body;
       const keyId = request.keyId ?? 'unknown';
 
-      const result = await scan(text, provider);
+      const result = await scanWithSpend({ text, provider, keyId }, () => scan(text, provider));
       const stored = getScanStore().record(keyId, text, result as unknown as Record<string, unknown>);
       const report = buildEuComplianceReport(result, { projectName });
       const gate = evaluateComplianceGate(report, { threshold, strict });

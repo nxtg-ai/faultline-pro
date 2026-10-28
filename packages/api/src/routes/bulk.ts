@@ -4,6 +4,7 @@ import { requireApiKey } from '../plugins/auth.js';
 import { ownsOrAdmin } from '../lib/ownership.js';
 import { getBulkJobStore } from '../store/bulk-jobs.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scanWithSpend } from '../lib/scan-spend.js';
 import type { Provider } from '../store/jobs.js';
 
 const ALLOWED_EXTENSIONS = new Set(['.txt', '.md', '.json']);
@@ -17,6 +18,7 @@ async function processBulkJob(
   jobId: string,
   zipBuffer: Buffer,
   provider: Provider,
+  keyId: string,
 ): Promise<void> {
   const store = getBulkJobStore();
   store.update(jobId, { status: 'running' });
@@ -38,7 +40,7 @@ async function processBulkJob(
     const filename = entry.entryName;
     try {
       const text = entry.getData().toString('utf8');
-      const result = await scan(text, provider);
+      const result = await scanWithSpend({ text, provider, keyId }, () => scan(text, provider));
       store.recordFileResult(jobId, {
         filename,
         status: 'done',
@@ -107,7 +109,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       // Fire-and-forget background processing
-      void processBulkJob(job.id, zipBuffer, provider);
+      void processBulkJob(job.id, zipBuffer, provider, request.keyId ?? 'unknown');
 
       return reply.status(202).send({ jobId: job.id });
     },

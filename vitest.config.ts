@@ -11,6 +11,6 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    projects: ['packages/cli', 'packages/web', 'packages/api', 'packages/mcp'],
+    projects: ['packages/cli', 'packages/web', 'packages/api', 'packages/mcp', 'infra/telemetry-worker'],
   },
 });

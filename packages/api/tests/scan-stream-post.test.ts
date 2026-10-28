@@ -144,8 +144,8 @@ describe('FR-1 — POST /scan/stream', () => {
   it('SPP11: consensus flag survives schema → claim_verified verdict carries consensus + providerVotes shape', async () => {
     // pipelineConfig.consensus=true must pass the body schema (additionalProperties:false)
     // and reach scan(). Using consensusProviders:['mock'] keeps it offline — the mock
-    // provider lacks verifyClaimGrounded, so it surfaces as an unavailable vote
-    // (providerCount 0), which still proves the richer verdict shape flows through.
+    // provider is the offline voter, so its vote counts (providerCount 1) and the
+    // richer verdict shape flows through.
     const { statusCode, body } = await postStream(server, {
       text: SCAN_TEXT,
       provider: 'mock',
@@ -163,8 +163,8 @@ describe('FR-1 — POST /scan/stream', () => {
     // Richer consensus shape reached the wire (additive contract with fw).
     expect(verdict.consensus).toBeDefined();
     expect(Array.isArray(verdict.providerVotes)).toBe(true);
-    // LOCK B: mock has no grounded entry point → excluded from providerCount.
-    expect((verdict.consensus as Record<string, unknown>).providerCount).toBe(0);
+    // LOCK B: only a real verdict counts, and the mock voter returned one.
+    expect((verdict.consensus as Record<string, unknown>).providerCount).toBe(1);
   });
 
   it('SPP12: consensus=false / absent → single-provider verdict shape (no consensus fields)', async () => {
