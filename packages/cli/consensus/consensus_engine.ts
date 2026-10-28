@@ -147,7 +147,8 @@ function tallyStatuses(realVotes: ProviderVote[]): {
 
 /**
  * Fuse per-provider votes into one verdict. Exported for direct unit testing of
- * the fusion logic independently of any live provider/retriever.
+ * the fusion logic independently of any live provider/retriever. With zero
+ * sources the result is always `unverified`: no verdict without a source.
  */
 export function fuseVotes(
   claim: Claim,
@@ -178,6 +179,19 @@ export function fuseVotes(
       ...(anyError ? { apiError: true } : {}),
       ...(sharedReason ? { apiErrorReason: sharedReason } : {}),
       consensus: { agreement: 'split', providerCount: 0, dissenting: 0 },
+      providerVotes: votes,
+    };
+  }
+
+  // No definite verdict without a source, whoever calls this: the votes stay
+  // listed, the claim reads as checked with nothing to judge it against.
+  if (sources.length === 0) {
+    return {
+      claimId: claim.id,
+      status: 'unverified',
+      explanation: NO_SOURCES_EXPLANATION,
+      sources,
+      consensus: { agreement: 'split', providerCount, dissenting: 0 },
       providerVotes: votes,
     };
   }

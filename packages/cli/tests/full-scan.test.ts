@@ -66,8 +66,9 @@ function mixedFixture(): Claim[] {
 const MIXED_FACT_IDS = Array.from({ length: 12 }, (_, i) => `f${i + 1}`);
 const IMPORTANCE_ONE_IDS = ['f1', 'f6', 'f11'];
 
+/** A billable verdict: supported with one source (a zero-source verdict is never served). */
 function supported(claim: Claim): VerificationResult {
-  return { claimId: claim.id, status: 'supported', explanation: 'ok', sources: [] };
+  return { claimId: claim.id, status: 'supported', explanation: 'ok', sources: [{ title: 'S', uri: 'https://example.org/s' }] };
 }
 
 function apiErrorFor(claim: Claim): VerificationResult {
@@ -212,6 +213,20 @@ describe('scan(mode full)', () => {
     expect(v.unservedClaimIds).toEqual(['dup']);
     expect(r.verificationErrors).toBe(1);
     expect(r.degraded).toBe(true);
+  });
+
+  it('a checked claim with no sourced verdict is unserved but not an error: the scan is not degraded', async () => {
+    mockExtractClaims.mockResolvedValue(facts(3));
+    mockVerifyClaim
+      .mockImplementationOnce(async (c: Claim) => supported(c))
+      .mockImplementationOnce(async (c: Claim) => ({ claimId: c.id, status: 'supported', explanation: 'no source', sources: [] }))
+      .mockImplementationOnce(async (c: Claim) => ({ claimId: c.id, status: 'unverified', explanation: 'inconclusive', sources: [] }));
+    const r = await scan(ONE_SENTENCE, 'mock', undefined, undefined, undefined, undefined, undefined, { mode: 'full' });
+    const v = r.verification as FullVerificationSummary;
+    expect(v.servedClaims).toBe(1);
+    expect(v.unservedClaimIds).toEqual(['f2', 'f3']);
+    expect(r.verificationErrors).toBe(0);
+    expect(r.degraded).toBe(false);
   });
 
   describe('a provider that throws on every retry', () => {

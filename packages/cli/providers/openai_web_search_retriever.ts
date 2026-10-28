@@ -46,6 +46,26 @@ interface ResponsesPayload {
   output?: OutputItem[];
   status?: string;
   incomplete_details?: { reason?: string } | null;
+  error?: { code?: string; message?: string } | null;
+}
+
+/**
+ * The failure an HTTP 200 Responses payload reports, or null when it reports
+ * none. `failed`, or `incomplete` for a reason other than the output limit, is
+ * a search that did not finish: its citations, if any, are partial and are not
+ * passed on. The output limit is reported separately as output_truncated.
+ */
+export function responsesFailure(payload: ResponsesPayload): RetrievalError | null {
+  if (payload?.status === 'failed') {
+    const code = payload.error?.code ?? '';
+    const reason = /rate_limit/i.test(code) ? 'rate_limited' : 'provider_error';
+    return new RetrievalError(reason, new Error(`OpenAI Responses status failed: ${code || 'no error code'}`));
+  }
+  if (payload?.status === 'incomplete' && payload.incomplete_details?.reason !== 'max_output_tokens') {
+    const why = payload.incomplete_details?.reason ?? 'no reason given';
+    return new RetrievalError('provider_error', new Error(`OpenAI Responses status incomplete: ${why}`));
+  }
+  return null;
 }
 
 export class OpenAIWebSearchRetriever implements Retriever {
@@ -133,6 +153,9 @@ export class OpenAIWebSearchRetriever implements Retriever {
     });
     // A search cut off at its ceiling is a failed retrieval: retrieve() rethrows it as RetrievalError.
     if (isResponsesTruncated(payload)) throw new OutputTruncatedError('openai-web-search', 'retrieve');
+    // A search that failed or stopped early is a failed retrieval too, checked before any citation is read.
+    const failure = responsesFailure(payload);
+    if (failure) throw failure;
     return payload;
   }
 }

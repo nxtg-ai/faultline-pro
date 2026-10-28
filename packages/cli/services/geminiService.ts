@@ -281,13 +281,28 @@ export const searchSuggestionsOf = (
 };
 
 /**
+ * Why a Gemini source-search reply did not finish normally, or null when it did.
+ * Used by the consensus source search only; the default verify path keeps its
+ * own handling. A missing finishReason is read as a normal finish.
+ */
+export const retrievalBlockedReason = (response: unknown): string | null => {
+  const r = response as { promptFeedback?: { blockReason?: unknown }; candidates?: Array<{ finishReason?: unknown }> } | null;
+  if (r?.promptFeedback?.blockReason) return 'prompt blocked';
+  if (!Array.isArray(r?.candidates) || r.candidates.length === 0) return 'returned no candidate';
+  const finish = r.candidates[0]?.finishReason;
+  if (finish !== undefined && finish !== 'STOP' && finish !== 'MAX_TOKENS') return `stopped early (${String(finish)})`;
+  return null;
+};
+
+/**
  * Retrieve grounding sources for a claim using gemini's native googleSearch
  * tool — the same grounding mechanism `verifyClaim` uses, but exposed as a
  * pure retrieval primitive for the consensus engine's Retriever seam.
  *
  * Returns up to 3 de-duplicated sources, or [] when the search ran and found
- * none. A search that could not run (no key, an API error, a reply cut off at
- * its ceiling) throws RetrievalError with the classified reason, so the
+ * none. A search that could not run (no key, an API error, a blocked prompt, no
+ * candidate, a stop other than STOP, a reply cut off at its ceiling) throws
+ * RetrievalError with the classified reason, so the
  * consensus engine reports the claim as not checked instead of judging it
  * against an empty source list.
  */
@@ -306,6 +321,10 @@ export const retrieveSources = async (claimText: string, apiKey: string): Promis
     });
 
     recordGeminiUsage(response, true, 'grounded-retrieve:gemini');
+    // A blocked prompt, no candidate, or a stop for any reason other than a normal
+    // finish is a failed retrieval, not a search that found nothing.
+    const blocked = retrievalBlockedReason(response);
+    if (blocked) throw new RetrievalError('provider_error', new Error(`Gemini source search ${blocked}`));
     // A cut-off retrieval is a failed retrieval, classified in the catch below.
     if (isGeminiTruncated(response)) throw new OutputTruncatedError('gemini', 'retrieve');
     const sources: Array<{ title: string; uri: string }> = [];

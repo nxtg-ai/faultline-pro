@@ -24,7 +24,7 @@ GoPMO 1.18.7.3.2, Faultline beta gate criterion (b): ledgers survive a redeploy.
 | `input_tokens`, `output_tokens`, `tool_call_count` | Usage priced (`tool_call_count` is grounding calls) |
 | `usd_estimate`, `wall_ms`, `cache_hit` | Cost in USD, wall time, cache hit |
 | `claim_count` | Claims the call handled (extracted, or submitted) |
-| `verified_count` | Claims that got a billable verdict, `unverified` included |
+| `verified_count` | Claims that got a billable verdict: supported, contradicted or mixed, with at least one source, not an API error (`unverified` and zero-source verdicts never count) |
 
 Every row this code writes carries both counts as numbers. `claim_count` and `verified_count` are `null` only for an event read back from a row written before the counts existed; the loader reads such rows without them.
 

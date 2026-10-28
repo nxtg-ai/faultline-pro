@@ -164,7 +164,10 @@ describe.each(Object.keys(CHAT_WIRES) as Array<keyof typeof CHAT_WIRES>)('%s', (
     mockFetch.mockResolvedValueOnce(wire.whole(VERDICT));
     const r = await wire.factory('k').verifyClaim(CLAIM);
     expect(r.status).toBe('supported');
-    expect(isBillableVerdict(r)).toBe(true);
+    expect(r.apiError).toBeUndefined();
+    // Billable only with a source: this wire's verdict carries what its reply cited.
+    expect(isBillableVerdict(r)).toBe(r.sources.length > 0);
+    expect(isBillableVerdict({ ...r, sources: SOURCES })).toBe(true);
   });
 
   it('extractClaims: fails with output_truncated, never fewer claims', async () => {

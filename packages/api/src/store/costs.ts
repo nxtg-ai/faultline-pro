@@ -186,7 +186,7 @@ export interface ManagedScanCostEvent {
    * existed have none.
    */
   claimsExtracted?: number;
-  /** Claims that got a provider verdict, `unverified` included (isBillableVerdict). Absent only on old events. */
+  /** Claims with a billable verdict (isBillableVerdict: supported, contradicted or mixed, with a source, no apiError). Absent only on old events. */
   claimsVerified?: number;
   /**
    * The API key that ran the scan, kept in memory only (not in the scan-cost log), so

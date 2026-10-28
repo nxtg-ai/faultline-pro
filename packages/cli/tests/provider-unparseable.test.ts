@@ -65,7 +65,9 @@ describe('readVerdictReply', () => {
     const r = unparseableVerdict('c1');
     expectUnparseable(r);
     expect(isBillableVerdict(r)).toBe(false);
-    expect(billableVerdictCount({ c1: r, c2: { claimId: 'c2', status: 'mixed', explanation: '', sources: [] } })).toBe(1);
+    const src = [{ title: 'S', uri: 'https://example.org/s' }];
+    expect(billableVerdictCount({ c1: r, c2: { claimId: 'c2', status: 'mixed', explanation: '', sources: src } })).toBe(1);
+    expect(billableVerdictCount({ c1: r, c2: { claimId: 'c2', status: 'mixed', explanation: '', sources: [] } })).toBe(0);
   });
 });
 
@@ -82,7 +84,9 @@ describe.each(['openai', 'claude', 'perplexity'] as const)('%s verifyClaim', (na
     const r = await FACTORY[name]('k').verifyClaim(CLAIM);
     expect(r.status).toBe('mixed');
     expect(r.apiError).toBeUndefined();
-    expect(isBillableVerdict(r)).toBe(true);
+    // Billable only with a source: this wire's verdict carries what its reply cited.
+    expect(isBillableVerdict(r)).toBe(r.sources.length > 0);
+    expect(isBillableVerdict({ ...r, sources: [{ title: 'S', uri: 'https://example.org/s' }] })).toBe(true);
   });
 });
 

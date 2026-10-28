@@ -49,7 +49,8 @@ vi.mock('@nxtg/faultline/providers/registry.js', async (importOriginal) => {
       },
       verifyClaim: async (claim: Claim): Promise<VerificationResult> => {
         billedLeg();
-        return { claimId: claim.id, status: 'supported', explanation: 'ok', sources: [] };
+        // One source, so the verdict is billable (a zero-source verdict never is).
+        return { claimId: claim.id, status: 'supported', explanation: 'ok', sources: [{ title: 'S', uri: 'https://example.org/s' }] };
       },
       generateCritiqueAndPrompt: vi.fn(),
     })),
