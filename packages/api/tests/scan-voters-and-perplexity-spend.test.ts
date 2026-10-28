@@ -323,16 +323,16 @@ describe('the search found sources but every consensus voter failed', () => {
   /** The web search answers with a source; each voter host answers with the given failure. */
   function stubVoters(openaiVoter: () => Response, claudeVoter: () => Response): void {
     vi.stubGlobal('fetch', vi.fn(async (url: string | URL) => {
-      const target = String(url);
-      if (target === 'https://api.openai.com/v1/responses') {
+      const target = new URL(String(url));
+      if (target.host === 'api.openai.com' && target.pathname === '/v1/responses') {
         searchCalls += 1;
         return new Response(JSON.stringify(CITED), { status: 200, headers: { 'content-type': 'application/json' } });
       }
-      if (target.includes('api.openai.com/v1/chat/completions')) {
+      if (target.host === 'api.openai.com' && target.pathname === '/v1/chat/completions') {
         voterCalls += 1;
         return openaiVoter();
       }
-      if (target.includes('api.anthropic.com')) {
+      if (target.host === 'api.anthropic.com') {
         voterCalls += 1;
         return claudeVoter();
       }
