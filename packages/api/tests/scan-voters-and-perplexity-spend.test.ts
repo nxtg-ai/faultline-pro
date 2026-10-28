@@ -16,7 +16,7 @@
  *    part reports failure and uses no quota.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -28,6 +28,8 @@ import { resetCache } from '../src/store/cache.js';
 import { resetCircuitBreaker } from '../src/store/circuit-breaker.js';
 import { resetProviderSpendLedger } from '../src/store/provider-spend.js';
 import { resetCostStore } from '../src/store/costs.js';
+import { validateConsensusVoters } from '../src/plugins/consensus-voters.js';
+import { scanWithSpend } from '../src/lib/scan-spend.js';
 
 // Counts every provider the engine builds, to show a refused request reached none.
 const getProviderSpy = vi.hoisted(() => ({ calls: 0 }));
@@ -289,5 +291,150 @@ describe('a consensus run with zero participating voters reports failure and use
     expect(verdicts.every((v) => v.consensus?.providerCount === 1)).toBe(true);
     expect(res.json().degraded).toBe(false);
     expect(quotaUsed()).toBe(1);
+  });
+});
+
+describe('only real, distinct providers vote in consensus', () => {
+  /** Every network call the scan made, to any host. */
+  function networkCalls(): number {
+    return vi.mocked(fetch).mock.calls.length;
+  }
+
+  beforeEach(() => {
+    // Real voters have keys, so a refusal is the voter check, not a missing key.
+    process.env.OPENAI_API_KEY = 'test-openai-key';
+    process.env.GEMINI_API_KEY = 'test-gemini-key';
+  });
+
+  const cases: Array<{ name: string; provider: string; pipelineConfig: Record<string, unknown>; error?: string }> = [
+    {
+      name: 'mock twice beside a real voter (two mock votes would outvote it)',
+      provider: 'mock',
+      pipelineConfig: { extractionProvider: 'mock', consensus: true, consensusProviders: ['openai', 'mock', 'mock'] },
+    },
+    {
+      name: 'mock beside a real voter',
+      provider: 'mock',
+      pipelineConfig: { extractionProvider: 'mock', consensus: true, consensusProviders: ['openai', 'mock'] },
+      error: 'consensus_mock_voter_not_offline',
+    },
+    {
+      name: 'mock alone on a paid extraction',
+      provider: 'mock',
+      pipelineConfig: { extractionProvider: 'perplexity', consensus: true, consensusProviders: ['mock'] },
+      error: 'consensus_mock_voter_not_offline',
+    },
+    {
+      name: 'mock alone where consensus defaults the stages to openai',
+      provider: 'gemini',
+      pipelineConfig: { consensus: true, consensusProviders: ['mock'] },
+      error: 'consensus_mock_voter_not_offline',
+    },
+    {
+      name: 'one real provider named three times',
+      provider: 'openai',
+      pipelineConfig: { consensus: true, consensusProviders: ['openai', 'openai', 'openai'] },
+    },
+  ];
+
+  for (const url of ['/scan', '/scan/stream']) {
+    for (const c of cases) {
+      it(`POST ${url}: ${c.name} → 400, no provider call, no quota, no spend row`, async () => {
+        const res = await server.inject({ method: 'POST', url, headers, payload: { text: TEXT, provider: c.provider, pipelineConfig: c.pipelineConfig } });
+        expect(res.statusCode).toBe(400);
+        expect(String(res.headers['content-type'])).toContain('application/json');
+        if (c.error) {
+          expect(res.json().error).toBe(c.error);
+          expect(res.json().providers).toEqual(['mock']);
+        } else {
+          // Refused by the body schema (uniqueItems) before any handler runs.
+          expect(res.json().code).toBe('FST_ERR_VALIDATION');
+          expect(res.json().error).toMatch(/consensusProviders must NOT have duplicate items/);
+        }
+        expect(getProviderSpy.calls).toBe(0);
+        expect(networkCalls()).toBe(0);
+        expect(quotaUsed()).toBe(0);
+        expect(spendRows()).toHaveLength(0);
+      });
+    }
+
+    it(`POST ${url}: a fully offline run (every stage and voter mock) is served without any network call`, async () => {
+      const res = await server.inject({
+        method: 'POST', url, headers,
+        payload: { text: TEXT, provider: 'mock', pipelineConfig: { consensus: true, consensusProviders: ['mock'] } },
+      });
+      expect(res.statusCode).toBe(200);
+      if (url === '/scan') {
+        const verdicts = Object.values(res.json().verifications as Record<string, { consensus?: { providerCount: number } }>);
+        expect(verdicts.length).toBeGreaterThan(0);
+        expect(verdicts.every((v) => v.consensus?.providerCount === 1)).toBe(true);
+      } else {
+        expect(res.body).toContain('"type":"complete"');
+      }
+      // OPENAI_API_KEY is set, so a non-offline rig would have retrieved through paid web search.
+      expect(networkCalls()).toBe(0);
+      expect(quotaUsed()).toBe(1);
+    });
+  }
+});
+
+describe('validateConsensusVoters, called directly', () => {
+  function fakeReply(): { reply: FastifyReply; sent: { status?: number; body?: Record<string, unknown> } } {
+    const sent: { status?: number; body?: Record<string, unknown> } = {};
+    const reply = {
+      status(code: number) { sent.status = code; return reply; },
+      send(body: Record<string, unknown>) { sent.body = body; return reply; },
+    } as unknown as FastifyReply;
+    return { reply, sent };
+  }
+
+  async function check(body: unknown): Promise<{ status?: number; body?: Record<string, unknown> }> {
+    const { reply, sent } = fakeReply();
+    await validateConsensusVoters({ body } as FastifyRequest, reply);
+    return sent;
+  }
+
+  it('refuses a duplicate voter even when no schema ran first', async () => {
+    process.env.OPENAI_API_KEY = 'test-openai-key';
+    const sent = await check({ provider: 'openai', pipelineConfig: { consensus: true, consensusProviders: ['openai', 'gemini', 'openai'] } });
+    expect(sent.status).toBe(400);
+    expect(sent.body).toMatchObject({ error: 'consensus_provider_duplicate', providers: ['openai'] });
+  });
+
+  it('refuses mock beside a real voter', async () => {
+    const sent = await check({ provider: 'mock', pipelineConfig: { consensus: true, consensusProviders: ['claude', 'mock'] } });
+    expect(sent.status).toBe(400);
+    expect(sent.body).toMatchObject({ error: 'consensus_mock_voter_not_offline', providers: ['mock'] });
+  });
+
+  it('a body with no provider runs on gemini, so a lone mock voter is refused', async () => {
+    const sent = await check({ pipelineConfig: { consensus: true, consensusProviders: ['mock'] } });
+    expect(sent.status).toBe(400);
+    expect(sent.body?.error).toBe('consensus_mock_voter_not_offline');
+  });
+
+  it('lets a fully offline run and distinct real voters through', async () => {
+    expect(await check({ provider: 'mock', pipelineConfig: { consensus: true, consensusProviders: ['mock'] } })).toEqual({});
+    expect(await check({ provider: 'openai', pipelineConfig: { consensus: true, consensusProviders: ['openai', 'gemini', 'claude'] } })).toEqual({});
+  });
+});
+
+describe('a spend row is labelled and priced by the voters that ran', () => {
+  it('a named voter with no API key is dropped from the label and the estimate, as the rig drops it', async () => {
+    process.env.OPENAI_API_KEY = 'test-openai-key'; // gemini and claude have no key, so only openai votes
+    const ran = (consensusProviders: Array<'openai' | 'gemini' | 'claude'>) => scanWithSpend(
+      { text: TEXT, provider: 'mock', pipelineConfig: { extractionProvider: 'perplexity', consensus: true, consensusProviders }, keyId: QUOTA_KEY_ID },
+      async () => ({ claims: [{ id: 'c1' }], verifications: { c1: { status: 'supported' } } }),
+    );
+    await ran(['openai', 'gemini', 'claude']);
+    await ran(['openai']);
+
+    const rows = spendRows();
+    expect(rows).toHaveLength(2);
+    expect(rows[0].provider).toBe('perplexity+openai');
+    expect(rows[1].provider).toBe('perplexity+openai');
+    expect(rows[0].costUsd).toBeGreaterThan(0);
+    // Priced as one openai voter, not three requested voters.
+    expect(rows[0].costUsd).toBeCloseTo(rows[1].costUsd as number, 10);
   });
 });

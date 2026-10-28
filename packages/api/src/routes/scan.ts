@@ -58,7 +58,7 @@ const BODY_SCHEMA = {
         // Listed here so the schema never strips them and serves a single-provider
         // scan to a caller who asked for consensus.
         consensus:            { type: 'boolean' },
-        consensusProviders:   { type: 'array', items: { type: 'string', enum: PROVIDER_ENUM } },
+        consensusProviders:   { type: 'array', uniqueItems: true, items: { type: 'string', enum: PROVIDER_ENUM } },
       },
       additionalProperties: false,
     },

@@ -38,7 +38,7 @@ const POST_STREAM_BODY_SCHEMA = {
         // claim_verified events carry the richer consensus verdict shape.
         // Enterprise only — enforceConsensusEntitlement refuses the rest.
         consensus:            { type: 'boolean' },
-        consensusProviders:   { type: 'array', items: { type: 'string', enum: PROVIDER_ENUM } },
+        consensusProviders:   { type: 'array', uniqueItems: true, items: { type: 'string', enum: PROVIDER_ENUM } },
       },
       additionalProperties: false,
     },

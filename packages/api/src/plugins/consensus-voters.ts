@@ -1,5 +1,5 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { CONSENSUS_VOTER_PROVIDERS, canVoteInConsensus } from '@nxtg/faultline/cli/verify-runner.js';
+import { CONSENSUS_VOTER_PROVIDERS, canVoteInConsensus, consensusVoterRefusal, type PipelineConfig } from '@nxtg/faultline/cli/verify-runner.js';
 
 /**
  * Prehandler: refuse a consensus request that names no provider able to vote.
@@ -9,13 +9,18 @@ import { CONSENSUS_VOTER_PROVIDERS, canVoteInConsensus } from '@nxtg/faultline/c
  * votes into an 'unverified' verdict, answer 200, spend money and use a scan of
  * quota. It is refused here with a 400 instead, before any provider call.
  *
+ * Also refused with a 400: a voter named more than once (one model's opinion
+ * counted as several, at several times the spend), and mock as a voter unless
+ * every stage of the run is mock. mock always answers supported, so beside a real
+ * voter it outvotes it, and on a paid run it passes off a made-up verdict.
+ *
  * Unknown provider names never reach this check: the body schema enum refuses
  * them with a 400 first. Runs after enforceConsensusEntitlement (a caller without
  * the plan gets the 403, not a validation hint) and before the SSE hijack on the
  * stream route, so the caller gets a plain JSON 400.
  */
 export async function validateConsensusVoters(request: FastifyRequest, reply: FastifyReply): Promise<void> {
-  const body = request.body as { pipelineConfig?: { consensus?: boolean; consensusProviders?: unknown } } | undefined;
+  const body = request.body as { provider?: unknown; pipelineConfig?: { consensus?: boolean; consensusProviders?: unknown } } | undefined;
   const config = body?.pipelineConfig;
   if (config?.consensus !== true || config.consensusProviders === undefined) return;
 
@@ -37,6 +42,14 @@ export async function validateConsensusVoters(request: FastifyRequest, reply: Fa
       providers: cannotVote,
       voters: CONSENSUS_VOTER_PROVIDERS,
     });
+    return;
+  }
+
+  // Both routes run a body with no provider (or an unknown one) on gemini.
+  const provider = typeof body?.provider === 'string' ? body.provider : 'gemini';
+  const refusal = consensusVoterRefusal(provider, config as PipelineConfig);
+  if (refusal) {
+    reply.status(400).send({ ...refusal, voters: CONSENSUS_VOTER_PROVIDERS });
   }
 }
 

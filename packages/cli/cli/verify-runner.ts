@@ -90,7 +90,8 @@ const DEFAULT_CONSENSUS_PROVIDERS: ProviderName[] = ['openai', 'gemini', 'claude
  * The providers whose adapters can cast a consensus vote (they implement
  * verifyClaimGrounded, judging a claim against shared retrieved sources).
  * Perplexity searches on its own and has no grounded entry point, so it cannot vote.
- * mock is the offline voter.
+ * mock is the offline voter: it always answers supported, so it may vote only in
+ * a run where every stage is mock (see consensusVoterRefusal).
  */
 export const CONSENSUS_VOTER_PROVIDERS: readonly ProviderName[] = Object.freeze(['openai', 'gemini', 'claude', 'mock']);
 
@@ -109,6 +110,85 @@ export class ConsensusUnavailableError extends Error {
 
 export function isConsensusUnavailableError(err: unknown): err is ConsensusUnavailableError {
   return err instanceof ConsensusUnavailableError;
+}
+
+/** Why a consensus voter list is refused before any provider call. */
+export interface ConsensusVoterRefusal {
+  error: 'consensus_provider_duplicate' | 'consensus_mock_voter_not_offline';
+  message: string;
+  /** The voter names at fault. */
+  providers: string[];
+}
+
+/** Thrown before any provider call when a consensus voter list is refused. */
+export class InvalidConsensusVotersError extends Error {
+  readonly refusal: ConsensusVoterRefusal;
+
+  constructor(refusal: ConsensusVoterRefusal) {
+    super(refusal.message);
+    this.name = 'InvalidConsensusVotersError';
+    this.refusal = refusal;
+  }
+}
+
+export function isInvalidConsensusVotersError(err: unknown): err is InvalidConsensusVotersError {
+  return err instanceof InvalidConsensusVotersError;
+}
+
+function voterRefusalForStages(names: StageNames, voters: readonly string[]): ConsensusVoterRefusal | null {
+  // The same model named twice is one opinion counted twice, at twice the spend.
+  const duplicates = [...new Set(voters.filter((name, i) => voters.indexOf(name) !== i))];
+  if (duplicates.length > 0) {
+    return {
+      error: 'consensus_provider_duplicate',
+      message: `Each consensus voter may be named once. Named more than once: ${duplicates.join(', ')}.`,
+      providers: duplicates,
+    };
+  }
+  // mock always answers supported. Beside a real voter it would outvote it; alone
+  // on a paid run it would pass off a made-up verdict as checked.
+  if (voters.includes('mock') && !isOfflineRun(names, voters)) {
+    return {
+      error: 'consensus_mock_voter_not_offline',
+      message: 'mock may vote only in a fully offline run: extraction, verification and every voter on mock.',
+      providers: ['mock'],
+    };
+  }
+  return null;
+}
+
+/** True when every stage of the run, voters included, is mock, so no paid provider is called. */
+function isOfflineRun(names: StageNames, voters: readonly string[]): boolean {
+  return names.extractionName === 'mock' && names.verificationName === 'mock' && voters.every((name) => name === 'mock');
+}
+
+/**
+ * The refusal for a consensus scan's voter list, or null when it may run (or
+ * consensus is off). Refused: a voter named more than once, and mock beside any
+ * stage or voter that is not mock. The API checks this before a scan and the
+ * engine checks it again where the consensus rig is built.
+ */
+export function consensusVoterRefusal(providerName?: string, pipelineConfig?: PipelineConfig): ConsensusVoterRefusal | null {
+  const names = resolveStageNames(providerName, pipelineConfig);
+  if (!names.consensusEnabled) return null;
+  return voterRefusalForStages(names, pipelineConfig?.consensusProviders ?? DEFAULT_CONSENSUS_PROVIDERS);
+}
+
+/**
+ * The voters a consensus rig built now would run: the named providers that can
+ * vote and have an API key, in order. A provider with no key is dropped, as the
+ * rig drops it.
+ */
+export function participatingConsensusVoters(names: readonly ProviderName[]): ProviderName[] {
+  return names.filter((name) => {
+    if (!canVoteInConsensus(name)) return false;
+    try {
+      resolveApiKey(name);
+      return true;
+    } catch {
+      return false;
+    }
+  });
 }
 
 /** The consensus fan-out: one shared retriever plus the participating providers. */
@@ -157,7 +237,8 @@ function resolveStageNames(providerName?: string, pipelineConfig?: PipelineConfi
 
 /**
  * The providers each stage of a scan runs on, after defaults and overrides.
- * `consensusVoters` is null when consensus is off. Used to price and label spend
+ * `consensusVoters` lists the voters that run (named, able to vote, with an API
+ * key) and is null when consensus is off. Used to price and label spend
  * by the providers that actually did the work, never by the caller's outer label.
  */
 export interface StageProviders {
@@ -172,7 +253,7 @@ export function resolveStageProviders(providerName?: string, pipelineConfig?: Pi
     extraction: names.extractionName,
     verification: names.verificationName,
     consensusVoters: names.consensusEnabled
-      ? [...(pipelineConfig?.consensusProviders ?? DEFAULT_CONSENSUS_PROVIDERS)]
+      ? participatingConsensusVoters(pipelineConfig?.consensusProviders ?? DEFAULT_CONSENSUS_PROVIDERS)
       : null,
   };
 }
@@ -186,21 +267,17 @@ export function resolveStageProviders(providerName?: string, pipelineConfig?: Pi
  * @throws ConsensusUnavailableError when no voter is left, before any provider
  * call, so a consensus scan never runs with nobody to vote.
  */
-function buildConsensusRig(names: ProviderName[]): ConsensusRig {
-  const namedProviders: NamedProvider[] = [];
-  for (const name of names) {
-    if (!canVoteInConsensus(name)) continue;
-    try {
-      const apiKey = resolveApiKey(name);
-      namedProviders.push({ name, provider: getProvider(apiKey, name) });
-    } catch {
-      // Missing key → not a participant. Not fatal: consensus still runs with
-      // whatever providers ARE configured.
-    }
-  }
+function buildConsensusRig(names: ProviderName[], offline: boolean): ConsensusRig {
+  // Missing key → not a participant. Not fatal: consensus still runs with
+  // whatever providers ARE configured.
+  const namedProviders: NamedProvider[] = participatingConsensusVoters(names)
+    .map((name) => ({ name, provider: getProvider(resolveApiKey(name), name) }));
   if (namedProviders.length === 0) throw new ConsensusUnavailableError();
-  return { retriever: buildRetriever(), namedProviders };
+  return { retriever: offline ? OFFLINE_RETRIEVER : buildRetriever(), namedProviders };
 }
+
+/** Retrieves nothing, so a fully offline run makes no web-search call. */
+const OFFLINE_RETRIEVER: Retriever = { name: 'offline', retrieve: async () => [] };
 
 /**
  * Select the consensus retriever behind the provider-agnostic Retriever seam.
@@ -227,10 +304,17 @@ function buildRetriever(): Retriever {
   return new GeminiGroundingRetriever(geminiKey);
 }
 
+/**
+ * @throws InvalidConsensusVotersError when the voter list is refused (see
+ * consensusVoterRefusal), before any provider is built, so a caller that skips
+ * the API's check is refused too.
+ */
 function buildConsensusRigIfEnabled(names: StageNames, pipelineConfig?: PipelineConfig): ConsensusRig | null {
-  return names.consensusEnabled
-    ? buildConsensusRig(pipelineConfig?.consensusProviders ?? DEFAULT_CONSENSUS_PROVIDERS)
-    : null;
+  if (!names.consensusEnabled) return null;
+  const voters = pipelineConfig?.consensusProviders ?? DEFAULT_CONSENSUS_PROVIDERS;
+  const refusal = voterRefusalForStages(names, voters);
+  if (refusal) throw new InvalidConsensusVotersError(refusal);
+  return buildConsensusRig(voters, isOfflineRun(names, voters));
 }
 
 /**
