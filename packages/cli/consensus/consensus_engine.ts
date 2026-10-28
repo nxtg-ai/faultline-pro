@@ -9,6 +9,7 @@ import type {
 } from '../types.js';
 import type { LLMProvider, Retriever } from '../providers/base_provider.js';
 import { sanitizeVerifyError } from '../services/verify-error.js';
+import { classifyApiError } from '../providers/extraction-error.js';
 
 /**
  * Grounded multi-model consensus engine — "ground every claim by construction".
@@ -90,17 +91,26 @@ async function runProviderVote(
       sources,
       explanation: sanitizeVerifyError(err),
       apiError: true,
+      // Keep why the call failed (rate limit, empty account, ...) so fusion and reports can say it.
+      apiErrorReason: classifyApiError(err),
     };
   }
 }
 
-/** Reasons a provider reports about its reply, as opposed to the call failing. */
-const REPLY_REASONS: ReadonlySet<ApiErrorReason> = new Set<ApiErrorReason>(['provider_unparseable', 'output_truncated']);
+/**
+ * Failure reasons a fused result carries when every failed vote shares one: the
+ * two reply reasons, and an empty provider account, which no re-run can fix.
+ */
+const SHARED_REASONS: ReadonlySet<ApiErrorReason> = new Set<ApiErrorReason>([
+  'provider_unparseable',
+  'output_truncated',
+  'provider_out_of_credits',
+]);
 
-/** The reply reason every failed vote shares, or undefined when they differ or any vote has none. */
-function sharedReplyReasonOf(errored: ProviderVote[]): ApiErrorReason | undefined {
+/** The reason every failed vote shares, or undefined when they differ, any vote has none, or it is not carried. */
+function sharedReasonOf(errored: ProviderVote[]): ApiErrorReason | undefined {
   const first = errored[0]?.apiErrorReason;
-  if (!first || !REPLY_REASONS.has(first)) return undefined;
+  if (!first || !SHARED_REASONS.has(first)) return undefined;
   return errored.every((v) => v.apiErrorReason === first) ? first : undefined;
 }
 
@@ -150,17 +160,17 @@ export function fuseVotes(
     // was never actually checked.
     const errored = votes.filter((v) => v.apiError);
     const anyError = errored.length > 0;
-    // When every failed vote failed on its reply for the same reason (unreadable,
-    // al:5b18840b0116047a item c; or cut off at its ceiling, GoPMO 1.18.11.7.18), the
-    // claim carries that reason; any other mix keeps the default reason.
-    const sharedReplyReason = anyError ? sharedReplyReasonOf(errored) : undefined;
+    // When every failed vote failed for the same carried reason (an unreadable reply,
+    // a reply cut off at its ceiling, or an empty provider account), the claim
+    // carries that reason; any other mix keeps the default reason.
+    const sharedReason = anyError ? sharedReasonOf(errored) : undefined;
     return {
       claimId: claim.id,
       status: 'unverified',
       explanation: 'No provider returned a verdict; consensus unavailable.',
       sources,
       ...(anyError ? { apiError: true } : {}),
-      ...(sharedReplyReason ? { apiErrorReason: sharedReplyReason } : {}),
+      ...(sharedReason ? { apiErrorReason: sharedReason } : {}),
       consensus: { agreement: 'split', providerCount: 0, dissenting: 0 },
       providerVotes: votes,
     };

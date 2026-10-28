@@ -3,7 +3,7 @@ import { GoogleGenAI } from "@google/genai";
 import type { Claim, VerificationResult } from '../types';
 import { sanitizeVerifyError } from './verify-error';
 import { recordUsage } from '../lib/usage-sink';
-import { ExtractionError, parseExtractedClaims } from '../providers/extraction-error';
+import { ExtractionError, classifyApiError, parseExtractedClaims } from '../providers/extraction-error';
 import { readVerdictReply, truncatedVerdict, unparseableVerdict } from '../providers/verdict-reply';
 import { geminiCeilingConfig } from '../providers/call-ceilings';
 import { isGeminiTruncated, OutputTruncatedError } from '../providers/output-truncation';
@@ -251,6 +251,8 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
       // support found". apiError lets every consumer tell the two apart instead
       // of silently reporting a confident-but-false 'unverified' verdict.
       apiError: true,
+      // An empty account keeps its reason, so the CLI does not ask for a re-run that cannot succeed.
+      ...(classifyApiError(error) === 'provider_out_of_credits' ? { apiErrorReason: 'provider_out_of_credits' as const } : {}),
     };
   }
 };
@@ -386,6 +388,8 @@ export const verifyClaimGrounded = async (
       explanation: sanitizeVerifyError(error),
       sources,
       apiError: true,
+      // An empty account keeps its reason, so the CLI does not ask for a re-run that cannot succeed.
+      ...(classifyApiError(error) === 'provider_out_of_credits' ? { apiErrorReason: 'provider_out_of_credits' as const } : {}),
     };
   }
 };

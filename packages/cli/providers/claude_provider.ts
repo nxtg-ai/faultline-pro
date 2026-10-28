@@ -2,7 +2,7 @@ import type { Claim, VerificationResult, Source } from '../types';
 import type { LLMProvider, ImageInput, CritiqueResult, ProviderFactory } from './base_provider';
 import { buildGroundedPrompt } from './grounded_prompt';
 import { sanitizeVerifyError } from '../services/verify-error';
-import { ExtractionError, parseExtractedClaims } from './extraction-error';
+import { ExtractionError, classifyApiError, parseExtractedClaims } from './extraction-error';
 import { outOfCreditsTag, readErrorBody } from './out-of-credits';
 import { recordUsage } from '../lib/usage-sink';
 import { readVerdictReply, truncatedVerdict, unparseableVerdict } from './verdict-reply';
@@ -109,7 +109,11 @@ Return strictly a JSON object:
       const msg = error instanceof Error ? error.message : String(error);
       if (msg.includes('429')) throw error;
       console.error(`Error verifying claim ${claim.id} (Claude):`, error);
-      return { claimId: claim.id, status: 'unverified', explanation: sanitizeVerifyError(error), sources: [], apiError: true };
+      return {
+        claimId: claim.id, status: 'unverified', explanation: sanitizeVerifyError(error), sources: [], apiError: true,
+        // An empty account keeps its reason, so the CLI does not ask for a re-run that cannot succeed.
+        ...(classifyApiError(error) === 'provider_out_of_credits' ? { apiErrorReason: 'provider_out_of_credits' as const } : {}),
+      };
     }
   }
 

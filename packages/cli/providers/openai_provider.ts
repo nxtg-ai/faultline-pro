@@ -3,7 +3,7 @@ import type { LLMProvider, ImageInput, CritiqueResult, ProviderFactory } from '.
 import { buildGroundedPrompt } from './grounded_prompt';
 import { sanitizeVerifyError } from '../services/verify-error';
 import { recordUsage } from '../lib/usage-sink';
-import { ExtractionError, parseExtractedClaims } from './extraction-error';
+import { ExtractionError, classifyApiError, parseExtractedClaims } from './extraction-error';
 import { outOfCreditsTag, readErrorBody } from './out-of-credits';
 import { readVerdictReply, truncatedVerdict, unparseableVerdict } from './verdict-reply';
 import { CALL_CEILINGS, type OpenAIChatPurpose } from './call-ceilings';
@@ -100,7 +100,11 @@ Return a JSON object:
       const msg = error instanceof Error ? error.message : String(error);
       if (msg.includes('429')) throw error;
       console.error(`Error verifying claim ${claim.id} (OpenAI):`, error);
-      return { claimId: claim.id, status: 'unverified', explanation: sanitizeVerifyError(error), sources: [], apiError: true };
+      return {
+        claimId: claim.id, status: 'unverified', explanation: sanitizeVerifyError(error), sources: [], apiError: true,
+        // An empty account keeps its reason, so the CLI does not ask for a re-run that cannot succeed.
+        ...(classifyApiError(error) === 'provider_out_of_credits' ? { apiErrorReason: 'provider_out_of_credits' as const } : {}),
+      };
     }
   }
 
