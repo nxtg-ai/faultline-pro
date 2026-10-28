@@ -283,8 +283,8 @@ const OFFLINE_RETRIEVER: Retriever = { name: 'offline', retrieve: async () => []
  * Select the consensus retriever behind the provider-agnostic Retriever seam.
  * OpenAI web search is primary (funded key, not throttled like the free-tier
  * gemini native googleSearch); gemini grounding is the alternate fallback. If
- * neither key exists, retrieval yields [] and providers judge from parametric
- * knowledge.
+ * neither key exists, the Gemini retriever rejects with RetrievalError, so each
+ * claim reads as not checked and no provider is asked.
  */
 function buildRetriever(): Retriever {
   let openaiKey = '';

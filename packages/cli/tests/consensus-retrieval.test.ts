@@ -85,6 +85,18 @@ describe('a search that found nothing: no verdict, no votes', () => {
     expect(a.verifyClaimGrounded).not.toHaveBeenCalled();
     expect(b.verifyClaimGrounded).not.toHaveBeenCalled();
   });
+
+  it('a retriever that resolves undefined, null or a non-list reads as no source and does not throw', async () => {
+    for (const bad of [undefined, null, { title: 'S', uri: 'https://example.org/s' }]) {
+      const a = spyProvider('openai', 'supported');
+      const r = await consensusVerify(CLAIM, retrieverOf(async () => bad as unknown as Source[]), [a.named]);
+      expect(r).toMatchObject({ claimId: 'c1', status: 'unverified', explanation: NO_SOURCES_EXPLANATION, sources: [] });
+      expect(r.apiError).toBeUndefined();
+      expect(r.providerVotes).toEqual([]);
+      expect(a.verifyClaimGrounded).not.toHaveBeenCalled();
+      expect(isBillableVerdict(r)).toBe(false);
+    }
+  });
 });
 
 describe('one source, one provider failing', () => {

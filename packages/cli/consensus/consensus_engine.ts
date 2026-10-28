@@ -279,7 +279,9 @@ export async function consensusVerify(
   const retrievedAt = new Date().toISOString();
 
   // A claim with no retrieved source gets no verdict: nothing is asked, nothing is spent.
-  if (sources.length === 0) return noVoteResult(claim, NO_SOURCES_EXPLANATION);
+  // A retriever that resolves something other than a list counts as no source,
+  // so this function still never throws.
+  if (!Array.isArray(sources) || sources.length === 0) return noVoteResult(claim, NO_SOURCES_EXPLANATION);
 
   // 2. FAN OUT in parallel; each runProviderVote is pre-caught (LOCK B).
   const votes = await Promise.all(

@@ -51,21 +51,24 @@ interface ResponsesPayload {
 
 /**
  * The failure an HTTP 200 Responses payload reports, or null when it reports
- * none. `failed`, or `incomplete` for a reason other than the output limit, is
+ * none. Only `completed`, or no status and no error object, is a finished
+ * search. Anything else (`failed`, `cancelled`, `in_progress`, `incomplete` for
+ * a reason other than the output limit, or an error object with no status) is
  * a search that did not finish: its citations, if any, are partial and are not
  * passed on. The output limit is reported separately as output_truncated.
  */
 export function responsesFailure(payload: ResponsesPayload): RetrievalError | null {
-  if (payload?.status === 'failed') {
+  const status = payload?.status;
+  if (status === 'completed') return null;
+  if (status == null && !payload?.error) return null;
+  if (status === 'incomplete' && payload.incomplete_details?.reason === 'max_output_tokens') return null;
+  if (status === 'failed' || (status == null && payload?.error)) {
     const code = payload.error?.code ?? '';
     const reason = /rate_limit/i.test(code) ? 'rate_limited' : 'provider_error';
-    return new RetrievalError(reason, new Error(`OpenAI Responses status failed: ${code || 'no error code'}`));
+    return new RetrievalError(reason, new Error(`OpenAI Responses status ${status ?? 'missing'}: ${code || 'no error code'}`));
   }
-  if (payload?.status === 'incomplete' && payload.incomplete_details?.reason !== 'max_output_tokens') {
-    const why = payload.incomplete_details?.reason ?? 'no reason given';
-    return new RetrievalError('provider_error', new Error(`OpenAI Responses status incomplete: ${why}`));
-  }
-  return null;
+  const why = status === 'incomplete' ? payload.incomplete_details?.reason ?? 'no reason given' : 'did not complete';
+  return new RetrievalError('provider_error', new Error(`OpenAI Responses status ${status}: ${why}`));
 }
 
 export class OpenAIWebSearchRetriever implements Retriever {

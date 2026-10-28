@@ -120,6 +120,35 @@ describe('OpenAI web search: a failed reply is a failed search', () => {
     expect(isBillableVerdict(r)).toBe(false);
   });
 
+  it('status cancelled rejects, and its citations never come back', async () => {
+    fetchOk({ ...withCitation, status: 'cancelled' });
+    await expect(new OpenAIWebSearchRetriever('k').retrieve(CLAIM.text)).rejects.toMatchObject({ name: 'RetrievalError', reason: 'provider_error' });
+  });
+
+  it('status in_progress rejects: only a completed search is read', async () => {
+    fetchOk({ ...withCitation, status: 'in_progress' });
+    await expect(new OpenAIWebSearchRetriever('k').retrieve(CLAIM.text)).rejects.toMatchObject({ name: 'RetrievalError', reason: 'provider_error' });
+  });
+
+  it('an error object with no status rejects, classified by its code', async () => {
+    fetchOk({ ...withCitation, error: { code: 'server_error', message: 'The search failed.' } });
+    await expect(new OpenAIWebSearchRetriever('k').retrieve(CLAIM.text)).rejects.toMatchObject({ name: 'RetrievalError', reason: 'provider_error' });
+    vi.restoreAllMocks();
+    fetchOk({ output: [], error: { code: 'rate_limit_exceeded', message: 'Rate limit reached.' } });
+    await expect(new OpenAIWebSearchRetriever('k').retrieve(CLAIM.text)).rejects.toMatchObject({ name: 'RetrievalError', reason: 'rate_limited' });
+  });
+
+  it('no status and no error object (or error: null) still resolves its sources', async () => {
+    fetchOk(withCitation);
+    const bare = await new OpenAIWebSearchRetriever('k').retrieve(CLAIM.text);
+    expect(bare.length).toBe(1);
+    vi.restoreAllMocks();
+    fetchOk({ ...withCitation, error: null });
+    const nullError = await new OpenAIWebSearchRetriever('k').retrieve(CLAIM.text);
+    expect(nullError.length).toBe(1);
+    expect(nullError[0].uri).toBe(SOURCE.uri);
+  });
+
   it('status completed with citations still resolves its sources', async () => {
     fetchOk({ ...withCitation, status: 'completed' });
     const sources = await new OpenAIWebSearchRetriever('k').retrieve(CLAIM.text);

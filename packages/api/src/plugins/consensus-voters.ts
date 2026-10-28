@@ -59,19 +59,22 @@ interface ConsensusScanLike {
 
 /**
  * True when a consensus scan finished without a single voter taking part: every
- * verified claim's votes failed (or there were none). Such a run checked nothing,
- * so the route reports failure instead of a 200 that reads as a clean result.
- * A scan that verified no claims, or that was not a consensus scan, is never a
- * no-voter run.
+ * verified claim's votes failed, or it had none because its source search
+ * failed (an API error). Such a run checked nothing, so the route reports failure
+ * instead of a 200 that reads as a clean result. A claim whose search ran and
+ * found no source has no votes either (no source, no verdict), but it was
+ * checked: it is unverified, not a voter failure. A scan that verified no claims,
+ * or that was not a consensus scan, is never a no-voter run.
  */
 export function consensusHadNoVoters(result: ConsensusScanLike): boolean {
   const verifications = result.verifications;
   if (typeof verifications !== 'object' || verifications === null) return false;
-  const verdicts = Object.values(verifications as Record<string, { consensus?: unknown; providerVotes?: unknown }>);
+  const verdicts = Object.values(verifications as Record<string, { consensus?: unknown; providerVotes?: unknown; apiError?: unknown }>);
   if (verdicts.length === 0) return false;
   return verdicts.every((v) => {
     if (v === null || typeof v !== 'object' || v.consensus === undefined) return false;
     const votes = Array.isArray(v.providerVotes) ? v.providerVotes as Array<{ apiError?: boolean }> : [];
+    if (votes.length === 0) return v.apiError === true;
     return votes.every((vote) => vote?.apiError === true);
   });
 }
