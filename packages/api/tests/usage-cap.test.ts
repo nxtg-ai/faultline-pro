@@ -189,6 +189,36 @@ describe('enforceMonthlyCap — integration through /scan', () => {
     expect(getUsageMeter().getMonthlyCount(created.id)).toBe(1);
   });
 
+  it('a query string on POST /scan still counts the scan (matched on the route, not the raw URL)', async () => {
+    const created = getKeyStore().create('Pro Key', ['pro', 'scan']);
+    const res = await server.inject({
+      method: 'POST',
+      url: '/scan?x=1',
+      headers: { 'x-api-key': created.key, 'content-type': 'application/json' },
+      payload: { text: 'The sky is blue.', provider: 'mock' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(getUsageMeter().getMonthlyCount(created.id)).toBe(1);
+  });
+
+  it('a query string cannot slip past the cap once it is reached', async () => {
+    process.env.FAULTLINE_USAGE_CAP = 'on';
+    process.env.FAULTLINE_CAP_PRO = '2';
+    const created = getKeyStore().create('Pro Key', ['pro', 'scan']);
+    const statuses: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      const res = await server.inject({
+        method: 'POST',
+        url: `/scan?n=${i}`,
+        headers: { 'x-api-key': created.key, 'content-type': 'application/json' },
+        payload: { text: `The sky is blue ${i}.`, provider: 'mock' },
+      });
+      statuses.push(res.statusCode);
+    }
+    expect(statuses).toEqual([200, 200, 402]);
+    expect(getUsageMeter().getMonthlyCount(created.id)).toBe(2);
+  });
+
   it('never caps an admin (unlimited) key even when the gate is on', async () => {
     process.env.FAULTLINE_USAGE_CAP = 'on';
     // an admin-permission key resolves to the admin tier (cap null); seed high usage

@@ -113,6 +113,11 @@ const SHARED_REASONS: ReadonlySet<ApiErrorReason> = new Set<ApiErrorReason>([
   'provider_out_of_credits',
 ]);
 
+/** True for a failure reason a fused result (and a failed consensus scan) carries when every failed vote shares it. */
+export function isSharedFailureReason(reason: unknown): reason is ApiErrorReason {
+  return typeof reason === 'string' && SHARED_REASONS.has(reason as ApiErrorReason);
+}
+
 /** The reason every failed vote shares, or undefined when they differ, any vote has none, or it is not carried. */
 function sharedReasonOf(errored: ProviderVote[]): ApiErrorReason | undefined {
   const first = errored[0]?.apiErrorReason;

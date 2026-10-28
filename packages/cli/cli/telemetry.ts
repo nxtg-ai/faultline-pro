@@ -14,7 +14,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { isExtractionError, type ExtractionErrorReason } from '../providers/extraction-error.js';
-import { isOutOfCreditsText } from '../providers/out-of-credits.js';
+import { isOutOfCreditsError } from '../providers/out-of-credits.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -135,7 +135,7 @@ export function classifyError(err: unknown): ErrorCode {
     if (name === 'AbortError') return 'TIMEOUT';
     if (err.message.includes('ENOTFOUND') || err.message.includes('ECONNREFUSED')) return 'NETWORK_ERROR';
     if (err.message.includes('API key') || err.message.includes('api key')) return 'API_KEY_MISSING';
-    if (isOutOfCreditsText(err.message)) return 'API_ERROR';
+    if (isOutOfCreditsError(err)) return 'API_ERROR';
     if (err.message.includes('rate limit') || err.message.includes('429')) return 'RATE_LIMIT';
     if (err.message.toLowerCase().includes('parse') || err.message.includes('JSON')) return 'PARSE_ERROR';
   }

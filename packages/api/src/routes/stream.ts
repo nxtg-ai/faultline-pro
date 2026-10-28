@@ -9,7 +9,7 @@ import { resolveTierFromRequest } from '../store/costs.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { enforceConsensusEntitlement } from '../plugins/consensus-entitlement.js';
-import { validateConsensusVoters, consensusHadNoVoters, CONSENSUS_UNAVAILABLE_MESSAGE } from '../plugins/consensus-voters.js';
+import { validateConsensusVoters, consensusHadNoVoters, consensusUnavailableBody, CONSENSUS_UNAVAILABLE_MESSAGE } from '../plugins/consensus-voters.js';
 import { isConsensusUnavailableError } from '@nxtg/faultline/cli/verify-runner.js';
 import { getUsageMeter } from '../store/usage.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
@@ -308,9 +308,10 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
         }
 
         // A consensus run where no voter took part checked nothing: report failure
-        // and count no scan. The spend above is real and stays in the ledger.
+        // (with the shared reason, as POST /scan does) and count no scan. The spend
+        // above is real and stays in the ledger.
         if (pipelineConfig?.consensus === true && consensusHadNoVoters(result)) {
-          emit({ type: 'error', error: 'consensus_unavailable', message: CONSENSUS_UNAVAILABLE_MESSAGE });
+          emit({ type: 'error', ...consensusUnavailableBody(result) });
           return;
         }
 

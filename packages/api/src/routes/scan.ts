@@ -7,7 +7,7 @@ import { rateLimitScan } from '../plugins/ratelimit.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { enforceConsensusEntitlement } from '../plugins/consensus-entitlement.js';
-import { validateConsensusVoters, consensusHadNoVoters, CONSENSUS_UNAVAILABLE_MESSAGE } from '../plugins/consensus-voters.js';
+import { validateConsensusVoters, consensusHadNoVoters, consensusUnavailableBody, CONSENSUS_UNAVAILABLE_MESSAGE } from '../plugins/consensus-voters.js';
 import { isConsensusUnavailableError } from '@nxtg/faultline/cli/verify-runner.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 import { getUsageMeter } from '../store/usage.js';
@@ -133,10 +133,11 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
             pipelineConfig,
             scanOptions,
           ));
-          // A consensus run where no voter took part checked nothing: report failure.
+          // A consensus run where no voter took part checked nothing: report failure,
+          // with the reason when every failure shares one (an empty account, say).
           // A non-200 counts no scan of quota; the spend above is real and stays ledgered.
           if (pipelineConfig.consensus === true && consensusHadNoVoters(result)) {
-            return reply.status(502).send({ error: 'consensus_unavailable', message: CONSENSUS_UNAVAILABLE_MESSAGE });
+            return reply.status(502).send(consensusUnavailableBody(result));
           }
           getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
           recordScanTelemetry({

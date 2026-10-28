@@ -7,6 +7,7 @@ vi.stubGlobal('fetch', mockFetch);
 import {
   OpenAIWebSearchRetriever,
   parseResponsesSources,
+  responsesFailure,
 } from '../providers/openai_web_search_retriever';
 
 /**
@@ -204,6 +205,31 @@ describe('OpenAIWebSearchRetriever', () => {
       mockFetch.mockResolvedValueOnce({ ok: false, status: 429, statusText: 'Too Many Requests' });
       const retriever = new OpenAIWebSearchRetriever('test-key');
       await expect(retriever.retrieve('claim')).rejects.toMatchObject({ name: 'RetrievalError', reason: 'rate_limited' });
+    });
+
+    it('rejects with RetrievalError provider_out_of_credits on a 429 insufficient_quota, never "re-run shortly"', async () => {
+      const body = JSON.stringify({
+        error: { message: 'You exceeded your current quota, please check your plan and billing details.', type: 'insufficient_quota', code: 'insufficient_quota' },
+      });
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 429, statusText: 'Too Many Requests', text: async () => body });
+      const retriever = new OpenAIWebSearchRetriever('test-key');
+      const err = (await retriever.retrieve('claim').catch((e: unknown) => e)) as Error & { reason?: string };
+      expect(err).toMatchObject({ name: 'RetrievalError', reason: 'provider_out_of_credits' });
+      expect(err.message).toContain('will not help');
+      expect(err.message).not.toMatch(/shortly/);
+      expect(err.message).not.toContain('billing details');
+    });
+
+    it('a 429 rate_limit_exceeded body stays rate_limited', async () => {
+      const body = JSON.stringify({ error: { message: 'Rate limit reached for requests', code: 'rate_limit_exceeded' } });
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 429, statusText: 'Too Many Requests', text: async () => body });
+      const retriever = new OpenAIWebSearchRetriever('test-key');
+      await expect(retriever.retrieve('claim')).rejects.toMatchObject({ name: 'RetrievalError', reason: 'rate_limited' });
+    });
+
+    it('a failed Responses payload with code insufficient_quota is provider_out_of_credits', () => {
+      expect(responsesFailure({ status: 'failed', error: { code: 'insufficient_quota' } })?.reason).toBe('provider_out_of_credits');
+      expect(responsesFailure({ status: 'failed', error: { code: 'rate_limit_exceeded' } })?.reason).toBe('rate_limited');
     });
 
     it('rejects without calling the API when the key is empty: no key is not "found nothing"', async () => {
