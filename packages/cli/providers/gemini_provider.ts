@@ -45,6 +45,7 @@ export const createGeminiProvider: ProviderFactory = (apiKey: string): LLMProvid
  * sources for a claim. This is the DEFAULT retrieval backend, not the only
  * possible one — a Tavily/Serper/Brave/Custom-Search Retriever can be dropped
  * in as a separate impl selected by config (that seam is the whole point).
+ * A failed search rejects with RetrievalError (see retrieveSources).
  */
 export class GeminiGroundingRetriever implements Retriever {
   readonly name = 'gemini-grounding';

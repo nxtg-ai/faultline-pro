@@ -12,6 +12,7 @@
  */
 import type { Claim, VerificationResult } from '../types.js';
 import type { VerificationSummary } from './verify-cap.js';
+import { isBillableVerdict } from '../lib/verdict-guard.js';
 
 /** Fact claims per charged unit (ruling 1.18.11.3.8: the quick scan's K = 8). */
 export const CLAIMS_PER_UNIT = 8;
@@ -43,9 +44,9 @@ export interface FullVerificationSummary extends VerificationSummary {
   factClaims: number;
   /** Ids of opinion and interpretation claims, extraction order. */
   notCheckableClaimIds: string[];
-  /** Fact claims that got a verdict (started, and no apiError). */
+  /** Fact claims with a billable verdict (isBillableVerdict: supported, contradicted or mixed, with a source, no apiError). */
   servedClaims: number;
-  /** Ids of fact claims started that ended without a verdict (apiError). */
+  /** Ids of fact claims started that ended without a billable verdict (an apiError, `unverified`, or no source). */
   unservedClaimIds: string[];
 }
 
@@ -103,9 +104,9 @@ export function unitAccounting(chargedUnits: number, servedClaims: number): Unit
   return { charged, served, refund: Math.max(0, charged - served) };
 }
 
-/** True when a started claim got a verdict rather than a provider error. */
+/** True when a started claim got a billable verdict, the same rule every billed count uses. */
 function isServed(result: VerificationResult | undefined): boolean {
-  return result !== undefined && result.apiError !== true;
+  return result !== undefined && isBillableVerdict(result);
 }
 
 /**

@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { hasCheckedVerdict } from '@nxtg/faultline/lib/verdict-guard.js';
 import type { PipelineConfig } from '@nxtg/faultline/cli/scan.js';
 import { resolveTierFromRequest } from '../store/costs.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
@@ -207,7 +208,9 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
           verification: withVerificationTier(result, verifyPolicy.tier).verification,
         });
 
-        getUsageMeter().increment(keyId); // count toward monthly cap (item 1)
+        // A scan counts toward the monthly quota only when some claim got a verdict
+        // that is not an API error; a scan where every claim failed checked nothing.
+        if (hasCheckedVerdict(result.verifications)) getUsageMeter().increment(keyId);
       } catch (err) {
         // BLG-fp-20260713-A: log raw for ops, emit a generic client-safe message.
         console.error(`/scan/stream GET failed for key ${keyId}:`, err);
@@ -318,7 +321,9 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
           verification: withVerificationTier(result, verifyPolicy.tier).verification,
         });
 
-        getUsageMeter().increment(keyId); // count toward monthly cap (item 1)
+        // A scan counts toward the monthly quota only when some claim got a verdict
+        // that is not an API error; a scan where every claim failed checked nothing.
+        if (hasCheckedVerdict(result.verifications)) getUsageMeter().increment(keyId);
       } catch (err) {
         // BLG-fp-20260713-A: never leak the raw provider/engine error to the
         // client — log it for ops, emit a generic client-safe message.

@@ -141,19 +141,24 @@ describe('CLI disk history', () => {
 });
 
 describe('billable verdicts (cost log verified_count, GoPMO 1.18.11.7.3)', () => {
-  it('counts verdicts including unverified; not provider errors, UI states or junk', async () => {
+  it('counts sourced definite verdicts only; not unverified, zero-source verdicts, provider errors, UI states or junk', async () => {
     const { isBillableVerdict, billableVerdictCount } = await import('../lib/verdict-guard.js');
-    expect(isBillableVerdict({ status: 'supported' })).toBe(true);
-    expect(isBillableVerdict({ status: 'unverified' })).toBe(true);
+    const src = [{ title: 'S', uri: 'https://example.org/s' }];
+    expect(isBillableVerdict({ status: 'supported', sources: src })).toBe(true);
+    expect(isBillableVerdict({ status: 'supported' })).toBe(false);
+    expect(isBillableVerdict({ status: 'unverified', sources: src })).toBe(false);
     expect(isBillableVerdict({ status: 'unverified', apiError: true })).toBe(false);
-    expect(isBillableVerdict({ status: 'skipped' })).toBe(false);
-    expect(isBillableVerdict({ status: 'loading' })).toBe(false);
-    expect(isBillableVerdict({ status: 'ROYALLY_CERTIFIED' })).toBe(false);
+    expect(isBillableVerdict({ status: 'skipped', sources: src })).toBe(false);
+    expect(isBillableVerdict({ status: 'loading', sources: src })).toBe(false);
+    expect(isBillableVerdict({ status: 'ROYALLY_CERTIFIED', sources: src })).toBe(false);
     expect(isBillableVerdict(null)).toBe(false);
-    const v = { a: { status: 'supported' }, b: { status: 'unverified' }, c: { status: 'unverified', apiError: true }, d: { status: 'skipped' } };
+    const v = {
+      a: { status: 'supported', sources: src }, b: { status: 'unverified', sources: src },
+      c: { status: 'unverified', apiError: true }, d: { status: 'skipped' }, e: { status: 'contradicted', sources: src },
+    };
     expect(billableVerdictCount(v)).toBe(2);
     expect(billableVerdictCount(Object.values(v))).toBe(2);
-    expect(billableVerdictCount([undefined, { status: 'mixed' }])).toBe(1);
+    expect(billableVerdictCount([undefined, { status: 'mixed', sources: src }, { status: 'mixed', sources: [] }])).toBe(1);
     expect(billableVerdictCount(undefined)).toBe(0);
   });
 });

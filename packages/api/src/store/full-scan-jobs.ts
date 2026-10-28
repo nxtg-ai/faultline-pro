@@ -1,4 +1,4 @@
-import { guardVerdict } from '@nxtg/faultline/lib/verdict-guard.js';
+import { guardVerdict, isBillableVerdict } from '@nxtg/faultline/lib/verdict-guard.js';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -33,10 +33,12 @@ import type { ManagedScanCostEvent } from './costs.js';
  * Google's grounding terms forbid caching grounded output), and NO user-ref (it
  * lives in memory only while a job is active, to enforce one job per user).
  *
- * Units: a fact claim is SERVED when its check ran and returned a verdict
- * (including 'unverified'); it is unserved when the provider failed after the
- * engine's retries (apiError) or it never started. served = ceil(served / 8);
- * refund = charged - served (emma-soul ruling al:c747e63f2fc26683).
+ * Units: a fact claim is SERVED when its verdict is billable (isBillableVerdict:
+ * supported, contradicted or mixed, with at least one source, and no apiError).
+ * It is unserved when the provider failed after the engine's retries (apiError,
+ * with the provider's reason), when its check gave no sourced verdict
+ * ('unverified', or zero sources: reason 'no_sourced_verdict'), or when it never
+ * started ('not_attempted'). served = ceil(served / 8); refund = charged - served.
  */
 
 type Tier = ManagedScanCostEvent['tier'];
@@ -70,11 +72,15 @@ const JOB_ID_PATTERN = /^fsj_([0-9a-z]{1,11})_[0-9a-f]{32}$/;
 export type FullScanJobStatus = 'queued' | 'running' | 'done' | 'stopped' | 'failed';
 export type TerminalStatus = 'done' | 'stopped' | 'failed';
 
-/** Why a fact claim got no verdict. The engine's reasons plus 'not_attempted'. */
-export type UnservedReason = ApiErrorReason | 'not_attempted';
+/**
+ * Why a fact claim was not served. The engine's error reasons, 'no_sourced_verdict'
+ * (the check ran but gave no billable verdict: 'unverified', or no source), and
+ * 'not_attempted'.
+ */
+export type UnservedReason = ApiErrorReason | 'no_sourced_verdict' | 'not_attempted';
 export const UNSERVED_REASONS: readonly UnservedReason[] = [
   'rate_limited', 'provider_out_of_credits', 'provider_unavailable', 'timeout', 'provider_error', 'provider_unparseable', 'output_truncated',
-  'not_attempted',
+  'no_sourced_verdict', 'not_attempted',
 ];
 
 export interface UnservedClaim {
@@ -148,7 +154,7 @@ export interface FullScanLedgerRow {
   factClaims: number;
   units: UnitAccounting;
   servedClaims: number;
-  /** Served claims by verdict status (supported, contradicted, unverified, mixed). */
+  /** Served claims by verdict status (supported, contradicted, mixed). */
   verdicts: Record<string, number>;
   /** Unserved claims by reason. */
   reasons: Partial<Record<UnservedReason, number>>;
@@ -168,9 +174,12 @@ export interface FullScanJobView {
   jobId: string;
   status: FullScanJobStatus;
   factClaims: number;
-  /** Fact claims with a verdict (served). */
+  /** Fact claims with a billable verdict (served). */
   checked: number;
-  /** Fact claims whose check ran and failed (apiError); never-started claims are not counted. */
+  /**
+   * Fact claims whose check ran and failed (apiError). Never-started claims and
+   * claims checked without a sourced verdict ('no_sourced_verdict') are not counted.
+   */
   failed: number;
   progress: ClaimProgress[];
   unserved: UnservedClaim[];
@@ -272,6 +281,7 @@ function claimProgress(job: FullScanJob): ClaimProgress[] {
       return isTerminal(job.status) ? { claimId, status: 'unserved', reason: 'not_attempted' } : { claimId, status: 'pending' };
     }
     if (verdict.apiError === true) return { claimId, status: 'unserved', reason: reasonOf(verdict), verdict };
+    if (!isBillableVerdict(verdict)) return { claimId, status: 'unserved', reason: 'no_sourced_verdict', verdict };
     return { claimId, status: 'served', verdict };
   });
 }
@@ -280,7 +290,7 @@ const unservedOf = (progress: ClaimProgress[]): UnservedClaim[] =>
   progress.flatMap((p) => (p.status === 'unserved' && p.reason ? [{ claimId: p.claimId, reason: p.reason }] : []));
 
 const ranAndFailed = (unserved: UnservedClaim[]): number =>
-  unserved.filter((u) => u.reason !== 'not_attempted').length;
+  unserved.filter((u) => u.reason !== 'not_attempted' && u.reason !== 'no_sourced_verdict').length;
 
 /** The GET view of a job held in memory. */
 export function describeJob(job: FullScanJob): FullScanJobView {

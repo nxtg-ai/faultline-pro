@@ -3,6 +3,7 @@ import type { Retriever } from './base_provider';
 import { recordUsage } from '../lib/usage-sink';
 import { CALL_CEILINGS } from './call-ceilings';
 import { isResponsesTruncated, OutputTruncatedError } from './output-truncation';
+import { RetrievalError } from './retrieval-error';
 
 /**
  * OpenAIWebSearchRetriever — provider-agnostic grounding via OpenAI's Responses
@@ -45,6 +46,29 @@ interface ResponsesPayload {
   output?: OutputItem[];
   status?: string;
   incomplete_details?: { reason?: string } | null;
+  error?: { code?: string; message?: string } | null;
+}
+
+/**
+ * The failure an HTTP 200 Responses payload reports, or null when it reports
+ * none. Only `completed`, or no status and no error object, is a finished
+ * search. Anything else (`failed`, `cancelled`, `in_progress`, `incomplete` for
+ * a reason other than the output limit, or an error object with no status) is
+ * a search that did not finish: its citations, if any, are partial and are not
+ * passed on. The output limit is reported separately as output_truncated.
+ */
+export function responsesFailure(payload: ResponsesPayload): RetrievalError | null {
+  const status = payload?.status;
+  if (status === 'completed') return null;
+  if (status == null && !payload?.error) return null;
+  if (status === 'incomplete' && payload.incomplete_details?.reason === 'max_output_tokens') return null;
+  if (status === 'failed' || (status == null && payload?.error)) {
+    const code = payload.error?.code ?? '';
+    const reason = /rate_limit/i.test(code) ? 'rate_limited' : 'provider_error';
+    return new RetrievalError(reason, new Error(`OpenAI Responses status ${status ?? 'missing'}: ${code || 'no error code'}`));
+  }
+  const why = status === 'incomplete' ? payload.incomplete_details?.reason ?? 'no reason given' : 'did not complete';
+  return new RetrievalError('provider_error', new Error(`OpenAI Responses status ${status}: ${why}`));
 }
 
 export class OpenAIWebSearchRetriever implements Retriever {
@@ -66,19 +90,23 @@ export class OpenAIWebSearchRetriever implements Retriever {
       DEFAULT_MODEL;
   }
 
+  /**
+   * Resolves the sources found, [] when the search ran and found none. A search
+   * that could not run throws RetrievalError with the classified reason, so a
+   * failure never reads as "searched, found nothing".
+   */
   async retrieve(claimText: string): Promise<Source[]> {
-    if (!this.apiKey) return [];
+    if (!this.apiKey) throw new RetrievalError('provider_error', new Error('no OpenAI API key for the source search'));
     try {
       const data = await this.callAPI(claimText);
       return parseResponsesSources(data, MAX_RESULTS);
     } catch (err) {
-      // Retrieval must never throw into the consensus engine — [] degrades the
-      // claim to parametric judgement, surfaced honestly by the providers.
+      const failure = RetrievalError.fromError(err);
       if (typeof process !== 'undefined' && process.env?.FAULTLINE_DEBUG) {
-        const msg = err instanceof Error ? err.message : String(err);
-        process.stderr.write(`[openai-web-search] retrieve failed: ${msg}\n`);
+        // The reason only: the raw error can carry the provider payload.
+        process.stderr.write(`[openai-web-search] retrieve failed: ${failure.reason}\n`);
       }
-      return [];
+      throw failure;
     }
   }
 
@@ -126,8 +154,11 @@ export class OpenAIWebSearchRetriever implements Retriever {
       outputTokens: usage?.output_tokens ?? 0,
       isGrounding: true,
     });
-    // A search cut off at its ceiling is a failed retrieval: retrieve() turns the throw into [].
+    // A search cut off at its ceiling is a failed retrieval: retrieve() rethrows it as RetrievalError.
     if (isResponsesTruncated(payload)) throw new OutputTruncatedError('openai-web-search', 'retrieve');
+    // A search that failed or stopped early is a failed retrieval too, checked before any citation is read.
+    const failure = responsesFailure(payload);
+    if (failure) throw failure;
     return payload;
   }
 }

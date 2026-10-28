@@ -401,7 +401,8 @@ async function runFullVerification(
   const complianceReport = generateComplianceReport(run.attempted, run.verifications, overallRisk, context.minConfidence);
   const verification = buildFullVerificationSummary(partition, run.results);
   // Positional, like the summary: an id-keyed count would lose a failure behind a duplicate id.
-  const verificationErrors = verification.unservedClaimIds.length;
+  // Only provider errors count; an unserved claim without one (unverified, no source) was checked.
+  const verificationErrors = run.results.filter((r) => r?.apiError === true).length;
 
   return {
     input: context.text?.substring(0, 200) ?? '',

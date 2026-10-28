@@ -28,7 +28,7 @@ import { resetCache } from '../src/store/cache.js';
 import { resetCircuitBreaker } from '../src/store/circuit-breaker.js';
 import { resetProviderSpendLedger } from '../src/store/provider-spend.js';
 import { resetCostStore } from '../src/store/costs.js';
-import { validateConsensusVoters } from '../src/plugins/consensus-voters.js';
+import { validateConsensusVoters, consensusHadNoVoters } from '../src/plugins/consensus-voters.js';
 import { scanWithSpend } from '../src/lib/scan-spend.js';
 
 // Counts every provider the engine builds, to show a refused request reached none.
@@ -280,15 +280,17 @@ describe('a consensus run with zero participating voters reports failure and use
     expect(quotaUsed()).toBe(0);
   });
 
-  it('a consensus scan with a voter that takes part is served and counted', async () => {
+  it('a consensus scan whose search found no source is served unverified and counted, not refused', async () => {
+    // The offline run retrieves no sources, so no voter is asked (no source, no
+    // verdict). That is a checked claim, not a voter failure: no consensus_unavailable.
     const res = await server.inject({
       method: 'POST', url: '/scan', headers,
       payload: { text: TEXT, provider: 'mock', pipelineConfig: { extractionProvider: 'mock', consensus: true, consensusProviders: ['mock'] } },
     });
     expect(res.statusCode).toBe(200);
-    const verdicts = Object.values(res.json().verifications as Record<string, { consensus?: { providerCount: number } }>);
+    const verdicts = Object.values(res.json().verifications as Record<string, { status?: string; consensus?: { providerCount: number } }>);
     expect(verdicts.length).toBeGreaterThan(0);
-    expect(verdicts.every((v) => v.consensus?.providerCount === 1)).toBe(true);
+    expect(verdicts.every((v) => v.consensus?.providerCount === 0 && v.status === 'unverified')).toBe(true);
     expect(res.json().degraded).toBe(false);
     expect(quotaUsed()).toBe(1);
   });
@@ -365,9 +367,10 @@ describe('only real, distinct providers vote in consensus', () => {
       });
       expect(res.statusCode).toBe(200);
       if (url === '/scan') {
-        const verdicts = Object.values(res.json().verifications as Record<string, { consensus?: { providerCount: number } }>);
+        // The offline run retrieves no sources, so the claim is unverified and no voter is asked.
+        const verdicts = Object.values(res.json().verifications as Record<string, { status?: string; consensus?: { providerCount: number } }>);
         expect(verdicts.length).toBeGreaterThan(0);
-        expect(verdicts.every((v) => v.consensus?.providerCount === 1)).toBe(true);
+        expect(verdicts.every((v) => v.consensus?.providerCount === 0 && v.status === 'unverified')).toBe(true);
       } else {
         expect(res.body).toContain('"type":"complete"');
       }
@@ -436,5 +439,24 @@ describe('a spend row is labelled and priced by the voters that ran', () => {
     expect(rows[0].costUsd).toBeGreaterThan(0);
     // Priced as one openai voter, not three requested voters.
     expect(rows[0].costUsd).toBeCloseTo(rows[1].costUsd as number, 10);
+  });
+});
+
+describe('consensusHadNoVoters, called directly', () => {
+  const consensus = { agreement: 'split', providerCount: 0, dissenting: 0 };
+
+  it('a claim whose search found no source was checked: not a no-voter run', () => {
+    const result = { verifications: { c1: { status: 'unverified', sources: [], consensus, providerVotes: [] } } };
+    expect(consensusHadNoVoters(result)).toBe(false);
+  });
+
+  it('a claim whose search failed was not checked: a no-voter run', () => {
+    const result = { verifications: { c1: { status: 'unverified', sources: [], apiError: true, consensus, providerVotes: [] } } };
+    expect(consensusHadNoVoters(result)).toBe(true);
+  });
+
+  it('every voter asked failed: a no-voter run', () => {
+    const result = { verifications: { c1: { status: 'unverified', sources: [], consensus, providerVotes: [{ provider: 'openai', apiError: true }] } } };
+    expect(consensusHadNoVoters(result)).toBe(true);
   });
 });

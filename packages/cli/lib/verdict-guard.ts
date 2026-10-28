@@ -135,16 +135,23 @@ export class InvalidVerdictError extends Error {
 export const isInvalidVerdictError = (err: unknown): err is InvalidVerdictError =>
   err instanceof Error && (err as { code?: unknown }).code === 'invalid_verdict';
 
+/** The verdicts that can be billed. `unverified` never is: it says the claim could not be settled. */
+const BILLABLE_STATUSES: ReadonlySet<string> = new Set(['supported', 'contradicted', 'mixed']);
+
 /**
- * A claim that got a provider verdict, `unverified` included (the search was
- * run and paid for). A provider error, a malformed verdict (flagged `apiError`)
- * or a UI state (`loading`, `skipped`) is not one. This is the unit the cost
- * log counts per scan (`verified_count`).
+ * A claim that can be billed: its verdict is supported, contradicted or mixed,
+ * it carries at least one source, and it is not an API error. `unverified`, any
+ * verdict with zero sources, a provider error, a malformed verdict (flagged
+ * `apiError`) and a UI state (`loading`, `skipped`) are never billable. This is
+ * the one rule every billed count uses: the cost log's `verified_count`, the
+ * spend ledger's `verifiedCount` and full-scan served units.
  */
 export function isBillableVerdict(value: unknown): boolean {
   if (!value || typeof value !== 'object') return false;
-  const v = value as { status?: unknown; apiError?: unknown };
-  return isVerdictStatus(v.status) && v.apiError !== true;
+  const v = value as { status?: unknown; sources?: unknown; apiError?: unknown };
+  return typeof v.status === 'string' && BILLABLE_STATUSES.has(v.status)
+    && Array.isArray(v.sources) && v.sources.length > 0
+    && v.apiError !== true;
 }
 
 /** How many entries of a scan's `verifications` (object or array) are billable verdicts. */
@@ -152,4 +159,18 @@ export function billableVerdictCount(verifications: unknown): number {
   if (!verifications || typeof verifications !== 'object') return 0;
   const list = Array.isArray(verifications) ? verifications : Object.values(verifications);
   return list.filter(isBillableVerdict).length;
+}
+
+/**
+ * True when at least one entry of a scan's `verifications` (object or array) is
+ * a verdict that is not an API error, `unverified` included. A scan where every
+ * claim failed at the provider checked nothing, so it is not counted against
+ * the monthly scan quota.
+ */
+export function hasCheckedVerdict(verifications: unknown): boolean {
+  if (!verifications || typeof verifications !== 'object') return false;
+  const list = Array.isArray(verifications) ? verifications : Object.values(verifications);
+  return list.some((v) => !!v && typeof v === 'object'
+    && isVerdictStatus((v as { status?: unknown }).status)
+    && (v as { apiError?: unknown }).apiError !== true);
 }

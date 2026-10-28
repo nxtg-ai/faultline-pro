@@ -11,7 +11,7 @@ import {
 import { recordProviderSpend } from '../store/provider-spend.js';
 import { summarizeScanUsage } from '../store/consensus-cost.js';
 import { getProvider } from '@nxtg/faultline/providers/registry.js';
-import { billableVerdictCount } from '@nxtg/faultline/lib/verdict-guard.js';
+import { isBillableVerdict } from '@nxtg/faultline/lib/verdict-guard.js';
 import type { LLMProvider } from '@nxtg/faultline/providers/base_provider.js';
 import { DEFAULT_SCAN_PROVIDER, resolveApiKey } from '@nxtg/faultline/cli/provider-keys.js';
 import type { UsageLeg } from '@nxtg/faultline/lib/usage-sink.js';
@@ -160,6 +160,8 @@ export interface ClaimUsage {
 interface ClaimRun {
   outcome: VerifyClaimOutcome;
   legs: UsageLeg[];
+  /** isBillableVerdict on the full verdict; the outcome drops the sources it needs. */
+  billable: boolean;
 }
 
 /** The model the engine logged for this call, else the provider's configured model. */
@@ -180,12 +182,14 @@ async function verifyOne(provider: LLMProvider, input: VerifyClaimInput): Promis
   if (outcome.ok === false) {
     return {
       legs,
+      billable: false,
       outcome: { id: input.id, status: 'unverified', apiError: true, parseFallback: false, noSourceAbstain: false, apiErrorReason: 'provider_error', model: null },
     };
   }
   const result = outcome.value;
   return {
     legs,
+    billable: isBillableVerdict(result),
     outcome: {
       id: input.id,
       status: result.status,
@@ -220,7 +224,7 @@ function recordBatchSpend(runs: ClaimRun[], claims: VerifyClaimInput[], provider
     text: claims.map((claim) => claim.text).join('\n'),
     provider: providerName,
     claimCount: runs.filter((run) => !run.outcome.apiError).length,
-    claims: { extracted: claims.length, verified: billableVerdictCount(runs.map((run) => run.outcome)) },
+    claims: { extracted: claims.length, verified: runs.filter((run) => run.billable).length },
     tier: resolveTier(keyId),
     latencyMs: Date.now() - startMs,
     // A benchmark batch, not a scan: kept out of per-scan percentiles, still counted as spend below.

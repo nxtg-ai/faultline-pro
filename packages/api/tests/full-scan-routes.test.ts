@@ -5,13 +5,16 @@
  * POST /scan/full/:jobId/stop, and the admin refund report on GET /usage.
  *
  * Contract: docs/design/2026-10-13-full-scan-api.md §3–§7. Units: charged =
- * ceil(fact claims / 8) at the estimate; served = ceil(claims with a verdict / 8);
- * refund = charged - served (emma-soul al:c747e63f2fc26683).
+ * ceil(fact claims / 8) at the estimate; served = ceil(claims with a billable
+ * verdict / 8); refund = charged - served. A billable verdict is supported,
+ * contradicted or mixed, with at least one source, and no apiError.
  *
  * The provider registry is wrapped, not replaced: by default every call reaches
- * the REAL 'mock' provider (one fact claim per sentence, all supported). A test
- * that needs to hold claims in flight, fail claims or tag opinions swaps in a
- * fixture provider for that test only.
+ * the REAL 'mock' provider (one fact claim per sentence, all supported). The mock
+ * cites no source, so by default each of its verdicts gets one source added here,
+ * which makes it billable; `control.rawMock` turns that off. A test that needs to
+ * hold claims in flight, fail claims or tag opinions swaps in a fixture provider
+ * for that test only.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { FastifyInstance } from 'fastify';
@@ -39,7 +42,12 @@ const control = vi.hoisted(() => ({
   provider: null as null | (() => unknown),
   /** When true, getProvider throws: the job's verify run fails outright. */
   failGetProvider: false,
+  /** When true, the real mock's verdicts are passed on as given, with no source. */
+  rawMock: false,
 }));
+
+/** The one source the default adds to each real mock verdict. */
+const MOCK_SOURCE = { title: 'Fixture source', uri: 'https://example.org/fixture' };
 
 vi.mock('@nxtg/faultline/providers/registry.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@nxtg/faultline/providers/registry.js')>();
@@ -47,7 +55,16 @@ vi.mock('@nxtg/faultline/providers/registry.js', async (importOriginal) => {
     ...actual,
     getProvider: vi.fn((apiKey: string, name?: string) => {
       if (control.failGetProvider) throw new Error('provider construction failed');
-      return control.provider ? control.provider() : actual.getProvider(apiKey, name);
+      if (control.provider) return control.provider();
+      const real = actual.getProvider(apiKey, name);
+      if (control.rawMock) return real;
+      // The mock is a class instance, so its other methods are kept through the prototype.
+      return Object.assign(Object.create(real), {
+        verifyClaim: async (claim: Claim) => {
+          const verdict = await real.verifyClaim(claim);
+          return verdict.sources.length === 0 ? { ...verdict, sources: [MOCK_SOURCE] } : verdict;
+        },
+      });
     }),
   };
 });
@@ -82,8 +99,9 @@ function sentences(n: number, tag = 'fact'): string {
   return Array.from({ length: n }, (_, i) => `Sentence ${i + 1} states a checkable ${tag}.`).join(' ');
 }
 
+/** A billable verdict: supported with one source. */
 function supported(claim: Claim): VerificationResult {
-  return { claimId: claim.id, status: 'supported', explanation: 'ok', sources: [] };
+  return { claimId: claim.id, status: 'supported', explanation: 'ok', sources: [MOCK_SOURCE] };
 }
 
 function apiError(claim: Claim, reason: ApiErrorReason): VerificationResult {
@@ -232,6 +250,7 @@ beforeEach(async () => {
   delete process.env.FAULTLINE_PROVIDER_SPEND_CAP;
   control.provider = null;
   control.failGetProvider = false;
+  control.rawMock = false;
   openGates = [];
   resetKeyStore();
   resetRateLimiter();
@@ -370,12 +389,26 @@ describe('units and unserved claims', () => {
     expect(row.servedClaims).toBe(20);
   });
 
-  it('an unverified verdict from a check that ran is served (no refund for an abstention)', async () => {
-    useFixtureProvider(async (c) => ({ claimId: c.id, status: 'unverified', explanation: 'no evidence', sources: [] }));
+  it('an unverified verdict from a check that ran is not served: refunded as no_sourced_verdict, not counted as failed', async () => {
+    useFixtureProvider(async (c) => ({ claimId: c.id, status: 'unverified', explanation: 'no evidence', sources: [MOCK_SOURCE] }));
     const jobId = await startJob(sentences(8), 'idem-abstain');
     const done = await untilTerminal(jobId);
-    expect(done.units).toEqual({ charged: 1, served: 1, refund: 0 });
-    expect(done.unserved).toEqual([]);
+    expect(done.units).toEqual({ charged: 1, served: 0, refund: 1 });
+    expect(done.checked).toBe(0);
+    expect(done.failed).toBe(0);
+    expect(done.unserved).toHaveLength(8);
+    expect(done.unserved.every((u: Json) => u.reason === 'no_sourced_verdict')).toBe(true);
+    expect(ledgerRows()[0].reasons).toEqual({ no_sourced_verdict: 8 });
+  });
+
+  it('the real mock cites no source, so a job on it serves nothing and refunds every unit', async () => {
+    control.rawMock = true;
+    const jobId = await startJob(sentences(9), 'idem-raw-mock');
+    const done = await untilTerminal(jobId);
+    expect(done.factClaims).toBe(9);
+    expect(done.units).toEqual({ charged: 2, served: 0, refund: 2 });
+    expect(done.unserved).toHaveLength(9);
+    expect(done.progress.every((p: Json) => p.status === 'unserved' && p.verdict?.status === 'supported')).toBe(true);
   });
 
   it('a provider that throws on every retry is unserved with the engine reason (real retry ladder)', async () => {
@@ -971,7 +1004,7 @@ describe('GET /usage fullScanRefunds (admin)', () => {
       unitsRefunded: 1,
       refundRate: 0.1,
       alert: false,
-      reasons: { rate_limited: 11, provider_out_of_credits: 2, provider_unavailable: 0, timeout: 0, provider_error: 0, provider_unparseable: 0, output_truncated: 0, not_attempted: 0 },
+      reasons: { rate_limited: 11, provider_out_of_credits: 2, provider_unavailable: 0, timeout: 0, provider_error: 0, provider_unparseable: 0, output_truncated: 0, no_sourced_verdict: 0, not_attempted: 0 },
       ledgerWriteFailures: 0,
       admissionClosed: false,
     });

@@ -20,7 +20,7 @@
 
 - **Dormant by default.** `FAULTLINE_USAGE_CAP` off → the gate is a **no-op**; deploys safely before the number/go-live is set. Turning it on is a one-env-var change, no code change.
 - **Distinct from rate-limit.** `rateLimitScan` = per-**minute** burst throttle (abuse). This = per-**month** scan quota (margin). Both run.
-- **Fail-safe counting.** Usage is incremented on a **successful** scan (the `server.ts` onResponse hook for `POST /scan`; local increments on stream/template which the hook doesn't cover). Failed scans and cache hits (free) don't burn quota.
+- **Fail-safe counting.** Usage is incremented on a **successful** scan (the `server.ts` onResponse hook for `POST /scan`; local increments on stream/template which the hook doesn't cover). Failed scans and cache hits (free) don't burn quota. On `/scan/stream` (GET and POST), a scan counts only when at least one claim got a verdict that is not an API error (`hasCheckedVerdict`), so a scan where every claim failed at the provider, or that had no claim to check, does not count.
 - **402 on cap.** `X-Usage-Limit / X-Usage-Remaining / X-Usage-Reset` headers + a JSON body with an upgrade link. `null` cap (admin) = unlimited.
 
 ## The cap NUMBER — options for Asif (NOT decided here)

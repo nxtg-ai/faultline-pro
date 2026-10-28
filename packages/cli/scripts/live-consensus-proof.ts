@@ -73,8 +73,13 @@ async function main(): Promise<void> {
     console.log(`CLAIM ${claim.id}: ${claim.text}`);
 
     // Retrieve once standalone so we can print E and compare per-vote sources.
-    const E = await retriever.retrieve(claim.text);
-    console.log(`\n[1] RETRIEVER (${retriever.name}) returned ${E.length} source(s):`);
+    // A failed search rejects; print its reason and let consensusVerify report the claim as not checked.
+    let failedReason: string | undefined;
+    const E = await retriever.retrieve(claim.text).catch((err: unknown) => {
+      failedReason = (err as { reason?: string }).reason ?? 'provider_error';
+      return [];
+    });
+    console.log(`\n[1] RETRIEVER (${retriever.name}) ${failedReason ? `failed: ${failedReason}` : `returned ${E.length} source(s):`}`);
     E.forEach((s, i) => {
       console.log(`    [${i + 1}] ${s.uri}`);
       console.log(`        title: ${s.title}`);
