@@ -86,6 +86,31 @@ export type ScanClaimCallback = (
 // sole/first dependency of a grounded scan.
 const DEFAULT_CONSENSUS_PROVIDERS: ProviderName[] = ['openai', 'gemini', 'claude'];
 
+/**
+ * The providers whose adapters can cast a consensus vote (they implement
+ * verifyClaimGrounded, judging a claim against shared retrieved sources).
+ * Perplexity searches on its own and has no grounded entry point, so it cannot vote.
+ * mock is the offline voter.
+ */
+export const CONSENSUS_VOTER_PROVIDERS: readonly ProviderName[] = Object.freeze(['openai', 'gemini', 'claude', 'mock']);
+
+/** True when `name` can cast a consensus vote. */
+export function canVoteInConsensus(name: string): boolean {
+  return (CONSENSUS_VOTER_PROVIDERS as readonly string[]).includes(name);
+}
+
+/** Thrown before any provider call when a consensus scan has no voter it can run. */
+export class ConsensusUnavailableError extends Error {
+  constructor(message = 'No consensus voter is available: none of the requested providers has an API key configured.') {
+    super(message);
+    this.name = 'ConsensusUnavailableError';
+  }
+}
+
+export function isConsensusUnavailableError(err: unknown): err is ConsensusUnavailableError {
+  return err instanceof ConsensusUnavailableError;
+}
+
 /** The consensus fan-out: one shared retriever plus the participating providers. */
 export interface ConsensusRig {
   retriever: Retriever;
@@ -131,14 +156,40 @@ function resolveStageNames(providerName?: string, pipelineConfig?: PipelineConfi
 }
 
 /**
+ * The providers each stage of a scan runs on, after defaults and overrides.
+ * `consensusVoters` is null when consensus is off. Used to price and label spend
+ * by the providers that actually did the work, never by the caller's outer label.
+ */
+export interface StageProviders {
+  extraction: string;
+  verification: string;
+  consensusVoters: string[] | null;
+}
+
+export function resolveStageProviders(providerName?: string, pipelineConfig?: PipelineConfig): StageProviders {
+  const names = resolveStageNames(providerName, pipelineConfig);
+  return {
+    extraction: names.extractionName,
+    verification: names.verificationName,
+    consensusVoters: names.consensusEnabled
+      ? [...(pipelineConfig?.consensusProviders ?? DEFAULT_CONSENSUS_PROVIDERS)]
+      : null,
+  };
+}
+
+/**
  * Build the consensus rig: a provider-agnostic Retriever plus the named
  * providers to fan out to. A provider whose API key is missing is SKIPPED here
  * rather than throwing — a missing key must not abort a consensus scan (it
- * simply means one fewer voter).
+ * simply means one fewer voter). A provider that cannot vote is skipped too.
+ *
+ * @throws ConsensusUnavailableError when no voter is left, before any provider
+ * call, so a consensus scan never runs with nobody to vote.
  */
 function buildConsensusRig(names: ProviderName[]): ConsensusRig {
   const namedProviders: NamedProvider[] = [];
   for (const name of names) {
+    if (!canVoteInConsensus(name)) continue;
     try {
       const apiKey = resolveApiKey(name);
       namedProviders.push({ name, provider: getProvider(apiKey, name) });
@@ -147,6 +198,7 @@ function buildConsensusRig(names: ProviderName[]): ConsensusRig {
       // whatever providers ARE configured.
     }
   }
+  if (namedProviders.length === 0) throw new ConsensusUnavailableError();
   return { retriever: buildRetriever(), namedProviders };
 }
 

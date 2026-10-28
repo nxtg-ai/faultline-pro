@@ -1,6 +1,6 @@
 import { captureUsage, type UsageLeg } from '@nxtg/faultline/lib/usage-sink.js';
 import { billableVerdictCount } from '@nxtg/faultline/lib/verdict-guard.js';
-import { DEFAULT_SCAN_PROVIDER } from '@nxtg/faultline/cli/provider-keys.js';
+import { resolveStageProviders, type PipelineConfig } from '@nxtg/faultline/cli/verify-runner.js';
 import { getCostStore, emitScanCostEvent, appendScanCostLog, resolveTier, buildManagedCostEvent, type ManagedScanCostEvent } from '../store/costs.js';
 import { recordProviderSpend } from '../store/provider-spend.js';
 
@@ -27,8 +27,14 @@ export async function captureOutcome<T>(fn: () => Promise<T>): Promise<{ outcome
 export interface ScanSpendContext {
   /** The scanned text. Used only to size the fallback estimate; never logged. */
   text: string;
-  /** The provider asked for, or the engine's default when none was. Labels the row and prices the fallback estimate. */
+  /** The provider asked for, or the engine's default when none was. Stages without an override run on it. */
   provider?: string;
+  /**
+   * The per-stage overrides the scan ran with. The row is labelled and its fallback
+   * estimate priced by the providers each stage actually used, never by `provider`
+   * alone (a caller can say provider 'mock' and run every stage on Perplexity).
+   */
+  pipelineConfig?: PipelineConfig;
   /** The key that asked. Sets the tier label (same source as POST /scan) and the cost-store owner. */
   keyId: string;
   /** The tier label, when the route takes it from somewhere other than the key (the stream routes read the forwarded plan). */
@@ -80,9 +86,12 @@ function ledgerScanSpend(
   startTime: number,
   counts: { groundingCalls: number; extracted: number; verified: number },
 ): void {
+  const stages = resolveStageProviders(ctx.provider || undefined, ctx.pipelineConfig);
+  const verification = stages.consensusVoters ?? [stages.verification];
   const costEvent = buildManagedCostEvent(legs, {
     text: ctx.text,
-    provider: ctx.provider || DEFAULT_SCAN_PROVIDER,
+    provider: [...new Set([stages.extraction, ...verification])].join('+'),
+    stageProviders: { extraction: stages.extraction, verification },
     claimCount: counts.groundingCalls,
     tier: ctx.tier ?? resolveTier(ctx.keyId),
     latencyMs: Date.now() - startTime,

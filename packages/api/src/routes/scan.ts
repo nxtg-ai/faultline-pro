@@ -7,6 +7,8 @@ import { rateLimitScan } from '../plugins/ratelimit.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { enforceConsensusEntitlement } from '../plugins/consensus-entitlement.js';
+import { validateConsensusVoters, consensusHadNoVoters, CONSENSUS_UNAVAILABLE_MESSAGE } from '../plugins/consensus-voters.js';
+import { isConsensusUnavailableError } from '@nxtg/faultline/cli/verify-runner.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 import { getUsageMeter } from '../store/usage.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
@@ -102,7 +104,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan',
     {
       config: { access: 'owner' },
-      preHandler: [requireApiKey, enforceConsensusEntitlement, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap],
+      preHandler: [requireApiKey, enforceConsensusEntitlement, validateConsensusVoters, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap],
       schema: { tags: ['Scan'], summary: 'Scan text for claim verification', body: BODY_SCHEMA },
     },
     async (request, reply) => {
@@ -121,7 +123,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
         try {
           // Recorded in the provider-spend ledger like the other branch, also
           // when the scan throws after a provider call.
-          const result = await scanWithSpend({ text, provider: effectiveProvider, keyId, startTime }, () => scan(
+          const result = await scanWithSpend({ text, provider: effectiveProvider, pipelineConfig, keyId, startTime }, () => scan(
             text,
             effectiveProvider,
             /* minConfidence */ undefined,
@@ -131,6 +133,11 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
             pipelineConfig,
             scanOptions,
           ));
+          // A consensus run where no voter took part checked nothing: report failure.
+          // A non-200 counts no scan of quota; the spend above is real and stays ledgered.
+          if (pipelineConfig.consensus === true && consensusHadNoVoters(result)) {
+            return reply.status(502).send({ error: 'consensus_unavailable', message: CONSENSUS_UNAVAILABLE_MESSAGE });
+          }
           getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
           recordScanTelemetry({
             provider:    effectiveProvider,
@@ -156,6 +163,9 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
           fireWebhookEvent('scan.complete', delivered, requestOwner(request));
           return reply.status(200).send(delivered);
         } catch (err) {
+          if (isConsensusUnavailableError(err)) {
+            return reply.status(503).send({ error: 'consensus_unavailable', message: CONSENSUS_UNAVAILABLE_MESSAGE });
+          }
           // Missing API key for a specified provider
           if (err instanceof Error && err.message.startsWith('No API key found for')) {
             const match = err.message.match(/"([^"]+)"/);

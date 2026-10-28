@@ -8,6 +8,8 @@ import { resolveTierFromRequest } from '../store/costs.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { enforceConsensusEntitlement } from '../plugins/consensus-entitlement.js';
+import { validateConsensusVoters, consensusHadNoVoters, CONSENSUS_UNAVAILABLE_MESSAGE } from '../plugins/consensus-voters.js';
+import { isConsensusUnavailableError } from '@nxtg/faultline/cli/verify-runner.js';
 import { getUsageMeter } from '../store/usage.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 import { resolveVerifyPolicy, withVerificationTier } from '../plugins/verify-cap.js';
@@ -97,6 +99,7 @@ const OUT_OF_CREDITS_STREAM_ERROR =
  * of POST /scan; never the raw provider error.
  */
 function streamErrorEvent(err: unknown): Record<string, unknown> {
+  if (isConsensusUnavailableError(err)) return { type: 'error', error: 'consensus_unavailable', message: CONSENSUS_UNAVAILABLE_MESSAGE };
   if (isExtractionError(err)) {
     const message = err.reason === 'provider_out_of_credits' ? OUT_OF_CREDITS_STREAM_ERROR : EXTRACTION_STREAM_ERROR;
     return { type: 'error', message, ...extractionFailedBody(err) };
@@ -234,7 +237,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan/stream',
     {
       config: { access: 'key' },
-      preHandler: [requireApiKey, enforceConsensusEntitlement, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap],
+      preHandler: [requireApiKey, enforceConsensusEntitlement, validateConsensusVoters, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap],
       schema: {
         tags: ['Scan'],
         summary: 'Stream scan results via SSE (POST — no URL length ceiling)',
@@ -272,7 +275,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
 
       try {
         // Spend is recorded inside scanWithSpend, also when the scan throws after a provider call.
-        const spend = { text, provider: effectiveProvider, keyId, startTime, tier: resolveTierFromRequest(keyId, request.headers['x-user-tier']) };
+        const spend = { text, provider: effectiveProvider, pipelineConfig, keyId, startTime, tier: resolveTierFromRequest(keyId, request.headers['x-user-tier']) };
         const result = await scanWithSpend(spend, () => scan(
           text,
           effectiveProvider,
@@ -299,6 +302,13 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
 
         if (!startEmitted) {
           emit({ type: 'start', claimCount, provider: effectiveProvider });
+        }
+
+        // A consensus run where no voter took part checked nothing: report failure
+        // and count no scan. The spend above is real and stays in the ledger.
+        if (pipelineConfig?.consensus === true && consensusHadNoVoters(result)) {
+          emit({ type: 'error', error: 'consensus_unavailable', message: CONSENSUS_UNAVAILABLE_MESSAGE });
+          return;
         }
 
         emit({
