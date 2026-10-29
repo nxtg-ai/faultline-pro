@@ -246,7 +246,7 @@ async function enumerate(app: FastifyInstance): Promise<RouteRow[]> {
   return [...rows.values()].sort((a, b) => `${a.url} ${a.method}`.localeCompare(`${b.url} ${b.method}`));
 }
 
-const fill = (url: string) => url.replace(/:[A-Za-z]+/g, 'x1').replace('*', 'x1');
+const fill = (url: string) => url.replace(/:[A-Za-z]+/g, 'x1').replace(/\*/g, 'x1');
 
 describe('measurement key: one explicit route allowlist', () => {
   it('the allowlist is exactly POST /admin/verify-claims and GET /usage', () => {
