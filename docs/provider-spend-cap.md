@@ -15,14 +15,14 @@ The cap is not a restriction on the agent — it is the **enabler**. Faultline m
 
 ## Who the cap refuses: free and anonymous traffic only
 
-Once the month's budget is spent and enforcement is on, the gate refuses **free** and **anonymous** callers with the 503 below. Every other tier (`personal`, `pro`, `enterprise`, `userkey`) passes this gate. Paid keys are bounded by their own per-key limits instead: the per-minute burst limiter and the monthly scan quota. The fleet budget protects runway from traffic that no plan pays for.
+Once the month's budget is spent and enforcement is on, the gate refuses **free** and **anonymous** callers with the 503 below. Every other tier (`personal`, `pro`, `enterprise`) passes this gate. Paid keys are bounded by their own per-key limits instead: the per-minute burst limiter and the monthly scan quota. The fleet budget protects runway from traffic that no plan pays for.
 
 The tier is the **trusted** tier (`resolveSpendCapTier` in `packages/api/src/plugins/provider-spend-cap.ts`, built on `resolveEntitledTier`):
 
 | Caller | Tier for this gate |
 |---|---|
 | No API key | `anon`. Every gated route checks the key first, so this case is defensive. |
-| The server's own key (`FAULTLINE_API_KEY`) with `x-user-tier` | the forwarded plan. An unknown value counts as `free`. |
+| The server's own key (`FAULTLINE_API_KEY`) with `x-user-tier` | the forwarded plan. An unknown value counts as `free`, and so does `userkey`: there is no way to bring a provider key through the API, so such a scan spends Faultline's keys. |
 | The server's own key, no `x-user-tier` (absent or empty) | `free` |
 | A keystore key with the `pro` permission | `pro` |
 | A keystore key with the `admin` permission | `enterprise` (an operator key) |
@@ -60,15 +60,17 @@ GraphQL (`/graphql`, on only with `FAULTLINE_GRAPHQL=on`) serves reads and key a
 
 `packages/api/tests/provider-spend-cap-coverage.test.ts` keeps this list honest. It builds the app, collects every registered route, and fails if a route is neither gated nor on its commented list of routes that never call a provider (health, usage, keys, compare of supplied results, stored-scan reads and so on). A new route that is on neither list fails the test by name.
 
-### Background runs: the queue worker, scheduled jobs and schedules
+### Background runs: the queue worker, scheduled jobs, schedules, bulk files and queued full scans
 
 These run with no request, so the route gate cannot see them at run time. The rule:
 
-1. When the work is queued or created (`POST /queue/scans`, `POST /jobs`, `POST /schedules`), the gate tier from `resolveSpendCapTier` is stored with it. The creating route also runs the gate, so a capped caller cannot queue new work once the budget is spent.
+1. When the work is queued or created (`POST /queue/scans`, `POST /jobs`, `POST /schedules`, `POST /scan/bulk`, `POST /scan/full`), the gate tier from `resolveSpendCapTier` is stored with it, in a private store or field that no response carries. The creating route also runs the gate, so a capped caller cannot queue new work once the budget is spent. A full-scan job also stores a `tier` for cost logging, from `resolveEntitledTier`; it reads a server-key call with no header as enterprise, so it is never used for this decision.
 2. When the work runs, before any provider call (and, for a URL schedule, before the URL fetch): if enforcement is on, the stored tier is one the gate refuses, and the month's budget is spent, the run is skipped and marked failed with the reason `provider_budget_exhausted`. No provider is called.
    - Queue item: `status: "failed"`, `error: "provider_budget_exhausted"`.
    - Scheduled job: `lastError: "provider_budget_exhausted"`, the next run time moves on, `runCount` does not change, and a `job.failed` webhook event carries the same reason.
    - Schedule: a history entry with `error: "provider_budget_exhausted"`, a `scan.failed` notification, and the skipped run does not count toward `maxRuns`.
+   - Bulk ZIP (`POST /scan/bulk`): the check runs before each file. Once it refuses, that file and every remaining one get `status: "failed"`, `error: "provider_budget_exhausted"`, and the job completes. Files already scanned keep their results.
+   - Queued full scan (`POST /scan/full`): at most `FAULTLINE_FULL_MAX_RUNNING` jobs run (default 4) and the rest wait. The check runs when a waiting job would start. A refused job ends `failed` without a provider call, fully refunded, with every claim unserved under reason `provider_budget_exhausted`; admin `GET /usage` counts it in `fullScanRefunds.reasons`.
 3. An entry created before tiers were stored has none. It counts as capped, so it is skipped while the budget is spent.
 4. Paid tiers run as before, and nothing is skipped while enforcement is off.
 
@@ -97,11 +99,11 @@ Three gates now run in front of a scan. They answer different questions and all 
 | Append-only USD ledger + monthly rollup + cap config | `packages/api/src/store/provider-spend.ts` |
 | Enforcement prehandler (503 + budget headers) | `packages/api/src/plugins/provider-spend-cap.ts` — `enforceProviderSpendCap` |
 | Wired on every provider-calling route | see "Routes that carry the gate" above |
-| Background runs check the stored tier | `store/scan-queue.ts`, `store/jobs.ts`, `store/schedules.ts`, `graphql/resolvers.ts` |
+| Background runs check the stored tier | `store/scan-queue.ts`, `store/jobs.ts`, `store/schedules.ts`, `routes/bulk.ts`, `store/full-scan-jobs.ts`, `graphql/resolvers.ts` |
 | Wired on `POST /critique` (b33acff) | `routes/critique.ts`: `preHandler: [requireApiKey, rateLimitScan, enforceProviderSpendCap]`, and the call's real usage is priced and ledgered |
 | Spend recorded from the real composed cost | `recordProviderSpend(costEvent)` beside `emitScanCostEvent` / `appendScanCostLog` |
 | Budget surface (ADMIN only) | `GET /usage` → `providerBudget: { month, enforced, capUsd, spentUsd, remainingUsd, exhausted, appliesTo, ledgerWriteFailures }` |
-| Tests | `packages/api/tests/provider-spend-cap.test.ts`, `packages/api/tests/critique-spend-cap.test.ts`, `packages/api/tests/provider-spend-cap-tiers.test.ts` (who is refused, per route), `packages/api/tests/provider-spend-cap-coverage.test.ts` (every route is gated or listed as provider-free; each gated route refuses a free key with no provider call), `packages/api/tests/provider-spend-cap-background.test.ts` (queue, jobs, schedules, GraphQL), `packages/api/tests/grounding-allowance-check.test.ts` (the 90% and 100% alert) |
+| Tests | `packages/api/tests/provider-spend-cap.test.ts`, `packages/api/tests/critique-spend-cap.test.ts`, `packages/api/tests/provider-spend-cap-tiers.test.ts` (who is refused, per route), `packages/api/tests/provider-spend-cap-coverage.test.ts` (every route is gated or listed as provider-free; each gated route refuses a free key with no provider call), `packages/api/tests/provider-spend-cap-background.test.ts` (queue, jobs, schedules, GraphQL), `packages/api/tests/provider-spend-cap-rechecks.test.ts` (bulk files, queued full scans, `userkey`, no tier in any response), `packages/api/tests/grounding-allowance-check.test.ts` (the 90% and 100% alert) |
 
 ## `POST /critique` is covered (b33acff, N-230)
 

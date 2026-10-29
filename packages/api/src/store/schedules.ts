@@ -58,8 +58,6 @@ export interface Schedule {
   runCount:     number;
   history:      ScheduleRunResult[];  // last 20 runs
   lastResult?:  ScheduleRunResult;
-  /** The spend-gate tier at creation. Absent on schedules created before tiers were stored. */
-  spendCapTier?: ManagedScanCostEvent['tier'];
 }
 
 export interface CreateScheduleInput {
@@ -178,6 +176,11 @@ export function nextCronTime(cron: string, after: Date = new Date()): Date | nul
 
 class ScheduleStore {
   private schedules: Map<string, Schedule> = new Map();
+  /**
+   * The spend-gate tier each schedule was created with, kept off the Schedule so
+   * no response shows it. A schedule with none counts as capped.
+   */
+  private tiers: Map<string, ManagedScanCostEvent['tier']> = new Map();
 
   create(input: CreateScheduleInput, keyId: string, spendCapTier?: ManagedScanCostEvent['tier']): Schedule {
     if (this.schedules.size >= MAX_SCHEDULES) {
@@ -208,10 +211,15 @@ class ScheduleStore {
       nextRunAt:    nextRun?.toISOString() ?? null,
       runCount:     0,
       history:      [],
-      ...(spendCapTier ? { spendCapTier } : {}),
     };
     this.schedules.set(schedule.id, schedule);
+    if (spendCapTier) this.tiers.set(schedule.id, spendCapTier);
     return schedule;
+  }
+
+  /** The spend-gate tier stored at creation, or undefined when none was stored. */
+  spendCapTierOf(id: string): ManagedScanCostEvent['tier'] | undefined {
+    return this.tiers.get(id);
   }
 
   get(id: string): Schedule | undefined {
@@ -244,6 +252,7 @@ class ScheduleStore {
   }
 
   delete(id: string): boolean {
+    this.tiers.delete(id);
     return this.schedules.delete(id);
   }
 
@@ -254,6 +263,7 @@ class ScheduleStore {
     for (const [id, s] of this.schedules) {
       if (keySet.has(s.keyId)) {
         this.schedules.delete(id);
+        this.tiers.delete(id);
         count++;
       }
     }
@@ -288,6 +298,7 @@ class ScheduleStore {
 
   reset(): void {
     this.schedules = new Map();
+    this.tiers = new Map();
   }
 }
 
@@ -333,7 +344,7 @@ class ScheduleRunner {
 
     // No request at run time: the tier stored at creation decides. A refused run
     // is recorded as failed before the URL fetch and with no provider call.
-    if (providerBudgetRefuses(schedule.spendCapTier)) {
+    if (providerBudgetRefuses(getScheduleStore().spendCapTierOf(schedule.id))) {
       const runResult: Omit<ScheduleRunResult, 'runId'> = {
         ranAt, durationMs: 0, overallRisk: 'unknown', claimCount: 0,
         provider: schedule.provider, error: PROVIDER_BUDGET_EXHAUSTED,

@@ -9,7 +9,7 @@ import { requireApiKey } from '../plugins/auth.js';
 import { isExtractionError } from '@nxtg/faultline/providers/extraction-error.js';
 import { sendExtractionFailed } from '../lib/extraction-failure.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
-import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
+import { enforceProviderSpendCap, resolveSpendCapTier } from '../plugins/provider-spend-cap.js';
 import { admitMonthlyScans, enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { isServerKeyId, resolveEntitledTier } from '../plugins/consensus-entitlement.js';
 import { recordProviderSpend } from '../store/provider-spend.js';
@@ -351,6 +351,7 @@ export async function fullScanRoutes(fastify: FastifyInstance): Promise<void> {
       const job = store.startJob(estimate, {
         idempotencyKey,
         tier: resolveEntitledTier(keyId, request.headers['x-user-tier']),
+        spendCapTier: resolveSpendCapTier(request.keyId, request.headers['x-user-tier']),
       });
       // Counted here, once per job, when it is admitted, whatever its outcome: the
       // server.ts onResponse hook counts only /scan and /scan/upload. Settling only

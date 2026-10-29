@@ -34,8 +34,6 @@ export interface ScanQueueItem {
   completedAt?: string;
   result?:      unknown;
   error?:       string;
-  /** The spend-gate tier at enqueue time. Absent on items queued before tiers were stored. */
-  spendCapTier?: ManagedScanCostEvent['tier'];
 }
 
 export interface QueueStats {
@@ -61,6 +59,11 @@ class ScanQueue {
   private items: Map<string, ScanQueueItem> = new Map();
   /** IDs of pending items in insertion order — sorted by priority on dequeue */
   private pendingIds: string[] = [];
+  /**
+   * The spend-gate tier each item was queued with, kept off the item so no
+   * response shows it. An item with none counts as capped.
+   */
+  private tiers: Map<string, ManagedScanCostEvent['tier']> = new Map();
 
   private processingCount = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -87,9 +90,9 @@ class ScanQueue {
       provider,
       status:    'pending',
       createdAt: new Date().toISOString(),
-      ...(spendCapTier ? { spendCapTier } : {}),
     };
     this.items.set(item.id, item);
+    if (spendCapTier) this.tiers.set(item.id, spendCapTier);
     this.pendingIds.push(item.id);
     return item;
   }
@@ -154,7 +157,7 @@ class ScanQueue {
     try {
       // No request at run time: the tier stored at enqueue decides. A refused
       // item fails without a provider call.
-      if (providerBudgetRefuses(item.spendCapTier)) {
+      if (providerBudgetRefuses(this.tiers.get(item.id))) {
         item.status = 'failed';
         item.error = PROVIDER_BUDGET_EXHAUSTED;
         return;
@@ -177,8 +180,16 @@ class ScanQueue {
       .filter(i => i.status === 'completed' || i.status === 'failed' || i.status === 'cancelled')
       .sort((a, b) => new Date(b.completedAt ?? b.createdAt).getTime() - new Date(a.completedAt ?? a.createdAt).getTime());
     if (terminal.length > MAX_COMPLETED) {
-      terminal.slice(MAX_COMPLETED).forEach(i => this.items.delete(i.id));
+      terminal.slice(MAX_COMPLETED).forEach(i => {
+        this.items.delete(i.id);
+        this.tiers.delete(i.id);
+      });
     }
+  }
+
+  /** The spend-gate tier stored at enqueue, or undefined when none was stored. */
+  spendCapTierOf(id: string): ManagedScanCostEvent['tier'] | undefined {
+    return this.tiers.get(id);
   }
 
   tick(): void {

@@ -2,12 +2,18 @@ import type { FastifyInstance } from 'fastify';
 import AdmZip from 'adm-zip';
 import { requireApiKey } from '../plugins/auth.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
-import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
+import {
+  enforceProviderSpendCap,
+  PROVIDER_BUDGET_EXHAUSTED,
+  providerBudgetRefuses,
+  resolveSpendCapTier,
+} from '../plugins/provider-spend-cap.js';
 import { ownsOrAdmin } from '../lib/ownership.js';
 import { getBulkJobStore } from '../store/bulk-jobs.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 import type { Provider } from '../store/jobs.js';
+import type { ManagedScanCostEvent } from '../store/costs.js';
 
 const ALLOWED_EXTENSIONS = new Set(['.txt', '.md', '.json']);
 
@@ -21,6 +27,7 @@ async function processBulkJob(
   zipBuffer: Buffer,
   provider: Provider,
   keyId: string,
+  spendCapTier: ManagedScanCostEvent['tier'],
 ): Promise<void> {
   const store = getBulkJobStore();
   store.update(jobId, { status: 'running' });
@@ -38,7 +45,16 @@ async function processBulkJob(
     .getEntries()
     .filter((e) => !e.isDirectory && ALLOWED_EXTENSIONS.has(getExtension(e.entryName)));
 
-  for (const entry of entries) {
+  for (const [index, entry] of entries.entries()) {
+    // The route gate ran once, at upload. Each file is a provider call, so the
+    // budget is checked again before each one: once it refuses, this file and
+    // every remaining one fail unscanned.
+    if (providerBudgetRefuses(spendCapTier)) {
+      for (const skipped of entries.slice(index)) {
+        store.recordFileResult(jobId, { filename: skipped.entryName, status: 'failed', error: PROVIDER_BUDGET_EXHAUSTED });
+      }
+      break;
+    }
     const filename = entry.entryName;
     try {
       const text = entry.getData().toString('utf8');
@@ -111,7 +127,8 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       // Fire-and-forget background processing
-      void processBulkJob(job.id, zipBuffer, provider, request.keyId ?? 'unknown');
+      const spendCapTier = resolveSpendCapTier(request.keyId, request.headers['x-user-tier']);
+      void processBulkJob(job.id, zipBuffer, provider, request.keyId ?? 'unknown', spendCapTier);
 
       return reply.status(202).send({ jobId: job.id });
     },

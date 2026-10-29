@@ -21,7 +21,8 @@ const SPEND_CAP_TIER_SET = new Set<Tier>(SPEND_CAP_TIERS);
  *   requireAdmin first, so this branch is defensive.
  * - The server's own key with `x-user-tier`: `resolveEntitledTier` as is. It
  *   honours the header from that key alone and fails closed to 'free' on an
- *   unknown value.
+ *   unknown value. 'userkey' counts as 'free' here: there is no way to bring a
+ *   provider key through the API, so a 'userkey' scan spends Faultline's keys.
  * - The server's own key with no tier header (absent or empty): 'free'. The web
  *   front end sends some calls (critique, for one) through the server key with
  *   no header, so such a caller cannot be told apart from free traffic. Paid
@@ -41,7 +42,8 @@ export function resolveSpendCapTier(keyId: string | undefined, headerTier?: stri
   if (isServerKeyId(keyId)) {
     const raw = Array.isArray(headerTier) ? headerTier[0] : headerTier;
     if (raw === undefined || raw === '') return 'free';
-    return resolveEntitledTier(keyId, headerTier);
+    const forwarded = resolveEntitledTier(keyId, headerTier);
+    return forwarded === 'userkey' ? 'free' : forwarded;
   }
   const tier = resolveEntitledTier(keyId, headerTier);
   if (tier === 'pro' || tier === 'enterprise') return tier;

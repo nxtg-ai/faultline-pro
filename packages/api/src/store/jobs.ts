@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
-import { fireWebhookEvent, webhookSafeData, keyIsLive } from './webhooks.js';
+import { fireWebhookEvent, webhookSafeData, keyIsLive, sanitizeErrorText } from './webhooks.js';
 import type { WebhookEventOwner } from './webhooks.js';
 import { getAuditLogger } from './audit.js';
 import { fetchOutbound } from '../lib/outbound-url.js';
@@ -215,7 +215,8 @@ class JobScheduler {
       });
     } catch (err) {
       const nextRunAt = new Date(Date.now() + job.intervalMs).toISOString();
-      const lastError = err instanceof Error ? err.message : String(err);
+      // GET /jobs returns lastError, so a raw provider message (URLs, keys) never lands there.
+      const lastError = sanitizeErrorText(err instanceof Error ? err.message : String(err));
       getJobStore().update(job.id, { lastRunAt: now, nextRunAt, runCount: job.runCount + 1, lastError });
       fireWebhookEvent('job.failed', {
         jobId: job.id,

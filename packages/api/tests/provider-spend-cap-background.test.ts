@@ -137,7 +137,8 @@ describe('scan queue worker', () => {
       expect(res.statusCode).toBe(202);
       const item = getScanQueue().get(res.json().id);
       expect(item).toBeDefined();
-      expect(item!.spendCapTier).toBe('free');
+      expect(getScanQueue().spendCapTierOf(item!.id)).toBe('free');
+      expect(item).not.toHaveProperty('spendCapTier');
     } finally {
       await server.close();
     }
@@ -156,7 +157,7 @@ describe('scan queue worker', () => {
 
   it('an item queued before tiers were stored counts as capped', async () => {
     const item = getScanQueue().enqueue('key-1', 2, 'The sky is blue.', 'mock');
-    expect(item.spendCapTier).toBeUndefined();
+    expect(getScanQueue().spendCapTierOf(item.id)).toBeUndefined();
     exhaustBudget();
     await drainQueue(item);
     expect(getScanQueue().get(item.id)!.status).toBe('failed');
@@ -240,7 +241,8 @@ describe('schedules', () => {
       });
       expect(res.statusCode).toBe(201);
       const schedule = getScheduleStore().get(res.json().id)!;
-      expect(schedule.spendCapTier).toBe('free');
+      expect(getScheduleStore().spendCapTierOf(schedule.id)).toBe('free');
+      expect(schedule).not.toHaveProperty('spendCapTier');
 
       exhaustBudget();
       await getScheduleRunner().runSchedule(schedule);
@@ -256,7 +258,7 @@ describe('schedules', () => {
 
   it('a schedule created before tiers were stored counts as capped', async () => {
     const schedule = getScheduleStore().create({ name: 'old', cron: '0 9 * * 1', text: 'The sky is blue.', provider: 'mock' }, 'key-1');
-    expect(schedule.spendCapTier).toBeUndefined();
+    expect(getScheduleStore().spendCapTierOf(schedule.id)).toBeUndefined();
     exhaustBudget();
     await getScheduleRunner().runSchedule(schedule);
     expect(getScheduleStore().get(schedule.id)!.lastResult?.error).toBe(PROVIDER_BUDGET_EXHAUSTED);
