@@ -3,6 +3,7 @@ import { getComplianceTemplateStore } from '../store/compliance-templates.js';
 import { requireApiKey, requireAdmin } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
+import { meterScan } from '../lib/scan-quota.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 
@@ -183,6 +184,8 @@ export async function complianceRoutes(fastify: FastifyInstance): Promise<void> 
           scanResult.claims,
           scanResult.verifications,
         );
+        // Counted once, like /scan, when the result it serves holds a billable verdict.
+        meterScan(request.keyId ?? 'unknown', scanResult.verifications);
         return reply.status(200).send({ ...scanResult, complianceAnalysis });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

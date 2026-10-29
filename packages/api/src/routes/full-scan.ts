@@ -10,10 +10,10 @@ import { isExtractionError } from '@nxtg/faultline/providers/extraction-error.js
 import { sendExtractionFailed } from '../lib/extraction-failure.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
-import { admitMonthlyScans, enforceMonthlyCap, markMonthlyCapGate } from '../plugins/usage-cap.js';
+import { admitMonthlyScans, enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { isServerKeyId, resolveEntitledTier } from '../plugins/consensus-entitlement.js';
 import { recordProviderSpend } from '../store/provider-spend.js';
-import { meterScan } from '../lib/scan-quota.js';
+import { getUsageMeter } from '../store/usage.js';
 import {
   getCostStore,
   emitScanCostEvent,
@@ -193,10 +193,6 @@ const isMissingProviderKey = (error: unknown): error is Error =>
  * - `failed`: the run threw outright (e.g. the provider has no key), so no result
  *   reached the caller: served 0, refund = charged. A per-claim provider error is
  *   NOT this; it is an unserved claim inside a `done` job.
- *
- * The provider spend is recorded for every outcome. The monthly quota counts only
- * a job that served something: a failed job served nothing, so it counts nothing,
- * even when a verdict landed before the run threw.
  */
 async function runFullScanJob(store: FullScanJobStore, job: FullScanJob): Promise<void> {
   const startedAt = Date.now();
@@ -222,9 +218,6 @@ async function runFullScanJob(store: FullScanJobStore, job: FullScanJob): Promis
     store.finish(job, 'failed');
     return;
   }
-  // Counted once per job, when it ends served (done or stopped), and only when it
-  // delivered a billable verdict.
-  meterScan(job.keyId, job.verdicts);
   store.finish(job, job.controller.signal.aborted ? 'stopped' : 'done', outcome.value);
 }
 
@@ -241,17 +234,16 @@ function readIdempotencyKey(request: FastifyRequest): string | null | undefined 
 
 /**
  * Monthly-cap admission for POST /scan/full. A new job is one scan, checked before
- * it is queued. An idempotent replay of a job that exists runs nothing, so it is
- * never refused; a missing or malformed Idempotency-Key is left to the handler's 400.
+ * it is queued; the handler counts it when it admits the job. An idempotent replay
+ * of a job that exists runs nothing, so it is neither checked nor counted; a missing
+ * or malformed Idempotency-Key is left to the handler's 400.
  */
-const enforceMonthlyCapForNewJob = markMonthlyCapGate(
-  async function enforceMonthlyCapForNewJob(request: FastifyRequest, reply: FastifyReply): Promise<void> {
-    const idempotencyKey = readIdempotencyKey(request);
-    if (typeof idempotencyKey !== 'string') return;
-    if (getFullScanJobStore().jobForIdempotencyKey(request.keyId ?? 'unknown', idempotencyKey)) return;
-    admitMonthlyScans(request, reply, 1);
-  },
-);
+export async function enforceMonthlyCapForNewJob(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const idempotencyKey = readIdempotencyKey(request);
+  if (typeof idempotencyKey !== 'string') return;
+  if (getFullScanJobStore().jobForIdempotencyKey(request.keyId ?? 'unknown', idempotencyKey)) return;
+  admitMonthlyScans(request, reply, 1);
+}
 
 function sendLookup(reply: FastifyReply, jobId: string, keyId: string, stop: boolean): FastifyReply {
   const store = getFullScanJobStore();
@@ -352,11 +344,18 @@ export async function fullScanRoutes(fastify: FastifyInstance): Promise<void> {
       // A job whose terminal row cannot reach the disk would read as job_lost after a
       // restart and be refunded in full although served: refuse it before any spend.
       if (!store.ledgerWritable()) return reply.status(503).send({ error: 'ledger_unavailable' });
+      // The monthly-cap check again, in this synchronous step, so the check and the
+      // count below cannot be split by another start (the prehandler refuses earlier).
+      if (!admitMonthlyScans(request, reply, 1)) return reply;
 
       const job = store.startJob(estimate, {
         idempotencyKey,
         tier: resolveEntitledTier(keyId, request.headers['x-user-tier']),
       });
+      // Counted here, once per job, when it is admitted, whatever its outcome: the
+      // server.ts onResponse hook counts only /scan and /scan/upload. Settling only
+      // served work needs the allowance reserved at admission, which is not built yet.
+      getUsageMeter().increment(keyId);
       store.enqueue(job, (queued) => runFullScanJob(store, queued));
       return reply.status(202).send(accepted({ jobId: job.jobId, estimateId, units: job.charged, factClaims: job.factClaims }));
     },

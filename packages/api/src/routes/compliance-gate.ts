@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { requireApiKey, scanHistoryKeyScope } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
+import { meterScan } from '../lib/scan-quota.js';
 import { esc } from '../lib/html.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
@@ -256,6 +257,9 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
       }
 
       const response: ComplianceGateResponse = { gate, report, scanId: stored.id };
+      // Counted once, like /scan, when the scan it serves holds a billable verdict. A
+      // failed gate (422) still served the scan, so it counts the same way.
+      meterScan(keyId, result.verifications);
       return reply.status(gate.pass ? 200 : 422).send(response);
     },
   );

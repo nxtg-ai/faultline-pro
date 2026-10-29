@@ -31,21 +31,6 @@ export function nextMonthResetEpoch(now: Date = new Date()): number {
 }
 
 /**
- * Every prehandler that runs the monthly-cap admission check. The route coverage
- * test reads it, so a route that runs a scan without one of these fails.
- */
-const monthlyCapGates = new Set<unknown>();
-
-export function markMonthlyCapGate<T>(gate: T): T {
-  monthlyCapGates.add(gate);
-  return gate;
-}
-
-export function isMonthlyCapGate(handler: unknown): boolean {
-  return monthlyCapGates.has(handler);
-}
-
-/**
  * The admission check: refuse with 402 when `scans` more scans would take the key
  * past its monthly cap (used + scans > cap). Returns false when it refused.
  */
@@ -86,8 +71,7 @@ export function admitMonthlyScans(request: FastifyRequest, reply: FastifyReply, 
   return true;
 }
 
-export const enforceMonthlyCap = markMonthlyCapGate(
-  async function enforceMonthlyCap(request: FastifyRequest, reply: FastifyReply): Promise<void> {
-    admitMonthlyScans(request, reply, 1);
-  },
-);
+/** The one-scan admission check, as a prehandler. */
+export async function enforceMonthlyCap(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  admitMonthlyScans(request, reply, 1);
+}

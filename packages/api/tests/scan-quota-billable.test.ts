@@ -335,3 +335,61 @@ describe('POST /scan/deep monthly scan quota', () => {
     expect(getUsageMeter().getMonthlyCount(id)).toBe(1);
   }, 30_000);
 });
+
+/**
+ * The synchronous scan routes that serve something other than the scan JSON (a
+ * diff, a PDF, a compliance analysis or gate) count like /scan: once on success,
+ * when what they served holds a billable verdict.
+ */
+const SYNC_ROUTES: Array<{ url: string; payload: Record<string, unknown>; served: number[] }> = [
+  { url: '/scan/diff', payload: { before: CLAIM_TEXT, after: CLAIM_TEXT, provider: 'gemini' }, served: [200] },
+  { url: '/scan/report', payload: { text: CLAIM_TEXT, provider: 'gemini' }, served: [200] },
+  { url: '/scan/eu-report', payload: { text: CLAIM_TEXT, provider: 'gemini' }, served: [200] },
+  { url: '/scan/compliance/healthcare', payload: { text: CLAIM_TEXT, provider: 'gemini' }, served: [200] },
+  // A failed gate (422) still served the scan.
+  { url: '/scan/compliance-gate', payload: { text: CLAIM_TEXT, provider: 'gemini' }, served: [200, 422] },
+];
+
+describe.each(SYNC_ROUTES)('POST $url monthly scan quota', ({ url, payload, served }) => {
+  const send = (key: string) => server.inject({
+    method: 'POST', url,
+    headers: { 'x-api-key': key, 'content-type': 'application/json' },
+    payload,
+  });
+
+  it('a sourced verdict is served and counted 1; at the cap the next request is 402 with no provider call', async () => {
+    process.env.FAULTLINE_USAGE_CAP = 'on';
+    process.env.FAULTLINE_CAP_PRO = '1';
+    const { key, id } = proKey();
+    const first = await send(key);
+    expect(served).toContain(first.statusCode);
+    expect(first.rawPayload.length).toBeGreaterThan(0);
+    expect(sdk.calls).toBeGreaterThan(0);
+    expect(getUsageMeter().getMonthlyCount(id)).toBe(1);
+
+    const callsBefore = sdk.calls;
+    const second = await send(key);
+    expect(second.statusCode).toBe(402);
+    expect(second.json()).toMatchObject({ error: 'Monthly scan quota exceeded.', limit: 1, used: 1, remaining: 0 });
+    expect(sdk.calls).toBe(callsBefore);
+    expect(getUsageMeter().getMonthlyCount(id)).toBe(1);
+  }, 30_000);
+
+  it('a result with only API errors is served and counted 0', async () => {
+    sdk.mode = 'error' satisfies Mode;
+    const { key, id } = proKey();
+    const res = await send(key);
+    expect(served).toContain(res.statusCode);
+    expect(sdk.calls).toBeGreaterThan(0);
+    expect(getUsageMeter().getMonthlyCount(id)).toBe(0);
+  }, 30_000);
+
+  it('a scan that fails is not counted', async () => {
+    delete process.env.GEMINI_API_KEY;
+    const { key, id } = proKey();
+    const res = await send(key);
+    expect(served).not.toContain(res.statusCode);
+    expect(res.statusCode).toBeGreaterThanOrEqual(400);
+    expect(getUsageMeter().getMonthlyCount(id)).toBe(0);
+  }, 30_000);
+});

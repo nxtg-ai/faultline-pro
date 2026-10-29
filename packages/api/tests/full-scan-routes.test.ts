@@ -390,13 +390,13 @@ describe('full lifecycle on the real mock provider', () => {
     expect(getUsageMeter().getMonthlyCount('admin')).toBe(1);
   });
 
-  it('a job that served no billable verdict is not counted toward the monthly quota', async () => {
+  it('a job is counted once when it is admitted, even when it serves no billable verdict', async () => {
     useFixtureProvider(async (c) => apiError(c, 'provider_unavailable'));
     const jobId = await startJob(sentences(3), 'idem-unbilled');
     const done = await untilTerminal(jobId);
     expect(done.progress.length).toBeGreaterThan(0);
     expect(done.units.served).toBe(0);
-    expect(getUsageMeter().getMonthlyCount('admin')).toBe(0);
+    expect(getUsageMeter().getMonthlyCount('admin')).toBe(1);
   });
 });
 
@@ -497,10 +497,11 @@ describe('units and unserved claims', () => {
     expect(failed.result).toBeUndefined();
     expect(failed.resultAvailable).toBe(false);
     expect(ledgerRows()[0]).toMatchObject({ status: 'failed', servedClaims: 0, units: { charged: 2, served: 0, refund: 2 } });
-    expect(getUsageMeter().getMonthlyCount('admin')).toBe(0);
+    // Counted when the job was admitted; a later failure does not undo the count.
+    expect(getUsageMeter().getMonthlyCount('admin')).toBe(1);
   });
 
-  it('a run that fails after a sourced verdict landed served nothing, so it counts nothing', async () => {
+  it('a run that fails after a sourced verdict landed served nothing, yet stays counted from admission', async () => {
     useFixtureProvider(async (c) => supported(c));
     const store = getFullScanJobStore();
     const record = store.recordVerdict.bind(store);
@@ -521,7 +522,7 @@ describe('units and unserved claims', () => {
     expect(failed.checked).toBe(0);
     expect(failed.resultAvailable).toBe(false);
     expect(failed.units).toEqual({ charged: 1, served: 0, refund: 1 });
-    expect(getUsageMeter().getMonthlyCount('admin')).toBe(0);
+    expect(getUsageMeter().getMonthlyCount('admin')).toBe(1);
     // The provider spend is still recorded for the failed run.
     expect(getCostStore().getManagedEvents().filter((e) => e.kind === 'full-scan')).toHaveLength(2);
   });
@@ -635,6 +636,29 @@ describe('monthly scan quota admission', () => {
     const entry = getKeyStore().create('capped-key');
     return { key: entry.key, id: entry.id };
   };
+
+  it('a job is counted when it is admitted, so its slot is taken while it runs: a second job and a /scan are 402', async () => {
+    const gate = gated();
+    const { key, id } = capOne();
+    const first = await estimate(sentences(2), { key });
+    const second = await estimate(sentences(2), { key });
+    const started = await start(first.json.estimateId, 'idem-cap-inflight', { key });
+    expect(started.statusCode).toBe(202);
+    await waitFor(async () => gate.inFlight() > 0);
+    expect((await poll(started.json.jobId, { key })).json.status).toBe('running');
+    expect(getUsageMeter().getMonthlyCount(id)).toBe(1);
+    const callsBefore = gate.verifyClaim.mock.calls.length;
+
+    const refusedJob = await start(second.json.estimateId, 'idem-cap-inflight-2', { key });
+    expect(refusedJob.statusCode).toBe(402);
+    const refusedScan = await call('POST', '/scan', { key }, { text: sentences(1), provider: 'mock' });
+    expect(refusedScan.statusCode).toBe(402);
+    expect(gate.verifyClaim).toHaveBeenCalledTimes(callsBefore);
+
+    await gate.releaseAll();
+    expect((await untilTerminal(started.json.jobId, { key })).status).toBe('done');
+    expect(getUsageMeter().getMonthlyCount(id)).toBe(1);
+  });
 
   it('a new job from a key at its cap is 402 before it is queued; nothing runs or is counted', async () => {
     const verifyClaim = useFixtureProvider(async (c) => supported(c));
@@ -762,8 +786,8 @@ describe('process-wide ceiling and stop', () => {
     expect(gate.verifyClaim).toHaveBeenCalledTimes(2);
     const again = await stop(queued);
     expect(again.json).toEqual(stopped.json);
-    // Only the first job (two sourced verdicts) counts; the stopped queued job served nothing.
-    expect(getUsageMeter().getMonthlyCount('admin')).toBe(1);
+    // Both jobs were admitted, so both count, the stopped queued job too.
+    expect(getUsageMeter().getMonthlyCount('admin')).toBe(2);
   });
 
   it('stopping a running job starts no new claim and stops when in-flight claims finish', async () => {
@@ -786,7 +810,7 @@ describe('process-wide ceiling and stop', () => {
     expect(done.result.notAttemptedClaimIds).toHaveLength(14);
     const unchanged = await stop(jobId);
     expect(unchanged.json).toEqual(done);
-    // Stopped with a billable verdict served: it counts once.
+    // Counted once, at admission; stopping it changes nothing.
     expect(getUsageMeter().getMonthlyCount('admin')).toBe(1);
   });
 });

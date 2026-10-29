@@ -11,7 +11,7 @@ import { requestOwner } from '../lib/cache-caller.js';
 import { getRateLimiter } from '../store/ratelimit.js';
 import { getKeyStore } from '../store/keys.js';
 import { meterScan } from '../lib/scan-quota.js';
-import { admitMonthlyScans, markMonthlyCapGate } from '../plugins/usage-cap.js';
+import { admitMonthlyScans } from '../plugins/usage-cap.js';
 import type { Tier } from '../store/ratelimit.js';
 import { getCircuitBreaker } from '../store/circuit-breaker.js';
 import type { Provider } from '../store/circuit-breaker.js';
@@ -76,12 +76,12 @@ async function scanWithFailover(
 /**
  * Monthly-cap admission for a batch: every text is a scan, so the whole batch is
  * refused with 402 when used + texts > cap. A batch is never part-served.
+ * Admission is not reserved, so two requests admitted at the same time can both be
+ * served past the cap; the reservation build fixes that.
  */
-const enforceMonthlyCapForBatch = markMonthlyCapGate(
-  async function enforceMonthlyCapForBatch(request: FastifyRequest<{ Body: BatchScanBody }>, reply: FastifyReply): Promise<void> {
-    admitMonthlyScans(request, reply, request.body.texts.length);
-  },
-);
+export async function enforceMonthlyCapForBatch(request: FastifyRequest<{ Body: BatchScanBody }>, reply: FastifyReply): Promise<void> {
+  admitMonthlyScans(request, reply, request.body.texts.length);
+}
 
 export async function batchRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: BatchScanBody }>(

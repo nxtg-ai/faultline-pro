@@ -38,6 +38,7 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan/deep',
     {
       config: { access: 'key' },
+      // Admission is not reserved: two requests admitted at the same time can both be served; the reservation build fixes that.
       preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap],
       schema: { tags: ['Scan'], summary: 'Deep scan with URL evidence validation and scoring', body: BODY_SCHEMA },
     },

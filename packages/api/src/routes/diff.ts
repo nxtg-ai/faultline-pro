@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
+import { meterScan } from '../lib/scan-quota.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 
@@ -134,6 +135,8 @@ export async function diffRoutes(fastify: FastifyInstance): Promise<void> {
         }
       }
 
+      // One request, one scan: counted once when either side it serves holds a billable verdict.
+      meterScan(keyId, [...Object.values(scanBefore.verifications), ...Object.values(scanAfter.verifications)]);
       return reply.status(200).send({
         before: scanBefore,
         after: scanAfter,
