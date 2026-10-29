@@ -53,3 +53,4 @@ e1f03a39c416e3c0e8d3ecadfdedaf0d066b6e0e:packages/sdk/tests/client.test.ts:gener
 
 # packages/api/tests/provider-spend-cap-rechecks.test.ts (344): a made-up "sk-live-abcdef0123456789abcdef" string the test puts in a provider error, to prove a job's lastError never shows it. Not a credential.
 1e6e029e44e03e6204f0b8a70a6248b428d726fa:packages/api/tests/provider-spend-cap-rechecks.test.ts:generic-api-key:344
+edbc01cee932a1b1869336a50d3730a32dec90ec:packages/api/tests/provider-spend-cap-rechecks.test.ts:generic-api-key:344
