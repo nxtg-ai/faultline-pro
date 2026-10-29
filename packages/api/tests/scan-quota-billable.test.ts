@@ -237,3 +237,101 @@ describe('POST /scan/upload monthly scan quota', () => {
     expect(sdk.calls).toBeGreaterThan(0);
   }, 30_000);
 });
+
+async function batch(key: string, texts: string[]): Promise<{ statusCode: number; json: Record<string, any> }> {
+  const res = await server.inject({
+    method: 'POST', url: '/scan/batch',
+    headers: { 'x-api-key': key, 'content-type': 'application/json' },
+    payload: { texts, provider: 'gemini' },
+  });
+  return { statusCode: res.statusCode, json: res.json() };
+}
+
+describe('POST /scan/batch monthly scan quota', () => {
+  it('a key at its cap gets the same 402 body as /scan for the whole batch: no provider call, no count', async () => {
+    process.env.FAULTLINE_USAGE_CAP = 'on';
+    process.env.FAULTLINE_CAP_PRO = '1';
+    const { key, id } = proKey();
+    getUsageMeter().increment(id); // at the cap
+
+    const single = await server.inject({
+      method: 'POST', url: '/scan',
+      headers: { 'x-api-key': key, 'content-type': 'application/json' },
+      payload: { text: CLAIM_TEXT, provider: 'gemini' },
+    });
+    expect(single.statusCode).toBe(402);
+
+    const res = await batch(key, [CLAIM_TEXT, CLAIM_TEXT]);
+    expect(res.statusCode).toBe(402);
+    expect(res.json).toEqual(single.json());
+    expect(sdk.calls).toBe(0);
+    expect(getUsageMeter().getMonthlyCount(id)).toBe(1);
+  }, 30_000);
+
+  it('a batch larger than what is left is refused whole, never part-served', async () => {
+    process.env.FAULTLINE_USAGE_CAP = 'on';
+    process.env.FAULTLINE_CAP_PRO = '2';
+    const { key, id } = proKey();
+    getUsageMeter().increment(id); // one scan left
+
+    const res = await batch(key, [CLAIM_TEXT, CLAIM_TEXT]);
+    expect(res.statusCode).toBe(402);
+    expect(res.json).toMatchObject({ limit: 2, used: 1, remaining: 1 });
+    expect(sdk.calls).toBe(0);
+    expect(getUsageMeter().getMonthlyCount(id)).toBe(1);
+  }, 30_000);
+
+  it('a batch that fits is served, and each text with a sourced verdict counts one scan', async () => {
+    process.env.FAULTLINE_USAGE_CAP = 'on';
+    process.env.FAULTLINE_CAP_PRO = '3';
+    const { key, id } = proKey();
+    getUsageMeter().increment(id);
+
+    const res = await batch(key, [CLAIM_TEXT, CLAIM_TEXT]);
+    expect(res.statusCode).toBe(200);
+    expect(res.json.succeeded).toBe(2);
+    expect(getUsageMeter().getMonthlyCount(id)).toBe(3);
+  }, 30_000);
+});
+
+async function deep(key: string): Promise<{ statusCode: number; cache?: string; verdicts: Verdict[] }> {
+  const res = await server.inject({
+    method: 'POST', url: '/scan/deep',
+    headers: { 'x-api-key': key, 'content-type': 'application/json' },
+    payload: { text: CLAIM_TEXT, provider: 'gemini' },
+  });
+  const verdicts = res.statusCode === 200 ? Object.values(res.json().verifications as Record<string, Verdict>) : [];
+  return { statusCode: res.statusCode, cache: res.headers['x-cache'] as string | undefined, verdicts };
+}
+
+describe('POST /scan/deep monthly scan quota', () => {
+  it('a sourced supported deep scan counts 1', async () => {
+    const { key, id } = proKey();
+    const res = await deep(key);
+    expect(res.statusCode).toBe(200);
+    expect(res.cache).toBe('MISS');
+    expect(res.verdicts.some((v) => v.status === 'supported' && (v.sources?.length ?? 0) > 0)).toBe(true);
+    expect(getUsageMeter().getMonthlyCount(id)).toBe(1);
+  }, 30_000);
+
+  it('a deep scan with only API errors counts 0', async () => {
+    sdk.mode = 'error' satisfies Mode;
+    const { key, id } = proKey();
+    const res = await deep(key);
+    expect(res.statusCode).toBe(200);
+    expect(res.verdicts.length).toBeGreaterThan(0);
+    expect(res.verdicts.every((v) => v.apiError === true)).toBe(true);
+    expect(getUsageMeter().getMonthlyCount(id)).toBe(0);
+  }, 30_000);
+
+  it('a key at its cap gets 402 before any provider call', async () => {
+    process.env.FAULTLINE_USAGE_CAP = 'on';
+    process.env.FAULTLINE_CAP_PRO = '1';
+    const { key, id } = proKey();
+    getUsageMeter().increment(id);
+    const res = await deep(key);
+    expect(res.statusCode).toBe(402);
+    expect(sdk.calls).toBe(0);
+    expect(getUsageMeter().getMonthlyCount(id)).toBe(1);
+  }, 30_000);
+});

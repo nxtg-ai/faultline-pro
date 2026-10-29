@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { getComplianceTemplateStore } from '../store/compliance-templates.js';
 import { requireApiKey, requireAdmin } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
+import { enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 
@@ -157,7 +158,7 @@ export async function complianceRoutes(fastify: FastifyInstance): Promise<void> 
     '/scan/compliance/:template',
     {
       config: { access: 'key' },
-      preHandler: [requireApiKey, rateLimitScan],
+      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap],
       schema: {
         tags: ['Compliance'],
         summary: 'Scan text and apply industry compliance template',

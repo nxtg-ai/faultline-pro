@@ -142,7 +142,7 @@ X-Cache: HIT | MISS       (whether the result came from cache)
 
 ### POST `/scan/batch` — Multiple texts in one call
 
-Submit 1–10 texts. Each text counts as one unit against your rate limit.
+Submit 1–10 texts. Each text counts as one unit against your rate limit. When the monthly scan quota is on, the whole batch is refused with `402` (same body as `/scan`) if the texts would take the key past its cap; a batch is never part-served.
 
 **Request**
 
@@ -548,7 +548,7 @@ Rate limits are applied per API key, per minute, on scan endpoints only.
 | `pro` | 100 req/min | Key with `pro` permission |
 | `admin` | 10,000 req/min | Key with `admin` permission |
 
-**Other gates in front of a scan.** Rate limiting above is per minute. Two more gates exist and ship **dormant** (they do nothing until an operator turns them on): a per-key monthly scan quota (`FAULTLINE_USAGE_CAP`, `402`, see `docs/usage-cap.md`) (a scan counts toward it only when its result holds at least one billable verdict: `supported`, `contradicted` or `mixed`, with at least one source, and not an API error; a 200 where every claim was an API error, `unverified` or unsourced counts nothing, and a query string on the URL changes nothing; `POST /scan/upload` checks the quota before reading the file) and a fleet-wide provider-spend cap (`FAULTLINE_PROVIDER_SPEND_CAP`, `503`, see `docs/provider-spend-cap.md`). The spend ledger records every managed scan and every `/critique` call whether or not the gate is on.
+**Other gates in front of a scan.** Rate limiting above is per minute. Two more gates exist and ship **dormant** (they do nothing until an operator turns them on): a per-key monthly scan quota (`FAULTLINE_USAGE_CAP`, `402`, see `docs/usage-cap.md`) (a scan counts toward it only when its result holds at least one billable verdict: `supported`, `contradicted` or `mixed`, with at least one source, and not an API error; a 200 where every claim was an API error, `unverified` or unsourced counts nothing, and a query string on the URL changes nothing; every route that runs a scan in the request checks the quota before any provider call, `POST /scan/upload` before reading the file; `POST /scan/batch` counts one scan per text and is refused whole if it does not fit; a full scan is checked when a new job starts, never on an idempotent replay, and counts only when the job served a billable verdict, so a failed job counts nothing; `POST /scan/deep` counts like `POST /scan`, cache hits included; `POST /jobs`, `POST /schedules` and GraphQL are not checked yet, see `docs/usage-cap.md`) and a fleet-wide provider-spend cap (`FAULTLINE_PROVIDER_SPEND_CAP`, `503`, see `docs/provider-spend-cap.md`). The spend ledger records every managed scan and every `/critique` call whether or not the gate is on.
 
 **Alert threshold**: The server emits an internal alert when a key reaches 80% of its limit. Rate limit headers are present on every scan response for proactive checking.
 

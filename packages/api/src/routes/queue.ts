@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey, isAdminRequest } from '../plugins/auth.js';
 import { getScanQueue, tierToPriority } from '../store/scan-queue.js';
+import { enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { getKeyStore } from '../store/keys.js';
 import { ownsOrAdmin } from '../lib/ownership.js';
 import type { QueuePriority } from '../store/scan-queue.js';
@@ -38,7 +39,7 @@ export async function queueRoutes(fastify: FastifyInstance): Promise<void> {
     '/queue/scans',
     {
       config: { access: 'owner' },
-      preHandler: [requireApiKey],
+      preHandler: [requireApiKey, enforceMonthlyCap],
       schema: {
         tags: ['Jobs'],
         summary: 'Enqueue a scan for async processing',

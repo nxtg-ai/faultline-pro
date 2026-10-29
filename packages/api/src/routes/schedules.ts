@@ -13,6 +13,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
+import { enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { outboundUrlRefusal } from '../lib/outbound-url.js';
 import {
   getScheduleStore,
@@ -215,7 +216,7 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
     '/schedules/:id/trigger',
     {
       config: { access: 'owner' },
-      preHandler: [requireApiKey],
+      preHandler: [requireApiKey, enforceMonthlyCap],
       schema: {
         tags: ['Schedules'],
         summary: 'Manually trigger a schedule run immediately',

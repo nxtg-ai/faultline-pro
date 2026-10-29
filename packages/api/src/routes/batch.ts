@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
@@ -11,6 +11,7 @@ import { requestOwner } from '../lib/cache-caller.js';
 import { getRateLimiter } from '../store/ratelimit.js';
 import { getKeyStore } from '../store/keys.js';
 import { meterScan } from '../lib/scan-quota.js';
+import { admitMonthlyScans, markMonthlyCapGate } from '../plugins/usage-cap.js';
 import type { Tier } from '../store/ratelimit.js';
 import { getCircuitBreaker } from '../store/circuit-breaker.js';
 import type { Provider } from '../store/circuit-breaker.js';
@@ -72,12 +73,22 @@ async function scanWithFailover(
   throw new Error(message || 'All providers failed.');
 }
 
+/**
+ * Monthly-cap admission for a batch: every text is a scan, so the whole batch is
+ * refused with 402 when used + texts > cap. A batch is never part-served.
+ */
+const enforceMonthlyCapForBatch = markMonthlyCapGate(
+  async function enforceMonthlyCapForBatch(request: FastifyRequest<{ Body: BatchScanBody }>, reply: FastifyReply): Promise<void> {
+    admitMonthlyScans(request, reply, request.body.texts.length);
+  },
+);
+
 export async function batchRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: BatchScanBody }>(
     '/scan/batch',
     {
       config: { access: 'key' },
-      preHandler: [requireApiKey],
+      preHandler: [requireApiKey, enforceMonthlyCapForBatch],
       schema: { tags: ['Scan'], summary: 'Batch scan multiple texts (1–10)', body: BODY_SCHEMA },
     },
     async (request, reply) => {

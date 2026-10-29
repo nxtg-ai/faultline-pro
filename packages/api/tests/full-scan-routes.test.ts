@@ -98,6 +98,8 @@ const ENV_KEYS = [
   'FAULTLINE_FULL_ESTIMATE_PER_MIN',
   'FAULTLINE_PROVIDER_SPEND_LEDGER',
   'FAULTLINE_PROVIDER_SPEND_CAP',
+  'FAULTLINE_USAGE_CAP',
+  'FAULTLINE_CAP_FREE',
 ];
 const USER_A = 'a'.repeat(64);
 const USER_B = 'b'.repeat(64);
@@ -271,6 +273,8 @@ beforeEach(async () => {
   delete process.env.FAULTLINE_FULL_MAX_RUNNING;
   delete process.env.FAULTLINE_FULL_ESTIMATE_PER_MIN;
   delete process.env.FAULTLINE_PROVIDER_SPEND_CAP;
+  delete process.env.FAULTLINE_USAGE_CAP;
+  delete process.env.FAULTLINE_CAP_FREE;
   control.provider = null;
   control.failGetProvider = false;
   control.rawMock = false;
@@ -493,6 +497,33 @@ describe('units and unserved claims', () => {
     expect(failed.result).toBeUndefined();
     expect(failed.resultAvailable).toBe(false);
     expect(ledgerRows()[0]).toMatchObject({ status: 'failed', servedClaims: 0, units: { charged: 2, served: 0, refund: 2 } });
+    expect(getUsageMeter().getMonthlyCount('admin')).toBe(0);
+  });
+
+  it('a run that fails after a sourced verdict landed served nothing, so it counts nothing', async () => {
+    useFixtureProvider(async (c) => supported(c));
+    const store = getFullScanJobStore();
+    const record = store.recordVerdict.bind(store);
+    let recorded = 0;
+    vi.spyOn(store, 'recordVerdict').mockImplementation((job, index, verdict) => {
+      record(job, index, verdict);
+      recorded += 1;
+      if (recorded === 1) throw new Error('the run broke after its first verdict');
+    });
+    const jobId = await startJob(sentences(3), 'idem-failed-late');
+    const failed = await untilTerminal(jobId);
+
+    const found = store.lookup(jobId, 'admin');
+    expect(found.kind).toBe('job');
+    const verdicts = found.kind === 'job' ? found.job.verdicts : [];
+    expect(verdicts.filter((v) => v?.status === 'supported' && v.sources.length > 0).length).toBeGreaterThan(0);
+    expect(failed.status).toBe('failed');
+    expect(failed.checked).toBe(0);
+    expect(failed.resultAvailable).toBe(false);
+    expect(failed.units).toEqual({ charged: 1, served: 0, refund: 1 });
+    expect(getUsageMeter().getMonthlyCount('admin')).toBe(0);
+    // The provider spend is still recorded for the failed run.
+    expect(getCostStore().getManagedEvents().filter((e) => e.kind === 'full-scan')).toHaveLength(2);
   });
 });
 
@@ -597,6 +628,57 @@ describe('POST /scan/full answers', () => {
   });
 });
 
+describe('monthly scan quota admission', () => {
+  const capOne = () => {
+    process.env.FAULTLINE_USAGE_CAP = 'on';
+    process.env.FAULTLINE_CAP_FREE = '1';
+    const entry = getKeyStore().create('capped-key');
+    return { key: entry.key, id: entry.id };
+  };
+
+  it('a new job from a key at its cap is 402 before it is queued; nothing runs or is counted', async () => {
+    const verifyClaim = useFixtureProvider(async (c) => supported(c));
+    const { key, id } = capOne();
+    const first = await estimate(sentences(2), { key });
+    const second = await estimate(sentences(2), { key });
+    const started = await start(first.json.estimateId, 'idem-cap-1', { key });
+    expect(started.statusCode).toBe(202);
+    await untilTerminal(started.json.jobId, { key });
+    expect(getUsageMeter().getMonthlyCount(id)).toBe(1);
+    const callsBefore = verifyClaim.mock.calls.length;
+
+    const refused = await start(second.json.estimateId, 'idem-cap-2', { key });
+    expect(refused.statusCode).toBe(402);
+    expect(refused.json).toMatchObject({ error: 'Monthly scan quota exceeded.', limit: 1, used: 1, remaining: 0 });
+    expect(verifyClaim).toHaveBeenCalledTimes(callsBefore);
+    expect(getFullScanJobStore().jobForIdempotencyKey(id, 'idem-cap-2')).toBeUndefined();
+    expect(getUsageMeter().getMonthlyCount(id)).toBe(1);
+  });
+
+  it('an idempotent replay of an existing job is not refused at the cap and runs nothing', async () => {
+    const verifyClaim = useFixtureProvider(async (c) => supported(c));
+    const { key, id } = capOne();
+    const est = await estimate(sentences(2), { key });
+    const first = await start(est.json.estimateId, 'idem-cap-replay', { key });
+    await untilTerminal(first.json.jobId, { key });
+    expect(getUsageMeter().getMonthlyCount(id)).toBe(1);
+
+    const replay = await start(est.json.estimateId, 'idem-cap-replay', { key });
+    expect(replay.statusCode).toBe(202);
+    expect(replay.json).toEqual(first.json);
+    expect(verifyClaim).toHaveBeenCalledTimes(2);
+    expect(getUsageMeter().getMonthlyCount(id)).toBe(1);
+  });
+
+  it('an estimate from a key at its cap is 402 with no extraction', async () => {
+    const { key, id } = capOne();
+    getUsageMeter().increment(id);
+    const refused = await estimate(sentences(2), { key });
+    expect(refused.statusCode).toBe(402);
+    expect(getCostStore().getManagedEvents().filter((e) => e.kind === 'full-scan')).toHaveLength(0);
+  });
+});
+
 describe('user-ref (x-faultline-user-ref)', () => {
   it('from the server key, two users run at once; one user cannot start a second job', async () => {
     gated();
@@ -680,6 +762,8 @@ describe('process-wide ceiling and stop', () => {
     expect(gate.verifyClaim).toHaveBeenCalledTimes(2);
     const again = await stop(queued);
     expect(again.json).toEqual(stopped.json);
+    // Only the first job (two sourced verdicts) counts; the stopped queued job served nothing.
+    expect(getUsageMeter().getMonthlyCount('admin')).toBe(1);
   });
 
   it('stopping a running job starts no new claim and stops when in-flight claims finish', async () => {
@@ -702,6 +786,8 @@ describe('process-wide ceiling and stop', () => {
     expect(done.result.notAttemptedClaimIds).toHaveLength(14);
     const unchanged = await stop(jobId);
     expect(unchanged.json).toEqual(done);
+    // Stopped with a billable verdict served: it counts once.
+    expect(getUsageMeter().getMonthlyCount('admin')).toBe(1);
   });
 });
 

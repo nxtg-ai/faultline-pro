@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import PDFDocument from 'pdfkit';
 import { requireApiKey } from '../plugins/auth.js';
+import { enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 import type { ScanResult } from '@nxtg/faultline/cli/scan.js';
@@ -279,7 +280,7 @@ export async function euReportRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan/eu-report',
     {
       config: { access: 'key' },
-      preHandler: requireApiKey,
+      preHandler: [requireApiKey, enforceMonthlyCap],
       schema: { tags: ['Compliance'], summary: 'Generate EU AI Act compliance PDF report', body: BODY_SCHEMA },
     },
     async (request, reply) => {

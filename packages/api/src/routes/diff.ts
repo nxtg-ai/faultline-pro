@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
+import { enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 
@@ -64,7 +65,7 @@ export async function diffRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan/diff',
     {
       config: { access: 'key' },
-      preHandler: [requireApiKey, rateLimitScan],
+      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap],
       schema: { tags: ['Scan'], summary: 'Diff two texts — new/removed/changed claims with inline view', body: BODY_SCHEMA },
     },
     async (request, reply) => {

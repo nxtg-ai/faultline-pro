@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { buildServer } from '../src/server.js';
 import { resetCache } from '../src/store/cache.js';
 import { setUrlFetcher, resetUrlFetcher } from '../src/lib/url-validator.js';
+import { resetKeyStore, getKeyStore } from '../src/store/keys.js';
+import { resetUsageMeter, getUsageMeter } from '../src/store/usage.js';
+import { scan } from '@nxtg/faultline/cli/scan.js';
 import type { FastifyInstance } from 'fastify';
 
 const MOCK_SCAN_WITH_SOURCES = vi.hoisted(() => ({
@@ -225,5 +228,49 @@ describe('POST /scan/deep', () => {
     const c1Link = body.evidenceLinks.find((l: { claimId: string }) => l.claimId === 'c1');
     expect(c1Link.overallEvidenceScore).toBeGreaterThanOrEqual(0);
     expect(c1Link.overallEvidenceScore).toBeLessThanOrEqual(100);
+  });
+
+  describe('monthly scan quota', () => {
+    const billable = {
+      ...MOCK_SCAN_WITH_SOURCES,
+      verifications: {
+        ...MOCK_SCAN_WITH_SOURCES.verifications,
+        c1: { ...MOCK_SCAN_WITH_SOURCES.verifications.c1, status: 'supported' },
+      },
+    };
+    const deepScan = (key: string, text: string) => server.inject({
+      method: 'POST',
+      url: '/scan/deep',
+      headers: { 'x-api-key': key, 'content-type': 'application/json' },
+      payload: JSON.stringify({ text, provider: 'mock' }),
+    });
+
+    beforeEach(() => {
+      resetKeyStore();
+      resetUsageMeter();
+    });
+
+    it('a deep scan that served a sourced supported verdict counts 1, and a cache hit serving it counts again', async () => {
+      vi.mocked(scan).mockResolvedValueOnce(billable as never);
+      const { key, id } = getKeyStore().create('deep-quota', ['pro', 'scan']);
+      const first = await deepScan(key, 'A billable deep scan.');
+      expect(first.statusCode).toBe(200);
+      expect(first.headers['x-cache']).toBe('MISS');
+      expect(getUsageMeter().getMonthlyCount(id)).toBe(1);
+
+      const hit = await deepScan(key, 'A billable deep scan.');
+      expect(hit.statusCode).toBe(200);
+      expect(hit.headers['x-cache']).toBe('HIT');
+      expect(JSON.parse(hit.body).verifications.c1.status).toBe('supported');
+      expect(getUsageMeter().getMonthlyCount(id)).toBe(2);
+    });
+
+    it('a deep scan and its cache hit with no billable verdict count 0', async () => {
+      const { key, id } = getKeyStore().create('deep-quota-unbilled', ['pro', 'scan']);
+      expect((await deepScan(key, 'Nothing billable here.')).statusCode).toBe(200);
+      const hit = await deepScan(key, 'Nothing billable here.');
+      expect(hit.headers['x-cache']).toBe('HIT');
+      expect(getUsageMeter().getMonthlyCount(id)).toBe(0);
+    });
   });
 });

@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
+import { enforceMonthlyCap } from '../plugins/usage-cap.js';
+import { meterScan } from '../lib/scan-quota.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 import { getAnalyticsStore } from '../store/analytics.js';
@@ -36,7 +38,7 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan/deep',
     {
       config: { access: 'key' },
-      preHandler: [requireApiKey, rateLimitScan],
+      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap],
       schema: { tags: ['Scan'], summary: 'Deep scan with URL evidence validation and scoring', body: BODY_SCHEMA },
     },
     async (request, reply) => {
@@ -52,6 +54,8 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
         reply.header('X-Cache', 'HIT');
         getAnalyticsStore().record(keyId, (cached as { overallRisk: string }).overallRisk as RiskLevel);
         const delivered = issueScanId(cached, request.keyId);
+        // Counted like a /scan cache hit: once, when what it serves holds a billable verdict.
+        meterScan(keyId, cached.verifications);
         fireWebhookEvent('scan.complete', delivered, requestOwner(request));
         return reply.status(200).send(delivered);
       }
@@ -81,6 +85,7 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
           if (caller !== null) getScanCache().set(caller, text, `deep:${effectiveProvider}`, enriched as unknown as Record<string, unknown>);
           getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
           const delivered = issueScanId(enriched, request.keyId);
+          meterScan(keyId, result.verifications);
           fireWebhookEvent('scan.complete', delivered, requestOwner(request));
 
           return reply.status(200).send(delivered);

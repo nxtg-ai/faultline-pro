@@ -11,10 +11,10 @@
 |---|---|
 | Monthly scan count | `packages/api/src/store/usage.ts` — `UsageMeter.getMonthlyCount(keyId, month?)` |
 | Per-tier cap config (env-overridable, dormant flag) | `packages/api/src/store/entitlements.ts` |
-| Enforcement prehandler (402 + quota headers) | `packages/api/src/plugins/usage-cap.ts` — `enforceMonthlyCap` |
-| Wired on all scan routes | `routes/scan.ts` (`/scan`, `/scan/template`), `routes/stream.ts` (`/scan/stream` GET+POST) |
+| Enforcement prehandler (402 + quota headers) | `packages/api/src/plugins/usage-cap.ts` — `enforceMonthlyCap` (one scan), `admitMonthlyScans` (N scans) |
+| Wired on every route that runs a scan in the request | see **Admission** below; `packages/api/tests/monthly-cap-route-coverage.test.ts` fails if a route that can reach a provider has no gate and no listed reason |
 | Remaining-quota surface | `GET /usage` → `quota: { tier, enforced, limit, used, remaining, resetEpoch }` |
-| Tests (18) | `packages/api/tests/usage-cap.test.ts` |
+| Tests | `packages/api/tests/usage-cap.test.ts`, `scan-quota-billable.test.ts`, `full-scan-routes.test.ts`, `deep.test.ts`, `monthly-cap-route-coverage.test.ts` |
 
 ## Semantics
 
@@ -24,9 +24,16 @@
   - `POST /scan` and `POST /scan/upload`: counted once, by the `server.ts` onResponse hook, from the billable count the handler recorded for the result it sent (`packages/api/src/lib/scan-quota.ts`). The hook matches the route pattern, so a query string (`POST /scan?x=1`) cannot skip the count. A cache hit counts when the cached result it delivers holds a billable verdict.
   - `GET` and `POST /scan/stream`, `POST /scan/template/:id`: counted in the handler with the same rule.
   - `POST /scan/batch`: each text whose result holds a billable verdict counts one scan.
-  - Full scan (`POST /scan/full`): counted once per job when the job ends (done, stopped or failed), if any claim got a billable verdict. A job that never started a check, or served nothing, counts nothing.
-- **Admission.** `POST /scan`, `POST /scan/upload`, `GET`/`POST /scan/stream` and `POST /scan/template/:id` run `enforceMonthlyCap` before any provider call. On `POST /scan/upload` it runs before the file is read, so a key at its cap gets 402 without any text extraction (OCR) or provider call. `POST /scan/batch` and full scan have no monthly-cap admission check; they are counted as above.
-- **402 on cap.** `X-Usage-Limit / X-Usage-Remaining / X-Usage-Reset` headers + a JSON body with an upgrade link. `null` cap (admin) = unlimited.
+  - `POST /scan/deep`: counted once in the handler, when the result it serves holds a billable verdict. A cache hit counts the same way, like a `POST /scan` cache hit. (A Gemini-grounded result is never cached, so with the default provider every deep scan runs fresh.)
+  - Full scan (`POST /scan/full`): counted once per job when the job ends served, done or stopped, if it served at least one billable verdict. A job that served nothing counts nothing: a job stopped while queued, a job whose claims all came back without a billable verdict, and every `failed` job. A `failed` job delivers no result (`served 0`, every unit refunded), so it counts nothing even when a verdict landed before the run failed. The provider spend of a failed job is still recorded in the spend ledger.
+  - `POST /scan/diff`, `/scan/report`, `/scan/eu-report`, `/scan/compliance/:template`, `/scan/compliance-gate`, `/scan/bulk`, `/queue/scans` and `/schedules/:id/trigger` check the cap (below) but do not count toward it.
+- **Admission.** Every route that runs a scan in the request checks the cap before any provider call, and refuses with 402 when the scans it would run take the key past its cap (`used + scans > cap`):
+  - One scan: `POST /scan`, `POST /scan/upload`, `GET`/`POST /scan/stream`, `POST /scan/template/:id`, `POST /scan/deep`, `POST /scan/diff`, `POST /scan/report`, `POST /scan/eu-report`, `POST /scan/compliance/:template`, `POST /scan/compliance-gate`. On `POST /scan/upload` it runs before the file is read, so a key at its cap gets 402 without any text extraction (OCR) or provider call.
+  - `POST /scan/batch`: one scan per text. When `used + texts > cap` the whole batch is refused with the same 402 body; a batch is never part-served.
+  - Full scan: `POST /scan/full/estimate` (a paid extraction) and a new job on `POST /scan/full`, checked before the job is queued. An idempotent replay of a job that already exists runs nothing and is never refused.
+  - `POST /scan/bulk`, `POST /queue/scans` and `POST /schedules/:id/trigger` check that the key is not at its cap when the request arrives. They do not reserve one scan per document or per run.
+  - Not checked: `POST /jobs` and `POST /schedules` create recurring scans that a background runner runs later, and that runner has no monthly-cap check or count yet. `POST /graphql` (off unless `FAULTLINE_GRAPHQL=on`) has no check on its scan resolver. `POST /critique` is not a scan. `POST /admin/verify-claims` is admin only, and the admin tier has no cap.
+- **402 on cap.** `X-Usage-Limit / X-Usage-Remaining / X-Usage-Reset` headers + a JSON body (`error`, `tier`, `limit`, `used`, `remaining`, `resetEpoch`, `upgrade`). `remaining` is what is left before the cap: 0 for a key at its cap, more for a batch larger than what is left. `null` cap (admin) = unlimited.
 
 ## The cap NUMBER — options for Asif (NOT decided here)
 
