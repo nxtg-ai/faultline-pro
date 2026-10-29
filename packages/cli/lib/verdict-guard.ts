@@ -153,8 +153,9 @@ const BILLABLE_STATUSES: ReadonlySet<string> = new Set(['supported', 'contradict
  * no engine retriever (the mock provider, for one), a provider error, a
  * malformed verdict (flagged `apiError`) and a UI state (`loading`, `skipped`)
  * are never billable. This is the one rule every billed count uses: the cost
- * log's `verified_count`, the spend ledger's `verifiedCount` and full-scan
- * served units.
+ * log's `verified_count`, the spend ledger's `verifiedCount`, full-scan
+ * served units and the API's monthly scan quota (a scan counts only when it
+ * delivered at least one).
  */
 export function isBillableVerdict(value: unknown): boolean {
   if (!value || typeof value !== 'object') return false;
@@ -173,18 +174,4 @@ export function billableVerdictCount(verifications: unknown): number {
   if (!verifications || typeof verifications !== 'object') return 0;
   const list = Array.isArray(verifications) ? verifications : Object.values(verifications);
   return list.filter(isBillableVerdict).length;
-}
-
-/**
- * True when at least one entry of a scan's `verifications` (object or array) is
- * a verdict that is not an API error, `unverified` included. A scan where every
- * claim failed at the provider checked nothing, so it is not counted against
- * the monthly scan quota.
- */
-export function hasCheckedVerdict(verifications: unknown): boolean {
-  if (!verifications || typeof verifications !== 'object') return false;
-  const list = Array.isArray(verifications) ? verifications : Object.values(verifications);
-  return list.some((v) => !!v && typeof v === 'object'
-    && isVerdictStatus((v as { status?: unknown }).status)
-    && (v as { apiError?: unknown }).apiError !== true);
 }

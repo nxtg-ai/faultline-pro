@@ -12,6 +12,21 @@ import { resetKeyStore, getKeyStore } from '../src/store/keys.js';
 import { getUsageMeter, resetUsageMeter } from '../src/store/usage.js';
 import { getMonthlyCap, isUsageCapEnabled } from '../src/store/entitlements.js';
 import { nextMonthResetEpoch } from '../src/plugins/usage-cap.js';
+import { registerProvider } from '@nxtg/faultline/providers/registry.js';
+
+// A scan counts toward the monthly quota only when its result holds a billable
+// verdict (supported, contradicted or mixed, with a source). The built-in mock
+// provider cites no source, so these tests scan with a fixture that does.
+// tests/scan-quota-billable.test.ts covers the scans that must not count.
+registerProvider('mock', () => ({
+  name: 'Usage cap fixture',
+  modelId: 'fixture-v1',
+  extractClaims: async () => [{ id: 'c1', text: 'The sky is blue.', type: 'fact', importance: 5 }],
+  verifyClaim: async (c: { id: string }) => ({
+    claimId: c.id, status: 'supported', explanation: 'Found.', sources: [{ title: 'Source', uri: 'https://publisher.example/a' }],
+  }),
+  generateCritiqueAndPrompt: async () => ({ critique: '', improvedPrompt: '' }),
+}) as never);
 
 // ---- env helpers: cap gate is driven entirely by process.env ----
 const CAP_ENV_KEYS = ['FAULTLINE_USAGE_CAP', 'FAULTLINE_CAP_PRO', 'FAULTLINE_CAP_FREE', 'FAULTLINE_CAP_ADMIN'];

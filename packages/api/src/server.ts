@@ -79,6 +79,7 @@ import { getJobScheduler, resetJobScheduler } from './store/jobs.js';
 import { getNpmMetricsStore, resetNpmMetricsStore } from './store/npm-metrics.js';
 import { getAuditLogger, hashInput } from './store/audit.js';
 import { getUsageMeter } from './store/usage.js';
+import { deliveredBillableVerdicts } from './lib/scan-quota.js';
 import { stopFullScanJobPruning } from './store/full-scan-jobs.js';
 import { FAULTLINE_API_VERSION } from './version.js';
 import { applyRouteAccess } from './lib/route-access.js';
@@ -306,7 +307,9 @@ export function buildServer() {
 
     getAuditLogger().log({ timestamp: new Date().toISOString(), keyId, endpoint, method, statusCode, latencyMs, inputHash });
 
-    if (isScanPost && statusCode === 200) {
+    // Only a scan whose delivered result holds a billable verdict counts; the
+    // handler records that count (lib/scan-quota.ts).
+    if (isScanPost && statusCode === 200 && deliveredBillableVerdicts(request) > 0) {
       getUsageMeter().increment(keyId);
     }
   });

@@ -548,7 +548,7 @@ Rate limits are applied per API key, per minute, on scan endpoints only.
 | `pro` | 100 req/min | Key with `pro` permission |
 | `admin` | 10,000 req/min | Key with `admin` permission |
 
-**Other gates in front of a scan.** Rate limiting above is per minute. Two more gates exist and ship **dormant** (they do nothing until an operator turns them on): a per-key monthly scan quota (`FAULTLINE_USAGE_CAP`, `402`, see `docs/usage-cap.md`) (a successful `POST /scan` counts toward it whatever query string its URL carries) and a fleet-wide provider-spend cap (`FAULTLINE_PROVIDER_SPEND_CAP`, `503`, see `docs/provider-spend-cap.md`). The spend ledger records every managed scan and every `/critique` call whether or not the gate is on.
+**Other gates in front of a scan.** Rate limiting above is per minute. Two more gates exist and ship **dormant** (they do nothing until an operator turns them on): a per-key monthly scan quota (`FAULTLINE_USAGE_CAP`, `402`, see `docs/usage-cap.md`) (a scan counts toward it only when its result holds at least one billable verdict: `supported`, `contradicted` or `mixed`, with at least one source, and not an API error; a 200 where every claim was an API error, `unverified` or unsourced counts nothing, and a query string on the URL changes nothing; `POST /scan/upload` checks the quota before reading the file) and a fleet-wide provider-spend cap (`FAULTLINE_PROVIDER_SPEND_CAP`, `503`, see `docs/provider-spend-cap.md`). The spend ledger records every managed scan and every `/critique` call whether or not the gate is on.
 
 **Alert threshold**: The server emits an internal alert when a key reaches 80% of its limit. Rate limit headers are present on every scan response for proactive checking.
 

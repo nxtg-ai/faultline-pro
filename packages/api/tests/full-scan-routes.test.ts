@@ -385,6 +385,15 @@ describe('full lifecycle on the real mock provider', () => {
     expect(getCostStore().getPercentiles().count).toBe(0);
     expect(getUsageMeter().getMonthlyCount('admin')).toBe(1);
   });
+
+  it('a job that served no billable verdict is not counted toward the monthly quota', async () => {
+    useFixtureProvider(async (c) => apiError(c, 'provider_unavailable'));
+    const jobId = await startJob(sentences(3), 'idem-unbilled');
+    const done = await untilTerminal(jobId);
+    expect(done.progress.length).toBeGreaterThan(0);
+    expect(done.units.served).toBe(0);
+    expect(getUsageMeter().getMonthlyCount('admin')).toBe(0);
+  });
 });
 
 describe('units and unserved claims', () => {

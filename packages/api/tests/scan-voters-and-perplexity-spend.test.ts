@@ -280,7 +280,7 @@ describe('a consensus run with zero participating voters reports failure and use
     expect(quotaUsed()).toBe(0);
   });
 
-  it('a consensus scan whose search found no source is served unverified and counted, not refused', async () => {
+  it('a consensus scan whose search found no source is served unverified, not refused, and uses no quota', async () => {
     // The offline run retrieves no sources, so no voter is asked (no source, no
     // verdict). That is a checked claim, not a voter failure: no consensus_unavailable.
     const res = await server.inject({
@@ -292,7 +292,8 @@ describe('a consensus run with zero participating voters reports failure and use
     expect(verdicts.length).toBeGreaterThan(0);
     expect(verdicts.every((v) => v.consensus?.providerCount === 0 && v.status === 'unverified')).toBe(true);
     expect(res.json().degraded).toBe(false);
-    expect(quotaUsed()).toBe(1);
+    // Served, but no verdict is billable (unverified, no source): no scan of quota.
+    expect(quotaUsed()).toBe(0);
   });
 });
 
@@ -495,7 +496,8 @@ describe('only real, distinct providers vote in consensus', () => {
       }
       // OPENAI_API_KEY is set, so a non-offline rig would have retrieved through paid web search.
       expect(networkCalls()).toBe(0);
-      expect(quotaUsed()).toBe(1);
+      // Every verdict is unverified with no source, so nothing billable: no scan of quota.
+      expect(quotaUsed()).toBe(0);
     });
   }
 });

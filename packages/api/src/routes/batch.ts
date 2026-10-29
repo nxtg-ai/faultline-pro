@@ -10,7 +10,7 @@ import { issueScanId } from '../lib/scan-access.js';
 import { requestOwner } from '../lib/cache-caller.js';
 import { getRateLimiter } from '../store/ratelimit.js';
 import { getKeyStore } from '../store/keys.js';
-import { getUsageMeter } from '../store/usage.js';
+import { meterScan } from '../lib/scan-quota.js';
 import type { Tier } from '../store/ratelimit.js';
 import { getCircuitBreaker } from '../store/circuit-breaker.js';
 import type { Provider } from '../store/circuit-breaker.js';
@@ -133,7 +133,7 @@ export async function batchRoutes(fastify: FastifyInstance): Promise<void> {
           const result = issueScanId(outcome.value, request.keyId);
           results.push(result);
           getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
-          getUsageMeter().increment(keyId);
+          meterScan(keyId, result.verifications);
           fireWebhookEvent('scan.complete', result, requestOwner(request));
         } else {
           results.push(null);

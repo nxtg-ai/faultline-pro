@@ -12,7 +12,7 @@ import { rateLimitScan } from '../plugins/ratelimit.js';
 import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { isServerKeyId, resolveEntitledTier } from '../plugins/consensus-entitlement.js';
 import { recordProviderSpend } from '../store/provider-spend.js';
-import { getUsageMeter } from '../store/usage.js';
+import { meterScan } from '../lib/scan-quota.js';
 import {
   getCostStore,
   emitScanCostEvent,
@@ -213,6 +213,8 @@ async function runFullScanJob(store: FullScanJobStore, job: FullScanJob): Promis
     latencyMs: Date.now() - startedAt,
     claims: { extracted: job.verdicts.length, verified: billableVerdictCount(job.verdicts) },
   });
+  // Counted once per job, when it ends, and only when it delivered a billable verdict.
+  meterScan(job.keyId, job.verdicts);
   if (outcome.ok === false) {
     store.finish(job, 'failed');
     return;
@@ -335,8 +337,6 @@ export async function fullScanRoutes(fastify: FastifyInstance): Promise<void> {
         idempotencyKey,
         tier: resolveEntitledTier(keyId, request.headers['x-user-tier']),
       });
-      // Counted here, once per job: the server.ts onResponse hook counts only /scan and /scan/upload.
-      getUsageMeter().increment(keyId);
       store.enqueue(job, (queued) => runFullScanJob(store, queued));
       return reply.status(202).send(accepted({ jobId: job.jobId, estimateId, units: job.charged, factClaims: job.factClaims }));
     },

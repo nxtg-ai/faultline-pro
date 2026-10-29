@@ -10,7 +10,7 @@ import { enforceConsensusEntitlement } from '../plugins/consensus-entitlement.js
 import { validateConsensusVoters, consensusHadNoVoters, consensusUnavailableBody, CONSENSUS_UNAVAILABLE_MESSAGE } from '../plugins/consensus-voters.js';
 import { isConsensusUnavailableError } from '@nxtg/faultline/cli/verify-runner.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
-import { getUsageMeter } from '../store/usage.js';
+import { meterScan, recordDeliveredScan } from '../lib/scan-quota.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import type { PipelineConfig } from '@nxtg/faultline/cli/scan.js';
 import { getAnalyticsStore } from '../store/analytics.js';
@@ -161,6 +161,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
             compliancePass: compGate.pass,
           }, verifyPolicy.tier);
           const delivered = issueScanId(enriched, request.keyId);
+          recordDeliveredScan(request, delivered.verifications);
           fireWebhookEvent('scan.complete', delivered, requestOwner(request));
           return reply.status(200).send(delivered);
         } catch (err) {
@@ -207,6 +208,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
           cache: { hit: true, checkedAt: hit.checkedAt },
         }, verifyPolicy.tier);
         const delivered = issueScanId(cachedEnriched, request.keyId);
+        recordDeliveredScan(request, (delivered as { verifications?: unknown }).verifications);
         fireWebhookEvent('scan.complete', delivered, requestOwner(request));
         return reply.status(200).send(delivered);
       }
@@ -239,10 +241,9 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
           // or cached (502 invalid_verdict; GoPMO 1.18.11.3 P2). The spend above is real.
           assertValidScanResult(result);
 
-          // NOTE: POST /scan usage is incremented by the server.ts onResponse hook
-          // (isScanPost && 200) — do NOT increment here or it double-counts. The
-          // stream + template routes below DO increment locally (the hook doesn't
-          // cover /scan/stream or /scan/template).
+          // POST /scan is counted toward the monthly quota by the server's onResponse
+          // hook, from the billable count recorded below; counting here as well would
+          // count it twice. The template and stream routes count locally.
 
           getScanHistory().record({
             textHash: hashText(text),
@@ -301,6 +302,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
             compliancePass: compGate.pass,
           }, verifyPolicy.tier);
           const delivered = issueScanId(enriched, request.keyId, scanId);
+          recordDeliveredScan(request, delivered.verifications);
           fireWebhookEvent('scan.complete', delivered, requestOwner(request));
           return reply.status(200).send(delivered);
         } catch (err) {
@@ -370,7 +372,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
       const result = withVerificationTier(scanned, verifyPolicy.tier);
 
       getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
-      getUsageMeter().increment(keyId); // count toward monthly cap (item 1)
+      meterScan(keyId, result.verifications);
       const delivered = issueScanId(result, request.keyId);
       fireWebhookEvent('scan.complete', delivered, requestOwner(request));
 

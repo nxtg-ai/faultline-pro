@@ -16,8 +16,9 @@ import { getMonthlyCap, isUsageCapEnabled } from '../store/entitlements.js';
  *  - A `null` cap for a tier (e.g. admin) is unlimited — no-op.
  *  - Otherwise: if the key's current-month scan count has reached the cap, respond
  *    402 Payment Required with an upgrade message; else set X-Usage-* headers and
- *    allow. The count is incremented on a SUCCESSFUL scan (in the route), so failed
- *    scans never burn a user's quota.
+ *    allow. A scan is counted only when its delivered result holds at least one
+ *    billable verdict (lib/scan-quota.ts), so a scan that failed, or delivered
+ *    only unverified or unsourced verdicts, never uses up a customer's quota.
  *
  * Must run AFTER requireApiKey (needs request.keyId).
  */

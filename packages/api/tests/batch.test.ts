@@ -286,6 +286,14 @@ describe('POST /scan/batch — Analytics + webhooks', () => {
   });
 
   it('A2. GET /usage after batch with 2 successes shows count >= 2', async () => {
+    // Only a result with a billable verdict (supported, with a source) counts.
+    const billable = {
+      input: 'claim text', provider: 'mock',
+      claims: [{ id: 'c1', text: 'claim', type: 'fact', importance: 3 }],
+      verifications: { c1: { claimId: 'c1', status: 'supported', explanation: 'Found.', sources: [{ title: 'Source', uri: 'https://publisher.example/a' }] } },
+      overallRisk: 'low', complianceReport: { riskTier: 'minimal', findings: [] }, ruleFindings: [],
+    };
+    vi.mocked(scan).mockResolvedValueOnce(billable as never).mockResolvedValueOnce(billable as never);
     const batchRes = await batchPost(server, { texts: ['text one', 'text two'] });
     expect(batchRes.statusCode).toBe(200);
 

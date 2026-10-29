@@ -31,6 +31,23 @@ vi.mock('@nxtg/faultline/cli/compliance-report.js', () => ({
   evaluateComplianceGate: vi.fn().mockReturnValue({ pass: true }),
 }));
 
+import { scan } from '@nxtg/faultline/cli/scan.js';
+
+// A scan counts toward the monthly quota only when its result holds a billable
+// verdict (supported, contradicted or mixed, with a source). The default fixture
+// above is unverified, so the usage tests below scan with this one.
+const BILLABLE_RESULT = {
+  input: 'claim text',
+  provider: 'mock',
+  claims: [{ id: 'c1', text: 'claim', type: 'fact', importance: 3 }],
+  verifications: {
+    c1: { claimId: 'c1', status: 'supported', explanation: 'Found.', sources: [{ title: 'Source', uri: 'https://publisher.example/a' }] },
+  },
+  overallRisk: 'low',
+  complianceReport: { riskTier: 'minimal', findings: [] },
+  ruleFindings: [],
+};
+
 // Reset cache before every test so cached results from prior tests don't interfere
 beforeEach(() => { resetCache(); });
 
@@ -431,6 +448,7 @@ describe('GET /usage', () => {
   });
 
   it('28. POST /scan (200) increments today count (Gate 2: count > 0)', async () => {
+    vi.mocked(scan).mockResolvedValueOnce(BILLABLE_RESULT as never);
     await server.inject({
       method: 'POST',
       url: '/scan',
@@ -444,6 +462,7 @@ describe('GET /usage', () => {
   });
 
   it('29. two POST /scans → usage count = 2', async () => {
+    vi.mocked(scan).mockResolvedValueOnce(BILLABLE_RESULT as never).mockResolvedValueOnce(BILLABLE_RESULT as never);
     await server.inject({
       method: 'POST',
       url: '/scan',

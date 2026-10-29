@@ -33,6 +33,23 @@ vi.mock('@nxtg/faultline/cli/compliance-report.js', () => ({
   evaluateComplianceGate: vi.fn().mockReturnValue({ pass: true }),
 }));
 
+import { scan } from '@nxtg/faultline/cli/scan.js';
+
+// A scan counts toward the monthly quota only when its result holds a billable
+// verdict (supported, contradicted or mixed, with a source). The default fixture
+// above is unverified, so the usage tests below scan with this one.
+const BILLABLE_RESULT = {
+  input: 'claim text',
+  provider: 'mock',
+  claims: [{ id: 'c1', text: 'claim', type: 'fact', importance: 3 }],
+  verifications: {
+    c1: { claimId: 'c1', status: 'supported', explanation: 'Found.', sources: [{ title: 'Source', uri: 'https://publisher.example/a' }] },
+  },
+  overallRisk: 'low',
+  complianceReport: { riskTier: 'minimal', findings: [] },
+  ruleFindings: [],
+};
+
 // ─── KeyStore unit tests ───────────────────────────────────────────────────
 
 describe('KeyStore unit', () => {
@@ -279,6 +296,7 @@ describe('Upload audit + usage', () => {
   });
 
   it('C24. keystore key scan usage is tracked under correct keyId', async () => {
+    vi.mocked(scan).mockResolvedValueOnce(BILLABLE_RESULT as never);
     const key = getKeyStore().create('Tracked', ['scan']);
     await server.inject({
       method: 'POST',
@@ -330,6 +348,7 @@ describe('Upload audit + usage', () => {
   });
 
   it('C29. two different keys both tracked in usage meter', async () => {
+    vi.mocked(scan).mockResolvedValueOnce(BILLABLE_RESULT as never).mockResolvedValueOnce(BILLABLE_RESULT as never);
     const keyA = getKeyStore().create('A', ['scan']);
     const keyB = getKeyStore().create('B', ['scan']);
     await server.inject({

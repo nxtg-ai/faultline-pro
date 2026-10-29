@@ -1,7 +1,9 @@
 /**
- * /scan/stream counts a scan toward the monthly quota only when at least one
- * claim got a verdict that is not an API error. A scan where every claim failed
- * at the provider checked nothing, so it costs the customer no scan.
+ * /scan/stream counts a scan toward the monthly quota only when its result
+ * holds at least one billable verdict: supported, contradicted or mixed, with
+ * at least one source, and not an API error. A scan where every claim failed at
+ * the provider, or came back unverified, delivered nothing billable, so it
+ * costs the customer no scan.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -13,7 +15,7 @@ import { getUsageMeter, resetUsageMeter } from '../src/store/usage.js';
 import { resetCache } from '../src/store/cache.js';
 import { resetProviderSpendLedger } from '../src/store/provider-spend.js';
 
-type Outcome = 'error' | 'unverified' | 'mixed-errors';
+type Outcome = 'error' | 'unverified' | 'mixed-errors' | 'one-billable';
 const fixture = { outcome: 'error' as Outcome };
 
 const CLAIMS = [
@@ -26,6 +28,9 @@ const failed = (id: string) => ({
   sources: [], apiError: true, apiErrorReason: 'provider_unavailable',
 });
 const inconclusive = (id: string) => ({ claimId: id, status: 'unverified', explanation: 'Inconclusive.', sources: [] });
+const sourced = (id: string) => ({
+  claimId: id, status: 'supported', explanation: 'Found.', sources: [{ title: 'Source', uri: 'https://publisher.example/a' }],
+});
 
 // The built-in 'mock' provider is replaced for this file only, through the
 // module mock: the production registry refuses to replace a built-in id.
@@ -37,6 +42,7 @@ vi.mock('@nxtg/faultline/providers/mock_provider.js', () => ({
     verifyClaim: async (c: { id: string }) => {
       if (fixture.outcome === 'error') return failed(c.id);
       if (fixture.outcome === 'unverified') return inconclusive(c.id);
+      if (fixture.outcome === 'one-billable') return c.id === 'c1' ? sourced(c.id) : failed(c.id);
       return c.id === 'c1' ? failed(c.id) : inconclusive(c.id);
     },
     generateCritiqueAndPrompt: async () => ({ critique: '', improvedPrompt: '' }),
@@ -100,14 +106,20 @@ describe.each(['GET', 'POST'] as const)('%s /scan/stream monthly usage', (method
     expect(count).toBe(0);
   });
 
-  it('one claim checked (inconclusive), one an API error: the scan is counted once', async () => {
+  it('one claim inconclusive, one an API error: nothing billable, the scan is not counted', async () => {
     const { count, verdicts } = await runStream(method, 'mixed-errors');
     expect(verdicts).toBe(2);
-    expect(count).toBe(1);
+    expect(count).toBe(0);
   });
 
-  it('every claim checked and inconclusive: the scan is counted once', async () => {
+  it('every claim checked and inconclusive: nothing billable, the scan is not counted', async () => {
     const { count, verdicts } = await runStream(method, 'unverified');
+    expect(verdicts).toBe(2);
+    expect(count).toBe(0);
+  });
+
+  it('one sourced supported verdict, one an API error: the scan is counted once', async () => {
+    const { count, verdicts } = await runStream(method, 'one-billable');
     expect(verdicts).toBe(2);
     expect(count).toBe(1);
   });
