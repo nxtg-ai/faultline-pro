@@ -44,7 +44,7 @@ export function getProvider(apiKey: string, name?: string): LLMProvider {
     ?? DEFAULT_PROVIDER;
 
   const factory = factories.get(providerName);
-  if (!factory) {
+  if (typeof factory !== 'function') {
     const available = listProviders().join(', ');
     throw new Error(`Unknown provider "${providerName}". Available: ${available}`);
   }
@@ -74,6 +74,7 @@ export function builtInProviderIdOf(provider: unknown): string | undefined {
  *
  * @throws Error if `name` is a built-in provider id (compared trimmed and in
  *   any case): a built-in provider cannot be replaced.
+ * @throws Error if `factory` is not a function.
  */
 export function registerProvider(name: string, factory: ProviderFactory): void {
   if (isBuiltInProviderName(name)) {
@@ -81,6 +82,9 @@ export function registerProvider(name: string, factory: ProviderFactory): void {
       `Provider "${name}" is a built-in provider and cannot be replaced. ` +
       `Register a custom provider under its own name. Built-in: ${[...BUILT_IN_FACTORIES.keys()].join(', ')}`,
     );
+  }
+  if (typeof factory !== 'function') {
+    throw new Error(`Provider "${name}" factory must be a function, got ${typeof factory}.`);
   }
   factories.set(name, factory);
 }
