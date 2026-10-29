@@ -7,12 +7,17 @@
  * Contract: docs/design/2026-10-13-full-scan-api.md §3–§7. Units: charged =
  * ceil(fact claims / 8) at the estimate; served = ceil(claims with a billable
  * verdict / 8); refund = charged - served. A billable verdict is supported,
- * contradicted or mixed, with at least one source, and no apiError.
+ * contradicted or mixed, with at least one source, a retriever the engine
+ * bound, and no apiError.
  *
  * The provider registry is wrapped, not replaced: by default every call reaches
  * the REAL 'mock' provider (one fact claim per sentence, all supported). The mock
- * cites no source, so by default each of its verdicts gets one source added here,
- * which makes it billable; `control.rawMock` turns that off. A test that needs to
+ * cites no source, so by default each of its verdicts gets one source added here;
+ * `control.rawMock` turns that off. The mock has no engine retriever, so jobs
+ * are estimated under the provider id 'gemini' (ENGINE_PROVIDER), which the
+ * wrapper answers with the real mock: the engine then binds 'gemini-grounding'
+ * by that id and a sourced verdict is billable. No real Gemini call is made. A
+ * test that needs to
  * hold claims in flight, fail claims or tag opinions swaps in a fixture provider
  * for that test only.
  */
@@ -46,6 +51,9 @@ const control = vi.hoisted(() => ({
   rawMock: false,
 }));
 
+/** The provider id jobs run under; see the header. */
+const ENGINE_PROVIDER = 'gemini';
+
 /** The one source the default adds to each real mock verdict. */
 const MOCK_SOURCE = { title: 'Fixture source', uri: 'https://example.org/fixture' };
 
@@ -56,7 +64,8 @@ vi.mock('@nxtg/faultline/providers/registry.js', async (importOriginal) => {
     getProvider: vi.fn((apiKey: string, name?: string) => {
       if (control.failGetProvider) throw new Error('provider construction failed');
       if (control.provider) return control.provider();
-      const real = actual.getProvider(apiKey, name);
+      // The engine's id selects the retriever; the real mock still answers.
+      const real = actual.getProvider(apiKey, name === ENGINE_PROVIDER ? 'mock' : name);
       if (control.rawMock) return real;
       // The mock is a class instance, so its other methods are kept through the prototype.
       return Object.assign(Object.create(real), {
@@ -71,6 +80,7 @@ vi.mock('@nxtg/faultline/providers/registry.js', async (importOriginal) => {
 
 const SERVER_KEY = 'test-full-scan-server-key';
 const ENV_KEYS = [
+  'GEMINI_API_KEY',
   'FAULTLINE_API_KEY',
   'FAULTLINE_FULL_JOBS_LEDGER',
   'FAULTLINE_FULL_MAX_RUNNING',
@@ -192,7 +202,7 @@ async function call(method: 'GET' | 'POST', url: string, caller: Caller = {}, bo
 }
 
 const estimate = (text: string, caller: Caller = {}, extra: Json = {}) =>
-  call('POST', '/scan/full/estimate', caller, { text, provider: 'mock', ...extra });
+  call('POST', '/scan/full/estimate', caller, { text, provider: ENGINE_PROVIDER, ...extra });
 
 const start = (estimateId: string, idempotencyKey: string | undefined, caller: Caller = {}, extra: Json = {}) =>
   call('POST', '/scan/full', {
@@ -243,6 +253,8 @@ beforeEach(async () => {
   tmpDir = mkdtempSync(join(tmpdir(), 'full-scan-'));
   ledgerFile = join(tmpDir, 'full-scan-jobs.jsonl');
   process.env.FAULTLINE_API_KEY = SERVER_KEY;
+  // Key resolution needs a value for 'gemini'; the wrapped registry never uses it.
+  process.env.GEMINI_API_KEY = 'test-key';
   process.env.FAULTLINE_FULL_JOBS_LEDGER = ledgerFile;
   process.env.FAULTLINE_PROVIDER_SPEND_LEDGER = join(tmpDir, 'provider-spend.jsonl');
   delete process.env.FAULTLINE_FULL_MAX_RUNNING;
@@ -409,6 +421,29 @@ describe('units and unserved claims', () => {
     expect(done.units).toEqual({ charged: 2, served: 0, refund: 2 });
     expect(done.unserved).toHaveLength(9);
     expect(done.progress.every((p: Json) => p.status === 'unserved' && p.verdict?.status === 'supported')).toBe(true);
+  });
+
+  it('under the mock id a sourced verdict serves nothing: mock has no engine retriever', async () => {
+    const est = await estimate(sentences(9), {}, { provider: 'mock' });
+    expect(est.statusCode).toBe(200);
+    const started = await start(est.json.estimateId, 'idem-mock-id');
+    expect(started.statusCode).toBe(202);
+    const done = await untilTerminal(started.json.jobId);
+    expect(done.factClaims).toBe(9);
+    expect(done.progress).toHaveLength(9);
+    // Each verdict is supported with a source, yet none is served.
+    expect(done.progress.every((p: Json) => p.status === 'unserved' && p.verdict?.status === 'supported'
+      && p.verdict?.sources?.length === 1 && p.verdict?.provenance?.retriever === undefined)).toBe(true);
+    expect(done.units).toEqual({ charged: 2, served: 0, refund: 2 });
+    expect(done.unserved.every((u: Json) => u.reason === 'no_sourced_verdict')).toBe(true);
+  });
+
+  it('under the engine id the same verdicts are served, with the engine retriever', async () => {
+    const jobId = await startJob(sentences(9), 'idem-engine-id');
+    const done = await untilTerminal(jobId);
+    expect(done.progress).toHaveLength(9);
+    expect(done.progress.every((p: Json) => p.status === 'served' && p.verdict?.provenance?.retriever === 'gemini-grounding')).toBe(true);
+    expect(done.units).toEqual({ charged: 2, served: 2, refund: 0 });
   });
 
   it('a provider that throws on every retry is unserved with the engine reason (real retry ladder)', async () => {

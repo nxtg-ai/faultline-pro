@@ -14,6 +14,7 @@ import { getProvider } from '@nxtg/faultline/providers/registry.js';
 import { isBillableVerdict } from '@nxtg/faultline/lib/verdict-guard.js';
 import type { LLMProvider } from '@nxtg/faultline/providers/base_provider.js';
 import { DEFAULT_SCAN_PROVIDER, resolveApiKey } from '@nxtg/faultline/cli/provider-keys.js';
+import { bindEngineProvenance } from '@nxtg/faultline/cli/verify-runner.js';
 import type { UsageLeg } from '@nxtg/faultline/lib/usage-sink.js';
 import { captureOutcome } from '../lib/scan-spend.js';
 import type { Claim, ClaimStatus } from '@nxtg/faultline/types.js';
@@ -172,9 +173,11 @@ function modelOf(legs: UsageLeg[], provider: LLMProvider): string | null {
 
 /**
  * Verify one claim with one provider call. A thrown error is reported as
- * `apiError` (the call did not produce a verdict), never as a verdict.
+ * `apiError` (the call did not produce a verdict), never as a verdict. The
+ * claim is billable only on the engine's rule (isBillableVerdict), with its
+ * provenance bound by the engine, never taken from the provider.
  */
-async function verifyOne(provider: LLMProvider, input: VerifyClaimInput): Promise<ClaimRun> {
+async function verifyOne(provider: LLMProvider, providerName: string, input: VerifyClaimInput): Promise<ClaimRun> {
   const claim: Claim = { id: input.id, text: input.text, type: 'fact', importance: 3 };
   // The legs are kept when the call throws: a call that failed after reaching the
   // provider still spent, and the batch's spend row must count it.
@@ -186,7 +189,11 @@ async function verifyOne(provider: LLMProvider, input: VerifyClaimInput): Promis
       outcome: { id: input.id, status: 'unverified', apiError: true, parseFallback: false, noSourceAbstain: false, apiErrorReason: 'provider_error', model: null },
     };
   }
-  const result = outcome.value;
+  // Provenance is bound here with the runner's rule: the retriever comes from
+  // the engine's table by the provider id this route resolved, and any
+  // retriever the provider set on itself is dropped. Status, sources and the
+  // fields the outcome reports are left as the provider returned them.
+  const result = bindEngineProvenance(outcome.value, providerName, provider.modelId, new Date().toISOString());
   return {
     legs,
     billable: isBillableVerdict(result),
@@ -282,7 +289,7 @@ export async function adminVerifyRoutes(fastify: FastifyInstance): Promise<void>
       }
 
       const startMs = Date.now();
-      const runs = await mapWithConcurrency(claims, VERIFY_CLAIMS_CONCURRENCY, (claim) => verifyOne(provider, claim));
+      const runs = await mapWithConcurrency(claims, VERIFY_CLAIMS_CONCURRENCY, (claim) => verifyOne(provider, providerName, claim));
       recordBatchSpend(runs, claims, providerName, request.keyId ?? 'unknown', startMs);
 
       return reply.status(200).send({

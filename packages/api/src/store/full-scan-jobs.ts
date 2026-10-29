@@ -34,10 +34,11 @@ import type { ManagedScanCostEvent } from './costs.js';
  * lives in memory only while a job is active, to enforce one job per user).
  *
  * Units: a fact claim is SERVED when its verdict is billable (isBillableVerdict:
- * supported, contradicted or mixed, with at least one source, and no apiError).
- * It is unserved when the provider failed after the engine's retries (apiError,
- * with the provider's reason), when its check gave no sourced verdict
- * ('unverified', or zero sources: reason 'no_sourced_verdict'), or when it never
+ * supported, contradicted or mixed, with at least one source, a retriever the
+ * engine bound, and no apiError). It is unserved when the provider failed after
+ * the engine's retries (apiError, with the provider's reason), when its check
+ * gave no billable verdict ('unverified', zero sources, or no engine retriever:
+ * reason 'no_sourced_verdict'), or when it never
  * started ('not_attempted'). served = ceil(served / 8); refund = charged - served.
  */
 
@@ -74,7 +75,8 @@ export type TerminalStatus = 'done' | 'stopped' | 'failed';
 
 /**
  * Why a fact claim was not served. The engine's error reasons, 'no_sourced_verdict'
- * (the check ran but gave no billable verdict: 'unverified', or no source), and
+ * (the check ran but gave no billable verdict: 'unverified', no source, or no
+ * retriever the engine bound), and
  * 'not_attempted'.
  */
 export type UnservedReason = ApiErrorReason | 'no_sourced_verdict' | 'not_attempted';

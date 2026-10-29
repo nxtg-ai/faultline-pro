@@ -1,7 +1,8 @@
 /**
  * A full-scan claim is served (worth a unit) under the same rule as every other
  * billed claim: a supported, contradicted or mixed verdict with at least one
- * source and no API error. Anything else is refunded.
+ * source, a retriever the engine bound, and no API error. Anything else is
+ * refunded.
  */
 import { describe, it, expect } from 'vitest';
 import type { VerificationResult } from '@nxtg/faultline/types.js';
@@ -18,8 +19,14 @@ function jobWith(verdicts: Array<VerificationResult | undefined>, charged: numbe
   } as FullScanJob;
 }
 
+/** Provenance as the engine binds it for a Gemini grounded call. */
+const ENGINE_PROVENANCE = {
+  provider: 'gemini', model: 'gemini-test', verifiedAt: '2026-10-28T00:00:00.000Z',
+  retriever: 'gemini-grounding', retrievedAt: '2026-10-28T00:00:00.000Z',
+};
+
 const v = (status: VerificationResult['status'], sources: typeof SOURCE[], extra: Partial<VerificationResult> = {}): VerificationResult =>
-  ({ claimId: 'x', status, explanation: '', sources, ...extra });
+  ({ claimId: 'x', status, explanation: '', sources, provenance: ENGINE_PROVENANCE, ...extra });
 
 describe('full-scan served units follow the billing rule', () => {
   it('only a sourced definite verdict is served; zero-source and unverified are refunded as no_sourced_verdict', () => {
@@ -52,6 +59,26 @@ describe('full-scan served units follow the billing rule', () => {
     const view = describeJob(jobWith([v('unverified', [], { apiError: true, apiErrorReason: 'timeout' }), v('supported', [SOURCE])], 1));
     expect(view.unserved).toEqual([{ claimId: 'f1', reason: 'timeout' }]);
     expect(view.failed).toBe(1);
+  });
+
+  it('a sourced definite verdict with no engine retriever is not served (mock has none)', () => {
+    const { retriever: _r, retrievedAt: _t, ...noRetriever } = ENGINE_PROVENANCE;
+    const view = describeJob(jobWith([
+      v('supported', [SOURCE], { provenance: { ...noRetriever, provider: 'mock' } }),
+      v('contradicted', [SOURCE], { provenance: undefined }),
+      v('mixed', [SOURCE], { provenance: { ...ENGINE_PROVENANCE, retriever: '' } }),
+      v('supported', [SOURCE]),
+    ], 1));
+    expect(view.progress.map((p) => p.status)).toEqual(['unserved', 'unserved', 'unserved', 'served']);
+    expect(view.checked).toBe(1);
+    expect(view.unserved).toEqual([
+      { claimId: 'f1', reason: 'no_sourced_verdict' },
+      { claimId: 'f2', reason: 'no_sourced_verdict' },
+      { claimId: 'f3', reason: 'no_sourced_verdict' },
+    ]);
+    expect(view.failed).toBe(0);
+    const row = ledgerRowFor(jobWith([v('supported', [SOURCE], { provenance: undefined }), v('supported', [SOURCE])], 1) as never);
+    expect(row.servedClaims).toBe(1);
   });
 
   it('the ledger row agrees with the view', () => {

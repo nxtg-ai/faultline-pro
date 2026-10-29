@@ -49,7 +49,8 @@ vi.mock('@nxtg/faultline/providers/registry.js', async (importOriginal) => {
       },
       verifyClaim: async (claim: Claim): Promise<VerificationResult> => {
         billedLeg();
-        // One source, so the verdict is billable (a zero-source verdict never is).
+        // One source, so the verdict is billable once the engine binds its
+        // retriever (a zero-source verdict never is).
         return { claimId: claim.id, status: 'supported', explanation: 'ok', sources: [{ title: 'S', uri: 'https://example.org/s' }] };
       },
       generateCritiqueAndPrompt: vi.fn(),
@@ -57,11 +58,19 @@ vi.mock('@nxtg/faultline/providers/registry.js', async (importOriginal) => {
   };
 });
 
+/**
+ * The provider id each route resolves. A verdict is billable only when the
+ * engine bound a retriever to it, and the engine binds one by provider id:
+ * 'gemini' gets 'gemini-grounding'. The registry is mocked, so the fixture
+ * above answers and no real Gemini call is made. Under 'mock' no verdict would
+ * be billable, because the mock provider has no engine retriever.
+ */
+const ENGINE_PROVIDER = 'gemini';
 const SERVER_KEY = 'claim-counts-server-key';
 const TEXT = 'Paris is in France. Water boils at 100 C at sea level. The Moon orbits the Earth. In my opinion jazz is best.';
 const EXTRACTED = 4;
 const VERIFIED = 3;
-const ENV_KEYS = ['FAULTLINE_API_KEY', 'FAULTLINE_PROVIDER_SPEND_LEDGER', 'FAULTLINE_PROVIDER_SPEND_CAP', 'FAULTLINE_FULL_JOBS_LEDGER'];
+const ENV_KEYS = ['GEMINI_API_KEY', 'FAULTLINE_API_KEY', 'FAULTLINE_PROVIDER_SPEND_LEDGER', 'FAULTLINE_PROVIDER_SPEND_CAP', 'FAULTLINE_FULL_JOBS_LEDGER'];
 
 let savedEnv: Record<string, string | undefined>;
 let tmpDir: string;
@@ -84,6 +93,8 @@ beforeEach(async () => {
   tmpDir = mkdtempSync(join(tmpdir(), 'fl-claim-counts-'));
   spendLedger = join(tmpDir, 'provider-spend.jsonl');
   process.env.FAULTLINE_API_KEY = SERVER_KEY;
+  // Key resolution needs a value for 'gemini'; the mocked registry never uses it.
+  process.env.GEMINI_API_KEY = 'test-key';
   process.env.FAULTLINE_PROVIDER_SPEND_LEDGER = spendLedger;
   process.env.FAULTLINE_FULL_JOBS_LEDGER = join(tmpDir, 'full-scan-jobs.jsonl');
   delete process.env.FAULTLINE_PROVIDER_SPEND_CAP;
@@ -126,42 +137,42 @@ function expectCountsOnBothLedgers(extracted: number, verified: number): void {
 
 describe('claim counts reach both ledgers', () => {
   it('POST /scan', async () => {
-    const res = await server.inject({ method: 'POST', url: '/scan', headers, payload: { text: TEXT, provider: 'mock' } });
+    const res = await server.inject({ method: 'POST', url: '/scan', headers, payload: { text: TEXT, provider: ENGINE_PROVIDER } });
     expect(res.statusCode).toBe(200);
     expect(res.json().claims).toHaveLength(EXTRACTED);
     expectCountsOnBothLedgers(EXTRACTED, VERIFIED);
   });
 
   it('POST /scan with pipelineConfig', async () => {
-    const res = await server.inject({ method: 'POST', url: '/scan', headers, payload: { text: TEXT, provider: 'mock', pipelineConfig: { extractionProvider: 'mock' } } });
+    const res = await server.inject({ method: 'POST', url: '/scan', headers, payload: { text: TEXT, provider: ENGINE_PROVIDER, pipelineConfig: { extractionProvider: ENGINE_PROVIDER } } });
     expect(res.statusCode).toBe(200);
     expect(res.json().claims).toHaveLength(EXTRACTED);
     expectCountsOnBothLedgers(EXTRACTED, VERIFIED);
   });
 
   it('POST /scan/stream', async () => {
-    const res = await server.inject({ method: 'POST', url: '/scan/stream', headers, payload: { text: TEXT, provider: 'mock' } });
+    const res = await server.inject({ method: 'POST', url: '/scan/stream', headers, payload: { text: TEXT, provider: ENGINE_PROVIDER } });
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain('"type":"complete"');
     expectCountsOnBothLedgers(EXTRACTED, VERIFIED);
   });
 
   it('GET /scan/stream', async () => {
-    const res = await server.inject({ method: 'GET', url: `/scan/stream?provider=mock&text=${encodeURIComponent(TEXT)}`, headers: { 'x-api-key': SERVER_KEY } });
+    const res = await server.inject({ method: 'GET', url: `/scan/stream?provider=${ENGINE_PROVIDER}&text=${encodeURIComponent(TEXT)}`, headers: { 'x-api-key': SERVER_KEY } });
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain('"type":"complete"');
     expectCountsOnBothLedgers(EXTRACTED, VERIFIED);
   });
 
   it('POST /scan/full/estimate counts the claims it extracted and verifies none', async () => {
-    const res = await server.inject({ method: 'POST', url: '/scan/full/estimate', headers, payload: { text: TEXT, provider: 'mock' } });
+    const res = await server.inject({ method: 'POST', url: '/scan/full/estimate', headers, payload: { text: TEXT, provider: ENGINE_PROVIDER } });
     expect(res.statusCode).toBe(200);
     expect(res.json().factClaims).toBe(VERIFIED);
     expectCountsOnBothLedgers(EXTRACTED, 0);
   });
 
   it('a full-scan job counts the claims it verified', async () => {
-    const est = await server.inject({ method: 'POST', url: '/scan/full/estimate', headers, payload: { text: TEXT, provider: 'mock' } });
+    const est = await server.inject({ method: 'POST', url: '/scan/full/estimate', headers, payload: { text: TEXT, provider: ENGINE_PROVIDER } });
     expect(est.statusCode).toBe(200);
     const started = await server.inject({ method: 'POST', url: '/scan/full', headers: { ...headers, 'idempotency-key': 'idem-claim-counts' }, payload: { estimateId: est.json().estimateId } });
     expect(started.statusCode).toBe(202);

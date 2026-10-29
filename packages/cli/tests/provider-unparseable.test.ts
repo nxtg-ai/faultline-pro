@@ -66,7 +66,7 @@ describe('readVerdictReply', () => {
     expectUnparseable(r);
     expect(isBillableVerdict(r)).toBe(false);
     const src = [{ title: 'S', uri: 'https://example.org/s' }];
-    expect(billableVerdictCount({ c1: r, c2: { claimId: 'c2', status: 'mixed', explanation: '', sources: src } })).toBe(1);
+    expect(billableVerdictCount({ c1: r, c2: { claimId: 'c2', status: 'mixed', explanation: '', sources: src, provenance: { provider: 'gemini', model: 'm', verifiedAt: '2026-10-01T00:00:00.000Z', retriever: 'gemini-grounding', retrievedAt: '2026-10-01T00:00:00.000Z' } } })).toBe(1);
     expect(billableVerdictCount({ c1: r, c2: { claimId: 'c2', status: 'mixed', explanation: '', sources: [] } })).toBe(0);
   });
 });
@@ -84,9 +84,12 @@ describe.each(['openai', 'claude', 'perplexity'] as const)('%s verifyClaim', (na
     const r = await FACTORY[name]('k').verifyClaim(CLAIM);
     expect(r.status).toBe('mixed');
     expect(r.apiError).toBeUndefined();
-    // Billable only with a source: this wire's verdict carries what its reply cited.
-    expect(isBillableVerdict(r)).toBe(r.sources.length > 0);
-    expect(isBillableVerdict({ ...r, sources: [{ title: 'S', uri: 'https://example.org/s' }] })).toBe(true);
+    // A raw provider verdict carries no engine retriever, so it is not billable
+    // as returned, whatever it cites. With a source and the provenance the
+    // engine binds for a provider that retrieves (gemini), it would be.
+    expect(r.provenance?.retriever).toBeUndefined();
+    expect(isBillableVerdict(r)).toBe(false);
+    expect(isBillableVerdict({ ...r, sources: [{ title: 'S', uri: 'https://example.org/s' }], provenance: { provider: 'gemini', model: 'm', verifiedAt: '2026-10-01T00:00:00.000Z', retriever: 'gemini-grounding', retrievedAt: '2026-10-01T00:00:00.000Z' } })).toBe(true);
   });
 });
 

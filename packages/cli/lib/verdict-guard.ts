@@ -139,18 +139,32 @@ export const isInvalidVerdictError = (err: unknown): err is InvalidVerdictError 
 const BILLABLE_STATUSES: ReadonlySet<string> = new Set(['supported', 'contradicted', 'mixed']);
 
 /**
- * A claim that can be billed: its verdict is supported, contradicted or mixed,
- * it carries at least one source, and it is not an API error. `unverified`, any
- * verdict with zero sources, a provider error, a malformed verdict (flagged
- * `apiError`) and a UI state (`loading`, `skipped`) are never billable. This is
- * the one rule every billed count uses: the cost log's `verified_count`, the
- * spend ledger's `verifiedCount` and full-scan served units.
+ * A claim that can be billed: its sources were retrieved by the engine. All of
+ * these must hold:
+ * 1. the verdict is supported, contradicted or mixed;
+ * 2. `sources` is an array with at least one entry;
+ * 3. `provenance.retriever` is a non-empty string;
+ * 4. it is not an API error (`apiError !== true`).
+ * The engine alone sets `provenance.retriever`: the verify runner binds it from
+ * its own table of retrievers by the provider id it resolved, and the consensus
+ * engine names its own retriever. A provider's self-set provenance never
+ * reaches this check through the engine, so a provider cannot make its own
+ * citations billable. `unverified`, a verdict with zero sources, a verdict with
+ * no engine retriever (the mock provider, for one), a provider error, a
+ * malformed verdict (flagged `apiError`) and a UI state (`loading`, `skipped`)
+ * are never billable. This is the one rule every billed count uses: the cost
+ * log's `verified_count`, the spend ledger's `verifiedCount` and full-scan
+ * served units.
  */
 export function isBillableVerdict(value: unknown): boolean {
   if (!value || typeof value !== 'object') return false;
-  const v = value as { status?: unknown; sources?: unknown; apiError?: unknown };
+  const v = value as { status?: unknown; sources?: unknown; provenance?: unknown; apiError?: unknown };
+  const retriever = v.provenance && typeof v.provenance === 'object'
+    ? (v.provenance as { retriever?: unknown }).retriever
+    : undefined;
   return typeof v.status === 'string' && BILLABLE_STATUSES.has(v.status)
     && Array.isArray(v.sources) && v.sources.length > 0
+    && typeof retriever === 'string' && retriever.length > 0
     && v.apiError !== true;
 }
 

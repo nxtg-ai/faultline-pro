@@ -44,9 +44,9 @@ export interface FullVerificationSummary extends VerificationSummary {
   factClaims: number;
   /** Ids of opinion and interpretation claims, extraction order. */
   notCheckableClaimIds: string[];
-  /** Fact claims with a billable verdict (isBillableVerdict: supported, contradicted or mixed, with a source, no apiError). */
+  /** Fact claims with a billable verdict (isBillableVerdict: supported, contradicted or mixed, with a source, an engine retriever, no apiError). */
   servedClaims: number;
-  /** Ids of fact claims started that ended without a billable verdict (an apiError, `unverified`, or no source). */
+  /** Ids of fact claims started that ended without a billable verdict (an apiError, `unverified`, no source, or no engine retriever). */
   unservedClaimIds: string[];
 }
 
