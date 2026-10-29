@@ -190,10 +190,10 @@ async function verifyOne(provider: LLMProvider, providerName: string, input: Ver
     };
   }
   // Provenance is bound here with the runner's rule: the retriever comes from
-  // the engine's table by the provider id this route resolved, and any
+  // the engine's table, only for the built-in instance this route resolved, and any
   // retriever the provider set on itself is dropped. Status, sources and the
   // fields the outcome reports are left as the provider returned them.
-  const result = bindEngineProvenance(outcome.value, providerName, provider.modelId, new Date().toISOString());
+  const result = bindEngineProvenance(outcome.value, providerName, provider, new Date().toISOString());
   return {
     legs,
     billable: isBillableVerdict(result),

@@ -5,7 +5,7 @@
  * it survive scan() and disk history. These tests replay that probe through
  * the real engine path and through the CLI history writer.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -20,7 +20,7 @@ import {
   isInvalidVerdictError,
 } from '../lib/verdict-guard.js';
 import { scan } from '../cli/scan.js';
-import { registerProvider } from '../providers/registry.js';
+import { registerProvider, getProvider } from '../providers/registry.js';
 import { saveHistoryEntry } from '../history/store.js';
 import type { Claim, VerificationResult } from '../types.js';
 
@@ -246,7 +246,7 @@ describe('a provider cannot bind its own retriever (real runner)', () => {
     expect(billableVerdictCount(r.verifications)).toBe(0);
   });
 
-  it('the same provider resolved as gemini gets the engine retriever and is billable', async () => {
+  it('the same provider resolved as gemini is not the built-in, so it gets no retriever', async () => {
     const { isBillableVerdict } = await import('../lib/verdict-guard.js');
     const { runVerification } = await import('../cli/verify-runner.js');
     const claim: Claim = { id: 'c1', text: 'A factual claim.', type: 'fact', importance: 5 };
@@ -255,9 +255,23 @@ describe('a provider cannot bind its own retriever (real runner)', () => {
     const asGemini = await runVerification([claim], { provider, consensusRig: null, providerName: 'gemini' });
     expect(asOther.verifications.c1.provenance?.retriever).toBeUndefined();
     expect(isBillableVerdict(asOther.verifications.c1)).toBe(false);
+    expect(asGemini.verifications.c1.provenance?.provider).toBe('gemini');
+    expect(asGemini.verifications.c1.provenance?.retriever).toBeUndefined();
+    expect(asGemini.verifications.c1.provenance?.retrievedAt).toBeUndefined();
+    expect(isBillableVerdict(asGemini.verifications.c1)).toBe(false);
+  });
+
+  it('the built-in gemini instance gets the engine retriever at its own time and is billable', async () => {
+    const { isBillableVerdict } = await import('../lib/verdict-guard.js');
+    const { runVerification } = await import('../cli/verify-runner.js');
+    const claim: Claim = { id: 'c1', text: 'A factual claim.', type: 'fact', importance: 5 };
+    const provider = getProvider('fixture-unused', 'gemini');
+    vi.spyOn(provider, 'verifyClaim').mockImplementation(async (c: Claim) => selfLabelled(c));
+    const asGemini = await runVerification([claim], { provider, consensusRig: null, providerName: 'gemini' });
     expect(asGemini.verifications.c1.provenance?.retriever).toBe('gemini-grounding');
     // The engine's own time, not the provider's 2020 stamp.
     expect(asGemini.verifications.c1.provenance?.retrievedAt).not.toBe('2020-01-01T00:00:00.000Z');
     expect(isBillableVerdict(asGemini.verifications.c1)).toBe(true);
   });
+
 });

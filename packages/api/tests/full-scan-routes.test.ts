@@ -15,8 +15,10 @@
  * cites no source, so by default each of its verdicts gets one source added here;
  * `control.rawMock` turns that off. The mock has no engine retriever, so jobs
  * are estimated under the provider id 'gemini' (ENGINE_PROVIDER), which the
- * wrapper answers with the real mock: the engine then binds 'gemini-grounding'
- * by that id and a sourced verdict is billable. No real Gemini call is made. A
+ * wrapper answers with the real mock, reported (test-only, through this module
+ * mock) as the built-in gemini instance: the engine then binds
+ * 'gemini-grounding' and a sourced verdict is billable. No real Gemini call is
+ * made. A
  * test that needs to
  * hold claims in flight, fail claims or tag opinions swaps in a fixture provider
  * for that test only.
@@ -59,21 +61,30 @@ const MOCK_SOURCE = { title: 'Fixture source', uri: 'https://example.org/fixture
 
 vi.mock('@nxtg/faultline/providers/registry.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@nxtg/faultline/providers/registry.js')>();
+  // Test-only: a fixture resolved under a built-in id stands in for that
+  // built-in's own instance, which the real registry records for its factories.
+  const standIns = new WeakMap<object, string>();
+  const standIn = <T,>(name: string | undefined, p: T): T => {
+    if (name !== undefined && actual.isBuiltInProviderName(name) && p && typeof p === 'object') standIns.set(p, name);
+    return p;
+  };
   return {
     ...actual,
+    builtInProviderIdOf: vi.fn((p: unknown) => (p && typeof p === 'object' ? standIns.get(p) : undefined) ?? actual.builtInProviderIdOf(p)),
     getProvider: vi.fn((apiKey: string, name?: string) => {
       if (control.failGetProvider) throw new Error('provider construction failed');
-      if (control.provider) return control.provider();
-      // The engine's id selects the retriever; the real mock still answers.
+      if (control.provider) return standIn(name, control.provider());
+      // Under the engine's id the fixture stands in for the built-in gemini
+      // instance, so the engine grants its retriever; the real mock still answers.
       const real = actual.getProvider(apiKey, name === ENGINE_PROVIDER ? 'mock' : name);
-      if (control.rawMock) return real;
+      if (control.rawMock) return standIn(name, real);
       // The mock is a class instance, so its other methods are kept through the prototype.
-      return Object.assign(Object.create(real), {
+      return standIn(name, Object.assign(Object.create(real), {
         verifyClaim: async (claim: Claim) => {
           const verdict = await real.verifyClaim(claim);
           return verdict.sources.length === 0 ? { ...verdict, sources: [MOCK_SOURCE] } : verdict;
         },
-      });
+      }));
     }),
   };
 });

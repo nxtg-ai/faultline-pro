@@ -36,9 +36,17 @@ function billedLeg(): void {
 
 vi.mock('@nxtg/faultline/providers/registry.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@nxtg/faultline/providers/registry.js')>();
+  // Test-only: a fixture resolved under a built-in id stands in for that
+  // built-in's own instance, which the real registry records for its factories.
+  const standIns = new WeakMap<object, string>();
+  const standIn = <T,>(name: string | undefined, p: T): T => {
+    if (name !== undefined && actual.isBuiltInProviderName(name) && p && typeof p === 'object') standIns.set(p, name);
+    return p;
+  };
   return {
     ...actual,
-    getProvider: vi.fn(() => ({
+    builtInProviderIdOf: vi.fn((p: unknown) => (p && typeof p === 'object' ? standIns.get(p) : undefined) ?? actual.builtInProviderIdOf(p)),
+    getProvider: vi.fn((_key: string, name?: string) => standIn(name, {
       name: 'Billing Fixture',
       modelId: 'gpt-4o-mini',
       extractClaims: async (text: string): Promise<Claim[]> => {
@@ -60,9 +68,10 @@ vi.mock('@nxtg/faultline/providers/registry.js', async (importOriginal) => {
 
 /**
  * The provider id each route resolves. A verdict is billable only when the
- * engine bound a retriever to it, and the engine binds one by provider id:
- * 'gemini' gets 'gemini-grounding'. The registry is mocked, so the fixture
- * above answers and no real Gemini call is made. Under 'mock' no verdict would
+ * engine bound a retriever to it, and the engine binds one only to the
+ * built-in instance of a provider id: 'gemini' gets 'gemini-grounding'. The
+ * registry is mocked, so the fixture above answers as that instance and no
+ * real Gemini call is made. Under 'mock' no verdict would
  * be billable, because the mock provider has no engine retriever.
  */
 const ENGINE_PROVIDER = 'gemini';

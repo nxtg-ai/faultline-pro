@@ -24,9 +24,11 @@ GoPMO 1.18.7.3.2, Faultline beta gate criterion (b): ledgers survive a redeploy.
 | `input_tokens`, `output_tokens`, `tool_call_count` | Usage priced (`tool_call_count` is grounding calls) |
 | `usd_estimate`, `wall_ms`, `cache_hit` | Cost in USD, wall time, cache hit |
 | `claim_count` | Claims the call handled (extracted, or submitted) |
-| `verified_count` | Claims that got a billable verdict: supported, contradicted or mixed, with at least one source, a retriever the engine bound (`provenance.retriever`), not an API error (`unverified`, zero-source verdicts and verdicts with no engine retriever never count; full rule in `docs/provider-spend-cap.md`) |
+| `verified_count` | Claims that got a billable verdict: supported, contradicted or mixed, with at least one source, a retriever the engine bound (`provenance.retriever`, which the engine grants only to a built-in provider's own instance), not an API error (`unverified`, zero-source verdicts and verdicts with no engine retriever never count; full rule in `docs/provider-spend-cap.md`) |
 
 Every row this code writes carries both counts as numbers. `claim_count` and `verified_count` are `null` only for an event read back from a row written before the counts existed; the loader reads such rows without them.
+
+The CLI's `faultline export` (JSON and NDJSON) also has a `verified_count` field. It is a different count: the number of verification results the local history entry stores, unverified, unsourced and errored ones included. It is not a count of billable claims.
 
 The spend cap and the grounding allowance count are rebuilt from these files when the process starts, so the files are the authority. Before 2026-10-02 the directory was in the container filesystem, and every deploy started all three at zero.
 

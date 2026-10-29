@@ -2,14 +2,16 @@
 /**
  * POST /admin/verify-claims calls a provider's verifyClaim directly, outside
  * the verify runner. It binds provenance with the runner's rule: the retriever
- * comes from the engine's table by the provider id the route resolved, and a
- * retriever the provider set on itself is dropped. So a provider that labels
- * its own citations 'gemini-grounding' is not billed unless the engine's table
- * names that provider id.
+ * comes from the engine's table, only for the built-in instance of the provider
+ * id the route resolved, and a retriever the provider set on itself is dropped.
+ * So a provider that labels its own citations 'gemini-grounding' is not billed
+ * unless it is the built-in provider the engine's table names.
  *
  * The registry is mocked: every provider id resolves to a fixture that cites
  * one source, reports one priced usage leg, and (when asked) sets its own
- * provenance. No network call and no real provider is reachable from this file.
+ * provenance. Under a built-in id the fixture stands in for that built-in's
+ * instance unless `fixture.builtIn` is false. No network call and no real
+ * provider is reachable from this file.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { FastifyInstance } from 'fastify';
@@ -19,15 +21,23 @@ import { tmpdir } from 'node:os';
 import type { Claim, VerificationResult } from '@nxtg/faultline/types.js';
 import { recordUsage } from '@nxtg/faultline/lib/usage-sink.js';
 
-const fixture = vi.hoisted(() => ({ selfProvenance: true }));
+const fixture = vi.hoisted(() => ({ selfProvenance: true, builtIn: true }));
 
 const SOURCE = { title: 'S', uri: 'https://example.org/s' };
 
 vi.mock('@nxtg/faultline/providers/registry.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@nxtg/faultline/providers/registry.js')>();
+  // Test-only: a fixture resolved under a built-in id stands in for that
+  // built-in's own instance, which the real registry records for its factories.
+  const standIns = new WeakMap<object, string>();
+  const standIn = <T,>(name: string | undefined, p: T): T => {
+    if (fixture.builtIn && name !== undefined && actual.isBuiltInProviderName(name) && p && typeof p === 'object') standIns.set(p, name);
+    return p;
+  };
   return {
     ...actual,
-    getProvider: vi.fn(() => ({
+    builtInProviderIdOf: vi.fn((p: unknown) => (p && typeof p === 'object' ? standIns.get(p) : undefined) ?? actual.builtInProviderIdOf(p)),
+    getProvider: vi.fn((_key: string, name?: string) => standIn(name, {
       name: 'Self-labelling fixture',
       modelId: 'fixture-v1',
       extractClaims: vi.fn(),
@@ -110,6 +120,7 @@ beforeEach(async () => {
   process.env.FAULTLINE_GROUNDING_LEDGER = join(tmpDir, 'grounding-prompts.jsonl');
   process.env.FAULTLINE_PROVIDER_SPEND_LEDGER = spendLedger;
   fixture.selfProvenance = true;
+  fixture.builtIn = true;
   resetGroundingAllowanceLedger();
   resetProviderSpendLedger();
   resetKeyStore();
@@ -142,7 +153,17 @@ describe('POST /admin/verify-claims bills only on the engine retriever', () => {
     expect(billedCounts()).toEqual({ spend: 0, costLog: 0 });
   });
 
-  it('the same provider resolved as gemini is counted: the engine table names gemini', async () => {
+  it('a provider resolved as gemini that is not the built-in instance is not counted', async () => {
+    fixture.builtIn = false;
+    const res = await post('gemini');
+    expect(res.statusCode).toBe(200);
+    const results = res.json().results as Array<Record<string, unknown>>;
+    expect(results).toHaveLength(2);
+    expect(results.map((r) => r.status)).toEqual(['supported', 'supported']);
+    expect(billedCounts()).toEqual({ spend: 0, costLog: 0 });
+  });
+
+  it('the built-in gemini instance is counted: the engine table names gemini', async () => {
     const res = await post('gemini');
     expect(res.statusCode).toBe(200);
     expect((res.json().results as unknown[]).length).toBe(2);

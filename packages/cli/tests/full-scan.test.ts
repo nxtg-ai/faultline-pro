@@ -25,6 +25,9 @@ vi.mock('../providers/registry.js', () => ({
     verifyClaim: mockVerifyClaim,
     generateCritiqueAndPrompt: vi.fn().mockResolvedValue({ critique: '', improvedPrompt: '' }),
   })),
+  // Stands in for the built-in gemini instance, the only provider the engine
+  // grants a retriever (see ENGINE_PROVIDER below).
+  builtInProviderIdOf: vi.fn(() => 'gemini'),
 }));
 
 import {
@@ -42,10 +45,11 @@ import {
 /**
  * The provider id the verify stage resolves to. A claim is billable (served)
  * only when the engine bound a retriever to its verdict, and the engine binds
- * one by provider id: 'gemini' gets 'gemini-grounding'. The registry above is
- * mocked, so no real Gemini call is made; the id only selects the engine's
- * retriever. Under 'mock' no verdict would be served, because the mock
- * provider has no engine retriever.
+ * one only to the built-in instance of the provider id it resolved: 'gemini'
+ * gets 'gemini-grounding'. The registry above is mocked, so no real Gemini call
+ * is made; the mock reports the fixture as the built-in gemini instance. Under
+ * 'mock' no verdict would be served, because the mock provider has no engine
+ * retriever.
  */
 const ENGINE_PROVIDER = 'gemini';
 
