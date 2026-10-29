@@ -1,7 +1,12 @@
 /**
- * /scan/stream counts a scan toward the monthly quota only when at least one
- * claim got a verdict that is not an API error. A scan where every claim failed
- * at the provider checked nothing, so it costs the customer no scan.
+ * /scan/stream counts a scan toward the monthly quota only when its result
+ * holds at least one billable verdict: supported, contradicted or mixed, with
+ * at least one source, a retriever the engine bound, and not an API error. A
+ * scan where every claim failed at the provider, or came back unverified,
+ * delivered nothing billable, so it costs the customer no scan. Of the
+ * single-provider scans only the built-in gemini provider gets the engine's
+ * retriever, so the scan that must count runs on gemini with only the Google
+ * SDK mocked.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -12,8 +17,10 @@ import { resetKeyStore, getKeyStore } from '../src/store/keys.js';
 import { getUsageMeter, resetUsageMeter } from '../src/store/usage.js';
 import { resetCache } from '../src/store/cache.js';
 import { resetProviderSpendLedger } from '../src/store/provider-spend.js';
+import { resetGroundingAllowanceLedger, uninstallGroundingCounter } from '../src/store/grounding-allowance.js';
+import { resetCircuitBreaker } from '../src/store/circuit-breaker.js';
 
-type Outcome = 'error' | 'unverified' | 'mixed-errors';
+type Outcome = 'error' | 'unverified' | 'mixed-errors' | 'one-billable';
 const fixture = { outcome: 'error' as Outcome };
 
 const CLAIMS = [
@@ -43,7 +50,30 @@ vi.mock('@nxtg/faultline/providers/mock_provider.js', () => ({
   }) as never,
 }));
 
-const ENV_KEYS = ['FAULTLINE_PROVIDER_SPEND_LEDGER', 'FAULTLINE_EVIDENCE_FETCH', 'FAULTLINE_CONSENSUS'];
+// The 'one-billable' scan runs on the real built-in gemini provider: the Google
+// SDK gives c1 a grounded, sourced supported verdict and fails c2's search, so
+// c2 comes back an API error.
+vi.mock('@google/genai', () => ({
+  GoogleGenAI: class {
+    models = {
+      generateContent: async (params: { config?: { tools?: Array<Record<string, unknown>> } }) => {
+        const grounded = (params.config?.tools ?? []).some((t) => 'googleSearch' in t);
+        if (!grounded) {
+          return { text: JSON.stringify(CLAIMS), usageMetadata: { promptTokenCount: 150, candidatesTokenCount: 40 } };
+        }
+        if (JSON.stringify(params).includes(CLAIMS[1].text)) throw new Error('503 Service Unavailable: the model is overloaded');
+        return {
+          text: JSON.stringify({ status: 'supported', explanation: 'Found.' }),
+          modelVersion: 'gemini-2.5-flash',
+          usageMetadata: { promptTokenCount: 90, candidatesTokenCount: 20 },
+          candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'Publisher', uri: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/x' } }] } }],
+        };
+      },
+    };
+  },
+}));
+
+const ENV_KEYS = ['FAULTLINE_PROVIDER_SPEND_LEDGER', 'FAULTLINE_EVIDENCE_FETCH', 'FAULTLINE_CONSENSUS', 'FAULTLINE_GROUNDING_LEDGER', 'GEMINI_API_KEY'];
 let savedEnv: Record<string, string | undefined>;
 let tmpDir: string;
 
@@ -51,8 +81,12 @@ beforeEach(() => {
   savedEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
   tmpDir = mkdtempSync(join(tmpdir(), 'fl-stream-quota-'));
   process.env.FAULTLINE_PROVIDER_SPEND_LEDGER = join(tmpDir, 'provider-spend.jsonl');
+  process.env.FAULTLINE_GROUNDING_LEDGER = join(tmpDir, 'grounding-prompts.jsonl');
+  process.env.GEMINI_API_KEY = 'test-gemini';
   process.env.FAULTLINE_EVIDENCE_FETCH = 'off';
   delete process.env.FAULTLINE_CONSENSUS;
+  resetGroundingAllowanceLedger();
+  resetCircuitBreaker();
   resetProviderSpendLedger();
   resetKeyStore();
   resetUsageMeter();
@@ -64,6 +98,8 @@ afterEach(() => {
     if (savedEnv[k] === undefined) delete process.env[k];
     else process.env[k] = savedEnv[k];
   }
+  uninstallGroundingCounter();
+  resetGroundingAllowanceLedger();
   resetProviderSpendLedger();
   rmSync(tmpDir, { recursive: true, force: true });
 });
@@ -75,14 +111,15 @@ async function runStream(method: 'GET' | 'POST', outcome: Outcome): Promise<{ co
   await server.ready();
   try {
     const text = 'The Eiffel Tower is in Paris. Water boils at 100 degrees Celsius at sea level.';
+    const provider = outcome === 'one-billable' ? 'gemini' : 'mock';
     const res = method === 'POST'
       ? await server.inject({
         method: 'POST', url: '/scan/stream',
         headers: { 'x-api-key': entry.key, 'content-type': 'application/json' },
-        payload: JSON.stringify({ text, provider: 'mock' }),
+        payload: JSON.stringify({ text, provider }),
       })
       : await server.inject({
-        method: 'GET', url: `/scan/stream?provider=mock&text=${encodeURIComponent(text)}`,
+        method: 'GET', url: `/scan/stream?provider=${provider}&text=${encodeURIComponent(text)}`,
         headers: { 'x-api-key': entry.key },
       });
     expect(res.statusCode).toBe(200);
@@ -100,14 +137,20 @@ describe.each(['GET', 'POST'] as const)('%s /scan/stream monthly usage', (method
     expect(count).toBe(0);
   });
 
-  it('one claim checked (inconclusive), one an API error: the scan is counted once', async () => {
+  it('one claim inconclusive, one an API error: nothing billable, the scan is not counted', async () => {
     const { count, verdicts } = await runStream(method, 'mixed-errors');
     expect(verdicts).toBe(2);
-    expect(count).toBe(1);
+    expect(count).toBe(0);
   });
 
-  it('every claim checked and inconclusive: the scan is counted once', async () => {
+  it('every claim checked and inconclusive: nothing billable, the scan is not counted', async () => {
     const { count, verdicts } = await runStream(method, 'unverified');
+    expect(verdicts).toBe(2);
+    expect(count).toBe(0);
+  });
+
+  it('one sourced supported verdict, one an API error: the scan is counted once', async () => {
+    const { count, verdicts } = await runStream(method, 'one-billable');
     expect(verdicts).toBe(2);
     expect(count).toBe(1);
   });

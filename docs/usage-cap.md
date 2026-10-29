@@ -11,17 +11,31 @@
 |---|---|
 | Monthly scan count | `packages/api/src/store/usage.ts` — `UsageMeter.getMonthlyCount(keyId, month?)` |
 | Per-tier cap config (env-overridable, dormant flag) | `packages/api/src/store/entitlements.ts` |
-| Enforcement prehandler (402 + quota headers) | `packages/api/src/plugins/usage-cap.ts` — `enforceMonthlyCap` |
-| Wired on all scan routes | `routes/scan.ts` (`/scan`, `/scan/template`), `routes/stream.ts` (`/scan/stream` GET+POST) |
+| Enforcement prehandler (402 + quota headers) | `packages/api/src/plugins/usage-cap.ts` — `enforceMonthlyCap` (one scan), `admitMonthlyScans` (N scans) |
+| Wired on every route that runs a scan in the request | see **Admission** below; `packages/api/tests/monthly-cap-route-coverage.test.ts` fails if a route that can reach a provider lacks the real `enforceMonthlyCap` (or its own named admission function) before any provider work and has no listed reason, or is checked but neither counts nor has a listed reason |
 | Remaining-quota surface | `GET /usage` → `quota: { tier, enforced, limit, used, remaining, resetEpoch }` |
-| Tests (18) | `packages/api/tests/usage-cap.test.ts` |
+| Tests | `packages/api/tests/usage-cap.test.ts`, `scan-quota-billable.test.ts`, `full-scan-routes.test.ts`, `deep.test.ts`, `monthly-cap-route-coverage.test.ts` |
 
 ## Semantics
 
 - **Dormant by default.** `FAULTLINE_USAGE_CAP` off → the gate is a **no-op**; deploys safely before the number/go-live is set. Turning it on is a one-env-var change, no code change.
 - **Distinct from rate-limit.** `rateLimitScan` = per-**minute** burst throttle (abuse). This = per-**month** scan quota (margin). Both run.
-- **Fail-safe counting.** Usage is incremented on a **successful** scan (the `server.ts` onResponse hook for `POST /scan`; local increments on stream/template which the hook doesn't cover). Failed scans and cache hits (free) don't burn quota. On `/scan/stream` (GET and POST), a scan counts only when at least one claim got a verdict that is not an API error (`hasCheckedVerdict`), so a scan where every claim failed at the provider, or that had no claim to check, does not count.
-- **402 on cap.** `X-Usage-Limit / X-Usage-Remaining / X-Usage-Reset` headers + a JSON body with an upgrade link. `null` cap (admin) = unlimited.
+- **Only a billable scan counts** (full scan aside, below). A scan counts toward the monthly quota only when the result it delivered holds at least one billable verdict: `supported`, `contradicted` or `mixed`, with at least one source, a retriever the engine bound (`provenance.retriever`, which the engine grants only to a built-in provider's own instance or the consensus retriever), and not an API error (`billableVerdictCount` in `packages/cli/lib/verdict-guard.ts`, the same rule as the spend ledger's `verifiedCount` and full-scan served units). A scan that answered 200 but where every claim was an API error, came back `unverified`, had no source, or had no engine retriever (a single-provider `mock`, `openai`, `claude` or `perplexity` verdict) does not count; nor does a scan that failed (any non-200), or a consensus scan refused with `consensus_unavailable`. This applies to every counter:
+  - `POST /scan` and `POST /scan/upload`: counted once, by the `server.ts` onResponse hook, from the billable count the handler recorded for the result it sent (`packages/api/src/lib/scan-quota.ts`). The hook matches the route pattern, so a query string (`POST /scan?x=1`) cannot skip the count. A cache hit counts when the cached result it delivers holds a billable verdict.
+  - `GET` and `POST /scan/stream`, `POST /scan/template/:id`: counted in the handler with the same rule.
+  - `POST /scan/batch`: each text whose result holds a billable verdict counts one scan.
+  - `POST /scan/deep`: counted once in the handler, when the result it serves holds a billable verdict. A cache hit counts the same way, like a `POST /scan` cache hit. (A Gemini-grounded result is never cached, so with the default provider every deep scan runs fresh.)
+  - `POST /scan/diff`, `/scan/report`, `/scan/eu-report`, `/scan/compliance/:template`, `/scan/compliance-gate`: counted once in the handler when the result it serves holds a billable verdict. A diff counts once for its two texts. A compliance gate that fails (`422`) still served its scan and counts the same way. A failed scan, or a report whose PDF failed, counts nothing.
+  - Full scan (`POST /scan/full`): **counts one scan when the job is admitted**, including if it later fails, is stopped, or serves no billable verdict. An idempotent replay of an existing job counts nothing. Counting only the work a job served waits for a later build that reserves the allowance at admission and settles it on delivery; without that reservation, counting at the end would leave a running job's slot free for another request.
+  - `POST /scan/bulk`, `/queue/scans` and `/schedules/:id/trigger` check the cap (below) but do not count toward it: their work runs in a background runner, and counting it lands with the reservation build.
+- **Admission.** Every route that runs a scan in the request checks the cap before any provider call, and refuses with 402 when the scans it would run take the key past its cap (`used + scans > cap`):
+  - One scan: `POST /scan`, `POST /scan/upload`, `GET`/`POST /scan/stream`, `POST /scan/template/:id`, `POST /scan/deep`, `POST /scan/diff`, `POST /scan/report`, `POST /scan/eu-report`, `POST /scan/compliance/:template`, `POST /scan/compliance-gate`. On `POST /scan/upload` it runs before the file is read, so a key at its cap gets 402 without any text extraction (OCR) or provider call.
+  - `POST /scan/batch`: one scan per text. When `used + texts > cap` the whole batch is refused with the same 402 body; a batch is never part-served.
+  - Full scan: `POST /scan/full/estimate` (a paid extraction) and a new job on `POST /scan/full`, checked before the job is queued, and checked again in the same synchronous step that counts it. An idempotent replay of a job that already exists runs nothing and is neither checked nor counted.
+  - `POST /scan/bulk`, `POST /queue/scans` and `POST /schedules/:id/trigger` check that the key is not at its cap when the request arrives. They do not reserve one scan per document or per run.
+  - Not reserved: the check reads the count when the request arrives and does not hold the allowance, so two requests admitted at the same time (two batches, or two deep scans) can both be served and together go past the cap. The reservation build fixes that.
+  - Not checked: `POST /jobs` and `POST /schedules` create recurring scans that a background runner runs later, and that runner has no monthly-cap check or count yet. `POST /graphql` (off unless `FAULTLINE_GRAPHQL=on`) has no check on its scan resolver. `POST /critique` is not a scan. `POST /admin/verify-claims` is admin only, and the admin tier has no cap.
+- **402 on cap.** `X-Usage-Limit / X-Usage-Remaining / X-Usage-Reset` headers + a JSON body (`error`, `tier`, `limit`, `used`, `remaining`, `resetEpoch`, `upgrade`). `remaining` is what is left before the cap: 0 for a key at its cap, more for a batch larger than what is left. `null` cap (admin) = unlimited.
 
 ## The cap NUMBER — options for Asif (NOT decided here)
 

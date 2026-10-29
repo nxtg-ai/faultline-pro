@@ -3,15 +3,14 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
-import { hasCheckedVerdict } from '@nxtg/faultline/lib/verdict-guard.js';
 import type { PipelineConfig } from '@nxtg/faultline/cli/scan.js';
 import { resolveTierFromRequest } from '../store/costs.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { enforceConsensusEntitlement } from '../plugins/consensus-entitlement.js';
-import { validateConsensusVoters, consensusHadNoVoters, CONSENSUS_UNAVAILABLE_MESSAGE } from '../plugins/consensus-voters.js';
+import { validateConsensusVoters, consensusHadNoVoters, consensusUnavailableBody, CONSENSUS_UNAVAILABLE_MESSAGE } from '../plugins/consensus-voters.js';
 import { isConsensusUnavailableError } from '@nxtg/faultline/cli/verify-runner.js';
-import { getUsageMeter } from '../store/usage.js';
+import { meterScan } from '../lib/scan-quota.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 import { resolveVerifyPolicy, withVerificationTier } from '../plugins/verify-cap.js';
 import { isExtractionError } from '@nxtg/faultline/providers/extraction-error.js';
@@ -208,9 +207,8 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
           verification: withVerificationTier(result, verifyPolicy.tier).verification,
         });
 
-        // A scan counts toward the monthly quota only when some claim got a verdict
-        // that is not an API error; a scan where every claim failed checked nothing.
-        if (hasCheckedVerdict(result.verifications)) getUsageMeter().increment(keyId);
+        // Counted toward the monthly quota only when the result holds a billable verdict.
+        meterScan(keyId, result.verifications);
       } catch (err) {
         // BLG-fp-20260713-A: log raw for ops, emit a generic client-safe message.
         console.error(`/scan/stream GET failed for key ${keyId}:`, err);
@@ -308,9 +306,10 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
         }
 
         // A consensus run where no voter took part checked nothing: report failure
-        // and count no scan. The spend above is real and stays in the ledger.
+        // (with the shared reason, as POST /scan does) and count no scan. The spend
+        // above is real and stays in the ledger.
         if (pipelineConfig?.consensus === true && consensusHadNoVoters(result)) {
-          emit({ type: 'error', error: 'consensus_unavailable', message: CONSENSUS_UNAVAILABLE_MESSAGE });
+          emit({ type: 'error', ...consensusUnavailableBody(result) });
           return;
         }
 
@@ -321,9 +320,8 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
           verification: withVerificationTier(result, verifyPolicy.tier).verification,
         });
 
-        // A scan counts toward the monthly quota only when some claim got a verdict
-        // that is not an API error; a scan where every claim failed checked nothing.
-        if (hasCheckedVerdict(result.verifications)) getUsageMeter().increment(keyId);
+        // Counted toward the monthly quota only when the result holds a billable verdict.
+        meterScan(keyId, result.verifications);
       } catch (err) {
         // BLG-fp-20260713-A: never leak the raw provider/engine error to the
         // client — log it for ops, emit a generic client-safe message.

@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
+import { enforceMonthlyCap } from '../plugins/usage-cap.js';
+import { recordDeliveredScan } from '../lib/scan-quota.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 import { extractTextFromBuffer } from '@nxtg/faultline/cli/extract.js';
@@ -17,7 +19,7 @@ type Provider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
 export async function uploadRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/scan/upload',
-    { config: { access: 'key' }, preHandler: [requireApiKey, rateLimitScan], schema: { tags: ['Scan'], summary: 'Upload PDF or image for OCR scan' } },
+    { config: { access: 'key' }, preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap], schema: { tags: ['Scan'], summary: 'Upload PDF or image for OCR scan' } },
     async (request, reply) => {
       let buffer: Buffer | null = null;
       let mimetype = '';
@@ -80,6 +82,7 @@ export async function uploadRoutes(fastify: FastifyInstance): Promise<void> {
         const result = await scanWithSpend({ text, provider, keyId: request.keyId ?? 'unknown' }, () => scan(text, provider));
         getAnalyticsStore().record(request.keyId ?? 'unknown', result.overallRisk as RiskLevel);
         const delivered = issueScanId(result, request.keyId);
+        recordDeliveredScan(request, delivered.verifications);
         fireWebhookEvent('scan.complete', delivered, requestOwner(request));
         return reply.status(200).send(delivered);
       } catch (scanErr) {

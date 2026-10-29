@@ -280,7 +280,7 @@ describe('a consensus run with zero participating voters reports failure and use
     expect(quotaUsed()).toBe(0);
   });
 
-  it('a consensus scan whose search found no source is served unverified and counted, not refused', async () => {
+  it('a consensus scan whose search found no source is served unverified, not refused, and uses no quota', async () => {
     // The offline run retrieves no sources, so no voter is asked (no source, no
     // verdict). That is a checked claim, not a voter failure: no consensus_unavailable.
     const res = await server.inject({
@@ -292,7 +292,127 @@ describe('a consensus run with zero participating voters reports failure and use
     expect(verdicts.length).toBeGreaterThan(0);
     expect(verdicts.every((v) => v.consensus?.providerCount === 0 && v.status === 'unverified')).toBe(true);
     expect(res.json().degraded).toBe(false);
-    expect(quotaUsed()).toBe(1);
+    // Served, but no verdict is billable (unverified, no source): no scan of quota.
+    expect(quotaUsed()).toBe(0);
+  });
+});
+
+describe('the search found sources but every consensus voter failed', () => {
+  /** One cited source from the OpenAI web search, so the voters are asked. */
+  const CITED = {
+    status: 'completed',
+    output: [{
+      type: 'message',
+      content: [{
+        type: 'output_text',
+        text: 'Paris is the capital of France.',
+        annotations: [{ type: 'url_citation', url: 'https://example.org/paris', title: 'Paris', start_index: 0, end_index: 31 }],
+      }],
+    }],
+    usage: { input_tokens: 1000, output_tokens: 100 },
+  };
+  const INSUFFICIENT_QUOTA = JSON.stringify({
+    error: { message: 'You exceeded your current quota, please check your plan and billing details.', type: 'insufficient_quota', code: 'insufficient_quota' },
+  });
+  const CREDIT_BALANCE_TOO_LOW = JSON.stringify({
+    type: 'error', error: { type: 'invalid_request_error', message: 'Your credit balance is too low to access the Anthropic API.' },
+  });
+
+  let searchCalls: number;
+  let voterCalls: number;
+
+  /** The web search answers with a source; each voter host answers with the given failure. */
+  function stubVoters(openaiVoter: () => Response, claudeVoter: () => Response): void {
+    vi.stubGlobal('fetch', vi.fn(async (url: string | URL) => {
+      const target = new URL(String(url));
+      if (target.host === 'api.openai.com' && target.pathname === '/v1/responses') {
+        searchCalls += 1;
+        return new Response(JSON.stringify(CITED), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (target.host === 'api.openai.com' && target.pathname === '/v1/chat/completions') {
+        voterCalls += 1;
+        return openaiVoter();
+      }
+      if (target.host === 'api.anthropic.com') {
+        voterCalls += 1;
+        return claudeVoter();
+      }
+      return new Response('unexpected host in tests', { status: 500, statusText: 'Internal Server Error' });
+    }));
+  }
+
+  const serverError = () => new Response('upstream error', { status: 500, statusText: 'Internal Server Error' });
+  const openaiEmpty = () => new Response(INSUFFICIENT_QUOTA, { status: 429, statusText: 'Too Many Requests' });
+  const claudeEmpty = () => new Response(CREDIT_BALANCE_TOO_LOW, { status: 400, statusText: 'Bad Request' });
+
+  const payload = {
+    text: TEXT, provider: 'mock',
+    pipelineConfig: { extractionProvider: 'mock', consensus: true, consensusProviders: ['openai', 'claude'] },
+  };
+
+  beforeEach(() => {
+    process.env.OPENAI_API_KEY = 'test-openai-key';
+    process.env.ANTHROPIC_API_KEY = 'test-anthropic-key';
+    searchCalls = 0;
+    voterCalls = 0;
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  it('POST /scan: voters all throw → 502 consensus_unavailable, no reason, no quota', async () => {
+    stubVoters(serverError, serverError);
+    const res = await server.inject({ method: 'POST', url: '/scan', headers, payload });
+    expect(searchCalls).toBeGreaterThan(0);
+    // A voter is asked only when the search returned a source.
+    expect(voterCalls).toBeGreaterThanOrEqual(2);
+    expect(res.statusCode).toBe(502);
+    expect(res.json().error).toBe('consensus_unavailable');
+    expect(res.json().reason).toBeUndefined();
+    expect(quotaUsed()).toBe(0);
+  });
+
+  it('POST /scan/stream: voters all throw → error event, no complete event, no quota', async () => {
+    stubVoters(serverError, serverError);
+    const res = await server.inject({ method: 'POST', url: '/scan/stream', headers, payload });
+    expect(searchCalls).toBeGreaterThan(0);
+    expect(voterCalls).toBeGreaterThanOrEqual(2);
+    expect(res.body).toContain('"type":"error"');
+    expect(res.body).toContain('"error":"consensus_unavailable"');
+    expect(res.body).not.toContain('"type":"complete"');
+    expect(res.body).not.toContain('"reason"');
+    expect(quotaUsed()).toBe(0);
+  });
+
+  it('POST /scan: every voter account is out of credits → 502 with reason provider_out_of_credits and no retry advice', async () => {
+    stubVoters(openaiEmpty, claudeEmpty);
+    const res = await server.inject({ method: 'POST', url: '/scan', headers, payload });
+    expect(voterCalls).toBeGreaterThanOrEqual(2);
+    expect(res.statusCode).toBe(502);
+    expect(res.json()).toMatchObject({ error: 'consensus_unavailable', reason: 'provider_out_of_credits' });
+    expect(res.json().message).toContain('out of credits');
+    expect(res.json().message).toContain('will not help');
+    expect(res.json().message).not.toMatch(/shortly/);
+    expect(quotaUsed()).toBe(0);
+  });
+
+  it('POST /scan/stream: every voter account is out of credits → the error event carries the reason', async () => {
+    stubVoters(openaiEmpty, claudeEmpty);
+    const res = await server.inject({ method: 'POST', url: '/scan/stream', headers, payload });
+    const events = res.body.split('\n\n').filter((e) => e.startsWith('data: ')).map((e) => JSON.parse(e.slice(6)) as Record<string, unknown>);
+    const errors = events.filter((e) => e.type === 'error');
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ error: 'consensus_unavailable', reason: 'provider_out_of_credits' });
+    expect(String(errors[0].message)).toContain('will not help');
+    expect(events.some((e) => e.type === 'complete')).toBe(false);
+    expect(quotaUsed()).toBe(0);
+  });
+
+  it('POST /scan: one voter out of credits and one erroring → no shared reason, the default text', async () => {
+    stubVoters(openaiEmpty, serverError);
+    const res = await server.inject({ method: 'POST', url: '/scan', headers, payload });
+    expect(res.statusCode).toBe(502);
+    expect(res.json().error).toBe('consensus_unavailable');
+    expect(res.json().reason).toBeUndefined();
+    expect(res.json().message).not.toContain('out of credits');
   });
 });
 
@@ -376,7 +496,8 @@ describe('only real, distinct providers vote in consensus', () => {
       }
       // OPENAI_API_KEY is set, so a non-offline rig would have retrieved through paid web search.
       expect(networkCalls()).toBe(0);
-      expect(quotaUsed()).toBe(1);
+      // Every verdict is unverified with no source, so nothing billable: no scan of quota.
+      expect(quotaUsed()).toBe(0);
     });
   }
 });

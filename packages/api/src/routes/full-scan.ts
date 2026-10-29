@@ -10,6 +10,7 @@ import { isExtractionError } from '@nxtg/faultline/providers/extraction-error.js
 import { sendExtractionFailed } from '../lib/extraction-failure.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
+import { admitMonthlyScans, enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { isServerKeyId, resolveEntitledTier } from '../plugins/consensus-entitlement.js';
 import { recordProviderSpend } from '../store/provider-spend.js';
 import { getUsageMeter } from '../store/usage.js';
@@ -231,6 +232,19 @@ function readIdempotencyKey(request: FastifyRequest): string | null | undefined 
   return IDEMPOTENCY_KEY_PATTERN.test(raw) ? raw : null;
 }
 
+/**
+ * Monthly-cap admission for POST /scan/full. A new job is one scan, checked before
+ * it is queued; the handler counts it when it admits the job. An idempotent replay
+ * of a job that exists runs nothing, so it is neither checked nor counted; a missing
+ * or malformed Idempotency-Key is left to the handler's 400.
+ */
+export async function enforceMonthlyCapForNewJob(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const idempotencyKey = readIdempotencyKey(request);
+  if (typeof idempotencyKey !== 'string') return;
+  if (getFullScanJobStore().jobForIdempotencyKey(request.keyId ?? 'unknown', idempotencyKey)) return;
+  admitMonthlyScans(request, reply, 1);
+}
+
 function sendLookup(reply: FastifyReply, jobId: string, keyId: string, stop: boolean): FastifyReply {
   const store = getFullScanJobStore();
   const found = store.lookup(jobId, keyId);
@@ -245,7 +259,7 @@ export async function fullScanRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan/full/estimate',
     {
       config: { access: 'key' },
-      preHandler: [requireApiKey, rateLimitScan, limitFullScanEstimates, enforceProviderSpendCap],
+      preHandler: [requireApiKey, rateLimitScan, limitFullScanEstimates, enforceMonthlyCap, enforceProviderSpendCap],
       schema: { tags: ['Scan'], summary: 'Price a full scan: extract claims, count fact claims and units', body: ESTIMATE_BODY },
     },
     async (request, reply) => {
@@ -299,7 +313,7 @@ export async function fullScanRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan/full',
     {
       config: { access: 'owner' },
-      preHandler: [requireApiKey, rateLimitScan, enforceProviderSpendCap],
+      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCapForNewJob, enforceProviderSpendCap],
       schema: { tags: ['Scan'], summary: 'Start a full scan from an estimate (Idempotency-Key required)', body: START_BODY },
     },
     async (request, reply) => {
@@ -330,12 +344,17 @@ export async function fullScanRoutes(fastify: FastifyInstance): Promise<void> {
       // A job whose terminal row cannot reach the disk would read as job_lost after a
       // restart and be refunded in full although served: refuse it before any spend.
       if (!store.ledgerWritable()) return reply.status(503).send({ error: 'ledger_unavailable' });
+      // The monthly-cap check again, in this synchronous step, so the check and the
+      // count below cannot be split by another start (the prehandler refuses earlier).
+      if (!admitMonthlyScans(request, reply, 1)) return reply;
 
       const job = store.startJob(estimate, {
         idempotencyKey,
         tier: resolveEntitledTier(keyId, request.headers['x-user-tier']),
       });
-      // Counted here, once per job: the server.ts onResponse hook counts only /scan and /scan/upload.
+      // Counted here, once per job, when it is admitted, whatever its outcome: the
+      // server.ts onResponse hook counts only /scan and /scan/upload. Settling only
+      // served work needs the allowance reserved at admission, which is not built yet.
       getUsageMeter().increment(keyId);
       store.enqueue(job, (queued) => runFullScanJob(store, queued));
       return reply.status(202).send(accepted({ jobId: job.jobId, estimateId, units: job.charged, factClaims: job.factClaims }));

@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
@@ -10,7 +10,8 @@ import { issueScanId } from '../lib/scan-access.js';
 import { requestOwner } from '../lib/cache-caller.js';
 import { getRateLimiter } from '../store/ratelimit.js';
 import { getKeyStore } from '../store/keys.js';
-import { getUsageMeter } from '../store/usage.js';
+import { meterScan } from '../lib/scan-quota.js';
+import { admitMonthlyScans } from '../plugins/usage-cap.js';
 import type { Tier } from '../store/ratelimit.js';
 import { getCircuitBreaker } from '../store/circuit-breaker.js';
 import type { Provider } from '../store/circuit-breaker.js';
@@ -72,12 +73,22 @@ async function scanWithFailover(
   throw new Error(message || 'All providers failed.');
 }
 
+/**
+ * Monthly-cap admission for a batch: every text is a scan, so the whole batch is
+ * refused with 402 when used + texts > cap. A batch is never part-served.
+ * Admission is not reserved, so two requests admitted at the same time can both be
+ * served past the cap; the reservation build fixes that.
+ */
+export async function enforceMonthlyCapForBatch(request: FastifyRequest<{ Body: BatchScanBody }>, reply: FastifyReply): Promise<void> {
+  admitMonthlyScans(request, reply, request.body.texts.length);
+}
+
 export async function batchRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: BatchScanBody }>(
     '/scan/batch',
     {
       config: { access: 'key' },
-      preHandler: [requireApiKey],
+      preHandler: [requireApiKey, enforceMonthlyCapForBatch],
       schema: { tags: ['Scan'], summary: 'Batch scan multiple texts (1–10)', body: BODY_SCHEMA },
     },
     async (request, reply) => {
@@ -133,7 +144,7 @@ export async function batchRoutes(fastify: FastifyInstance): Promise<void> {
           const result = issueScanId(outcome.value, request.keyId);
           results.push(result);
           getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
-          getUsageMeter().increment(keyId);
+          meterScan(keyId, result.verifications);
           fireWebhookEvent('scan.complete', result, requestOwner(request));
         } else {
           results.push(null);

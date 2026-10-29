@@ -35,14 +35,16 @@ import type { ClaimStatus, VerificationResult, Source } from '../types.js';
 export type Verdict = 'VERIFIED' | 'REFUTED' | 'UNSUPPORTED' | 'MIXED' | 'UNCHECKED';
 
 /** Why a claim is UNCHECKED. */
-export type UncheckedReason = 'provider_error' | 'provider_unparseable' | 'output_truncated' | 'not_verifiable';
+export type UncheckedReason = 'provider_error' | 'provider_out_of_credits' | 'provider_unparseable' | 'output_truncated' | 'not_verifiable';
 
 /**
  * True when the claim went unchecked because of the provider call (an error, an
- * unreadable reply, or a reply cut off at its output ceiling), so the scan is degraded.
+ * empty provider account, an unreadable reply, or a reply cut off at its output
+ * ceiling), so the scan is degraded.
  */
 export function isProviderUnchecked(reason: UncheckedReason | undefined | null): boolean {
-  return reason === 'provider_error' || reason === 'provider_unparseable' || reason === 'output_truncated';
+  return reason === 'provider_error' || reason === 'provider_out_of_credits'
+    || reason === 'provider_unparseable' || reason === 'output_truncated';
 }
 
 /** The subset of verdicts that represent a completed check. */
@@ -90,7 +92,9 @@ export interface ClaimVerdict {
   /** The verifier's explanation. */
   note: string;
   /**
-   * Why this claim has no verdict: the provider errored ('provider_error'), its
+   * Why this claim has no verdict: the provider errored ('provider_error'), the
+   * provider account is out of credits ('provider_out_of_credits', a re-run will
+   * not help until it has credits), its
    * reply could not be read ('provider_unparseable', ours, not a verdict), its
    * reply was cut off at the output ceiling ('output_truncated'), or the claim
    * was not verifiable. Distinct from a claim checked and found unsupported.
@@ -103,9 +107,14 @@ function firstUri(sources: Source[] | undefined): string | undefined {
   return uri || undefined;
 }
 
-/** The reply reasons pass through by name; every call failure reads as 'provider_error'. */
+/**
+ * The reply reasons and an empty provider account pass through by name; every
+ * other call failure reads as 'provider_error'.
+ */
 function providerUncheckedReason(reason: VerificationResult['apiErrorReason']): UncheckedReason {
-  return reason === 'provider_unparseable' || reason === 'output_truncated' ? reason : 'provider_error';
+  return reason === 'provider_unparseable' || reason === 'output_truncated' || reason === 'provider_out_of_credits'
+    ? reason
+    : 'provider_error';
 }
 
 /** Build the MCP-facing claim entry from an engine claim + its verification. */

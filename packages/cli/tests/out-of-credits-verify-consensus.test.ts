@@ -88,15 +88,15 @@ describe('single-provider verification keeps the out-of-credits reason', () => {
     expect(result.apiErrorReason).toBe('provider_out_of_credits');
   });
 
-  it('Gemini verify whose error reads as out of credits -> apiErrorReason provider_out_of_credits', async () => {
-    mockGenerateContent.mockRejectedValue(new Error('402 Payment Required: billing account is not active'));
+  it('Gemini verify whose SDK error has HTTP status 402 -> apiErrorReason provider_out_of_credits', async () => {
+    mockGenerateContent.mockRejectedValue(Object.assign(new Error('Payment Required: billing account is not active'), { status: 402 }));
     const result = await geminiVerifyClaim(claim, 'k');
     expect(result.apiError).toBe(true);
     expect(result.apiErrorReason).toBe('provider_out_of_credits');
   });
 
-  it('Gemini grounded verify whose error reads as out of credits -> apiErrorReason provider_out_of_credits', async () => {
-    mockGenerateContent.mockRejectedValue(new Error('402 Payment Required: billing account is not active'));
+  it('Gemini grounded verify whose SDK error has HTTP status 402 -> apiErrorReason provider_out_of_credits', async () => {
+    mockGenerateContent.mockRejectedValue(Object.assign(new Error('Payment Required: billing account is not active'), { status: 402 }));
     const result = await geminiVerifyClaimGrounded(claim, [], 'k');
     expect(result.apiError).toBe(true);
     expect(result.apiErrorReason).toBe('provider_out_of_credits');
@@ -105,6 +105,16 @@ describe('single-provider verification keeps the out-of-credits reason', () => {
   it('Gemini per-minute RESOURCE_EXHAUSTED at verify is not read as out of credits', async () => {
     mockGenerateContent.mockRejectedValue(new Error(
       '{"error":{"code":429,"message":"You exceeded your current quota, please check your plan and billing details.","status":"RESOURCE_EXHAUSTED"}}',
+    ));
+    const result = await geminiVerifyClaim(claim, 'k');
+    expect(result.apiError).toBe(true);
+    expect(result.apiErrorReason).not.toBe('provider_out_of_credits');
+  });
+
+  it('Gemini 429 whose rate-limit text mentions 402 and billing is not read as out of credits', async () => {
+    mockGenerateContent.mockRejectedValue(Object.assign(
+      new Error('Rate limit reached: 402 requests in the last minute. See the billing page for your limits.'),
+      { status: 429 },
     ));
     const result = await geminiVerifyClaim(claim, 'k');
     expect(result.apiError).toBe(true);

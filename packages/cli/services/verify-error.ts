@@ -1,4 +1,4 @@
-import { isOutOfCreditsText } from '../providers/out-of-credits';
+import { isOutOfCreditsError } from '../providers/out-of-credits';
 
 /** Customer text for a claim whose verification provider account has no credits left. */
 export const OUT_OF_CREDITS_VERIFY_MESSAGE =
@@ -24,7 +24,7 @@ export function sanitizeVerifyError(error: unknown): string {
   const raw = (error instanceof Error ? error.message : String(error)).toLowerCase();
 
   // Out of credits — before the rate-limit test: often a 429 too, but a retry cannot fix it.
-  if (isOutOfCreditsText(raw)) return OUT_OF_CREDITS_VERIFY_MESSAGE;
+  if (isOutOfCreditsError(error)) return OUT_OF_CREDITS_VERIFY_MESSAGE;
   // Rate limit / quota — the most common and the one that leaked in prod.
   if (/\b429\b|resource_exhausted|quota|rate[ _-]?limit|free_tier|too many requests/.test(raw)) {
     return 'Verification temporarily unavailable — the verification provider is rate-limited right now. This claim was not checked; re-run the scan shortly.';

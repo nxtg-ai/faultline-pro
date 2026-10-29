@@ -1,5 +1,6 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { CONSENSUS_VOTER_PROVIDERS, canVoteInConsensus, consensusVoterRefusal, type PipelineConfig } from '@nxtg/faultline/cli/verify-runner.js';
+import { isSharedFailureReason } from '@nxtg/faultline/consensus/consensus_engine.js';
 
 /**
  * Prehandler: refuse a consensus request that names no provider able to vote.
@@ -80,3 +81,42 @@ export function consensusHadNoVoters(result: ConsensusScanLike): boolean {
 }
 
 export const CONSENSUS_UNAVAILABLE_MESSAGE = 'No consensus voter returned a verdict, so nothing was checked. No scan was counted.';
+
+/** A retry cannot succeed against an empty provider account, so this text never asks for one. */
+export const CONSENSUS_OUT_OF_CREDITS_MESSAGE =
+  'No consensus voter returned a verdict because the provider account is out of credits, so nothing was checked. No scan was counted. Re-running will not help until the account has credits again.';
+
+type VerdictLike = { apiErrorReason?: unknown; providerVotes?: unknown };
+
+/**
+ * The one reason every failure in a no-voter consensus scan shares, when it is
+ * a reason the engine carries (an empty provider account, an unreadable reply,
+ * a reply cut off at its ceiling). Each failed vote counts; a claim with no
+ * votes counts its own reason (its source search failed). Undefined when the
+ * failures differ or any has no reason.
+ */
+export function consensusSharedFailureReason(result: ConsensusScanLike): string | undefined {
+  const verifications = result.verifications;
+  if (typeof verifications !== 'object' || verifications === null) return undefined;
+  const reasons: unknown[] = [];
+  for (const v of Object.values(verifications as Record<string, VerdictLike>)) {
+    if (v === null || typeof v !== 'object') return undefined;
+    const votes = Array.isArray(v.providerVotes) ? v.providerVotes as Array<{ apiError?: boolean; apiErrorReason?: unknown }> : [];
+    if (votes.length === 0) reasons.push(v.apiErrorReason);
+    else for (const vote of votes) if (vote?.apiError === true) reasons.push(vote.apiErrorReason);
+  }
+  const first = reasons[0];
+  if (!isSharedFailureReason(first)) return undefined;
+  return reasons.every((r) => r === first) ? first : undefined;
+}
+
+/**
+ * The 502 body (and stream error event fields) for a consensus scan where no
+ * voter took part. It carries `reason` when every failure shares one, and the
+ * out-of-credits text when that reason is provider_out_of_credits.
+ */
+export function consensusUnavailableBody(result: ConsensusScanLike): { error: 'consensus_unavailable'; message: string; reason?: string } {
+  const reason = consensusSharedFailureReason(result);
+  const message = reason === 'provider_out_of_credits' ? CONSENSUS_OUT_OF_CREDITS_MESSAGE : CONSENSUS_UNAVAILABLE_MESSAGE;
+  return { error: 'consensus_unavailable', message, ...(reason ? { reason } : {}) };
+}

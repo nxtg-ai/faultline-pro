@@ -4,6 +4,7 @@ import { recordUsage } from '../lib/usage-sink';
 import { CALL_CEILINGS } from './call-ceilings';
 import { isResponsesTruncated, OutputTruncatedError } from './output-truncation';
 import { RetrievalError } from './retrieval-error';
+import { isOutOfCreditsText, outOfCreditsTag, readErrorBody } from './out-of-credits';
 
 /**
  * OpenAIWebSearchRetriever — provider-agnostic grounding via OpenAI's Responses
@@ -64,7 +65,7 @@ export function responsesFailure(payload: ResponsesPayload): RetrievalError | nu
   if (status === 'incomplete' && payload.incomplete_details?.reason === 'max_output_tokens') return null;
   if (status === 'failed' || (status == null && payload?.error)) {
     const code = payload.error?.code ?? '';
-    const reason = /rate_limit/i.test(code) ? 'rate_limited' : 'provider_error';
+    const reason = isOutOfCreditsText(code) ? 'provider_out_of_credits' : /rate_limit/i.test(code) ? 'rate_limited' : 'provider_error';
     return new RetrievalError(reason, new Error(`OpenAI Responses status ${status ?? 'missing'}: ${code || 'no error code'}`));
   }
   const why = status === 'incomplete' ? payload.incomplete_details?.reason ?? 'no reason given' : 'did not complete';
@@ -137,7 +138,9 @@ export class OpenAIWebSearchRetriever implements Retriever {
     });
 
     if (!response.ok) {
-      throw new Error(`OpenAI Responses API error: ${response.status} ${response.statusText}`);
+      // An empty account is often a 429 too: the fixed tag lets the classifier tell it from a rate limit.
+      const tag = outOfCreditsTag(response.status, await readErrorBody(response));
+      throw new Error(`OpenAI Responses API error: ${response.status} ${response.statusText}${tag}`);
     }
 
     const payload = (await response.json()) as ResponsesPayload;

@@ -9,7 +9,7 @@
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { classifyApiError, ExtractionError } from '../providers/extraction-error.js';
-import { isOutOfCreditsText, outOfCreditsTag } from '../providers/out-of-credits.js';
+import { isOutOfCreditsError, isOutOfCreditsText, outOfCreditsTag } from '../providers/out-of-credits.js';
 import { OUT_OF_CREDITS_VERIFY_MESSAGE, sanitizeVerifyError } from '../services/verify-error.js';
 import { createOpenAIProvider } from '../providers/openai_provider.js';
 import { createClaudeProvider } from '../providers/claude_provider.js';
@@ -23,12 +23,19 @@ const OUT_OF_CREDITS_CASES: Array<[string, string]> = [
   ['OpenAI no-credits text', '429 You have no credits remaining.'],
   ['Anthropic credit balance', '400 Your credit balance is too low to access the Anthropic API.'],
   ['OpenAI hard billing limit', '400 billing_hard_limit_reached'],
-  ['402 with billing', '402 Payment Required: billing account inactive'],
   ['adapter tag', 'OpenAI API error: 429 Too Many Requests (out_of_credits)'],
 ];
 
+/**
+ * A genuine rate limit whose body mentions a count of 402 and links to the
+ * billing page. A 402 is read from the HTTP status only, so this stays a rate limit.
+ */
+const RATE_LIMIT_MENTIONING_402 =
+  '429 Too Many Requests: Rate limit reached: 402 requests in the last minute. See https://platform.example.com/account/billing for your limits.';
+
 /** Rate limits a retry does fix: these must stay rate_limited. */
 const RATE_LIMITED_CASES: Array<[string, string]> = [
+  ['a rate limit that mentions 402 and the billing page', RATE_LIMIT_MENTIONING_402],
   ['plain 429', '429 Too Many Requests'],
   ['adapter 429 without a credits body', 'OpenAI API error: 429 Too Many Requests'],
   ['RESOURCE_EXHAUSTED', 'RESOURCE_EXHAUSTED'],
@@ -54,6 +61,24 @@ describe('classifyApiError: out of credits before the 429 class', () => {
 
   it('402 without a billing word is not out of credits', () => {
     expect(isOutOfCreditsText('402 Payment Required')).toBe(false);
+  });
+
+  it('a 402 in the text alone is not out of credits, even beside the word billing', () => {
+    expect(isOutOfCreditsText('402 Payment Required: billing account inactive')).toBe(false);
+    expect(classifyApiError(new Error('402 Payment Required: billing account inactive'))).toBe('provider_error');
+  });
+
+  it('an SDK error whose HTTP status is 402 is out of credits, whatever its text', () => {
+    const err = Object.assign(new Error('Payment Required'), { status: 402 });
+    expect(isOutOfCreditsError(err)).toBe(true);
+    expect(classifyApiError(err)).toBe('provider_out_of_credits');
+    expect(sanitizeVerifyError(err)).toBe(OUT_OF_CREDITS_VERIFY_MESSAGE);
+  });
+
+  it('an SDK error with status 429 and a rate-limit text stays rate_limited', () => {
+    const err = Object.assign(new Error(RATE_LIMIT_MENTIONING_402), { status: 429 });
+    expect(isOutOfCreditsError(err)).toBe(false);
+    expect(classifyApiError(err)).toBe('rate_limited');
   });
 
   it('a thrown string is classified too', () => {
@@ -101,6 +126,15 @@ describe('outOfCreditsTag: the adapters keep only a fixed tag from the error bod
 
   it('tags a 402 billing body by its status', () => {
     expect(outOfCreditsTag(402, '{"error":"billing account suspended"}')).toBe(' (out_of_credits)');
+  });
+
+  it('tags a 402 by its status even when the body says nothing about billing', () => {
+    expect(outOfCreditsTag(402, '')).toBe(' (out_of_credits)');
+  });
+
+  it('leaves a 429 rate-limit body that mentions 402 and the billing page untagged', () => {
+    const body = '{"error":{"message":"Rate limit reached: 402 requests in the last minute. See https://platform.example.com/account/billing","code":"rate_limit_exceeded"}}';
+    expect(outOfCreditsTag(429, body)).toBe('');
   });
 
   it('leaves a plain rate-limit body untagged', () => {

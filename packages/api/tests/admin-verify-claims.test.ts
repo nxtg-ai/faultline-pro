@@ -53,7 +53,11 @@ vi.mock('@google/genai', () => ({
         if (prompt.includes('NOT-JSON')) {
           return { ...grounded, text: `The evidence is thin. ${EXPLANATION_SENTINEL}` };
         }
-        const status = prompt.includes('FALSE-CLAIM') ? 'contradicted' : 'supported';
+        if (prompt.includes('NO-SOURCE')) {
+          // A supported verdict whose search returned no source: not a billable verdict.
+          return { ...grounded, candidates: [{ groundingMetadata: { groundingChunks: [] } }], text: JSON.stringify({ status: 'supported', explanation: EXPLANATION_SENTINEL }) };
+        }
+        const status = prompt.includes('FALSE-CLAIM') ? 'contradicted' : prompt.includes('NO-VERDICT') ? 'unverified' : 'supported';
         return { ...grounded, text: JSON.stringify({ status, explanation: EXPLANATION_SENTINEL }) };
       },
     };
@@ -425,6 +429,31 @@ describe('POST /admin/verify-claims — the ledgers a scan writes', () => {
     const events = getCostStore().getManagedEvents();
     expect(events.length).toBeGreaterThan(0);
     expect(JSON.parse(scanCostLogRow(events[0]))).toMatchObject({ scan_id: rows[0].scanId, kind: 'admin-verify', claim_count: 4, verified_count: 3 });
+  });
+
+  it('counts only the sourced supported verdict as verified: not a zero-source supported, an unverified or an API error', async () => {
+    const res = await post({ claims: [
+      { id: 'sourced', text: 'The Eiffel Tower is in Paris.' },
+      { id: 'no-source', text: 'NO-SOURCE The Eiffel Tower is in Paris.' },
+      { id: 'unverified', text: 'NO-VERDICT The Eiffel Tower is in Paris.' },
+      { id: 'error', text: 'THROW-ME' },
+    ] });
+    expect(res.statusCode).toBe(200);
+    const results = res.json().results as Array<{ id: string; status: string; apiError: boolean }>;
+    expect(results).toHaveLength(4);
+    // The two supported verdicts read the same on the wire; only the source tells them apart.
+    expect(results.map((r) => [r.id, r.status, r.apiError])).toEqual([
+      ['sourced', 'supported', false],
+      ['no-source', 'supported', false],
+      ['unverified', 'unverified', false],
+      ['error', 'unverified', true],
+    ]);
+    const rows = spendRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ claimCount: 4, verifiedCount: 1 });
+    const events = getCostStore().getManagedEvents();
+    expect(events).toHaveLength(1);
+    expect(JSON.parse(scanCostLogRow(events[0]))).toMatchObject({ verified_count: 1 });
   });
 
   it('records the batch as kind admin-verify: provider spend still rises, scan percentiles do not', async () => {
