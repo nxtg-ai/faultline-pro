@@ -145,10 +145,16 @@ function defaultRunId(set, now = new Date()) {
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
 
+/** Fixed env-file line patterns: `[export ]NAME=value`. */
+const KEY_LINE = Object.freeze({
+  FAULTLINE_API_KEY: /^\s*(?:export\s+)?FAULTLINE_API_KEY\s*=\s*(.*)$/,
+  FAULTLINE_MEASUREMENT_KEY: /^\s*(?:export\s+)?FAULTLINE_MEASUREMENT_KEY\s*=\s*(.*)$/,
+});
+
 /** The value of `name=` in an env file, or '' when the file or the line is missing. */
 function readKeyLine(file, name) {
   if (!existsSync(file)) return '';
-  const pattern = new RegExp(`^\\s*(?:export\\s+)?${name}\\s*=\\s*(.*)$`);
+  const pattern = KEY_LINE[name];
   for (const line of readFileSync(file, 'utf8').split('\n')) {
     const match = pattern.exec(line);
     if (match) return match[1].trim().replace(/^(['"])(.*)\1$/, '$2');
