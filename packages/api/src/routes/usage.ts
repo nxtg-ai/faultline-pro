@@ -5,6 +5,7 @@ import { resolveTier } from '../plugins/ratelimit.js';
 import { getMonthlyCap, isUsageCapEnabled } from '../store/entitlements.js';
 import { nextMonthResetEpoch } from '../plugins/usage-cap.js';
 import { getProviderSpendLedger, getProviderSpendStatus } from '../store/provider-spend.js';
+import { SPEND_CAP_TIERS } from '../plugins/provider-spend-cap.js';
 import { getGroundingAllowanceStatus } from '../store/grounding-allowance.js';
 import { getFullScanJobStore } from '../store/full-scan-jobs.js';
 
@@ -34,7 +35,11 @@ export async function usageRoutes(fastify: FastifyInstance): Promise<void> {
     // budget only lives in this process (N-230 instrument).
     const isAdmin = tier === 'admin';
     const providerBudget = isAdmin
-      ? { ...getProviderSpendStatus(), ledgerWriteFailures: getProviderSpendLedger().getWriteFailures() }
+      ? {
+        ...getProviderSpendStatus(),
+        appliesTo: [...SPEND_CAP_TIERS],
+        ledgerWriteFailures: getProviderSpendLedger().getWriteFailures(),
+      }
       : undefined;
     // Daily Gemini grounded-prompt count vs Google's free allowance (N-230,
     // Asif ruling 2026-10-01). Admin only for the same reason as providerBudget.

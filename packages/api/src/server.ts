@@ -6,8 +6,11 @@ import type {} from 'mercurius';
 declare module 'mercurius' {
   interface MercuriusContext {
     keyId: string;
+    spendCapTier: ManagedScanCostEvent['tier'];
   }
 }
+import type { ManagedScanCostEvent } from './store/costs.js';
+import { resolveSpendCapTier } from './plugins/provider-spend-cap.js';
 import { schema as gqlSchema } from './graphql/schema.js';
 import { resolvers as gqlResolvers } from './graphql/resolvers.js';
 import { parseLang } from '@nxtg/faultline/lib/i18n.js';
@@ -238,7 +241,9 @@ export function buildServer() {
       graphiql: false,
       context: (request: FastifyRequest) => {
         const keyId = request.keyId ?? 'anonymous';
-        return { keyId };
+        // The spend-gate tier, read here because the resolvers see no request.
+        const spendCapTier = resolveSpendCapTier(request.keyId, request.headers['x-user-tier']);
+        return { keyId, spendCapTier };
       },
     });
   }

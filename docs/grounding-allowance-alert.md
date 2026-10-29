@@ -74,9 +74,23 @@ The wrapper pulls the script from `origin/main` and runs it with Node. Each run:
 
 Positive control, 2026-10-13 14:00Z: `GROUNDING_ALERT_THRESHOLD=1`, a scratch `GROUNDING_STATE_DIR` and `GROUNDING_MONITOR_LOG`, `GROUNDING_NOTIFY=/bin/true` (no Telegram to the founder for a drill). With 2 grounded prompts that day it fired once: handoff `hf-fp-grounding-2026-10-13-threshold-1` (record 7a445b99, acked as a drill) and the alert text arrived in the fp pane. A second run with the same state sent nothing (dedupe).
 
+## Provider budget alert (90% and 100%)
+
+The same hourly read of admin `GET /usage` also reads `providerBudget` (the fleet monthly provider spend; `docs/provider-spend-cap.md`). It sends one Telegram alert per budget month per level:
+
+- at 90% of the cap (`spentUsd >= 0.9 * capUsd`): "Faultline provider spend at N% of the monthly cap, X of Y USD for <month>; free and anonymous scans stop at 100%."
+- at 100%: the same line ending "free and anonymous scans are refused until the budget resets."
+- when the cap is not enforced, either line ends "the cap is not enforced" instead.
+
+Only the highest level reached is sent on a run, so a jump straight past 100% sends one alert, not two. The de-duplication key is `<month>:provider-budget:<level>`, where the month is the server's UTC budget month, so a new month starts with no alerts sent. These keys are kept in their own list in the state file (`providerBudgetAlerted`), apart from the daily keys, so busy daily alerts cannot push a month's key out and cause a repeat. A failed send is not recorded, so the next run tries again.
+
+Each monitor row carries `providerBudget: { month, spentUsd, capUsd, percent, enforced, level, alerted, notified }`. A response with no `providerBudget` object (or one without numeric `spentUsd` and `capUsd` and a `month`) is a probe failure: the run writes a `PROBE_FAIL` row, sends the probe-failure alert, and exits 2, the same path as a failed fetch. Otherwise the exit code reflects the grounding check only. The budget alert goes to Telegram only; it does not open a handoff or wake a terminal pane. The key is never printed.
+
+The script exports `runGroundingCheck(deps)`, which takes `fetch`, `notify`, `apiKey`, `apiUrl`, `stateFile`, `monitorLog` and `wakeFp`. Run from the command line, it uses the production defaults as before.
+
 ## Tests
 
-`packages/api/tests/grounding-allowance.test.ts` (19) and `packages/cli/tests/usage-sink.test.ts` US-05/US-06. The end-to-end tests mock the SDK at the module boundary, count the `googleSearch` requests the mock receives, and assert the server's count equals that number. They cover an uncaptured engine scan and a real `POST /scan`.
+`packages/api/tests/grounding-allowance.test.ts` (19) and `packages/cli/tests/usage-sink.test.ts` US-05/US-06. The end-to-end tests mock the SDK at the module boundary, count the `googleSearch` requests the mock receives, and assert the server's count equals that number. They cover an uncaptured engine scan and a real `POST /scan`. The provider budget alert: `packages/api/tests/grounding-allowance-check.test.ts`, with fetch and the Telegram sender injected.
 
 ## Deep-scan checks (added 2026-10-13, GoPMO 1.18.11.3.12)
 

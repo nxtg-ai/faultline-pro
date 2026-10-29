@@ -133,7 +133,7 @@ afterEach(async () => {
 });
 
 describe('POST /critique — provider-spend cap (N-230)', () => {
-  it('refuses with 503 once the monthly budget is exhausted, and never calls the provider', async () => {
+  it('refuses a free key with 503 once the monthly budget is exhausted, and never calls the provider', async () => {
     process.env.FAULTLINE_PROVIDER_SPEND_CAP_USD = '1';
     process.env.FAULTLINE_PROVIDER_SPEND_CAP = 'on';
     recordProviderSpend({
@@ -144,7 +144,7 @@ describe('POST /critique — provider-spend cap (N-230)', () => {
     const rowsBefore = ledgerRows().length;
     expect(rowsBefore).toBe(1);
 
-    const key = getKeyStore().create('Pro Key', ['pro', 'scan']);
+    const key = getKeyStore().create('Free Key', ['scan']);
     const res = await postCritique(key.key, true);
 
     expect(res.statusCode).toBe(503);

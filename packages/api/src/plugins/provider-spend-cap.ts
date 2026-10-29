@@ -1,6 +1,73 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { getProviderSpendStatus, isProviderSpendCapEnabled } from '../store/provider-spend.js';
+import type { ManagedScanCostEvent } from '../store/costs.js';
+import { isAdminKeyId } from './auth.js';
+import { isServerKeyId, resolveEntitledTier } from './consensus-entitlement.js';
 import { nextMonthResetEpoch } from './usage-cap.js';
+
+type Tier = ManagedScanCostEvent['tier'];
+
+/**
+ * The tiers this gate refuses once the month's budget is spent. Every other tier
+ * passes it. `GET /usage` reports this list as `providerBudget.appliesTo`.
+ */
+export const SPEND_CAP_TIERS: readonly Tier[] = Object.freeze(['free', 'anon'] as const);
+const SPEND_CAP_TIER_SET = new Set<Tier>(SPEND_CAP_TIERS);
+
+/**
+ * The TRUSTED tier for this gate.
+ *
+ * - No key at all counts as anonymous. Every gated route runs requireApiKey or
+ *   requireAdmin first, so this branch is defensive.
+ * - The server's own key with `x-user-tier`: `resolveEntitledTier` as is. It
+ *   honours the header from that key alone and fails closed to 'free' on an
+ *   unknown value. 'userkey' counts as 'free' here: there is no way to bring a
+ *   provider key through the API, so a 'userkey' scan spends Faultline's keys.
+ * - The server's own key with no tier header (absent or empty): 'free'. The web
+ *   front end sends some calls (critique, for one) through the server key with
+ *   no header, so such a caller cannot be told apart from free traffic. Paid
+ *   callers through the server key must send their tier. `resolveEntitledTier`
+ *   still reads no header as an internal (enterprise) call for consensus and
+ *   the verify cap; only this gate differs.
+ * - A keystore key: the tier its own permissions grant; any header is ignored.
+ *   `resolveEntitledTier` names a keystore key without the 'pro' permission
+ *   'personal', which is its catch-all, not proof of a paid plan. The rate
+ *   limiter and the monthly quota call that same key 'free', so this gate does
+ *   too. A keystore key with the 'admin' permission is an operator key and passes.
+ *
+ * Never use `resolveTierFromRequest` here: it trusts the header from any caller.
+ */
+export function resolveSpendCapTier(keyId: string | undefined, headerTier?: string | string[]): Tier {
+  if (!keyId) return 'anon';
+  if (isServerKeyId(keyId)) {
+    const raw = Array.isArray(headerTier) ? headerTier[0] : headerTier;
+    if (raw === undefined || raw === '') return 'free';
+    const forwarded = resolveEntitledTier(keyId, headerTier);
+    return forwarded === 'userkey' ? 'free' : forwarded;
+  }
+  const tier = resolveEntitledTier(keyId, headerTier);
+  if (tier === 'pro' || tier === 'enterprise') return tier;
+  if (isAdminKeyId(keyId)) return 'enterprise';
+  return 'free';
+}
+
+/** The reason a background run is marked failed when the budget refuses it. */
+export const PROVIDER_BUDGET_EXHAUSTED = 'provider_budget_exhausted';
+
+/**
+ * The same decision as the route gate, for work that runs with no request: the
+ * scan queue worker, scheduled jobs, schedules, and the GraphQL resolvers.
+ *
+ * True only when enforcement is on, the tier is one this gate refuses, and the
+ * month's budget is spent. `tier` is the one stored when the work was queued or
+ * created (from `resolveSpendCapTier`). An entry with no stored tier was created
+ * before tiers were stored, so it counts as capped.
+ */
+export function providerBudgetRefuses(tier: Tier | undefined): boolean {
+  if (!isProviderSpendCapEnabled()) return false;
+  if (tier !== undefined && !SPEND_CAP_TIER_SET.has(tier)) return false;
+  return getProviderSpendStatus().exhausted;
+}
 
 /**
  * Provider-spend budget prehandler — the RUNWAY gate (A-110 item 1).
@@ -18,6 +85,10 @@ import { nextMonthResetEpoch } from './usage-cap.js';
  * DORMANT by default (`FAULTLINE_PROVIDER_SPEND_CAP` off) — the ledger records
  * from day one, but refusing scans is new outward behavior and is Asif's flip.
  *
+ * SCOPE: free and anonymous traffic only (`SPEND_CAP_TIERS`). Paid tiers pass
+ * this gate; their own per-key limits (burst rate limit, monthly scan quota)
+ * bound what each paid key can spend.
+ *
  * Headers are set only on the DENY path. The allow path deliberately sets none:
  * `/scan/stream` hijacks the reply for SSE, which drops every `reply.header()`
  * (see docs — Fastify hijack drops headers), so allow-path budget headers would
@@ -28,10 +99,17 @@ import { nextMonthResetEpoch } from './usage-cap.js';
 export async function enforceProviderSpendCap(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (!isProviderSpendCapEnabled()) return; // dormant — ledger on, gate inactive
 
-  // NO PER-REQUEST EXEMPTION. Every scan on this API spends OUR env-configured
+  // NO CALLER-SUPPLIED EXEMPTION. Every scan on this API spends OUR env-configured
   // provider keys (there is no BYOK path through it), so no caller-supplied
-  // value — least of all the spoofable `x-user-tier` header — may buy a way past
-  // the budget. The gate is unconditional once enforcement is on.
+  // value may buy a way past the budget. The tier comes from the trusted
+  // resolver: `x-user-tier` counts only from the server's own key, so a free
+  // key that sends `x-user-tier: pro` is still refused. Paid tiers are exempt
+  // because each paid key is already bounded by its own per-key caps; the fleet
+  // budget protects runway from free and anonymous traffic, which has no plan
+  // paying for it.
+  const tier = resolveSpendCapTier(request.keyId, request.headers['x-user-tier']);
+  if (!SPEND_CAP_TIER_SET.has(tier)) return;
+
   const status = getProviderSpendStatus();
   if (!status.exhausted) return;
 

@@ -50,3 +50,6 @@ e1f03a39c416e3c0e8d3ecadfdedaf0d066b6e0e:packages/sdk/tests/client.test.ts:gener
 
 # tests/yaml-engine.test.ts (1): Same yaml-engine fixture before the N-18 workspace split moved it to packages/cli/tests.
 65eb5894e19d2bd1b7196dcb28e746e0f2e78cb9:tests/yaml-engine.test.ts:stripe-access-token:499
+
+# packages/api/tests/provider-spend-cap-rechecks.test.ts (344): a made-up "sk-live-abcdef0123456789abcdef" string the test puts in a provider error, to prove a job's lastError never shows it. Not a credential.
+1e6e029e44e03e6204f0b8a70a6248b428d726fa:packages/api/tests/provider-spend-cap-rechecks.test.ts:generic-api-key:344

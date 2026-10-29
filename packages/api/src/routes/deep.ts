@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
+import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { meterScan } from '../lib/scan-quota.js';
@@ -39,7 +40,7 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
     {
       config: { access: 'key' },
       // Admission is not reserved: two requests admitted at the same time can both be served; the reservation build fixes that.
-      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap],
+      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap],
       schema: { tags: ['Scan'], summary: 'Deep scan with URL evidence validation and scoring', body: BODY_SCHEMA },
     },
     async (request, reply) => {

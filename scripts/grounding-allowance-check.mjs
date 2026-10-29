@@ -9,14 +9,17 @@
  * /home/axw/projects/faultline-web/.env.local; never printed) and:
  *   - appends one JSON row per run to the spend-monitor ledger,
  *   - sends one Telegram alert per allowance-day per level (threshold, free limit),
- *   - alerts on probe failure (first failure, then at most once a day).
+ *   - sends one Telegram alert per budget month when the fleet provider spend
+ *     reaches 90% of the monthly cap, and one more at 100%,
+ *   - alerts on probe failure (first failure, then at most once a day). A
+ *     response with no providerBudget object is a probe failure.
  *
  * The server count lives on the Fly machine, so a redeploy restarts it at 0.
  * When the server's processStartedAt changes mid-day and its count drops, the
  * last count seen before the restart is carried forward. That undercounts only
  * the prompts sent between the last check and the restart.
  *
- * Exit: 0 OK, 1 ALERT (over threshold), 2 probe failure.
+ * Exit: 0 OK, 1 ALERT (grounding over threshold), 2 probe failure.
  * An alert also reaches fp (GoPMO 1.18.11.1.18): a typed Dx3 handoff and a paste into the fp
  * tmux pane, because Telegram reaches the founder's phone, not the lane that acts.
  *
@@ -29,19 +32,20 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const HOME = homedir();
 const API_URL = (process.env.FAULTLINE_API_URL ?? 'https://faultline-api.fly.dev').replace(/\/+$/, '');
 const ENV_FILE = '/home/axw/projects/faultline-web/.env.local';
 const STATE_DIR = process.env.GROUNDING_STATE_DIR ?? join(HOME, '.cache', 'faultline-pro');
-const STATE_FILE = join(STATE_DIR, 'grounding-alert-state.json');
-const MONITOR_LOG = process.env.GROUNDING_MONITOR_LOG
+const DEFAULT_STATE_FILE = join(STATE_DIR, 'grounding-alert-state.json');
+const DEFAULT_MONITOR_LOG = process.env.GROUNDING_MONITOR_LOG
   ?? join(HOME, 'ASIF', 'governance', 'spend-monitor', 'faultline-pro-grounding.jsonl');
-const NOTIFY = process.env.GROUNDING_NOTIFY ?? join(HOME, 'ASIF', 'scripts', 'notify-telegram.sh');
+const DEFAULT_NOTIFY = process.env.GROUNDING_NOTIFY ?? join(HOME, 'ASIF', 'scripts', 'notify-telegram.sh');
 const PROBE_FAIL_RENOTIFY_MS = 24 * 3_600_000;
-const WAKE_FP = (process.env.GROUNDING_WAKE_FP ?? '1') !== '0';
+const DEFAULT_WAKE_FP = (process.env.GROUNDING_WAKE_FP ?? '1') !== '0';
 const FP_SESSION = process.env.FP_TMUX_SESSION ?? 'faultline-pro';
-const DX3 = (process.env.DX3_API_URL ?? 'http://100.123.83.34:8004').replace(/\/+$/, '');
+const DEFAULT_DX3 = (process.env.DX3_API_URL ?? 'http://100.123.83.34:8004').replace(/\/+$/, '');
 
 /** The server key, from env or faultline-web's .env.local. Never logged. */
 function readApiKey() {
@@ -60,41 +64,49 @@ function thresholdOverride() {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
-function loadState() {
+function loadState(stateFile) {
+  let state;
   try {
-    return JSON.parse(readFileSync(STATE_FILE, 'utf8'));
+    state = JSON.parse(readFileSync(stateFile, 'utf8'));
   } catch {
-    return { alerted: [], days: {}, lastProbeFailureNotifiedAt: null };
+    state = { alerted: [], days: {}, lastProbeFailureNotifiedAt: null };
   }
+  // Provider-budget dedupe keys live in their own list, so the busy daily keys
+  // can never push a month's key out and cause a repeat alert in that month.
+  state.providerBudgetAlerted ??= [];
+  return state;
 }
 
-function saveState(state) {
-  mkdirSync(STATE_DIR, { recursive: true });
+function saveState(stateFile, state) {
+  mkdirSync(dirname(stateFile), { recursive: true });
   state.alerted = state.alerted.slice(-60);
+  state.providerBudgetAlerted = state.providerBudgetAlerted.slice(-24);
   const keepDays = Object.keys(state.days).sort().slice(-7);
   state.days = Object.fromEntries(keepDays.map((d) => [d, state.days[d]]));
-  writeFileSync(STATE_FILE, JSON.stringify(state, null, 2) + '\n');
+  writeFileSync(stateFile, JSON.stringify(state, null, 2) + '\n');
 }
 
-function appendMonitorRow(row) {
-  mkdirSync(dirname(MONITOR_LOG), { recursive: true });
-  appendFileSync(MONITOR_LOG, JSON.stringify(row) + '\n');
+function appendMonitorRow(monitorLog, row) {
+  mkdirSync(dirname(monitorLog), { recursive: true });
+  appendFileSync(monitorLog, JSON.stringify(row) + '\n');
 }
 
 /** Send one Telegram line. execFile, not a shell: `$` and backticks stay literal. */
-function notify(message) {
-  try {
-    execFileSync(NOTIFY, [message], { stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000 });
-    return true;
-  } catch (error) {
-    console.error(`notify failed: ${error instanceof Error ? error.message : String(error)}`);
-    return false;
-  }
+function makeNotify(notifyPath) {
+  return (message) => {
+    try {
+      execFileSync(notifyPath, [message], { stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000 });
+      return true;
+    } catch (error) {
+      console.error(`notify failed: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
+  };
 }
 
 /** Paste the alert into the fp pane and press Enter. True when the keys were sent (a nudge, not proof it was read). */
-function wakeFp(message) {
-  if (!WAKE_FP) return false;
+function wakeFp(deps, message) {
+  if (!deps.wakeFp) return false;
   try {
     const panes = execFileSync('tmux', ['list-panes', '-a', '-F', '#{session_name}:#{window_index}.#{pane_index}'],
       { encoding: 'utf8', timeout: 10_000 }).split('\n');
@@ -112,15 +124,15 @@ function wakeFp(message) {
 }
 
 /** A typed Dx3 handoff, so the alert survives an idle pane. Same id per day and level: a re-run updates it. */
-async function mintHandoff(handoffId, content, priority) {
-  if (!WAKE_FP) return null;
+async function mintHandoff(deps, handoffId, content, priority) {
+  if (!deps.wakeFp) return null;
   try {
-    const res = await fetch(`${DX3}/api/cognitive/upsert_handoff`, {
+    const res = await deps.fetch(`${deps.dx3Url}/api/cognitive/upsert_handoff`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         handoff_id: handoffId, content, handoff_status: 'OPEN', from_machine: 'NXTG-AI', to_machine: 'NXTG-AI',
-        subject: `[fp] GROUNDING ALLOWANCE ${handoffId}`, priority, project_ids: ['P-08'], source_ref: MONITOR_LOG,
+        subject: `[fp] GROUNDING ALLOWANCE ${handoffId}`, priority, project_ids: ['P-08'], source_ref: deps.monitorLog,
         reason: 'grounding-allowance-check: grounded prompts at or past the alert threshold',
       }),
       signal: AbortSignal.timeout(20_000),
@@ -132,8 +144,8 @@ async function mintHandoff(handoffId, content, priority) {
   }
 }
 
-async function probe(apiKey) {
-  const res = await fetch(`${API_URL}/usage`, {
+async function probe(deps, apiKey) {
+  const res = await deps.fetch(`${deps.apiUrl}/usage`, {
     headers: { 'x-api-key': apiKey },
     signal: AbortSignal.timeout(30_000),
   });
@@ -143,7 +155,54 @@ async function probe(apiKey) {
   if (!g || typeof g.groundedPrompts !== 'number' || typeof g.day !== 'string') {
     throw new Error('GET /usage has no groundingAllowance (old deploy, or not the admin key)');
   }
-  return { g, fullScan: body?.fullScanRefunds ?? null };
+  // The budget alert reads the same response. With no providerBudget the 90%
+  // and 100% alerts would be blind, so that is a probe failure too.
+  const b = body?.providerBudget;
+  if (!b || typeof b.spentUsd !== 'number' || typeof b.capUsd !== 'number' || typeof b.month !== 'string') {
+    throw new Error('GET /usage has no providerBudget (old deploy, or not the admin key)');
+  }
+  return { g, fullScan: body?.fullScanRefunds ?? null, providerBudget: b };
+}
+
+/** The highest provider-budget level reached, or null below 90%. Integer-safe at the 90% line. */
+export function providerBudgetLevel(spentUsd, capUsd) {
+  if (spentUsd >= capUsd) return 'limit';
+  if (spentUsd * 10 >= capUsd * 9) return 'threshold';
+  return null;
+}
+
+/**
+ * Fleet provider spend against the monthly cap, from the same GET /usage read.
+ * One Telegram alert per budget month per level: at 90% of the cap, and again
+ * at 100%. The month is the server's (UTC), so a new month starts with no
+ * alerts sent. A response without providerBudget never reaches here: `probe`
+ * treats it as a probe failure (exit 2).
+ */
+export function checkProviderBudget(state, b, notify) {
+  if (!b || typeof b.spentUsd !== 'number' || typeof b.capUsd !== 'number' || typeof b.month !== 'string') {
+    return null;
+  }
+  const level = providerBudgetLevel(b.spentUsd, b.capUsd);
+  const pct = b.capUsd > 0 ? Math.floor((b.spentUsd / b.capUsd) * 100) : 100;
+  let notified = false;
+  let alerted = false;
+  const dedupeKey = level ? `${b.month}:provider-budget:${level}` : null;
+  if (dedupeKey && !state.providerBudgetAlerted.includes(dedupeKey)) {
+    const scope = b.enforced !== true
+      ? 'the cap is not enforced'
+      : level === 'limit'
+        ? 'free and anonymous scans are refused until the budget resets'
+        : 'free and anonymous scans stop at 100%';
+    const message = `Faultline provider spend at ${pct}% of the monthly cap, `
+      + `${b.spentUsd.toFixed(2)} of ${b.capUsd.toFixed(2)} USD for ${b.month}; ${scope}.`;
+    notified = notify(message);
+    alerted = true;
+    if (notified) state.providerBudgetAlerted.push(dedupeKey);
+  }
+  return {
+    month: b.month, spentUsd: b.spentUsd, capUsd: b.capUsd, percent: pct, enforced: b.enforced === true,
+    level, alerted, notified,
+  };
 }
 
 /**
@@ -153,7 +212,7 @@ async function probe(apiKey) {
  * ledger write failures (a restart would turn those jobs into job_lost, refunded in
  * full; codex F12-1). Counts only, never job content.
  */
-async function checkFullScan(state, day, f) {
+async function checkFullScan(deps, state, day, f) {
   if (!f || typeof f.unitsCharged !== 'number') return null;
   const alerts = [];
   if (f.alert === true) {
@@ -177,11 +236,11 @@ async function checkFullScan(state, day, f) {
     const dedupeKey = `${day}:full-scan:${a.kind}`;
     if (state.alerted.includes(dedupeKey)) continue;
     const message = `Faultline ${a.text} GoPMO 1.18.11.3.12.`;
-    const notified = notify(message);
+    const notified = deps.notify(message);
     const handoffId = `hf-fp-fullscan-${day}-${a.kind}`;
-    const handoffRecord = await mintHandoff(handoffId, `From fp grounding-allowance-check: ${message} `
+    const handoffRecord = await mintHandoff(deps, handoffId, `From fp grounding-allowance-check: ${message} `
       + 'fp reads GET /usage fullScanRefunds, finds the cause, posts what it did, then acks this handoff.', 'P1');
-    const paneWoken = wakeFp(`[grounding-allowance-check] ${message} Dx3 handoff ${handoffId}.`);
+    const paneWoken = wakeFp(deps, `[grounding-allowance-check] ${message} Dx3 handoff ${handoffId}.`);
     if (notified || paneWoken) state.alerted.push(dedupeKey);
     fired.push({ kind: a.kind, notified, paneWoken, handoffRecord });
   }
@@ -199,32 +258,51 @@ function effectiveCount(state, g) {
   return { count: g.groundedPrompts + carried, carried, restarted };
 }
 
-function handleProbeFailure(state, error) {
+function handleProbeFailure(deps, state, error) {
   const message = error instanceof Error ? error.message : String(error);
   const now = Date.now();
   const last = state.lastProbeFailureNotifiedAt ? Date.parse(state.lastProbeFailureNotifiedAt) : 0;
   const shouldNotify = now - last >= PROBE_FAIL_RENOTIFY_MS;
   const notified = shouldNotify
-    ? notify(`Faultline grounding check FAILED: ${message}. The free-allowance alert is blind until this is fixed.`)
+    ? deps.notify(`Faultline grounding check FAILED: ${message}. The free-allowance alert is blind until this is fixed.`)
     : false;
   if (notified) state.lastProbeFailureNotifiedAt = new Date(now).toISOString();
-  appendMonitorRow({ ts: new Date(now).toISOString(), verdict: 'PROBE_FAIL', error: message, notified });
-  saveState(state);
+  appendMonitorRow(deps.monitorLog, { ts: new Date(now).toISOString(), verdict: 'PROBE_FAIL', error: message, notified });
+  saveState(deps.stateFile, state);
   console.log(`${new Date(now).toISOString()} PROBE_FAIL ${message} notified=${notified}`);
   return 2;
 }
 
-async function main() {
-  const state = loadState();
-  const apiKey = readApiKey();
-  if (!apiKey) return handleProbeFailure(state, new Error('FAULTLINE_API_KEY not found in env or faultline-web .env.local'));
+/**
+ * One check. Every outside effect is a dependency with a production default, so
+ * tests inject fetch, the notifier and scratch files and never touch the network.
+ */
+export async function runGroundingCheck(opts = {}) {
+  const deps = {
+    apiUrl: API_URL,
+    apiKey: undefined,
+    fetch: globalThis.fetch,
+    notify: undefined,
+    stateFile: DEFAULT_STATE_FILE,
+    monitorLog: DEFAULT_MONITOR_LOG,
+    wakeFp: DEFAULT_WAKE_FP,
+    dx3Url: DEFAULT_DX3,
+    ...opts,
+  };
+  deps.notify ??= makeNotify(DEFAULT_NOTIFY);
+  const state = loadState(deps.stateFile);
+  const apiKey = deps.apiKey ?? readApiKey();
+  if (!apiKey) {
+    return handleProbeFailure(deps, state, new Error('FAULTLINE_API_KEY not found in env or faultline-web .env.local'));
+  }
 
   let g;
   let fullScan;
+  let providerBudget;
   try {
-    ({ g, fullScan } = await probe(apiKey));
+    ({ g, fullScan, providerBudget } = await probe(deps, apiKey));
   } catch (error) {
-    return handleProbeFailure(state, error);
+    return handleProbeFailure(deps, state, error);
   }
   state.lastProbeFailureNotifiedAt = null;
 
@@ -250,19 +328,20 @@ async function main() {
     ].filter(Boolean).join('; ');
     const message = `Faultline Gemini grounding: ${count} grounded prompts on ${g.day} (Pacific day), ${what}. `
       + `Resets ${g.resetsAt}. Time to reprice on real usage.${extras ? ` (${extras})` : ''}`;
-    notified = notify(message);
+    notified = deps.notify(message);
     const handoffId = `hf-fp-grounding-${g.day}-${level}-${threshold}`;
-    handoffRecord = await mintHandoff(handoffId, `From fp grounding-allowance-check: ${message} GoPMO 1.18.11.1.18. `
+    handoffRecord = await mintHandoff(deps, handoffId, `From fp grounding-allowance-check: ${message} GoPMO 1.18.11.1.18. `
       + 'fp reads GET /usage, decides whether to slow or reprice, posts what it did, then acks this handoff.',
     overFreeLimit ? 'P0' : 'P1');
-    paneWoken = wakeFp(`[grounding-allowance-check] ${message} Dx3 handoff ${handoffId}. GoPMO 1.18.11.1.18.`);
+    paneWoken = wakeFp(deps, `[grounding-allowance-check] ${message} Dx3 handoff ${handoffId}. GoPMO 1.18.11.1.18.`);
     if (notified || paneWoken) state.alerted.push(dedupeKey);
   }
 
-  const fullScanRow = await checkFullScan(state, g.day, fullScan);
+  const fullScanRow = await checkFullScan(deps, state, g.day, fullScan);
+  const providerBudgetRow = checkProviderBudget(state, providerBudget, deps.notify);
 
   const verdict = overThreshold ? 'ALERT' : 'OK';
-  appendMonitorRow({
+  appendMonitorRow(deps.monitorLog, {
     ts: new Date().toISOString(),
     verdict,
     day: g.day,
@@ -282,8 +361,9 @@ async function main() {
     paneWoken,
     handoffRecord,
     fullScan: fullScanRow,
+    providerBudget: providerBudgetRow,
   });
-  saveState(state);
+  saveState(deps.stateFile, state);
   console.log(
     `${new Date().toISOString()} ${verdict} day=${g.day} grounded=${count} threshold=${threshold} `
     + `free=${g.freeDailyLimit} carried=${carried} notified=${notified} paneWoken=${paneWoken}`,
@@ -291,10 +371,12 @@ async function main() {
   return overThreshold ? 1 : 0;
 }
 
-main().then(
-  (code) => process.exit(code),
-  (error) => {
-    console.error(`grounding-allowance-check crashed: ${error instanceof Error ? error.stack : String(error)}`);
-    process.exit(2);
-  },
-);
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  runGroundingCheck().then(
+    (code) => process.exit(code),
+    (error) => {
+      console.error(`grounding-allowance-check crashed: ${error instanceof Error ? error.stack : String(error)}`);
+      process.exit(2);
+    },
+  );
+}
