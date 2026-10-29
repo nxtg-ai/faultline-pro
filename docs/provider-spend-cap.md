@@ -137,8 +137,8 @@ Three gates now run in front of a scan. They answer different questions and all 
 ## Activation checklist (Asif's flip)
 
 1. Confirm the ledger is recording: `GET /usage` with an admin key → `providerBudget.spentUsd` advancing.
-2. (Optional) set `FAULTLINE_PROVIDER_SPEND_CAP_USD` if the ceiling changes from the ruled $100.
-3. Set `FAULTLINE_PROVIDER_SPEND_CAP=on` on the Fly app.
+2. Turn it on through `.github/workflows/fly-ops.yml` (there is no flyctl login outside GitHub Actions): `gh workflow run fly-ops.yml -f action=spend-cap-on -f spend_cap_usd=100`. The `spend_cap_usd` input is the monthly ceiling, a whole number from 1 to 1000 (default `100`, the ruled ceiling); any other value fails the run and changes nothing. The action sets `FAULTLINE_PROVIDER_SPEND_CAP=on` and `FAULTLINE_PROVIDER_SPEND_CAP_USD` in one `flyctl secrets set`, so it is one release (the machine restarts once). Once the month's budget is spent, the gate refuses **free and anonymous traffic only**; `personal`, `pro` and `enterprise` keep scanning.
+3. To turn it off: `gh workflow run fly-ops.yml -f action=spend-cap-off`. It unsets both secrets, which returns the gate to dormant (ledger only) and the ceiling to the default $100.
 4. Verify: `providerBudget.enforced: true`; an over-budget scan from a free or anonymous caller returns **503** with `X-Provider-Spend-Cap` / `X-Provider-Spend-Used` / `Retry-After`. Paid callers keep scanning.
 5. Paid traffic is bounded only by its per-key limits. The monthly scan quota (`FAULTLINE_USAGE_CAP`) is a separate switch and is dormant by default, and `POST /critique`, `POST /scan/full/estimate`, `POST /scan/full` and `POST /admin/verify-claims` do not run it. Decide whether to switch the quota on at the same time.
 
