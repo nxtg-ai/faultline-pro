@@ -165,9 +165,12 @@ describe.each(Object.keys(CHAT_WIRES) as Array<keyof typeof CHAT_WIRES>)('%s', (
     const r = await wire.factory('k').verifyClaim(CLAIM);
     expect(r.status).toBe('supported');
     expect(r.apiError).toBeUndefined();
-    // Billable only with a source: this wire's verdict carries what its reply cited.
-    expect(isBillableVerdict(r)).toBe(r.sources.length > 0);
-    expect(isBillableVerdict({ ...r, sources: SOURCES })).toBe(true);
+    // A raw provider verdict carries no engine retriever, so it is not billable
+    // as returned, whatever it cites. With a source and the provenance the
+    // engine binds for a provider that retrieves (gemini), it would be.
+    expect(r.provenance?.retriever).toBeUndefined();
+    expect(isBillableVerdict(r)).toBe(false);
+    expect(isBillableVerdict({ ...r, sources: SOURCES, provenance: { provider: 'gemini', model: 'm', verifiedAt: '2026-10-01T00:00:00.000Z', retriever: 'gemini-grounding', retrievedAt: '2026-10-01T00:00:00.000Z' } })).toBe(true);
   });
 
   it('extractClaims: fails with output_truncated, never fewer claims', async () => {

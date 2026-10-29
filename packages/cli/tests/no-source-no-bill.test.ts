@@ -2,7 +2,8 @@
  * No source, no bill; a failed search is an error, never an empty result.
  *
  * - A claim is billable only when its verdict is supported, contradicted or
- *   mixed, it carries at least one source, and it is not an API error.
+ *   mixed, it carries at least one source, the engine bound a retriever to it,
+ *   and it is not an API error.
  * - The OpenAI web search and the Gemini consensus search reject a reply that
  *   says the search failed or was blocked, instead of resolving no sources.
  * - fuseVotes never returns a definite verdict without a source.
@@ -27,37 +28,45 @@ import { buildFullVerificationSummary } from '../cli/full-scan';
 
 const CLAIM: Claim = { id: 'c1', text: 'The Eiffel Tower is in Paris.', type: 'fact', importance: 4 };
 const SOURCE = { title: 'S', uri: 'https://example.org/s' };
+/**
+ * Provenance as the engine binds it for a Gemini grounded call. Every fixture
+ * below carries it, so each test turns on the one condition it names; a
+ * verdict without an engine retriever is never billable.
+ */
+const BOUND = {
+  provenance: { provider: 'gemini', model: 'gemini-test', verifiedAt: '2026-10-01T00:00:00.000Z', retriever: 'gemini-grounding', retrievedAt: '2026-10-01T00:00:00.000Z' },
+};
 
 describe('isBillableVerdict: no source, no bill', () => {
   it('a definite verdict with a source is billable, each of the three', () => {
     for (const status of ['supported', 'contradicted', 'mixed']) {
-      expect(isBillableVerdict({ status, sources: [SOURCE] })).toBe(true);
+      expect(isBillableVerdict({ ...BOUND, status, sources: [SOURCE] })).toBe(true);
     }
   });
 
   it('a definite verdict with no source is not billable', () => {
     for (const status of ['supported', 'contradicted', 'mixed']) {
-      expect(isBillableVerdict({ status, sources: [] })).toBe(false);
-      expect(isBillableVerdict({ status })).toBe(false);
-      expect(isBillableVerdict({ status, sources: 'https://example.org/s' })).toBe(false);
+      expect(isBillableVerdict({ ...BOUND, status, sources: [] })).toBe(false);
+      expect(isBillableVerdict({ ...BOUND, status })).toBe(false);
+      expect(isBillableVerdict({ ...BOUND, status, sources: 'https://example.org/s' })).toBe(false);
     }
   });
 
   it('unverified is never billable, with or without a source', () => {
-    expect(isBillableVerdict({ status: 'unverified', sources: [SOURCE] })).toBe(false);
-    expect(isBillableVerdict({ status: 'unverified', sources: [] })).toBe(false);
+    expect(isBillableVerdict({ ...BOUND, status: 'unverified', sources: [SOURCE] })).toBe(false);
+    expect(isBillableVerdict({ ...BOUND, status: 'unverified', sources: [] })).toBe(false);
   });
 
   it('an API error is never billable, even with a source', () => {
-    expect(isBillableVerdict({ status: 'supported', sources: [SOURCE], apiError: true })).toBe(false);
+    expect(isBillableVerdict({ ...BOUND, status: 'supported', sources: [SOURCE], apiError: true })).toBe(false);
   });
 
   it('billableVerdictCount counts only sourced definite verdicts', () => {
     const v = {
-      a: { status: 'supported', sources: [SOURCE] },
-      b: { status: 'supported', sources: [] },
-      c: { status: 'unverified', sources: [SOURCE] },
-      d: { status: 'mixed', sources: [SOURCE] },
+      a: { ...BOUND, status: 'supported', sources: [SOURCE] },
+      b: { ...BOUND, status: 'supported', sources: [] },
+      c: { ...BOUND, status: 'unverified', sources: [SOURCE] },
+      d: { ...BOUND, status: 'mixed', sources: [SOURCE] },
     };
     expect(Object.keys(v).length).toBe(4);
     expect(billableVerdictCount(v)).toBe(2);
@@ -66,9 +75,9 @@ describe('isBillableVerdict: no source, no bill', () => {
   it('the full-scan summary serves only billable claims', () => {
     const facts: Claim[] = ['f1', 'f2', 'f3', 'f4'].map((id) => ({ id, text: id, type: 'fact', importance: 3 }));
     const results: Array<VerificationResult | undefined> = [
-      { claimId: 'f1', status: 'supported', explanation: '', sources: [SOURCE] },
-      { claimId: 'f2', status: 'supported', explanation: '', sources: [] },
-      { claimId: 'f3', status: 'unverified', explanation: '', sources: [SOURCE] },
+      { ...BOUND, claimId: 'f1', status: 'supported', explanation: '', sources: [SOURCE] },
+      { ...BOUND, claimId: 'f2', status: 'supported', explanation: '', sources: [] },
+      { ...BOUND, claimId: 'f3', status: 'unverified', explanation: '', sources: [SOURCE] },
       undefined,
     ];
     const s = buildFullVerificationSummary({ facts, notCheckable: [] }, results);
@@ -219,7 +228,11 @@ describe('fuseVotes: no definite verdict without a source', () => {
     const r = fuseVotes(CLAIM, [SOURCE], [vote('openai', 'supported'), vote('claude', 'supported')]);
     expect(r.status).toBe('supported');
     expect(r.sources).toEqual([SOURCE]);
-    expect(isBillableVerdict(r)).toBe(true);
+    // fuseVotes alone binds no provenance; consensusVerify adds the retriever
+    // (next test), so the fused verdict by itself is not yet billable.
+    expect(r.provenance).toBeUndefined();
+    expect(isBillableVerdict(r)).toBe(false);
+    expect(isBillableVerdict({ ...r, ...BOUND })).toBe(true);
   });
 
   it('consensusVerify with a retriever that returns sources is unaffected', async () => {
@@ -229,6 +242,9 @@ describe('fuseVotes: no definite verdict without a source', () => {
     const r = await consensusVerify(CLAIM, retriever, [voter]);
     expect(r.status).toBe('supported');
     expect(r.sources).toEqual([SOURCE]);
+    // The consensus engine names its own retriever, so the verdict is billable.
+    expect(r.provenance?.retriever).toBe('r');
+    expect(isBillableVerdict(r)).toBe(true);
   });
 });
 

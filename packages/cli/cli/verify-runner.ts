@@ -8,7 +8,7 @@
  */
 import type { Claim, VerificationResult } from '../types.js';
 import type { LLMProvider, Retriever } from '../providers/base_provider.js';
-import { getProvider } from '../providers/registry.js';
+import { getProvider, builtInProviderIdOf } from '../providers/registry.js';
 import { DEFAULT_SCAN_PROVIDER, resolveApiKey } from './provider-keys.js';
 import { GeminiGroundingRetriever } from '../providers/gemini_provider.js';
 import { OpenAIWebSearchRetriever } from '../providers/openai_web_search_retriever.js';
@@ -427,36 +427,53 @@ function exhaustedRetryResult(claim: Claim, err: unknown, flagApiError: boolean)
 
 /**
  * The retrieval a built-in provider performs inside its own verify call, keyed
- * by the provider id the engine resolved. Only these may carry a retriever: a
- * provider that labels itself `gemini-grounding` would otherwise exempt its
- * own citations from the evidence fetch (EP4 Amendment 2, examiner probe-spoof).
+ * by built-in provider id. Only these may carry a retriever: a provider that
+ * labels itself `gemini-grounding` would otherwise exempt its own citations
+ * from the evidence fetch.
  */
 const ENGINE_RETRIEVERS: Readonly<Record<string, string>> = Object.freeze({ gemini: 'gemini-grounding' });
 
 /**
- * Bind who produced a verdict and when, at the call site. The provider id is
- * the one the engine resolved; the retriever comes from ENGINE_RETRIEVERS by
- * that id; verifiedAt (and retrievedAt, for a provider that searches inside
- * the same call) is the moment the call returned. None of these is taken from
- * the provider's own object. Only the model is: Gemini reports the model
- * Google served, else the configured model is used. A verdict whose check
- * never ran carries none. Honor System #2, GoPMO 1.18.11.3 P1a; emma-soul
- * al:193832a732e0b82e item 5.
+ * Bind who produced a verdict and when, at the call site. `providerName` is the
+ * provider id the caller resolved and is recorded as the provider. The retriever
+ * comes from ENGINE_RETRIEVERS, and only when `provider` is an instance the
+ * built-in factory for that same id made (builtInProviderIdOf): a provider a
+ * caller or plugin supplies, under any id, gets no retriever. verifiedAt (and
+ * retrievedAt, for a provider that searches inside the same call) is
+ * `returnedAt`, the moment the call returned. None of these is taken from the
+ * provider's own object, so a retriever the provider set on itself is dropped.
+ * Only the model is: Gemini reports the model Google served, else
+ * `provider.modelId` (the configured model) is used. A verdict whose check
+ * never ran carries none. Every caller that runs `verifyClaim` outside the
+ * runner (the admin verify route) binds provenance with this, so billing sees
+ * the same retriever either way.
  */
-function withProvenance(result: VerificationResult, verifier: Verifier, returnedAt: string): VerificationResult {
+export function bindEngineProvenance(
+  result: VerificationResult,
+  providerName: string,
+  provider: Pick<LLMProvider, 'modelId'>,
+  returnedAt: string,
+): VerificationResult {
   if (!result || typeof result !== 'object' || result.apiError === true) return result;
   const own = result.provenance;
-  const provider = verifier.providerName;
-  const retriever = Object.prototype.hasOwnProperty.call(ENGINE_RETRIEVERS, provider) ? ENGINE_RETRIEVERS[provider] : undefined;
+  const builtInId = builtInProviderIdOf(provider);
+  const retriever = builtInId !== undefined && builtInId === providerName
+    && Object.prototype.hasOwnProperty.call(ENGINE_RETRIEVERS, builtInId)
+    ? ENGINE_RETRIEVERS[builtInId]
+    : undefined;
   return {
     ...result,
     provenance: {
-      provider,
-      model: typeof own?.model === 'string' && own.model.length > 0 ? own.model : verifier.provider.modelId,
+      provider: providerName,
+      model: typeof own?.model === 'string' && own.model.length > 0 ? own.model : provider.modelId,
       verifiedAt: returnedAt,
       ...(retriever !== undefined ? { retriever, retrievedAt: returnedAt } : {}),
     },
   };
+}
+
+function withProvenance(result: VerificationResult, verifier: Verifier, returnedAt: string): VerificationResult {
+  return bindEngineProvenance(result, verifier.providerName, verifier.provider, returnedAt);
 }
 
 /**

@@ -68,6 +68,7 @@ vi.mock('../providers/registry.js', () => ({
     verifyClaim:               mockVerifyClaim,
     generateCritiqueAndPrompt: vi.fn().mockResolvedValue({ critique: '', improvedPrompt: '' }),
   })),
+  builtInProviderIdOf: vi.fn(() => undefined),
 }));
 
 import { batchScan, guaranteeClaimPerSentence } from '../cli/scan.js';

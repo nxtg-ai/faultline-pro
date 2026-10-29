@@ -3,7 +3,7 @@
  * claim got a verdict that is not an API error. A scan where every claim failed
  * at the provider checked nothing, so it costs the customer no scan.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,7 +12,6 @@ import { resetKeyStore, getKeyStore } from '../src/store/keys.js';
 import { getUsageMeter, resetUsageMeter } from '../src/store/usage.js';
 import { resetCache } from '../src/store/cache.js';
 import { resetProviderSpendLedger } from '../src/store/provider-spend.js';
-import { registerProvider } from '@nxtg/faultline/providers/registry.js';
 
 type Outcome = 'error' | 'unverified' | 'mixed-errors';
 const fixture = { outcome: 'error' as Outcome };
@@ -28,17 +27,21 @@ const failed = (id: string) => ({
 });
 const inconclusive = (id: string) => ({ claimId: id, status: 'unverified', explanation: 'Inconclusive.', sources: [] });
 
-registerProvider('mock', () => ({
-  name: 'Stream quota fixture',
-  modelId: 'fixture-v1',
-  extractClaims: async () => CLAIMS,
-  verifyClaim: async (c: { id: string }) => {
-    if (fixture.outcome === 'error') return failed(c.id);
-    if (fixture.outcome === 'unverified') return inconclusive(c.id);
-    return c.id === 'c1' ? failed(c.id) : inconclusive(c.id);
-  },
-  generateCritiqueAndPrompt: async () => ({ critique: '', improvedPrompt: '' }),
-}) as never);
+// The built-in 'mock' provider is replaced for this file only, through the
+// module mock: the production registry refuses to replace a built-in id.
+vi.mock('@nxtg/faultline/providers/mock_provider.js', () => ({
+  createMockProvider: () => ({
+    name: 'Stream quota fixture',
+    modelId: 'fixture-v1',
+    extractClaims: async () => CLAIMS,
+    verifyClaim: async (c: { id: string }) => {
+      if (fixture.outcome === 'error') return failed(c.id);
+      if (fixture.outcome === 'unverified') return inconclusive(c.id);
+      return c.id === 'c1' ? failed(c.id) : inconclusive(c.id);
+    },
+    generateCritiqueAndPrompt: async () => ({ critique: '', improvedPrompt: '' }),
+  }) as never,
+}));
 
 const ENV_KEYS = ['FAULTLINE_PROVIDER_SPEND_LEDGER', 'FAULTLINE_EVIDENCE_FETCH', 'FAULTLINE_CONSENSUS'];
 let savedEnv: Record<string, string | undefined>;

@@ -90,7 +90,7 @@ export default {
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `registerRule` | `(name, factory) => void` | Register a rule by name. Factory called once at registration. |
-| `registerProvider` | `(name, factory) => void` | Register an LLM provider. Factory receives `apiKey` at scan time. |
+| `registerProvider` | `(name, factory) => void` | Register an LLM provider. Factory receives `apiKey` at scan time. A built-in id (`gemini`, `claude`, `openai`, `perplexity`, `mock`, any case) throws, and the plugin fails to load. |
 | `log` | `(message) => void` | Emit debug messages (shown when `FAULTLINE_DEBUG=1`). |
 
 ### Plugin `package.json` requirements
