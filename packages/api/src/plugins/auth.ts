@@ -3,10 +3,17 @@ import { timingSafeEqual } from 'node:crypto';
 import { getKeyStore } from '../store/keys.js';
 import { getTenantStore } from '../store/tenants.js';
 
-/** Constant-time string comparison to prevent timing attacks on key validation. */
+/**
+ * Constant-time string comparison to prevent timing attacks on key validation.
+ * Compares UTF-8 byte lengths, not string lengths: two strings of the same
+ * length can differ in bytes, and timingSafeEqual throws on unequal buffers.
+ * Never throws for any string input.
+ */
 function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+  const left = Buffer.from(a, 'utf8');
+  const right = Buffer.from(b, 'utf8');
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
 }
 
 /**
@@ -120,14 +127,16 @@ export async function requireApiKey(request: FastifyRequest, reply: FastifyReply
     return;
   }
 
-  if (configuredKey && safeEqual(providedKey, configuredKey)) {
-    request.keyId = 'admin';
-    return;
-  }
-
+  // The measurement key is checked first: a value that matches it is the
+  // measurement key, and no server-key, keystore or admin path is consulted.
   if (isMeasurementKey(providedKey)) {
     if (!measurementMayCall(request)) return refuseMeasurement(reply);
     request.keyId = MEASUREMENT_KEY_ID;
+    return;
+  }
+
+  if (configuredKey && safeEqual(providedKey, configuredKey)) {
+    request.keyId = 'admin';
     return;
   }
 
@@ -160,14 +169,16 @@ export async function requireAdmin(request: FastifyRequest, reply: FastifyReply)
     return;
   }
 
-  if (configuredKey && safeEqual(providedKey, configuredKey)) {
-    request.keyId = 'admin';
-    return;
-  }
-
+  // The measurement key is checked first: a value that matches it is the
+  // measurement key, and no server-key, keystore or admin path is consulted.
   if (isMeasurementKey(providedKey)) {
     if (!measurementMayCall(request)) return refuseMeasurement(reply);
     request.keyId = MEASUREMENT_KEY_ID;
+    return;
+  }
+
+  if (configuredKey && safeEqual(providedKey, configuredKey)) {
+    request.keyId = 'admin';
     return;
   }
 
@@ -190,11 +201,13 @@ export async function requireAdmin(request: FastifyRequest, reply: FastifyReply)
  * check, so this reads the header itself. Used to keep fleet counters (key
  * count, scan volume, queue and notification sizes) for admin only: a customer
  * must not see fleet size (emma-soul ruling Dx3 e2909e46, item 4). The
- * measurement key is not an admin key here.
+ * measurement key is not an admin key here: it is checked first, so a keystore
+ * admin credential with the same value never makes it one.
  */
 export function isAdminRequest(request: FastifyRequest): boolean {
   const providedKey = request.headers['x-api-key'];
   if (typeof providedKey !== 'string' || providedKey === '') return false;
+  if (isMeasurementKey(providedKey)) return false;
   const configuredKey = process.env.FAULTLINE_API_KEY;
   if (configuredKey && safeEqual(providedKey, configuredKey)) return true;
   return getKeyStore().validateKey(providedKey)?.permissions.includes('admin') ?? false;
@@ -220,7 +233,7 @@ const NO_KEY_SCOPE = '\u0000no-key';
  * read fleet-wide on admin routes reads fleet-wide on shared routes too.
  */
 export function isAdminKeyId(keyId: string | undefined): boolean {
-  if (!keyId) return false;
+  if (!keyId || keyId === MEASUREMENT_KEY_ID) return false;
   if (keyId === 'admin') return true;
   return getKeyStore().validateById(keyId)?.permissions.includes('admin') ?? false;
 }

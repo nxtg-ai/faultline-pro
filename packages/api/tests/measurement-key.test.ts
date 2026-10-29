@@ -232,6 +232,81 @@ describe('measurement key: auth', () => {
     const request = { headers: { 'x-api-key': MEASUREMENT_KEY } } as unknown as Parameters<typeof isAdminRequest>[0];
     expect(isAdminRequest(request)).toBe(false);
   });
+
+  it('a keystore admin credential with the same value as the measurement key is still only the measurement key', async () => {
+    const twin = getKeyStore().create('Twin Admin', ['admin', 'scan']);
+    process.env.FAULTLINE_MEASUREMENT_KEY = twin.key;
+    const request = { headers: { 'x-api-key': twin.key } } as unknown as Parameters<typeof isAdminRequest>[0];
+    expect(isAdminRequest(request)).toBe(false);
+
+    const app = await start();
+    const usage = await app.inject({ method: 'GET', url: '/usage', headers: { 'x-api-key': twin.key } });
+    expect(usage.statusCode).toBe(200);
+    expect(usage.json().keyId).toBe('measurement');
+    const keys = await app.inject({ method: 'GET', url: '/keys', headers: { 'x-api-key': twin.key } });
+    expect(keys.statusCode).toBe(403);
+    const auditLog = await app.inject({ method: 'GET', url: '/audit/log', headers: { 'x-api-key': twin.key } });
+    expect(auditLog.statusCode).toBe(403);
+
+    // The prehandlers decide the same on their own, without the server hook.
+    const bare = Fastify();
+    bare.get('/usage', { preHandler: requireApiKey }, async (req) => ({ keyId: req.keyId }));
+    bare.post('/admin/verify-claims', { preHandler: requireAdmin }, async (req) => ({ keyId: req.keyId }));
+    bare.get('/admin/stats', { preHandler: requireAdmin }, async (req) => ({ keyId: req.keyId }));
+    await bare.ready();
+    const bareUsage = await bare.inject({ method: 'GET', url: '/usage', headers: { 'x-api-key': twin.key } });
+    expect(bareUsage.json().keyId).toBe('measurement');
+    const bareVerify = await bare.inject({ method: 'POST', url: '/admin/verify-claims', headers: { 'x-api-key': twin.key } });
+    expect(bareVerify.json().keyId).toBe('measurement');
+    const bareStats = await bare.inject({ method: 'GET', url: '/admin/stats', headers: { 'x-api-key': twin.key } });
+    expect(bareStats.statusCode).toBe(403);
+    await bare.close();
+  });
+});
+
+describe('measurement key: the key compare never throws', () => {
+  // Same string length, different UTF-8 byte length.
+  const shortServerKey = ['ab', 'cd'].join('');
+  const wideMeasurementKey = 'é'.repeat(4);
+  const wideProbe = 'ü'.repeat(4);
+
+  it('buildServer() starts when the two env keys have equal string length but unequal byte length', async () => {
+    process.env.FAULTLINE_API_KEY = shortServerKey;
+    process.env.FAULTLINE_MEASUREMENT_KEY = wideMeasurementKey;
+    expect(shortServerKey.length).toBe(wideMeasurementKey.length);
+    expect(Buffer.byteLength(shortServerKey)).not.toBe(Buffer.byteLength(wideMeasurementKey));
+    expect(warnIfMeasurementKeyCollides(() => undefined)).toBe(false);
+    const app = await start();
+    const health = await app.inject({ method: 'GET', url: '/health' });
+    expect(health.statusCode).toBe(200);
+  });
+
+  it('a non-ASCII header of the same string length as the server key gets 401, not 500', async () => {
+    process.env.FAULTLINE_API_KEY = shortServerKey;
+    process.env.FAULTLINE_MEASUREMENT_KEY = wideMeasurementKey;
+    const app = await start();
+    const res = await app.inject({ method: 'GET', url: '/usage', headers: { 'x-api-key': wideProbe } });
+    expect(res.statusCode).toBe(401);
+    const request = { headers: { 'x-api-key': wideProbe } } as unknown as Parameters<typeof isAdminRequest>[0];
+    expect(isAdminRequest(request)).toBe(false);
+  });
+
+  it('equal values still match', async () => {
+    process.env.FAULTLINE_API_KEY = shortServerKey;
+    process.env.FAULTLINE_MEASUREMENT_KEY = MEASUREMENT_KEY;
+    const app = await start();
+    const admin = await app.inject({ method: 'GET', url: '/usage', headers: { 'x-api-key': shortServerKey } });
+    expect(admin.statusCode).toBe(200);
+    expect(admin.json().keyId).toBe('admin');
+    const measurement = await app.inject({ method: 'GET', url: '/usage', headers: { 'x-api-key': MEASUREMENT_KEY } });
+    expect(measurement.statusCode).toBe(200);
+    expect(measurement.json().keyId).toBe('measurement');
+    process.env.FAULTLINE_MEASUREMENT_KEY = wideMeasurementKey;
+    const request = { headers: { 'x-api-key': wideMeasurementKey } } as unknown as Parameters<typeof isAdminRequest>[0];
+    expect(isAdminRequest(request)).toBe(false);
+    process.env.FAULTLINE_MEASUREMENT_KEY = shortServerKey;
+    expect(warnIfMeasurementKeyCollides(() => undefined)).toBe(true);
+  });
 });
 
 interface RouteRow { method: string; url: string }
