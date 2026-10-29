@@ -235,7 +235,12 @@ describe('POST /scan/deep', () => {
       ...MOCK_SCAN_WITH_SOURCES,
       verifications: {
         ...MOCK_SCAN_WITH_SOURCES.verifications,
-        c1: { ...MOCK_SCAN_WITH_SOURCES.verifications.c1, status: 'supported' },
+        // The verdict a consensus scan gives, carrying the consensus engine's
+        // retriever: supported and sourced alone is not billable.
+        c1: {
+          ...MOCK_SCAN_WITH_SOURCES.verifications.c1, status: 'supported',
+          provenance: { provider: 'consensus', model: 'openai:gpt-4o-mini+claude:claude-test', verifiedAt: '2026-10-01T00:00:00.000Z', retriever: 'openai-web-search', retrievedAt: '2026-10-01T00:00:00.000Z' },
+        },
       },
     };
     const deepScan = (key: string, text: string) => server.inject({

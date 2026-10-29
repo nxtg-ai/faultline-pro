@@ -1,10 +1,10 @@
 /**
  * A scan counts toward the monthly quota only when its delivered result holds
  * at least one billable verdict: supported, contradicted or mixed, with at
- * least one source, and not an API error (billableVerdictCount). A non-consensus
- * Gemini scan can answer 200 with nothing billable in it; that scan must not use
- * up a customer's allowance, on bare /scan, on /scan with a query string, or on
- * /scan/stream.
+ * least one source, a retriever the engine bound, and not an API error
+ * (billableVerdictCount). A non-consensus Gemini scan can answer 200 with
+ * nothing billable in it; that scan must not use up a customer's allowance, on
+ * bare /scan, on /scan with a query string, or on /scan/stream.
  *
  * Only the Google SDK is mocked; the routes, the gates and the scan engine are real.
  * Text extraction is a pass-through spy, so the upload test can prove it never ran.
