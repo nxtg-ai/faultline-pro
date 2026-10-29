@@ -14,8 +14,11 @@
 # re-dispatched the next Pacific day; it starts a new out file and a new attempt
 # ledger each dispatch, so a dispatch never resumes an earlier one.
 #
-# Needs the repo secret FAULTLINE_ADMIN_KEY (the hosted API's admin key). It is
-# never printed. The job fails at the first step if the secret is missing.
+# Key: the repo secret FAULTLINE_MEASUREMENT_KEY (the hosted API's measurement key),
+# so the run's spend rows carry tier 'measurement', apart from web traffic. It may
+# call only POST /admin/verify-claims and GET /usage. Without it the run falls back
+# to FAULTLINE_ADMIN_KEY and warns that its spend is not labelled. Neither is ever
+# printed. The job fails at the first step if both secrets are missing.
 name: Accuracy G0
 
 # The engine is in the run name, so the run list shows which runs used a branch engine.
@@ -57,12 +60,16 @@ jobs:
       SET: ${{ inputs.set }}
       ENGINE: ${{ inputs.engine }}
       FAULTLINE_ADMIN_KEY: ${{ secrets.FAULTLINE_ADMIN_KEY }}
+      FAULTLINE_MEASUREMENT_KEY: ${{ secrets.FAULTLINE_MEASUREMENT_KEY }}
     steps:
-      - name: Require the admin key secret
+      - name: Require a key secret
         run: |
-          if [ -z "$FAULTLINE_ADMIN_KEY" ]; then
-            echo "::error::Repo secret FAULTLINE_ADMIN_KEY is not set. fp sets it (prereg A1); nothing was sent."
+          if [ -z "$FAULTLINE_MEASUREMENT_KEY" ] && [ -z "$FAULTLINE_ADMIN_KEY" ]; then
+            echo "::error::Neither repo secret FAULTLINE_MEASUREMENT_KEY nor FAULTLINE_ADMIN_KEY is set (prereg A1); nothing was sent."
             exit 1
+          fi
+          if [ -z "$FAULTLINE_MEASUREMENT_KEY" ]; then
+            echo "::warning::Repo secret FAULTLINE_MEASUREMENT_KEY is not set, so this run uses the admin key and its spend is not labelled measurement."
           fi
 
       - uses: actions/checkout@v4
@@ -166,7 +173,10 @@ jobs:
           npm ci --no-audit --no-fund
           L="$RUNNER_TEMP/g0-engine"; mkdir -p "$L"
           cd packages/api
-          PORT=3010 HOST=127.0.0.1 FAULTLINE_API_KEY="$FAULTLINE_ADMIN_KEY" GEMINI_API_KEY="$G0_GEMINI_KEY" \
+          # The engine takes the measurement key too, so the runner sends the same key to it and to
+          # production. With no admin secret its server key is a random value nobody else holds.
+          ENGINE_ADMIN_KEY="${FAULTLINE_ADMIN_KEY:-$(openssl rand -hex 32)}"
+          PORT=3010 HOST=127.0.0.1 FAULTLINE_API_KEY="$ENGINE_ADMIN_KEY" FAULTLINE_MEASUREMENT_KEY="$FAULTLINE_MEASUREMENT_KEY" GEMINI_API_KEY="$G0_GEMINI_KEY" \
             FAULTLINE_GIT_SHA="$GITHUB_SHA" FAULTLINE_PROVIDER_SPEND_CAP=on FAULTLINE_PROVIDER_SPEND_CAP_USD=28 \
             FAULTLINE_PROVIDER_SPEND_LEDGER="$L/provider-spend.jsonl" FAULTLINE_GROUNDING_LEDGER="$L/grounding.jsonl" \
             FAULTLINE_FULL_JOBS_LEDGER="$L/full-jobs.jsonl" FAULTLINE_AUDIT_PATH="$L/audit.jsonl" \

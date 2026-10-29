@@ -34,8 +34,10 @@
  * Totals are reported two ways per cell: the /usage ledger delta around each request (includes any other
  * traffic in the same seconds) and the sum of per-claim usage (this run's claims only).
  *
- * The admin key comes from FAULTLINE_ADMIN_KEY or ~/.config/faultline/hosted-api-key.env and is sent only
- * as x-api-key.
+ * The key is the measurement key when one is set (FAULTLINE_MEASUREMENT_KEY or
+ * ~/.config/faultline/measurement-key.env), so the run's spend rows carry tier 'measurement'. With none it
+ * falls back to the admin key (FAULTLINE_ADMIN_KEY or ~/.config/faultline/hosted-api-key.env) and prints a
+ * warning that the run is not labelled. The key is sent only as x-api-key.
  *
  * Usage:
  *   node scripts/measure-cost-per-claim.mjs [--api https://faultline-api.fly.dev] [--providers gemini,openai]
@@ -46,7 +48,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { readAdminKey } from './accuracy-g0.mjs';
+import { readRunKey, UNLABELLED_WARNING } from './accuracy-g0.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const CORPUS_PATH = path.join(REPO_ROOT, 'docs/research/data/factcheck-bench-subtask4-claim-factuality.jsonl');
@@ -257,7 +259,8 @@ function finishCell(cell) {
 }
 
 /**
- * Run the measurement. deps: fetch, key, sleep, now, log, write, corpus (array of { id, text }).
+ * Run the measurement. deps: fetch, key (or env and keyFiles, read by readRunKey), sleep, now, log, write,
+ * corpus (array of { id, text }).
  * Returns { exitCode, report }; the report is also written to opts.out (and the .md beside it).
  */
 export async function run(opts, deps = {}) {
@@ -273,11 +276,14 @@ export async function run(opts, deps = {}) {
     return { exitCode: EXIT.OK, report: { dryRun: true, plan: thePlan } };
   }
 
-  const key = deps.key ?? readAdminKey();
+  const picked = deps.key !== undefined ? { key: deps.key, labelled: true } : readRunKey(deps.env ?? process.env, deps.keyFiles);
+  const key = picked.key;
   if (!key) {
-    log('no admin key (set FAULTLINE_ADMIN_KEY or ~/.config/faultline/hosted-api-key.env)');
+    log('no measurement or admin key (set FAULTLINE_MEASUREMENT_KEY or ~/.config/faultline/measurement-key.env; '
+      + 'unlabelled fallback: FAULTLINE_ADMIN_KEY or ~/.config/faultline/hosted-api-key.env)');
     return { exitCode: EXIT.USAGE, report: null };
   }
+  if (!picked.labelled) log(UNLABELLED_WARNING);
   const corpus = deps.corpus ?? loadCorpus();
   const sample = subsample(corpus.length, opts.n, opts.seed).map((i) => corpus[i]);
 

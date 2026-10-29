@@ -1,7 +1,7 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { getProviderSpendStatus, isProviderSpendCapEnabled } from '../store/provider-spend.js';
 import type { ManagedScanCostEvent } from '../store/costs.js';
-import { isAdminKeyId } from './auth.js';
+import { isAdminKeyId, MEASUREMENT_KEY_ID } from './auth.js';
 import { isServerKeyId, resolveEntitledTier } from './consensus-entitlement.js';
 import { nextMonthResetEpoch } from './usage-cap.js';
 
@@ -34,11 +34,14 @@ const SPEND_CAP_TIER_SET = new Set<Tier>(SPEND_CAP_TIERS);
  *   'personal', which is its catch-all, not proof of a paid plan. The rate
  *   limiter and the monthly quota call that same key 'free', so this gate does
  *   too. A keystore key with the 'admin' permission is an operator key and passes.
+ * - The measurement key: 'measurement', which this gate never refuses. Its
+ *   header is ignored. Its own runners carry client-side spend caps.
  *
  * Never use `resolveTierFromRequest` here: it trusts the header from any caller.
  */
 export function resolveSpendCapTier(keyId: string | undefined, headerTier?: string | string[]): Tier {
   if (!keyId) return 'anon';
+  if (keyId === MEASUREMENT_KEY_ID) return 'measurement';
   if (isServerKeyId(keyId)) {
     const raw = Array.isArray(headerTier) ? headerTier[0] : headerTier;
     if (raw === undefined || raw === '') return 'free';

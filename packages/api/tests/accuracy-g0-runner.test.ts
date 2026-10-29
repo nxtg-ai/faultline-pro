@@ -163,10 +163,10 @@ describe('accuracy-g0 runner: refusals before anything is sent', () => {
     expect(r.out).not.toContain(KEY);
   });
 
-  it('refuses with no admin key anywhere (exit 2, zero requests)', async () => {
+  it('refuses with no measurement or admin key anywhere (exit 2, zero requests)', async () => {
     const r = await run(['--set', 'full', '--out', join(dir, 'out.jsonl')], {});
     expect(r.code).toBe(2);
-    expect(r.out).toMatch(/no admin key/);
+    expect(r.out).toMatch(/no measurement or admin key/);
     expect(state.requests).toBe(0);
   });
 
@@ -501,6 +501,38 @@ describe('accuracy-g0 runner: invalid-run checks (prereg §5)', () => {
     const r = await run(['--set', 'verify-subsample', '--out', out]);
     expect(r.code).toBe(5);
     expect(rows(out)).toHaveLength(0);
+  });
+});
+
+describe('accuracy-g0 runner: the measurement key', () => {
+  const MEASUREMENT = ['runner', 'MEASUREKEY', 'must-never-print', '7171'].join('-');
+
+  it('sends FAULTLINE_MEASUREMENT_KEY over the admin key when both are set, prints no warning and never the key', async () => {
+    const r = await run(['--set', 'verify-subsample', '--out', join(dir, 'sub.jsonl')], { FAULTLINE_MEASUREMENT_KEY: MEASUREMENT, FAULTLINE_ADMIN_KEY: KEY });
+    expect(r.code).toBe(0);
+    expect(state.requests).toBeGreaterThan(0);
+    expect(state.seenKeys).toEqual(new Set([MEASUREMENT]));
+    expect(r.out).not.toMatch(/not labelled/);
+    expect(r.out).not.toContain(MEASUREMENT);
+    expect(r.out).not.toContain('MEASUREKEY');
+  });
+
+  it('reads the key from ~/.config/faultline/measurement-key.env', async () => {
+    mkdirSync(join(dir, '.config/faultline'), { recursive: true });
+    writeFileSync(join(dir, '.config/faultline/measurement-key.env'), `# measurement\nFAULTLINE_MEASUREMENT_KEY=${MEASUREMENT}\n`);
+    const r = await run(['--set', 'verify-subsample', '--out', join(dir, 'sub.jsonl')]);
+    expect(r.code).toBe(0);
+    expect(state.seenKeys).toEqual(new Set([MEASUREMENT]));
+    expect(r.out).not.toMatch(/not labelled/);
+    expect(r.out).not.toContain(MEASUREMENT);
+  });
+
+  it('an empty FAULTLINE_MEASUREMENT_KEY falls back to the admin key with the unlabelled warning', async () => {
+    const r = await run(['--set', 'verify-subsample', '--out', join(dir, 'sub.jsonl')], { FAULTLINE_MEASUREMENT_KEY: '', FAULTLINE_ADMIN_KEY: KEY });
+    expect(r.code).toBe(0);
+    expect(state.seenKeys).toEqual(new Set([KEY]));
+    expect(r.out).toMatch(/WARNING: no measurement key .* not labelled/);
+    expect(r.out).not.toContain(KEY);
   });
 });
 

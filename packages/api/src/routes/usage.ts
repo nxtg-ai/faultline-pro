@@ -33,8 +33,11 @@ export async function usageRoutes(fastify: FastifyInstance): Promise<void> {
     // publish what Faultline spends. Customers see `quota`; operators see both.
     // `ledgerWriteFailures` > 0 means the ledger file is not being written and the
     // budget only lives in this process (N-230 instrument).
+    // The measurement key sees the budget and the grounding allowance too: its
+    // runners stop themselves on both. It does not see fleetwide refunds.
     const isAdmin = tier === 'admin';
-    const providerBudget = isAdmin
+    const seesBudget = isAdmin || tier === 'measurement';
+    const providerBudget = seesBudget
       ? {
         ...getProviderSpendStatus(),
         appliesTo: [...SPEND_CAP_TIERS],
@@ -43,7 +46,7 @@ export async function usageRoutes(fastify: FastifyInstance): Promise<void> {
       : undefined;
     // Daily Gemini grounded-prompt count vs Google's free allowance (N-230,
     // Asif ruling 2026-10-01). Admin only for the same reason as providerBudget.
-    const groundingAllowance = isAdmin ? getGroundingAllowanceStatus() : undefined;
+    const groundingAllowance = seesBudget ? getGroundingAllowanceStatus() : undefined;
     // Full-scan refund rate over the trailing 7 days, from the terminal-job ledger
     // (emma-soul condition 4, GoPMO 1.18.11.3.12). `alert` = refunded units above
     // 10% of charged units; fp then reports the cause. Admin only: fleet-wide.

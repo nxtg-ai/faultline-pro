@@ -27,6 +27,7 @@ The tier is the **trusted** tier (`resolveSpendCapTier` in `packages/api/src/plu
 | A keystore key with the `pro` permission | `pro` |
 | A keystore key with the `admin` permission | `enterprise` (an operator key) |
 | Any other keystore key | `free`, the same tier the rate limiter and the monthly quota give it |
+| The measurement key (`FAULTLINE_MEASUREMENT_KEY`) | `measurement`, which this gate never refuses. Its `x-user-tier` is ignored. See "The measurement key" below. |
 
 A server-key request with no tier header is treated as free for this gate, because the caller cannot be told apart from free traffic; paid callers through the server key must send their tier.
 
@@ -126,6 +127,27 @@ Three gates now run in front of a scan. They answer different questions and all 
 - **Claim counts on every row.** `claimCount` is how many claims the call handled (extracted by a scan or a full-scan estimate, submitted to admin verify-claims, verified by a full-scan job); `verifiedCount` is how many of those got a billable verdict (`isBillableVerdict` in `packages/cli/lib/verdict-guard.ts`). A claim is billable only when its sources were retrieved by the engine, so all four must hold: the verdict is supported, contradicted or mixed; `sources` has at least one entry; `provenance.retriever` is a non-empty string; and it is not an `apiError` claim. The engine alone sets `provenance.retriever`: the verify runner sets it from its own table of retrievers by the provider id it resolved (today only `gemini`, as `gemini-grounding`), and the consensus engine sets its own retriever's name. A retriever a provider writes on its own verdict is dropped, on a scan and on `POST /admin/verify-claims` alike. So `unverified`, a zero-source verdict, and a single-provider verdict from `mock`, `openai`, `claude` or `perplexity` (none has an engine retriever) are never billable. Cost per claim is `costUsd / claimCount` or `costUsd / verifiedCount`, read straight off the row. Critique handles no claims and writes `0` and `0`. Both are `null` only on a row whose cost event carried no counts; rows written before the fields existed have neither key. Neither field is read by hydration, so the monthly total is unchanged by them and old rows still count toward it.
 - **Deny-path headers only.** `/scan/stream` hijacks the reply for SSE, which drops every `reply.header()` (see `reference_fastify_hijack_drops_headers`), so allow-path budget headers would be a lie on the streaming routes. Read the position from `GET /usage` instead.
 
+## The measurement key
+
+Internal measurement runs (the Accuracy G0 workflow, `scripts/accuracy-g0.mjs`, and `scripts/measure-cost-per-claim.mjs`) call the hosted API with their own key, `FAULTLINE_MEASUREMENT_KEY`, not with the server key `FAULTLINE_API_KEY` that faultline-web uses. Two services then never share one credential, and measurement spend can be read apart from web traffic.
+
+- **Who it is.** A constant-time match on `x-api-key` sets `keyId` `measurement` (`packages/api/src/plugins/auth.ts`). An empty or unset value never matches. A value equal to `FAULTLINE_API_KEY` is refused as a measurement key: the API logs one fixed warning at startup (never the value) and that key stays the server key only.
+- **What it may call.** Only `POST /admin/verify-claims` and `GET /usage` (`MEASUREMENT_ROUTES` in `auth.ts`, one allowlist). Every other route answers it with 403: the other admin routes, every scan and data route, the public routes and unmatched URLs. A server-wide `onRequest` hook enforces this before any other check, and `requireApiKey` and `requireAdmin` check the same list. `packages/api/tests/measurement-key.test.ts` enumerates every registered route and proves it.
+- **Not the server key, not admin.** `isServerKeyId('measurement')` and `isAdminKeyId('measurement')` are false, so `x-user-tier` from it is ignored by every tier resolver, and it reads nothing fleet-wide beyond the budget below. No caller can forward `x-user-tier: measurement`: it is not a plan.
+- **Labelled spend.** Every tier resolver gives it the tier `measurement`. Its rows in the provider-spend ledger (`tier`), the scan-cost log (`user_tier`) and the cost store carry `measurement`, where the admin key's rows carry `enterprise`.
+- **Budget reads.** `GET /usage` shows it `providerBudget` and `groundingAllowance`, as it does the admin key, since both runners stop themselves on them. `fullScanRefunds` stays admin only.
+- **This gate never refuses it.** The runners keep their own client-side spend caps (Accuracy G0 branch engine USD 28; `measure-cost-per-claim.mjs --cap-usd`, default 40) and the daily grounded-prompt guard.
+- **Burst limit.** 600 requests per minute (`store/ratelimit.ts`, tier `measurement`), so back-to-back single-claim requests are not throttled. Its monthly scan quota is unlimited; it cannot call a scan route anyway.
+
+How it is set:
+
+1. Make a fresh random value (for example `openssl rand -hex 32`); never reuse the server key.
+2. Store it as the repo secret `FAULTLINE_MEASUREMENT_KEY` (GitHub repo settings, or `gh secret set FAULTLINE_MEASUREMENT_KEY`).
+3. Copy it to the app: `gh workflow run fly-ops.yml -f action=measurement-key-set`. The action reads the secret through env, fails and changes nothing if it is empty, and never echoes it. Setting a secret restarts the machine. `-f action=measurement-key-unset` removes it. Dispatch no measurement run between steps 2 and 3: the runners would send a key production does not know yet and get 401.
+4. For a local run of `scripts/measure-cost-per-claim.mjs`, export `FAULTLINE_MEASUREMENT_KEY` or put a `FAULTLINE_MEASUREMENT_KEY=` line in `~/.config/faultline/measurement-key.env`.
+
+When no measurement key is set, both runners fall back to the admin key and print a warning that the run is not labelled; its spend rows then read `enterprise`, like any other admin-key call.
+
 ## Configuration
 
 | Env | Default | Meaning |
@@ -133,6 +155,7 @@ Three gates now run in front of a scan. They answer different questions and all 
 | `FAULTLINE_PROVIDER_SPEND_CAP` | *(off)* | `on`/`1`/`true`/`enabled` activates the **gate**. Dormant = ledger only. |
 | `FAULTLINE_PROVIDER_SPEND_CAP_USD` | `100` | The monthly ceiling. Only a finite number from 0 to 1000 inclusive is accepted. Anything else (not a number, trailing text, negative, above 1000, or set but empty) falls back to `100` and logs one warning that does not repeat the value. Unset is silent. |
 | `FAULTLINE_PROVIDER_SPEND_LEDGER` | `/var/log/faultline/provider-spend.jsonl` | Ledger path. |
+| `FAULTLINE_MEASUREMENT_KEY` | *(unset)* | The measurement key (above). Unset or empty: no measurement key. |
 
 ## Activation checklist (Asif's flip)
 

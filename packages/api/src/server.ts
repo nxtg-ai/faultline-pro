@@ -86,6 +86,7 @@ import { deliveredBillableVerdicts } from './lib/scan-quota.js';
 import { stopFullScanJobPruning } from './store/full-scan-jobs.js';
 import { FAULTLINE_API_VERSION } from './version.js';
 import { applyRouteAccess } from './lib/route-access.js';
+import { refuseMeasurementOutsideAllowlist, warnIfMeasurementKeyCollides } from './plugins/auth.js';
 
 const MAX_FILE_SIZE = 10_485_760; // 10MB
 
@@ -105,6 +106,11 @@ export function buildServer() {
   // before schema validation (lib/route-access.ts). Added before any plugin
   // registers so it sees every route, the plugins' own included.
   fastify.addHook('onRoute', applyRouteAccess);
+
+  // The measurement key may call only MEASUREMENT_ROUTES. This runs first on
+  // every route, public ones and unmatched URLs included.
+  fastify.addHook('onRequest', refuseMeasurementOutsideAllowlist);
+  warnIfMeasurementKeyCollides();
 
   fastify.register(cors, {
     origin: (origin, cb) => {

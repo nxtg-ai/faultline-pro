@@ -288,3 +288,48 @@ describe('measure-cost-per-claim: dry run', () => {
     expect(lines[0]).toContain('$60.00');
   });
 });
+
+describe('measure-cost-per-claim: which key it sends', () => {
+  const MEASUREMENT = ['cost', 'MEASUREKEY', 'never-print'].join('-');
+  const noFiles = { measurement: '/nonexistent/measurement-key.env', admin: '/nonexistent/hosted-api-key.env' };
+
+  function keyDeps(stub: ReturnType<typeof stubApi>, env: Record<string, string>, lines: string[]) {
+    const { key: _unused, ...rest } = deps(stub);
+    return { ...rest, env, keyFiles: noFiles, log: (line: string) => lines.push(line) };
+  }
+
+  it('sends FAULTLINE_MEASUREMENT_KEY over the admin key, with no unlabelled warning', async () => {
+    const stub = stubApi();
+    const lines: string[] = [];
+    const result = await run(options({ providers: ['gemini'], k: [8], n: 8 }), keyDeps(stub, { FAULTLINE_MEASUREMENT_KEY: MEASUREMENT, FAULTLINE_ADMIN_KEY: KEY }, lines));
+    expect(result.exitCode).toBe(EXIT.OK);
+    expect(stub.requests.length).toBeGreaterThan(0);
+    expect(stub.requests.every((r) => r.key === MEASUREMENT)).toBe(true);
+    expect(lines.join('\n')).not.toMatch(/not labelled/);
+    expect(lines.join('\n')).not.toContain(MEASUREMENT);
+  });
+
+  it('falls back to the admin key with a printed warning that the run is not labelled', async () => {
+    const stub = stubApi();
+    const lines: string[] = [];
+    const result = await run(options({ providers: ['gemini'], k: [8], n: 8 }), keyDeps(stub, { FAULTLINE_ADMIN_KEY: KEY }, lines));
+    expect(result.exitCode).toBe(EXIT.OK);
+    expect(stub.requests.length).toBeGreaterThan(0);
+    expect(stub.requests.every((r) => r.key === KEY)).toBe(true);
+    expect(lines.filter((line) => /WARNING: no measurement key .* not labelled/.test(line))).toHaveLength(1);
+    expect(lines.join('\n')).not.toContain(KEY);
+  });
+
+  it('with neither key it sends nothing and exits 2', async () => {
+    const stub = stubApi();
+    const lines: string[] = [];
+    const result = await run(options({ providers: ['gemini'], k: [8], n: 8 }), keyDeps(stub, {}, lines));
+    expect(result.exitCode).toBe(EXIT.USAGE);
+    expect(stub.requests).toHaveLength(0);
+    expect(lines.join('\n')).toMatch(/no measurement or admin key/);
+  });
+
+  it('keeps its client-side spend cap: the default is still USD 40', () => {
+    expect(parseArgs([]).capUsd).toBe(40);
+  });
+});
