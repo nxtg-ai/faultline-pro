@@ -136,7 +136,8 @@ Internal measurement runs (the Accuracy G0 workflow, `scripts/accuracy-g0.mjs`, 
 - **Not the server key, not admin.** `isServerKeyId('measurement')` and `isAdminKeyId('measurement')` are false, so `x-user-tier` from it is ignored by every tier resolver, and it reads nothing fleet-wide beyond the budget below. No caller can forward `x-user-tier: measurement`: it is not a plan.
 - **Labelled spend.** Every tier resolver gives it the tier `measurement`. Its rows in the provider-spend ledger (`tier`), the scan-cost log (`user_tier`) and the cost store carry `measurement`, where the admin key's rows carry `enterprise`.
 - **Budget reads.** `GET /usage` shows it `providerBudget` and `groundingAllowance`, as it does the admin key, since both runners stop themselves on them. `fullScanRefunds` stays admin only.
-- **This gate never refuses it.** The runners keep their own client-side spend caps (Accuracy G0 branch engine USD 28; `measure-cost-per-claim.mjs --cap-usd`, default 40) and the daily grounded-prompt guard.
+- **This gate never refuses it.** The runners keep their own client-side spend caps (`measure-cost-per-claim.mjs --cap-usd`, default 40) and the daily grounded-prompt guard. Accuracy G0 in branch mode does not use the measurement key at all: its branch engine stops the run with this gate set to USD 28, which an exempt key would bypass, so the branch engine and the branch runner step get only the admin key.
+- **`GET /health` is read without a key.** It is public, and the measurement key gets 403 there, so both runners send that one read with no key header.
 - **Burst limit.** 600 requests per minute (`store/ratelimit.ts`, tier `measurement`), so back-to-back single-claim requests are not throttled. Its monthly scan quota is unlimited; it cannot call a scan route anyway.
 
 How it is set:

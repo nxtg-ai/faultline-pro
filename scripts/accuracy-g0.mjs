@@ -269,11 +269,16 @@ function recordCalls(file, entries) {
 
 // ── HTTP ─────────────────────────────────────────────────────────────────────
 
+/**
+ * GET /health is a public read and the measurement key may not call it (403), so it goes out with
+ * no key header at all. Every other request carries the run key.
+ */
 function makeClient(api, key) {
   return async function request(method, route, body) {
+    const isPublic = method === 'GET' && route === '/health';
     const response = await fetch(`${api}${route}`, {
       method,
-      headers: { 'x-api-key': key, ...(body ? { 'content-type': 'application/json' } : {}) },
+      headers: { ...(isPublic ? {} : { 'x-api-key': key }), ...(body ? { 'content-type': 'application/json' } : {}) },
       body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });

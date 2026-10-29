@@ -287,10 +287,12 @@ export async function run(opts, deps = {}) {
   const corpus = deps.corpus ?? loadCorpus();
   const sample = subsample(corpus.length, opts.n, opts.seed).map((i) => corpus[i]);
 
+  // GET /health is a public read the measurement key may not call (403), so it carries no key header.
   const call = async (method, route, body) => {
+    const isPublic = method === 'GET' && route === '/health';
     const res = await fetchFn(opts.api + route, {
       method,
-      headers: { 'x-api-key': key, ...(body ? { 'content-type': 'application/json' } : {}) },
+      headers: { ...(isPublic ? {} : { 'x-api-key': key }), ...(body ? { 'content-type': 'application/json' } : {}) },
       body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(600_000),
     });

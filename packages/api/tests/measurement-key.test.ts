@@ -18,7 +18,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -47,7 +47,8 @@ import {
 import { isServerKeyId, resolveEntitledTier } from '../src/plugins/consensus-entitlement.js';
 import { resolveSpendCapTier, providerBudgetRefuses } from '../src/plugins/provider-spend-cap.js';
 import { resolveTier as resolveRateTier } from '../src/plugins/ratelimit.js';
-import { getCostStore, resolveTier, resolveTierFromRequest, scanCostLogRow } from '../src/store/costs.js';
+import { getCostStore, loadScanCostLog, resolveTier, resolveTierFromRequest, scanCostLogRow } from '../src/store/costs.js';
+import type { ManagedScanCostEvent } from '../src/store/costs.js';
 import { recordProviderSpend, resetProviderSpendLedger } from '../src/store/provider-spend.js';
 import { resetGroundingAllowanceLedger } from '../src/store/grounding-allowance.js';
 import { getKeyStore, resetKeyStore } from '../src/store/keys.js';
@@ -376,6 +377,36 @@ describe('measurement key: spend rows carry tier measurement', () => {
     expect((await verify(app, MEASUREMENT_KEY)).statusCode).toBe(200);
     const tiers = spendRows().map((row) => row.tier);
     expect(tiers).toEqual(['enterprise', 'measurement']);
+  });
+});
+
+describe('measurement key: scan-cost log rows survive a reload', () => {
+  const event = (scanId: string, tier: ManagedScanCostEvent['tier']): ManagedScanCostEvent => ({
+    scanId, ts: new Date().toISOString(), tier, keyMode: 'managed', provider: 'gemini', modelId: 'gemini-2.5-flash',
+    inputTokens: 100, outputTokens: 20, groundingCalls: 1, costUsd: 0.04, latencyMs: 10, kind: 'admin-verify',
+  });
+
+  it('hydrating a log with one enterprise row and one measurement row keeps both, with their tiers', () => {
+    const logPath = join(tmpDir, 'scan-costs.ndjson');
+    // The rows the server writes (appendScanCostLog is a no-op under Vitest, so they are written here).
+    writeFileSync(logPath, [event('enterprise-row', 'enterprise'), event('measurement-row', 'measurement')].map(scanCostLogRow).join('\n') + '\n');
+    const loaded = loadScanCostLog(logPath);
+    expect(loaded).toHaveLength(2);
+    expect(loaded.map((e) => [e.scanId, e.tier])).toEqual([['enterprise-row', 'enterprise'], ['measurement-row', 'measurement']]);
+    getCostStore().hydrate(loaded);
+    expect(getCostStore().getManagedEvents().map((e) => e.tier)).toEqual(['enterprise', 'measurement']);
+  });
+
+  it('a row with an unknown tier is still dropped', () => {
+    const logPath = join(tmpDir, 'scan-costs.ndjson');
+    const rows = [event('kept', 'measurement'), { ...event('dropped', 'free'), tier: 'not-a-tier' as ManagedScanCostEvent['tier'] }];
+    writeFileSync(logPath, rows.map(scanCostLogRow).join('\n') + '\n');
+    expect(loadScanCostLog(logPath).map((e) => e.scanId)).toEqual(['kept']);
+  });
+
+  it('x-user-tier: measurement is still not forwardable', () => {
+    expect(resolveTierFromRequest('admin', 'measurement')).toBe('enterprise');
+    expect(resolveTierFromRequest('admin', ['measurement'])).toBe('enterprise');
   });
 });
 

@@ -199,6 +199,11 @@ export interface ManagedScanCostEvent {
 }
 
 const VALID_TIERS = new Set<ManagedScanCostEvent['tier']>(['enterprise', 'pro', 'personal', 'free', 'anon', 'userkey']);
+/**
+ * Tiers a persisted scan-cost row may carry: every forwardable tier plus 'measurement', which
+ * only the server assigns (from the measurement key) and so never appears in VALID_TIERS.
+ */
+const PERSISTED_TIERS = new Set<ManagedScanCostEvent['tier']>([...VALID_TIERS, 'measurement']);
 
 /** Derive subscription tier from keyId. No PII — permission metadata only. */
 export function resolveTier(keyId: string): ManagedScanCostEvent['tier'] {
@@ -453,7 +458,7 @@ export function loadScanCostLog(logPath = SCAN_COST_LOG_PATH): ManagedScanCostEv
     try {
       const r = JSON.parse(line) as Record<string, unknown>;
       const tier = r.user_tier as ManagedScanCostEvent['tier'];
-      if (typeof r.ts !== 'string' || !VALID_TIERS.has(tier)) continue;
+      if (typeof r.ts !== 'string' || !PERSISTED_TIERS.has(tier)) continue;
       const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
       events.push({
         scanId: String(r.scan_id ?? ''),
