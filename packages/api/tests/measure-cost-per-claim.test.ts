@@ -38,6 +38,8 @@ interface StubOptions {
   otherTrafficUsd?: number;
   /** HTTP status and body to answer a provider's verify request with. */
   failWith?: Record<string, { status: number; body: unknown }>;
+  /** A key that GET /health refuses with 403, as the real API refuses the measurement key there. */
+  refusedOnHealth?: string;
 }
 
 interface Request { method: string; route: string; body: { provider: string; claims: Array<{ id: string; text: string }> } | null; key: string | null }
@@ -50,6 +52,9 @@ function stubApi(opts: StubOptions = {}) {
     const body = init.body ? JSON.parse(init.body) : null;
     requests.push({ method: init.method, route, body, key: init.headers['x-api-key'] ?? null });
     const reply = (status: number, json: unknown) => ({ status, ok: status < 400, json: async () => json });
+    if (route === '/health' && opts.refusedOnHealth !== undefined && init.headers['x-api-key'] === opts.refusedOnHealth) {
+      return reply(403, { error: 'Forbidden. The measurement key may call only POST /admin/verify-claims and GET /usage.' });
+    }
     if (route === '/health') return reply(200, { status: 'ok', version: '0.11.1', commit: 'abc123' });
     if (route === '/usage') return reply(200, { providerBudget: { spentUsd: spent, enforced: true } });
     if (route === '/admin/verify-claims') {
@@ -198,7 +203,9 @@ describe('measure-cost-per-claim: a full run', () => {
       expect(text).not.toContain(TEXT_SENTINEL);
       expect(text).not.toContain(KEY);
     }
-    expect(stub.requests.every((r) => r.key === KEY)).toBe(true);
+    // GET /health is public and goes out with no key; every other request carries it.
+    expect(stub.requests.filter((r) => r.route === '/health').every((r) => r.key === null)).toBe(true);
+    expect(stub.requests.filter((r) => r.route !== '/health').every((r) => r.key === KEY)).toBe(true);
   });
 
   it('writes the markdown beside the JSON', () => {
@@ -286,5 +293,63 @@ describe('measure-cost-per-claim: dry run', () => {
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('236 requests');
     expect(lines[0]).toContain('$60.00');
+  });
+});
+
+describe('measure-cost-per-claim: which key it sends', () => {
+  const MEASUREMENT = ['cost', 'MEASUREKEY', 'never-print'].join('-');
+  const noFiles = { measurement: '/nonexistent/measurement-key.env', admin: '/nonexistent/hosted-api-key.env' };
+
+  function keyDeps(stub: ReturnType<typeof stubApi>, env: Record<string, string>, lines: string[]) {
+    const { key: _unused, ...rest } = deps(stub);
+    return { ...rest, env, keyFiles: noFiles, log: (line: string) => lines.push(line) };
+  }
+
+  it('sends FAULTLINE_MEASUREMENT_KEY over the admin key, with no unlabelled warning', async () => {
+    const stub = stubApi();
+    const lines: string[] = [];
+    const result = await run(options({ providers: ['gemini'], k: [8], n: 8 }), keyDeps(stub, { FAULTLINE_MEASUREMENT_KEY: MEASUREMENT, FAULTLINE_ADMIN_KEY: KEY }, lines));
+    expect(result.exitCode).toBe(EXIT.OK);
+    expect(stub.requests.length).toBeGreaterThan(0);
+    expect(stub.requests.filter((r) => r.route !== '/health').every((r) => r.key === MEASUREMENT)).toBe(true);
+    expect(lines.join('\n')).not.toMatch(/not labelled/);
+    expect(lines.join('\n')).not.toContain(MEASUREMENT);
+  });
+
+  it('falls back to the admin key with a printed warning that the run is not labelled', async () => {
+    const stub = stubApi();
+    const lines: string[] = [];
+    const result = await run(options({ providers: ['gemini'], k: [8], n: 8 }), keyDeps(stub, { FAULTLINE_ADMIN_KEY: KEY }, lines));
+    expect(result.exitCode).toBe(EXIT.OK);
+    expect(stub.requests.length).toBeGreaterThan(0);
+    expect(stub.requests.filter((r) => r.route !== '/health').every((r) => r.key === KEY)).toBe(true);
+    expect(lines.filter((line) => /WARNING: no measurement key .* not labelled/.test(line))).toHaveLength(1);
+    expect(lines.join('\n')).not.toContain(KEY);
+  });
+
+  it('reads GET /health with no key, so the recorded engine identity is what /health returns, not null', async () => {
+    const stub = stubApi({ refusedOnHealth: MEASUREMENT });
+    const lines: string[] = [];
+    const result = await run(options({ providers: ['gemini'], k: [8], n: 8 }), keyDeps(stub, { FAULTLINE_MEASUREMENT_KEY: MEASUREMENT }, lines));
+    expect(result.exitCode).toBe(EXIT.OK);
+    const health = stub.requests.filter((r) => r.route === '/health');
+    expect(health).toHaveLength(1);
+    expect(health[0].key).toBeNull();
+    expect(result.report.engineCommit).toBe('abc123');
+    expect(result.report.engineVersion).toBe('0.11.1');
+    expect(stub.requests.filter((r) => r.route !== '/health').every((r) => r.key === MEASUREMENT)).toBe(true);
+  });
+
+  it('with neither key it sends nothing and exits 2', async () => {
+    const stub = stubApi();
+    const lines: string[] = [];
+    const result = await run(options({ providers: ['gemini'], k: [8], n: 8 }), keyDeps(stub, {}, lines));
+    expect(result.exitCode).toBe(EXIT.USAGE);
+    expect(stub.requests).toHaveLength(0);
+    expect(lines.join('\n')).toMatch(/no measurement or admin key/);
+  });
+
+  it('keeps its client-side spend cap: the default is still USD 40', () => {
+    expect(parseArgs([]).capUsd).toBe(40);
   });
 });

@@ -2,6 +2,7 @@ import { appendFile } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { getKeyStore } from '../store/keys.js';
+import { MEASUREMENT_KEY_ID } from '../plugins/auth.js';
 import { summarizeScanUsage, type UsageLeg } from './consensus-cost.js';
 
 const TELEMETRY_WORKER = 'https://faultline-telemetry.nxtg-ai.workers.dev';
@@ -164,7 +165,8 @@ export function buildManagedCostEvent(
 export interface ManagedScanCostEvent {
   scanId: string;
   ts: string;              // ISO-8601
-  tier: 'enterprise' | 'pro' | 'personal' | 'free' | 'anon' | 'userkey';
+  /** 'measurement': an internal measurement run (FAULTLINE_MEASUREMENT_KEY), never web traffic. */
+  tier: 'enterprise' | 'pro' | 'personal' | 'free' | 'anon' | 'userkey' | 'measurement';
   keyMode: 'managed';      // always 'managed' for API-path scans
   provider: string;
   modelId?: string;        // actual model used (PROVIDER_MODEL_IDS lookup)
@@ -197,9 +199,15 @@ export interface ManagedScanCostEvent {
 }
 
 const VALID_TIERS = new Set<ManagedScanCostEvent['tier']>(['enterprise', 'pro', 'personal', 'free', 'anon', 'userkey']);
+/**
+ * Tiers a persisted scan-cost row may carry: every forwardable tier plus 'measurement', which
+ * only the server assigns (from the measurement key) and so never appears in VALID_TIERS.
+ */
+const PERSISTED_TIERS = new Set<ManagedScanCostEvent['tier']>([...VALID_TIERS, 'measurement']);
 
 /** Derive subscription tier from keyId. No PII — permission metadata only. */
 export function resolveTier(keyId: string): ManagedScanCostEvent['tier'] {
+  if (keyId === MEASUREMENT_KEY_ID) return 'measurement';
   if (keyId === 'admin') return 'enterprise';
   const key = getKeyStore().validateById(keyId);
   if (key?.permissions.includes('pro')) return 'pro';
@@ -210,8 +218,11 @@ export function resolveTier(keyId: string): ManagedScanCostEvent['tier'] {
  * Resolve tier from x-user-tier header (FW authoritative source) with fallback to keyId inference.
  * FW forwards x-user-tier (Clerk-authenticated, server-side) on every /scan/stream call.
  * Direct service-to-service calls (no header) fall back to resolveTier(keyId).
+ * The measurement key is always labelled 'measurement'; its header is ignored.
+ * 'measurement' is not in VALID_TIERS, so no caller can forward it.
  */
 export function resolveTierFromRequest(keyId: string, headerTier?: string | string[]): ManagedScanCostEvent['tier'] {
+  if (keyId === MEASUREMENT_KEY_ID) return 'measurement';
   const raw = Array.isArray(headerTier) ? headerTier[0] : headerTier;
   if (raw && VALID_TIERS.has(raw as ManagedScanCostEvent['tier'])) {
     return raw as ManagedScanCostEvent['tier'];
@@ -447,7 +458,7 @@ export function loadScanCostLog(logPath = SCAN_COST_LOG_PATH): ManagedScanCostEv
     try {
       const r = JSON.parse(line) as Record<string, unknown>;
       const tier = r.user_tier as ManagedScanCostEvent['tier'];
-      if (typeof r.ts !== 'string' || !VALID_TIERS.has(tier)) continue;
+      if (typeof r.ts !== 'string' || !PERSISTED_TIERS.has(tier)) continue;
       const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
       events.push({
         scanId: String(r.scan_id ?? ''),

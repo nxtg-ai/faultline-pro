@@ -28,6 +28,7 @@ const DEFAULT_MONTHLY_CAPS: Record<Tier, MonthlyCap> = {
   admin: null, // internal / unlimited
   pro: 25, // placeholder: $19-tier break-even at worst-case $0.71/scan ≈ 26; 25 keeps margin
   free: 10, // free acquisition tier — generous enough to prove value, bounded for abuse/COGS
+  measurement: null, // internal measurement key: it may not call a scan route at all
 };
 
 /** Parse an env cap value: 'unlimited'/'null'/'' → null; a non-negative int → number. */

@@ -9,6 +9,8 @@
 #                           diverging copy of the spend and grounding totals
 #   create-ledger-volume    one 1 GB volume `faultline_ledgers` in lax, only if
 #                           none exists (idempotent)
+#   measurement-key-set     copy the repo secret FAULTLINE_MEASUREMENT_KEY to the
+#                           app; measurement-key-unset removes it
 #
 # Why the ledger volume: /var/log/faultline holds the append-only provider-spend,
 # grounding-allowance and scan-cost ledgers. Without a volume every deploy
@@ -33,6 +35,8 @@ on:
           - customer-keys-off
           - spend-cap-on
           - spend-cap-off
+          - measurement-key-set
+          - measurement-key-unset
       spend_cap_usd:
         description: 'Monthly ceiling in USD for spend-cap-on, a whole number from 1 to 1000'
         required: false
@@ -98,6 +102,26 @@ jobs:
       - name: Spend cap off
         if: inputs.action == 'spend-cap-off'
         run: flyctl secrets unset FAULTLINE_PROVIDER_SPEND_CAP FAULTLINE_PROVIDER_SPEND_CAP_USD -a "$APP"
+
+      # Measurement key (docs/provider-spend-cap.md, "The measurement key"). "set"
+      # copies the repo secret FAULTLINE_MEASUREMENT_KEY to the app, so measurement
+      # runs are labelled apart from web traffic; the API ignores it if it equals
+      # FAULTLINE_API_KEY. "unset" removes it. Each restarts the machine. The value
+      # only passes through env and is never echoed.
+      - name: Measurement key set
+        if: inputs.action == 'measurement-key-set'
+        env:
+          MEASUREMENT_KEY: ${{ secrets.FAULTLINE_MEASUREMENT_KEY }}
+        run: |
+          if [ -z "$MEASUREMENT_KEY" ]; then
+            echo "::error::Repo secret FAULTLINE_MEASUREMENT_KEY is empty or not set. Nothing was changed."
+            exit 1
+          fi
+          flyctl secrets set FAULTLINE_MEASUREMENT_KEY="$MEASUREMENT_KEY" -a "$APP"
+
+      - name: Measurement key unset
+        if: inputs.action == 'measurement-key-unset'
+        run: flyctl secrets unset FAULTLINE_MEASUREMENT_KEY -a "$APP"
 
       - name: Scale to one machine
         if: inputs.action == 'scale-to-one'
