@@ -1,4 +1,4 @@
-import { mayIssueKey, CUSTOMER_KEYS_CLOSED } from '../lib/key-issuance.js';
+import { mayIssueKey, CUSTOMER_KEYS_CLOSED, CLAIM_CAP_OUT_OF_RANGE, claimCapInBounds, isAdminPermissions, issuedKeyBilling } from '../lib/key-issuance.js';
 import { getAuditLogger } from '../store/audit.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { hasScope, isAdminKeyId, requireAdmin } from '../plugins/auth.js';
@@ -9,7 +9,11 @@ import { getNotificationStore } from '../store/notifications.js';
 
 const VALID_PERMISSIONS: Permission[] = ['scan', 'report', 'upload', 'admin', 'pro'];
 
-/** Claims per calendar month (UTC) a metered key may have verified. */
+/**
+ * Claims per calendar month (UTC) a metered key may have verified. The schema
+ * holds the widest range (admin keys); a non-admin key is held to
+ * MIN_CLAIM_CAP..MAX_CLAIM_CAP in lib/key-issuance.ts.
+ */
 const CLAIM_CAP_SCHEMA = { type: 'integer', minimum: 0, maximum: 100_000_000 } as const;
 /** A Stripe customer id (`cus_...`). Format-checked so no free text reaches the usage record. */
 const STRIPE_CUSTOMER_SCHEMA = { type: 'string', pattern: '^cus_[A-Za-z0-9]{1,64}$' } as const;
@@ -29,6 +33,8 @@ function billingFieldRefusal(keyId: string | undefined, body: Record<string, unk
   if (!BILLING_FIELDS.some((f) => body[f] !== undefined)) return null;
   if (!hasScope(keyId, 'keys:write')) return { error: 'scope_required', scope: 'keys:write' };
   if (body.scopes !== undefined && !isAdminKeyId(keyId)) return { error: 'admin_required' };
+  // Turning the meter off for a key is an admin decision, wherever the route is opened.
+  if (body.metered === false && !isAdminKeyId(keyId)) return { error: 'admin_required' };
   return null;
 }
 
@@ -92,7 +98,12 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
       const refusal = billingFieldRefusal(request.keyId, request.body as unknown as Record<string, unknown>);
       if (refusal) return reply.status(403).send(refusal);
       if (!mayIssueKey(permissions)) return reply.status(403).send(CUSTOMER_KEYS_CLOSED);
-      const entry = store.create(name, permissions, expiresAt, { claimCap, stripeCustomerId, metered, scopes });
+      // A non-admin key is metered at the default cap unless the request says otherwise.
+      const billing = issuedKeyBilling(permissions, { claimCap, stripeCustomerId, metered, scopes });
+      if (billing.claimCap !== undefined && !claimCapInBounds(permissions, billing.claimCap)) {
+        return reply.status(400).send(CLAIM_CAP_OUT_OF_RANGE);
+      }
+      const entry = store.create(name, permissions, expiresAt, billing);
       if (idempotencyKey !== undefined) store.rememberIdempotencyKey(idempotencyKey, entry.id);
       return reply.status(201).send(entry);
     },
@@ -492,6 +503,18 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
       const refusal = billingFieldRefusal(request.keyId, request.body as unknown as Record<string, unknown>);
       if (refusal) return reply.status(403).send(refusal);
       const store = getKeyStore();
+      const current = store.validateById(request.params.id);
+      if (!current) return reply.status(404).send({ error: 'Key not found.' });
+      const permissions = request.body.permissions ?? current.permissions;
+      const { claimCap } = request.body;
+      if (typeof claimCap === 'number' && !claimCapInBounds(permissions, claimCap)) {
+        return reply.status(400).send(CLAIM_CAP_OUT_OF_RANGE);
+      }
+      // A metered non-admin key always carries a cap; only an admin key's cap may be cleared.
+      const meteredAfter = request.body.metered ?? current.metered === true;
+      if (claimCap === null && meteredAfter && !isAdminPermissions(permissions)) {
+        return reply.status(400).send({ error: 'claim_cap_required', message: 'A metered non-admin key must keep a claimCap.' });
+      }
       const updated = store.update(request.params.id, request.body);
       if (!updated) return reply.status(404).send({ error: 'Key not found.' });
       if (request.body.expiresAt !== undefined) {

@@ -497,10 +497,16 @@ components:
           description: >
             True: the claim meter counts this key's claims, while the server
             runs with FAULTLINE_CLAIM_METER=1. Absent or false: not metered.
+            Every issued non-admin key (POST /keys, POST /orgs/{id}/keys,
+            GraphQL createKey) is metered by default; admin keys never are.
         claimCap:
           type: integer
           minimum: 0
-          description: Claims a metered key may have verified per calendar month (UTC).
+          description: >
+            Claims a metered key may have verified per calendar month (UTC).
+            An issued non-admin key defaults to 1000 (100 USD a month at 0.10
+            USD per billable claim); a non-admin key's cap is an integer from
+            100 to 10000 (10 to 1,000 USD). Admin keys take any value.
           example: 5000
         stripeCustomerId:
           type: string
@@ -1305,12 +1311,20 @@ paths:
                   format: date-time
                 metered:
                   type: boolean
-                  description: Meter this key's claims (scope keys:write).
+                  description: >
+                    Meter this key's claims (scope keys:write). Defaults to true
+                    for a non-admin key; false is accepted only from an admin
+                    caller. Admin keys are never metered by default.
                 claimCap:
                   type: integer
                   minimum: 0
                   maximum: 100000000
-                  description: Claims per UTC month for a metered key (scope keys:write).
+                  description: >
+                    Claims per UTC month for a metered key (scope keys:write).
+                    A non-admin key defaults to 1000 and must be an integer from
+                    100 to 10000 (10 to 1,000 USD at 0.10 USD per billable
+                    claim), otherwise 400 claim_cap_out_of_range. The schema
+                    range is the admin-key range.
                 stripeCustomerId:
                   type: string
                   pattern: '^cus_[A-Za-z0-9]{1,64}$'
@@ -1367,7 +1381,10 @@ paths:
       operationId: updateKey
       summary: Update a key's name, permissions, expiry or billing binding
       description: >
-        `null` clears expiresAt, claimCap or stripeCustomerId. A new
+        `null` clears expiresAt, claimCap or stripeCustomerId, except that a
+        metered non-admin key cannot have its claimCap cleared (400
+        claim_cap_required). A non-admin key's claimCap must be an integer
+        from 100 to 10000 (400 claim_cap_out_of_range). A new
         stripeCustomerId applies to rows committed from then on; past rows keep
         theirs. Setting metered, claimCap, stripeCustomerId or scopes needs
         scope keys:write; granting scopes needs an admin key.

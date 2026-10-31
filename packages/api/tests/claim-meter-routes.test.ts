@@ -320,6 +320,36 @@ describe('who is metered', () => {
   });
 });
 
+describe('issued keys are metered by default', () => {
+  it('a key issued by POST /keys with no billing fields is reserved against and billed', async () => {
+    const created = await post('/keys', SERVER_KEY, { name: 'cust', permissions: ['scan'] });
+    expect(created.statusCode).toBe(201);
+    const { id, key } = created.json() as { id: string; key: string };
+    let open!: () => void;
+    control.gate = new Promise<void>((resolve) => { open = resolve; });
+    const first = post('/scan', key, { text: sentences(1), provider: ENGINE_PROVIDER });
+    await until(() => control.verifyCalls === 1, 'the first verify');
+    expect(usage(id).reserved).toBe(8);
+    open();
+    expect((await first).statusCode).toBe(200);
+    expect(usage(id)).toEqual({ used: 1, reserved: 0 });
+    expect(ledgerRows()).toHaveLength(1);
+    expect(ledgerRows()[0]).toMatchObject({ keyId: id });
+  });
+
+  it('with FAULTLINE_CLAIM_METER unset a default-issued key is not metered', async () => {
+    delete process.env.FAULTLINE_CLAIM_METER;
+    const created = await post('/keys', SERVER_KEY, { name: 'cust', permissions: ['scan'] });
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({ metered: true, claimCap: 1000 });
+    const { id, key } = created.json() as { id: string; key: string };
+    expect((await post('/scan', key, { text: sentences(2), provider: ENGINE_PROVIDER })).statusCode).toBe(200);
+    expect(control.verifyCalls).toBe(2);
+    expect(usage(id)).toEqual({ used: 0, reserved: 0 });
+    expect(ledgerRows()).toHaveLength(0);
+  });
+});
+
 describe('concurrency', () => {
   it('N parallel requests against a cap of M never commit more than M', async () => {
     const cap = 20; // two reservations of 8 fit, a third does not
@@ -599,14 +629,15 @@ describe('GET /usage', () => {
 
 describe('key billing fields', () => {
   it('POST /keys sets claimCap and stripeCustomerId; PATCH changes and clears them', async () => {
-    const created = await post('/keys', SERVER_KEY, { name: 'cust', permissions: ['scan'], claimCap: 500, stripeCustomerId: 'cus_Test123' });
+    // Unmetered, so its cap may be cleared (a metered non-admin key must keep one).
+    const created = await post('/keys', SERVER_KEY, { name: 'cust', permissions: ['scan'], metered: false, claimCap: 500, stripeCustomerId: 'cus_Test123' });
     expect(created.statusCode).toBe(201);
-    expect(created.json()).toMatchObject({ claimCap: 500, stripeCustomerId: 'cus_Test123' });
+    expect(created.json()).toMatchObject({ metered: false, claimCap: 500, stripeCustomerId: 'cus_Test123' });
     const id = created.json().id as string;
 
-    const patched = await app.inject({ method: 'PATCH', url: `/keys/${id}`, headers: { 'x-api-key': SERVER_KEY, 'content-type': 'application/json' }, payload: { claimCap: 10 } });
+    const patched = await app.inject({ method: 'PATCH', url: `/keys/${id}`, headers: { 'x-api-key': SERVER_KEY, 'content-type': 'application/json' }, payload: { claimCap: 100 } });
     expect(patched.statusCode).toBe(200);
-    expect(patched.json()).toMatchObject({ claimCap: 10, stripeCustomerId: 'cus_Test123' });
+    expect(patched.json()).toMatchObject({ claimCap: 100, stripeCustomerId: 'cus_Test123' });
 
     const cleared = await app.inject({ method: 'PATCH', url: `/keys/${id}`, headers: { 'x-api-key': SERVER_KEY, 'content-type': 'application/json' }, payload: { claimCap: null, stripeCustomerId: null } });
     expect(cleared.statusCode).toBe(200);
@@ -925,9 +956,9 @@ describe('POST /keys Idempotency-Key', () => {
 
 describe('key binding fields and scopes', () => {
   it('admin sets metered, claimCap, stripeCustomerId and scopes on POST and PATCH', async () => {
-    const created = await post('/keys', SERVER_KEY, { name: 'cust', permissions: ['scan'], metered: true, claimCap: 5, stripeCustomerId: 'cus_A1', scopes: ['usage:read'] });
+    const created = await post('/keys', SERVER_KEY, { name: 'cust', permissions: ['scan'], metered: true, claimCap: 500, stripeCustomerId: 'cus_A1', scopes: ['usage:read'] });
     expect(created.statusCode).toBe(201);
-    expect(created.json()).toMatchObject({ metered: true, claimCap: 5, stripeCustomerId: 'cus_A1', scopes: ['usage:read'] });
+    expect(created.json()).toMatchObject({ metered: true, claimCap: 500, stripeCustomerId: 'cus_A1', scopes: ['usage:read'] });
     const id = created.json().id as string;
     const patched = await app.inject({ method: 'PATCH', url: `/keys/${id}`, headers: { 'x-api-key': SERVER_KEY, 'content-type': 'application/json' }, payload: { metered: false, scopes: [] } });
     expect(patched.statusCode).toBe(200);
