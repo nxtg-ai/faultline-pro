@@ -181,20 +181,98 @@ export const NO_SOURCE_EXPLANATION =
   'The search returned no source this claim can be checked against, so it is not marked supported, contradicted or mixed.';
 
 /**
+ * True when `source` is one a reader can open: its `uri` is a string that
+ * parses as an absolute URL (`new URL` succeeds) with protocol `http:` or
+ * `https:`. An empty or blank uri, a relative path, `javascript:`, `ftp:` and
+ * a missing uri all fail.
+ */
+export function isOpenableSource(source: unknown): boolean {
+  if (!source || typeof source !== 'object') return false;
+  const uri = (source as { uri?: unknown }).uri;
+  if (typeof uri !== 'string') return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(uri);
+  } catch {
+    return false;
+  }
+  return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+}
+
+/**
+ * `result` with every source that cannot be opened (isOpenableSource) dropped,
+ * when it is a definite verdict with a `sources` array; anything else is
+ * returned unchanged, and nothing is downgraded here (abstainWithoutSource
+ * does that). The verify runner and the full-scan job store call it before
+ * guardVerdict, so a source entry with no string uri is dropped like any other
+ * unopenable source instead of making the whole verdict malformed.
+ */
+export function dropUnopenableSources<T>(result: T): T {
+  if (!result || typeof result !== 'object') return result;
+  const v = result as { status?: unknown; sources?: unknown };
+  if (typeof v.status !== 'string' || !BILLABLE_STATUSES.has(v.status) || !Array.isArray(v.sources)) return result;
+  const openable = v.sources.filter(isOpenableSource);
+  return openable.length === v.sources.length ? result : { ...result, sources: openable };
+}
+
+/**
  * A definite verdict (supported, contradicted or mixed) needs at least one
- * source the reader can open. When `result` has one of those statuses and no
- * source, it is returned as `unverified` with `noSourceAbstain: true` and
+ * source the reader can open (isOpenableSource). When `result` has one of
+ * those statuses, sources that cannot be opened are dropped from it; when none
+ * remain, it is returned as `unverified` with `noSourceAbstain: true` and
  * NO_SOURCE_EXPLANATION; every other field (provenance, webSearchQueries,
  * searchEntryPoint) is kept. Anything else is returned unchanged. Every place
  * a single-provider verdict leaves the engine passes through this once: the
  * Gemini service, the verify runner (scan, stream, deep, full scan, batch,
- * report, MCP), the full-scan job store and the admin verify route. A
- * downgraded claim is `unverified`, so isBillableVerdict never bills it and no
- * verified count includes it.
+ * report, MCP), the full-scan job store and the admin verify route. Every
+ * API store that serves scan results applies it again on read
+ * (abstainScanWithoutSource), so a result stored before this rule is served
+ * under it. It runs before any billed count: isBillableVerdict counts
+ * sources by length and sees the cleaned list, and a downgraded claim is
+ * `unverified`, so it is never billed and no verified count includes it.
  */
 export function abstainWithoutSource<T extends VerificationResult>(result: T): T {
   if (!result || typeof result !== 'object') return result;
   if (!BILLABLE_STATUSES.has(result.status as string)) return result;
-  if (Array.isArray(result.sources) && result.sources.length > 0) return result;
+  const sources: unknown[] = Array.isArray(result.sources) ? result.sources : [];
+  const openable = sources.filter(isOpenableSource);
+  if (openable.length > 0) {
+    return openable.length === sources.length ? result : { ...result, sources: openable as T['sources'] };
+  }
   return { ...result, status: 'unverified', explanation: NO_SOURCE_EXPLANATION, sources: [], noSourceAbstain: true };
+}
+
+/**
+ * `result` with abstainWithoutSource applied to every entry of its
+ * `verifications` (an object keyed by claim id, or an array). Returns a new
+ * object when anything changed and never modifies `result`, so stored data is
+ * left as written and guarded on read. Anything without verifications is
+ * returned unchanged. Every API store that returns a scan result calls this
+ * on read: the scan cache (scan and deep scan), the stored-scan store, the
+ * scan queue and the full-scan job store.
+ */
+export function abstainScanWithoutSource<T>(result: T): T {
+  if (!result || typeof result !== 'object') return result;
+  const verifications = (result as { verifications?: unknown }).verifications;
+  if (!verifications || typeof verifications !== 'object') return result;
+  const guard = (v: unknown): unknown =>
+    v && typeof v === 'object' ? abstainWithoutSource(v as VerificationResult) : v;
+  let changed = false;
+  let next: unknown;
+  if (Array.isArray(verifications)) {
+    next = verifications.map((v) => {
+      const g = guard(v);
+      if (g !== v) changed = true;
+      return g;
+    });
+  } else {
+    const out: Record<string, unknown> = {};
+    for (const [id, v] of Object.entries(verifications)) {
+      const g = guard(v);
+      if (g !== v) changed = true;
+      out[id] = g;
+    }
+    next = out;
+  }
+  return changed ? { ...result, verifications: next } : result;
 }

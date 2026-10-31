@@ -1,4 +1,4 @@
-import { assertValidScanResult } from '@nxtg/faultline/lib/verdict-guard.js';
+import { abstainScanWithoutSource, assertValidScanResult } from '@nxtg/faultline/lib/verdict-guard.js';
 import { createHash } from 'node:crypto';
 import { isGroundingRedirect } from '@nxtg/faultline/evidence/grounding.js';
 import { DEFAULT_VERIFY_CAP, resolveVerifyCap } from '@nxtg/faultline/cli/verify-cap.js';
@@ -67,7 +67,11 @@ export function isGroundedScanResult(result: ScanResult): boolean {
   return (typeof result.provider === 'string' && /gemini/i.test(result.provider)) || holdsGroundedResults(result);
 }
 
-/** A cache hit: the result as it was stored, and when it was checked. */
+/**
+ * A cache hit: the result as it was stored with abstainScanWithoutSource
+ * applied (a definite verdict cached without an openable source is served as
+ * unverified), and when it was checked.
+ */
 export interface CacheHit {
   result: ScanResult;
   /** When the cached scan ran (ISO). Shown in the response so a hit never reads as fresh. */
@@ -117,7 +121,8 @@ class ScanCache {
       return null;
     }
     this._hits++;
-    return { result: entry.result, checkedAt: new Date(entry.cachedAt).toISOString() };
+    // Guarded on read, for /scan and /scan/deep alike: the stored entry is not rewritten.
+    return { result: abstainScanWithoutSource(entry.result), checkedAt: new Date(entry.cachedAt).toISOString() };
   }
 
   /** Store a result for `caller`. Returns false when the result may not be cached. */

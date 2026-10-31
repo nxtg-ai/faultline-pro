@@ -110,10 +110,18 @@ describe('engine path: the examiner probe through scan()', () => {
   });
 
   it('a malformed verdict shape is replaced the same way', async () => {
-    registerFixture('examiner-shape', (c) => ({ claimId: c.id, status: 'supported', explanation: 'x', sources: [{ title: 'no uri' }] }));
+    registerFixture('examiner-shape', (c) => ({ claimId: c.id, status: 'supported', explanation: 42, sources: [{ title: 'S', uri: 'https://s.example/a' }] }));
     const result = await scan('The examiner fixture contains a factual claim.', 'examiner-shape');
     expect(result.verifications.c1.status).toBe('unverified');
     expect(result.verifications.c1.apiError).toBe(true);
+  });
+
+  it('a source with no uri is dropped as unopenable; with none left the verdict abstains', async () => {
+    registerFixture('examiner-no-uri', (c) => ({ claimId: c.id, status: 'supported', explanation: 'x', sources: [{ title: 'no uri' }] }));
+    const result = await scan('The examiner fixture contains a factual claim.', 'examiner-no-uri');
+    expect(result.verifications.c1.status).toBe('unverified');
+    expect(result.verifications.c1.noSourceAbstain).toBe(true);
+    expect(result.verifications.c1.sources).toEqual([]);
   });
 
   it('a valid verdict passes through unchanged', async () => {
