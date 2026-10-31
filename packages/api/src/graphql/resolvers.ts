@@ -7,7 +7,7 @@ import { getUsageMeter } from '../store/usage.js';
 import { getAuditLogger } from '../store/audit.js';
 import { getScanStore } from '../store/scans.js';
 import { isAdminKeyId } from '../plugins/auth.js';
-import { mayIssueKey, CUSTOMER_KEYS_CLOSED } from '../lib/key-issuance.js';
+import { mayIssueKey, CUSTOMER_KEYS_CLOSED, issuedKeyBilling } from '../lib/key-issuance.js';
 import { GraphQLError } from 'graphql';
 
 /**
@@ -125,7 +125,8 @@ export const resolvers = {
       requireAdmin(ctx);
       const permissions = (args.permissions ?? ['scan']) as import('../store/keys.js').Permission[];
       if (!mayIssueKey(permissions)) throw new GraphQLError(CUSTOMER_KEYS_CLOSED.message, { extensions: { code: 'FORBIDDEN' } });
-      const key = getKeyStore().create(args.name, permissions);
+      // A non-admin key is metered at the default cap, like every issued key.
+      const key = getKeyStore().create(args.name, permissions, undefined, issuedKeyBilling(permissions));
       return { id: key.id, name: key.name, permissions: key.permissions, createdAt: key.createdAt };
     },
 
