@@ -197,7 +197,7 @@ function isSentenceBoundary(lastWord: string, punct: string, next: string): bool
  */
 export function splitSentences(text: string): string[] {
   const sentences: string[] = [];
-  const boundary = /([.!?]+)(["'\)\]\u201d\u2019]*)\s+(["'\(\[\u201c\u2018]*)(\S?)/g;
+  const boundary = /(?<![.!?])([.!?]+)(["'\)\]\u201d\u2019]*)\s+(["'\(\[\u201c\u2018]*)(\S?)/g;
   let start = 0;
   let m: RegExpExecArray | null;
   while ((m = boundary.exec(text)) !== null) {
