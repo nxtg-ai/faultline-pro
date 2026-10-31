@@ -236,3 +236,59 @@ describe('splitSentences: long punctuation runs', () => {
     expect(out).toEqual(expected);
   });
 });
+
+describe('splitSentences: long word before a boundary', () => {
+  it.each([' . ', '. '])('returns quickly when 50,000 letters are followed by %j', (sep) => {
+    const text = 'a'.repeat(50_000) + sep + 'Next three words.';
+    const t0 = performance.now();
+    const out = splitSentences(text);
+    const elapsed = performance.now() - t0;
+    expect(out.length).toBeGreaterThan(0);
+    expect(elapsed).toBeLessThan(200);
+  });
+
+  // Expected outputs were recorded from splitSentences before the last word was
+  // found with a backward scan, so these pin the behaviour on ordinary text.
+  const cases: Array<[string, string[]]> = [
+    ['Dr. Smith arrived at noon. He examined the patient carefully.',
+      ['Dr. Smith arrived at noon.', 'He examined the patient carefully.']],
+    ['Use a solvent, e.g. Acetone works well. Then rinse the glass twice.',
+      ['Use a solvent, e.g. Acetone works well.', 'Then rinse the glass twice.']],
+    ['John F. Kennedy was elected in 1960. He served until 1963 in office.',
+      ['John F. Kennedy was elected in 1960.', 'He served until 1963 in office.']],
+    ['The U.S. Army grew quickly. Recruitment doubled within one year.',
+      ['The U.S. Army grew quickly.', 'Recruitment doubled within one year.']],
+    ['Growth was 3.75 percent last year. Analysts expected far more than that.',
+      ['Growth was 3.75 percent last year.', 'Analysts expected far more than that.']],
+    ['It cost $4.50 at the store. Nobody complained about the price.',
+      ['It cost $4.50 at the store.', 'Nobody complained about the price.']],
+    ['"We won the case." The lawyer smiled at the waiting crowd.',
+      ['"We won the case."', 'The lawyer smiled at the waiting crowd.']],
+    ['She said “no.” Then she left the room quietly.',
+      ['She said “no.” Then she left the room quietly.']],
+    ['See the report (Fig. 3) for details. Results varied by region.',
+      ['See the report (Fig. 3) for details.', 'Results varied by region.']],
+    ['The value was high \t. Then it fell sharply after lunch.',
+      ['The value was high \t.', 'Then it fell sharply after lunch.']],
+    ['The value was high\n. Then it fell sharply after lunch.',
+      ['The value was high\n.', 'Then it fell sharply after lunch.']],
+    ['The vote was close . Then the count was repeated twice.',
+      ['The vote was close .', 'Then the count was repeated twice.']],
+    ['He met Mr. Jones at the bank. They talked about rates.',
+      ['He met Mr. Jones at the bank.', 'They talked about rates.']],
+    ['He met Dr. Smith at the clinic today.',
+      ['He met Dr. Smith at the clinic today.']],
+    ['He thanked Prof. Lee for the long talk.',
+      ['He thanked Prof. Lee for the long talk.']],
+    ['The note said\tMr. Jones would come back tomorrow.',
+      ['The note said\tMr. Jones would come back tomorrow.']],
+    ['The list read\ne.g. Apples and pears were fine. Nothing else was.',
+      ['The list read\ne.g. Apples and pears were fine.', 'Nothing else was.']],
+  ];
+
+  it.each(cases)('splits %j exactly as before', (input, expected) => {
+    const out = splitSentences(input);
+    expect(out.length).toBeGreaterThan(0);
+    expect(out).toEqual(expected);
+  });
+});

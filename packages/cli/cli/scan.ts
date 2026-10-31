@@ -202,7 +202,11 @@ export function splitSentences(text: string): string[] {
   let m: RegExpExecArray | null;
   while ((m = boundary.exec(text)) !== null) {
     const head = text.slice(start, m.index);
-    const lastWord = head.slice(head.search(/\S+$/) >= 0 ? head.search(/\S+$/) : head.length);
+    // Walk back from the end of head over non-whitespace (same set as \s). Linear, unlike
+    // head.search(/\S+$/), which is quadratic on a long run of non-space characters.
+    let wordStart = head.length;
+    while (wordStart > 0 && !/\s/.test(head[wordStart - 1]!)) wordStart--;
+    const lastWord = head.slice(wordStart);
     if (!isSentenceBoundary(lastWord, m[1]!, m[4] ?? '')) {
       boundary.lastIndex = m.index + m[1]!.length; // keep scanning past this period
       continue;
