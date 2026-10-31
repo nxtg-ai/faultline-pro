@@ -8,6 +8,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
+import yaml from 'js-yaml';
 import { join, resolve } from 'node:path';
 
 const REPO_ROOT = resolve(__dirname, '../../..');
@@ -106,37 +107,39 @@ describe('fly-ops.yml: measurement-key-set and measurement-key-unset', () => {
 });
 
 describe('fly-ops.yml: claim-meter-on and claim-meter-off', () => {
-  const yml = read('fly-ops.yml');
-  const step = (name: string) => {
-    const start = yml.indexOf(`- name: ${name}\n`);
-    expect(start).toBeGreaterThan(-1);
-    // A step ends at the next blank line, so the following comment block is not included.
-    const next = yml.indexOf('\n\n', start);
-    return yml.slice(start, next === -1 ? undefined : next);
+  // Parsed as YAML, so a folded continuation line, a second command in the same
+  // run block or a broadened condition changes the parsed value and fails an exact match.
+  type Step = { name?: string; if?: string; run?: string; [key: string]: unknown };
+  type Workflow = {
+    on: { workflow_dispatch: { inputs: { action: { options: string[] } } } };
+    jobs: Record<string, { steps: Step[] }>;
+  };
+  const wf = yaml.load(read('fly-ops.yml')) as Workflow;
+  const steps = Object.values(wf.jobs).flatMap((job) => job.steps ?? []);
+
+  const only = (name: string) => {
+    const found = steps.filter((s) => s.name === name);
+    expect(found).toHaveLength(1);
+    return found[0];
   };
 
-  it('offers both actions; on sets exactly FAULTLINE_CLAIM_METER=1, off unsets exactly FAULTLINE_CLAIM_METER, and neither touches another secret', () => {
-    expect(yml).toContain('          - claim-meter-on\n');
-    expect(yml).toContain('          - claim-meter-off\n');
+  it('offers both actions in the workflow_dispatch action options', () => {
+    const options = wf.on.workflow_dispatch.inputs.action.options;
+    expect(options).toContain('claim-meter-on');
+    expect(options).toContain('claim-meter-off');
+  });
 
-    const on = step('Claim meter on');
-    expect(on).toContain("if: inputs.action == 'claim-meter-on'");
-    const onRuns = on.split('\n').filter((line) => line.includes('flyctl'));
-    expect(onRuns).toHaveLength(1);
-    expect(onRuns[0].trim()).toBe('run: flyctl secrets set FAULTLINE_CLAIM_METER=1 -a "$APP"');
+  it('on: one step, runs only for claim-meter-on, and sets exactly FAULTLINE_CLAIM_METER=1', () => {
+    const on = only('Claim meter on');
+    expect(Object.keys(on).sort()).toEqual(['if', 'name', 'run']);
+    expect(on.if).toBe("inputs.action == 'claim-meter-on'");
+    expect(on.run!.trim()).toBe('flyctl secrets set FAULTLINE_CLAIM_METER=1 -a "$APP"');
+  });
 
-    const off = step('Claim meter off');
-    expect(off).toContain("if: inputs.action == 'claim-meter-off'");
-    const offRuns = off.split('\n').filter((line) => line.includes('flyctl'));
-    expect(offRuns).toHaveLength(1);
-    expect(offRuns[0].trim()).toBe('run: flyctl secrets unset FAULTLINE_CLAIM_METER -a "$APP"');
-
-    for (const s of [on, off]) {
-      expect(s).not.toContain('secrets.');
-      expect(s).not.toContain('env:');
-      const names = s.match(/FAULTLINE_[A-Z_]+/g) ?? [];
-      expect(names.length).toBeGreaterThan(0);
-      expect(new Set(names)).toEqual(new Set(['FAULTLINE_CLAIM_METER']));
-    }
+  it('off: one step, runs only for claim-meter-off, and unsets exactly FAULTLINE_CLAIM_METER', () => {
+    const off = only('Claim meter off');
+    expect(Object.keys(off).sort()).toEqual(['if', 'name', 'run']);
+    expect(off.if).toBe("inputs.action == 'claim-meter-off'");
+    expect(off.run!.trim()).toBe('flyctl secrets unset FAULTLINE_CLAIM_METER -a "$APP"');
   });
 });
