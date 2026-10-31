@@ -1,4 +1,4 @@
-import { abstainScanWithoutSource, abstainWithoutSource, dropUnopenableSources, guardVerdict, isBillableVerdict } from '@nxtg/faultline/lib/verdict-guard.js';
+import { abstainScanWithoutSource, abstainWithoutSource, guardVerdict, isBillableVerdict } from '@nxtg/faultline/lib/verdict-guard.js';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -651,9 +651,11 @@ class FullScanJobStore {
   /** Record a verdict as it lands (index = position among the job's fact claims). */
   recordVerdict(job: FullScanJob, index: number, verdict: VerificationResult): void {
     if (isTerminal(job.status)) return;
-    // A malformed verdict is stored as an unserved provider error (refunded), never as
-    // given; a definite verdict with no source is stored as unverified.
-    job.verdicts[index] = abstainWithoutSource(guardVerdict(dropUnopenableSources(verdict), job.factIds[index] ?? verdict?.claimId ?? ''));
+    // Shape first, on the verdict as given: a malformed verdict (any source entry without a
+    // string uri included) is stored as an unserved provider error (refunded), never as given.
+    // Only a well-formed verdict then has unopenable sources dropped, and a definite verdict
+    // left with none is stored as unverified.
+    job.verdicts[index] = abstainWithoutSource(guardVerdict(verdict, job.factIds[index] ?? verdict?.claimId ?? ''));
   }
 
   /**

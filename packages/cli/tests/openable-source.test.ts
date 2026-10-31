@@ -52,6 +52,28 @@ const UNOPENABLE: Record<string, Record<string, unknown>> = {
   'a missing uri': { title: 'x' },
 };
 
+/** The unopenable sources that are still well-formed (a string uri): guardVerdict accepts them. */
+const WELL_FORMED_UNOPENABLE = Object.fromEntries(
+  Object.entries(UNOPENABLE).filter(([, s]) => typeof s.uri === 'string'),
+);
+
+/** Malformed source entries: guardVerdict refuses the whole verdict, even beside a valid URL. */
+const MALFORMED: Record<string, unknown> = {
+  'an empty object': {},
+  'a null entry': null,
+  'a numeric uri': { title: 'x', uri: 42 },
+};
+
+/** What guardVerdict makes of a malformed provider result, as on main. */
+const PROVIDER_ERROR = {
+  claimId: 'c1',
+  status: 'unverified',
+  explanation: 'The verifier returned a malformed verdict, so this claim was not checked.',
+  sources: [],
+  apiError: true,
+  apiErrorReason: 'provider_error',
+};
+
 function expectAbstained(v: VerificationResult | undefined): void {
   expect(v).toBeDefined();
   expect(v!.status).toBe('unverified');
@@ -131,7 +153,11 @@ describe('the verify runner: returned result and onClaimVerified callback', () =
     return { result: out.results[0], map: out.verifications.c1, streamed: streamed[0] };
   }
 
-  for (const [name, source] of Object.entries(UNOPENABLE)) {
+  it('every unopenable case except the missing uri is well-formed', () => {
+    expect(Object.keys(WELL_FORMED_UNOPENABLE)).toHaveLength(Object.keys(UNOPENABLE).length - 1);
+  });
+
+  for (const [name, source] of Object.entries(WELL_FORMED_UNOPENABLE)) {
     it(`supported with only ${name}: unverified in the result and in the callback`, async () => {
       const { result, map, streamed } = await run(providerWith('supported', [source]));
       expectAbstained(result);
@@ -145,6 +171,18 @@ describe('the verify runner: returned result and onClaimVerified callback', () =
         expect(r!.status).toBe('contradicted');
         expect(r!.sources).toEqual([VALID]);
         expect(r!.noSourceAbstain).toBeUndefined();
+      }
+    });
+  }
+
+  // Validation runs before the openable filter: a malformed entry is never dropped
+  // to rescue the verdict, so the whole result is a provider error, as on main.
+  for (const [name, source] of Object.entries({ ...MALFORMED, 'a missing uri': UNOPENABLE['a missing uri'] })) {
+    it(`supported with ${name} beside a valid https source: provider error in the result, the map and the callback`, async () => {
+      const { result, map, streamed } = await run(providerWith('supported', [source, { uri: 'https://e.example/fact' }]));
+      for (const r of [result, map, streamed]) {
+        expect(r).toEqual(PROVIDER_ERROR);
+        expect(isBillableVerdict(r)).toBe(false);
       }
     });
   }

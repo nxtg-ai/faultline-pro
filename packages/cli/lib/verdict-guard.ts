@@ -200,28 +200,15 @@ export function isOpenableSource(source: unknown): boolean {
 }
 
 /**
- * `result` with every source that cannot be opened (isOpenableSource) dropped,
- * when it is a definite verdict with a `sources` array; anything else is
- * returned unchanged, and nothing is downgraded here (abstainWithoutSource
- * does that). The verify runner and the full-scan job store call it before
- * guardVerdict, so a source entry with no string uri is dropped like any other
- * unopenable source instead of making the whole verdict malformed.
- */
-export function dropUnopenableSources<T>(result: T): T {
-  if (!result || typeof result !== 'object') return result;
-  const v = result as { status?: unknown; sources?: unknown };
-  if (typeof v.status !== 'string' || !BILLABLE_STATUSES.has(v.status) || !Array.isArray(v.sources)) return result;
-  const openable = v.sources.filter(isOpenableSource);
-  return openable.length === v.sources.length ? result : { ...result, sources: openable };
-}
-
-/**
  * A definite verdict (supported, contradicted or mixed) needs at least one
  * source the reader can open (isOpenableSource). When `result` has one of
  * those statuses, sources that cannot be opened are dropped from it; when none
  * remain, it is returned as `unverified` with `noSourceAbstain: true` and
  * NO_SOURCE_EXPLANATION; every other field (provenance, webSearchQueries,
- * searchEntryPoint) is kept. Anything else is returned unchanged. Every place
+ * searchEntryPoint) is kept. Anything else is returned unchanged. Where a
+ * verdict is produced (the verify runner, the full-scan job store) it runs
+ * after guardVerdict, never before: a source entry with no string uri is a
+ * malformed verdict (a provider error), not an unopenable source. Every place
  * a single-provider verdict leaves the engine passes through this once: the
  * Gemini service, the verify runner (scan, stream, deep, full scan, batch,
  * report, MCP), the full-scan job store and the admin verify route. Every

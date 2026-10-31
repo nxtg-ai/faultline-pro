@@ -110,18 +110,50 @@ describe('engine path: the examiner probe through scan()', () => {
   });
 
   it('a malformed verdict shape is replaced the same way', async () => {
-    registerFixture('examiner-shape', (c) => ({ claimId: c.id, status: 'supported', explanation: 42, sources: [{ title: 'S', uri: 'https://s.example/a' }] }));
+    registerFixture('examiner-shape', (c) => ({ claimId: c.id, status: 'supported', explanation: 'x', sources: [{ title: 'no uri' }] }));
     const result = await scan('The examiner fixture contains a factual claim.', 'examiner-shape');
     expect(result.verifications.c1.status).toBe('unverified');
     expect(result.verifications.c1.apiError).toBe(true);
   });
 
-  it('a source with no uri is dropped as unopenable; with none left the verdict abstains', async () => {
-    registerFixture('examiner-no-uri', (c) => ({ claimId: c.id, status: 'supported', explanation: 'x', sources: [{ title: 'no uri' }] }));
-    const result = await scan('The examiner fixture contains a factual claim.', 'examiner-no-uri');
+  it('a non-string explanation is replaced the same way', async () => {
+    registerFixture('examiner-explanation', (c) => ({ claimId: c.id, status: 'supported', explanation: 42, sources: [{ title: 'S', uri: 'https://s.example/a' }] }));
+    const result = await scan('The examiner fixture contains a factual claim.', 'examiner-explanation');
     expect(result.verifications.c1.status).toBe('unverified');
-    expect(result.verifications.c1.noSourceAbstain).toBe(true);
-    expect(result.verifications.c1.sources).toEqual([]);
+    expect(result.verifications.c1.apiError).toBe(true);
+  });
+
+  it('a fresh scan builds its compliance projection from the guarded verdicts', async () => {
+    const claims: Claim[] = [
+      { id: 'c1', text: 'The first fixture claim is about a bridge.', type: 'fact', importance: 3 },
+      { id: 'c2', text: 'The second fixture claim is about a river.', type: 'fact', importance: 3 },
+      { id: 'c3', text: 'The third fixture claim is about a tower.', type: 'fact', importance: 3 },
+    ];
+    const raw: Record<string, unknown> = {
+      // Malformed (a source with no uri beside a valid one): provider error.
+      c1: { claimId: 'c1', status: 'supported', explanation: 'x', sources: [{}, { title: 'S', uri: 'https://e.example/fact' }] },
+      // Well-formed but nothing openable: abstains.
+      c2: { claimId: 'c2', status: 'contradicted', explanation: 'x', sources: [{ title: 'S', uri: 'javascript:alert(1)' }] },
+      // Valid and openable: kept.
+      c3: { claimId: 'c3', status: 'mixed', explanation: 'x', sources: [{ title: 'S', uri: 'https://e.example/tower' }] },
+    };
+    registerProvider('examiner-compliance', () => ({
+      name: 'Examiner fixture',
+      modelId: 'fixture-v1',
+      extractClaims: async () => claims,
+      verifyClaim: async (c: Claim) => structuredClone(raw[c.id]) as VerificationResult,
+      generateCritiqueAndPrompt: async () => ({ critique: '', improvedPrompt: '' }),
+    }) as never);
+    const result = await scan(claims.map((c) => c.text).join(' '), 'examiner-compliance');
+    expect(result.verifications.c1).toMatchObject({ status: 'unverified', apiError: true, apiErrorReason: 'provider_error' });
+    expect(result.verifications.c2).toMatchObject({ status: 'unverified', noSourceAbstain: true });
+    expect(result.verifications.c3.status).toBe('mixed');
+    const mappings = result.complianceReport.claimMappings;
+    expect(mappings.length).toBeGreaterThan(0);
+    for (const m of mappings) {
+      expect(result.verifications[m.claimId]).toBeDefined();
+      expect(m.verificationStatus).toBe(result.verifications[m.claimId].status);
+    }
   });
 
   it('a valid verdict passes through unchanged', async () => {
