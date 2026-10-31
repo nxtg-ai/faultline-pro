@@ -61,7 +61,8 @@ describe('geminiService.verifyClaim — unreadable replies', () => {
   });
 
   it('JSON reply saying mixed: status mixed, no parseFallback', async () => {
-    sdk.reply = { text: '{"status":"mixed","explanation":"Studies disagree."}' };
+    // One web source: a mixed verdict needs a source the reader can open to stay mixed.
+    sdk.reply = { text: '{"status":"mixed","explanation":"Studies disagree."}', candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'S', uri: 'https://s.example/a' } }] } }] } as never;
     const result = await verifyClaim(CLAIM, 'key');
     expect(result.status).toBe('mixed');
     expect(result.parseFallback).toBeUndefined();

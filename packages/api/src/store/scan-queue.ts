@@ -14,6 +14,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { abstainScanWithoutSource } from '@nxtg/faultline/lib/verdict-guard.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { ENGINE_VERIFY_CAP, meteredScan } from '../lib/claim-meter.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
@@ -44,6 +45,17 @@ export interface QueueStats {
   failed:     number;
   cancelled:  number;
   total:      number;
+}
+
+/**
+ * An item as read: abstainScanWithoutSource applied to its result, so a
+ * definite verdict without an openable source reads as unverified. The stored
+ * item is not rewritten.
+ */
+function guardedItem(item: ScanQueueItem): ScanQueueItem {
+  if (item.result === undefined) return item;
+  const result = abstainScanWithoutSource(item.result);
+  return result === item.result ? item : { ...item, result };
 }
 
 const MAX_PENDING   = 10_000;
@@ -107,7 +119,8 @@ class ScanQueue {
   }
 
   get(id: string): ScanQueueItem | undefined {
-    return this.items.get(id);
+    const item = this.items.get(id);
+    return item === undefined ? undefined : guardedItem(item);
   }
 
   list(keyId?: string, limit = 50): ScanQueueItem[] {
@@ -115,7 +128,8 @@ class ScanQueue {
     if (keyId) all = all.filter(i => i.keyId === keyId);
     return all
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, limit);
+      .slice(0, limit)
+      .map(guardedItem);
   }
 
   getStats(): QueueStats {

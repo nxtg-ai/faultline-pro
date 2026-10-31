@@ -322,7 +322,8 @@ describe('ScanCache — never caches unchecked/apiError results', () => {
   beforeEach(() => resetCache());
 
   it('caches a clean result (control)', () => {
-    const clean = { claims: [{ id: 'c1' }], verifications: { c1: { status: 'supported' } } };
+    // A definite verdict needs an openable source, or the read guard serves it as unverified.
+    const clean = { claims: [{ id: 'c1' }], verifications: { c1: { status: 'supported', sources: [{ title: 'S', uri: 'https://s.example' }] } } };
     getScanCache().set('k', 'doc', 'gemini', clean);
     expect(getScanCache().get('k', 'doc', 'gemini')?.result).toEqual(clean);
     expect(getScanCache().stats().size).toBe(1);

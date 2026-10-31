@@ -433,6 +433,9 @@ interface VerificationResult {
   // Google Search Suggestions, present only on a Gemini grounded verdict (see below)
   searchEntryPoint?: { renderedContent: string };
   webSearchQueries?: string[];
+  // true when the provider said supported, contradicted or mixed with no source and the
+  // verdict was returned as unverified instead (see "No definite verdict without a source")
+  noSourceAbstain?: boolean;
   // Who produced the verdict and when; absent when the check never ran (apiError)
   provenance?: {
     provider: string;     // 'gemini', 'openai', 'claude', 'perplexity', 'mock' or 'consensus'
@@ -486,6 +489,8 @@ An empty `sources` list means the second retriever found nothing. OpenAI's terms
 | `contradicted` | Claim is directly refuted by sources |
 | `mixed` | Sources conflict or evidence is ambiguous |
 | `unverified` | Insufficient evidence to determine either way |
+
+**No definite verdict without a source.** `supported`, `contradicted` and `mixed` always come with at least one source the reader can open. When a provider returns one of them with no source (on Gemini: the search ran but returned no grounding chunk with a web uri), the verdict is returned as `unverified` with `noSourceAbstain: true` and the explanation "The search returned no source this claim can be checked against, so it is not marked supported, contradicted or mixed." `provenance`, `webSearchQueries` and `searchEntryPoint` are kept as they were. A source counts only when its `uri` is an absolute `http` or `https` URL; any other source (empty, relative, `javascript:`, `ftp:`, missing) is dropped from the verdict. This holds on every provider and every path, including scans served from the cache or read back from storage. OpenAI and Claude single-provider verify cite no source, so their verdicts always read `unverified`; consensus already gives no vote without a retrieved source. Such a claim is not billable and is not counted toward the scan quota or the claim meter.
 
 ### ScanResult
 

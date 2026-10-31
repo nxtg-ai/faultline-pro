@@ -252,7 +252,10 @@ describe('commit counts claims with a verdict; everything else is released', () 
       c5: { status: 'supported', sources: [] },
     };
     const key = customer(100);
-    expect((await post('/scan', key.key, { text: sentences(5), provider: ENGINE_PROVIDER })).statusCode).toBe(200);
+    const res = await post('/scan', key.key, { text: sentences(5), provider: ENGINE_PROVIDER });
+    expect(res.statusCode).toBe(200);
+    // The sourceless supported verdict reaches the reader as unverified, and the meter does not bill it.
+    expect(res.json().verifications.c5).toMatchObject({ status: 'unverified', noSourceAbstain: true, sources: [] });
     expect(getClaimMeter().usageFor(key.id)).toEqual({ used: 2, byVerdict: { contradicted: 1, supported: 1 } });
     const rows = ledgerRows();
     expect(rows.length).toBe(2);

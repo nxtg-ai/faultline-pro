@@ -331,8 +331,9 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
   it('honours an explicit mock provider and reports its model', async () => {
     const res = await post({ claims: claims(2), provider: 'mock' });
     expect(res.statusCode).toBe(200);
-    expect(res.json().results.map((r: { status: string; model: string }) => [r.status, r.model]))
-      .toEqual([['supported', 'mock-v1'], ['supported', 'mock-v1']]);
+    // The mock says supported with no source, so each claim is reported as unverified.
+    expect(res.json().results.map((r: { status: string; model: string; noSourceAbstain: boolean }) => [r.status, r.model, r.noSourceAbstain]))
+      .toEqual([['unverified', 'mock-v1', true], ['unverified', 'mock-v1', true]]);
     expect(sdk.calls).toBe(0);
   });
 });
@@ -439,14 +440,14 @@ describe('POST /admin/verify-claims — the ledgers a scan writes', () => {
       { id: 'error', text: 'THROW-ME' },
     ] });
     expect(res.statusCode).toBe(200);
-    const results = res.json().results as Array<{ id: string; status: string; apiError: boolean }>;
+    const results = res.json().results as Array<{ id: string; status: string; apiError: boolean; noSourceAbstain: boolean }>;
     expect(results).toHaveLength(4);
-    // The two supported verdicts read the same on the wire; only the source tells them apart.
-    expect(results.map((r) => [r.id, r.status, r.apiError])).toEqual([
-      ['sourced', 'supported', false],
-      ['no-source', 'supported', false],
-      ['unverified', 'unverified', false],
-      ['error', 'unverified', true],
+    // The zero-source supported verdict is reported as unverified, flagged noSourceAbstain.
+    expect(results.map((r) => [r.id, r.status, r.apiError, r.noSourceAbstain])).toEqual([
+      ['sourced', 'supported', false, false],
+      ['no-source', 'unverified', false, true],
+      ['unverified', 'unverified', false, false],
+      ['error', 'unverified', true, false],
     ]);
     const rows = spendRows();
     expect(rows).toHaveLength(1);
