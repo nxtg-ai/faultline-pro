@@ -192,3 +192,47 @@ describe('splitSentences(): case citations and abbreviations', () => {
     }
   });
 });
+
+// ── Linear time on long punctuation runs ────────────────────────────────────
+
+describe('splitSentences: long punctuation runs', () => {
+  it.each(['!', '.'])('returns quickly on a 50,000-character run of %s with no following space', (ch) => {
+    const text = 'a ' + ch.repeat(50_000);
+    const t0 = performance.now();
+    const out = splitSentences(text);
+    const elapsed = performance.now() - t0;
+    expect(Array.isArray(out)).toBe(true);
+    expect(elapsed).toBeLessThan(200);
+  });
+
+  // Expected outputs were recorded from splitSentences before the lookbehind
+  // was added, so these pin the behaviour on ordinary text.
+  const cases: Array<[string, string[]]> = [
+    ['He said "This is true." Then he left the room quickly.',
+      ['He said "This is true."', 'Then he left the room quickly.']],
+    ['Is that really the case?! Nobody seems to know the answer.',
+      ['Is that really the case?!', 'Nobody seems to know the answer.']],
+    ['Wait for it... The results came in late last night.',
+      ['Wait for it...', 'The results came in late last night.']],
+    ['Dr. Smith treated the patient. The patient recovered fully afterwards.',
+      ['Dr. Smith treated the patient.', 'The patient recovered fully afterwards.']],
+    ['The sky is blue.  The grass is green today.',
+      ['The sky is blue.', 'The grass is green today.']],
+    ['The study (published in 2020.) was cited widely. Critics disagreed with its method.',
+      ['The study (published in 2020.) was cited widely.', 'Critics disagreed with its method.']],
+    ['This is amazing!!! Everyone should try it today.',
+      ['This is amazing!!!', 'Everyone should try it today.']],
+    ['The trial ended in March. It was a total success!!!',
+      ['The trial ended in March.', 'It was a total success!!!']],
+    ["She asked 'why not?' Then she walked away from the desk.",
+      ["She asked 'why not?'", 'Then she walked away from the desk.']],
+    ['Prices rose 5.2 percent in 2023. Wages did not keep up.',
+      ['Prices rose 5.2 percent in 2023.', 'Wages did not keep up.']],
+  ];
+
+  it.each(cases)('splits %j exactly as before', (input, expected) => {
+    const out = splitSentences(input);
+    expect(out.length).toBeGreaterThan(0);
+    expect(out).toEqual(expected);
+  });
+});
