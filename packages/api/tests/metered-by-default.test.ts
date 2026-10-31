@@ -311,6 +311,77 @@ describe('every bad cap on a non-admin key is claim_cap_out_of_range', () => {
   });
 });
 
+describe('a scalar permissions value is read as the schema coerces it', () => {
+  it('POST /keys with scalar "scan" or "report" and claimCap "100" is claim_cap_out_of_range, and nothing is issued', async () => {
+    for (const permissions of ['scan', 'report']) {
+      const res = await createKey({ name: 'x', permissions, claimCap: '100' });
+      expect(res.statusCode, permissions).toBe(400);
+      expect(res.json(), permissions).toMatchObject({ error: 'claim_cap_out_of_range', min: 100, max: 10_000 });
+    }
+    expect(getKeyStore().list()).toHaveLength(0);
+  });
+
+  it('PATCH of a non-admin key with scalar "scan" or "report" and claimCap "100" is refused and changes nothing', async () => {
+    const id = (await createKey({ name: 'cust', permissions: ['scan'] })).json().id as string;
+    for (const permissions of ['scan', 'report']) {
+      const res = await patchKey(id, { permissions, claimCap: '100' });
+      expect(res.statusCode, permissions).toBe(400);
+      expect(res.json(), permissions).toMatchObject({ error: 'claim_cap_out_of_range', min: 100, max: 10_000 });
+    }
+    expect(getKeyStore().validateById(id)).toMatchObject({ permissions: ['scan'], metered: true, claimCap: 1000 });
+  });
+
+  it('PATCH demoting an admin key with scalar "scan" or "report" and claimCap "100" is refused and changes nothing', async () => {
+    const admin = getKeyStore().create('ops', ['admin'], undefined, { claimCap: 50 });
+    for (const permissions of ['scan', 'report']) {
+      const res = await patchKey(admin.id, { permissions, claimCap: '100' });
+      expect(res.statusCode, permissions).toBe(400);
+      expect(res.json(), permissions).toMatchObject({ error: 'claim_cap_out_of_range', min: 100, max: 10_000 });
+    }
+    const stored = getKeyStore().validateById(admin.id);
+    expect(stored).toMatchObject({ permissions: ['admin'], claimCap: 50 });
+    expect(stored?.metered).toBeUndefined();
+  });
+
+  it('a scalar "admin" keeps today\'s behaviour: the schema coerces the string cap', async () => {
+    const res = await createKey({ name: 'ops', permissions: 'admin', claimCap: '100' });
+    expect(res.statusCode).toBe(201);
+    expect(res.json()).toMatchObject({ permissions: ['admin'], claimCap: 100 });
+    const admin = getKeyStore().create('ops', ['admin'], undefined, { claimCap: 50 });
+    const patched = await patchKey(admin.id, { permissions: 'admin', claimCap: '0' });
+    expect(patched.statusCode).toBe(200);
+    expect(getKeyStore().validateById(admin.id)).toMatchObject({ permissions: ['admin'], claimCap: 0 });
+  });
+});
+
+describe('a non-admin key keeps any cap it holds in range, metered or not', () => {
+  it('demoting an admin key with claimCap 0 and metered: false is refused and leaves the key unchanged', async () => {
+    const admin = getKeyStore().create('ops', ['admin'], undefined, { claimCap: 0 });
+    const res = await patchKey(admin.id, { permissions: ['scan'], metered: false });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: 'claim_cap_out_of_range', min: 100, max: 10_000 });
+    const stored = getKeyStore().validateById(admin.id);
+    expect(stored).toMatchObject({ permissions: ['admin'], claimCap: 0 });
+    expect(stored?.metered).toBeUndefined();
+  });
+
+  it('the same demotion with claimCap 500 is accepted', async () => {
+    const admin = getKeyStore().create('ops', ['admin'], undefined, { claimCap: 0 });
+    const res = await patchKey(admin.id, { permissions: ['scan'], metered: false, claimCap: 500 });
+    expect(res.statusCode).toBe(200);
+    expect(getKeyStore().validateById(admin.id)).toMatchObject({ permissions: ['scan'], metered: false, claimCap: 500 });
+  });
+
+  it('the same demotion with claimCap null is accepted and leaves no cap', async () => {
+    const admin = getKeyStore().create('ops', ['admin'], undefined, { claimCap: 0 });
+    const res = await patchKey(admin.id, { permissions: ['scan'], metered: false, claimCap: null });
+    expect(res.statusCode).toBe(200);
+    const stored = getKeyStore().validateById(admin.id);
+    expect(stored).toMatchObject({ permissions: ['scan'], metered: false });
+    expect(stored?.claimCap).toBeUndefined();
+  });
+});
+
 describe('POST /orgs/:id/keys', () => {
   it('issues a non-admin org key metered with claimCap 1000', async () => {
     const org = getOrgStore().create({ name: 'Metered Org' }, 'admin');

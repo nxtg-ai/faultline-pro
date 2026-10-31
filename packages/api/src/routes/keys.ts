@@ -65,12 +65,18 @@ function refuseBadNonAdminCap(targetPermissions: (request: FastifyRequest, body:
   };
 }
 
-/** The `permissions` in a body when it is a list of known values; null when it is malformed. */
+/**
+ * The `permissions` in a body as the schema will see them after coercion, or
+ * null when the schema will refuse them. Fastify's Ajv runs with
+ * coerceTypes 'array', so a scalar becomes a one-element array ("scan" is
+ * ["scan"]); a number, boolean or null item never coerces to a known value.
+ */
 function bodyPermissions(body: Record<string, unknown>): Permission[] | undefined | null {
   const perms = body.permissions;
   if (perms === undefined) return undefined;
-  if (!Array.isArray(perms) || !perms.every((p) => VALID_PERMISSIONS.includes(p as Permission))) return null;
-  return perms as Permission[];
+  const list: unknown[] = Array.isArray(perms) ? perms : [perms];
+  if (!list.every((p) => typeof p === 'string' && VALID_PERMISSIONS.includes(p as Permission))) return null;
+  return list as Permission[];
 }
 
 /** undefined = header absent; null = present but empty or longer than 200 characters. */
@@ -572,12 +578,13 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
       }
       const meteredAfter = patch.metered ?? current.metered === true;
       const capAfter = patch.claimCap === null ? undefined : (patch.claimCap ?? current.claimCap);
-      // A metered non-admin key always carries a cap in range; only an admin key's cap may be cleared.
-      if (nonAdminAfter && meteredAfter) {
-        if (capAfter === undefined) {
-          return reply.status(400).send({ error: 'claim_cap_required', message: 'A metered non-admin key must keep a claimCap.' });
-        }
-        if (!claimCapInBounds(permissions, capAfter)) return reply.status(400).send(CLAIM_CAP_OUT_OF_RANGE);
+      // A metered non-admin key always carries a cap; only an admin key's cap may be cleared.
+      if (nonAdminAfter && meteredAfter && capAfter === undefined) {
+        return reply.status(400).send({ error: 'claim_cap_required', message: 'A metered non-admin key must keep a claimCap.' });
+      }
+      // Any cap a non-admin key holds after the patch is in range, metered or not.
+      if (nonAdminAfter && capAfter !== undefined && !claimCapInBounds(permissions, capAfter)) {
+        return reply.status(400).send(CLAIM_CAP_OUT_OF_RANGE);
       }
       const updated = store.update(request.params.id, patch);
       if (!updated) return reply.status(404).send({ error: 'Key not found.' });
