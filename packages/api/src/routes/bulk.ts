@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import AdmZip from 'adm-zip';
 import { requireApiKey } from '../plugins/auth.js';
@@ -13,6 +14,8 @@ import { getBulkJobStore } from '../store/bulk-jobs.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 import type { Provider } from '../store/jobs.js';
+import { ENGINE_VERIFY_CAP, meteredScan } from '../lib/claim-meter.js';
+import { engineVerifyCap, requireClaimHeadroom } from '../plugins/claim-meter.js';
 import type { ManagedScanCostEvent } from '../store/costs.js';
 
 const ALLOWED_EXTENSIONS = new Set(['.txt', '.md', '.json']);
@@ -58,7 +61,8 @@ async function processBulkJob(
     const filename = entry.entryName;
     try {
       const text = entry.getData().toString('utf8');
-      const result = await scanWithSpend({ text, provider, keyId }, () => scan(text, provider));
+      // Each file is metered on its own; once the key's cap is reached the rest fail unscanned.
+      const result = await meteredScan(keyId, ENGINE_VERIFY_CAP, randomUUID(), provider, () => scanWithSpend({ text, provider, keyId }, () => scan(text, provider)));
       store.recordFileResult(jobId, {
         filename,
         status: 'done',
@@ -78,7 +82,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
   // POST /scan/bulk — accepts ZIP archive, returns jobId immediately (202)
   fastify.post<{ Querystring: { provider?: string } }>(
     '/scan/bulk',
-    { config: { access: 'owner' }, preHandler: [requireApiKey, enforceMonthlyCap, enforceProviderSpendCap], schema: { tags: ['Jobs'], summary: 'Upload ZIP of documents for async bulk scan' } },
+    { config: { access: 'owner' }, preHandler: [requireApiKey, enforceMonthlyCap, enforceProviderSpendCap, requireClaimHeadroom(engineVerifyCap())], schema: { tags: ['Jobs'], summary: 'Upload ZIP of documents for async bulk scan' } },
     async (request, reply) => {
       let zipBuffer: Buffer | null = null;
 

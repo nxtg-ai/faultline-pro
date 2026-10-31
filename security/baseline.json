@@ -925,6 +925,22 @@
       "fp": "2abfe6ecf9455426db963bc44ea258dd_1",
       "disposition": "false-positive",
       "reason": "false-positive, triaged 2026-10-13 (fp): prints the fixed customer-safe extraction-failure sentence (ExtractionError SAFE_MESSAGES) to the CLI user's own terminal; no provider payload, key or input text"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_observable_timing",
+      "uri": "packages/api/src/store/keys.ts",
+      "fp": "9834ba5cec7831f748c76e8c2c49e8be_0",
+      "disposition": "false-positive",
+      "reason": "false-positive, triaged 2026-10-26: hydrating the POST /keys Idempotency-Key map reads its own file; the flagged line is a typeof check and a Map lookup on a SHA-256 of a caller-chosen header value, not a comparison against a secret. Key validation stays on timingSafeEqual"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/api/src/store/claim-meter.ts",
+      "fp": "80969a9db2b183fe4764e5f5d0ae0a99_0",
+      "disposition": "false-positive",
+      "reason": "false-positive, triaged 2026-10-26: the claim meter logs only an integer count of claims it refused to record; never a claim id, scan id, key or text (tests/claim-meter-store.test.ts asserts the refused id is absent from the log)"
     }
   ]
 }

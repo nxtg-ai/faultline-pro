@@ -8,9 +8,36 @@ import { getProviderSpendLedger, getProviderSpendStatus } from '../store/provide
 import { SPEND_CAP_TIERS } from '../plugins/provider-spend-cap.js';
 import { getGroundingAllowanceStatus } from '../store/grounding-allowance.js';
 import { getFullScanJobStore } from '../store/full-scan-jobs.js';
+import { isMeteredKey } from '../lib/claim-meter.js';
+import { BILLED_VERDICTS, getClaimMeter, isClaimMeterEnabled } from '../store/claim-meter.js';
+import { getKeyStore } from '../store/keys.js';
+import { currentMonth } from '../store/provider-spend.js';
+
+/** Every billed verdict at 0, so the shape is the same before the first claim. */
+function verdictCounts(byVerdict: Record<string, number>): Record<string, number> {
+  return { ...Object.fromEntries(BILLED_VERDICTS.map((v) => [v, 0])), ...byVerdict };
+}
+
+/** A metered key's claim position this month. `cap` and `remaining` are null while no claimCap is set. */
+function claimsBlock(keyId: string) {
+  const meter = getClaimMeter();
+  const period = currentMonth();
+  const own = getKeyStore().validateById(keyId)?.claimCap;
+  const cap = typeof own === 'number' ? own : null;
+  const { used, byVerdict } = meter.usageFor(keyId, period);
+  const reserved = meter.reservedFor(keyId);
+  const remaining = cap === null ? null : Math.max(0, cap - used - reserved);
+  return { period, cap, used, reserved, remaining, byVerdict: verdictCounts(byVerdict) };
+}
+
+/** Fleet claim totals (admin only). `enabled` says whether the meter switch is on. */
+function claimMeterBlock() {
+  const totals = getClaimMeter().totals();
+  return { enabled: isClaimMeterEnabled(), ...totals, byVerdict: verdictCounts(totals.byVerdict) };
+}
 
 export async function usageRoutes(fastify: FastifyInstance): Promise<void> {
-  fastify.get('/usage', { config: { access: 'owner' }, preHandler: requireApiKey, schema: { tags: ['Analytics'], summary: 'Per-key daily scan usage counts + monthly quota' } }, async (request, reply) => {
+  fastify.get('/usage', { config: { access: 'owner' }, preHandler: requireApiKey, schema: { tags: ['Analytics'], summary: 'Per-key daily scan usage counts, monthly quota and claim meter' } }, async (request, reply) => {
     const keyId = request.keyId ?? 'unknown';
     const meter = getUsageMeter();
 
@@ -51,6 +78,11 @@ export async function usageRoutes(fastify: FastifyInstance): Promise<void> {
     // (emma-soul condition 4, GoPMO 1.18.11.3.12). `alert` = refunded units above
     // 10% of charged units; fp then reports the cause. Admin only: fleet-wide.
     const fullScanRefunds = isAdmin ? getFullScanJobStore().refundSummary() : undefined;
+    // Claim meter: a metered key sees its own month; admin sees fleet totals and
+    // the usage record's position (what the billing side syncs from).
+    const claims = isMeteredKey(request.keyId) ? claimsBlock(request.keyId) : undefined;
+    const claimMeter = isAdmin ? claimMeterBlock() : undefined;
+    const usageRecords = isAdmin ? getClaimMeter().status() : undefined;
 
     return reply.status(200).send({
       keyId,
@@ -59,6 +91,9 @@ export async function usageRoutes(fastify: FastifyInstance): Promise<void> {
       ...(providerBudget ? { providerBudget } : {}),
       ...(groundingAllowance ? { groundingAllowance } : {}),
       ...(fullScanRefunds ? { fullScanRefunds } : {}),
+      ...(claims ? { claims } : {}),
+      ...(claimMeter ? { claimMeter } : {}),
+      ...(usageRecords ? { usageRecords } : {}),
     });
   });
 }

@@ -26,6 +26,7 @@ import { reportRoutes } from './routes/report.js';
 import { uploadRoutes } from './routes/upload.js';
 import { keysRoutes } from './routes/keys.js';
 import { usageRoutes } from './routes/usage.js';
+import { usageRecordsRoutes } from './routes/usage-records.js';
 import { installGroundingCounter } from './store/grounding-allowance.js';
 import { dashboardRoutes } from './routes/dashboard.js';
 import { webhookRoutes } from './routes/webhooks.js';
@@ -86,6 +87,7 @@ import { deliveredBillableVerdicts } from './lib/scan-quota.js';
 import { stopFullScanJobPruning } from './store/full-scan-jobs.js';
 import { FAULTLINE_API_VERSION } from './version.js';
 import { applyRouteAccess } from './lib/route-access.js';
+import { releaseClaims } from './plugins/claim-meter.js';
 import { refuseMeasurementOutsideAllowlist, warnIfMeasurementKeyCollides } from './plugins/auth.js';
 
 const MAX_FILE_SIZE = 10_485_760; // 10MB
@@ -177,6 +179,7 @@ export function buildServer() {
   fastify.register(uploadRoutes);
   fastify.register(keysRoutes);
   fastify.register(usageRoutes);
+  fastify.register(usageRecordsRoutes);
   fastify.register(dashboardRoutes);
   fastify.register(webhookRoutes);
   fastify.register(batchRoutes);
@@ -298,6 +301,8 @@ export function buildServer() {
   });
 
   fastify.addHook('onResponse', async (request: FastifyRequest, reply: FastifyReply) => {
+    // Free any claims the request reserved and did not commit (every error path).
+    releaseClaims(request);
     const startMs = (request as FastifyRequest & { _startMs?: number })._startMs ?? Date.now();
     const latencyMs = Date.now() - startMs;
     const keyId = request.keyId ?? 'unknown';

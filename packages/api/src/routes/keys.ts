@@ -1,13 +1,51 @@
 import { mayIssueKey, CUSTOMER_KEYS_CLOSED } from '../lib/key-issuance.js';
 import { getAuditLogger } from '../store/audit.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { requireAdmin } from '../plugins/auth.js';
+import { hasScope, isAdminKeyId, requireAdmin } from '../plugins/auth.js';
 import { esc } from '../lib/html.js';
-import { getKeyStore, ROTATION_GRACE_HOURS } from '../store/keys.js';
-import type { Permission } from '../store/keys.js';
+import { getKeyStore, KEY_SCOPES, MAX_KEY_IDEMPOTENCY_KEY_LENGTH, ROTATION_GRACE_HOURS } from '../store/keys.js';
+import type { ApiKey, KeyScope, Permission } from '../store/keys.js';
 import { getNotificationStore } from '../store/notifications.js';
 
 const VALID_PERMISSIONS: Permission[] = ['scan', 'report', 'upload', 'admin', 'pro'];
+
+/** Claims per calendar month (UTC) a metered key may have verified. */
+const CLAIM_CAP_SCHEMA = { type: 'integer', minimum: 0, maximum: 100_000_000 } as const;
+/** A Stripe customer id (`cus_...`). Format-checked so no free text reaches the usage record. */
+const STRIPE_CUSTOMER_SCHEMA = { type: 'string', pattern: '^cus_[A-Za-z0-9]{1,64}$' } as const;
+const METERED_SCHEMA = { type: 'boolean' } as const;
+const SCOPES_SCHEMA = { type: 'array', uniqueItems: true, items: { type: 'string', enum: [...KEY_SCOPES] } } as const;
+
+/** The key fields that bind a key to billing. Setting any of them needs scope keys:write. */
+const BILLING_FIELDS = ['claimCap', 'stripeCustomerId', 'metered', 'scopes'] as const;
+
+/**
+ * Why this caller may not set the billing fields in `body`, or null when it
+ * may. Setting any of them needs scope `keys:write`; granting scopes needs an
+ * admin key. Both routes are admin-only today and admin keys pass every scope,
+ * so these checks hold the rule in place if the routes are ever opened wider.
+ */
+function billingFieldRefusal(keyId: string | undefined, body: Record<string, unknown>): { error: string; scope?: KeyScope } | null {
+  if (!BILLING_FIELDS.some((f) => body[f] !== undefined)) return null;
+  if (!hasScope(keyId, 'keys:write')) return { error: 'scope_required', scope: 'keys:write' };
+  if (body.scopes !== undefined && !isAdminKeyId(keyId)) return { error: 'admin_required' };
+  return null;
+}
+
+/** undefined = header absent; null = present but empty or longer than 200 characters. */
+function readIdempotencyKey(request: FastifyRequest): string | null | undefined {
+  const raw = request.headers['idempotency-key'];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (value === undefined) return undefined;
+  return value.length === 0 || value.length > MAX_KEY_IDEMPOTENCY_KEY_LENGTH ? null : value;
+}
+
+/** A key as a replayed POST /keys returns it: never the plaintext again. */
+function replayView(keyId: string, entry: ApiKey | null): Record<string, unknown> {
+  if (!entry) return { id: keyId, key: null };
+  const { key: _key, previousKey: _prev, ...rest } = entry;
+  return { ...rest, key: null };
+}
 
 const CREATE_BODY_SCHEMA = {
   type: 'object',
@@ -19,6 +57,10 @@ const CREATE_BODY_SCHEMA = {
       items: { type: 'string', enum: VALID_PERMISSIONS },
     },
     expiresAt: { type: 'string', format: 'date-time' },
+    claimCap: CLAIM_CAP_SCHEMA,
+    stripeCustomerId: STRIPE_CUSTOMER_SCHEMA,
+    metered: METERED_SCHEMA,
+    scopes: SCOPES_SCHEMA,
   },
   additionalProperties: false,
 } as const;
@@ -27,17 +69,31 @@ interface CreateKeyBody {
   name: string;
   permissions?: Permission[];
   expiresAt?: string;
+  claimCap?: number;
+  stripeCustomerId?: string;
+  metered?: boolean;
+  scopes?: KeyScope[];
 }
 
 export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: CreateKeyBody }>(
     '/keys',
-    { config: { access: 'admin' }, preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Create a new API key', body: CREATE_BODY_SCHEMA } },
+    { config: { access: 'admin' }, preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Create a new API key (Idempotency-Key optional)', body: CREATE_BODY_SCHEMA } },
     async (request, reply) => {
-      const { name, permissions, expiresAt } = request.body;
-      if (!mayIssueKey(permissions)) return reply.status(403).send(CUSTOMER_KEYS_CLOSED);
+      const { name, permissions, expiresAt, claimCap, stripeCustomerId, metered, scopes } = request.body;
+      const idempotencyKey = readIdempotencyKey(request);
+      if (idempotencyKey === null) return reply.status(400).send({ error: 'idempotency_key_invalid' });
       const store = getKeyStore();
-      const entry = store.create(name, permissions, expiresAt);
+      // No await from the lookup to remember: a concurrent replay cannot mint a second key.
+      if (idempotencyKey !== undefined) {
+        const prior = store.keyIdForIdempotencyKey(idempotencyKey);
+        if (prior !== undefined) return reply.status(200).send(replayView(prior, store.validateById(prior)));
+      }
+      const refusal = billingFieldRefusal(request.keyId, request.body as unknown as Record<string, unknown>);
+      if (refusal) return reply.status(403).send(refusal);
+      if (!mayIssueKey(permissions)) return reply.status(403).send(CUSTOMER_KEYS_CLOSED);
+      const entry = store.create(name, permissions, expiresAt, { claimCap, stripeCustomerId, metered, scopes });
+      if (idempotencyKey !== undefined) store.rememberIdempotencyKey(idempotencyKey, entry.id);
       return reply.status(201).send(entry);
     },
   );
@@ -406,6 +462,10 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
         items: { type: 'string', enum: VALID_PERMISSIONS },
       },
       expiresAt: { type: ['string', 'null'] },
+      claimCap: { ...CLAIM_CAP_SCHEMA, type: ['integer', 'null'] },
+      stripeCustomerId: { ...STRIPE_CUSTOMER_SCHEMA, type: ['string', 'null'] },
+      metered: METERED_SCHEMA,
+      scopes: SCOPES_SCHEMA,
     },
     additionalProperties: false,
   } as const;
@@ -414,6 +474,10 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
     name?: string;
     permissions?: Permission[];
     expiresAt?: string | null;
+    claimCap?: number | null;
+    stripeCustomerId?: string | null;
+    metered?: boolean;
+    scopes?: KeyScope[];
   }
 
   fastify.patch<{ Params: { id: string }; Body: PatchKeyBody }>(
@@ -425,6 +489,8 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
       if (request.body.permissions !== undefined && !mayIssueKey(request.body.permissions)) {
         return reply.status(403).send(CUSTOMER_KEYS_CLOSED);
       }
+      const refusal = billingFieldRefusal(request.keyId, request.body as unknown as Record<string, unknown>);
+      if (refusal) return reply.status(403).send(refusal);
       const store = getKeyStore();
       const updated = store.update(request.params.id, request.body);
       if (!updated) return reply.status(404).send({ error: 'Key not found.' });

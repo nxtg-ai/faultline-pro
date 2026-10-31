@@ -111,6 +111,8 @@ const PROVIDER_FREE_ROUTES: readonly string[] = [
 
   // Usage, spend, costs and rate limits: read stored counters.
   'GET /usage',
+  // The claim meter's usage record: reads committed rows.
+  'GET /admin/usage-records',
   'GET /costs',
   'GET /costs/percentiles',
   'GET /rate-limits',

@@ -6,6 +6,7 @@ import { enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { meterScan } from '../lib/scan-quota.js';
 import { esc } from '../lib/html.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { commitClaims, engineVerifyCap, reserveClaims } from '../plugins/claim-meter.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 import { getScanStore } from '../store/scans.js';
 import { ownedScan } from '../lib/scan-access.js';
@@ -206,7 +207,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
     '/scan/compliance-gate',
     {
       config: { access: 'owner' },
-      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap],
+      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap, reserveClaims(engineVerifyCap())],
       schema: {
         tags: ['Compliance'],
         summary: 'Scan text and evaluate EU AI Act compliance gate (pass/fail)',
@@ -222,6 +223,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
 
       const result = await scanWithSpend({ text, provider, keyId }, () => scan(text, provider));
       const stored = getScanStore().record(keyId, text, result as unknown as Record<string, unknown>);
+      commitClaims(request, stored.id, result, provider ?? 'gemini');
       const report = buildEuComplianceReport(result, { projectName });
       const gate = evaluateComplianceGate(report, { threshold, strict });
 

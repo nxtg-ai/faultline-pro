@@ -15,6 +15,7 @@ import type { Provider } from '../store/circuit-breaker.js';
 import { getScanCache } from '../store/cache.js';
 import { cacheCaller, requestOwner } from '../lib/cache-caller.js';
 import { buildEvidenceLinks } from '../lib/url-validator.js';
+import { commitClaims, engineVerifyCap, reserveClaims } from '../plugins/claim-meter.js';
 
 const BODY_SCHEMA = {
   type: 'object',
@@ -40,7 +41,7 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
     {
       config: { access: 'key' },
       // Admission is not reserved: two requests admitted at the same time can both be served; the reservation build fixes that.
-      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap],
+      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap, reserveClaims(engineVerifyCap())],
       schema: { tags: ['Scan'], summary: 'Deep scan with URL evidence validation and scoring', body: BODY_SCHEMA },
     },
     async (request, reply) => {
@@ -56,6 +57,8 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
         reply.header('X-Cache', 'HIT');
         getAnalyticsStore().record(keyId, (cached as { overallRisk: string }).overallRisk as RiskLevel);
         const delivered = issueScanId(cached, request.keyId);
+        // A cached verdict delivered to the caller bills like a fresh one.
+        commitClaims(request, delivered.scanId, cached, effectiveProvider);
         // Counted like a /scan cache hit: once, when what it serves holds a billable verdict.
         meterScan(keyId, cached.verifications);
         fireWebhookEvent('scan.complete', delivered, requestOwner(request));
@@ -87,6 +90,7 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
           if (caller !== null) getScanCache().set(caller, text, `deep:${effectiveProvider}`, enriched as unknown as Record<string, unknown>);
           getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
           const delivered = issueScanId(enriched, request.keyId);
+          commitClaims(request, delivered.scanId, result, p);
           meterScan(keyId, result.verifications);
           fireWebhookEvent('scan.complete', delivered, requestOwner(request));
 

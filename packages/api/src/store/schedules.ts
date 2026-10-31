@@ -18,6 +18,7 @@ import { getNotificationStore, type NotificationEventType } from './notification
 import { fetchOutbound, fetchOutboundFollow } from '../lib/outbound-url.js';
 import { keyIsLive, sanitizeErrorText } from './webhooks.js';
 import { isGroundedScanResult } from './cache.js';
+import { ENGINE_VERIFY_CAP, meteredScan } from '../lib/claim-meter.js';
 import { PROVIDER_BUDGET_EXHAUSTED, providerBudgetRefuses } from '../plugins/provider-spend-cap.js';
 import type { ManagedScanCostEvent } from './costs.js';
 
@@ -375,7 +376,9 @@ class ScheduleRunner {
       }
       inputSize = inputText.length;
 
-      const result = await scanWithSpend({ text: inputText, provider: schedule.provider, keyId: schedule.keyId }, () => scan(inputText, schedule.provider));
+      // Each run is metered against the schedule's key; over its cap the run fails unscanned.
+      const result = await meteredScan(schedule.keyId, ENGINE_VERIFY_CAP, randomUUID(), schedule.provider,
+        () => scanWithSpend({ text: inputText, provider: schedule.provider, keyId: schedule.keyId }, () => scan(inputText, schedule.provider)));
       const durationMs = Date.now() - start;
       const runResult: Omit<ScheduleRunResult, 'runId'> = {
         ranAt,

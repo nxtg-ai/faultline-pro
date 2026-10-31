@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
@@ -5,6 +6,7 @@ import { rateLimitScan } from '../plugins/ratelimit.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { meterScan } from '../lib/scan-quota.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { commitClaims, engineVerifyCap, reserveClaims } from '../plugins/claim-meter.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 
 type Provider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
@@ -67,7 +69,7 @@ export async function diffRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan/diff',
     {
       config: { access: 'key' },
-      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap],
+      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap, reserveClaims(engineVerifyCap(2))],
       schema: { tags: ['Scan'], summary: 'Diff two texts — new/removed/changed claims with inline view', body: BODY_SCHEMA },
     },
     async (request, reply) => {
@@ -79,6 +81,9 @@ export async function diffRoutes(fastify: FastifyInstance): Promise<void> {
         scanWithSpend({ text: before, provider: effectiveProvider, keyId }, () => scan(before, effectiveProvider)),
         scanWithSpend({ text: after, provider: effectiveProvider, keyId }, () => scan(after, effectiveProvider)),
       ]) as unknown as [ScanResult, ScanResult];
+      // Both scans' verdicts reach the caller (claims and changed verdicts).
+      commitClaims(request, randomUUID(), scanBefore, effectiveProvider);
+      commitClaims(request, randomUUID(), scanAfter, effectiveProvider);
 
       const beforeByText = new Map(scanBefore.claims.map(c => [normalize(c.text), c]));
       const afterByText  = new Map(scanAfter.claims.map(c => [normalize(c.text), c]));

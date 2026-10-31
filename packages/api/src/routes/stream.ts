@@ -15,6 +15,8 @@ import { scanWithSpend } from '../lib/scan-spend.js';
 import { resolveVerifyPolicy, withVerificationTier } from '../plugins/verify-cap.js';
 import { isExtractionError } from '@nxtg/faultline/providers/extraction-error.js';
 import { extractionFailedBody } from '../lib/extraction-failure.js';
+import { randomUUID } from 'node:crypto';
+import { commitStreamedClaim, planVerifyCap, releaseClaims, reserveClaims } from '../plugins/claim-meter.js';
 
 type ScanProvider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
 
@@ -125,7 +127,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan/stream',
     {
       config: { access: 'key' },
-      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap],
+      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap, reserveClaims(planVerifyCap)],
       schema: {
         tags: ['Scan'],
         summary: 'Stream scan results via Server-Sent Events (progressive per-claim delivery)',
@@ -166,6 +168,8 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
       const startTime = Date.now();
       // Server-side only: the cap comes from the entitled plan, never the request.
       const verifyPolicy = resolveVerifyPolicy(keyId, request.headers['x-user-tier']);
+      // The stream issues no scanId, so its claim-meter rows get their own.
+      const meterScanId = randomUUID();
 
       try {
         // Spend is recorded inside scanWithSpend, also when the scan throws after a provider call.
@@ -188,6 +192,8 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
               claim: claim as unknown as Record<string, unknown>,
               verdict: verdict as unknown as Record<string, unknown>,
             });
+            // Billed as delivered: the caller has this verdict even if the scan fails later.
+            commitStreamedClaim(request, meterScanId, claim.id, verdict, effectiveProvider);
           },
           /* pipelineConfig */ undefined,
           { verifyCap: verifyPolicy.cap, evidence: apiEvidenceOptions(), independentEvidence: apiIndependentEvidenceOptions() },
@@ -217,6 +223,8 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
         }
         emit(streamErrorEvent(err));
       } finally {
+        // A hijacked reply: release here rather than rely on the server's onResponse hook.
+        releaseClaims(request);
         reply.raw.end();
       }
     },
@@ -238,7 +246,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan/stream',
     {
       config: { access: 'key' },
-      preHandler: [requireApiKey, enforceConsensusEntitlement, validateConsensusVoters, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap],
+      preHandler: [requireApiKey, enforceConsensusEntitlement, validateConsensusVoters, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap, reserveClaims(planVerifyCap)],
       schema: {
         tags: ['Scan'],
         summary: 'Stream scan results via SSE (POST — no URL length ceiling)',
@@ -273,6 +281,8 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
       const startTime = Date.now();
       // Server-side only: the cap comes from the entitled plan, never the request.
       const verifyPolicy = resolveVerifyPolicy(keyId, request.headers['x-user-tier']);
+      // The stream issues no scanId, so its claim-meter rows get their own.
+      const meterScanId = randomUUID();
 
       try {
         // Spend is recorded inside scanWithSpend, also when the scan throws after a provider call.
@@ -294,6 +304,8 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
               claim: claim as unknown as Record<string, unknown>,
               verdict: verdict as unknown as Record<string, unknown>,
             });
+            // Billed as delivered: the caller has this verdict even if the scan fails later.
+            commitStreamedClaim(request, meterScanId, claim.id, verdict, effectiveProvider);
           },
           pipelineConfig,
           { verifyCap: verifyPolicy.cap, evidence: apiEvidenceOptions(), independentEvidence: apiIndependentEvidenceOptions() },
@@ -331,6 +343,8 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
         }
         emit(streamErrorEvent(err));
       } finally {
+        // A hijacked reply: release here rather than rely on the server's onResponse hook.
+        releaseClaims(request);
         reply.raw.end();
       }
     },

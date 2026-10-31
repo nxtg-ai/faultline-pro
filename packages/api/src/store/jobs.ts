@@ -5,6 +5,7 @@ import { fireWebhookEvent, webhookSafeData, keyIsLive, sanitizeErrorText } from 
 import type { WebhookEventOwner } from './webhooks.js';
 import { getAuditLogger } from './audit.js';
 import { fetchOutbound } from '../lib/outbound-url.js';
+import { ENGINE_VERIFY_CAP, meteredScan } from '../lib/claim-meter.js';
 import { PROVIDER_BUDGET_EXHAUSTED, providerBudgetRefuses } from '../plugins/provider-spend-cap.js';
 import type { ManagedScanCostEvent } from './costs.js';
 
@@ -183,7 +184,10 @@ class JobScheduler {
       const owner = getJobStore().ownerOf(job.id);
       // The tier label comes from the creator's key; a job with no recorded owner is labelled as unknown.
       const ownerKeyId = owner !== null && owner !== 'public' ? owner.keyId : 'unknown';
-      const result = await scanWithSpend({ text: job.text, provider: job.provider, keyId: ownerKeyId }, () => scan(job.text, job.provider));
+      // Each run is metered against the creator's key; over its cap the run fails unscanned.
+      const meterKeyId = owner !== null && owner !== 'public' ? owner.keyId : undefined;
+      const result = await meteredScan(meterKeyId, ENGINE_VERIFY_CAP, randomUUID(), job.provider,
+        () => scanWithSpend({ text: job.text, provider: job.provider, keyId: ownerKeyId }, () => scan(job.text, job.provider)));
       const nextRunAt = new Date(Date.now() + job.intervalMs).toISOString();
       getJobStore().update(job.id, {
         lastRunAt: now,

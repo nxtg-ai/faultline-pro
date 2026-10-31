@@ -15,6 +15,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { ENGINE_VERIFY_CAP, meteredScan } from '../lib/claim-meter.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 import { PROVIDER_BUDGET_EXHAUSTED, providerBudgetRefuses } from '../plugins/provider-spend-cap.js';
 import type { ManagedScanCostEvent } from './costs.js';
@@ -162,7 +163,9 @@ class ScanQueue {
         item.error = PROVIDER_BUDGET_EXHAUSTED;
         return;
       }
-      const result = await scanWithSpend({ text: item.text, provider: item.provider, keyId: item.keyId }, () => scan(item.text, item.provider as Parameters<typeof scan>[1]));
+      // Metered when it runs, against the key that queued it.
+      const result = await meteredScan(item.keyId, ENGINE_VERIFY_CAP, randomUUID(), item.provider,
+        () => scanWithSpend({ text: item.text, provider: item.provider, keyId: item.keyId }, () => scan(item.text, item.provider as Parameters<typeof scan>[1])));
       item.status = 'completed';
       item.result = result;
     } catch (err) {

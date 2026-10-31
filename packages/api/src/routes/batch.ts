@@ -16,6 +16,8 @@ import { admitMonthlyScans } from '../plugins/usage-cap.js';
 import type { Tier } from '../store/ratelimit.js';
 import { getCircuitBreaker } from '../store/circuit-breaker.js';
 import type { Provider } from '../store/circuit-breaker.js';
+import { commitClaims, reserveClaims, type MaxClaims } from '../plugins/claim-meter.js';
+import { ENGINE_VERIFY_CAP } from '../lib/claim-meter.js';
 
 const BODY_SCHEMA = {
   type: 'object',
@@ -74,6 +76,8 @@ async function scanWithFailover(
   throw new Error(message || 'All providers failed.');
 }
 
+/** Every text in the batch may verify up to the engine's cap. */
+const batchMaxClaims: MaxClaims = (request) => ((request.body as BatchScanBody | undefined)?.texts?.length ?? 1) * ENGINE_VERIFY_CAP;
 /**
  * Monthly-cap admission for a batch: every text is a scan, so the whole batch is
  * refused with 402 when used + texts > cap. A batch is never part-served.
@@ -89,7 +93,7 @@ export async function batchRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan/batch',
     {
       config: { access: 'key' },
-      preHandler: [requireApiKey, enforceMonthlyCapForBatch, enforceProviderSpendCap],
+      preHandler: [requireApiKey, enforceMonthlyCapForBatch, enforceProviderSpendCap, reserveClaims(batchMaxClaims)],
       schema: { tags: ['Scan'], summary: 'Batch scan multiple texts (1–10)', body: BODY_SCHEMA },
     },
     async (request, reply) => {
@@ -143,6 +147,7 @@ export async function batchRoutes(fastify: FastifyInstance): Promise<void> {
         const outcome = settled[i];
         if (outcome.status === 'fulfilled') {
           const result = issueScanId(outcome.value, request.keyId);
+          commitClaims(request, result.scanId, outcome.value, provider ?? 'gemini');
           results.push(result);
           getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
           meterScan(keyId, result.verifications);

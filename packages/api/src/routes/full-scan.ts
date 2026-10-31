@@ -13,6 +13,8 @@ import { enforceProviderSpendCap, resolveSpendCapTier } from '../plugins/provide
 import { admitMonthlyScans, enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { isServerKeyId, resolveEntitledTier } from '../plugins/consensus-entitlement.js';
 import { recordProviderSpend } from '../store/provider-spend.js';
+import { committedClaim, jobRecordScanId, meterCheck, reserveClaimsFor } from '../lib/claim-meter.js';
+import { getClaimMeter, isClaimMeterEnabled, type ClaimReservation } from '../store/claim-meter.js';
 import { getUsageMeter } from '../store/usage.js';
 import {
   getCostStore,
@@ -25,6 +27,7 @@ import {
   getFullScanJobStore,
   describeJob,
   describeLedgerRow,
+  type ClaimProgress,
   type FullScanJob,
   type FullScanJobStore,
   type StartedJob,
@@ -193,8 +196,19 @@ const isMissingProviderKey = (error: unknown): error is Error =>
  * - `failed`: the run threw outright (e.g. the provider has no key), so no result
  *   reached the caller: served 0, refund = charged. A per-claim provider error is
  *   NOT this; it is an unserved claim inside a `done` job.
+ *
+ * A metered job's key is checked again when the job starts, as every other
+ * queued run checks it: a key disabled, expired or deleted while the job waited
+ * fails the job with `key_revoked` before any provider call, and its
+ * reservation is released (finish runs the settle hook, which commits nothing
+ * for a failed job).
  */
 async function runFullScanJob(store: FullScanJobStore, job: FullScanJob): Promise<void> {
+  if (job.metered === true && ownerRevoked(job.keyId)) {
+    job.refusedReason = 'key_revoked';
+    store.finish(job, 'failed');
+    return;
+  }
   const startedAt = Date.now();
   const text = job.text;
   const { outcome, legs } = await captureOutcome<FullScanResult>(() => verifyFullScan(job.claims, {
@@ -219,6 +233,41 @@ async function runFullScanJob(store: FullScanJobStore, job: FullScanJob): Promis
     return;
   }
   store.finish(job, job.controller.signal.aborted ? 'stopped' : 'done', outcome.value);
+}
+
+// ── Claim meter ─────────────────────────────────────────────────────────────
+
+/** True when the key may no longer reserve: disabled, expired or deleted (the meter's key_revoked). */
+function ownerRevoked(keyId: string): boolean {
+  const check = meterCheck(keyId);
+  return check.kind === 'refused' && check.refusal.body.error === 'key_revoked';
+}
+
+/**
+ * Commit a finished job's served claims (a verdict, `unverified` included) and
+ * release the rest of its reservation. A failed job served nothing.
+ */
+function settleJobClaims(reservation: ClaimReservation, job: FullScanJob, progress: ClaimProgress[]): void {
+  const served = progress.flatMap((p) => {
+    if (p.status !== 'served') return [];
+    const claim = committedClaim(p.claimId, p.verdict, job.provider);
+    return claim ? [claim] : [];
+  });
+  reservation.commit(jobRecordScanId(job.jobId), served);
+  reservation.release();
+}
+
+/**
+ * Voids for a result its owner can never see. Called when the owner is
+ * answered `resultAvailable: false` (the verdicts were lost with the process)
+ * or `job_lost`. Unless the job's result was served first, every usage row the
+ * owner committed for the job is cancelled, once (a void identifier already
+ * recorded is skipped). A failed job commits nothing, so it has nothing to void.
+ * With the meter off nothing is appended to the usage record, voids included.
+ */
+function voidUnseenResult(jobId: string, keyId: string, served: boolean): void {
+  if (served || !isClaimMeterEnabled()) return;
+  getClaimMeter().voidScan(keyId, jobRecordScanId(jobId));
 }
 
 // ── Routes ──────────────────────────────────────────────────────────────────
@@ -248,10 +297,20 @@ export async function enforceMonthlyCapForNewJob(request: FastifyRequest, reply:
 function sendLookup(reply: FastifyReply, jobId: string, keyId: string, stop: boolean): FastifyReply {
   const store = getFullScanJobStore();
   const found = store.lookup(jobId, keyId);
-  if (found.kind === 'error') return reply.status(found.statusCode).send({ error: found.error });
-  if (found.kind === 'row') return reply.status(200).send(describeLedgerRow(found.row));
+  if (found.kind === 'error') {
+    if (found.error === 'job_lost') voidUnseenResult(jobId, keyId, false);
+    return reply.status(found.statusCode).send({ error: found.error });
+  }
+  if (found.kind === 'row') {
+    const view = describeLedgerRow(found.row);
+    voidUnseenResult(jobId, keyId, found.row.resultServedAt !== undefined);
+    return reply.status(200).send(view);
+  }
   if (stop) store.stop(found.job);
-  return reply.status(200).send(describeJob(found.job));
+  const view = describeJob(found.job);
+  // The owner now holds verdicts: the job's result counts as served, so it is never voided.
+  if (view.progress.some((p) => p.status === 'served')) store.markResultServed(found.job);
+  return reply.status(200).send(view);
 }
 
 export async function fullScanRoutes(fastify: FastifyInstance): Promise<void> {
@@ -347,12 +406,20 @@ export async function fullScanRoutes(fastify: FastifyInstance): Promise<void> {
       // The monthly-cap check again, in this synchronous step, so the check and the
       // count below cannot be split by another start (the prehandler refuses earlier).
       if (!admitMonthlyScans(request, reply, 1)) return reply;
+      // The claim meter reserves the estimate's fact claims (an estimate reserves nothing).
+      const metered = reserveClaimsFor(request.keyId, estimate.factClaims);
+      if (metered.ok === false) return reply.status(metered.statusCode).send(metered.body);
 
       const job = store.startJob(estimate, {
         idempotencyKey,
         tier: resolveEntitledTier(keyId, request.headers['x-user-tier']),
         spendCapTier: resolveSpendCapTier(request.keyId, request.headers['x-user-tier']),
       });
+      const reservation = metered.reservation;
+      if (reservation) {
+        job.metered = true;
+        job.onTerminal = (finished, progress) => settleJobClaims(reservation, finished, progress);
+      }
       // Counted here, once per job, when it is admitted, whatever its outcome: the
       // server.ts onResponse hook counts only /scan and /scan/upload. Settling only
       // served work needs the allowance reserved at admission, which is not built yet.
