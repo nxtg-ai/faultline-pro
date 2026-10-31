@@ -57,8 +57,12 @@ export const CLAIM_CAP_OUT_OF_RANGE = {
   max: MAX_CLAIM_CAP,
 } as const;
 
-/** True when `claimCap` is allowed on a key with these permissions. */
-export function claimCapInBounds(permissions: Permission[] | undefined, claimCap: number): boolean {
+/**
+ * True when `claimCap` is allowed on a key with these permissions. A non-admin
+ * key takes only an integer from MIN_CLAIM_CAP to MAX_CLAIM_CAP, so a string,
+ * a fraction, a negative or a very large number is out of range.
+ */
+export function claimCapInBounds(permissions: Permission[] | undefined, claimCap: unknown): boolean {
   if (isAdminPermissions(permissions)) return true;
-  return Number.isInteger(claimCap) && claimCap >= MIN_CLAIM_CAP && claimCap <= MAX_CLAIM_CAP;
+  return typeof claimCap === 'number' && Number.isInteger(claimCap) && claimCap >= MIN_CLAIM_CAP && claimCap <= MAX_CLAIM_CAP;
 }

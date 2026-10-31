@@ -188,6 +188,129 @@ describe('PATCH /keys/:id', () => {
   });
 });
 
+describe('PATCH /keys/:id checks the key as it will be after the patch', () => {
+  it('an admin key with an out-of-range cap re-scoped to non-admin is refused and left unchanged', async () => {
+    for (const claimCap of [10_001, 0]) {
+      const admin = await createKey({ name: 'ops', permissions: ['admin'], metered: true, claimCap });
+      expect(admin.statusCode, String(claimCap)).toBe(201);
+      const id = admin.json().id as string;
+      const res = await patchKey(id, { permissions: ['scan'] });
+      expect(res.statusCode, String(claimCap)).toBe(400);
+      expect(res.json()).toMatchObject({ error: 'claim_cap_out_of_range', min: 100, max: 10_000 });
+      expect(getKeyStore().validateById(id)).toMatchObject({ permissions: ['admin'], metered: true, claimCap });
+    }
+  });
+
+  it('a default admin key re-scoped to non-admin becomes metered at claimCap 1000', async () => {
+    const admin = await createKey({ name: 'ops', permissions: ['admin'] });
+    expect(admin.statusCode).toBe(201);
+    const id = admin.json().id as string;
+    expect(getKeyStore().validateById(id)?.metered).toBeUndefined();
+    const res = await patchKey(id, { permissions: ['scan'] });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ permissions: ['scan'], metered: true, claimCap: 1000 });
+    expect(getKeyStore().validateById(id)).toMatchObject({ permissions: ['scan'], metered: true, claimCap: 1000 });
+  });
+
+  it('an admin key that was explicitly unmetered is metered when re-scoped to non-admin', async () => {
+    const admin = await createKey({ name: 'ops', permissions: ['admin'], metered: false });
+    const id = admin.json().id as string;
+    const res = await patchKey(id, { permissions: ['scan'] });
+    expect(res.statusCode).toBe(200);
+    expect(getKeyStore().validateById(id)).toMatchObject({ metered: true, claimCap: 1000 });
+  });
+
+  it('a re-scope that also sets an in-range cap keeps that cap', async () => {
+    const admin = await createKey({ name: 'ops', permissions: ['admin'], metered: true, claimCap: 0 });
+    const id = admin.json().id as string;
+    const res = await patchKey(id, { permissions: ['scan'], claimCap: 2500 });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ permissions: ['scan'], metered: true, claimCap: 2500 });
+    expect(getKeyStore().validateById(id)).toMatchObject({ metered: true, claimCap: 2500 });
+  });
+
+  it('a re-scope that sets metered: false is left unmetered with no default cap', async () => {
+    const admin = await createKey({ name: 'ops', permissions: ['admin'] });
+    const id = admin.json().id as string;
+    const res = await patchKey(id, { permissions: ['scan'], metered: false });
+    expect(res.statusCode).toBe(200);
+    const stored = getKeyStore().validateById(id);
+    expect(stored?.metered).toBe(false);
+    expect(stored?.claimCap).toBeUndefined();
+  });
+
+  it('turning the meter on for an unmetered scan key needs a cap in the same patch', async () => {
+    const created = await createKey({ name: 'cust', permissions: ['scan'], metered: false });
+    expect(created.statusCode).toBe(201);
+    const id = created.json().id as string;
+    const refused = await patchKey(id, { metered: true });
+    expect(refused.statusCode).toBe(400);
+    expect(refused.json().error).toBe('claim_cap_required');
+    const unchanged = getKeyStore().validateById(id);
+    expect(unchanged?.metered).toBe(false);
+    expect(unchanged?.claimCap).toBeUndefined();
+    const accepted = await patchKey(id, { metered: true, claimCap: 500 });
+    expect(accepted.statusCode).toBe(200);
+    expect(getKeyStore().validateById(id)).toMatchObject({ metered: true, claimCap: 500 });
+  });
+
+  it('a non-admin key PATCHed to admin keeps its fields and takes any cap', async () => {
+    const id = (await createKey({ name: 'cust', permissions: ['scan'] })).json().id as string;
+    const res = await patchKey(id, { permissions: ['admin'], claimCap: 0 });
+    expect(res.statusCode).toBe(200);
+    expect(getKeyStore().validateById(id)).toMatchObject({ permissions: ['admin'], metered: true, claimCap: 0 });
+  });
+});
+
+describe('every bad cap on a non-admin key is claim_cap_out_of_range', () => {
+  const BAD_CAPS: unknown[] = [-1, 100.5, 100_000_001, '100'];
+
+  it('on POST /keys, and nothing is issued', async () => {
+    for (const claimCap of BAD_CAPS) {
+      const res = await createKey({ name: 'cust', permissions: ['scan'], claimCap });
+      expect(res.statusCode, JSON.stringify(claimCap)).toBe(400);
+      expect(res.json(), JSON.stringify(claimCap)).toMatchObject({ error: 'claim_cap_out_of_range', min: 100, max: 10_000 });
+      const bare = await createKey({ name: 'cust', claimCap });
+      expect(bare.json().error, JSON.stringify(claimCap)).toBe('claim_cap_out_of_range');
+    }
+    expect(getKeyStore().list()).toHaveLength(0);
+  });
+
+  it('on PATCH /keys/:id of a non-admin key, and the key is unchanged', async () => {
+    const id = (await createKey({ name: 'cust', permissions: ['scan'] })).json().id as string;
+    for (const claimCap of BAD_CAPS) {
+      const res = await patchKey(id, { claimCap });
+      expect(res.statusCode, JSON.stringify(claimCap)).toBe(400);
+      expect(res.json(), JSON.stringify(claimCap)).toMatchObject({ error: 'claim_cap_out_of_range', min: 100, max: 10_000 });
+    }
+    expect(getKeyStore().validateById(id)).toMatchObject({ permissions: ['scan'], metered: true, claimCap: 1000 });
+  });
+
+  it('on PATCH of an admin key re-scoped to non-admin in the same patch, and the key is unchanged', async () => {
+    const admin = getKeyStore().create('ops', ['admin'], undefined, { claimCap: 50 });
+    for (const claimCap of BAD_CAPS) {
+      const res = await patchKey(admin.id, { permissions: ['scan'], claimCap });
+      expect(res.statusCode, JSON.stringify(claimCap)).toBe(400);
+      expect(res.json().error, JSON.stringify(claimCap)).toBe('claim_cap_out_of_range');
+    }
+    expect(getKeyStore().validateById(admin.id)).toMatchObject({ permissions: ['admin'], claimCap: 50 });
+  });
+
+  it('admin keys keep the schema answer: -1 and 100.5 are a validation error, not claim_cap_out_of_range', async () => {
+    for (const claimCap of [-1, 100.5, 100_000_001]) {
+      const res = await createKey({ name: 'ops', permissions: ['admin'], claimCap });
+      expect(res.statusCode, String(claimCap)).toBe(400);
+      expect(res.json().code, String(claimCap)).toBe('FST_ERR_VALIDATION');
+    }
+    const admin = getKeyStore().create('ops', ['admin'], undefined, { claimCap: 50 });
+    const patched = await patchKey(admin.id, { claimCap: -1 });
+    expect(patched.statusCode).toBe(400);
+    expect(patched.json().code).toBe('FST_ERR_VALIDATION');
+    expect(getKeyStore().validateById(admin.id)?.claimCap).toBe(50);
+    expect(getKeyStore().list()).toHaveLength(1);
+  });
+});
+
 describe('POST /orgs/:id/keys', () => {
   it('issues a non-admin org key metered with claimCap 1000', async () => {
     const org = getOrgStore().create({ name: 'Metered Org' }, 'admin');

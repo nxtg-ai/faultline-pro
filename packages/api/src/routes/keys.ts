@@ -1,6 +1,6 @@
-import { mayIssueKey, CUSTOMER_KEYS_CLOSED, CLAIM_CAP_OUT_OF_RANGE, claimCapInBounds, isAdminPermissions, issuedKeyBilling } from '../lib/key-issuance.js';
+import { mayIssueKey, CUSTOMER_KEYS_CLOSED, CLAIM_CAP_OUT_OF_RANGE, DEFAULT_CLAIM_CAP, claimCapInBounds, isAdminPermissions, issuedKeyBilling } from '../lib/key-issuance.js';
 import { getAuditLogger } from '../store/audit.js';
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { hasScope, isAdminKeyId, requireAdmin } from '../plugins/auth.js';
 import { esc } from '../lib/html.js';
 import { getKeyStore, KEY_SCOPES, MAX_KEY_IDEMPOTENCY_KEY_LENGTH, ROTATION_GRACE_HOURS } from '../store/keys.js';
@@ -36,6 +36,41 @@ function billingFieldRefusal(keyId: string | undefined, body: Record<string, unk
   // Turning the meter off for a key is an admin decision, wherever the route is opened.
   if (body.metered === false && !isAdminKeyId(keyId)) return { error: 'admin_required' };
   return null;
+}
+
+/** True when CLAIM_CAP_SCHEMA would refuse or coerce this value before the route handler runs. */
+function claimCapFailsSchema(claimCap: unknown): boolean {
+  return typeof claimCap !== 'number' || !Number.isInteger(claimCap)
+    || claimCap < CLAIM_CAP_SCHEMA.minimum || claimCap > CLAIM_CAP_SCHEMA.maximum;
+}
+
+/**
+ * Runs before schema validation on POST /keys and PATCH /keys/:id. A claimCap
+ * the schema would refuse (negative, fractional, very large) or coerce (a
+ * string) gets 400 claim_cap_out_of_range when the key it lands on is
+ * non-admin, instead of the generic schema error. `targetPermissions` returns
+ * that key's permissions, or null when it cannot tell (the schema then
+ * decides, as before). Admin keys still get the schema's own answer.
+ */
+function refuseBadNonAdminCap(targetPermissions: (request: FastifyRequest, body: Record<string, unknown>) => Permission[] | undefined | null) {
+  return async (request: FastifyRequest, reply: FastifyReply) => {
+    const body = request.body;
+    if (body === null || typeof body !== 'object' || Array.isArray(body)) return;
+    const record = body as Record<string, unknown>;
+    if (!('claimCap' in record) || record.claimCap === null || record.claimCap === undefined) return;
+    if (!claimCapFailsSchema(record.claimCap)) return;
+    const permissions = targetPermissions(request, record);
+    if (permissions === null || isAdminPermissions(permissions)) return;
+    return reply.status(400).send(CLAIM_CAP_OUT_OF_RANGE);
+  };
+}
+
+/** The `permissions` in a body when it is a list of known values; null when it is malformed. */
+function bodyPermissions(body: Record<string, unknown>): Permission[] | undefined | null {
+  const perms = body.permissions;
+  if (perms === undefined) return undefined;
+  if (!Array.isArray(perms) || !perms.every((p) => VALID_PERMISSIONS.includes(p as Permission))) return null;
+  return perms as Permission[];
 }
 
 /** undefined = header absent; null = present but empty or longer than 200 characters. */
@@ -84,7 +119,13 @@ interface CreateKeyBody {
 export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: CreateKeyBody }>(
     '/keys',
-    { config: { access: 'admin' }, preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Create a new API key (Idempotency-Key optional)', body: CREATE_BODY_SCHEMA } },
+    {
+      config: { access: 'admin' },
+      preHandler: requireAdmin,
+      // No permissions in the body means a scan key, which is non-admin.
+      preValidation: refuseBadNonAdminCap((_request, body) => bodyPermissions(body)),
+      schema: { tags: ['Keys'], summary: 'Create a new API key (Idempotency-Key optional)', body: CREATE_BODY_SCHEMA },
+    },
     async (request, reply) => {
       const { name, permissions, expiresAt, claimCap, stripeCustomerId, metered, scopes } = request.body;
       const idempotencyKey = readIdempotencyKey(request);
@@ -493,7 +534,18 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
 
   fastify.patch<{ Params: { id: string }; Body: PatchKeyBody }>(
     '/keys/:id',
-    { config: { access: 'admin' }, preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'Update key name and/or permissions', body: PATCH_BODY_SCHEMA } },
+    {
+      config: { access: 'admin' },
+      preHandler: requireAdmin,
+      // The key the cap lands on is the key as it will be after the patch.
+      preValidation: refuseBadNonAdminCap((request, body) => {
+        const perms = bodyPermissions(body);
+        if (perms !== undefined) return perms;
+        const current = getKeyStore().validateById((request.params as { id: string }).id);
+        return current ? current.permissions : null;
+      }),
+      schema: { tags: ['Keys'], summary: 'Update key name and/or permissions', body: PATCH_BODY_SCHEMA },
+    },
     async (request, reply) => {
       // Re-scoping a key is issuing one: an admin key PATCHed down to ["scan"]
       // would be a customer key minted past the freeze (seat al:cb6b01db985c2056 M1).
@@ -505,17 +557,29 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
       const store = getKeyStore();
       const current = store.validateById(request.params.id);
       if (!current) return reply.status(404).send({ error: 'Key not found.' });
-      const permissions = request.body.permissions ?? current.permissions;
-      const { claimCap } = request.body;
-      if (typeof claimCap === 'number' && !claimCapInBounds(permissions, claimCap)) {
+      // Check the key as it will be after the patch, not only the fields supplied.
+      const patch: PatchKeyBody = { ...request.body };
+      const permissions = patch.permissions ?? current.permissions;
+      const nonAdminAfter = !isAdminPermissions(permissions);
+      if (nonAdminAfter && patch.claimCap !== undefined && patch.claimCap !== null && !claimCapInBounds(permissions, patch.claimCap)) {
         return reply.status(400).send(CLAIM_CAP_OUT_OF_RANGE);
       }
-      // A metered non-admin key always carries a cap; only an admin key's cap may be cleared.
-      const meteredAfter = request.body.metered ?? current.metered === true;
-      if (claimCap === null && meteredAfter && !isAdminPermissions(permissions)) {
-        return reply.status(400).send({ error: 'claim_cap_required', message: 'A metered non-admin key must keep a claimCap.' });
+      // An admin key re-scoped to non-admin is a newly issued key for billing:
+      // metered at the default cap unless this patch sets metered or claimCap.
+      if (isAdminPermissions(current.permissions) && nonAdminAfter) {
+        if (patch.metered === undefined) patch.metered = true;
+        if (patch.claimCap === undefined && current.claimCap === undefined && patch.metered) patch.claimCap = DEFAULT_CLAIM_CAP;
       }
-      const updated = store.update(request.params.id, request.body);
+      const meteredAfter = patch.metered ?? current.metered === true;
+      const capAfter = patch.claimCap === null ? undefined : (patch.claimCap ?? current.claimCap);
+      // A metered non-admin key always carries a cap in range; only an admin key's cap may be cleared.
+      if (nonAdminAfter && meteredAfter) {
+        if (capAfter === undefined) {
+          return reply.status(400).send({ error: 'claim_cap_required', message: 'A metered non-admin key must keep a claimCap.' });
+        }
+        if (!claimCapInBounds(permissions, capAfter)) return reply.status(400).send(CLAIM_CAP_OUT_OF_RANGE);
+      }
+      const updated = store.update(request.params.id, patch);
       if (!updated) return reply.status(404).send({ error: 'Key not found.' });
       if (request.body.expiresAt !== undefined) {
         auditRevival(request, [updated.id], request.body.expiresAt === null ? 'expiresAt cleared' : `expiresAt set to ${request.body.expiresAt}`);
