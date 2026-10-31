@@ -15,7 +15,7 @@ import { OpenAIWebSearchRetriever } from '../providers/openai_web_search_retriev
 import { consensusVerify, type NamedProvider } from '../consensus/consensus_engine.js';
 import { classifyApiError } from '../providers/extraction-error.js';
 import { OUT_OF_CREDITS_VERIFY_MESSAGE } from '../services/verify-error.js';
-import { guardVerdict } from '../lib/verdict-guard.js';
+import { abstainWithoutSource, guardVerdict } from '../lib/verdict-guard.js';
 import { attachEvidence, type EvidenceOptions } from '../evidence/passage.js';
 import { attachIndependentEvidence, type IndependentEvidenceOptions } from '../evidence/independent.js';
 
@@ -517,7 +517,8 @@ export async function runVerification(
     while (cursor < claims.length && !signal?.aborted) {
       const i = cursor++;
       onProgress?.(`Verifying claim ${i + 1}/${claims.length}...`);
-      const checked = guardVerdict(await verifyOneClaim(claims[i], verifier, flagExhaustedRetries), claims[i].id);
+      // A definite verdict with no source is reported as unverified (abstainWithoutSource).
+      const checked = abstainWithoutSource(guardVerdict(await verifyOneClaim(claims[i], verifier, flagExhaustedRetries), claims[i].id));
       const withSources = options.evidence ? await attachEvidence(checked, claims[i].text, options.evidence) : checked;
       const result = options.independentEvidence
         ? await attachIndependentEvidence(withSources, claims[i].text, options.independentEvidence)

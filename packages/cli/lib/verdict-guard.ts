@@ -175,3 +175,26 @@ export function billableVerdictCount(verifications: unknown): number {
   const list = Array.isArray(verifications) ? verifications : Object.values(verifications);
   return list.filter(isBillableVerdict).length;
 }
+
+/** The explanation every claim downgraded by abstainWithoutSource carries. */
+export const NO_SOURCE_EXPLANATION =
+  'The search returned no source this claim can be checked against, so it is not marked supported, contradicted or mixed.';
+
+/**
+ * A definite verdict (supported, contradicted or mixed) needs at least one
+ * source the reader can open. When `result` has one of those statuses and no
+ * source, it is returned as `unverified` with `noSourceAbstain: true` and
+ * NO_SOURCE_EXPLANATION; every other field (provenance, webSearchQueries,
+ * searchEntryPoint) is kept. Anything else is returned unchanged. Every place
+ * a single-provider verdict leaves the engine passes through this once: the
+ * Gemini service, the verify runner (scan, stream, deep, full scan, batch,
+ * report, MCP), the full-scan job store and the admin verify route. A
+ * downgraded claim is `unverified`, so isBillableVerdict never bills it and no
+ * verified count includes it.
+ */
+export function abstainWithoutSource<T extends VerificationResult>(result: T): T {
+  if (!result || typeof result !== 'object') return result;
+  if (!BILLABLE_STATUSES.has(result.status as string)) return result;
+  if (Array.isArray(result.sources) && result.sources.length > 0) return result;
+  return { ...result, status: 'unverified', explanation: NO_SOURCE_EXPLANATION, sources: [], noSourceAbstain: true };
+}

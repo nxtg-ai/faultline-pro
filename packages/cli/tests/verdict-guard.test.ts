@@ -117,7 +117,7 @@ describe('engine path: the examiner probe through scan()', () => {
   });
 
   it('a valid verdict passes through unchanged', async () => {
-    registerFixture('examiner-ok', (c) => ({ claimId: c.id, status: 'contradicted', explanation: 'refuted', sources: [] }));
+    registerFixture('examiner-ok', (c) => ({ claimId: c.id, status: 'contradicted', explanation: 'refuted', sources: [{ title: 'S', uri: 'https://s.example/a' }] }));
     const result = await scan('The examiner fixture contains a factual claim.', 'examiner-ok');
     expect(result.verifications.c1).toMatchObject({ status: 'contradicted', explanation: 'refuted' });
     expect(result.verifications.c1.apiError).toBeUndefined();

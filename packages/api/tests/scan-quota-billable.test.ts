@@ -104,7 +104,7 @@ afterEach(async () => {
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
-interface Verdict { status?: string; sources?: unknown[]; apiError?: boolean }
+interface Verdict { status?: string; sources?: unknown[]; apiError?: boolean; noSourceAbstain?: boolean }
 
 /** One scan through `url`; returns the HTTP status and the verdicts it delivered. */
 async function runScan(url: string, key: string): Promise<{ status: number; verdicts: Verdict[] }> {
@@ -156,7 +156,8 @@ describe.each(['/scan', '/scan?x=1', '/scan/stream'])('POST %s monthly scan quot
     const { status, verdicts } = await runScan(url, key);
     expect(status).toBe(200);
     expect(verdicts.length).toBeGreaterThan(0);
-    expect(verdicts.every((v) => v.status === 'supported' && Array.isArray(v.sources) && v.sources.length === 0)).toBe(true);
+    // The sourceless supported verdict is reported as unverified, so the scan quota does not count it.
+    expect(verdicts.every((v) => v.status === 'unverified' && v.noSourceAbstain === true && Array.isArray(v.sources) && v.sources.length === 0)).toBe(true);
     expect(getUsageMeter().getMonthlyCount(id)).toBe(0);
   }, 30_000);
 

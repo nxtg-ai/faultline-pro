@@ -113,7 +113,7 @@ describe('Integration: Multi-Provider Pipeline', () => {
       // c1 → supported
       mockGenerateContent.mockResolvedValueOnce({
         text: JSON.stringify({ status: 'supported', explanation: 'Confirmed.' }),
-        candidates: [{ groundingMetadata: { groundingChunks: [] } }],
+        candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'Source', uri: 'https://source.example/a' } }] } }],
       });
       // c2 → contradicted
       mockGenerateContent.mockResolvedValueOnce({

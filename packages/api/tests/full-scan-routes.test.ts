@@ -444,7 +444,8 @@ describe('units and unserved claims', () => {
     expect(done.factClaims).toBe(9);
     expect(done.units).toEqual({ charged: 2, served: 0, refund: 2 });
     expect(done.unserved).toHaveLength(9);
-    expect(done.progress.every((p: Json) => p.status === 'unserved' && p.verdict?.status === 'supported')).toBe(true);
+    // Its sourceless supported verdicts are reported as unverified, flagged noSourceAbstain.
+    expect(done.progress.every((p: Json) => p.status === 'unserved' && p.verdict?.status === 'unverified' && p.verdict?.noSourceAbstain === true)).toBe(true);
   });
 
   it('under the mock id a sourced verdict serves nothing: mock has no engine retriever', async () => {
