@@ -86,10 +86,9 @@ export function claimMeterLedgerPath(): string {
   return raw === '' ? DEFAULT_LEDGER_PATH : raw;
 }
 
-/** True when `FAULTLINE_CLAIM_METER` switches the meter on. Off by default. */
+/** True only when `FAULTLINE_CLAIM_METER` is exactly `1` (trimmed). Any other value, or none, is off. */
 export function isClaimMeterEnabled(): boolean {
-  const raw = (process.env.FAULTLINE_CLAIM_METER ?? '').trim().toLowerCase();
-  return raw === '1' || raw === 'on' || raw === 'true';
+  return (process.env.FAULTLINE_CLAIM_METER ?? '').trim() === '1';
 }
 
 /** The usage identifier: unique per delivered claim verdict. */

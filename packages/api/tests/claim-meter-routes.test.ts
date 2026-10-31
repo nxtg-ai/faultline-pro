@@ -24,7 +24,7 @@ import { cacheCaller } from '../src/lib/cache-caller.js';
 import { resolveVerifyPolicy } from '../src/plugins/verify-cap.js';
 import { resetProviderSpendLedger } from '../src/store/provider-spend.js';
 import { resetCircuitBreaker } from '../src/store/circuit-breaker.js';
-import { getFullScanJobStore, resetFullScanJobStore, setFullScanLedgerAppendForTests } from '../src/store/full-scan-jobs.js';
+import { describeJob, getFullScanJobStore, resetFullScanJobStore, setFullScanLedgerAppendForTests } from '../src/store/full-scan-jobs.js';
 import { resetFullScanEstimateLimiter } from '../src/routes/full-scan.js';
 import { getJobScheduler, getJobStore, resetJobStore, resetJobScheduler } from '../src/store/jobs.js';
 import { getScanQueue, resetScanQueue } from '../src/store/scan-queue.js';
@@ -65,7 +65,7 @@ vi.mock('@nxtg/faultline/providers/registry.js', async (importOriginal) => {
 const SERVER_KEY = 'claim-meter-server-key-0123456789';
 const ENV_KEYS = [
   'GEMINI_API_KEY', 'OPENAI_API_KEY', 'FAULTLINE_API_KEY', 'FAULTLINE_CLAIM_METER', 'FAULTLINE_CLAIM_METER_LEDGER', 'FAULTLINE_KEY_IDEMPOTENCY_LEDGER',
-  'FAULTLINE_PROVIDER_SPEND_LEDGER', 'FAULTLINE_FULL_JOBS_LEDGER', 'FAULTLINE_GROUNDING_LEDGER',
+  'FAULTLINE_PROVIDER_SPEND_LEDGER', 'FAULTLINE_FULL_JOBS_LEDGER', 'FAULTLINE_GROUNDING_LEDGER', 'FAULTLINE_FULL_MAX_RUNNING',
 ];
 let saved: Record<string, string | undefined>;
 let dir: string;
@@ -629,6 +629,92 @@ describe('key billing fields', () => {
   });
 });
 
+describe('a queued full scan re-checks its metered key when it starts', () => {
+  const revocations: Array<{ name: string; revoke: (id: string) => void }> = [
+    { name: 'deleted', revoke: (id) => { getKeyStore().delete(id); } },
+    { name: 'disabled', revoke: (id) => { getKeyStore().disable(id); } },
+    { name: 'expired', revoke: (id) => { getKeyStore().update(id, { expiresAt: new Date(Date.now() - 1000).toISOString() }); } },
+  ];
+
+  for (const { name, revoke } of revocations) {
+    it(`a key ${name} while its job waits: the job fails key_revoked, calls no provider, commits nothing, releases its reservation`, async () => {
+      process.env.FAULTLINE_FULL_MAX_RUNNING = '1';
+      const a = customer(100);
+      const b = customer(100);
+      const estA = await post('/scan/full/estimate', a.key, { text: sentences(1), provider: ENGINE_PROVIDER });
+      const estB = await post('/scan/full/estimate', b.key, { text: sentences(1), provider: ENGINE_PROVIDER });
+      expect(estA.statusCode).toBe(200);
+      expect(estB.statusCode).toBe(200);
+
+      // A holds the only running slot.
+      let open!: () => void;
+      control.gate = new Promise<void>((resolve) => { open = resolve; });
+      const startA = await post('/scan/full', a.key, { estimateId: estA.json().estimateId }, { 'idempotency-key': `idem-rev-a-${name}` });
+      expect(startA.statusCode).toBe(202);
+      await until(() => control.verifyCalls >= 1, 'A to start verifying');
+
+      // B queues behind it, holding its one-claim reservation.
+      const startB = await post('/scan/full', b.key, { estimateId: estB.json().estimateId }, { 'idempotency-key': `idem-rev-b-${name}` });
+      expect(startB.statusCode).toBe(202);
+      const jobB = startB.json().jobId as string;
+      const queuedB = getFullScanJobStore().lookup(jobB, b.id);
+      expect(queuedB.kind).toBe('job');
+      expect((queuedB as { job: { status: string } }).job.status).toBe('queued');
+      expect(usage(b.id)).toEqual({ used: 0, reserved: 1 });
+
+      revoke(b.id);
+      const verifyBefore = control.verifyCalls;
+      const extractBefore = control.extractCalls;
+      open();
+
+      await until(() => {
+        const found = getFullScanJobStore().lookup(jobB, b.id);
+        return found.kind === 'job' && found.job.status === 'failed';
+      }, 'B to fail');
+      await until(() => usage(a.id).reserved === 0, 'A to settle');
+
+      const found = getFullScanJobStore().lookup(jobB, b.id);
+      expect(found.kind).toBe('job');
+      const view = describeJob((found as { job: Parameters<typeof describeJob>[0] }).job);
+      expect(view.status).toBe('failed');
+      expect(view.progress.length).toBe(1);
+      expect(view.progress.map((p) => p.reason)).toEqual(['key_revoked']);
+      expect(control.verifyCalls).toBe(verifyBefore);
+      expect(control.extractCalls).toBe(extractBefore);
+      const rowsB = ledgerRows().filter((r) => r.keyId === b.id);
+      expect(rowsB).toEqual([]);
+      expect(usage(b.id)).toEqual({ used: 0, reserved: 0 });
+      // A, still live, ran and billed its claim.
+      expect(ledgerRows().filter((r) => r.keyId === a.id).length).toBe(1);
+    });
+  }
+});
+
+describe('only FAULTLINE_CLAIM_METER=1 turns the meter on', () => {
+  for (const value of ['on', 'true', 'yes', '0', '']) {
+    it(`FAULTLINE_CLAIM_METER=${JSON.stringify(value)} is off: a metered key with claimCap 0 scans with 200`, async () => {
+      process.env.FAULTLINE_CLAIM_METER = value;
+      const key = customer(0);
+      const res = await post('/scan', key.key, { text: sentences(2), provider: ENGINE_PROVIDER });
+      expect(res.statusCode).toBe(200);
+      expect(Object.keys(res.json().verifications ?? {}).length).toBe(2);
+      expect(existsSync(ledgerPath())).toBe(false);
+      expect(usage(key.id)).toEqual({ used: 0, reserved: 0 });
+    });
+  }
+
+  for (const value of ['1', ' 1 ']) {
+    it(`FAULTLINE_CLAIM_METER=${JSON.stringify(value)} is on: a metered key with claimCap 0 gets 402 claim_cap_reached`, async () => {
+      process.env.FAULTLINE_CLAIM_METER = value;
+      const key = customer(0);
+      const res = await post('/scan', key.key, { text: sentences(2), provider: ENGINE_PROVIDER });
+      expect(res.statusCode).toBe(402);
+      expect(res.json()).toEqual(capReached(0, 0, 0));
+      expect(control.verifyCalls).toBe(0);
+    });
+  }
+});
+
 describe('switched off, or an unmetered key: behaviour as before the meter', () => {
   type Family = { name: string; run: (key: string) => Promise<{ statusCode: number; verified: number }> };
   const families: Family[] = [
@@ -962,5 +1048,24 @@ describe('voids: a full-scan result its owner can never see', () => {
     expect(lost.json()).toEqual({ error: 'job_lost' });
     expect(voidRows().length).toBe(2);
     expect(usage(key.id).used).toBe(0);
+  });
+
+  it('with the meter off, polling an unserved job after a restart appends nothing and changes no counts', async () => {
+    const key = customer(100);
+    const jobId = await finishedJob(key, 3, 'idem-void-0005');
+    const before = readFileSync(ledgerPath(), 'utf8');
+    expect(ledgerRows().length).toBe(3);
+    restart();
+    delete process.env.FAULTLINE_CLAIM_METER;
+    const statusBefore = getClaimMeter().status();
+    const usedBefore = getClaimMeter().usageFor(key.id).used;
+    expect(usedBefore).toBe(3);
+    const after = await get(`/scan/full/${jobId}`, key.key);
+    expect(after.statusCode).toBe(200);
+    expect(after.json().resultAvailable).toBe(false);
+    expect(readFileSync(ledgerPath(), 'utf8')).toBe(before);
+    expect(voidRows()).toEqual([]);
+    expect(getClaimMeter().status()).toEqual(statusBefore);
+    expect(getClaimMeter().usageFor(key.id).used).toBe(usedBefore);
   });
 });

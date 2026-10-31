@@ -13,8 +13,8 @@ import { enforceProviderSpendCap, resolveSpendCapTier } from '../plugins/provide
 import { admitMonthlyScans, enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { isServerKeyId, resolveEntitledTier } from '../plugins/consensus-entitlement.js';
 import { recordProviderSpend } from '../store/provider-spend.js';
-import { committedClaim, jobRecordScanId, reserveClaimsFor } from '../lib/claim-meter.js';
-import { getClaimMeter, type ClaimReservation } from '../store/claim-meter.js';
+import { committedClaim, jobRecordScanId, meterCheck, reserveClaimsFor } from '../lib/claim-meter.js';
+import { getClaimMeter, isClaimMeterEnabled, type ClaimReservation } from '../store/claim-meter.js';
 import { getUsageMeter } from '../store/usage.js';
 import {
   getCostStore,
@@ -196,8 +196,19 @@ const isMissingProviderKey = (error: unknown): error is Error =>
  * - `failed`: the run threw outright (e.g. the provider has no key), so no result
  *   reached the caller: served 0, refund = charged. A per-claim provider error is
  *   NOT this; it is an unserved claim inside a `done` job.
+ *
+ * A metered job's key is checked again when the job starts, as every other
+ * queued run checks it: a key disabled, expired or deleted while the job waited
+ * fails the job with `key_revoked` before any provider call, and its
+ * reservation is released (finish runs the settle hook, which commits nothing
+ * for a failed job).
  */
 async function runFullScanJob(store: FullScanJobStore, job: FullScanJob): Promise<void> {
+  if (job.metered === true && ownerRevoked(job.keyId)) {
+    job.refusedReason = 'key_revoked';
+    store.finish(job, 'failed');
+    return;
+  }
   const startedAt = Date.now();
   const text = job.text;
   const { outcome, legs } = await captureOutcome<FullScanResult>(() => verifyFullScan(job.claims, {
@@ -226,6 +237,12 @@ async function runFullScanJob(store: FullScanJobStore, job: FullScanJob): Promis
 
 // ── Claim meter ─────────────────────────────────────────────────────────────
 
+/** True when the key may no longer reserve: disabled, expired or deleted (the meter's key_revoked). */
+function ownerRevoked(keyId: string): boolean {
+  const check = meterCheck(keyId);
+  return check.kind === 'refused' && check.refusal.body.error === 'key_revoked';
+}
+
 /**
  * Commit a finished job's served claims (a verdict, `unverified` included) and
  * release the rest of its reservation. A failed job served nothing.
@@ -246,9 +263,10 @@ function settleJobClaims(reservation: ClaimReservation, job: FullScanJob, progre
  * or `job_lost`. Unless the job's result was served first, every usage row the
  * owner committed for the job is cancelled, once (a void identifier already
  * recorded is skipped). A failed job commits nothing, so it has nothing to void.
+ * With the meter off nothing is appended to the usage record, voids included.
  */
 function voidUnseenResult(jobId: string, keyId: string, served: boolean): void {
-  if (served) return;
+  if (served || !isClaimMeterEnabled()) return;
   getClaimMeter().voidScan(keyId, jobRecordScanId(jobId));
 }
 

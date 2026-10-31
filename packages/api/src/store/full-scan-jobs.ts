@@ -78,13 +78,15 @@ export type TerminalStatus = 'done' | 'stopped' | 'failed';
  * Why a fact claim was not served. The engine's error reasons, 'no_sourced_verdict'
  * (the check ran but gave no billable verdict: 'unverified', no source, or no
  * retriever the engine bound), and
- * 'not_attempted', and 'provider_budget_exhausted' (the job waited in the queue
- * and the provider spend gate refused it before it started).
+ * 'not_attempted', 'provider_budget_exhausted' (the job waited in the queue
+ * and the provider spend gate refused it before it started), and 'key_revoked'
+ * (the job waited in the queue and its metered key was disabled, expired or
+ * deleted before it started).
  */
-export type UnservedReason = ApiErrorReason | 'no_sourced_verdict' | 'not_attempted' | typeof PROVIDER_BUDGET_EXHAUSTED;
+export type UnservedReason = ApiErrorReason | 'no_sourced_verdict' | 'not_attempted' | typeof PROVIDER_BUDGET_EXHAUSTED | 'key_revoked';
 export const UNSERVED_REASONS: readonly UnservedReason[] = [
   'rate_limited', 'provider_out_of_credits', 'provider_unavailable', 'timeout', 'provider_error', 'provider_unparseable', 'output_truncated',
-  'no_sourced_verdict', 'not_attempted', PROVIDER_BUDGET_EXHAUSTED,
+  'no_sourced_verdict', 'not_attempted', PROVIDER_BUDGET_EXHAUSTED, 'key_revoked',
 ];
 
 export interface UnservedClaim {
