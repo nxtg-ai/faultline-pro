@@ -567,3 +567,63 @@ describe('GraphQL createKey', () => {
     expect(stored?.claimCap).toBeUndefined();
   });
 });
+
+describe('a body nested too deep to clone never makes the cap hook fail', () => {
+  // About 20 KB, well under the body limit, and too deep for structuredClone.
+  const DEPTH = 10_000;
+  const deep = () => '['.repeat(DEPTH) + ']'.repeat(DEPTH);
+  const rawPost = (body: string) => app.inject({ method: 'POST', url: '/keys', headers, payload: body });
+  const rawPatch = (id: string, body: string) => app.inject({ method: 'PATCH', url: `/keys/${id}`, headers, payload: body });
+
+  it('the raw body really is too deep for structuredClone', () => {
+    expect(() => structuredClone(JSON.parse(deep()))).toThrow(RangeError);
+  });
+
+  it('POST of an admin key with a deep undeclared property issues the key with cap 500, as on main', async () => {
+    const res = await rawPost(`{"name":"ops","permissions":["admin"],"claimCap":500,"extra":${deep()}}`);
+    expect(res.statusCode).toBe(201);
+    const keys = getKeyStore().list();
+    expect(keys).toHaveLength(1);
+    expect(keys[0]).toMatchObject({ name: 'ops', permissions: ['admin'], claimCap: 500 });
+    expect(keys[0]).not.toHaveProperty('extra');
+  });
+
+  it('PATCH of an admin key with a deep undeclared property renames it, as on main', async () => {
+    const admin = getKeyStore().create('ops', ['admin'], undefined, { claimCap: 50 });
+    const res = await rawPatch(admin.id, `{"name":"renamed","permissions":["admin"],"claimCap":500,"extra":${deep()}}`);
+    expect(res.statusCode).toBe(200);
+    const stored = getKeyStore().validateById(admin.id);
+    expect(stored).toMatchObject({ name: 'renamed', permissions: ['admin'], claimCap: 500 });
+    expect(stored).not.toHaveProperty('extra');
+  });
+
+  it('POST of a non-admin key with a deep claimCap is claim_cap_out_of_range and issues nothing', async () => {
+    const res = await rawPost(`{"name":"cust","permissions":["scan"],"claimCap":${deep()}}`);
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: 'claim_cap_out_of_range', min: 100, max: 10_000 });
+    expect(getKeyStore().list()).toHaveLength(0);
+  });
+
+  it('PATCH of a non-admin key with a deep claimCap is claim_cap_out_of_range and changes nothing', async () => {
+    const id = (await createKey({ name: 'cust', permissions: ['scan'] })).json().id as string;
+    const res = await rawPatch(id, `{"name":"renamed","permissions":["scan"],"claimCap":${deep()}}`);
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: 'claim_cap_out_of_range', min: 100, max: 10_000 });
+    expect(getKeyStore().validateById(id)).toMatchObject({ name: 'cust', permissions: ['scan'], metered: true, claimCap: 1000 });
+  });
+
+  it('POST with deep permissions takes the schema answer and issues nothing', async () => {
+    const res = await rawPost(`{"name":"cust","permissions":${deep()},"claimCap":500}`);
+    expect(res.statusCode).toBe(400);
+    expect(res.json().code).toBe('FST_ERR_VALIDATION');
+    expect(getKeyStore().list()).toHaveLength(0);
+  });
+
+  it('PATCH with deep permissions takes the schema answer and changes nothing', async () => {
+    const id = (await createKey({ name: 'cust', permissions: ['scan'] })).json().id as string;
+    const res = await rawPatch(id, `{"name":"renamed","permissions":${deep()},"claimCap":500}`);
+    expect(res.statusCode).toBe(400);
+    expect(res.json().code).toBe('FST_ERR_VALIDATION');
+    expect(getKeyStore().validateById(id)).toMatchObject({ name: 'cust', permissions: ['scan'], metered: true, claimCap: 1000 });
+  });
+});

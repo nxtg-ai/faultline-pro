@@ -50,36 +50,70 @@ function isPermissionList(value: unknown): value is Permission[] {
 /**
  * Runs before schema validation on POST /keys and PATCH /keys/:id. It does not
  * read the body itself: it runs the route's own body validator (the same Ajv,
- * the same options, coerceTypes 'array' included) on a deep clone of the raw
- * body, and reads the coerced clone.
+ * the same options, coerceTypes 'array' included) on a clone of the raw body,
+ * and reads the coerced clone.
+ *
+ * The clone holds only the properties the route's body schema declares, each
+ * cloned on its own. Undeclared properties are left out (the schema removes or
+ * refuses them anyway). A declared property whose clone throws (a value nested
+ * too deep to copy, say) counts as a value the validator refuses for that
+ * property: a claimCap that cannot be cloned is an invalid cap, and permissions
+ * that cannot be cloned are read like any other invalid permissions value.
  *
  * - The clone validates: nothing to do here. A numeric string cap has been
  *   coerced like every other field ("500" is 500), and the handler holds the
  *   resulting key's cap to its bounds.
- * - The clone fails on claimCap and the key the cap lands on is non-admin:
+ * - The cap is invalid and the key the cap lands on is non-admin:
  *   400 claim_cap_out_of_range, nothing written.
  * - Any other failure, or an admin key: the schema's own error, as before.
+ *
+ * The hook never throws: any unexpected error lets the request go on to the
+ * schema and the handler unchanged.
  *
  * `storedPermissions` gives the permissions of the key a PATCH changes (null
  * when there is none); on POST it is absent and the key defaults to non-admin.
  */
-function refuseBadNonAdminCap(storedPermissions?: (request: FastifyRequest) => Permission[] | null) {
-  return async (request: FastifyRequest, reply: FastifyReply) => {
+function refuseBadNonAdminCap(
+  declared: readonly string[],
+  storedPermissions?: (request: FastifyRequest) => Permission[] | null,
+) {
+  function capIsRefusedForNonAdmin(request: FastifyRequest): boolean {
     const validate = request.getValidationFunction('body');
-    if (!validate) return;
-    const clone: unknown = structuredClone(request.body);
-    if (validate(clone)) return;
-    if (!(validate.errors ?? []).some((e) => e.instancePath === '/claimCap')) return;
-    const coerced = clone as Record<string, unknown>;
+    if (!validate) return false;
+    const body = request.body;
+    if (body === null || typeof body !== 'object' || Array.isArray(body)) return false;
+    const raw = body as Record<string, unknown>;
+    const clone: Record<string, unknown> = {};
+    const uncloneable = new Set<string>();
+    for (const prop of declared) {
+      if (!Object.prototype.hasOwnProperty.call(raw, prop)) continue;
+      try {
+        clone[prop] = structuredClone(raw[prop]);
+      } catch {
+        uncloneable.add(prop);
+      }
+    }
+    const capInvalid = uncloneable.has('claimCap')
+      || (!validate(clone) && (validate.errors ?? []).some((e) => e.instancePath === '/claimCap'));
+    if (!capInvalid) return false;
     let permissions: Permission[] | undefined;
-    if (isPermissionList(coerced.permissions)) permissions = coerced.permissions;
+    if (!uncloneable.has('permissions') && isPermissionList(clone.permissions)) permissions = clone.permissions;
     else if (storedPermissions) {
       const stored = storedPermissions(request);
-      if (stored === null) return;
+      if (stored === null) return false;
       permissions = stored;
     }
-    if (isAdminPermissions(permissions)) return;
-    return reply.status(400).send(CLAIM_CAP_OUT_OF_RANGE);
+    return !isAdminPermissions(permissions);
+  }
+
+  return async (request: FastifyRequest, reply: FastifyReply) => {
+    let refuse = false;
+    try {
+      refuse = capIsRefusedForNonAdmin(request);
+    } catch {
+      return;
+    }
+    if (refuse) return reply.status(400).send(CLAIM_CAP_OUT_OF_RANGE);
   };
 }
 
@@ -133,7 +167,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
       config: { access: 'admin' },
       preHandler: requireAdmin,
       // No permissions in the body means a scan key, which is non-admin.
-      preValidation: refuseBadNonAdminCap(),
+      preValidation: refuseBadNonAdminCap(Object.keys(CREATE_BODY_SCHEMA.properties)),
       schema: { tags: ['Keys'], summary: 'Create a new API key (Idempotency-Key optional)', body: CREATE_BODY_SCHEMA },
     },
     async (request, reply) => {
@@ -548,7 +582,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
       config: { access: 'admin' },
       preHandler: requireAdmin,
       // The key the cap lands on is the key as it will be after the patch.
-      preValidation: refuseBadNonAdminCap((request) => {
+      preValidation: refuseBadNonAdminCap(Object.keys(PATCH_BODY_SCHEMA.properties), (request) => {
         const current = getKeyStore().validateById((request.params as { id: string }).id);
         return current ? current.permissions : null;
       }),
