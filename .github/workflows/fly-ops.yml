@@ -35,6 +35,8 @@ on:
           - customer-keys-off
           - spend-cap-on
           - spend-cap-off
+          - claim-meter-on
+          - claim-meter-off
           - measurement-key-set
           - measurement-key-unset
       spend_cap_usd:
@@ -102,6 +104,18 @@ jobs:
       - name: Spend cap off
         if: inputs.action == 'spend-cap-off'
         run: flyctl secrets unset FAULTLINE_PROVIDER_SPEND_CAP FAULTLINE_PROVIDER_SPEND_CAP_USD -a "$APP"
+
+      # Per-key claim meter (FAULTLINE_CLAIM_METER). "on" meters only keys marked
+      # metered; admin keys, the server key and the measurement key never are.
+      # Setting or unsetting the secret restarts the machine, which empties the
+      # in-memory keystore. "off" is the rollback.
+      - name: Claim meter on
+        if: inputs.action == 'claim-meter-on'
+        run: flyctl secrets set FAULTLINE_CLAIM_METER=1 -a "$APP"
+
+      - name: Claim meter off
+        if: inputs.action == 'claim-meter-off'
+        run: flyctl secrets unset FAULTLINE_CLAIM_METER -a "$APP"
 
       # Measurement key (docs/provider-spend-cap.md, "The measurement key"). "set"
       # copies the repo secret FAULTLINE_MEASUREMENT_KEY to the app, so measurement

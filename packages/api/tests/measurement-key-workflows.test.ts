@@ -104,3 +104,39 @@ describe('fly-ops.yml: measurement-key-set and measurement-key-unset', () => {
     expect(unset).toContain('flyctl secrets unset FAULTLINE_MEASUREMENT_KEY -a "$APP"');
   });
 });
+
+describe('fly-ops.yml: claim-meter-on and claim-meter-off', () => {
+  const yml = read('fly-ops.yml');
+  const step = (name: string) => {
+    const start = yml.indexOf(`- name: ${name}\n`);
+    expect(start).toBeGreaterThan(-1);
+    // A step ends at the next blank line, so the following comment block is not included.
+    const next = yml.indexOf('\n\n', start);
+    return yml.slice(start, next === -1 ? undefined : next);
+  };
+
+  it('offers both actions; on sets exactly FAULTLINE_CLAIM_METER=1, off unsets exactly FAULTLINE_CLAIM_METER, and neither touches another secret', () => {
+    expect(yml).toContain('          - claim-meter-on\n');
+    expect(yml).toContain('          - claim-meter-off\n');
+
+    const on = step('Claim meter on');
+    expect(on).toContain("if: inputs.action == 'claim-meter-on'");
+    const onRuns = on.split('\n').filter((line) => line.includes('flyctl'));
+    expect(onRuns).toHaveLength(1);
+    expect(onRuns[0].trim()).toBe('run: flyctl secrets set FAULTLINE_CLAIM_METER=1 -a "$APP"');
+
+    const off = step('Claim meter off');
+    expect(off).toContain("if: inputs.action == 'claim-meter-off'");
+    const offRuns = off.split('\n').filter((line) => line.includes('flyctl'));
+    expect(offRuns).toHaveLength(1);
+    expect(offRuns[0].trim()).toBe('run: flyctl secrets unset FAULTLINE_CLAIM_METER -a "$APP"');
+
+    for (const s of [on, off]) {
+      expect(s).not.toContain('secrets.');
+      expect(s).not.toContain('env:');
+      const names = s.match(/FAULTLINE_[A-Z_]+/g) ?? [];
+      expect(names.length).toBeGreaterThan(0);
+      expect(new Set(names)).toEqual(new Set(['FAULTLINE_CLAIM_METER']));
+    }
+  });
+});
