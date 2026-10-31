@@ -626,4 +626,37 @@ describe('a body nested too deep to clone never makes the cap hook fail', () => 
     expect(res.json().code).toBe('FST_ERR_VALIDATION');
     expect(getKeyStore().validateById(id)).toMatchObject({ name: 'cust', permissions: ['scan'], metered: true, claimCap: 1000 });
   });
+
+  // A cap that cannot be cloned must not stop permissions being read as the schema coerces them.
+  it('POST of scalar "admin" permissions with a deep claimCap takes the schema answer and issues nothing', async () => {
+    const res = await rawPost(`{"name":"ops","permissions":"admin","claimCap":${deep()}}`);
+    expect(res.statusCode).toBe(400);
+    expect(res.json().code).toBe('FST_ERR_VALIDATION');
+    expect(getKeyStore().list()).toHaveLength(0);
+  });
+
+  it('POST of nested [["admin"]] permissions with a deep claimCap takes the schema answer and issues nothing', async () => {
+    const res = await rawPost(`{"name":"ops","permissions":[["admin"]],"claimCap":${deep()}}`);
+    expect(res.statusCode).toBe(400);
+    expect(res.json().code).toBe('FST_ERR_VALIDATION');
+    expect(getKeyStore().list()).toHaveLength(0);
+  });
+
+  it('PATCH of a scan key to scalar "admin" with a deep claimCap takes the schema answer and changes nothing', async () => {
+    const id = (await createKey({ name: 'cust', permissions: ['scan'] })).json().id as string;
+    const res = await rawPatch(id, `{"permissions":"admin","claimCap":${deep()}}`);
+    expect(res.statusCode).toBe(400);
+    expect(res.json().code).toBe('FST_ERR_VALIDATION');
+    expect(getKeyStore().validateById(id)).toMatchObject({ name: 'cust', permissions: ['scan'], metered: true, claimCap: 1000 });
+  });
+
+  it('PATCH of an admin key to scalar "scan" with a deep claimCap is claim_cap_out_of_range and changes nothing', async () => {
+    const admin = getKeyStore().create('ops', ['admin'], undefined, { claimCap: 50 });
+    const res = await rawPatch(admin.id, `{"permissions":"scan","claimCap":${deep()}}`);
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: 'claim_cap_out_of_range', min: 100, max: 10_000 });
+    const stored = getKeyStore().validateById(admin.id);
+    expect(stored).toMatchObject({ name: 'ops', permissions: ['admin'], claimCap: 50 });
+    expect(stored?.metered).toBeUndefined();
+  });
 });

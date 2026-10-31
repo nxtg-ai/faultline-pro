@@ -15,6 +15,8 @@ const VALID_PERMISSIONS: Permission[] = ['scan', 'report', 'upload', 'admin', 'p
  * MIN_CLAIM_CAP..MAX_CLAIM_CAP in lib/key-issuance.ts.
  */
 const CLAIM_CAP_SCHEMA = { type: 'integer', minimum: 0, maximum: 100_000_000 } as const;
+/** A cap the schema accepts, used by the cap hook only in place of a cap it could not clone. */
+const CLAIM_CAP_PLACEHOLDER = 1000;
 /** A Stripe customer id (`cus_...`). Format-checked so no free text reaches the usage record. */
 const STRIPE_CUSTOMER_SCHEMA = { type: 'string', pattern: '^cus_[A-Za-z0-9]{1,64}$' } as const;
 const METERED_SCHEMA = { type: 'boolean' } as const;
@@ -59,6 +61,9 @@ function isPermissionList(value: unknown): value is Permission[] {
  * too deep to copy, say) counts as a value the validator refuses for that
  * property: a claimCap that cannot be cloned is an invalid cap, and permissions
  * that cannot be cloned are read like any other invalid permissions value.
+ * The validator runs on the clone every time, so permissions are always read
+ * as it coerces them ("admin" is ["admin"]); when the cap could not be cloned,
+ * a placeholder cap the schema accepts stands in for it during that run.
  *
  * - The clone validates: nothing to do here. A numeric string cap has been
  *   coerced like every other field ("500" is 500), and the handler holds the
@@ -93,8 +98,14 @@ function refuseBadNonAdminCap(
         uncloneable.add(prop);
       }
     }
-    const capInvalid = uncloneable.has('claimCap')
-      || (!validate(clone) && (validate.errors ?? []).some((e) => e.instancePath === '/claimCap'));
+    // The validator always runs, so permissions are always read as it coerces
+    // them. A cap that could not be cloned is invalid; a placeholder the
+    // schema accepts stands in for it during this run only.
+    const capUncloneable = uncloneable.has('claimCap');
+    if (capUncloneable) clone.claimCap = CLAIM_CAP_PLACEHOLDER;
+    const valid = validate(clone);
+    const capInvalid = capUncloneable
+      || (!valid && (validate.errors ?? []).some((e) => e.instancePath === '/claimCap'));
     if (!capInvalid) return false;
     let permissions: Permission[] | undefined;
     if (!uncloneable.has('permissions') && isPermissionList(clone.permissions)) permissions = clone.permissions;
