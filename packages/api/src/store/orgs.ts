@@ -16,6 +16,7 @@
 
 import { randomUUID, randomBytes } from 'node:crypto';
 import { getKeyStore } from './keys.js';
+import { issuedKeyBilling } from '../lib/key-issuance.js';
 import { getUsageMeter } from './usage.js';
 import type { ApiKey, Permission } from './keys.js';
 
@@ -270,7 +271,8 @@ class OrgStore {
     if (org.keys.length >= MAX_ORG_KEYS) {
       throw new Error(`Org key limit reached (max ${MAX_ORG_KEYS}).`);
     }
-    const apiKey = getKeyStore().create(`[${org.slug}] ${keyName}`, permissions);
+    // A non-admin org key is metered at the default cap, like every issued key.
+    const apiKey = getKeyStore().create(`[${org.slug}] ${keyName}`, permissions, undefined, issuedKeyBilling(permissions));
     const orgKey: OrgKey = {
       keyId:   apiKey.id,
       keyName,
