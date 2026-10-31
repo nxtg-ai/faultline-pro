@@ -114,6 +114,8 @@ export interface ProviderVote {
   apiError?: boolean;
   /** The provider's own reason, when it reported one (e.g. 'provider_unparseable'). */
   apiErrorReason?: ApiErrorReason;
+  /** True when this vote said supported, contradicted or mixed with no source a reader can open, so it is reported as unverified (abstainWithoutSource). */
+  noSourceAbstain?: boolean;
 }
 
 /**
@@ -184,10 +186,11 @@ export interface VerificationResult {
    */
   parseFallback?: boolean;
   /**
-   * True when a grounded Gemini reply said 'contradicted' with no grounding source
-   * and the engine reported 'unverified' instead (absence of evidence is not a
-   * refutation; fw al:3dc2e0b227eaedd6). Absent otherwise. It lets the accuracy
-   * run count how often this fires and against which gold labels.
+   * True when a provider returned 'supported', 'contradicted' or 'mixed' with no
+   * source and the engine reported 'unverified' instead (abstainWithoutSource in
+   * lib/verdict-guard.ts): a definite verdict needs a source the reader can open.
+   * Absent otherwise. It lets the accuracy run count how often this fires and
+   * against which gold labels.
    */
   noSourceAbstain?: boolean;
   /**

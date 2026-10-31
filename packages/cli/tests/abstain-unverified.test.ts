@@ -4,8 +4,9 @@
  * found"; G0 on 47b72f0 answered unverified 1 time in 661). Ruling Dx3 d8f5c369.
  *
  * Two layers: every verify prompt states the rule, and a grounded Gemini
- * "contradicted" with no grounding source at all becomes "unverified". Only the
- * second is deterministic; the prompt's effect is measured by the G0 re-run.
+ * verdict (supported, contradicted or mixed) with no grounding source the reader
+ * can open becomes "unverified". Only the second is deterministic; the prompt's
+ * effect is measured by the G0 re-run.
  */
 // Validates: N-234 (verdict honesty, GoPMO 1.18.7.3.1)
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -32,6 +33,7 @@ import { buildGroundedPrompt } from '../providers/grounded_prompt';
 import { createOpenAIProvider } from '../providers/openai_provider';
 import { createClaudeProvider } from '../providers/claude_provider';
 import { createPerplexityProvider } from '../providers/perplexity_provider';
+import { NO_SOURCE_EXPLANATION, isBillableVerdict } from '../lib/verdict-guard';
 
 const CLAIM: Claim = { id: 'c4', text: 'The underlying pro se complaint had cited 32 cases.', type: 'fact', importance: 3 };
 const NO_RESULTS = '{"status":"contradicted","explanation":"No search results were found that identify an underlying pro se complaint citing 32 cases."}';
@@ -74,12 +76,61 @@ describe('grounded Gemini backstop', () => {
     expect(r.sources).toEqual([{ title: 'Court', uri: 'https://court.example/op' }]);
   });
 
-  it('other statuses with no source are left as given', async () => {
-    for (const status of ['supported', 'mixed', 'unverified']) {
-      sdk.reply = { text: `{"status":"${status}","explanation":"x"}`, candidates: [] };
-      expect((await verifyClaim(CLAIM, 'k')).status).toBe(status);
-    }
+  it('an unverified reply with no source stays unverified and is not flagged', async () => {
+    sdk.reply = { text: '{"status":"unverified","explanation":"x"}', candidates: [] };
+    const r = await verifyClaim(CLAIM, 'k');
+    expect(r.status).toBe('unverified');
+    expect(r.explanation).toBe('x');
+    expect('noSourceAbstain' in r).toBe(false);
   });
+});
+
+// A definite verdict needs a source the reader can open, on every status.
+describe('grounded Gemini: no definite verdict without a source', () => {
+  const QUERIES = ['pro se complaint 32 cases'];
+  const ENTRY = { renderedContent: '<div>chip</div>' };
+  const reply = (status: string, groundingChunks: unknown[]) => ({
+    text: `{"status":"${status}","explanation":"Model says ${status}."}`,
+    candidates: [{ groundingMetadata: { groundingChunks, webSearchQueries: QUERIES, searchEntryPoint: ENTRY } }],
+  });
+
+  for (const status of ['supported', 'contradicted', 'mixed'] as const) {
+    it(`${status} with no grounding chunks becomes unverified, flagged, with the fixed explanation`, async () => {
+      sdk.reply = reply(status, []);
+      const r = await verifyClaim(CLAIM, 'k');
+      expect(r.status).toBe('unverified');
+      expect(r.noSourceAbstain).toBe(true);
+      expect(r.explanation).toBe(NO_SOURCE_EXPLANATION);
+      expect(r.sources).toEqual([]);
+      expect(r.apiError).toBeUndefined();
+      // Provenance and the Search Suggestions fields are kept as they were.
+      expect(r.provenance).toMatchObject({ provider: 'gemini', retriever: 'gemini-grounding' });
+      expect(r.webSearchQueries).toEqual(QUERIES);
+      expect(r.searchEntryPoint).toEqual(ENTRY);
+      expect(isBillableVerdict(r)).toBe(false);
+    });
+
+    it(`${status} with grounding chunks that have no web uri becomes unverified, flagged`, async () => {
+      sdk.reply = reply(status, [{ web: { title: 'No uri' } }, { web: { title: 'Empty', uri: '' } }, { retrievedContext: { uri: 'x' } }]);
+      const r = await verifyClaim(CLAIM, 'k');
+      expect(r.status).toBe('unverified');
+      expect(r.noSourceAbstain).toBe(true);
+      expect(r.explanation).toBe(NO_SOURCE_EXPLANATION);
+      expect(r.sources).toEqual([]);
+      expect(r.apiError).toBeUndefined();
+      expect(r.webSearchQueries).toEqual(QUERIES);
+    });
+
+    it(`${status} with one web source stays ${status}`, async () => {
+      sdk.reply = reply(status, [{ web: { title: 'Court', uri: 'https://court.example/op' } }]);
+      const r = await verifyClaim(CLAIM, 'k');
+      expect(r.status).toBe(status);
+      expect(r.explanation).toBe(`Model says ${status}.`);
+      expect('noSourceAbstain' in r).toBe(false);
+      expect(r.sources).toEqual([{ title: 'Court', uri: 'https://court.example/op' }]);
+      expect(isBillableVerdict(r)).toBe(true);
+    });
+  }
 });
 
 // Ruling Dx3 67cd2d8b: a prompt or verdict-logic change is measured on G0 on a

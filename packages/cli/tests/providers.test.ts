@@ -113,7 +113,7 @@ describe('Provider Abstraction Layer', () => {
     it('should delegate to geminiService verifyClaim', async () => {
       mockGenerateContent.mockResolvedValueOnce({
         text: JSON.stringify({ status: 'supported', explanation: 'Confirmed.' }),
-        candidates: [{ groundingMetadata: { groundingChunks: [] } }],
+        candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'S', uri: 'https://s.example/a' } }] } }],
       });
 
       const provider = createGeminiProvider('test-key');

@@ -444,7 +444,8 @@ describe('units and unserved claims', () => {
     expect(done.factClaims).toBe(9);
     expect(done.units).toEqual({ charged: 2, served: 0, refund: 2 });
     expect(done.unserved).toHaveLength(9);
-    expect(done.progress.every((p: Json) => p.status === 'unserved' && p.verdict?.status === 'supported')).toBe(true);
+    // Its sourceless supported verdicts are reported as unverified, flagged noSourceAbstain.
+    expect(done.progress.every((p: Json) => p.status === 'unserved' && p.verdict?.status === 'unverified' && p.verdict?.noSourceAbstain === true)).toBe(true);
   });
 
   it('under the mock id a sourced verdict serves nothing: mock has no engine retriever', async () => {
@@ -871,6 +872,30 @@ describe('persistence', () => {
     const job = { status: 'running', factIds: ['c1'], verdicts: [undefined] } as never as Parameters<ReturnType<typeof getFullScanJobStore>['recordVerdict']>[0];
     getFullScanJobStore().recordVerdict(job, 0, { claimId: 'c1', status: 'ROYALLY_CERTIFIED' as never, explanation: 'x', sources: [] });
     expect(job.verdicts[0]).toMatchObject({ claimId: 'c1', status: 'unverified', apiError: true, apiErrorReason: 'provider_error' });
+  });
+
+  for (const [name, malformed] of [['an empty object', {}], ['a null entry', null], ['a numeric uri', { title: 'x', uri: 42 }]] as const) {
+    it(`the job store records a verdict with ${name} beside a valid URL as a provider error, as before`, () => {
+      const job = { status: 'running', factIds: ['c1'], verdicts: [undefined] } as never as Parameters<ReturnType<typeof getFullScanJobStore>['recordVerdict']>[0];
+      const verdict = { claimId: 'c1', status: 'supported', explanation: 'x', sources: [malformed, { title: 'S', uri: 'https://e.example/fact' }] };
+      getFullScanJobStore().recordVerdict(job, 0, verdict as never);
+      expect(job.verdicts[0]).toEqual({
+        claimId: 'c1',
+        status: 'unverified',
+        explanation: 'The verifier returned a malformed verdict, so this claim was not checked.',
+        sources: [],
+        apiError: true,
+        apiErrorReason: 'provider_error',
+      });
+    });
+  }
+
+  it('the job store drops a well-formed but unopenable source and keeps the openable one', () => {
+    const job = { status: 'running', factIds: ['c1'], verdicts: [undefined] } as never as Parameters<ReturnType<typeof getFullScanJobStore>['recordVerdict']>[0];
+    const sources = [{ title: 'J', uri: 'javascript:alert(1)' }, { title: 'S', uri: 'https://e.example/fact' }];
+    getFullScanJobStore().recordVerdict(job, 0, { claimId: 'c1', status: 'supported', explanation: 'x', sources });
+    expect(job.verdicts[0]).toMatchObject({ status: 'supported', sources: [{ title: 'S', uri: 'https://e.example/fact' }] });
+    expect(job.verdicts[0]?.apiError).toBeUndefined();
   });
 
   // Google's grounding terms: Search Suggestions are shown unaltered with the

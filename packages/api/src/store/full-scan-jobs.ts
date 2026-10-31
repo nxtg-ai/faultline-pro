@@ -1,4 +1,4 @@
-import { guardVerdict, isBillableVerdict } from '@nxtg/faultline/lib/verdict-guard.js';
+import { abstainScanWithoutSource, abstainWithoutSource, guardVerdict, isBillableVerdict } from '@nxtg/faultline/lib/verdict-guard.js';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -305,7 +305,9 @@ function failedClaim(claimId: string, verdict: VerificationResult | undefined, r
 
 function claimProgress(job: FullScanJob): ClaimProgress[] {
   return job.factIds.map((claimId, i): ClaimProgress => {
-    const verdict = job.verdicts[i];
+    // Guarded on read as well as on record: the GET view never serves a definite verdict without an openable source.
+    const recorded = job.verdicts[i];
+    const verdict = recorded === undefined ? undefined : abstainWithoutSource(recorded);
     if (job.status === 'failed') return failedClaim(claimId, verdict, job.refusedReason);
     if (verdict === undefined) {
       return isTerminal(job.status) ? { claimId, status: 'unserved', reason: 'not_attempted' } : { claimId, status: 'pending' };
@@ -339,7 +341,7 @@ export function describeJob(job: FullScanJob): FullScanJobView {
     units: unitAccounting(job.charged, served),
     resultAvailable: job.status !== 'failed',
     durable: job.durable === true,
-    ...(withResult ? { result: job.result } : {}),
+    ...(withResult ? { result: abstainScanWithoutSource(job.result) } : {}),
   };
 }
 
@@ -649,8 +651,11 @@ class FullScanJobStore {
   /** Record a verdict as it lands (index = position among the job's fact claims). */
   recordVerdict(job: FullScanJob, index: number, verdict: VerificationResult): void {
     if (isTerminal(job.status)) return;
-    // A malformed verdict is stored as an unserved provider error (refunded), never as given.
-    job.verdicts[index] = guardVerdict(verdict, job.factIds[index] ?? verdict?.claimId ?? '');
+    // Shape first, on the verdict as given: a malformed verdict (any source entry without a
+    // string uri included) is stored as an unserved provider error (refunded), never as given.
+    // Only a well-formed verdict then has unopenable sources dropped, and a definite verdict
+    // left with none is stored as unverified.
+    job.verdicts[index] = abstainWithoutSource(guardVerdict(verdict, job.factIds[index] ?? verdict?.claimId ?? ''));
   }
 
   /**

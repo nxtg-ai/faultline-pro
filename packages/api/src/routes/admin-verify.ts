@@ -11,7 +11,7 @@ import {
 import { recordProviderSpend } from '../store/provider-spend.js';
 import { summarizeScanUsage } from '../store/consensus-cost.js';
 import { getProvider } from '@nxtg/faultline/providers/registry.js';
-import { isBillableVerdict } from '@nxtg/faultline/lib/verdict-guard.js';
+import { abstainWithoutSource, isBillableVerdict } from '@nxtg/faultline/lib/verdict-guard.js';
 import type { LLMProvider } from '@nxtg/faultline/providers/base_provider.js';
 import { DEFAULT_SCAN_PROVIDER, resolveApiKey } from '@nxtg/faultline/cli/provider-keys.js';
 import { bindEngineProvenance } from '@nxtg/faultline/cli/verify-runner.js';
@@ -139,7 +139,7 @@ export interface VerifyClaimOutcome {
   status: ClaimStatus;
   apiError: boolean;
   parseFallback: boolean;
-  /** A grounded 'contradicted' with no source, reported as 'unverified' (VerificationResult.noSourceAbstain). */
+  /** A supported, contradicted or mixed verdict with no source, reported as 'unverified' (VerificationResult.noSourceAbstain). */
   noSourceAbstain: boolean;
   /** Why an unchecked claim went unchecked (a label such as output_truncated); null on a verdict. */
   apiErrorReason: string | null;
@@ -191,9 +191,10 @@ async function verifyOne(provider: LLMProvider, providerName: string, input: Ver
   }
   // Provenance is bound here with the runner's rule: the retriever comes from
   // the engine's table, only for the built-in instance this route resolved, and any
-  // retriever the provider set on itself is dropped. Status, sources and the
-  // fields the outcome reports are left as the provider returned them.
-  const result = bindEngineProvenance(outcome.value, providerName, provider, new Date().toISOString());
+  // retriever the provider set on itself is dropped. A definite verdict with no
+  // source is reported as unverified, as on every other verify path
+  // (abstainWithoutSource); otherwise status and sources are left as returned.
+  const result = abstainWithoutSource(bindEngineProvenance(outcome.value, providerName, provider, new Date().toISOString()));
   return {
     legs,
     billable: isBillableVerdict(result),

@@ -8,6 +8,7 @@ import { readVerdictReply, truncatedVerdict, unparseableVerdict } from '../provi
 import { geminiCeilingConfig } from '../providers/call-ceilings';
 import { isGeminiTruncated, OutputTruncatedError } from '../providers/output-truncation';
 import { RetrievalError } from '../providers/retrieval-error';
+import { abstainWithoutSource } from '../lib/verdict-guard';
 
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 
@@ -213,7 +214,8 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
     const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
     if (chunks) {
       chunks.forEach((chunk: any) => {
-        if (chunk.web) {
+        // A chunk without a web uri is not a source the reader can open.
+        if (typeof chunk.web?.uri === 'string' && chunk.web.uri.length > 0) {
           sources.push({
             title: chunk.web.title || 'Source',
             uri: chunk.web.uri
@@ -224,21 +226,16 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
 
     const uniqueSources = sources.filter((v, i, a) => a.findIndex(t => t.uri === v.uri) === i);
 
-    // A grounded 'contradicted' needs a source that says the claim is false. With
-    // no grounding source at all the model is reporting absence of evidence, which
-    // is 'unverified', never a refutation (fw al:3dc2e0b227eaedd6, EP4 c4).
-    const noSourceAbstain = verdict.status === 'contradicted' && uniqueSources.length === 0;
-    const status = noSourceAbstain ? 'unverified' : verdict.status;
-
-    return {
+    // A definite verdict with no source the reader can open is reported as
+    // unverified (abstainWithoutSource); absence of evidence is not a verdict.
+    return abstainWithoutSource({
       claimId: claim.id,
-      status,
+      status: verdict.status,
       explanation: verdict.explanation,
       sources: uniqueSources.slice(0, 3),
-      ...(noSourceAbstain ? { noSourceAbstain: true } : {}),
       ...searchSuggestionsOf(response.candidates?.[0]?.groundingMetadata),
       provenance: { provider: 'gemini', model: servedModel, verifiedAt: returnedAt, retriever: 'gemini-grounding', retrievedAt: returnedAt },
-    };
+    });
 
   } catch (error) {
     console.error(`Error verifying claim ${claim.id}:`, error);
@@ -331,7 +328,8 @@ export const retrieveSources = async (claimText: string, apiKey: string): Promis
     const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
     if (chunks) {
       chunks.forEach((chunk: any) => {
-        if (chunk.web) {
+        // A chunk without a web uri is not a source the reader can open.
+        if (typeof chunk.web?.uri === 'string' && chunk.web.uri.length > 0) {
           sources.push({ title: chunk.web.title || 'Source', uri: chunk.web.uri });
         }
       });

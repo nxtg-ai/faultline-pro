@@ -73,8 +73,9 @@ vi.mock('../providers/registry.js', () => ({
 
 import { batchScan, guaranteeClaimPerSentence } from '../cli/scan.js';
 
+// One source per verdict: the scan reports a sourceless definite verdict as unverified.
 function vr(status: VerificationResult['status'], claimId: string): VerificationResult {
-  return { claimId, status, explanation: `test:${status}`, sources: [] };
+  return { claimId, status, explanation: `test:${status}`, sources: [{ title: 'S', uri: `https://s.example/${claimId}` }] };
 }
 
 function makeClaims(texts: string[], importance = 3) {
