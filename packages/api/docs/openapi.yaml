@@ -1323,8 +1323,10 @@ paths:
                     Claims per UTC month for a metered key (scope keys:write).
                     A non-admin key defaults to 1000 and must be an integer from
                     100 to 10000 (10 to 1,000 USD at 0.10 USD per billable
-                    claim), otherwise 400 claim_cap_out_of_range. The schema
-                    range is the admin-key range.
+                    claim), otherwise 400 claim_cap_out_of_range. A numeric
+                    string is coerced like every other field ("500" is 500),
+                    and the rule is on the coerced value. The schema range is
+                    the admin-key range.
                 stripeCustomerId:
                   type: string
                   pattern: '^cus_[A-Za-z0-9]{1,64}$'
@@ -1384,10 +1386,12 @@ paths:
         `null` clears expiresAt, claimCap or stripeCustomerId, except that a
         metered non-admin key cannot have its claimCap cleared (400
         claim_cap_required). A non-admin key's claimCap must be an integer
-        from 100 to 10000 (400 claim_cap_out_of_range). The check is on the
-        key as it will be after the patch: a key that ends up non-admin and
-        metered needs a claimCap from 100 to 10000 (400
-        claim_cap_out_of_range, or claim_cap_required with none), and an
+        from 100 to 10000 (400 claim_cap_out_of_range). A numeric string cap
+        is coerced like every other field ("500" is 500), and the rule is on
+        the coerced value. The check is on the key as it will be after the
+        patch: a key that ends up non-admin must hold any claimCap it has in
+        100 to 10000, metered or not (400 claim_cap_out_of_range), one that
+        ends up metered must have one (400 claim_cap_required), and an
         admin key re-scoped to non-admin becomes metered with claimCap 1000
         unless the same patch sets metered or claimCap (a cap it already
         holds is kept and checked). A refused patch changes nothing. A new

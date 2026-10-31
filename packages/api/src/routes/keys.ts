@@ -38,45 +38,49 @@ function billingFieldRefusal(keyId: string | undefined, body: Record<string, unk
   return null;
 }
 
-/** True when CLAIM_CAP_SCHEMA would refuse or coerce this value before the route handler runs. */
-function claimCapFailsSchema(claimCap: unknown): boolean {
-  return typeof claimCap !== 'number' || !Number.isInteger(claimCap)
-    || claimCap < CLAIM_CAP_SCHEMA.minimum || claimCap > CLAIM_CAP_SCHEMA.maximum;
+/**
+ * True when `value` is a permissions list the body schema accepts. It is only
+ * ever given the validator's coerced clone, never the raw body, so it reads
+ * the result of Ajv's coercion and does not repeat it.
+ */
+function isPermissionList(value: unknown): value is Permission[] {
+  return Array.isArray(value) && value.every((p) => typeof p === 'string' && VALID_PERMISSIONS.includes(p as Permission));
 }
 
 /**
- * Runs before schema validation on POST /keys and PATCH /keys/:id. A claimCap
- * the schema would refuse (negative, fractional, very large) or coerce (a
- * string) gets 400 claim_cap_out_of_range when the key it lands on is
- * non-admin, instead of the generic schema error. `targetPermissions` returns
- * that key's permissions, or null when it cannot tell (the schema then
- * decides, as before). Admin keys still get the schema's own answer.
+ * Runs before schema validation on POST /keys and PATCH /keys/:id. It does not
+ * read the body itself: it runs the route's own body validator (the same Ajv,
+ * the same options, coerceTypes 'array' included) on a deep clone of the raw
+ * body, and reads the coerced clone.
+ *
+ * - The clone validates: nothing to do here. A numeric string cap has been
+ *   coerced like every other field ("500" is 500), and the handler holds the
+ *   resulting key's cap to its bounds.
+ * - The clone fails on claimCap and the key the cap lands on is non-admin:
+ *   400 claim_cap_out_of_range, nothing written.
+ * - Any other failure, or an admin key: the schema's own error, as before.
+ *
+ * `storedPermissions` gives the permissions of the key a PATCH changes (null
+ * when there is none); on POST it is absent and the key defaults to non-admin.
  */
-function refuseBadNonAdminCap(targetPermissions: (request: FastifyRequest, body: Record<string, unknown>) => Permission[] | undefined | null) {
+function refuseBadNonAdminCap(storedPermissions?: (request: FastifyRequest) => Permission[] | null) {
   return async (request: FastifyRequest, reply: FastifyReply) => {
-    const body = request.body;
-    if (body === null || typeof body !== 'object' || Array.isArray(body)) return;
-    const record = body as Record<string, unknown>;
-    if (!('claimCap' in record) || record.claimCap === null || record.claimCap === undefined) return;
-    if (!claimCapFailsSchema(record.claimCap)) return;
-    const permissions = targetPermissions(request, record);
-    if (permissions === null || isAdminPermissions(permissions)) return;
+    const validate = request.getValidationFunction('body');
+    if (!validate) return;
+    const clone: unknown = structuredClone(request.body);
+    if (validate(clone)) return;
+    if (!(validate.errors ?? []).some((e) => e.instancePath === '/claimCap')) return;
+    const coerced = clone as Record<string, unknown>;
+    let permissions: Permission[] | undefined;
+    if (isPermissionList(coerced.permissions)) permissions = coerced.permissions;
+    else if (storedPermissions) {
+      const stored = storedPermissions(request);
+      if (stored === null) return;
+      permissions = stored;
+    }
+    if (isAdminPermissions(permissions)) return;
     return reply.status(400).send(CLAIM_CAP_OUT_OF_RANGE);
   };
-}
-
-/**
- * The `permissions` in a body as the schema will see them after coercion, or
- * null when the schema will refuse them. Fastify's Ajv runs with
- * coerceTypes 'array', so a scalar becomes a one-element array ("scan" is
- * ["scan"]); a number, boolean or null item never coerces to a known value.
- */
-function bodyPermissions(body: Record<string, unknown>): Permission[] | undefined | null {
-  const perms = body.permissions;
-  if (perms === undefined) return undefined;
-  const list: unknown[] = Array.isArray(perms) ? perms : [perms];
-  if (!list.every((p) => typeof p === 'string' && VALID_PERMISSIONS.includes(p as Permission))) return null;
-  return list as Permission[];
 }
 
 /** undefined = header absent; null = present but empty or longer than 200 characters. */
@@ -129,7 +133,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
       config: { access: 'admin' },
       preHandler: requireAdmin,
       // No permissions in the body means a scan key, which is non-admin.
-      preValidation: refuseBadNonAdminCap((_request, body) => bodyPermissions(body)),
+      preValidation: refuseBadNonAdminCap(),
       schema: { tags: ['Keys'], summary: 'Create a new API key (Idempotency-Key optional)', body: CREATE_BODY_SCHEMA },
     },
     async (request, reply) => {
@@ -544,9 +548,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
       config: { access: 'admin' },
       preHandler: requireAdmin,
       // The key the cap lands on is the key as it will be after the patch.
-      preValidation: refuseBadNonAdminCap((request, body) => {
-        const perms = bodyPermissions(body);
-        if (perms !== undefined) return perms;
+      preValidation: refuseBadNonAdminCap((request) => {
         const current = getKeyStore().validateById((request.params as { id: string }).id);
         return current ? current.permissions : null;
       }),
