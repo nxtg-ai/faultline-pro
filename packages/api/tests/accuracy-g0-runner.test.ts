@@ -17,6 +17,20 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
+// The real-server test below runs the API in this process; its Gemini SDK is mocked at the module
+// boundary, so no provider is called and nothing leaves the machine.
+vi.mock('@google/genai', () => ({
+  GoogleGenAI: class {
+    models = {
+      generateContent: async () => ({
+        usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 20 },
+        candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 't', uri: 'https://example.com/a' } }] } }],
+        text: JSON.stringify({ status: 'supported', explanation: 'e' }),
+      }),
+    };
+  },
+}));
+
 // Every test here spawns the runner as a real child process. Under machine load (load avg 35-39,
 // 2026-10-05 and 2026-10-07) the 5 s default timed out and blocked the pre-push gate.
 vi.setConfig({ testTimeout: 30_000 });
@@ -40,7 +54,10 @@ interface FakeState {
   failFirst: Map<number, number>;
   verifyCalls: number;
   requests: number;
+  /** x-api-key values on every request except GET /health. */
   seenKeys: Set<string>;
+  /** The key headers each GET /health carried (x-api-key, authorization), '' when absent. */
+  healthKeyHeaders: string[];
   attemptsById: Map<number, number>;
   verifyStatus: number;
   verifyBody?: unknown;
@@ -65,6 +82,7 @@ function freshState(): FakeState {
     verifyCalls: 0,
     requests: 0,
     seenKeys: new Set(),
+    healthKeyHeaders: [],
     attemptsById: new Map(),
     verifyStatus: 200,
     runStartCalls: 0,
@@ -85,10 +103,11 @@ async function readBody(req: IncomingMessage): Promise<string> {
 
 async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
   state.requests += 1;
-  state.seenKeys.add(String(req.headers['x-api-key'] ?? ''));
   if (req.method === 'GET' && req.url === '/health') {
+    state.healthKeyHeaders.push(String(req.headers['x-api-key'] ?? '') + String(req.headers.authorization ?? ''));
     return send(res, 200, { status: 'ok', version: state.version, commit: state.commit });
   }
+  state.seenKeys.add(String(req.headers['x-api-key'] ?? ''));
   if (req.method === 'GET' && req.url === '/usage') {
     const full = state.capAfterCallsThisRun !== undefined && state.verifyCalls - state.runStartCalls >= state.capAfterCallsThisRun;
     return send(res, 200, {
@@ -163,10 +182,10 @@ describe('accuracy-g0 runner: refusals before anything is sent', () => {
     expect(r.out).not.toContain(KEY);
   });
 
-  it('refuses with no admin key anywhere (exit 2, zero requests)', async () => {
+  it('refuses with no measurement or admin key anywhere (exit 2, zero requests)', async () => {
     const r = await run(['--set', 'full', '--out', join(dir, 'out.jsonl')], {});
     expect(r.code).toBe(2);
-    expect(r.out).toMatch(/no admin key/);
+    expect(r.out).toMatch(/no measurement or admin key/);
     expect(state.requests).toBe(0);
   });
 
@@ -504,6 +523,46 @@ describe('accuracy-g0 runner: invalid-run checks (prereg §5)', () => {
   });
 });
 
+describe('accuracy-g0 runner: the measurement key', () => {
+  const MEASUREMENT = ['runner', 'MEASUREKEY', 'must-never-print', '7171'].join('-');
+
+  it('sends FAULTLINE_MEASUREMENT_KEY over the admin key when both are set, prints no warning and never the key', async () => {
+    const r = await run(['--set', 'verify-subsample', '--out', join(dir, 'sub.jsonl')], { FAULTLINE_MEASUREMENT_KEY: MEASUREMENT, FAULTLINE_ADMIN_KEY: KEY });
+    expect(r.code).toBe(0);
+    expect(state.requests).toBeGreaterThan(0);
+    expect(state.seenKeys).toEqual(new Set([MEASUREMENT]));
+    expect(r.out).not.toMatch(/not labelled/);
+    expect(r.out).not.toContain(MEASUREMENT);
+    expect(r.out).not.toContain('MEASUREKEY');
+  });
+
+  it('reads GET /health with no key header at all, and sends the key on every other request', async () => {
+    const r = await run(['--set', 'verify-subsample', '--out', join(dir, 'sub.jsonl')], { FAULTLINE_MEASUREMENT_KEY: MEASUREMENT });
+    expect(r.code).toBe(0);
+    expect(state.healthKeyHeaders.length).toBeGreaterThan(0);
+    expect(state.healthKeyHeaders.every((h) => h === '')).toBe(true);
+    expect(state.seenKeys).toEqual(new Set([MEASUREMENT]));
+  });
+
+  it('reads the key from ~/.config/faultline/measurement-key.env', async () => {
+    mkdirSync(join(dir, '.config/faultline'), { recursive: true });
+    writeFileSync(join(dir, '.config/faultline/measurement-key.env'), `# measurement\nFAULTLINE_MEASUREMENT_KEY=${MEASUREMENT}\n`);
+    const r = await run(['--set', 'verify-subsample', '--out', join(dir, 'sub.jsonl')]);
+    expect(r.code).toBe(0);
+    expect(state.seenKeys).toEqual(new Set([MEASUREMENT]));
+    expect(r.out).not.toMatch(/not labelled/);
+    expect(r.out).not.toContain(MEASUREMENT);
+  });
+
+  it('an empty FAULTLINE_MEASUREMENT_KEY falls back to the admin key with the unlabelled warning', async () => {
+    const r = await run(['--set', 'verify-subsample', '--out', join(dir, 'sub.jsonl')], { FAULTLINE_MEASUREMENT_KEY: '', FAULTLINE_ADMIN_KEY: KEY });
+    expect(r.code).toBe(0);
+    expect(state.seenKeys).toEqual(new Set([KEY]));
+    expect(r.out).toMatch(/WARNING: no measurement key .* not labelled/);
+    expect(r.out).not.toContain(KEY);
+  });
+});
+
 describe('accuracy-g0 runner: the admin key', () => {
   it('reads the key from ~/.config/faultline/hosted-api-key.env, sends it, and never prints it', async () => {
     mkdirSync(join(dir, '.config/faultline'), { recursive: true });
@@ -515,4 +574,91 @@ describe('accuracy-g0 runner: the admin key', () => {
     expect(r.out).not.toContain(KEY);
     expect(r.out).not.toContain('ADMINKEY');
   });
+});
+
+// Validates: measurement key separation (CHANGELOG [Unreleased]): the G0 runner starts with the measurement key
+describe('accuracy-g0 runner: against the real API server with the measurement key', () => {
+  const MEASUREMENT = ['real', 'measure', 'part', String(process.pid)].join('-');
+  const ADMIN = ['real', 'admin', 'part', String(process.pid)].join('-');
+  const ENGINE_COMMIT = '4de048a1b2c3d4e5f60718293a4b5c6d7e8f9012';
+  const ENV_KEYS = [
+    'FAULTLINE_API_KEY', 'FAULTLINE_MEASUREMENT_KEY', 'GEMINI_API_KEY', 'FAULTLINE_GIT_SHA',
+    'FAULTLINE_GROUNDING_LEDGER', 'FAULTLINE_PROVIDER_SPEND_LEDGER', 'FAULTLINE_PROVIDER_SPEND_CAP',
+    'FAULTLINE_PROVIDER_SPEND_CAP_USD', 'FAULTLINE_CUSTOMER_KEYS', 'FAULTLINE_GRAPHQL',
+  ];
+  let saved: Record<string, string | undefined>;
+
+  beforeEach(() => {
+    saved = {};
+    for (const k of ENV_KEYS) { saved[k] = process.env[k]; delete process.env[k]; }
+  });
+
+  afterEach(() => {
+    for (const k of ENV_KEYS) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  });
+
+  it('reads /health with no key (200) and reaches POST /admin/verify-claims with the measurement key', async () => {
+    process.env.FAULTLINE_API_KEY = ADMIN;
+    process.env.FAULTLINE_MEASUREMENT_KEY = MEASUREMENT;
+    process.env.GEMINI_API_KEY = ['test', 'gemini'].join('-');
+    process.env.FAULTLINE_GIT_SHA = ENGINE_COMMIT;
+    process.env.FAULTLINE_GROUNDING_LEDGER = join(dir, 'grounding.jsonl');
+    process.env.FAULTLINE_PROVIDER_SPEND_LEDGER = join(dir, 'provider-spend.jsonl');
+    const { resetGroundingAllowanceLedger } = await import('../src/store/grounding-allowance.js');
+    const { resetProviderSpendLedger } = await import('../src/store/provider-spend.js');
+    const { resetKeyStore } = await import('../src/store/keys.js');
+    const { resetRateLimiter } = await import('../src/store/ratelimit.js');
+    resetGroundingAllowanceLedger();
+    resetProviderSpendLedger();
+    resetKeyStore();
+    resetRateLimiter();
+    const { buildServer } = await import('../src/server.js');
+    const app = buildServer();
+    const seen: Array<{ method: string; url: string; key: string; authorization: string; status: number }> = [];
+    app.addHook('onResponse', async (request, reply) => {
+      seen.push({
+        method: request.method,
+        url: request.url,
+        key: String(request.headers['x-api-key'] ?? ''),
+        authorization: String(request.headers.authorization ?? ''),
+        status: reply.statusCode,
+      });
+    });
+    await app.listen({ port: 0, host: '127.0.0.1' });
+    try {
+      const realApi = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;
+      const out = join(dir, 'real.jsonl');
+      const r = await new Promise<RunResult>((resolvePromise) => {
+        const child = spawn(process.execPath, [SCRIPT, '--api', realApi, '--retry-base-ms', '1', '--set', 'verify-subsample', '--out', out], {
+          env: { PATH: process.env.PATH ?? '', HOME: dir, FAULTLINE_MEASUREMENT_KEY: MEASUREMENT },
+        });
+        let text = '';
+        child.stdout.on('data', (d) => { text += d; });
+        child.stderr.on('data', (d) => { text += d; });
+        child.on('close', (code) => resolvePromise({ code, out: text }));
+      });
+
+      const health = seen.filter((e) => e.method === 'GET' && e.url === '/health');
+      expect(health.length).toBeGreaterThan(0);
+      expect(health.every((e) => e.status === 200 && e.key === '' && e.authorization === '')).toBe(true);
+
+      const verifies = seen.filter((e) => e.method === 'POST' && e.url === '/admin/verify-claims');
+      expect(verifies.length).toBeGreaterThan(0);
+      expect(verifies.every((e) => e.key === MEASUREMENT && e.status === 200)).toBe(true);
+      expect(seen.some((e) => e.status === 403)).toBe(false);
+
+      expect(r.code).toBe(0);
+      const written = rows(out);
+      expect(written).toHaveLength(SUBSAMPLE_IDS.length);
+      expect(written.every((row) => row.engineSha === ENGINE_COMMIT)).toBe(true);
+      expect(r.out).not.toContain(MEASUREMENT);
+    } finally {
+      await app.close();
+      resetGroundingAllowanceLedger();
+      resetProviderSpendLedger();
+    }
+  }, 60_000);
 });

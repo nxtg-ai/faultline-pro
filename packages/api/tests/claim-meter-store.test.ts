@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import {
+  BILLED_VERDICTS,
   ClaimMeter,
   claimIdentifier,
   getClaimMeter,
@@ -68,25 +69,42 @@ afterEach(() => {
 });
 
 describe('billable claims use the engine rule', () => {
-  it('bills supported, contradicted, mixed and unverified; not apiError, skipped or garbage; provider from provenance', () => {
+  it('bills only engine-sourced verdicts: supported, contradicted, mixed with a source and an engine retriever', () => {
+    const src = [{ title: 'S', uri: 'https://example.org/s' }];
+    const engine = (provider?: string) => ({ ...(provider ? { provider } : {}), retriever: 'gemini-grounding' });
     const claims = billableClaims({
       verifications: {
-        c1: { status: 'supported', provenance: { provider: 'gemini' } },
-        c2: { status: 'contradicted' },
-        c3: { status: 'mixed' },
-        c4: { status: 'unverified' },
-        c5: { status: 'unverified', apiError: true },
-        c6: { status: 'skipped' },
-        c7: { status: 'ROYALLY_CERTIFIED' },
+        c1: { status: 'supported', sources: src, provenance: engine('gemini') },
+        c2: { status: 'contradicted', sources: src, provenance: engine() },
+        c3: { status: 'mixed', sources: src, provenance: engine() },
+        c4: { status: 'unverified', sources: src, provenance: engine() },
+        c5: { status: 'supported', sources: src, provenance: engine(), apiError: true },
+        c6: { status: 'skipped', sources: src, provenance: engine() },
+        c7: { status: 'ROYALLY_CERTIFIED', sources: src, provenance: engine() },
+        c8: { status: 'supported', sources: [], provenance: engine() },
+        c9: { status: 'supported', sources: src, provenance: { provider: 'mock' } },
+        c10: { status: 'supported', sources: src },
       },
-    }, 'mock');
+    }, 'gemini');
     expect(claims.length).toBeGreaterThan(0);
     expect(claims).toEqual([
       { claimId: 'c1', verdict: 'supported', provider: 'gemini' },
-      { claimId: 'c2', verdict: 'contradicted', provider: 'mock' },
-      { claimId: 'c3', verdict: 'mixed', provider: 'mock' },
-      { claimId: 'c4', verdict: 'unverified', provider: 'mock' },
+      { claimId: 'c2', verdict: 'contradicted', provider: 'gemini' },
+      { claimId: 'c3', verdict: 'mixed', provider: 'gemini' },
     ]);
+  });
+
+  it('an unverified verdict is never billable, even sourced and engine-retrieved', () => {
+    const verdict = { status: 'unverified', sources: [{ title: 'S', uri: 'https://example.org/s' }], provenance: { retriever: 'gemini-grounding' } };
+    expect(billableClaims({ verifications: { c1: verdict } }, 'gemini')).toEqual([]);
+    expect(BILLED_VERDICTS).toEqual(['supported', 'contradicted', 'mixed']);
+  });
+
+  it('the usage record refuses a row whose verdict is not billable', () => {
+    const meter = new ClaimMeter();
+    const added = meter.commitUsage('key-1', randomUUID(), [{ claimId: 'c1', verdict: 'unverified' as never, provider: 'gemini' }], null, JUNE);
+    expect(added).toBe(0);
+    expect(fileRows()).toEqual([]);
   });
 });
 
@@ -136,12 +154,12 @@ describe('the row', () => {
   it('has exactly the contract fields, no text, and identifier scanId:claimId', () => {
     const meter = new ClaimMeter();
     const scan = randomUUID();
-    meter.commitUsage('key-1', scan, [{ claimId: 'c1', verdict: 'unverified', provider: 'gemini' }], 'cus_ABC', JUNE);
+    meter.commitUsage('key-1', scan, [{ claimId: 'c1', verdict: 'supported', provider: 'gemini' }], 'cus_ABC', JUNE);
     const rows = fileRows();
     expect(rows.length).toBe(1);
     expect(rows[0]).toEqual({
       seq: 1, ts: '2026-06-15T12:00:00.000Z', period: '2026-06', kind: 'usage', keyId: 'key-1',
-      stripeCustomerId: 'cus_ABC', scanId: scan, claimId: 'c1', verdict: 'unverified', provider: 'gemini',
+      stripeCustomerId: 'cus_ABC', scanId: scan, claimId: 'c1', verdict: 'supported', provider: 'gemini',
       identifier: `${scan}:c1`,
     });
   });
@@ -404,7 +422,8 @@ describe('meteredScan (work outside a request)', () => {
 
   it('commits the verdicts and releases the rest; an error commits nothing and releases', async () => {
     const key = getKeyStore().create('m', ['scan'], undefined, { metered: true, claimCap: 100 });
-    await meteredScan(key.id, 8, randomUUID(), 'mock', async () => ({ verifications: { c1: { status: 'supported' } } }));
+    const engineVerdict = { status: 'supported', sources: [{ title: 'S', uri: 'https://example.org/s' }], provenance: { provider: 'gemini', retriever: 'gemini-grounding' } };
+    await meteredScan(key.id, 8, randomUUID(), 'gemini', async () => ({ verifications: { c1: engineVerdict, c2: { ...engineVerdict, status: 'unverified' } } }));
     expect(getClaimMeter().usageFor(key.id).used).toBe(1);
     await expect(meteredScan(key.id, 8, randomUUID(), 'mock', async () => { throw new Error('boom'); })).rejects.toThrow('boom');
     expect(getClaimMeter().usageFor(key.id).used).toBe(1);

@@ -1,16 +1,18 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { VERDICT_STATUSES, type VerdictStatus } from '@nxtg/faultline/lib/verdict-guard.js';
+import { isBillableVerdict, VERDICT_STATUSES, type VerdictStatus } from '@nxtg/faultline/lib/verdict-guard.js';
 import { currentMonth } from './provider-spend.js';
 
 /**
  * claim-meter.ts — the append-only usage record and the per-key monthly claim cap.
  *
- * The billable unit is one claim that received a provider verdict
- * (`supported`, `contradicted`, `mixed` or `unverified`; the engine's
- * isBillableVerdict decides). A provider error, a timeout, a failed extraction,
- * a refunded retry and a claim about the document itself produce no verdict and
+ * The billable unit is one claim with a billable verdict, as the engine's
+ * isBillableVerdict (packages/cli/lib/verdict-guard.ts) decides: `supported`,
+ * `contradicted` or `mixed`, at least one source, a `provenance.retriever` the
+ * engine set, and no API error. An `unverified` verdict, a verdict with no
+ * source or with no engine retriever, a provider error, a timeout, a failed
+ * extraction, a refunded retry and a claim about the document itself produce
  * no row.
  *
  * THE LEDGER IS THE AUTHORITY, memory is the index (the provider-spend.ts
@@ -29,7 +31,7 @@ import { currentMonth } from './provider-spend.js';
  * RESERVATIONS live in memory only. A route reserves the most claims it may
  * verify BEFORE any provider call; `reserve` is one synchronous
  * check-and-increment, so two concurrent requests cannot both pass a cap only
- * one fits. After the run the route commits the claims that got a verdict and
+ * one fits. After the run the route commits the claims with a billable verdict and
  * releases the rest. A crash loses only reservations, which frees capacity.
  *
  * No claim text, evidence or key material is ever written.
@@ -45,7 +47,14 @@ export const MAX_CLAIM_ID_LENGTH = 58;
 export const MAX_IDENTIFIER_LENGTH = 95;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const VERDICTS: ReadonlySet<string> = new Set(VERDICT_STATUSES);
+/**
+ * The verdict statuses a usage row may carry: those isBillableVerdict accepts
+ * for an otherwise billable verdict (one source, an engine retriever, no API
+ * error). Derived from the predicate, so the record and the rule cannot drift.
+ */
+export const BILLED_VERDICTS: readonly VerdictStatus[] = Object.freeze(VERDICT_STATUSES.filter((status) =>
+  isBillableVerdict({ status, sources: [{ uri: 'https://example.org/' }], provenance: { retriever: 'engine' } })));
+const VERDICTS: ReadonlySet<string> = new Set(BILLED_VERDICTS);
 
 /** One row of the usage record. Field order is the order written. */
 export interface UsageRecord {

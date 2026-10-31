@@ -31,10 +31,15 @@ const TEXT =
 
 // Route each provider URL to a realistic response CARRYING usage. recordUsage
 // fires in each adapter's callAPI where it parses this — regardless of verdict.
+// One cited source, so the consensus providers are asked. With no source the
+// engine asks none of them (searchFindsNothing below).
+const CITED = [{ type: 'message', content: [{ type: 'output_text', text: 'Completed in 1889.', annotations: [{ type: 'url_citation', url: 'https://example.org/eiffel', title: 'Eiffel', start_index: 0, end_index: 18 }] }] }];
+let searchFindsNothing = false;
+
 function mockFetch(url: string) {
   if (url.includes('/responses')) {
     // OpenAI web_search retriever — the ~84–90% cost leg.
-    return { ok: true, status: 200, json: async () => ({ output: [], usage: { input_tokens: 17262, output_tokens: 634 } }) };
+    return { ok: true, status: 200, json: async () => ({ output: searchFindsNothing ? [] : CITED, usage: { input_tokens: 17262, output_tokens: 634 } }) };
   }
   if (url.includes('chat/completions')) {
     // OpenAI extraction + grounded verify. An array satisfies extractClaims;
@@ -91,6 +96,17 @@ describe('consensus usage propagation (e2e through scan())', () => {
     expect(legs.some((l) => l.model === 'claude-opus-4-8')).toBe(true);
     // and the composed cost is the REAL magnitude, not the ~$1e-4 estimate
     expect(summarizeScanUsage(legs).costUsd).toBeGreaterThan(0.05);
+  });
+
+  it('CUE-01b: a search that finds no source records the search leg and no voter leg', async () => {
+    searchFindsNothing = true;
+    try {
+      const { legs } = await captureUsage(() => scan(TEXT, 'openai', undefined, undefined, undefined, undefined, { consensus: true }));
+      expect(legs.some((l) => l.model === 'gpt-4o' && l.isGrounding)).toBe(true);
+      expect(legs.some((l) => l.model === 'claude-opus-4-8')).toBe(false);
+    } finally {
+      searchFindsNothing = false;
+    }
   });
 
   it('CUE-02: single-provider (non-consensus) scan also propagates real usage', async () => {

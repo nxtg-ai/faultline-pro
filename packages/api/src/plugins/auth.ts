@@ -3,10 +3,100 @@ import { timingSafeEqual } from 'node:crypto';
 import { getKeyStore, type KeyScope } from '../store/keys.js';
 import { getTenantStore } from '../store/tenants.js';
 
-/** Constant-time string comparison to prevent timing attacks on key validation. */
+/**
+ * Constant-time string comparison to prevent timing attacks on key validation.
+ * Compares UTF-8 byte lengths, not string lengths: two strings of the same
+ * length can differ in bytes, and timingSafeEqual throws on unequal buffers.
+ * Never throws for any string input.
+ */
 function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+  const left = Buffer.from(a, 'utf8');
+  const right = Buffer.from(b, 'utf8');
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
+}
+
+/**
+ * The keyId of FAULTLINE_MEASUREMENT_KEY: the key internal measurement runs use
+ * (the accuracy benchmark, cost per claim), so their spend is labelled apart from
+ * production web traffic. It is not the server key and not an admin key: it may
+ * call only the routes in MEASUREMENT_ROUTES.
+ */
+export const MEASUREMENT_KEY_ID = 'measurement';
+
+/**
+ * The only routes the measurement key may call, as `METHOD /route-pattern`.
+ * Every other route, admin and non-admin alike, refuses it with 403.
+ */
+export const MEASUREMENT_ROUTES: readonly string[] = Object.freeze([
+  'POST /admin/verify-claims',
+  'GET /usage',
+]);
+const MEASUREMENT_ROUTE_SET = new Set(MEASUREMENT_ROUTES);
+
+const MEASUREMENT_KEY_COLLIDES =
+  'FAULTLINE_MEASUREMENT_KEY equals FAULTLINE_API_KEY, so it is not used as a measurement key. Set a different value.';
+
+/**
+ * The configured measurement key, or undefined. An empty or unset value never
+ * matches, and a value equal to FAULTLINE_API_KEY is refused, so the two keys
+ * can never collapse into one.
+ */
+function measurementKey(): string | undefined {
+  const key = process.env.FAULTLINE_MEASUREMENT_KEY;
+  if (!key) return undefined;
+  const serverKey = process.env.FAULTLINE_API_KEY;
+  if (serverKey && safeEqual(key, serverKey)) return undefined;
+  return key;
+}
+
+/** True when the provided key is the measurement key (constant-time). */
+function isMeasurementKey(providedKey: string): boolean {
+  const key = measurementKey();
+  return key !== undefined && safeEqual(providedKey, key);
+}
+
+/**
+ * Startup check: when FAULTLINE_MEASUREMENT_KEY equals FAULTLINE_API_KEY, log
+ * one fixed warning (never the value) and return true. The key is then ignored
+ * as a measurement key, and matches as the server key only.
+ */
+export function warnIfMeasurementKeyCollides(warn: (message: string) => void = console.warn): boolean {
+  const key = process.env.FAULTLINE_MEASUREMENT_KEY;
+  const serverKey = process.env.FAULTLINE_API_KEY;
+  if (!key || !serverKey || !safeEqual(key, serverKey)) return false;
+  warn(MEASUREMENT_KEY_COLLIDES);
+  return true;
+}
+
+/** The request's route as `METHOD /route-pattern`, or undefined when no route matched. */
+function routeKeyOf(request: FastifyRequest): string | undefined {
+  const url = request.routeOptions?.url;
+  if (!url) return undefined;
+  return `${request.method.toUpperCase()} ${url}`;
+}
+
+/** True when the measurement key may call this request's route (MEASUREMENT_ROUTES). */
+export function measurementMayCall(request: FastifyRequest): boolean {
+  const route = routeKeyOf(request);
+  return route !== undefined && MEASUREMENT_ROUTE_SET.has(route);
+}
+
+function refuseMeasurement(reply: FastifyReply): void {
+  reply.status(403).send({ error: 'Forbidden. The measurement key may call only POST /admin/verify-claims and GET /usage.' });
+}
+
+/**
+ * onRequest hook for every route, public ones and unmatched URLs included: a
+ * request carrying the measurement key outside MEASUREMENT_ROUTES gets 403.
+ * requireApiKey and requireAdmin check the same allowlist.
+ */
+export async function refuseMeasurementOutsideAllowlist(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const providedKey = request.headers['x-api-key'];
+  if (typeof providedKey !== 'string' || providedKey === '') return;
+  if (!isMeasurementKey(providedKey)) return;
+  if (measurementMayCall(request)) return;
+  refuseMeasurement(reply);
 }
 
 declare module 'fastify' {
@@ -18,13 +108,14 @@ declare module 'fastify' {
 
 /**
  * Prehandler: validate x-api-key header against FAULTLINE_API_KEY env var or keystore.
- * Returns 503 if neither env var nor keystore contains any key, 401 if key is missing/wrong.
+ * The measurement key (FAULTLINE_MEASUREMENT_KEY) passes only on MEASUREMENT_ROUTES
+ * and gets 403 elsewhere. Returns 503 if no key is configured, 401 if key is missing/wrong.
  */
 export async function requireApiKey(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const configuredKey = process.env.FAULTLINE_API_KEY;
   const store = getKeyStore();
 
-  if (!configuredKey && store.size === 0) {
+  if (!configuredKey && !measurementKey() && store.size === 0) {
     reply.status(503).send({ error: 'API key not configured on server.' });
     return;
   }
@@ -33,6 +124,14 @@ export async function requireApiKey(request: FastifyRequest, reply: FastifyReply
 
   if (!providedKey) {
     reply.status(401).send({ error: 'Unauthorized. Provide a valid x-api-key header.' });
+    return;
+  }
+
+  // The measurement key is checked first: a value that matches it is the
+  // measurement key, and no server-key, keystore or admin path is consulted.
+  if (isMeasurementKey(providedKey)) {
+    if (!measurementMayCall(request)) return refuseMeasurement(reply);
+    request.keyId = MEASUREMENT_KEY_ID;
     return;
   }
 
@@ -52,13 +151,13 @@ export async function requireApiKey(request: FastifyRequest, reply: FastifyReply
 
 /**
  * Prehandler: only allows FAULTLINE_API_KEY or a keystore key with 'admin' permission.
- * Returns 503 if no keys configured, 401 if missing, 403 if insufficient permissions.
+ * The measurement key passes only on MEASUREMENT_ROUTES (POST /admin/verify-claims). Returns 503 if no keys configured, 401 if missing, 403 if insufficient permissions.
  */
 export async function requireAdmin(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const configuredKey = process.env.FAULTLINE_API_KEY;
   const store = getKeyStore();
 
-  if (!configuredKey && store.size === 0) {
+  if (!configuredKey && !measurementKey() && store.size === 0) {
     reply.status(503).send({ error: 'API key not configured on server.' });
     return;
   }
@@ -67,6 +166,14 @@ export async function requireAdmin(request: FastifyRequest, reply: FastifyReply)
 
   if (!providedKey) {
     reply.status(403).send({ error: 'Forbidden. Admin access required.' });
+    return;
+  }
+
+  // The measurement key is checked first: a value that matches it is the
+  // measurement key, and no server-key, keystore or admin path is consulted.
+  if (isMeasurementKey(providedKey)) {
+    if (!measurementMayCall(request)) return refuseMeasurement(reply);
+    request.keyId = MEASUREMENT_KEY_ID;
     return;
   }
 
@@ -93,11 +200,14 @@ export async function requireAdmin(request: FastifyRequest, reply: FastifyReply)
  * FAULTLINE_API_KEY or a keystore key with 'admin'). Public routes run no key
  * check, so this reads the header itself. Used to keep fleet counters (key
  * count, scan volume, queue and notification sizes) for admin only: a customer
- * must not see fleet size (emma-soul ruling Dx3 e2909e46, item 4).
+ * must not see fleet size (emma-soul ruling Dx3 e2909e46, item 4). The
+ * measurement key is not an admin key here: it is checked first, so a keystore
+ * admin credential with the same value never makes it one.
  */
 export function isAdminRequest(request: FastifyRequest): boolean {
   const providedKey = request.headers['x-api-key'];
   if (typeof providedKey !== 'string' || providedKey === '') return false;
+  if (isMeasurementKey(providedKey)) return false;
   const configuredKey = process.env.FAULTLINE_API_KEY;
   if (configuredKey && safeEqual(providedKey, configuredKey)) return true;
   return getKeyStore().validateKey(providedKey)?.permissions.includes('admin') ?? false;
@@ -123,7 +233,7 @@ const NO_KEY_SCOPE = '\u0000no-key';
  * read fleet-wide on admin routes reads fleet-wide on shared routes too.
  */
 export function isAdminKeyId(keyId: string | undefined): boolean {
-  if (!keyId) return false;
+  if (!keyId || keyId === MEASUREMENT_KEY_ID) return false;
   if (keyId === 'admin') return true;
   return getKeyStore().validateById(keyId)?.permissions.includes('admin') ?? false;
 }

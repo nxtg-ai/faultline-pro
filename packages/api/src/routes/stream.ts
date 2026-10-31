@@ -3,15 +3,15 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
-import { billableVerdictCount } from '@nxtg/faultline/lib/verdict-guard.js';
 import type { PipelineConfig } from '@nxtg/faultline/cli/scan.js';
-import { getCostStore, emitScanCostEvent, appendScanCostLog, resolveTierFromRequest, buildManagedCostEvent } from '../store/costs.js';
+import { resolveTierFromRequest } from '../store/costs.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { enforceConsensusEntitlement } from '../plugins/consensus-entitlement.js';
-import { recordProviderSpend } from '../store/provider-spend.js';
-import { getUsageMeter } from '../store/usage.js';
-import { captureUsage } from '@nxtg/faultline/lib/usage-sink.js';
+import { validateConsensusVoters, consensusHadNoVoters, consensusUnavailableBody, CONSENSUS_UNAVAILABLE_MESSAGE } from '../plugins/consensus-voters.js';
+import { isConsensusUnavailableError } from '@nxtg/faultline/cli/verify-runner.js';
+import { meterScan } from '../lib/scan-quota.js';
+import { scanWithSpend } from '../lib/scan-spend.js';
 import { resolveVerifyPolicy, withVerificationTier } from '../plugins/verify-cap.js';
 import { isExtractionError } from '@nxtg/faultline/providers/extraction-error.js';
 import { extractionFailedBody } from '../lib/extraction-failure.js';
@@ -40,7 +40,7 @@ const POST_STREAM_BODY_SCHEMA = {
         // claim_verified events carry the richer consensus verdict shape.
         // Enterprise only — enforceConsensusEntitlement refuses the rest.
         consensus:            { type: 'boolean' },
-        consensusProviders:   { type: 'array', items: { type: 'string', enum: PROVIDER_ENUM } },
+        consensusProviders:   { type: 'array', uniqueItems: true, items: { type: 'string', enum: PROVIDER_ENUM } },
       },
       additionalProperties: false,
     },
@@ -91,6 +91,9 @@ function sseHeaders(reply: FastifyReply): Record<string, string> {
 
 const GENERIC_STREAM_ERROR = 'Scan failed — the verification service hit an error. Please retry.';
 const EXTRACTION_STREAM_ERROR = 'Scan failed — claims could not be extracted from the text, so nothing was verified. Please retry.';
+/** A retry cannot succeed against an empty provider account, so this text never asks for one. */
+const OUT_OF_CREDITS_STREAM_ERROR =
+  'Scan failed — the extraction provider account is out of credits, so nothing was verified. Retrying will not help until the provider account has credits again.';
 
 /**
  * The client-safe SSE error event. An extraction failure also carries
@@ -98,7 +101,11 @@ const EXTRACTION_STREAM_ERROR = 'Scan failed — claims could not be extracted f
  * of POST /scan; never the raw provider error.
  */
 function streamErrorEvent(err: unknown): Record<string, unknown> {
-  if (isExtractionError(err)) return { type: 'error', message: EXTRACTION_STREAM_ERROR, ...extractionFailedBody(err) };
+  if (isConsensusUnavailableError(err)) return { type: 'error', error: 'consensus_unavailable', message: CONSENSUS_UNAVAILABLE_MESSAGE };
+  if (isExtractionError(err)) {
+    const message = err.reason === 'provider_out_of_credits' ? OUT_OF_CREDITS_STREAM_ERROR : EXTRACTION_STREAM_ERROR;
+    return { type: 'error', message, ...extractionFailedBody(err) };
+  }
   return { type: 'error', message: GENERIC_STREAM_ERROR };
 }
 
@@ -165,7 +172,9 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
       const meterScanId = randomUUID();
 
       try {
-        const { result, legs } = await captureUsage(() => scan(
+        // Spend is recorded inside scanWithSpend, also when the scan throws after a provider call.
+        const spend = { text, provider: effectiveProvider, keyId, startTime, tier: resolveTierFromRequest(keyId, request.headers['x-user-tier']) };
+        const result = await scanWithSpend(spend, () => scan(
           text,
           effectiveProvider,
           undefined,
@@ -204,21 +213,8 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
           verification: withVerificationTier(result, verifyPolicy.tier).verification,
         });
 
-        // BLG-CLX9-20260703-005: real measured fan-out cost (was a text-length
-        // estimate priced on one effectiveProvider). Fire-and-forget — never blocks SSE.
-        const costEvent = buildManagedCostEvent(legs, {
-          text,
-          provider: effectiveProvider,
-          claimCount,
-          tier: resolveTierFromRequest(keyId, request.headers['x-user-tier']),
-          latencyMs: Date.now() - startTime,
-          claims: { extracted: claimCount, verified: billableVerdictCount(result.verifications) },
-        });
-        getCostStore().recordManaged(costEvent, keyId);
-        emitScanCostEvent(costEvent);
-        appendScanCostLog(costEvent);
-        recordProviderSpend(costEvent); // A-110 item 1 — append-only provider-spend ledger
-        getUsageMeter().increment(keyId); // count toward monthly cap (item 1)
+        // Counted toward the monthly quota only when the result holds a billable verdict.
+        meterScan(keyId, result.verifications);
       } catch (err) {
         // BLG-fp-20260713-A: log raw for ops, emit a generic client-safe message.
         console.error(`/scan/stream GET failed for key ${keyId}:`, err);
@@ -250,7 +246,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan/stream',
     {
       config: { access: 'key' },
-      preHandler: [requireApiKey, enforceConsensusEntitlement, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap, reserveClaims(planVerifyCap)],
+      preHandler: [requireApiKey, enforceConsensusEntitlement, validateConsensusVoters, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap, reserveClaims(planVerifyCap)],
       schema: {
         tags: ['Scan'],
         summary: 'Stream scan results via SSE (POST — no URL length ceiling)',
@@ -289,7 +285,9 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
       const meterScanId = randomUUID();
 
       try {
-        const { result, legs } = await captureUsage(() => scan(
+        // Spend is recorded inside scanWithSpend, also when the scan throws after a provider call.
+        const spend = { text, provider: effectiveProvider, pipelineConfig, keyId, startTime, tier: resolveTierFromRequest(keyId, request.headers['x-user-tier']) };
+        const result = await scanWithSpend(spend, () => scan(
           text,
           effectiveProvider,
           /* minConfidence */ undefined,
@@ -319,6 +317,14 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
           emit({ type: 'start', claimCount, provider: effectiveProvider });
         }
 
+        // A consensus run where no voter took part checked nothing: report failure
+        // (with the shared reason, as POST /scan does) and count no scan. The spend
+        // above is real and stays in the ledger.
+        if (pipelineConfig?.consensus === true && consensusHadNoVoters(result)) {
+          emit({ type: 'error', ...consensusUnavailableBody(result) });
+          return;
+        }
+
         emit({
           type: 'complete',
           overallRisk: result.overallRisk,
@@ -326,21 +332,8 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
           verification: withVerificationTier(result, verifyPolicy.tier).verification,
         });
 
-        // BLG-CLX9-20260703-005: real measured fan-out cost (was a text-length
-        // estimate priced on one effectiveProvider). Fire-and-forget — never blocks SSE.
-        const costEvent = buildManagedCostEvent(legs, {
-          text,
-          provider: effectiveProvider,
-          claimCount,
-          tier: resolveTierFromRequest(keyId, request.headers['x-user-tier']),
-          latencyMs: Date.now() - startTime,
-          claims: { extracted: claimCount, verified: billableVerdictCount(result.verifications) },
-        });
-        getCostStore().recordManaged(costEvent, keyId);
-        emitScanCostEvent(costEvent);
-        appendScanCostLog(costEvent);
-        recordProviderSpend(costEvent); // A-110 item 1 — append-only provider-spend ledger
-        getUsageMeter().increment(keyId); // count toward monthly cap (item 1)
+        // Counted toward the monthly quota only when the result holds a billable verdict.
+        meterScan(keyId, result.verifications);
       } catch (err) {
         // BLG-fp-20260713-A: never leak the raw provider/engine error to the
         // client — log it for ops, emit a generic client-safe message.

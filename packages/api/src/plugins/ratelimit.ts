@@ -3,8 +3,10 @@ import { getRateLimiter } from '../store/ratelimit.js';
 import { getKeyStore } from '../store/keys.js';
 import { checkAndAlert } from '../store/rate-alerts.js';
 import type { Tier } from '../store/ratelimit.js';
+import { MEASUREMENT_KEY_ID } from './auth.js';
 
 export function resolveTier(keyId: string): Tier {
+  if (keyId === MEASUREMENT_KEY_ID) return 'measurement';
   if (keyId === 'admin') return 'admin';
   const key = getKeyStore().validateById(keyId);
   if (key && key.permissions.includes('admin')) return 'admin';

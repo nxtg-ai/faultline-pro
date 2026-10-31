@@ -59,6 +59,10 @@ export interface ProviderSpendEvent {
   provider: string;
   modelId?: string;
   costUsd: number;
+  /** Claims the call handled (extracted or submitted). null only for a cost event that carried no count. */
+  claimCount: number | null;
+  /** Claims that got a billable verdict, `unverified` included. null only for a cost event that carried no count. */
+  verifiedCount: number | null;
 }
 
 /** The UTC budget period (YYYY-MM) a timestamp falls in. */
@@ -72,18 +76,39 @@ export function ledgerPath(): string {
   return raw === '' ? DEFAULT_LEDGER_PATH : raw;
 }
 
+/** The highest monthly cap the env override may set. Anything above it is a typo, not a budget. */
+export const MAX_MONTHLY_CAP_USD = 1000;
+
+/** Override values already warned about, so a bad value warns once, not on every request. */
+const warnedCapOverrides = new Set<string>();
+
 /**
  * The monthly provider-spend budget in USD. Defaults to the ruled $100;
- * `FAULTLINE_PROVIDER_SPEND_CAP_USD` overrides (a raised cap is Asif's call, and
- * per canon crossing the cap is the only thing that escalates).
- * A non-numeric or negative override falls back to the ruled default rather than
- * silently disabling the budget.
+ * `FAULTLINE_PROVIDER_SPEND_CAP_USD` overrides it.
+ *
+ * Only a finite number from 0 to 1000 inclusive is accepted. Anything else (not
+ * a number, trailing text such as "115abc", negative, above 1000, or set but
+ * empty) falls back to the default rather than silently disabling or inflating
+ * the budget, and logs one warning per distinct bad value. The warning never
+ * repeats the value's text. An unset variable is the normal case and is silent.
  */
 export function getMonthlyCapUsd(): number {
-  const raw = (process.env.FAULTLINE_PROVIDER_SPEND_CAP_USD ?? '').trim();
-  if (raw === '') return RULED_MONTHLY_CAP_USD;
-  const n = Number(raw);
-  return Number.isFinite(n) && n >= 0 ? n : RULED_MONTHLY_CAP_USD;
+  const env = process.env.FAULTLINE_PROVIDER_SPEND_CAP_USD;
+  if (env === undefined) return RULED_MONTHLY_CAP_USD;
+  const raw = env.trim();
+  const n = raw === '' ? Number.NaN : Number(raw);
+  if (Number.isFinite(n) && n >= 0 && n <= MAX_MONTHLY_CAP_USD) return n;
+  if (!warnedCapOverrides.has(env)) {
+    warnedCapOverrides.add(env);
+    // A fixed message: nothing from the environment reaches the log.
+    console.warn('[provider-spend] FAULTLINE_PROVIDER_SPEND_CAP_USD is not a number from 0 to 1000; using the default cap of 100 USD.');
+  }
+  return RULED_MONTHLY_CAP_USD;
+}
+
+/** Forget which bad cap values were warned about (tests). */
+export function resetMonthlyCapWarnings(): void {
+  warnedCapOverrides.clear();
 }
 
 /**
@@ -208,6 +233,8 @@ export function recordProviderSpend(event: ManagedScanCostEvent): ProviderSpendE
     provider: event.provider,
     modelId: event.modelId,
     costUsd: event.costUsd,
+    claimCount: event.claimsExtracted ?? null,
+    verifiedCount: event.claimsVerified ?? null,
   });
 }
 

@@ -33,8 +33,13 @@ vi.mock('@google/genai', () => ({
         sdk.inFlight -= 1;
         const prompt = String(params.contents);
         if (prompt.includes('THROW-ME')) throw new Error('503 model overloaded');
+        // 'TOKENS-<in>-<out>' in a claim sets that call's token counts (default 100 in, 20 out).
+        const tokens = /TOKENS-(\d+)-(\d+)/.exec(prompt);
         const grounded = {
-          usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 20 },
+          usageMetadata: {
+            promptTokenCount: tokens ? Number(tokens[1]) : 100,
+            candidatesTokenCount: tokens ? Number(tokens[2]) : 20,
+          },
           candidates: [{
             groundingMetadata: {
               groundingChunks: [{ web: { title: SOURCE_SENTINEL, uri: 'https://example.com/sentinel' } }],
@@ -48,7 +53,11 @@ vi.mock('@google/genai', () => ({
         if (prompt.includes('NOT-JSON')) {
           return { ...grounded, text: `The evidence is thin. ${EXPLANATION_SENTINEL}` };
         }
-        const status = prompt.includes('FALSE-CLAIM') ? 'contradicted' : 'supported';
+        if (prompt.includes('NO-SOURCE')) {
+          // A supported verdict whose search returned no source: not a billable verdict.
+          return { ...grounded, candidates: [{ groundingMetadata: { groundingChunks: [] } }], text: JSON.stringify({ status: 'supported', explanation: EXPLANATION_SENTINEL }) };
+        }
+        const status = prompt.includes('FALSE-CLAIM') ? 'contradicted' : prompt.includes('NO-VERDICT') ? 'unverified' : 'supported';
         return { ...grounded, text: JSON.stringify({ status, explanation: EXPLANATION_SENTINEL }) };
       },
     };
@@ -58,7 +67,7 @@ vi.mock('@google/genai', () => ({
 import { buildServer } from '../src/server.js';
 import { resetKeyStore, getKeyStore } from '../src/store/keys.js';
 import { resetRateLimiter } from '../src/store/ratelimit.js';
-import { getCostStore, buildManagedCostEvent } from '../src/store/costs.js';
+import { getCostStore, buildManagedCostEvent, scanCostLogRow } from '../src/store/costs.js';
 import { recordProviderSpend, resetProviderSpendLedger } from '../src/store/provider-spend.js';
 import {
   getGroundingAllowanceStatus,
@@ -81,6 +90,18 @@ let spendLedger: string;
 let server: FastifyInstance;
 
 type ClaimInput = { id: string; text: string };
+
+/** One mocked grounded Gemini call: 100 in, 20 out, one grounded prompt. */
+const GEMINI_LEG = {
+  provider: 'gemini', model: 'gemini-2.5-flash', callType: 'grounded-verify:gemini',
+  inputTokens: 100, outputTokens: 20, isGrounding: true,
+};
+const GEMINI_USAGE = {
+  inputTokens: 100, outputTokens: 20, groundingCalls: 1,
+  costUsd: buildManagedCostEvent([GEMINI_LEG], { text: 'unused', provider: 'gemini', claimCount: 1, tier: 'enterprise', latencyMs: 0, claims: { extracted: 1, verified: 1 } }).costUsd,
+  priced: true,
+};
+const UNPRICED_USAGE = { inputTokens: 0, outputTokens: 0, groundingCalls: 0, costUsd: 0, priced: false };
 
 function claims(n: number, text = 'The Eiffel Tower is in Paris.'): ClaimInput[] {
   return Array.from({ length: n }, (_, i) => ({ id: String(i), text }));
@@ -250,8 +271,8 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
     const body = res.json();
     expect(body.provider).toBe('gemini');
     expect(body.results).toEqual([
-      { id: '10', status: 'contradicted', apiError: false, parseFallback: false, noSourceAbstain: false, apiErrorReason: null, model: 'gemini-2.5-flash' },
-      { id: '11', status: 'supported', apiError: false, parseFallback: false, noSourceAbstain: false, apiErrorReason: null, model: 'gemini-2.5-flash' },
+      { id: '10', status: 'contradicted', apiError: false, parseFallback: false, noSourceAbstain: false, apiErrorReason: null, model: 'gemini-2.5-flash', usage: GEMINI_USAGE },
+      { id: '11', status: 'supported', apiError: false, parseFallback: false, noSourceAbstain: false, apiErrorReason: null, model: 'gemini-2.5-flash', usage: GEMINI_USAGE },
     ]);
     expect(sdk.calls).toBe(2);
   });
@@ -261,6 +282,8 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
     const res = await post({ claims: [{ id: '3', text: 'NOT-JSON reply please.' }] });
     expect(res.json().results[0]).toEqual({
       id: '3', status: 'unverified', apiError: true, parseFallback: true, noSourceAbstain: false, apiErrorReason: 'provider_unparseable', model: null,
+      // The unreadable reply still spent tokens, so it is priced.
+      usage: GEMINI_USAGE,
     });
   });
 
@@ -268,6 +291,7 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
     const res = await post({ claims: [{ id: '6', text: 'CUT-OFF reply.' }] });
     expect(res.json().results[0]).toEqual({
       id: '6', status: 'unverified', apiError: true, parseFallback: false, noSourceAbstain: false, apiErrorReason: 'output_truncated', model: null,
+      usage: GEMINI_USAGE,
     });
   });
 
@@ -291,7 +315,10 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
     for (const forbidden of ['explanation', 'sources', 'searchEntryPoint', 'groundingMetadata', 'claimId']) {
       expect(keys.has(forbidden)).toBe(false);
     }
-    expect([...keys].sort()).toEqual(['apiError', 'apiErrorReason', 'id', 'model', 'noSourceAbstain', 'parseFallback', 'provider', 'results', 'status']);
+    expect([...keys].sort()).toEqual([
+      'apiError', 'apiErrorReason', 'costUsd', 'groundingCalls', 'id', 'inputTokens', 'model', 'noSourceAbstain',
+      'outputTokens', 'parseFallback', 'priced', 'provider', 'results', 'status', 'usage',
+    ]);
   });
 
   it('keeps at most 4 claims in flight at once', async () => {
@@ -307,6 +334,58 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
     expect(res.json().results.map((r: { status: string; model: string }) => [r.status, r.model]))
       .toEqual([['supported', 'mock-v1'], ['supported', 'mock-v1']]);
     expect(sdk.calls).toBe(0);
+  });
+});
+
+describe('POST /admin/verify-claims — per-claim usage', () => {
+  type Usage = { inputTokens: number; outputTokens: number; groundingCalls: number; costUsd: number; priced: boolean };
+
+  it('prices each claim from its own legs, and the per-claim costs sum to the batch ledger row', async () => {
+    const res = await post({
+      claims: [
+        { id: '1', text: 'TOKENS-1834-212 A long grounded claim.' },
+        { id: '2', text: 'TOKENS-655-48 A short one.' },
+        { id: '3', text: 'TOKENS-12077-1903 A claim with a big search block.' },
+        { id: '4', text: 'THROW-ME before any usage is recorded.' },
+        { id: '5', text: 'TOKENS-401-77 NOT-JSON reply that still spent tokens.' },
+      ],
+    });
+    expect(res.statusCode).toBe(200);
+    const usages: Usage[] = res.json().results.map((r: { usage: Usage }) => r.usage);
+    expect(usages).toHaveLength(5);
+    expect(usages.map((u) => u.inputTokens)).toEqual([1834, 655, 12077, 0, 401]);
+    expect(usages.map((u) => u.outputTokens)).toEqual([212, 48, 1903, 0, 77]);
+    expect(usages.map((u) => u.priced)).toEqual([true, true, true, false, true]);
+    // Each claim differs, so a constant price per claim cannot match the batch below.
+    expect(new Set(usages.map((u) => u.costUsd)).size).toBe(5);
+
+    const rows = spendRows();
+    expect(rows).toHaveLength(1);
+    const batchCost = rows[0].costUsd as number;
+    expect(batchCost).toBeGreaterThan(0);
+    const sum = usages.reduce((total, u) => total + u.costUsd, 0);
+    expect(Math.abs(sum - batchCost)).toBeLessThan(1e-9);
+    const events = getCostStore().getManagedEvents();
+    expect(events).toHaveLength(1);
+    expect(Math.abs(events[0].costUsd - sum)).toBeLessThan(1e-9);
+    expect(events[0].inputTokens).toBe(usages.reduce((total, u) => total + u.inputTokens, 0));
+    expect(events[0].groundingCalls).toBe(usages.reduce((total, u) => total + u.groundingCalls, 0));
+  });
+
+  it('reports priced:false and costUsd 0 for a failed call and for the mock provider', async () => {
+    const failed = await post({ claims: [{ id: '1', text: 'THROW-ME now.' }, { id: '2', text: 'Fine claim.' }] });
+    const [thrown, ok] = failed.json().results;
+    expect(thrown.usage).toEqual(UNPRICED_USAGE);
+    expect(ok.usage).toEqual(GEMINI_USAGE);
+
+    const mock = await post({ claims: claims(2), provider: 'mock' });
+    expect(mock.statusCode).toBe(200);
+    const results = mock.json().results as Array<{ usage: Usage }>;
+    expect(results).toHaveLength(2);
+    for (const r of results) {
+      expect(r.usage.priced).toBe(false);
+      expect(r.usage.costUsd).toBe(0);
+    }
   });
 });
 
@@ -332,10 +411,49 @@ describe('POST /admin/verify-claims — the ledgers a scan writes', () => {
     };
     const expected = buildManagedCostEvent([leg, leg, leg], {
       text: 'unused', provider: 'gemini', claimCount: 3, tier: 'enterprise', latencyMs: 0,
+      claims: { extracted: 3, verified: 3 },
     });
     expect(expected.costUsd).toBeGreaterThan(0);
     expect(rows[0]).toMatchObject({ provider: 'gemini', modelId: 'gemini-2.5-flash', tier: 'enterprise' });
     expect(rows[0].costUsd as number).toBeCloseTo(expected.costUsd, 10);
+  });
+
+  it('both ledger rows carry the batch claim count and its billable verdict count', async () => {
+    // Three answered claims and one whose provider call fails: 4 submitted, 3 billable verdicts.
+    const res = await post({ claims: [...claims(3), { id: 'x', text: 'THROW-ME' }] });
+    expect(res.statusCode).toBe(200);
+    const rows = spendRows();
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ claimCount: 4, verifiedCount: 3 });
+    const events = getCostStore().getManagedEvents();
+    expect(events.length).toBeGreaterThan(0);
+    expect(JSON.parse(scanCostLogRow(events[0]))).toMatchObject({ scan_id: rows[0].scanId, kind: 'admin-verify', claim_count: 4, verified_count: 3 });
+  });
+
+  it('counts only the sourced supported verdict as verified: not a zero-source supported, an unverified or an API error', async () => {
+    const res = await post({ claims: [
+      { id: 'sourced', text: 'The Eiffel Tower is in Paris.' },
+      { id: 'no-source', text: 'NO-SOURCE The Eiffel Tower is in Paris.' },
+      { id: 'unverified', text: 'NO-VERDICT The Eiffel Tower is in Paris.' },
+      { id: 'error', text: 'THROW-ME' },
+    ] });
+    expect(res.statusCode).toBe(200);
+    const results = res.json().results as Array<{ id: string; status: string; apiError: boolean }>;
+    expect(results).toHaveLength(4);
+    // The two supported verdicts read the same on the wire; only the source tells them apart.
+    expect(results.map((r) => [r.id, r.status, r.apiError])).toEqual([
+      ['sourced', 'supported', false],
+      ['no-source', 'supported', false],
+      ['unverified', 'unverified', false],
+      ['error', 'unverified', true],
+    ]);
+    const rows = spendRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ claimCount: 4, verifiedCount: 1 });
+    const events = getCostStore().getManagedEvents();
+    expect(events).toHaveLength(1);
+    expect(JSON.parse(scanCostLogRow(events[0]))).toMatchObject({ verified_count: 1 });
   });
 
   it('records the batch as kind admin-verify: provider spend still rises, scan percentiles do not', async () => {
@@ -364,7 +482,7 @@ describe('POST /admin/verify-claims — the ledgers a scan writes', () => {
     expect(spendRows()).toHaveLength(0);
   });
 
-  it('is refused by the provider-spend cap once the budget is exhausted, with no provider call', async () => {
+  it('is refused by the provider-spend cap when the server key forwards a free plan and the budget is exhausted, with no provider call', async () => {
     process.env.FAULTLINE_PROVIDER_SPEND_CAP_USD = '1';
     process.env.FAULTLINE_PROVIDER_SPEND_CAP = 'on';
     recordProviderSpend({
@@ -372,12 +490,39 @@ describe('POST /admin/verify-claims — the ledgers a scan writes', () => {
       provider: 'gemini', modelId: 'gemini-2.5-flash', inputTokens: 1, outputTokens: 1,
       groundingCalls: 0, costUsd: 1.5, latencyMs: 1,
     });
-    const res = await post({ claims: claims(1) });
+    const res = await server.inject({
+      method: 'POST',
+      url: '/admin/verify-claims',
+      headers: { 'content-type': 'application/json', 'x-api-key': ADMIN_KEY, 'x-user-tier': 'free' },
+      payload: { claims: claims(1) },
+    });
     expect(res.statusCode).toBe(503);
     expect(res.json().error).toMatch(/provider budget exhausted/i);
     expect(sdk.calls).toBe(0);
     expect(spendRows()).toHaveLength(1);
     expect(getGroundingAllowanceStatus().groundedPrompts).toBe(0);
+  });
+
+  it('the server key with no plan header is refused by an exhausted budget; with a paid plan header it passes', async () => {
+    process.env.FAULTLINE_PROVIDER_SPEND_CAP_USD = '1';
+    process.env.FAULTLINE_PROVIDER_SPEND_CAP = 'on';
+    recordProviderSpend({
+      scanId: 'prior', ts: new Date().toISOString(), tier: 'pro', keyMode: 'managed',
+      provider: 'gemini', modelId: 'gemini-2.5-flash', inputTokens: 1, outputTokens: 1,
+      groundingCalls: 0, costUsd: 1.5, latencyMs: 1,
+    });
+    // No plan header: the caller cannot be told apart from free traffic.
+    const refused = await post({ claims: claims(1), provider: 'mock' });
+    expect(refused.statusCode).toBe(503);
+    expect(refused.json().error).toMatch(/provider budget exhausted/i);
+    const res = await server.inject({
+      method: 'POST',
+      url: '/admin/verify-claims',
+      headers: { 'content-type': 'application/json', 'x-api-key': ADMIN_KEY, 'x-user-tier': 'enterprise' },
+      payload: { claims: claims(1), provider: 'mock' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().results).toHaveLength(1);
   });
 
   it('passes the burst rate limiter (sets X-RateLimit headers)', async () => {

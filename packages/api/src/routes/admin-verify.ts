@@ -9,11 +9,14 @@ import {
   resolveTier,
 } from '../store/costs.js';
 import { recordProviderSpend } from '../store/provider-spend.js';
+import { summarizeScanUsage } from '../store/consensus-cost.js';
 import { getProvider } from '@nxtg/faultline/providers/registry.js';
-import { billableVerdictCount } from '@nxtg/faultline/lib/verdict-guard.js';
+import { isBillableVerdict } from '@nxtg/faultline/lib/verdict-guard.js';
 import type { LLMProvider } from '@nxtg/faultline/providers/base_provider.js';
 import { DEFAULT_SCAN_PROVIDER, resolveApiKey } from '@nxtg/faultline/cli/provider-keys.js';
-import { captureUsage, type UsageLeg } from '@nxtg/faultline/lib/usage-sink.js';
+import { bindEngineProvenance } from '@nxtg/faultline/cli/verify-runner.js';
+import type { UsageLeg } from '@nxtg/faultline/lib/usage-sink.js';
+import { captureOutcome } from '../lib/scan-spend.js';
 import type { Claim, ClaimStatus } from '@nxtg/faultline/types.js';
 
 /**
@@ -35,8 +38,17 @@ import type { Claim, ClaimStatus } from '@nxtg/faultline/types.js';
  * grounding allowance before each batch; retrying here would spend prompts the
  * runner's guard cannot see.
  *
- * Google grounding terms: the response carries our own status label and flags
- * only. No explanation, source or other grounded text ever leaves this route.
+ * Each result also carries `usage`: that claim's own token counts, grounding
+ * calls and USD cost, priced by `summarizeScanUsage`, the same function
+ * `buildManagedCostEvent` prices the batch with. Pricing is a sum over legs, so
+ * the per-claim costs add up to the batch event's cost whenever the batch
+ * captured any priced usage. When it captured none (mock, every call failed),
+ * the batch event falls back to a text-length estimate while every claim here
+ * reports `costUsd: 0` with `priced: false`.
+ *
+ * Google grounding terms: the response carries our own status label, flags and
+ * cost figures only. No explanation, source or other grounded text ever leaves
+ * this route.
  */
 
 export const MAX_VERIFY_CLAIMS = 25;
@@ -44,7 +56,7 @@ export const MAX_VERIFY_CLAIM_CHARS = 2000;
 /** Upper bound on claims in flight at once (prereg §6: concurrency 4). */
 export const VERIFY_CLAIMS_CONCURRENCY = 4;
 
-const PROVIDER_ENUM = ['gemini', 'openai', 'claude', 'perplexity', 'mock'] as const;
+export const PROVIDER_ENUM = ['gemini', 'openai', 'claude', 'perplexity', 'mock'] as const;
 type VerifyProviderName = (typeof PROVIDER_ENUM)[number];
 
 const BODY_SCHEMA = {
@@ -91,6 +103,17 @@ const RESPONSE_SCHEMA = {
             noSourceAbstain: { type: 'boolean' },
             apiErrorReason: { type: ['string', 'null'] },
             model: { type: ['string', 'null'] },
+            usage: {
+              type: 'object',
+              properties: {
+                inputTokens: { type: 'number' },
+                outputTokens: { type: 'number' },
+                groundingCalls: { type: 'number' },
+                costUsd: { type: 'number' },
+                priced: { type: 'boolean' },
+              },
+              additionalProperties: false,
+            },
           },
           additionalProperties: false,
         },
@@ -121,11 +144,25 @@ export interface VerifyClaimOutcome {
   /** Why an unchecked claim went unchecked (a label such as output_truncated); null on a verdict. */
   apiErrorReason: string | null;
   model: string | null;
+  /** This claim's own captured usage and cost. Cost figures only. */
+  usage?: ClaimUsage;
+}
+
+/** One claim's usage, priced with the batch ledger's pricing code. */
+export interface ClaimUsage {
+  inputTokens: number;
+  outputTokens: number;
+  groundingCalls: number;
+  costUsd: number;
+  /** False when the claim captured no priced usage (mock, a failed call); costUsd is then 0. */
+  priced: boolean;
 }
 
 interface ClaimRun {
   outcome: VerifyClaimOutcome;
   legs: UsageLeg[];
+  /** isBillableVerdict on the full verdict; the outcome drops the sources it needs. */
+  billable: boolean;
 }
 
 /** The model the engine logged for this call, else the provider's configured model. */
@@ -136,31 +173,41 @@ function modelOf(legs: UsageLeg[], provider: LLMProvider): string | null {
 
 /**
  * Verify one claim with one provider call. A thrown error is reported as
- * `apiError` (the call did not produce a verdict), never as a verdict.
+ * `apiError` (the call did not produce a verdict), never as a verdict. The
+ * claim is billable only on the engine's rule (isBillableVerdict), with its
+ * provenance bound by the engine, never taken from the provider.
  */
-async function verifyOne(provider: LLMProvider, input: VerifyClaimInput): Promise<ClaimRun> {
+async function verifyOne(provider: LLMProvider, providerName: string, input: VerifyClaimInput): Promise<ClaimRun> {
   const claim: Claim = { id: input.id, text: input.text, type: 'fact', importance: 3 };
-  try {
-    const { result, legs } = await captureUsage(() => provider.verifyClaim(claim));
+  // The legs are kept when the call throws: a call that failed after reaching the
+  // provider still spent, and the batch's spend row must count it.
+  const { outcome, legs } = await captureOutcome(() => provider.verifyClaim(claim));
+  if (outcome.ok === false) {
     return {
       legs,
-      outcome: {
-        id: input.id,
-        status: result.status,
-        apiError: result.apiError === true,
-        parseFallback: result.parseFallback === true,
-        noSourceAbstain: result.noSourceAbstain === true,
-        apiErrorReason: result.apiError === true ? (result.apiErrorReason ?? 'provider_error') : null,
-        // A failed call produced no verdict and no engine model record.
-        model: result.apiError === true ? null : modelOf(legs, provider),
-      },
-    };
-  } catch {
-    return {
-      legs: [],
+      billable: false,
       outcome: { id: input.id, status: 'unverified', apiError: true, parseFallback: false, noSourceAbstain: false, apiErrorReason: 'provider_error', model: null },
     };
   }
+  // Provenance is bound here with the runner's rule: the retriever comes from
+  // the engine's table, only for the built-in instance this route resolved, and any
+  // retriever the provider set on itself is dropped. Status, sources and the
+  // fields the outcome reports are left as the provider returned them.
+  const result = bindEngineProvenance(outcome.value, providerName, provider, new Date().toISOString());
+  return {
+    legs,
+    billable: isBillableVerdict(result),
+    outcome: {
+      id: input.id,
+      status: result.status,
+      apiError: result.apiError === true,
+      parseFallback: result.parseFallback === true,
+      noSourceAbstain: result.noSourceAbstain === true,
+      apiErrorReason: result.apiError === true ? (result.apiErrorReason ?? 'provider_error') : null,
+      // A failed call produced no verdict and no engine model record.
+      model: result.apiError === true ? null : modelOf(legs, provider),
+    },
+  };
 }
 
 /** Run `worker` over `items` with at most `limit` in flight; results keep input order. */
@@ -184,7 +231,7 @@ function recordBatchSpend(runs: ClaimRun[], claims: VerifyClaimInput[], provider
     text: claims.map((claim) => claim.text).join('\n'),
     provider: providerName,
     claimCount: runs.filter((run) => !run.outcome.apiError).length,
-    claims: { extracted: claims.length, verified: billableVerdictCount(runs.map((run) => run.outcome)) },
+    claims: { extracted: claims.length, verified: runs.filter((run) => run.billable).length },
     tier: resolveTier(keyId),
     latencyMs: Date.now() - startMs,
     // A benchmark batch, not a scan: kept out of per-scan percentiles, still counted as spend below.
@@ -194,6 +241,20 @@ function recordBatchSpend(runs: ClaimRun[], claims: VerifyClaimInput[], provider
   // Not sent to the telemetry Worker: its /api/scan-costs/stats is per-scan and cannot tell a batch from a scan.
   appendScanCostLog(costEvent);
   recordProviderSpend(costEvent);
+}
+
+/** Price one claim's captured legs, the same way the batch event prices all of them. */
+export function claimUsage(legs: UsageLeg[]): ClaimUsage {
+  const usage = summarizeScanUsage(legs);
+  // The same gate as the batch event's hasRealUsage: priced means real composed cost.
+  const priced = usage.costUsd > 0;
+  return {
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
+    groundingCalls: usage.groundingCalls,
+    costUsd: priced ? usage.costUsd : 0,
+    priced,
+  };
 }
 
 function hasDuplicateIds(claims: VerifyClaimInput[]): boolean {
@@ -228,12 +289,12 @@ export async function adminVerifyRoutes(fastify: FastifyInstance): Promise<void>
       }
 
       const startMs = Date.now();
-      const runs = await mapWithConcurrency(claims, VERIFY_CLAIMS_CONCURRENCY, (claim) => verifyOne(provider, claim));
+      const runs = await mapWithConcurrency(claims, VERIFY_CLAIMS_CONCURRENCY, (claim) => verifyOne(provider, providerName, claim));
       recordBatchSpend(runs, claims, providerName, request.keyId ?? 'unknown', startMs);
 
       return reply.status(200).send({
         provider: providerName,
-        results: runs.map((run) => run.outcome),
+        results: runs.map((run) => ({ ...run.outcome, usage: claimUsage(run.legs) })),
       });
     },
   );

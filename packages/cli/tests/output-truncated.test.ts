@@ -132,9 +132,9 @@ describe('Gemini (finishReason MAX_TOKENS)', () => {
     }
   });
 
-  it('retrieval: no sources, like a failed retrieval', async () => {
+  it('retrieval: a failed retrieval, rejected with reason output_truncated', async () => {
     sdk.reply = groundedGemini('summary', 'MAX_TOKENS');
-    expect(await retrieveSources(CLAIM.text, 'k')).toEqual([]);
+    await expect(retrieveSources(CLAIM.text, 'k')).rejects.toMatchObject({ name: 'RetrievalError', reason: 'output_truncated' });
     sdk.reply = groundedGemini('summary', 'STOP');
     expect(await retrieveSources(CLAIM.text, 'k')).toEqual([{ title: 'G', uri: 'https://example.org/g' }]);
   });
@@ -164,7 +164,13 @@ describe.each(Object.keys(CHAT_WIRES) as Array<keyof typeof CHAT_WIRES>)('%s', (
     mockFetch.mockResolvedValueOnce(wire.whole(VERDICT));
     const r = await wire.factory('k').verifyClaim(CLAIM);
     expect(r.status).toBe('supported');
-    expect(isBillableVerdict(r)).toBe(true);
+    expect(r.apiError).toBeUndefined();
+    // A raw provider verdict carries no engine retriever, so it is not billable
+    // as returned, whatever it cites. With a source and the provenance the
+    // engine binds for a provider that retrieves (gemini), it would be.
+    expect(r.provenance?.retriever).toBeUndefined();
+    expect(isBillableVerdict(r)).toBe(false);
+    expect(isBillableVerdict({ ...r, sources: SOURCES, provenance: { provider: 'gemini', model: 'm', verifiedAt: '2026-10-01T00:00:00.000Z', retriever: 'gemini-grounding', retrievedAt: '2026-10-01T00:00:00.000Z' } })).toBe(true);
   });
 
   it('extractClaims: fails with output_truncated, never fewer claims', async () => {
@@ -195,9 +201,9 @@ describe.each(['openai', 'claude'] as const)('%s verifyClaimGrounded (consensus 
 describe('OpenAI Responses web_search retriever', () => {
   const message = { type: 'message', content: [{ type: 'output_text', text: 'Paris.', annotations: [{ type: 'url_citation', url: 'https://example.org/r', title: 'R', start_index: 0, end_index: 6 }] }] };
 
-  it('incomplete at max_output_tokens: a failed retrieval, no sources', async () => {
+  it('incomplete at max_output_tokens: a failed retrieval, rejected with reason output_truncated', async () => {
     mockFetch.mockResolvedValueOnce(ok({ status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' }, output: [message], usage: {} }));
-    expect(await new OpenAIWebSearchRetriever('k').retrieve(CLAIM.text)).toEqual([]);
+    await expect(new OpenAIWebSearchRetriever('k').retrieve(CLAIM.text)).rejects.toMatchObject({ name: 'RetrievalError', reason: 'output_truncated' });
   });
 
   it('a completed search still returns its sources', async () => {

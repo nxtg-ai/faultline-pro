@@ -8,7 +8,7 @@
  *
  * Validates: N-230 (A-110 item 1 — $100/mo provider-spend cap, ledgered).
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -25,6 +25,8 @@ import {
   ledgerPath,
   recordProviderSpend,
   resetProviderSpendLedger,
+  resetMonthlyCapWarnings,
+  MAX_MONTHLY_CAP_USD,
 } from '../src/store/provider-spend.js';
 import type { ManagedScanCostEvent } from '../src/store/costs.js';
 
@@ -100,6 +102,49 @@ describe('provider-spend config', () => {
     }
   });
 
+  it('accepts only a finite number from 0 to 1000; anything else is the default with one warning', () => {
+    expect(MAX_MONTHLY_CAP_USD).toBe(1000);
+    resetMonthlyCapWarnings();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const cases: Array<[string, number, boolean]> = [
+        // [env value, cap, warns]
+        ['115', 115, false],
+        ['0', 0, false],
+        ['1000', 1000, false],
+        ['-5', 100, true],
+        ['abc', 100, true],
+        ['115abc', 100, true],
+        ['', 100, true],
+        ['1e9', 100, true],
+        ['1000.5', 100, true],
+      ];
+      expect(cases.length).toBe(9);
+      for (const [value, cap, warns] of cases) {
+        warn.mockClear();
+        process.env.FAULTLINE_PROVIDER_SPEND_CAP_USD = value;
+        expect(getMonthlyCapUsd(), `cap for ${JSON.stringify(value)}`).toBe(cap);
+        // Read again: a bad value warns once, not on every read.
+        expect(getMonthlyCapUsd(), `second read for ${JSON.stringify(value)}`).toBe(cap);
+        expect(warn.mock.calls.length, `warnings for ${JSON.stringify(value)}`).toBe(warns ? 1 : 0);
+        if (warns) {
+          const text = String(warn.mock.calls[0][0]);
+          expect(text).toMatch(/FAULTLINE_PROVIDER_SPEND_CAP_USD/);
+          expect(text).toMatch(/default cap of 100/);
+          // The value's raw text is never logged.
+          if (value !== '') expect(text).not.toContain(value);
+        }
+      }
+      // Unset is the normal case: the default, silently.
+      warn.mockClear();
+      delete process.env.FAULTLINE_PROVIDER_SPEND_CAP_USD;
+      expect(getMonthlyCapUsd()).toBe(100);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it('is DORMANT by default and enables only on explicit truthy flags', () => {
     expect(isProviderSpendCapEnabled()).toBe(false);
     for (const v of ['on', '1', 'true', 'enabled', 'ON', 'True']) {
@@ -145,8 +190,33 @@ describe('provider-spend ledger', () => {
     recordProviderSpend(costEvent());
     const row = JSON.parse(readFileSync(tmpLedger, 'utf8').trim());
     expect(Object.keys(row).sort()).toEqual(
-      ['costUsd', 'modelId', 'month', 'provider', 'scanId', 'tier', 'ts'],
+      ['claimCount', 'costUsd', 'modelId', 'month', 'provider', 'scanId', 'tier', 'ts', 'verifiedCount'],
     );
+  });
+
+  it('writes the claim counts from the cost event, so cost per claim reads off the row', () => {
+    const recorded = recordProviderSpend(costEvent({ scanId: 'counted', costUsd: 0.3, claimsExtracted: 6, claimsVerified: 4 }));
+    expect(recorded).toMatchObject({ claimCount: 6, verifiedCount: 4 });
+    const rows = readFileSync(tmpLedger, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ scanId: 'counted', costUsd: 0.3, claimCount: 6, verifiedCount: 4 });
+  });
+
+  it('writes 0 counts as 0 and an event with no counts as null', () => {
+    recordProviderSpend(costEvent({ scanId: 'zero', claimsExtracted: 0, claimsVerified: 0 }));
+    recordProviderSpend(costEvent({ scanId: 'none' }));
+    const rows = readFileSync(tmpLedger, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ scanId: 'zero', claimCount: 0, verifiedCount: 0 });
+    expect(rows[1]).toMatchObject({ scanId: 'none', claimCount: null, verifiedCount: null });
+  });
+
+  it('an old row without claim counts hydrates and counts toward the month total', () => {
+    writeFileSync(tmpLedger, JSON.stringify({ ts: 'x', scanId: 'before-counts', month: currentMonth(), tier: 'pro', provider: 'openai', modelId: 'gpt-4o', costUsd: 2.5 }) + '\n');
+    recordProviderSpend(costEvent({ scanId: 'after-counts', costUsd: 1.25, claimsExtracted: 3, claimsVerified: 3 }));
+    expect(getProviderSpendLedger().monthTotalUsd()).toBeCloseTo(3.75, 6);
+    resetProviderSpendLedger(); // a restart reads both rows back off the file
+    expect(getProviderSpendLedger().monthTotalUsd()).toBeCloseTo(3.75, 6);
   });
 
   it('is APPEND-only — an existing ledger is extended, never rewritten', () => {
@@ -278,10 +348,10 @@ describe('enforceProviderSpendCap — integration through /scan', () => {
     expect(res.statusCode).not.toBe(503);
   });
 
-  it('returns 503 with budget headers once the monthly budget is exhausted', async () => {
+  it('returns 503 with budget headers to a free key once the monthly budget is exhausted', async () => {
     exhaustBudget();
     process.env.FAULTLINE_PROVIDER_SPEND_CAP = 'on';
-    const created = getKeyStore().create('Pro Key', ['pro', 'scan']);
+    const created = getKeyStore().create('Free Key', ['scan']);
     const res = await server.inject({
       method: 'POST',
       url: '/scan',
@@ -296,6 +366,19 @@ describe('enforceProviderSpendCap — integration through /scan', () => {
     expect(body.error).toMatch(/provider budget exhausted/i);
     expect(body.capUsd).toBe(1);
     expect(body.spentUsd).toBeCloseTo(1.5, 4);
+  });
+
+  it('lets a paid (pro) key through an exhausted budget: its own per-key caps bound it', async () => {
+    exhaustBudget();
+    process.env.FAULTLINE_PROVIDER_SPEND_CAP = 'on';
+    const created = getKeyStore().create('Pro Key', ['pro', 'scan']);
+    const res = await server.inject({
+      method: 'POST',
+      url: '/scan',
+      headers: { 'x-api-key': created.key, 'content-type': 'application/json' },
+      payload: { text: 'The sky is blue.', provider: 'mock' },
+    });
+    expect(res.statusCode).toBe(200);
   });
 
   it('lets a scan through while budget remains', async () => {
@@ -313,13 +396,13 @@ describe('enforceProviderSpendCap — integration through /scan', () => {
   });
 
   it('CANNOT be bypassed by spoofing x-user-tier — a caller-supplied header buys no exemption', async () => {
-    // Regression: the header is set by the caller and `userkey` is a VALID_TIERS
-    // member, so keying the gate off it would let any authenticated caller opt
-    // out of the budget for the price of one header.
+    // Regression: the header is set by the caller, so keying the gate off it
+    // would let a free key opt out of the budget for the price of one header.
+    // Only the server's own key may forward a plan.
     exhaustBudget();
     process.env.FAULTLINE_PROVIDER_SPEND_CAP = 'on';
-    const created = getKeyStore().create('Pro Key', ['pro', 'scan']);
-    for (const spoof of ['userkey', 'enterprise', 'anon']) {
+    const created = getKeyStore().create('Free Key', ['scan']);
+    for (const spoof of ['pro', 'userkey', 'enterprise', 'personal']) {
       const res = await server.inject({
         method: 'POST',
         url: '/scan',
@@ -333,7 +416,7 @@ describe('enforceProviderSpendCap — integration through /scan', () => {
   it('gates the streaming route too (GET /scan/stream)', async () => {
     exhaustBudget();
     process.env.FAULTLINE_PROVIDER_SPEND_CAP = 'on';
-    const created = getKeyStore().create('Pro Key', ['pro', 'scan']);
+    const created = getKeyStore().create('Free Key', ['scan']);
     const res = await server.inject({
       method: 'GET',
       url: `/scan/stream?text=${encodeURIComponent('The sky is blue.')}&provider=mock`,

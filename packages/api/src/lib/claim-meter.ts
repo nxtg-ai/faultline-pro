@@ -4,7 +4,8 @@
  * jobs, schedules, the scan queue, bulk uploads).
  *
  * Nothing is metered unless FAULTLINE_CLAIM_METER is on. Then only keys with
- * `metered: true` are metered. The server's own key (keyId 'admin'), admin keys
+ * `metered: true` are metered. The server's own key (keyId 'admin'), the
+ * measurement key (FAULTLINE_MEASUREMENT_KEY, keyId 'measurement'), admin keys
  * and every key without `metered: true` run exactly as they do with the meter
  * off. A metered key with no `claimCap` is refused (402 claim_cap_unset): the
  * meter fails closed. A metered key that was disabled, expired or deleted gets
@@ -14,6 +15,7 @@ import { DEFAULT_VERIFY_CAP } from '@nxtg/faultline/cli/verify-cap.js';
 import { isBillableVerdict } from '@nxtg/faultline/lib/verdict-guard.js';
 import type { VerificationResult } from '@nxtg/faultline/types.js';
 import { getKeyStore, type ApiKey } from '../store/keys.js';
+import { MEASUREMENT_KEY_ID } from '../plugins/auth.js';
 import {
   getClaimMeter,
   isClaimMeterEnabled,
@@ -55,14 +57,22 @@ const UNMETERED: MeterCheck = { kind: 'unmetered' };
 const REVOKED_CHECK: MeterCheck = { kind: 'refused', refusal: KEY_REVOKED };
 const CAP_UNSET_CHECK: MeterCheck = { kind: 'refused', refusal: CAP_UNSET };
 
+/**
+ * Identities that are never metered, whatever the keystore holds: no owner
+ * (work stored before owners were recorded), the server's own key and the
+ * measurement key. None of them is a customer, so there is nobody to bill.
+ */
+function isNeverMetered(keyId: string | undefined): boolean {
+  return keyId === undefined || keyId === '' || keyId === 'admin' || keyId === MEASUREMENT_KEY_ID;
+}
+
 const isRevoked = (key: ApiKey, now: Date): boolean =>
   key.disabled === true || (key.expiresAt !== undefined && new Date(key.expiresAt) <= now);
 
 /** Decide whether `keyId`'s work is metered, and refuse it when it may not run. */
 export function meterCheck(keyId: string | undefined, now: Date = new Date()): MeterCheck {
   if (!isClaimMeterEnabled()) return UNMETERED;
-  // No owner (work stored before owners were recorded) or the server key: nobody to bill.
-  if (keyId === undefined || keyId === '' || keyId === 'admin') return UNMETERED;
+  if (isNeverMetered(keyId)) return UNMETERED;
   const store = getKeyStore();
   const key = store.validateById(keyId);
   if (!key) return store.wasRevokedMetered(keyId) ? REVOKED_CHECK : UNMETERED;
@@ -75,7 +85,7 @@ export function meterCheck(keyId: string | undefined, now: Date = new Date()): M
 
 /** True when `keyId`'s claims are counted right now. */
 export function isMeteredKey(keyId: string | undefined): keyId is string {
-  if (!isClaimMeterEnabled() || keyId === undefined || keyId === 'admin') return false;
+  if (!isClaimMeterEnabled() || isNeverMetered(keyId)) return false;
   const key = getKeyStore().validateById(keyId);
   return key?.metered === true && !key.permissions.includes('admin');
 }

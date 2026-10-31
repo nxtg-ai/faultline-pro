@@ -78,6 +78,13 @@ export const LIVE_RATES: Record<string, Rate | null> = {
   //   which this single per-call field does NOT model. Source (tool fee):
   //   https://developers.openai.com/api/docs/pricing
   'gpt-4o':           { inputPerM: 2.50, outputPerM: 10.00, groundingPerCall: 0.010 },
+  // sonar-pro / sonar (Perplexity adapter default and its smaller sibling): tokens plus a
+  //   per-request fee by search context size; the low-context fee is used. Perplexity's own
+  //   pricing page no longer lists Sonar (checked 2026-10-28), so these are the last published
+  //   Sonar rates as carried by third-party pricing summaries (for example
+  //   https://amnic.com/blogs/perplexity-api-pricing). Not from a live official page.
+  'sonar-pro':        { inputPerM: 3.00, outputPerM: 15.00, groundingPerCall: 0.006 },
+  'sonar':            { inputPerM: 1.00, outputPerM: 1.00, groundingPerCall: 0.005 },
 };
 
 /**

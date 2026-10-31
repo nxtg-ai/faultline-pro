@@ -1,10 +1,12 @@
 import type { Claim, VerificationResult } from '../types';
 import type { LLMProvider, ImageInput, CritiqueResult, ProviderFactory } from './base_provider';
 import { sanitizeVerifyError } from '../services/verify-error';
-import { ExtractionError, parseExtractedClaims } from './extraction-error';
+import { ExtractionError, classifyApiError, parseExtractedClaims } from './extraction-error';
+import { outOfCreditsTag, readErrorBody } from './out-of-credits';
 import { readVerdictReply, truncatedVerdict, unparseableVerdict } from './verdict-reply';
 import { CALL_CEILINGS, type PerplexityPurpose } from './call-ceilings';
 import { isChatCompletionTruncated, isOutputTruncatedError, OutputTruncatedError } from './output-truncation';
+import { recordUsage } from '../lib/usage-sink';
 
 /**
  * Perplexity provider — implements the LLMProvider interface using Perplexity's API.
@@ -88,7 +90,11 @@ Return a JSON object:
       const msg = error instanceof Error ? error.message : String(error);
       if (msg.includes('429')) throw error;
       console.error(`Error verifying claim ${claim.id} (Perplexity):`, error);
-      return { claimId: claim.id, status: 'unverified', explanation: sanitizeVerifyError(error), sources: [], apiError: true };
+      return {
+        claimId: claim.id, status: 'unverified', explanation: sanitizeVerifyError(error), sources: [], apiError: true,
+        // An empty account keeps its reason, so the CLI does not ask for a re-run that cannot succeed.
+        ...(classifyApiError(error) === 'provider_out_of_credits' ? { apiErrorReason: 'provider_out_of_credits' as const } : {}),
+      };
     }
   }
 
@@ -142,10 +148,13 @@ Return a JSON object: { "critique": string, "improvedPrompt": string }`,
     });
 
     if (!response.ok) {
-      throw new Error(`Perplexity API error: ${response.status} ${response.statusText}`);
+      // Only a fixed tag from the body is kept, so an empty account is not read as a rate limit.
+      const tag = outOfCreditsTag(response.status, await readErrorBody(response));
+      throw new Error(`Perplexity API error: ${response.status} ${response.statusText}${tag}`);
     }
 
     const data = await response.json() as any;
+    this.recordReplyUsage(data);
     if (isChatCompletionTruncated(data)) throw new OutputTruncatedError('perplexity', purpose);
     return data.choices?.[0]?.message?.content || '';
   }
@@ -174,15 +183,35 @@ Return a JSON object: { "critique": string, "improvedPrompt": string }`,
     });
 
     if (!response.ok) {
-      throw new Error(`Perplexity API error: ${response.status} ${response.statusText}`);
+      // Only a fixed tag from the body is kept, so an empty account is not read as a rate limit.
+      const tag = outOfCreditsTag(response.status, await readErrorBody(response));
+      throw new Error(`Perplexity API error: ${response.status} ${response.statusText}${tag}`);
     }
 
     const data = await response.json() as any;
+    this.recordReplyUsage(data);
     if (isChatCompletionTruncated(data)) throw new OutputTruncatedError('perplexity', purpose);
     return {
       content: data.choices?.[0]?.message?.content || '',
       citations: Array.isArray(data.citations) ? data.citations : [],
     };
+  }
+
+  /**
+   * Record the usage a reply reports, as soon as the reply is read: before the
+   * truncation check and before any caller parses the content, so a billed call
+   * is metered even when its output turns out to be unusable. Every Sonar request
+   * runs a web search and bills a per-request fee on top of tokens, so each call
+   * is a grounding call. No-op outside a usage capture scope.
+   */
+  private recordReplyUsage(data: any): void {
+    recordUsage({
+      provider: 'perplexity',
+      model: this.modelId,
+      inputTokens: data?.usage?.prompt_tokens ?? 0,
+      outputTokens: data?.usage?.completion_tokens ?? 0,
+      isGrounding: true,
+    });
   }
 }
 

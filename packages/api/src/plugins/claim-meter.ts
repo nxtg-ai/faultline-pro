@@ -14,14 +14,16 @@ import { resolveVerifyPolicy } from './verify-cap.js';
  *
  * `reserveClaims(max)` holds the most claims the route may verify BEFORE the
  * handler runs, so a refused request calls no provider. The handler commits the
- * claims that got a verdict (`commitClaims`) once the caller has them; the
+ * claims with a billable verdict (`commitClaims`; the engine's isBillableVerdict
+ * decides, so `unverified` never bills) once the caller has them; the
  * server's onResponse hook releases whatever is still held, so every error path
  * frees its reservation. Streaming routes, which hijack the reply, release in
  * their own `finally` as well. With the meter off, or for an unmetered key,
  * nothing is reserved and nothing is committed.
  *
- * Must run AFTER requireApiKey (needs request.keyId) and after the other gates,
- * so a request they refuse never holds claims.
+ * Must run AFTER requireApiKey (needs request.keyId) and after the other gates
+ * (consensus entitlement, burst limit, monthly scan quota, fleet spend cap), so
+ * a request they refuse never holds claims.
  */
 
 declare module 'fastify' {

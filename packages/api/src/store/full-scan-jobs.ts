@@ -1,4 +1,4 @@
-import { guardVerdict } from '@nxtg/faultline/lib/verdict-guard.js';
+import { guardVerdict, isBillableVerdict } from '@nxtg/faultline/lib/verdict-guard.js';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -10,6 +10,7 @@ import {
   type UnitAccounting,
 } from '@nxtg/faultline/cli/scan.js';
 import type { ManagedScanCostEvent } from './costs.js';
+import { PROVIDER_BUDGET_EXHAUSTED, providerBudgetRefuses } from '../plugins/provider-spend-cap.js';
 
 /**
  * full-scan-jobs.ts — estimates, jobs, the run queue and the terminal-job ledger
@@ -33,10 +34,13 @@ import type { ManagedScanCostEvent } from './costs.js';
  * Google's grounding terms forbid caching grounded output), and NO user-ref (it
  * lives in memory only while a job is active, to enforce one job per user).
  *
- * Units: a fact claim is SERVED when its check ran and returned a verdict
- * (including 'unverified'); it is unserved when the provider failed after the
- * engine's retries (apiError) or it never started. served = ceil(served / 8);
- * refund = charged - served (emma-soul ruling al:c747e63f2fc26683).
+ * Units: a fact claim is SERVED when its verdict is billable (isBillableVerdict:
+ * supported, contradicted or mixed, with at least one source, a retriever the
+ * engine bound, and no apiError). It is unserved when the provider failed after
+ * the engine's retries (apiError, with the provider's reason), when its check
+ * gave no billable verdict ('unverified', zero sources, or no engine retriever:
+ * reason 'no_sourced_verdict'), or when it never
+ * started ('not_attempted'). served = ceil(served / 8); refund = charged - served.
  */
 
 type Tier = ManagedScanCostEvent['tier'];
@@ -70,11 +74,17 @@ const JOB_ID_PATTERN = /^fsj_([0-9a-z]{1,11})_[0-9a-f]{32}$/;
 export type FullScanJobStatus = 'queued' | 'running' | 'done' | 'stopped' | 'failed';
 export type TerminalStatus = 'done' | 'stopped' | 'failed';
 
-/** Why a fact claim got no verdict. The engine's reasons plus 'not_attempted'. */
-export type UnservedReason = ApiErrorReason | 'not_attempted';
+/**
+ * Why a fact claim was not served. The engine's error reasons, 'no_sourced_verdict'
+ * (the check ran but gave no billable verdict: 'unverified', no source, or no
+ * retriever the engine bound), and
+ * 'not_attempted', and 'provider_budget_exhausted' (the job waited in the queue
+ * and the provider spend gate refused it before it started).
+ */
+export type UnservedReason = ApiErrorReason | 'no_sourced_verdict' | 'not_attempted' | typeof PROVIDER_BUDGET_EXHAUSTED;
 export const UNSERVED_REASONS: readonly UnservedReason[] = [
-  'rate_limited', 'provider_unavailable', 'timeout', 'provider_error', 'provider_unparseable', 'output_truncated',
-  'not_attempted',
+  'rate_limited', 'provider_out_of_credits', 'provider_unavailable', 'timeout', 'provider_error', 'provider_unparseable', 'output_truncated',
+  'no_sourced_verdict', 'not_attempted', PROVIDER_BUDGET_EXHAUSTED,
 ];
 
 export interface UnservedClaim {
@@ -118,6 +128,14 @@ export interface FullScanJob {
   createdAt: number;
   provider: string;
   tier: Tier;
+  /**
+   * The provider spend gate's tier (from resolveSpendCapTier), checked again when
+   * the job leaves the queue. Not `tier`: that one reads a server-key call with no
+   * header as enterprise. Never part of a response or a ledger row.
+   */
+  spendCapTier: Tier;
+  /** Why a job that never started was failed; its claims carry this reason instead of not_attempted. */
+  refusedReason?: UnservedReason;
   factClaims: number;
   /** Units charged at the estimate. Never recomputed. */
   charged: number;
@@ -158,7 +176,7 @@ export interface FullScanLedgerRow {
   factClaims: number;
   units: UnitAccounting;
   servedClaims: number;
-  /** Served claims by verdict status (supported, contradicted, unverified, mixed). */
+  /** Served claims by verdict status (supported, contradicted, mixed). */
   verdicts: Record<string, number>;
   /** Unserved claims by reason. */
   reasons: Partial<Record<UnservedReason, number>>;
@@ -184,9 +202,12 @@ export interface FullScanJobView {
   jobId: string;
   status: FullScanJobStatus;
   factClaims: number;
-  /** Fact claims with a verdict (served). */
+  /** Fact claims with a billable verdict (served). */
   checked: number;
-  /** Fact claims whose check ran and failed (apiError); never-started claims are not counted. */
+  /**
+   * Fact claims whose check ran and failed (apiError). Never-started claims and
+   * claims checked without a sourced verdict ('no_sourced_verdict') are not counted.
+   */
   failed: number;
   progress: ClaimProgress[];
   unserved: UnservedClaim[];
@@ -274,8 +295,8 @@ const reasonOf = (verdict: VerificationResult): UnservedReason => verdict.apiErr
  * is unserved: its own provider reason, `provider_error` when a verdict had landed
  * before the run threw, `not_attempted` when it never started.
  */
-function failedClaim(claimId: string, verdict: VerificationResult | undefined): ClaimProgress {
-  if (verdict === undefined) return { claimId, status: 'unserved', reason: 'not_attempted' };
+function failedClaim(claimId: string, verdict: VerificationResult | undefined, refusedReason?: UnservedReason): ClaimProgress {
+  if (verdict === undefined) return { claimId, status: 'unserved', reason: refusedReason ?? 'not_attempted' };
   const reason = verdict.apiError === true ? reasonOf(verdict) : 'provider_error';
   return { claimId, status: 'unserved', reason, verdict };
 }
@@ -283,11 +304,12 @@ function failedClaim(claimId: string, verdict: VerificationResult | undefined): 
 function claimProgress(job: FullScanJob): ClaimProgress[] {
   return job.factIds.map((claimId, i): ClaimProgress => {
     const verdict = job.verdicts[i];
-    if (job.status === 'failed') return failedClaim(claimId, verdict);
+    if (job.status === 'failed') return failedClaim(claimId, verdict, job.refusedReason);
     if (verdict === undefined) {
       return isTerminal(job.status) ? { claimId, status: 'unserved', reason: 'not_attempted' } : { claimId, status: 'pending' };
     }
     if (verdict.apiError === true) return { claimId, status: 'unserved', reason: reasonOf(verdict), verdict };
+    if (!isBillableVerdict(verdict)) return { claimId, status: 'unserved', reason: 'no_sourced_verdict', verdict };
     return { claimId, status: 'served', verdict };
   });
 }
@@ -296,7 +318,7 @@ const unservedOf = (progress: ClaimProgress[]): UnservedClaim[] =>
   progress.flatMap((p) => (p.status === 'unserved' && p.reason ? [{ claimId: p.claimId, reason: p.reason }] : []));
 
 const ranAndFailed = (unserved: UnservedClaim[]): number =>
-  unserved.filter((u) => u.reason !== 'not_attempted').length;
+  unserved.filter((u) => u.reason !== 'not_attempted' && u.reason !== 'no_sourced_verdict').length;
 
 /** The GET view of a job held in memory. */
 export function describeJob(job: FullScanJob): FullScanJobView {
@@ -392,6 +414,14 @@ class FullScanRunQueue {
     private readonly onRefused: (job: FullScanJob) => void = () => {},
   ) {}
 
+  /**
+   * The provider spend gate, asked again when a queued job would start: a job
+   * admitted under the budget can wait for a slot until after it is spent.
+   */
+  private budgetRefuses(job: FullScanJob): boolean {
+    return providerBudgetRefuses(job.spendCapTier);
+  }
+
   enqueue(job: FullScanJob, run: FullScanJobRunner): void {
     this.waiting.push({ job, run });
     this.pump();
@@ -405,6 +435,11 @@ class FullScanRunQueue {
     while (this.running < maxRunningJobs() && this.waiting.length > 0) {
       const next = this.waiting.shift()!;
       if (next.job.status !== 'queued') continue; // stopped while waiting
+      if (this.budgetRefuses(next.job)) {
+        next.job.refusedReason = PROVIDER_BUDGET_EXHAUSTED;
+        this.onRefused(next.job);
+        continue;
+      }
       if (!this.canStart()) {
         this.onRefused(next.job);
         continue;
@@ -567,7 +602,7 @@ class FullScanJobStore {
    */
   startJob(
     estimate: FullScanEstimate,
-    opts: { idempotencyKey: string; tier: Tier },
+    opts: { idempotencyKey: string; tier: Tier; spendCapTier: Tier },
     now: number = Date.now(),
   ): FullScanJob {
     const claims = estimate.claims ?? [];
@@ -581,6 +616,7 @@ class FullScanJobStore {
       createdAt: now,
       provider: estimate.provider,
       tier: opts.tier,
+      spendCapTier: opts.spendCapTier,
       factClaims: estimate.factClaims,
       charged: estimate.units,
       claims,

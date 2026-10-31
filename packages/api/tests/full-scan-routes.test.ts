@@ -5,13 +5,23 @@
  * POST /scan/full/:jobId/stop, and the admin refund report on GET /usage.
  *
  * Contract: docs/design/2026-10-13-full-scan-api.md §3–§7. Units: charged =
- * ceil(fact claims / 8) at the estimate; served = ceil(claims with a verdict / 8);
- * refund = charged - served (emma-soul al:c747e63f2fc26683).
+ * ceil(fact claims / 8) at the estimate; served = ceil(claims with a billable
+ * verdict / 8); refund = charged - served. A billable verdict is supported,
+ * contradicted or mixed, with at least one source, a retriever the engine
+ * bound, and no apiError.
  *
  * The provider registry is wrapped, not replaced: by default every call reaches
- * the REAL 'mock' provider (one fact claim per sentence, all supported). A test
- * that needs to hold claims in flight, fail claims or tag opinions swaps in a
- * fixture provider for that test only.
+ * the REAL 'mock' provider (one fact claim per sentence, all supported). The mock
+ * cites no source, so by default each of its verdicts gets one source added here;
+ * `control.rawMock` turns that off. The mock has no engine retriever, so jobs
+ * are estimated under the provider id 'gemini' (ENGINE_PROVIDER), which the
+ * wrapper answers with the real mock, reported (test-only, through this module
+ * mock) as the built-in gemini instance: the engine then binds
+ * 'gemini-grounding' and a sourced verdict is billable. No real Gemini call is
+ * made. A
+ * test that needs to
+ * hold claims in flight, fail claims or tag opinions swaps in a fixture provider
+ * for that test only.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { FastifyInstance } from 'fastify';
@@ -39,27 +49,57 @@ const control = vi.hoisted(() => ({
   provider: null as null | (() => unknown),
   /** When true, getProvider throws: the job's verify run fails outright. */
   failGetProvider: false,
+  /** When true, the real mock's verdicts are passed on as given, with no source. */
+  rawMock: false,
 }));
+
+/** The provider id jobs run under; see the header. */
+const ENGINE_PROVIDER = 'gemini';
+
+/** The one source the default adds to each real mock verdict. */
+const MOCK_SOURCE = { title: 'Fixture source', uri: 'https://example.org/fixture' };
 
 vi.mock('@nxtg/faultline/providers/registry.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@nxtg/faultline/providers/registry.js')>();
+  // Test-only: a fixture resolved under a built-in id stands in for that
+  // built-in's own instance, which the real registry records for its factories.
+  const standIns = new WeakMap<object, string>();
+  const standIn = <T,>(name: string | undefined, p: T): T => {
+    if (name !== undefined && actual.isBuiltInProviderName(name) && p && typeof p === 'object') standIns.set(p, name);
+    return p;
+  };
   return {
     ...actual,
+    builtInProviderIdOf: vi.fn((p: unknown) => (p && typeof p === 'object' ? standIns.get(p) : undefined) ?? actual.builtInProviderIdOf(p)),
     getProvider: vi.fn((apiKey: string, name?: string) => {
       if (control.failGetProvider) throw new Error('provider construction failed');
-      return control.provider ? control.provider() : actual.getProvider(apiKey, name);
+      if (control.provider) return standIn(name, control.provider());
+      // Under the engine's id the fixture stands in for the built-in gemini
+      // instance, so the engine grants its retriever; the real mock still answers.
+      const real = actual.getProvider(apiKey, name === ENGINE_PROVIDER ? 'mock' : name);
+      if (control.rawMock) return standIn(name, real);
+      // The mock is a class instance, so its other methods are kept through the prototype.
+      return standIn(name, Object.assign(Object.create(real), {
+        verifyClaim: async (claim: Claim) => {
+          const verdict = await real.verifyClaim(claim);
+          return verdict.sources.length === 0 ? { ...verdict, sources: [MOCK_SOURCE] } : verdict;
+        },
+      }));
     }),
   };
 });
 
 const SERVER_KEY = 'test-full-scan-server-key';
 const ENV_KEYS = [
+  'GEMINI_API_KEY',
   'FAULTLINE_API_KEY',
   'FAULTLINE_FULL_JOBS_LEDGER',
   'FAULTLINE_FULL_MAX_RUNNING',
   'FAULTLINE_FULL_ESTIMATE_PER_MIN',
   'FAULTLINE_PROVIDER_SPEND_LEDGER',
   'FAULTLINE_PROVIDER_SPEND_CAP',
+  'FAULTLINE_USAGE_CAP',
+  'FAULTLINE_CAP_FREE',
 ];
 const USER_A = 'a'.repeat(64);
 const USER_B = 'b'.repeat(64);
@@ -82,8 +122,9 @@ function sentences(n: number, tag = 'fact'): string {
   return Array.from({ length: n }, (_, i) => `Sentence ${i + 1} states a checkable ${tag}.`).join(' ');
 }
 
+/** A billable verdict: supported with one source. */
 function supported(claim: Claim): VerificationResult {
-  return { claimId: claim.id, status: 'supported', explanation: 'ok', sources: [] };
+  return { claimId: claim.id, status: 'supported', explanation: 'ok', sources: [MOCK_SOURCE] };
 }
 
 function apiError(claim: Claim, reason: ApiErrorReason): VerificationResult {
@@ -174,7 +215,7 @@ async function call(method: 'GET' | 'POST', url: string, caller: Caller = {}, bo
 }
 
 const estimate = (text: string, caller: Caller = {}, extra: Json = {}) =>
-  call('POST', '/scan/full/estimate', caller, { text, provider: 'mock', ...extra });
+  call('POST', '/scan/full/estimate', caller, { text, provider: ENGINE_PROVIDER, ...extra });
 
 const start = (estimateId: string, idempotencyKey: string | undefined, caller: Caller = {}, extra: Json = {}) =>
   call('POST', '/scan/full', {
@@ -225,13 +266,18 @@ beforeEach(async () => {
   tmpDir = mkdtempSync(join(tmpdir(), 'full-scan-'));
   ledgerFile = join(tmpDir, 'full-scan-jobs.jsonl');
   process.env.FAULTLINE_API_KEY = SERVER_KEY;
+  // Key resolution needs a value for 'gemini'; the wrapped registry never uses it.
+  process.env.GEMINI_API_KEY = 'test-key';
   process.env.FAULTLINE_FULL_JOBS_LEDGER = ledgerFile;
   process.env.FAULTLINE_PROVIDER_SPEND_LEDGER = join(tmpDir, 'provider-spend.jsonl');
   delete process.env.FAULTLINE_FULL_MAX_RUNNING;
   delete process.env.FAULTLINE_FULL_ESTIMATE_PER_MIN;
   delete process.env.FAULTLINE_PROVIDER_SPEND_CAP;
+  delete process.env.FAULTLINE_USAGE_CAP;
+  delete process.env.FAULTLINE_CAP_FREE;
   control.provider = null;
   control.failGetProvider = false;
+  control.rawMock = false;
   openGates = [];
   resetKeyStore();
   resetRateLimiter();
@@ -343,6 +389,15 @@ describe('full lifecycle on the real mock provider', () => {
     expect(getCostStore().getPercentiles().count).toBe(0);
     expect(getUsageMeter().getMonthlyCount('admin')).toBe(1);
   });
+
+  it('a job is counted once when it is admitted, even when it serves no billable verdict', async () => {
+    useFixtureProvider(async (c) => apiError(c, 'provider_unavailable'));
+    const jobId = await startJob(sentences(3), 'idem-unbilled');
+    const done = await untilTerminal(jobId);
+    expect(done.progress.length).toBeGreaterThan(0);
+    expect(done.units.served).toBe(0);
+    expect(getUsageMeter().getMonthlyCount('admin')).toBe(1);
+  });
 });
 
 describe('units and unserved claims', () => {
@@ -370,12 +425,49 @@ describe('units and unserved claims', () => {
     expect(row.servedClaims).toBe(20);
   });
 
-  it('an unverified verdict from a check that ran is served (no refund for an abstention)', async () => {
-    useFixtureProvider(async (c) => ({ claimId: c.id, status: 'unverified', explanation: 'no evidence', sources: [] }));
+  it('an unverified verdict from a check that ran is not served: refunded as no_sourced_verdict, not counted as failed', async () => {
+    useFixtureProvider(async (c) => ({ claimId: c.id, status: 'unverified', explanation: 'no evidence', sources: [MOCK_SOURCE] }));
     const jobId = await startJob(sentences(8), 'idem-abstain');
     const done = await untilTerminal(jobId);
-    expect(done.units).toEqual({ charged: 1, served: 1, refund: 0 });
-    expect(done.unserved).toEqual([]);
+    expect(done.units).toEqual({ charged: 1, served: 0, refund: 1 });
+    expect(done.checked).toBe(0);
+    expect(done.failed).toBe(0);
+    expect(done.unserved).toHaveLength(8);
+    expect(done.unserved.every((u: Json) => u.reason === 'no_sourced_verdict')).toBe(true);
+    expect(ledgerRows()[0].reasons).toEqual({ no_sourced_verdict: 8 });
+  });
+
+  it('the real mock cites no source, so a job on it serves nothing and refunds every unit', async () => {
+    control.rawMock = true;
+    const jobId = await startJob(sentences(9), 'idem-raw-mock');
+    const done = await untilTerminal(jobId);
+    expect(done.factClaims).toBe(9);
+    expect(done.units).toEqual({ charged: 2, served: 0, refund: 2 });
+    expect(done.unserved).toHaveLength(9);
+    expect(done.progress.every((p: Json) => p.status === 'unserved' && p.verdict?.status === 'supported')).toBe(true);
+  });
+
+  it('under the mock id a sourced verdict serves nothing: mock has no engine retriever', async () => {
+    const est = await estimate(sentences(9), {}, { provider: 'mock' });
+    expect(est.statusCode).toBe(200);
+    const started = await start(est.json.estimateId, 'idem-mock-id');
+    expect(started.statusCode).toBe(202);
+    const done = await untilTerminal(started.json.jobId);
+    expect(done.factClaims).toBe(9);
+    expect(done.progress).toHaveLength(9);
+    // Each verdict is supported with a source, yet none is served.
+    expect(done.progress.every((p: Json) => p.status === 'unserved' && p.verdict?.status === 'supported'
+      && p.verdict?.sources?.length === 1 && p.verdict?.provenance?.retriever === undefined)).toBe(true);
+    expect(done.units).toEqual({ charged: 2, served: 0, refund: 2 });
+    expect(done.unserved.every((u: Json) => u.reason === 'no_sourced_verdict')).toBe(true);
+  });
+
+  it('under the engine id the same verdicts are served, with the engine retriever', async () => {
+    const jobId = await startJob(sentences(9), 'idem-engine-id');
+    const done = await untilTerminal(jobId);
+    expect(done.progress).toHaveLength(9);
+    expect(done.progress.every((p: Json) => p.status === 'served' && p.verdict?.provenance?.retriever === 'gemini-grounding')).toBe(true);
+    expect(done.units).toEqual({ charged: 2, served: 2, refund: 0 });
   });
 
   it('a provider that throws on every retry is unserved with the engine reason (real retry ladder)', async () => {
@@ -405,6 +497,34 @@ describe('units and unserved claims', () => {
     expect(failed.result).toBeUndefined();
     expect(failed.resultAvailable).toBe(false);
     expect(ledgerRows()[0]).toMatchObject({ status: 'failed', servedClaims: 0, units: { charged: 2, served: 0, refund: 2 } });
+    // Counted when the job was admitted; a later failure does not undo the count.
+    expect(getUsageMeter().getMonthlyCount('admin')).toBe(1);
+  });
+
+  it('a run that fails after a sourced verdict landed served nothing, yet stays counted from admission', async () => {
+    useFixtureProvider(async (c) => supported(c));
+    const store = getFullScanJobStore();
+    const record = store.recordVerdict.bind(store);
+    let recorded = 0;
+    vi.spyOn(store, 'recordVerdict').mockImplementation((job, index, verdict) => {
+      record(job, index, verdict);
+      recorded += 1;
+      if (recorded === 1) throw new Error('the run broke after its first verdict');
+    });
+    const jobId = await startJob(sentences(3), 'idem-failed-late');
+    const failed = await untilTerminal(jobId);
+
+    const found = store.lookup(jobId, 'admin');
+    expect(found.kind).toBe('job');
+    const verdicts = found.kind === 'job' ? found.job.verdicts : [];
+    expect(verdicts.filter((v) => v?.status === 'supported' && v.sources.length > 0).length).toBeGreaterThan(0);
+    expect(failed.status).toBe('failed');
+    expect(failed.checked).toBe(0);
+    expect(failed.resultAvailable).toBe(false);
+    expect(failed.units).toEqual({ charged: 1, served: 0, refund: 1 });
+    expect(getUsageMeter().getMonthlyCount('admin')).toBe(1);
+    // The provider spend is still recorded for the failed run.
+    expect(getCostStore().getManagedEvents().filter((e) => e.kind === 'full-scan')).toHaveLength(2);
   });
 });
 
@@ -509,6 +629,80 @@ describe('POST /scan/full answers', () => {
   });
 });
 
+describe('monthly scan quota admission', () => {
+  const capOne = () => {
+    process.env.FAULTLINE_USAGE_CAP = 'on';
+    process.env.FAULTLINE_CAP_FREE = '1';
+    const entry = getKeyStore().create('capped-key');
+    return { key: entry.key, id: entry.id };
+  };
+
+  it('a job is counted when it is admitted, so its slot is taken while it runs: a second job and a /scan are 402', async () => {
+    const gate = gated();
+    const { key, id } = capOne();
+    const first = await estimate(sentences(2), { key });
+    const second = await estimate(sentences(2), { key });
+    const started = await start(first.json.estimateId, 'idem-cap-inflight', { key });
+    expect(started.statusCode).toBe(202);
+    await waitFor(async () => gate.inFlight() > 0);
+    expect((await poll(started.json.jobId, { key })).json.status).toBe('running');
+    expect(getUsageMeter().getMonthlyCount(id)).toBe(1);
+    const callsBefore = gate.verifyClaim.mock.calls.length;
+
+    const refusedJob = await start(second.json.estimateId, 'idem-cap-inflight-2', { key });
+    expect(refusedJob.statusCode).toBe(402);
+    const refusedScan = await call('POST', '/scan', { key }, { text: sentences(1), provider: 'mock' });
+    expect(refusedScan.statusCode).toBe(402);
+    expect(gate.verifyClaim).toHaveBeenCalledTimes(callsBefore);
+
+    await gate.releaseAll();
+    expect((await untilTerminal(started.json.jobId, { key })).status).toBe('done');
+    expect(getUsageMeter().getMonthlyCount(id)).toBe(1);
+  });
+
+  it('a new job from a key at its cap is 402 before it is queued; nothing runs or is counted', async () => {
+    const verifyClaim = useFixtureProvider(async (c) => supported(c));
+    const { key, id } = capOne();
+    const first = await estimate(sentences(2), { key });
+    const second = await estimate(sentences(2), { key });
+    const started = await start(first.json.estimateId, 'idem-cap-1', { key });
+    expect(started.statusCode).toBe(202);
+    await untilTerminal(started.json.jobId, { key });
+    expect(getUsageMeter().getMonthlyCount(id)).toBe(1);
+    const callsBefore = verifyClaim.mock.calls.length;
+
+    const refused = await start(second.json.estimateId, 'idem-cap-2', { key });
+    expect(refused.statusCode).toBe(402);
+    expect(refused.json).toMatchObject({ error: 'Monthly scan quota exceeded.', limit: 1, used: 1, remaining: 0 });
+    expect(verifyClaim).toHaveBeenCalledTimes(callsBefore);
+    expect(getFullScanJobStore().jobForIdempotencyKey(id, 'idem-cap-2')).toBeUndefined();
+    expect(getUsageMeter().getMonthlyCount(id)).toBe(1);
+  });
+
+  it('an idempotent replay of an existing job is not refused at the cap and runs nothing', async () => {
+    const verifyClaim = useFixtureProvider(async (c) => supported(c));
+    const { key, id } = capOne();
+    const est = await estimate(sentences(2), { key });
+    const first = await start(est.json.estimateId, 'idem-cap-replay', { key });
+    await untilTerminal(first.json.jobId, { key });
+    expect(getUsageMeter().getMonthlyCount(id)).toBe(1);
+
+    const replay = await start(est.json.estimateId, 'idem-cap-replay', { key });
+    expect(replay.statusCode).toBe(202);
+    expect(replay.json).toEqual(first.json);
+    expect(verifyClaim).toHaveBeenCalledTimes(2);
+    expect(getUsageMeter().getMonthlyCount(id)).toBe(1);
+  });
+
+  it('an estimate from a key at its cap is 402 with no extraction', async () => {
+    const { key, id } = capOne();
+    getUsageMeter().increment(id);
+    const refused = await estimate(sentences(2), { key });
+    expect(refused.statusCode).toBe(402);
+    expect(getCostStore().getManagedEvents().filter((e) => e.kind === 'full-scan')).toHaveLength(0);
+  });
+});
+
 describe('user-ref (x-faultline-user-ref)', () => {
   it('from the server key, two users run at once; one user cannot start a second job', async () => {
     gated();
@@ -592,6 +786,8 @@ describe('process-wide ceiling and stop', () => {
     expect(gate.verifyClaim).toHaveBeenCalledTimes(2);
     const again = await stop(queued);
     expect(again.json).toEqual(stopped.json);
+    // Both jobs were admitted, so both count, the stopped queued job too.
+    expect(getUsageMeter().getMonthlyCount('admin')).toBe(2);
   });
 
   it('stopping a running job starts no new claim and stops when in-flight claims finish', async () => {
@@ -614,6 +810,8 @@ describe('process-wide ceiling and stop', () => {
     expect(done.result.notAttemptedClaimIds).toHaveLength(14);
     const unchanged = await stop(jobId);
     expect(unchanged.json).toEqual(done);
+    // Counted once, at admission; stopping it changes nothing.
+    expect(getUsageMeter().getMonthlyCount('admin')).toBe(1);
   });
 });
 
@@ -958,7 +1156,7 @@ describe('GET /usage fullScanRefunds (admin)', () => {
 
   it('sums the trailing 7 days of the ledger; exactly 10% refunded is not an alert', async () => {
     writeLedger([
-      row(newJobId(), 1, { charged: 4, served: 3, refund: 1 }, { rate_limited: 11 }),
+      row(newJobId(), 1, { charged: 4, served: 3, refund: 1 }, { rate_limited: 11, provider_out_of_credits: 2 }),
       row(newJobId(), 3, { charged: 6, served: 6, refund: 0 }),
       row(newJobId(), 8, { charged: 10, served: 0, refund: 10 }, { provider_error: 80 }),
     ]);
@@ -971,7 +1169,7 @@ describe('GET /usage fullScanRefunds (admin)', () => {
       unitsRefunded: 1,
       refundRate: 0.1,
       alert: false,
-      reasons: { rate_limited: 11, provider_unavailable: 0, timeout: 0, provider_error: 0, provider_unparseable: 0, output_truncated: 0, not_attempted: 0 },
+      reasons: { rate_limited: 11, provider_out_of_credits: 2, provider_unavailable: 0, timeout: 0, provider_error: 0, provider_unparseable: 0, output_truncated: 0, no_sourced_verdict: 0, not_attempted: 0, provider_budget_exhausted: 0 },
       ledgerWriteFailures: 0,
       admissionClosed: false,
     });

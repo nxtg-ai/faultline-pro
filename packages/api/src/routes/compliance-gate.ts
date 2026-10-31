@@ -1,9 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey, scanHistoryKeyScope } from '../plugins/auth.js';
+import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
+import { enforceMonthlyCap } from '../plugins/usage-cap.js';
+import { meterScan } from '../lib/scan-quota.js';
 import { esc } from '../lib/html.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { commitClaims, engineVerifyCap, reserveClaims } from '../plugins/claim-meter.js';
+import { scanWithSpend } from '../lib/scan-spend.js';
 import { getScanStore } from '../store/scans.js';
 import { ownedScan } from '../lib/scan-access.js';
 import { getComplianceHistoryStore } from '../store/compliance-history.js';
@@ -203,7 +207,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
     '/scan/compliance-gate',
     {
       config: { access: 'owner' },
-      preHandler: [requireApiKey, rateLimitScan, reserveClaims(engineVerifyCap())],
+      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap, reserveClaims(engineVerifyCap())],
       schema: {
         tags: ['Compliance'],
         summary: 'Scan text and evaluate EU AI Act compliance gate (pass/fail)',
@@ -217,7 +221,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
       const { text, provider, projectName, threshold, strict } = request.body;
       const keyId = request.keyId ?? 'unknown';
 
-      const result = await scan(text, provider);
+      const result = await scanWithSpend({ text, provider, keyId }, () => scan(text, provider));
       const stored = getScanStore().record(keyId, text, result as unknown as Record<string, unknown>);
       commitClaims(request, stored.id, result, provider ?? 'gemini');
       const report = buildEuComplianceReport(result, { projectName });
@@ -256,6 +260,9 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
       }
 
       const response: ComplianceGateResponse = { gate, report, scanId: stored.id };
+      // Counted once, like /scan, when the scan it serves holds a billable verdict. A
+      // failed gate (422) still served the scan, so it counts the same way.
+      meterScan(keyId, result.verifications);
       return reply.status(gate.pass ? 200 : 422).send(response);
     },
   );

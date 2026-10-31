@@ -16,6 +16,9 @@
 import { randomUUID } from 'node:crypto';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { ENGINE_VERIFY_CAP, meteredScan } from '../lib/claim-meter.js';
+import { scanWithSpend } from '../lib/scan-spend.js';
+import { PROVIDER_BUDGET_EXHAUSTED, providerBudgetRefuses } from '../plugins/provider-spend-cap.js';
+import type { ManagedScanCostEvent } from './costs.js';
 
 export type QueueItemStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
 export type QueuePriority = 0 | 1 | 2;
@@ -57,6 +60,11 @@ class ScanQueue {
   private items: Map<string, ScanQueueItem> = new Map();
   /** IDs of pending items in insertion order — sorted by priority on dequeue */
   private pendingIds: string[] = [];
+  /**
+   * The spend-gate tier each item was queued with, kept off the item so no
+   * response shows it. An item with none counts as capped.
+   */
+  private tiers: Map<string, ManagedScanCostEvent['tier']> = new Map();
 
   private processingCount = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -65,7 +73,13 @@ class ScanQueue {
     return Math.max(1, Number(process.env.FAULTLINE_QUEUE_CONCURRENCY ?? 3));
   }
 
-  enqueue(keyId: string, priority: QueuePriority, text: string, provider: string): ScanQueueItem {
+  enqueue(
+    keyId: string,
+    priority: QueuePriority,
+    text: string,
+    provider: string,
+    spendCapTier?: ManagedScanCostEvent['tier'],
+  ): ScanQueueItem {
     if (this.pendingIds.length >= MAX_PENDING) {
       throw new Error(`Queue is full (max ${MAX_PENDING} pending items).`);
     }
@@ -79,6 +93,7 @@ class ScanQueue {
       createdAt: new Date().toISOString(),
     };
     this.items.set(item.id, item);
+    if (spendCapTier) this.tiers.set(item.id, spendCapTier);
     this.pendingIds.push(item.id);
     return item;
   }
@@ -141,9 +156,16 @@ class ScanQueue {
   private async processItem(item: ScanQueueItem): Promise<void> {
     this.processingCount++;
     try {
+      // No request at run time: the tier stored at enqueue decides. A refused
+      // item fails without a provider call.
+      if (providerBudgetRefuses(this.tiers.get(item.id))) {
+        item.status = 'failed';
+        item.error = PROVIDER_BUDGET_EXHAUSTED;
+        return;
+      }
       // Metered when it runs, against the key that queued it.
       const result = await meteredScan(item.keyId, ENGINE_VERIFY_CAP, randomUUID(), item.provider,
-        () => scan(item.text, item.provider as Parameters<typeof scan>[1]));
+        () => scanWithSpend({ text: item.text, provider: item.provider, keyId: item.keyId }, () => scan(item.text, item.provider as Parameters<typeof scan>[1])));
       item.status = 'completed';
       item.result = result;
     } catch (err) {
@@ -161,8 +183,16 @@ class ScanQueue {
       .filter(i => i.status === 'completed' || i.status === 'failed' || i.status === 'cancelled')
       .sort((a, b) => new Date(b.completedAt ?? b.createdAt).getTime() - new Date(a.completedAt ?? a.createdAt).getTime());
     if (terminal.length > MAX_COMPLETED) {
-      terminal.slice(MAX_COMPLETED).forEach(i => this.items.delete(i.id));
+      terminal.slice(MAX_COMPLETED).forEach(i => {
+        this.items.delete(i.id);
+        this.tiers.delete(i.id);
+      });
     }
+  }
+
+  /** The spend-gate tier stored at enqueue, or undefined when none was stored. */
+  spendCapTierOf(id: string): ManagedScanCostEvent['tier'] | undefined {
+    return this.tiers.get(id);
   }
 
   tick(): void {

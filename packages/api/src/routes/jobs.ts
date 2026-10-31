@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey, isAdminKeyId } from '../plugins/auth.js';
 import { engineVerifyCap, requireClaimHeadroom } from '../plugins/claim-meter.js';
+import { enforceProviderSpendCap, resolveSpendCapTier } from '../plugins/provider-spend-cap.js';
 import { getJobStore } from '../store/jobs.js';
 import type { Provider } from '../store/jobs.js';
 import { outboundUrlRefusal } from '../lib/outbound-url.js';
@@ -30,14 +31,17 @@ export async function jobRoutes(fastify: FastifyInstance): Promise<void> {
     '/jobs',
     {
       config: { access: 'owner' },
-      preHandler: [requireApiKey, requireClaimHeadroom(engineVerifyCap())],
+      preHandler: [requireApiKey, enforceProviderSpendCap, requireClaimHeadroom(engineVerifyCap())],
       schema: { tags: ['Jobs'], summary: 'Create a scheduled scan job', body: POST_SCHEMA },
     },
     async (request, reply) => {
       const { text, provider, schedule, webhookUrl } = request.body;
       const refusal = webhookUrl === undefined ? null : await outboundUrlRefusal(webhookUrl);
       if (refusal) return reply.status(400).send({ error: refusal });
-      const job = getJobStore().create({ text, provider, schedule, webhookUrl, owner: requestOwner(request) });
+      const job = getJobStore().create({
+        text, provider, schedule, webhookUrl, owner: requestOwner(request),
+        spendCapTier: resolveSpendCapTier(request.keyId, request.headers['x-user-tier']),
+      });
       return reply.status(201).send(job);
     },
   );

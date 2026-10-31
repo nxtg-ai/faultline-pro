@@ -14,6 +14,8 @@
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { engineVerifyCap, requireClaimHeadroom } from '../plugins/claim-meter.js';
+import { enforceMonthlyCap } from '../plugins/usage-cap.js';
+import { enforceProviderSpendCap, resolveSpendCapTier } from '../plugins/provider-spend-cap.js';
 import { outboundUrlRefusal } from '../lib/outbound-url.js';
 import {
   getScheduleStore,
@@ -68,7 +70,7 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
     '/schedules',
     {
       config: { access: 'owner' },
-      preHandler: [requireApiKey, requireClaimHeadroom(engineVerifyCap())],
+      preHandler: [requireApiKey, enforceProviderSpendCap, requireClaimHeadroom(engineVerifyCap())],
       schema: {
         tags: ['Schedules'],
         summary: 'Create a recurring scan schedule',
@@ -84,7 +86,8 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
         if (refusal) return reply.status(400).send({ error: `${field}: ${refusal}` });
       }
       try {
-        const schedule = getScheduleStore().create(request.body, keyId);
+        const tier = resolveSpendCapTier(request.keyId, request.headers['x-user-tier']);
+        const schedule = getScheduleStore().create(request.body, keyId, tier);
         return reply.status(201).send(schedule);
       } catch (err) {
         return reply.status(400).send({ error: (err as Error).message });
@@ -216,7 +219,7 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
     '/schedules/:id/trigger',
     {
       config: { access: 'owner' },
-      preHandler: [requireApiKey, requireClaimHeadroom(engineVerifyCap())],
+      preHandler: [requireApiKey, enforceMonthlyCap, enforceProviderSpendCap, requireClaimHeadroom(engineVerifyCap())],
       schema: {
         tags: ['Schedules'],
         summary: 'Manually trigger a schedule run immediately',

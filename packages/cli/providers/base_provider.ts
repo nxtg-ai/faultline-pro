@@ -53,7 +53,12 @@ export interface LLMProvider {
 export interface Retriever {
   /** Human-readable name (e.g. 'gemini-grounding', 'tavily'). */
   readonly name: string;
-  /** Fetch grounding sources for a claim's text. Returns [] when none found. */
+  /**
+   * Fetch grounding sources for a claim's text. Resolves [] only when the
+   * search ran and found nothing. When the search could not run, it rejects,
+   * preferably with a RetrievalError (providers/retrieval-error.ts) naming the
+   * reason; the consensus engine then reports the claim as not checked.
+   */
   retrieve(claimText: string): Promise<Source[]>;
 }
 

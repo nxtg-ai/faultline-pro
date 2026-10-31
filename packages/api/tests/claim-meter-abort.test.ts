@@ -2,7 +2,7 @@
 //
 // A client that disconnects mid-scan must not leave its reservation held: the
 // key's remaining would otherwise shrink until the process restarts.
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { request as httpRequest } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -10,7 +10,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { Claim, VerificationResult } from '@nxtg/faultline/types.js';
-import { registerProvider } from '@nxtg/faultline/providers/registry.js';
+import { ENGINE_PROVIDER, ONE_SOURCE, placeholderProviderKey } from './helpers/engine-stand-in.js';
 import { buildServer } from '../src/server.js';
 import { getKeyStore, resetKeyStore } from '../src/store/keys.js';
 import { getClaimMeter, resetClaimMeter } from '../src/store/claim-meter.js';
@@ -19,21 +19,26 @@ import { resetCache } from '../src/store/cache.js';
 
 const control = { verifyCalls: 0, gate: null as Promise<void> | null };
 
-registerProvider('mock', () => ({
-  name: 'Abort fixture',
-  modelId: 'fixture-v1',
-  extractClaims: async (text: string): Promise<Claim[]> =>
-    text.split(/[.!?]+/).map((s) => s.trim()).filter(Boolean)
-      .map((s, i) => ({ id: `c${i + 1}`, text: s, type: 'fact' as const, importance: 5 })),
-  verifyClaim: async (claim: Claim): Promise<VerificationResult> => {
-    control.verifyCalls += 1;
-    if (control.gate) await control.gate;
-    return { claimId: claim.id, status: 'supported', explanation: 'ok', sources: [] };
-  },
-  generateCritiqueAndPrompt: async () => ({ critique: '', improvedPrompt: '' }),
-}) as never);
+// The fixture answers as the engine's own 'gemini' instance (helpers/engine-stand-in.ts),
+// with one source, so its verdicts are billable.
+vi.mock('@nxtg/faultline/providers/registry.js', async (importOriginal) => {
+  const { engineStandInRegistry } = await import('./helpers/engine-stand-in.js');
+  return engineStandInRegistry(await importOriginal(), () => ({
+    name: 'Abort fixture',
+    modelId: 'fixture-v1',
+    extractClaims: async (text: string): Promise<Claim[]> =>
+      text.split(/[.!?]+/).map((s) => s.trim()).filter(Boolean)
+        .map((s, i) => ({ id: `c${i + 1}`, text: s, type: 'fact' as const, importance: 5 })),
+    verifyClaim: async (claim: Claim): Promise<VerificationResult> => {
+      control.verifyCalls += 1;
+      if (control.gate) await control.gate;
+      return { claimId: claim.id, status: 'supported', explanation: 'ok', sources: ONE_SOURCE };
+    },
+    generateCritiqueAndPrompt: async () => ({ critique: '', improvedPrompt: '' }),
+  }));
+});
 
-const ENV_KEYS = ['FAULTLINE_API_KEY', 'FAULTLINE_CLAIM_METER', 'FAULTLINE_CLAIM_METER_LEDGER', 'FAULTLINE_CUSTOMER_KEYS',
+const ENV_KEYS = ['GEMINI_API_KEY', 'FAULTLINE_API_KEY', 'FAULTLINE_CLAIM_METER', 'FAULTLINE_CLAIM_METER_LEDGER', 'FAULTLINE_CUSTOMER_KEYS',
   'FAULTLINE_PROVIDER_SPEND_LEDGER', 'FAULTLINE_GROUNDING_LEDGER'];
 let saved: Record<string, string | undefined>;
 let dir: string;
@@ -44,6 +49,7 @@ beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'fl-claim-abort-'));
   process.env.FAULTLINE_API_KEY = 'claim-abort-server-key';
   process.env.FAULTLINE_CLAIM_METER = '1';
+  process.env.GEMINI_API_KEY = placeholderProviderKey();
   process.env.FAULTLINE_CUSTOMER_KEYS = 'on';
   process.env.FAULTLINE_CLAIM_METER_LEDGER = join(dir, 'claim-meter.jsonl');
   process.env.FAULTLINE_PROVIDER_SPEND_LEDGER = join(dir, 'provider-spend.jsonl');
@@ -83,7 +89,7 @@ describe('a client that disconnects mid-scan', () => {
     let open!: () => void;
     control.gate = new Promise<void>((resolve) => { open = resolve; });
     const { port } = app.server.address() as AddressInfo;
-    const body = JSON.stringify({ text: 'One checkable fact. Two checkable facts.', provider: 'mock' });
+    const body = JSON.stringify({ text: 'One checkable fact. Two checkable facts.', provider: ENGINE_PROVIDER });
     const req = httpRequest({ host: '127.0.0.1', port, path: '/scan', method: 'POST',
       headers: { 'x-api-key': key.key, 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) } });
     req.on('error', () => {});

@@ -3,10 +3,11 @@ import { GoogleGenAI } from "@google/genai";
 import type { Claim, VerificationResult } from '../types';
 import { sanitizeVerifyError } from './verify-error';
 import { recordUsage } from '../lib/usage-sink';
-import { ExtractionError, parseExtractedClaims } from '../providers/extraction-error';
+import { ExtractionError, classifyApiError, parseExtractedClaims } from '../providers/extraction-error';
 import { readVerdictReply, truncatedVerdict, unparseableVerdict } from '../providers/verdict-reply';
 import { geminiCeilingConfig } from '../providers/call-ceilings';
 import { isGeminiTruncated, OutputTruncatedError } from '../providers/output-truncation';
+import { RetrievalError } from '../providers/retrieval-error';
 
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 
@@ -251,6 +252,8 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
       // support found". apiError lets every consumer tell the two apart instead
       // of silently reporting a confident-but-false 'unverified' verdict.
       apiError: true,
+      // An empty account keeps its reason, so the CLI does not ask for a re-run that cannot succeed.
+      ...(classifyApiError(error) === 'provider_out_of_credits' ? { apiErrorReason: 'provider_out_of_credits' as const } : {}),
     };
   }
 };
@@ -278,16 +281,34 @@ export const searchSuggestionsOf = (
 };
 
 /**
+ * Why a Gemini source-search reply did not finish normally, or null when it did.
+ * Used by the consensus source search only; the default verify path keeps its
+ * own handling. A missing finishReason is read as a normal finish.
+ */
+export const retrievalBlockedReason = (response: unknown): string | null => {
+  const r = response as { promptFeedback?: { blockReason?: unknown }; candidates?: Array<{ finishReason?: unknown }> } | null;
+  if (r?.promptFeedback?.blockReason) return 'prompt blocked';
+  if (!Array.isArray(r?.candidates) || r.candidates.length === 0) return 'returned no candidate';
+  const finish = r.candidates[0]?.finishReason;
+  if (finish !== undefined && finish !== 'STOP' && finish !== 'MAX_TOKENS') return `stopped early (${String(finish)})`;
+  return null;
+};
+
+/**
  * Retrieve grounding sources for a claim using gemini's native googleSearch
  * tool — the same grounding mechanism `verifyClaim` uses, but exposed as a
  * pure retrieval primitive for the consensus engine's Retriever seam.
  *
- * Returns up to 3 de-duplicated sources. Returns [] on any API error (the
- * consensus engine treats an empty retrieval as "no shared evidence", and
- * every provider then judges from parametric knowledge against that empty set).
+ * Returns up to 3 de-duplicated sources, or [] when the search ran and found
+ * none. A search that could not run (no key, an API error, a blocked prompt, no
+ * candidate, a stop other than STOP, a reply cut off at its ceiling) throws
+ * RetrievalError with the classified reason, so the
+ * consensus engine reports the claim as not checked instead of judging it
+ * against an empty source list.
  */
 export const retrieveSources = async (claimText: string, apiKey: string): Promise<Array<{ title: string; uri: string }>> => {
-  if (!apiKey || !claimText) return [];
+  if (!apiKey) throw new RetrievalError('provider_error', new Error('no Gemini API key for the source search'));
+  if (!claimText) return [];
 
   const prompt = `Search the web for evidence relevant to this claim. Return a one-sentence summary of what you found.\n\nClaim: "${claimText}"`;
 
@@ -300,7 +321,11 @@ export const retrieveSources = async (claimText: string, apiKey: string): Promis
     });
 
     recordGeminiUsage(response, true, 'grounded-retrieve:gemini');
-    // A cut-off retrieval is a failed retrieval, handled like the API error below.
+    // A blocked prompt, no candidate, or a stop for any reason other than a normal
+    // finish is a failed retrieval, not a search that found nothing.
+    const blocked = retrievalBlockedReason(response);
+    if (blocked) throw new RetrievalError('provider_error', new Error(`Gemini source search ${blocked}`));
+    // A cut-off retrieval is a failed retrieval, classified in the catch below.
     if (isGeminiTruncated(response)) throw new OutputTruncatedError('gemini', 'retrieve');
     const sources: Array<{ title: string; uri: string }> = [];
     const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
@@ -314,8 +339,10 @@ export const retrieveSources = async (claimText: string, apiKey: string): Promis
     const uniqueSources = sources.filter((v, i, a) => a.findIndex(t => t.uri === v.uri) === i);
     return uniqueSources.slice(0, 3);
   } catch (error) {
-    console.error(`Error retrieving sources for claim:`, error);
-    return [];
+    const failure = RetrievalError.fromError(error);
+    // The reason only: the raw error can carry the provider payload.
+    console.error(`Source search failed: ${failure.reason}`);
+    throw failure;
   }
 };
 
@@ -386,6 +413,8 @@ export const verifyClaimGrounded = async (
       explanation: sanitizeVerifyError(error),
       sources,
       apiError: true,
+      // An empty account keeps its reason, so the CLI does not ask for a re-run that cannot succeed.
+      ...(classifyApiError(error) === 'provider_out_of_credits' ? { apiErrorReason: 'provider_out_of_credits' as const } : {}),
     };
   }
 };

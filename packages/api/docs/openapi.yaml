@@ -763,7 +763,7 @@ components:
         stripeCustomerId: { type: string, nullable: true, description: The key's customer at commit time. }
         scanId: { type: string, format: uuid }
         claimId: { type: string, maxLength: 58 }
-        verdict: { type: string, enum: [supported, contradicted, mixed, unverified] }
+        verdict: { type: string, enum: [supported, contradicted, mixed], description: 'Only a billable verdict (isBillableVerdict) is recorded: supported, contradicted or mixed, with at least one source, an engine-set retriever and no API error. An unverified verdict is never billed.' }
         provider: { type: string, example: gemini }
         identifier:
           type: string
@@ -1504,7 +1504,6 @@ paths:
                           supported: { type: integer }
                           contradicted: { type: integer }
                           mixed: { type: integer }
-                          unverified: { type: integer }
                   claimMeter:
                     type: object
                     description: Admin only. Fleet claim totals this month.
@@ -1576,7 +1575,7 @@ paths:
     get:
       tags: [Scan]
       summary: Stream scan results via Server-Sent Events
-      description: Request and event shapes in docs/INTEGRATION.md. Each delivered verdict is committed to the claim meter as it is sent.
+      description: Request and event shapes in docs/INTEGRATION.md. Each delivered billable verdict (isBillableVerdict) is committed to the claim meter as it is sent.
       responses:
         "200":
           description: text/event-stream

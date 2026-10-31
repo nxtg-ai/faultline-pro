@@ -24,7 +24,9 @@ describe('cost event and log row carry claim counts', () => {
     const row = JSON.parse(scanCostLogRow(event));
     expect(row).toMatchObject({ claim_count: 4, verified_count: 3 });
 
-    const old = { ...JSON.parse(scanCostLogRow(buildManagedCostEvent([], { text: 'y', provider: 'mock', claimCount: 1, tier: 'pro', latencyMs: 5 }))) };
+    // An event read back from a row written before counts existed carries neither count.
+    const { claimsExtracted: _e, claimsVerified: _v, ...legacyEvent } = buildManagedCostEvent([], { text: 'y', provider: 'mock', claimCount: 1, tier: 'pro', latencyMs: 5, claims: { extracted: 1, verified: 1 } });
+    const old = JSON.parse(scanCostLogRow(legacyEvent));
     expect(old).toMatchObject({ claim_count: null, verified_count: null });
     const path = join(dir, 'scan-cost.jsonl');
     writeFileSync(path, [JSON.stringify(row), JSON.stringify(old)].join('\n') + '\n');
@@ -45,7 +47,7 @@ describe('POST /scan records its claim counts', () => {
   });
   afterEach(async () => { await server.close(); delete process.env.FAULTLINE_API_KEY; });
 
-  it('a mock scan logs claims extracted and claims with a verdict', async () => {
+  it('a mock scan logs claims extracted, and no billable claim: the mock cites no source', async () => {
     const res = await server.inject({ method: 'POST', url: '/scan', headers: { 'x-api-key': ADMIN, 'content-type': 'application/json' }, payload: { text: 'The Eiffel Tower is in Paris. Water boils at 100 C at sea level.', provider: 'mock' } });
     expect(res.statusCode).toBe(200);
     const claims = JSON.parse(res.body).claims.length;
@@ -53,6 +55,8 @@ describe('POST /scan records its claim counts', () => {
     const events = getCostStore().getManagedEvents(1);
     expect(events.length).toBe(1);
     expect(events[0].claimsExtracted).toBe(claims);
-    expect(events[0].claimsVerified).toBe(claims);
+    // Every mock verdict is supported with zero sources: no source, no bill.
+    expect(JSON.parse(res.body).verifications.c1.sources).toEqual([]);
+    expect(events[0].claimsVerified).toBe(0);
   });
 });

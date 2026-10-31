@@ -74,7 +74,9 @@ function explainStatus(status: number, body: string): string {
     case 429:
       return 'rate limit or monthly cap reached (429). This is NOT a verdict on your claims.';
     case 502:
-      return `the API could not extract claims from the text (502): ${body}. Nothing was verified.`;
+      return /"reason"\s*:\s*"provider_out_of_credits"/.test(body)
+        ? `the API could not extract claims from the text (502): ${body}. Nothing was verified. The provider account is out of credits; retrying will not help until it has credits again.`
+        : `the API could not extract claims from the text (502): ${body}. Nothing was verified.`;
     case 503:
       return `the API is not ready to scan (503): ${body}`;
     default:

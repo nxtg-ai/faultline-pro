@@ -25,9 +25,13 @@
  *     and --resume restores the counts from that ledger              (A2.7)
  *   - the engine model or commit changing mid-run stops the run      (§5)
  *
- * The admin key comes from FAULTLINE_ADMIN_KEY, else the FAULTLINE_API_KEY= line
- * of ~/.config/faultline/hosted-api-key.env. It is sent as x-api-key and never
- * printed.
+ * The key is the measurement key when one is set: FAULTLINE_MEASUREMENT_KEY, else
+ * the FAULTLINE_MEASUREMENT_KEY= line of ~/.config/faultline/measurement-key.env.
+ * Its spend rows on the API carry tier 'measurement', apart from web traffic.
+ * With no measurement key it falls back to the admin key (FAULTLINE_ADMIN_KEY,
+ * else the FAULTLINE_API_KEY= line of ~/.config/faultline/hosted-api-key.env)
+ * and prints a warning that the run's spend is not labelled. The key is sent as
+ * x-api-key and never printed.
  *
  * Exit codes:
  *   0 all items answered        2 refused before sending anything (hash, args,
@@ -72,6 +76,12 @@ export const MAX_CALLS = MAX_RETRIES + 1;
 const REQUEST_TIMEOUT_MS = 10 * 60_000;
 /** Fixed location of the hosted admin key; never derived from input. */
 const KEY_FILE = `${homedir()}/.config/faultline/hosted-api-key.env`;
+/** Fixed location of the measurement key; never derived from input. */
+const MEASUREMENT_KEY_FILE = `${homedir()}/.config/faultline/measurement-key.env`;
+/** Printed when a run falls back to the admin key. Fixed text: it never holds a key. */
+export const UNLABELLED_WARNING =
+  'WARNING: no measurement key (FAULTLINE_MEASUREMENT_KEY or ~/.config/faultline/measurement-key.env); '
+  + 'using the admin key, so this run is not labelled: its spend rows read as enterprise (the admin key\'s label), not measurement.';
 
 /** Progress and stop lines. They never contain the key: it only goes into a header. */
 function writeLine(stream, line) {
@@ -135,16 +145,47 @@ function defaultRunId(set, now = new Date()) {
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
 
+/** Fixed env-file line patterns: `[export ]NAME=value`. */
+const KEY_LINE = Object.freeze({
+  FAULTLINE_API_KEY: /^\s*(?:export\s+)?FAULTLINE_API_KEY\s*=\s*(.*)$/,
+  FAULTLINE_MEASUREMENT_KEY: /^\s*(?:export\s+)?FAULTLINE_MEASUREMENT_KEY\s*=\s*(.*)$/,
+});
+
+/** The value of `name=` in an env file, or '' when the file or the line is missing. */
+function readKeyLine(file, name) {
+  if (!existsSync(file)) return '';
+  const pattern = KEY_LINE[name];
+  for (const line of readFileSync(file, 'utf8').split('\n')) {
+    const match = pattern.exec(line);
+    if (match) return match[1].trim().replace(/^(['"])(.*)\1$/, '$2');
+  }
+  return '';
+}
+
 /** The admin key, from env or the hosted-api-key file. Never logged. */
 export function readAdminKey(env = process.env, file = KEY_FILE) {
   const fromEnv = (env.FAULTLINE_ADMIN_KEY ?? '').trim();
   if (fromEnv) return fromEnv;
-  if (!existsSync(file)) return '';
-  for (const line of readFileSync(file, 'utf8').split('\n')) {
-    const match = /^\s*(?:export\s+)?FAULTLINE_API_KEY\s*=\s*(.*)$/.exec(line);
-    if (match) return match[1].trim().replace(/^(['"])(.*)\1$/, '$2');
-  }
-  return '';
+  return readKeyLine(file, 'FAULTLINE_API_KEY');
+}
+
+/** The measurement key, from env or the measurement-key file. Never logged. */
+export function readMeasurementKey(env = process.env, file = MEASUREMENT_KEY_FILE) {
+  const fromEnv = (env.FAULTLINE_MEASUREMENT_KEY ?? '').trim();
+  if (fromEnv) return fromEnv;
+  return readKeyLine(file, 'FAULTLINE_MEASUREMENT_KEY');
+}
+
+/**
+ * The key a measurement run sends: the measurement key when one is set
+ * (`labelled: true`), else the admin key (`labelled: false`; the caller prints
+ * UNLABELLED_WARNING), else `{ key: '' }`. Never logged.
+ */
+export function readRunKey(env = process.env, files = {}) {
+  const measurement = readMeasurementKey(env, files.measurement ?? MEASUREMENT_KEY_FILE);
+  if (measurement) return { key: measurement, labelled: true };
+  const admin = readAdminKey(env, files.admin ?? KEY_FILE);
+  return { key: admin, labelled: false };
 }
 
 export function sha256File(file) {
@@ -228,11 +269,16 @@ function recordCalls(file, entries) {
 
 // ── HTTP ─────────────────────────────────────────────────────────────────────
 
+/**
+ * GET /health is a public read and the measurement key may not call it (403), so it goes out with
+ * no key header at all. Every other request carries the run key.
+ */
 function makeClient(api, key) {
   return async function request(method, route, body) {
+    const isPublic = method === 'GET' && route === '/health';
     const response = await fetch(`${api}${route}`, {
       method,
-      headers: { 'x-api-key': key, ...(body ? { 'content-type': 'application/json' } : {}) },
+      headers: { ...(isPublic ? {} : { 'x-api-key': key }), ...(body ? { 'content-type': 'application/json' } : {}) },
       body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
@@ -254,7 +300,7 @@ async function readGroundedPrompts(request, strict = false) {
   const allowance = json?.groundingAllowance;
   const count = allowance?.groundedPrompts;
   if (status !== 200 || typeof count !== 'number') {
-    throw new RunStop(EXIT.ERROR, `GET /usage answered ${status} without groundingAllowance.groundedPrompts (is the key the admin key?)`);
+    throw new RunStop(EXIT.ERROR, `GET /usage answered ${status} without groundingAllowance.groundedPrompts (is the key the measurement or admin key?)`);
   }
   // Branch mode only (strict): a count the guard cannot trust stops the run rather than letting it
   // spend (codex review of f5d637c). Deployed mode keeps the original check, unchanged.
@@ -362,7 +408,7 @@ async function postBatch(request, batch, stopOnNoAnswer = false) {
   if (status === 503 && /budget/i.test(String(json?.error ?? ''))) {
     throw new RunStop(EXIT.SPEND_CAP, 'STOP: the provider-spend cap is exhausted (503). Resume with --resume after the budget resets.');
   }
-  if (status === 401 || status === 403) throw new RunStop(EXIT.ERROR, `the API refused the admin key (${status})`);
+  if (status === 401 || status === 403) throw new RunStop(EXIT.ERROR, `the API refused the key (${status})`);
   if (status === 400 || (status === 503 && json?.error === 'provider_not_configured')) {
     throw new RunStop(EXIT.ERROR, `the API rejected the batch (${status} ${json?.error ?? ''})`);
   }
@@ -469,13 +515,18 @@ function summarize(file, expected, log) {
  */
 export async function runAccuracy(options, deps = {}) {
   const log = deps.log ?? ((line) => writeLine(process.stdout, line));
-  const key = deps.key ?? readAdminKey();
+  const picked = deps.key !== undefined ? { key: deps.key, labelled: true } : readRunKey(deps.env ?? process.env);
+  const key = picked.key;
   try {
     const actual = sha256File(options.gold);
     if (actual !== GOLD_SHA256) {
       throw new RunStop(EXIT.REFUSED, `REFUSED (prereg §2): gold sha256 ${actual} is not ${GOLD_SHA256}`);
     }
-    if (!key) throw new RunStop(EXIT.REFUSED, 'REFUSED: no admin key (set FAULTLINE_ADMIN_KEY or ~/.config/faultline/hosted-api-key.env)');
+    if (!key) {
+      throw new RunStop(EXIT.REFUSED, 'REFUSED: no measurement or admin key (set FAULTLINE_MEASUREMENT_KEY or ~/.config/faultline/measurement-key.env; '
+        + 'unlabelled fallback: FAULTLINE_ADMIN_KEY or ~/.config/faultline/hosted-api-key.env)');
+    }
+    if (!picked.labelled) log(UNLABELLED_WARNING);
     const items = selectItems(options.set, loadGold(options.gold), options.subsample);
     const ledger = ledgerPath(options.out);
     if (!options.resume && (existsSync(options.out) || existsSync(ledger))) {

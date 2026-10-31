@@ -11,8 +11,16 @@
 //  2. Each verifying route is called again with a metered key whose cap is 0.
 //     It must answer 402 claim_cap_reached, and no claim carrying its new marker
 //     may reach the provider, even after the runners are driven.
+//  3. Every route that sends a caller's text to a provider in any way (extract,
+//     verify or critique), admin routes and GraphQL included, is either one of
+//     the routes swept in step 2 or listed in NOT_METERED with a one-line
+//     reason. A listed route that no longer reaches a provider fails too.
 //  Red control: a route added to the test server that calls the engine without
 //  the meter is found in step 1 and flagged in step 2.
+//
+//  The provider is a fixture answering as the engine's own 'gemini' instance
+//  (helpers/engine-stand-in.ts), so its sourced verdicts are billable under
+//  isBillableVerdict and every verifying route commits rows.
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import type { FastifyInstance, RouteOptions } from 'fastify';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -20,7 +28,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import AdmZip from 'adm-zip';
 import type { Claim, VerificationResult } from '@nxtg/faultline/types.js';
-import { registerProvider } from '@nxtg/faultline/providers/registry.js';
+import { ENGINE_PROVIDER, ONE_SOURCE, placeholderProviderKey } from './helpers/engine-stand-in.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { buildServer } from '../src/server.js';
 import { requireApiKey } from '../src/plugins/auth.js';
@@ -42,23 +50,45 @@ vi.mock('@nxtg/faultline/cli/extract.js', () => ({
 
 /** Every claim text the provider was asked to verify. */
 const verified: string[] = [];
+/** Everything any provider call was given (extract, verify, critique), as JSON. */
+const touched: string[] = [];
 
-registerProvider('mock', () => ({
-  name: 'Route-table fixture',
-  modelId: 'fixture-v1',
-  extractClaims: async (text: string): Promise<Claim[]> =>
-    text.split(/[.!?]+/).map((s) => s.trim()).filter(Boolean)
-      .map((s, i) => ({ id: `c${i + 1}`, text: s, type: 'fact' as const, importance: 5 })),
-  verifyClaim: async (claim: Claim): Promise<VerificationResult> => {
-    verified.push(claim.text);
-    return { claimId: claim.id, status: 'supported', explanation: 'ok', sources: [] };
-  },
-  generateCritiqueAndPrompt: async () => ({ critique: '', improvedPrompt: '' }),
-}) as never);
+vi.mock('@nxtg/faultline/providers/registry.js', async (importOriginal) => {
+  const { engineStandInRegistry } = await import('./helpers/engine-stand-in.js');
+  return engineStandInRegistry(await importOriginal(), () => ({
+    name: 'Route-table fixture',
+    modelId: 'fixture-v1',
+    extractClaims: async (text: string): Promise<Claim[]> => {
+      touched.push(JSON.stringify(text));
+      return text.split(/[.!?]+/).map((s) => s.trim()).filter(Boolean)
+        .map((s, i) => ({ id: `c${i + 1}`, text: s, type: 'fact' as const, importance: 5 }));
+    },
+    verifyClaim: async (claim: Claim): Promise<VerificationResult> => {
+      verified.push(claim.text);
+      touched.push(JSON.stringify(claim.text));
+      return { claimId: claim.id, status: 'supported', explanation: 'ok', sources: ONE_SOURCE };
+    },
+    generateCritiqueAndPrompt: async (...args: unknown[]) => {
+      touched.push(JSON.stringify(args));
+      return { critique: '', improvedPrompt: '' };
+    },
+  }));
+});
+
+/**
+ * Routes that reach a provider and do not reserve through the claim meter, each
+ * with the reason. Everything else that reaches a provider must be metered.
+ */
+const NOT_METERED: Readonly<Record<string, string>> = {
+  'POST /scan/full/estimate': 'extracts claims to price a full scan and verifies none; POST /scan/full reserves the claims it prices',
+  'POST /critique': 'critiques a prompt and verifies no claim, so there is no claim to bill; the burst limiter and fleet spend cap gate it',
+  'POST /admin/verify-claims': 'admin only (server, admin and measurement keys), and those keys are never metered',
+  'POST /graphql': 'its scan and scanBatch resolvers are admin only and GraphQL is off unless FAULTLINE_GRAPHQL=on; admin keys are never metered',
+};
 
 const RED_CONTROL = 'POST /test/unmetered-scan';
 const ENV_KEYS = [
-  'FAULTLINE_API_KEY', 'FAULTLINE_CLAIM_METER', 'FAULTLINE_CLAIM_METER_LEDGER', 'FAULTLINE_KEY_IDEMPOTENCY_LEDGER',
+  'GEMINI_API_KEY', 'FAULTLINE_GRAPHQL', 'FAULTLINE_API_KEY', 'FAULTLINE_CLAIM_METER', 'FAULTLINE_CLAIM_METER_LEDGER', 'FAULTLINE_KEY_IDEMPOTENCY_LEDGER',
   'FAULTLINE_PROVIDER_SPEND_LEDGER', 'FAULTLINE_FULL_JOBS_LEDGER', 'FAULTLINE_GROUNDING_LEDGER',
 ];
 let saved: Record<string, string | undefined>;
@@ -72,6 +102,8 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'fl-claim-route-table-'));
   process.env.FAULTLINE_API_KEY = 'claim-route-table-server-key';
   process.env.FAULTLINE_CLAIM_METER = '1';
+  process.env.GEMINI_API_KEY = placeholderProviderKey();
+  process.env.FAULTLINE_GRAPHQL = 'on';
   process.env.FAULTLINE_CLAIM_METER_LEDGER = join(dir, 'claim-meter.jsonl');
   process.env.FAULTLINE_KEY_IDEMPOTENCY_LEDGER = join(dir, 'key-idempotency.jsonl');
   process.env.FAULTLINE_PROVIDER_SPEND_LEDGER = join(dir, 'provider-spend.jsonl');
@@ -109,7 +141,7 @@ async function serverWithRoutes(withRedControl: boolean): Promise<{ app: Fastify
       config: { access: 'key' },
       preHandler: requireApiKey,
       schema: { body: { type: 'object', required: ['text'], properties: { text: { type: 'string' } } } },
-    }, async (request) => scan(request.body.text, 'mock'));
+    }, async (request) => scan(request.body.text, ENGINE_PROVIDER));
   }
   await app.ready();
   return { app, rows: [...rows.values()].sort((a, b) => `${a.url} ${a.method}`.localeCompare(`${b.url} ${b.method}`)) };
@@ -120,7 +152,7 @@ const fill = (url: string, value: string) => url.replace(/:[A-Za-z]+/g, value).r
 /** A value that satisfies a JSON schema, its free-text strings carrying `marker` as a sentence. */
 function sample(schema: unknown, marker: string, field = ''): unknown {
   const s = (schema ?? {}) as Record<string, unknown>;
-  if (Array.isArray(s.enum)) return s.enum.includes('mock') ? 'mock' : s.enum[0];
+  if (Array.isArray(s.enum)) return s.enum.includes(ENGINE_PROVIDER) ? ENGINE_PROVIDER : s.enum[0];
   if (s.default !== undefined) return s.default;
   const type = Array.isArray(s.type) ? s.type.find((t) => t !== 'null') : s.type;
   switch (type) {
@@ -137,7 +169,7 @@ function sample(schema: unknown, marker: string, field = ''): unknown {
       if (s.format === 'email') return 'probe@example.com';
       if (s.format === 'date-time') return '2099-01-01T00:00:00Z';
       if (field === 'cron') return '0 0 * * 0';
-      if (field === 'provider') return 'mock';
+      if (field === 'provider') return ENGINE_PROVIDER;
       if (field === 'schedule') return 'hourly';
       if (s.pattern) return `${marker.toLowerCase()}-probe-1234`;
       const text = `${marker} says the Eiffel Tower is in Paris.`;
@@ -177,30 +209,39 @@ async function probe(app: FastifyInstance, r: RouteRow, key: Key, marker: string
 
   switch (name) {
     case 'POST /scan/upload': {
-      const body = multipart([{ name: 'provider', value: 'mock' }, { name: 'file', file: { filename: 'probe.pdf', mimetype: 'application/pdf', data: Buffer.from(sentence(marker)) } }]);
+      const body = multipart([{ name: 'provider', value: ENGINE_PROVIDER }, { name: 'file', file: { filename: 'probe.pdf', mimetype: 'application/pdf', data: Buffer.from(sentence(marker)) } }]);
       return app.inject({ method: 'POST', url: r.url, headers: { 'x-api-key': key.key, 'content-type': `multipart/form-data; boundary=${BOUNDARY}` }, payload: body });
     }
     case 'POST /scan/bulk': {
       const zip = new AdmZip();
       zip.addFile('probe.txt', Buffer.from(sentence(marker)));
       const body = multipart([{ name: 'archive', file: { filename: 'probe.zip', mimetype: 'application/zip', data: zip.toBuffer() } }]);
-      return app.inject({ method: 'POST', url: `${r.url}?provider=mock`, headers: { 'x-api-key': key.key, 'content-type': `multipart/form-data; boundary=${BOUNDARY}` }, payload: body });
+      return app.inject({ method: 'POST', url: `${r.url}?provider=${ENGINE_PROVIDER}`, headers: { 'x-api-key': key.key, 'content-type': `multipart/form-data; boundary=${BOUNDARY}` }, payload: body });
     }
     case 'POST /scan/full': {
-      const est = await send('POST', '/scan/full/estimate', { text: sentence(marker), provider: 'mock' });
+      const est = await send('POST', '/scan/full/estimate', { text: sentence(marker), provider: ENGINE_PROVIDER });
       const estimateId = (est.json() as { estimateId?: string }).estimateId ?? 'none';
       return send('POST', r.url, { estimateId }, { 'idempotency-key': `idem-${marker.toLowerCase()}-0001` });
     }
     case 'POST /scan/template/:id': {
-      const tpl = getTemplateStore().create(`tpl-${marker}`, { provider: 'mock' }, key.id);
-      return send('POST', fill(r.url, tpl.id), { text: sentence(marker), provider: 'mock' });
+      const tpl = getTemplateStore().create(`tpl-${marker}`, { provider: ENGINE_PROVIDER }, key.id);
+      return send('POST', fill(r.url, tpl.id), { text: sentence(marker), provider: ENGINE_PROVIDER });
     }
     case 'POST /schedules/:id/trigger': {
-      const schedule = getScheduleStore().create({ name: `s-${marker}`, text: sentence(marker), provider: 'mock', cron: '0 0 * * 0' } as never, key.id);
+      const schedule = getScheduleStore().create({ name: `s-${marker}`, text: sentence(marker), provider: ENGINE_PROVIDER, cron: '0 0 * * 0' } as never, key.id);
       return send('POST', fill(r.url, schedule.id));
     }
+    case 'POST /graphql':
+      return send('POST', r.url, { query: `{ scan(text: ${JSON.stringify(sentence(marker))}, provider: "${ENGINE_PROVIDER}") { id } }` },
+        { authorization: `Bearer ${key.key}` });
+    case 'POST /critique': {
+      // Critique calls the provider only for claims that did not pass.
+      const claim = { id: 'c1', text: sentence(marker), type: 'fact', importance: 5 };
+      const verifications = { c1: { claimId: 'c1', status: 'unverified', explanation: 'none', sources: [] } };
+      return send('POST', r.url, { claims: [claim], verifications, text: sentence(marker), provider: ENGINE_PROVIDER });
+    }
     case 'POST /scan/compliance/:template':
-      return send('POST', fill(r.url, 'healthcare'), { text: sentence(marker), provider: 'mock' });
+      return send('POST', fill(r.url, 'healthcare'), { text: sentence(marker), provider: ENGINE_PROVIDER });
     default: break;
   }
 
@@ -211,7 +252,7 @@ async function probe(app: FastifyInstance, r: RouteRow, key: Key, marker: string
     const query = new URLSearchParams(Object.fromEntries(Object.entries(props).map(([k, v]) => [k, String(sample(v, marker, k))])));
     return send(r.method, query.size > 0 ? `${url}?${query}` : url);
   }
-  const body = (schema?.body ? sample(schema.body, marker) : { text: sentence(marker), provider: 'mock' }) as object;
+  const body = (schema?.body ? sample(schema.body, marker) : { text: sentence(marker), provider: ENGINE_PROVIDER }) as object;
   return send(r.method, url, body);
 }
 
@@ -228,6 +269,7 @@ async function driveRunners(): Promise<void> {
 
 const markerFor = (phase: string, i: number) => `MK${phase}${i}Q`;
 const reached = (marker: string) => verified.some((text) => text.includes(marker));
+const reachedProvider = (marker: string) => touched.some((text) => text.includes(marker));
 
 function resetState(): void {
   resetRateLimiter();
@@ -248,6 +290,22 @@ async function findVerifyingRoutes(app: FastifyInstance, rows: RouteRow[], key: 
   for (const [i, r] of candidates.entries()) await probe(app, r, key, markers[i]);
   await driveRunners();
   return candidates.filter((_, i) => reached(markers[i]));
+}
+
+/**
+ * Step 3: every route that sends a caller's text to any provider call. Routes
+ * open to customer keys are called with `customerKey`, admin routes and GraphQL
+ * with the server key.
+ */
+async function findProviderRoutes(app: FastifyInstance, rows: RouteRow[], customerKey: Key, serverKey: Key): Promise<string[]> {
+  const markers = rows.map((_, i) => markerFor('C', i));
+  for (const [i, r] of rows.entries()) {
+    // GraphQL takes any key at the door, but its scan resolvers are admin only.
+    const customerRoute = (r.access === 'key' || r.access === 'owner') && r.url !== '/graphql';
+    await probe(app, r, customerRoute ? customerKey : serverKey, markers[i]);
+  }
+  await driveRunners();
+  return rows.filter((_, i) => reachedProvider(markers[i])).map((r) => `${r.method} ${r.url}`);
 }
 
 interface Violation { route: string; reason: string }
@@ -295,10 +353,23 @@ describe('every verifying route is metered', () => {
 
       const zero = getKeyStore().create('zero', ['scan', 'pro'], undefined, { claimCap: 0, metered: true });
       expect(await sweepZeroCap(app, verifying, zero)).toEqual([]);
+
+      // Step 3: nothing else reaches a provider unless it is listed with a reason.
+      resetState();
+      const server = { id: 'admin', key: process.env.FAULTLINE_API_KEY as string };
+      const roomy2 = getKeyStore().create('roomy-2', ['scan', 'pro'], undefined, { claimCap: 1_000_000, metered: true });
+      const providerRoutes = await findProviderRoutes(app, rows.filter((r) => r.method !== 'DELETE'), roomy2, server);
+      expect(providerRoutes).toEqual(expect.arrayContaining(names));
+      const unaccounted = providerRoutes.filter((route) => !names.includes(route) && !(route in NOT_METERED));
+      expect(unaccounted).toEqual([]);
+      // Every exemption names a route that does reach a provider and is not metered.
+      expect(Object.keys(NOT_METERED).filter((route) => !providerRoutes.includes(route))).toEqual([]);
+      expect(Object.keys(NOT_METERED).filter((route) => names.includes(route))).toEqual([]);
+      for (const reason of Object.values(NOT_METERED)) expect(reason.length).toBeGreaterThan(20);
     } finally {
       await app.close();
     }
-  }, 60_000);
+  }, 90_000);
 
   it('red control: a route that calls the engine without the meter is flagged', async () => {
     verified.length = 0;

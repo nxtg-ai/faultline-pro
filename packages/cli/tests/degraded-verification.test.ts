@@ -26,6 +26,7 @@ vi.mock('../providers/registry.js', () => ({
     verifyClaim:               mockVerifyClaim,
     generateCritiqueAndPrompt: vi.fn().mockResolvedValue({ critique: '', improvedPrompt: '' }),
   })),
+  builtInProviderIdOf: vi.fn(() => undefined),
 }));
 
 import { scan } from '../cli/scan.js';

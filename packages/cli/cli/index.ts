@@ -160,17 +160,25 @@ function checkApiKey(providerName: string | undefined): { exitCode: number; outp
  *
  * The diagnostic goes to STDERR so machine-readable stdout (the `--output-format
  * json` consumed by CI gates) stays parseable. Returns a non-zero result for the
- * caller to short-circuit on, or `null` when the scan was not degraded.
+ * caller to short-circuit on, or `null` when the scan was not degraded. When
+ * every unchecked claim failed because the provider account is out of credits,
+ * the diagnostic says so instead of asking for a re-run that cannot succeed.
  */
 function degradedGateFailure(
-  isDegraded: boolean,
+  results: ReadonlyArray<import('./scan.js').ScanResult>,
   output: string,
 ): { exitCode: number; output: string } | null {
-  if (!isDegraded) return null;
-  process.stderr.write(
-    '✗ Faultline gate FAILED: verification was degraded — transient provider errors ' +
-    'left claims unverified, so the result cannot be trusted. Re-run when the provider ' +
-    'is healthy. (--fail-on fails closed on degraded scans.)\n',
+  const degraded = results.filter((r) => r.degraded === true);
+  if (degraded.length === 0) return null;
+  const unchecked = degraded.flatMap((r) => Object.values(r.verifications ?? {}).filter((v) => v.apiError === true));
+  const outOfCredits = unchecked.length > 0 && unchecked.every((v) => v.apiErrorReason === 'provider_out_of_credits');
+  process.stderr.write(outOfCredits
+    ? '✗ Faultline gate FAILED: verification was degraded — the verification provider account is out of ' +
+      'credits, so claims were not checked and the result cannot be trusted. Re-running will not help until ' +
+      'the provider account has credits again. (--fail-on fails closed on degraded scans.)\n'
+    : '✗ Faultline gate FAILED: verification was degraded — transient provider errors ' +
+      'left claims unverified, so the result cannot be trusted. Re-run when the provider ' +
+      'is healthy. (--fail-on fails closed on degraded scans.)\n',
   );
   return { exitCode: 1, output };
 }
@@ -919,10 +927,7 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
         }, null, 2);
 
         if (effectiveFailOn) {
-          const degradedFail = degradedGateFailure(
-            templateResults.some(tr => tr.result.degraded === true),
-            templateOutput,
-          );
+          const degradedFail = degradedGateFailure(templateResults.map(tr => tr.result), templateOutput);
           if (degradedFail) return degradedFail;
           // Aggregate counts across all template results
           const totalCounts = { findings: 0, critical: 0, high: 0, medium: 0, low: 0 };
@@ -981,10 +986,7 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
         printConversionNudge(batchResult.summary.highestRisk, flags['no-nudge'] === 'true');
 
         if (effectiveFailOn) {
-          const degradedFail = degradedGateFailure(
-            batchResult.results.some(fr => fr.result.degraded === true),
-            batchOutput,
-          );
+          const degradedFail = degradedGateFailure(batchResult.results.map(fr => fr.result), batchOutput);
           if (degradedFail) return degradedFail;
           const totalCounts = { findings: 0, critical: 0, high: 0, medium: 0, low: 0 };
           for (const fr of batchResult.results) {
@@ -1043,7 +1045,7 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
         const fileOutput = renderReportAs(fileResult, outputFormat, fileSarifOptions);
 
         if (effectiveFailOn) {
-          const degradedFail = degradedGateFailure(fileResult.degraded === true, fileOutput);
+          const degradedFail = degradedGateFailure([fileResult], fileOutput);
           if (degradedFail) return degradedFail;
           const counts = countFromScanResult(fileResult as unknown as Record<string, unknown>);
           const passed = checkThreshold(effectiveFailOn, counts);
@@ -1098,7 +1100,7 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
       printConversionNudge(result.overallRisk, flags['no-nudge'] === 'true');
 
       if (effectiveFailOn) {
-        const degradedFail = degradedGateFailure(result.degraded === true, scanOutput);
+        const degradedFail = degradedGateFailure([result], scanOutput);
         if (degradedFail) return degradedFail;
         const counts = countFromScanResult(result as unknown as Record<string, unknown>);
         const passed = checkThreshold(effectiveFailOn, counts);

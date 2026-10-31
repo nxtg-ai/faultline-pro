@@ -143,20 +143,14 @@ describe('consensus', () => {
     expect(Date.parse(v.provenance!.verifiedAt)).toBeGreaterThanOrEqual(Date.parse(v.provenance!.retrievedAt!));
   });
 
-  it('a failed retrieval leaves retrievedAt absent', async () => {
+  it('a failed retrieval is not checked, so it carries no provenance at all', async () => {
     const v = await consensusVerify(CLAIM, { name: 'down-retriever', retrieve: async () => { throw new Error('down'); } } as never, [voter('openai', 'gpt-x', 'supported')]);
-    if (v.apiError) {
-      expect(v.provenance).toBeUndefined();
-    } else {
-      expect(v.provenance!.provider).toBe('consensus');
-      expect('retrievedAt' in v.provenance!).toBe(false);
-      expect('retriever' in v.provenance!).toBe(false);
-    }
+    expect(v.apiError).toBe(true);
+    expect(v.provenance).toBeUndefined();
   });
 });
 
-// Runs last: it replaces the built-in 'gemini' provider in this process.
-describe('Fable seat item 5 findings, pinned', () => {
+describe('provenance edge cases, pinned', () => {
   let savedKey: string | undefined;
   beforeAll(() => { savedKey = process.env.GEMINI_API_KEY; process.env.GEMINI_API_KEY = 'fixture-unused'; });
   afterAll(() => { if (savedKey === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = savedKey; });
@@ -168,11 +162,15 @@ describe('Fable seat item 5 findings, pinned', () => {
     expect(r.verifications.c1.provenance!.retrievedAt).toBeUndefined();
   });
 
-  it('even the gemini id cannot backdate its retrieval: retrievedAt is the call-site time', async () => {
-    registerFixture('gemini', (c) => ({
-      claimId: c.id, status: 'supported', explanation: 'ok', sources: [],
-      provenance: { provider: 'gemini', model: 'm', verifiedAt: '2026-01-01T00:00:00.000Z', retriever: 'gemini-grounding', retrievedAt: '2026-01-01T00:00:00.000Z' },
-    }));
+  it('the built-in gemini path stamps retrieval at the call-site time', async () => {
+    // The real built-in gemini provider; Google's reply is mocked. Its own
+    // provenance stamp is replaced by the engine's call-site time.
+    mockGenerateContent.mockReset();
+    mockGenerateContent.mockImplementation(async (req: { config?: { tools?: unknown[] } }) => (
+      Array.isArray(req.config?.tools) && req.config!.tools!.length > 0
+        ? { text: '{"status":"supported","explanation":"ok"}', modelVersion: 'gemini-2.5-flash-001', candidates: [] }
+        : { text: JSON.stringify([CLAIM]), candidates: [] }
+    ));
     const before = Date.now();
     const r = await scan(CLAIM.text, 'gemini');
     const p = r.verifications.c1.provenance!;

@@ -168,6 +168,9 @@ export function formatGuardReport(report: GuardReport, failOn?: FailOn): string 
       if (c.verdict === 'UNCHECKED' && c.unchecked_reason === 'provider_error') {
         lines.push('       NOT CHECKED — the provider errored. This is not a verdict.');
       }
+      if (c.verdict === 'UNCHECKED' && c.unchecked_reason === 'provider_out_of_credits') {
+        lines.push('       NOT CHECKED — the provider account is out of credits. Re-running will not help until it has credits. This is not a verdict.');
+      }
       if (c.verdict === 'UNCHECKED' && c.unchecked_reason === 'provider_unparseable') {
         lines.push("       NOT CHECKED — the provider's reply could not be read. This is not a verdict.");
       }

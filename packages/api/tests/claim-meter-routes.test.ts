@@ -1,24 +1,27 @@
 // Validates: claim meter and usage-record contract
 //
-// Every test runs the real engine through Fastify inject. The 'mock' provider
-// is replaced by a fixture that splits text into one fact claim per sentence
-// and answers each claim from `control.verdicts`, so a test can count provider
+// Every test runs the real engine through Fastify inject. Every provider the
+// engine resolves is a fixture answering as the engine's own 'gemini' instance
+// (helpers/engine-stand-in.ts), so its sourced verdicts are billable. The fixture splits text into one fact
+// claim per sentence and answers each claim from `control.verdicts`, so a test can count provider
 // calls, return chosen verdicts, fail extraction, or hold verifies in flight.
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import type { Claim, VerificationResult } from '@nxtg/faultline/types.js';
-import { registerProvider } from '@nxtg/faultline/providers/registry.js';
+import { ENGINE_PROVIDER, ONE_SOURCE, placeholderProviderKey } from './helpers/engine-stand-in.js';
 import { buildServer } from '../src/server.js';
 import { getKeyStore, resetKeyStore, type KeyScope } from '../src/store/keys.js';
 import { getClaimMeter, resetClaimMeter, type UsageRecord } from '../src/store/claim-meter.js';
 import { jobRecordScanId } from '../src/lib/claim-meter.js';
 import { resetRateLimiter } from '../src/store/ratelimit.js';
 import { resetUsageMeter } from '../src/store/usage.js';
-import { resetCache } from '../src/store/cache.js';
+import { getScanCache, resetCache } from '../src/store/cache.js';
+import { cacheCaller } from '../src/lib/cache-caller.js';
+import { resolveVerifyPolicy } from '../src/plugins/verify-cap.js';
 import { resetProviderSpendLedger } from '../src/store/provider-spend.js';
 import { resetCircuitBreaker } from '../src/store/circuit-breaker.js';
 import { getFullScanJobStore, resetFullScanJobStore, setFullScanLedgerAppendForTests } from '../src/store/full-scan-jobs.js';
@@ -39,26 +42,29 @@ const control = {
   gate: null as Promise<void> | null,
 };
 
-registerProvider('mock', () => ({
-  name: 'Meter fixture',
-  modelId: 'fixture-v1',
-  extractClaims: async (text: string): Promise<Claim[]> => {
-    control.extractCalls += 1;
-    if (control.extractFails) throw new Error('extraction exploded');
-    return text.split(/[.!?]+/).map((s) => s.trim()).filter(Boolean)
-      .map((s, i) => ({ id: `c${i + 1}`, text: s, type: 'fact' as const, importance: 5 }));
-  },
-  verifyClaim: async (claim: Claim): Promise<VerificationResult> => {
-    control.verifyCalls += 1;
-    if (control.gate) await control.gate;
-    return { claimId: claim.id, status: 'supported', explanation: 'ok', sources: [], ...control.verdicts[claim.id] } as VerificationResult;
-  },
-  generateCritiqueAndPrompt: async () => ({ critique: '', improvedPrompt: '' }),
-}) as never);
+vi.mock('@nxtg/faultline/providers/registry.js', async (importOriginal) => {
+  const { engineStandInRegistry } = await import('./helpers/engine-stand-in.js');
+  return engineStandInRegistry(await importOriginal(), () => ({
+    name: 'Meter fixture',
+    modelId: 'fixture-v1',
+    extractClaims: async (text: string): Promise<Claim[]> => {
+      control.extractCalls += 1;
+      if (control.extractFails) throw new Error('extraction exploded');
+      return text.split(/[.!?]+/).map((s) => s.trim()).filter(Boolean)
+        .map((s, i) => ({ id: `c${i + 1}`, text: s, type: 'fact' as const, importance: 5 }));
+    },
+    verifyClaim: async (claim: Claim): Promise<VerificationResult> => {
+      control.verifyCalls += 1;
+      if (control.gate) await control.gate;
+      return { claimId: claim.id, status: 'supported', explanation: 'ok', sources: ONE_SOURCE, ...control.verdicts[claim.id] } as VerificationResult;
+    },
+    generateCritiqueAndPrompt: async () => ({ critique: '', improvedPrompt: '' }),
+  }));
+});
 
 const SERVER_KEY = 'claim-meter-server-key-0123456789';
 const ENV_KEYS = [
-  'FAULTLINE_API_KEY', 'FAULTLINE_CLAIM_METER', 'FAULTLINE_CLAIM_METER_LEDGER', 'FAULTLINE_KEY_IDEMPOTENCY_LEDGER',
+  'GEMINI_API_KEY', 'OPENAI_API_KEY', 'FAULTLINE_API_KEY', 'FAULTLINE_CLAIM_METER', 'FAULTLINE_CLAIM_METER_LEDGER', 'FAULTLINE_KEY_IDEMPOTENCY_LEDGER',
   'FAULTLINE_PROVIDER_SPEND_LEDGER', 'FAULTLINE_FULL_JOBS_LEDGER', 'FAULTLINE_GROUNDING_LEDGER',
 ];
 let saved: Record<string, string | undefined>;
@@ -73,6 +79,7 @@ beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'fl-claim-routes-'));
   process.env.FAULTLINE_API_KEY = SERVER_KEY;
   process.env.FAULTLINE_CLAIM_METER = '1';
+  process.env.GEMINI_API_KEY = placeholderProviderKey();
   process.env.FAULTLINE_CLAIM_METER_LEDGER = join(dir, 'claim-meter.jsonl');
   process.env.FAULTLINE_KEY_IDEMPOTENCY_LEDGER = join(dir, 'key-idempotency.jsonl');
   process.env.FAULTLINE_PROVIDER_SPEND_LEDGER = join(dir, 'provider-spend.jsonl');
@@ -167,7 +174,7 @@ async function until(check: () => boolean, label: string): Promise<void> {
 describe('the cap is enforced before any verification', () => {
   it('402 claim_cap_reached with the exact body, and zero provider calls', async () => {
     const key = customer(5); // /scan reserves its verify cap (8) before extraction
-    const res = await post('/scan', key.key, { text: sentences(1), provider: 'mock' });
+    const res = await post('/scan', key.key, { text: sentences(1), provider: ENGINE_PROVIDER });
     expect(res.statusCode).toBe(402);
     const body = res.json();
     expect(body).toEqual(capReached(5, 0, 5));
@@ -179,11 +186,11 @@ describe('the cap is enforced before any verification', () => {
 
   it('a request larger than remaining is refused whole: nothing is part-served', async () => {
     const key = customer(10);
-    expect((await post('/scan', key.key, { text: sentences(3), provider: 'mock' })).statusCode).toBe(200);
+    expect((await post('/scan', key.key, { text: sentences(3), provider: ENGINE_PROVIDER })).statusCode).toBe(200);
     const calls = control.verifyCalls;
     expect(calls).toBe(3);
     // 7 remain, the request may verify 8: refused, though its text has one claim.
-    const res = await post('/scan', key.key, { text: sentences(1), provider: 'mock' });
+    const res = await post('/scan', key.key, { text: sentences(1), provider: ENGINE_PROVIDER });
     expect(res.statusCode).toBe(402);
     expect(res.json()).toEqual(capReached(10, 3, 7));
     expect(control.verifyCalls).toBe(calls);
@@ -192,7 +199,7 @@ describe('the cap is enforced before any verification', () => {
 
   it('a metered key with no claimCap gets 402 claim_cap_unset and calls no provider', async () => {
     const key = customer();
-    const refused = await post('/scan', key.key, { text: sentences(1), provider: 'mock' });
+    const refused = await post('/scan', key.key, { text: sentences(1), provider: ENGINE_PROVIDER });
     expect(refused.statusCode).toBe(402);
     expect(refused.json()).toEqual({ error: 'claim_cap_unset' });
     expect(control.extractCalls).toBe(0);
@@ -201,7 +208,7 @@ describe('the cap is enforced before any verification', () => {
 
   it('a metered key without stripeCustomerId runs; its rows carry null', async () => {
     const key = customer(100);
-    expect((await post('/scan', key.key, { text: sentences(2), provider: 'mock' })).statusCode).toBe(200);
+    expect((await post('/scan', key.key, { text: sentences(2), provider: ENGINE_PROVIDER })).statusCode).toBe(200);
     const rows = ledgerRows();
     expect(rows.length).toBe(2);
     expect(rows.every((r) => r.stripeCustomerId === null)).toBe(true);
@@ -209,9 +216,9 @@ describe('the cap is enforced before any verification', () => {
 
   it('a revoked metered key stops reserving at once; its committed rows stay', async () => {
     const key = customer(100);
-    expect((await post('/scan', key.key, { text: sentences(2), provider: 'mock' })).statusCode).toBe(200);
+    expect((await post('/scan', key.key, { text: sentences(2), provider: ENGINE_PROVIDER })).statusCode).toBe(200);
     getKeyStore().disable(key.id);
-    expect((await post('/scan', key.key, { text: sentences(1), provider: 'mock' })).statusCode).toBe(401);
+    expect((await post('/scan', key.key, { text: sentences(1), provider: ENGINE_PROVIDER })).statusCode).toBe(401);
     expect(ledgerRows().length).toBe(2);
     expect(usage(key.id).used).toBe(2);
   });
@@ -220,7 +227,7 @@ describe('the cap is enforced before any verification', () => {
 describe('commit counts claims with a verdict; everything else is released', () => {
   it('a 3-claim text under an 8-claim reservation ends with used=3, reserved=0', async () => {
     const key = customer(100);
-    const res = await post('/scan', key.key, { text: sentences(3), provider: 'mock' });
+    const res = await post('/scan', key.key, { text: sentences(3), provider: ENGINE_PROVIDER });
     expect(res.statusCode).toBe(200);
     expect(usage(key.id)).toEqual({ used: 3, reserved: 0 });
     const issued = res.json().scanId as string;
@@ -230,32 +237,33 @@ describe('commit counts claims with a verdict; everything else is released', () 
     expect(rows.length).toBe(3);
     expect(rows.map((r) => r.identifier)).toEqual([`${scanId}:c1`, `${scanId}:c2`, `${scanId}:c3`]);
     expect(rows.map((r) => r.seq)).toEqual([1, 2, 3]);
-    expect(rows[0]).toMatchObject({ kind: 'usage', keyId: key.id, scanId, verdict: 'supported', provider: 'mock', period: expect.stringMatching(/^\d{4}-\d{2}$/) });
+    expect(rows[0]).toMatchObject({ kind: 'usage', keyId: key.id, scanId, verdict: 'supported', provider: ENGINE_PROVIDER, period: expect.stringMatching(/^\d{4}-\d{2}$/) });
     // No claim text, evidence or key material in the record.
     const raw = readFileSync(ledgerPath(), 'utf8');
     expect(raw).not.toContain('checkable fact');
     expect(raw).not.toContain(key.key);
   });
 
-  it('unverified bills; a provider error (apiError) does not', async () => {
+  it('only engine-sourced verdicts bill: not unverified, not unsourced, not a provider error', async () => {
     control.verdicts = {
       c1: { status: 'contradicted' },
       c2: { status: 'unverified' },
       c3: { status: 'unverified', apiError: true, apiErrorReason: 'rate_limited' },
+      c5: { status: 'supported', sources: [] },
     };
     const key = customer(100);
-    expect((await post('/scan', key.key, { text: sentences(4), provider: 'mock' })).statusCode).toBe(200);
-    expect(getClaimMeter().usageFor(key.id)).toEqual({ used: 3, byVerdict: { contradicted: 1, unverified: 1, supported: 1 } });
+    expect((await post('/scan', key.key, { text: sentences(5), provider: ENGINE_PROVIDER })).statusCode).toBe(200);
+    expect(getClaimMeter().usageFor(key.id)).toEqual({ used: 2, byVerdict: { contradicted: 1, supported: 1 } });
     const rows = ledgerRows();
-    expect(rows.length).toBe(3);
-    expect(rows.map((r) => r.claimId)).toEqual(['c1', 'c2', 'c4']);
+    expect(rows.length).toBe(2);
+    expect(rows.map((r) => r.claimId)).toEqual(['c1', 'c4']);
     expect(usage(key.id).reserved).toBe(0);
   });
 
   it('an engine error commits nothing and releases the reservation', async () => {
     control.extractFails = true;
     const key = customer(100);
-    const res = await post('/scan', key.key, { text: sentences(3), provider: 'mock' });
+    const res = await post('/scan', key.key, { text: sentences(3), provider: ENGINE_PROVIDER });
     expect(res.statusCode).toBeGreaterThanOrEqual(500);
     expect(control.extractCalls).toBeGreaterThan(0);
     expect(usage(key.id)).toEqual({ used: 0, reserved: 0 });
@@ -265,17 +273,36 @@ describe('commit counts claims with a verdict; everything else is released', () 
   it('a malformed provider verdict is not billed (the engine keeps it as a provider error)', async () => {
     control.verdicts = { c1: { status: 'pwned' as never } };
     const key = customer(100);
-    const res = await post('/scan', key.key, { text: sentences(2), provider: 'mock' });
+    const res = await post('/scan', key.key, { text: sentences(2), provider: ENGINE_PROVIDER });
     expect(res.statusCode).toBe(200);
     expect(res.json().verifications.c1.apiError).toBe(true);
     expect(usage(key.id)).toEqual({ used: 1, reserved: 0 });
   });
 
-  it('a cached verdict delivered to the caller bills again', async () => {
+  it('a cached verdict bills on every delivery when it keeps the engine retriever, and never without one', async () => {
+    process.env.OPENAI_API_KEY = placeholderProviderKey();
     const key = customer(100);
-    const first = await post('/scan', key.key, { text: sentences(2), provider: 'mock' });
-    const second = await post('/scan', key.key, { text: sentences(2), provider: 'mock' });
-    expect(second.headers['x-cache']).toBe('HIT');
+    const text = sentences(2);
+    // Under 'openai' the fixture gets no engine retriever: served and cached (the
+    // cache refuses grounded Gemini results), but not billable, miss or hit.
+    const miss = await post('/scan', key.key, { text, provider: 'openai' });
+    expect(miss.headers['x-cache']).toBe('MISS');
+    const hit = await post('/scan', key.key, { text, provider: 'openai' });
+    expect(hit.headers['x-cache']).toBe('HIT');
+    expect(control.verifyCalls).toBe(2);
+    expect(usage(key.id)).toEqual({ used: 0, reserved: 0 });
+
+    // A stored verdict that keeps an engine retriever (a consensus scan's) bills on each hit.
+    const { scanId: _issued, cache: _cache, ...stored } = miss.json() as { verifications: Record<string, Record<string, unknown>> } & Record<string, unknown>;
+    expect(Object.keys(stored.verifications).length).toBe(2);
+    const verifications = Object.fromEntries(Object.entries(stored.verifications).map(([id, v]) =>
+      [id, { ...v, provenance: { provider: 'consensus', model: 'm', verifiedAt: '2026-10-01T00:00:00.000Z', retriever: 'openai-web-search' } }]));
+    const caller = cacheCaller({ keyId: key.id, headers: {} } as never) as string;
+    const cap = resolveVerifyPolicy(key.id, undefined).cap;
+    expect(getScanCache().set(caller, text, 'openai', { ...stored, verifications } as never, cap)).toBe(true);
+    const first = await post('/scan', key.key, { text, provider: 'openai' });
+    const second = await post('/scan', key.key, { text, provider: 'openai' });
+    expect([first.headers['x-cache'], second.headers['x-cache']]).toEqual(['HIT', 'HIT']);
     expect(control.verifyCalls).toBe(2);
     expect(usage(key.id)).toEqual({ used: 4, reserved: 0 });
     expect(first.json().scanId).not.toBe(second.json().scanId);
@@ -285,8 +312,8 @@ describe('commit counts claims with a verdict; everything else is released', () 
 describe('who is metered', () => {
   it('the server key and admin keys are not metered, even marked metered', async () => {
     const admin = getKeyStore().create('ops', ['admin'], undefined, { metered: true, claimCap: 0 });
-    expect((await post('/scan', SERVER_KEY, { text: sentences(2), provider: 'mock' })).statusCode).toBe(200);
-    expect((await post('/scan', admin.key, { text: sentences(2), provider: 'mock' })).statusCode).toBe(200);
+    expect((await post('/scan', SERVER_KEY, { text: sentences(2), provider: ENGINE_PROVIDER })).statusCode).toBe(200);
+    expect((await post('/scan', admin.key, { text: sentences(2), provider: ENGINE_PROVIDER })).statusCode).toBe(200);
     expect(control.verifyCalls).toBe(4);
     expect(ledgerRows()).toHaveLength(0);
     expect(getClaimMeter().totals().reserved).toBe(0);
@@ -300,7 +327,7 @@ describe('concurrency', () => {
     let open!: () => void;
     control.gate = new Promise<void>((resolve) => { open = resolve; });
     // 6 + 3 requests stay under the free tier's 10 per minute burst limit.
-    const pending = Array.from({ length: 6 }, () => post('/scan', key.key, { text: sentences(8), provider: 'mock' }));
+    const pending = Array.from({ length: 6 }, () => post('/scan', key.key, { text: sentences(8), provider: ENGINE_PROVIDER }));
     await until(() => control.verifyCalls >= 16, 'the admitted requests to start verifying');
     expect(usage(key.id).reserved).toBe(16);
     open();
@@ -310,7 +337,7 @@ describe('concurrency', () => {
     expect(usage(key.id)).toEqual({ used: 16, reserved: 0 });
     expect(ledgerRows().length).toBe(16);
     // More parallel requests, now with 4 remaining: none fits, none commits.
-    const more = await Promise.all(Array.from({ length: 3 }, () => post('/scan', key.key, { text: sentences(1), provider: 'mock' })));
+    const more = await Promise.all(Array.from({ length: 3 }, () => post('/scan', key.key, { text: sentences(1), provider: ENGINE_PROVIDER })));
     expect(more.every((r) => r.statusCode === 402)).toBe(true);
     expect(usage(key.id).used).toBeLessThanOrEqual(cap);
     const seqs = ledgerRows().map((r) => r.seq);
@@ -321,7 +348,7 @@ describe('concurrency', () => {
     const key = customer(8); // one /scan reservation (8) fits, two do not
     let open!: () => void;
     control.gate = new Promise<void>((resolve) => { open = resolve; });
-    const [a, b] = [post('/scan', key.key, { text: sentences(1), provider: 'mock' }), post('/scan', key.key, { text: sentences(1), provider: 'mock' })];
+    const [a, b] = [post('/scan', key.key, { text: sentences(1), provider: ENGINE_PROVIDER }), post('/scan', key.key, { text: sentences(1), provider: ENGINE_PROVIDER })];
     await until(() => control.verifyCalls >= 1, 'the first verify to start');
     open();
     const codes = (await Promise.all([a, b])).map((r) => r.statusCode).sort();
@@ -334,10 +361,10 @@ describe('concurrency', () => {
     const key = customer(12);
     let open!: () => void;
     control.gate = new Promise<void>((resolve) => { open = resolve; });
-    const first = post('/scan', key.key, { text: sentences(1), provider: 'mock' });
+    const first = post('/scan', key.key, { text: sentences(1), provider: ENGINE_PROVIDER });
     await until(() => control.verifyCalls === 1, 'the first verify');
     expect(usage(key.id).reserved).toBe(8);
-    const second = await post('/scan', key.key, { text: sentences(1), provider: 'mock' });
+    const second = await post('/scan', key.key, { text: sentences(1), provider: ENGINE_PROVIDER });
     expect(second.statusCode).toBe(402);
     expect(second.json()).toEqual(capReached(12, 0, 4));
     open();
@@ -349,12 +376,12 @@ describe('concurrency', () => {
 describe('streaming routes', () => {
   it('GET and POST /scan/stream commit each delivered verdict and end with nothing reserved', async () => {
     const key = customer(100);
-    const get = await app.inject({ method: 'GET', url: `/scan/stream?provider=mock&text=${encodeURIComponent(sentences(2))}`, headers: { 'x-api-key': key.key } });
+    const get = await app.inject({ method: 'GET', url: `/scan/stream?provider=${ENGINE_PROVIDER}&text=${encodeURIComponent(sentences(2))}`, headers: { 'x-api-key': key.key } });
     expect(get.statusCode).toBe(200);
     expect(get.body).toContain('"type":"complete"');
     expect(usage(key.id)).toEqual({ used: 2, reserved: 0 });
 
-    const res = await post('/scan/stream', key.key, { text: sentences(3), provider: 'mock' });
+    const res = await post('/scan/stream', key.key, { text: sentences(3), provider: ENGINE_PROVIDER });
     expect(res.statusCode).toBe(200);
     expect(usage(key.id)).toEqual({ used: 5, reserved: 0 });
     expect(new Set(ledgerRows().map((r) => r.scanId)).size).toBe(2);
@@ -362,7 +389,7 @@ describe('streaming routes', () => {
 
   it('a stream over the cap is refused before it opens', async () => {
     const key = customer(3);
-    const res = await post('/scan/stream', key.key, { text: sentences(1), provider: 'mock' });
+    const res = await post('/scan/stream', key.key, { text: sentences(1), provider: ENGINE_PROVIDER });
     expect(res.statusCode).toBe(402);
     expect(res.json().error).toBe('claim_cap_reached');
     expect(control.extractCalls).toBe(0);
@@ -371,7 +398,7 @@ describe('streaming routes', () => {
   it('a stream whose engine fails ends with nothing reserved and nothing billed', async () => {
     control.extractFails = true;
     const key = customer(100);
-    const res = await post('/scan/stream', key.key, { text: sentences(2), provider: 'mock' });
+    const res = await post('/scan/stream', key.key, { text: sentences(2), provider: ENGINE_PROVIDER });
     expect(res.body).toContain('"type":"error"');
     expect(usage(key.id)).toEqual({ used: 0, reserved: 0 });
   });
@@ -380,29 +407,29 @@ describe('streaming routes', () => {
 describe('other verifying routes reserve their own maximum', () => {
   it('/scan/batch reserves 8 per text and bills each text', async () => {
     const tight = customer(15);
-    const refused = await post('/scan/batch', tight.key, { texts: [sentences(1), sentences(1)], provider: 'mock' });
+    const refused = await post('/scan/batch', tight.key, { texts: [sentences(1), sentences(1)], provider: ENGINE_PROVIDER });
     expect(refused.statusCode).toBe(402);
     expect(control.extractCalls).toBe(0);
 
     const key = customer(16);
-    const res = await post('/scan/batch', key.key, { texts: [sentences(1), sentences(2)], provider: 'mock' });
+    const res = await post('/scan/batch', key.key, { texts: [sentences(1), sentences(2)], provider: ENGINE_PROVIDER });
     expect(res.statusCode).toBe(200);
     expect(usage(key.id)).toEqual({ used: 3, reserved: 0 });
   });
 
   it('/scan/diff reserves two scans and bills both', async () => {
     const key = customer(16);
-    const res = await post('/scan/diff', key.key, { before: sentences(1), after: sentences(2), provider: 'mock' });
+    const res = await post('/scan/diff', key.key, { before: sentences(1), after: sentences(2), provider: ENGINE_PROVIDER });
     expect(res.statusCode).toBe(200);
     expect(usage(key.id)).toEqual({ used: 3, reserved: 0 });
-    expect((await post('/scan/diff', customer(15).key, { before: 'a.', after: 'b.', provider: 'mock' })).statusCode).toBe(402);
+    expect((await post('/scan/diff', customer(15).key, { before: 'a.', after: 'b.', provider: ENGINE_PROVIDER })).statusCode).toBe(402);
   });
 
   it('/scan/template/:id meters the template scan', async () => {
     const key = customer(100);
-    const tpl = await post('/templates', key.key, { name: 'tpl', provider: 'mock' });
+    const tpl = await post('/templates', key.key, { name: 'tpl', provider: ENGINE_PROVIDER });
     expect(tpl.statusCode).toBe(201);
-    const res = await post(`/scan/template/${tpl.json().id}`, key.key, { text: sentences(2), provider: 'mock' });
+    const res = await post(`/scan/template/${tpl.json().id}`, key.key, { text: sentences(2), provider: ENGINE_PROVIDER });
     expect(res.statusCode).toBe(200);
     expect(usage(key.id)).toEqual({ used: 2, reserved: 0 });
   });
@@ -410,7 +437,7 @@ describe('other verifying routes reserve their own maximum', () => {
 
 describe('full scan: the estimate reserves nothing, the job reserves its fact claims', () => {
   async function estimate(key: string, n: number) {
-    const res = await post('/scan/full/estimate', key, { text: sentences(n), provider: 'mock' });
+    const res = await post('/scan/full/estimate', key, { text: sentences(n), provider: ENGINE_PROVIDER });
     expect(res.statusCode).toBe(200);
     return res.json() as { estimateId: string; factClaims: number };
   }
@@ -466,17 +493,17 @@ describe('full scan: the estimate reserves nothing, the job reserves its fact cl
 describe('background runners reserve when they run', () => {
   it('a queued scan over the cap fails unscanned; under the cap it bills', async () => {
     const tight = customer(8);
-    const enq = await post('/queue/scans', tight.key, { text: sentences(2), provider: 'mock' });
+    const enq = await post('/queue/scans', tight.key, { text: sentences(2), provider: ENGINE_PROVIDER });
     expect(enq.statusCode).toBeLessThan(300);
     // Use the headroom up after enqueue, so the run itself must refuse.
-    getClaimMeter().commitUsage(tight.id, randomUUID(), [{ claimId: 'x', verdict: 'supported', provider: 'mock' }], null);
+    getClaimMeter().commitUsage(tight.id, randomUUID(), [{ claimId: 'x', verdict: 'supported', provider: ENGINE_PROVIDER }], null);
     getScanQueue().tick();
     await until(() => getScanQueue().list(tight.id).every((i) => i.status === 'failed' || i.status === 'completed'), 'the queue item');
     expect(getScanQueue().list(tight.id)[0]).toMatchObject({ status: 'failed', error: 'claim_cap_reached' });
     expect(control.extractCalls).toBe(0);
 
     const roomy = customer(100);
-    await post('/queue/scans', roomy.key, { text: sentences(2), provider: 'mock' });
+    await post('/queue/scans', roomy.key, { text: sentences(2), provider: ENGINE_PROVIDER });
     getScanQueue().tick();
     await until(() => usage(roomy.id).used === 2, 'the queued scan to bill');
     expect(usage(roomy.id).reserved).toBe(0);
@@ -485,9 +512,9 @@ describe('background runners reserve when they run', () => {
   it('a submit route answers 402 when the key cannot cover one run', async () => {
     const key = customer(7);
     const routes: Array<[string, object]> = [
-      ['/queue/scans', { text: sentences(1), provider: 'mock' }],
-      ['/jobs', { text: sentences(1), provider: 'mock', schedule: 'hourly' }],
-      ['/schedules', { text: sentences(1), provider: 'mock', cron: '0 0 * * 0', name: 'n' }],
+      ['/queue/scans', { text: sentences(1), provider: ENGINE_PROVIDER }],
+      ['/jobs', { text: sentences(1), provider: ENGINE_PROVIDER, schedule: 'hourly' }],
+      ['/schedules', { text: sentences(1), provider: ENGINE_PROVIDER, cron: '0 0 * * 0', name: 'n' }],
     ];
     for (const [url, body] of routes) {
       const res = await post(url, key.key, body);
@@ -499,7 +526,7 @@ describe('background runners reserve when they run', () => {
 
   it('a scheduled job run is metered against its creator', async () => {
     const key = customer(100);
-    const created = await post('/jobs', key.key, { text: sentences(2), provider: 'mock', schedule: 'hourly' });
+    const created = await post('/jobs', key.key, { text: sentences(2), provider: ENGINE_PROVIDER, schedule: 'hourly' });
     expect(created.statusCode).toBe(201);
     await getJobScheduler().triggerJob(created.json().id);
     expect(usage(key.id)).toEqual({ used: 2, reserved: 0 });
@@ -508,7 +535,7 @@ describe('background runners reserve when they run', () => {
 
   it('a schedule run is metered; over the cap it records claim_cap_reached and calls no provider', async () => {
     const key = customer(9);
-    const created = await post('/schedules', key.key, { text: sentences(2), provider: 'mock', cron: '0 0 * * 0', name: 'weekly' });
+    const created = await post('/schedules', key.key, { text: sentences(2), provider: ENGINE_PROVIDER, cron: '0 0 * * 0', name: 'weekly' });
     expect(created.statusCode).toBe(201);
     const schedule = getScheduleStore().get(created.json().id)!;
     await getScheduleRunner().runSchedule(schedule);
@@ -524,17 +551,17 @@ describe('GET /usage', () => {
   it('a customer key sees its own claims block', async () => {
     const key = customer(20);
     control.verdicts = { c2: { status: 'unverified' } };
-    await post('/scan', key.key, { text: sentences(2), provider: 'mock' });
+    await post('/scan', key.key, { text: sentences(2), provider: ENGINE_PROVIDER });
     const res = await app.inject({ method: 'GET', url: '/usage', headers: { 'x-api-key': key.key } });
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.claims).toEqual({
       period: expect.stringMatching(/^\d{4}-\d{2}$/),
       cap: 20,
-      used: 2,
+      used: 1,
       reserved: 0,
-      remaining: 18,
-      byVerdict: { supported: 1, contradicted: 0, mixed: 0, unverified: 1 },
+      remaining: 19,
+      byVerdict: { supported: 1, contradicted: 0, mixed: 0 },
     });
     expect(body.claimMeter).toBeUndefined();
   });
@@ -550,8 +577,8 @@ describe('GET /usage', () => {
   it('admin sees fleet meter totals and usageRecords, and no per-key claims block', async () => {
     const a = customer(50);
     const b = customer(50);
-    await post('/scan', a.key, { text: sentences(2), provider: 'mock' });
-    await post('/scan', b.key, { text: sentences(1), provider: 'mock' });
+    await post('/scan', a.key, { text: sentences(2), provider: ENGINE_PROVIDER });
+    await post('/scan', b.key, { text: sentences(1), provider: ENGINE_PROVIDER });
     const res = await app.inject({ method: 'GET', url: '/usage', headers: { 'x-api-key': SERVER_KEY } });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -561,7 +588,7 @@ describe('GET /usage', () => {
       used: 3,
       reserved: 0,
       keys: 2,
-      byVerdict: { supported: 3, contradicted: 0, mixed: 0, unverified: 0 },
+      byVerdict: { supported: 3, contradicted: 0, mixed: 0 },
       ledgerWriteFailures: 0,
       refusedIdentifiers: 0,
     });
@@ -606,25 +633,25 @@ describe('switched off, or an unmetered key: behaviour as before the meter', () 
   type Family = { name: string; run: (key: string) => Promise<{ statusCode: number; verified: number }> };
   const families: Family[] = [
     { name: 'POST /scan', run: async (key) => {
-      const res = await post('/scan', key, { text: sentences(2), provider: 'mock' });
+      const res = await post('/scan', key, { text: sentences(2), provider: ENGINE_PROVIDER });
       return { statusCode: res.statusCode, verified: Object.keys(res.json().verifications ?? {}).length };
     } },
     { name: 'POST /scan/stream', run: async (key) => {
-      const res = await post('/scan/stream', key, { text: sentences(2), provider: 'mock' });
+      const res = await post('/scan/stream', key, { text: sentences(2), provider: ENGINE_PROVIDER });
       return { statusCode: res.statusCode, verified: res.body.split('"type":"claim_verified"').length - 1 };
     } },
     { name: 'POST /scan/batch', run: async (key) => {
-      const res = await post('/scan/batch', key, { texts: [sentences(1), sentences(1)], provider: 'mock' });
+      const res = await post('/scan/batch', key, { texts: [sentences(1), sentences(1)], provider: ENGINE_PROVIDER });
       return { statusCode: res.statusCode, verified: control.verifyCalls };
     } },
     { name: 'POST /scan/full', run: async (key) => {
-      const est = await post('/scan/full/estimate', key, { text: sentences(2), provider: 'mock' });
+      const est = await post('/scan/full/estimate', key, { text: sentences(2), provider: ENGINE_PROVIDER });
       const start = await post('/scan/full', key, { estimateId: est.json().estimateId }, { 'idempotency-key': `idem-off-${randomUUID()}` });
       await until(() => control.verifyCalls >= 2, 'the job');
       return { statusCode: start.statusCode, verified: control.verifyCalls };
     } },
     { name: 'POST /queue/scans (background)', run: async (key) => {
-      const res = await post('/queue/scans', key, { text: sentences(2), provider: 'mock' });
+      const res = await post('/queue/scans', key, { text: sentences(2), provider: ENGINE_PROVIDER });
       getScanQueue().tick();
       await until(() => control.verifyCalls >= 2, 'the queued scan');
       return { statusCode: res.statusCode, verified: control.verifyCalls };
@@ -662,7 +689,7 @@ describe('switched off, or an unmetered key: behaviour as before the meter', () 
 describe('GET /admin/usage-records', () => {
   async function seed(n: number) {
     const key = customer(1_000, 'cus_Seed1');
-    for (let i = 0; i < n; i++) expect((await post('/scan', key.key, { text: sentences(1), provider: 'mock' })).statusCode).toBe(200);
+    for (let i = 0; i < n; i++) expect((await post('/scan', key.key, { text: sentences(1), provider: ENGINE_PROVIDER })).statusCode).toBe(200);
     return key;
   }
 
@@ -742,7 +769,7 @@ describe('GET /admin/usage-records', () => {
         await new Promise((resolve) => setImmediate(resolve));
       }
     })();
-    await Promise.all(Array.from({ length: 6 }, () => post('/scan/stream', key.key, { text: sentences(4), provider: 'mock' })));
+    await Promise.all(Array.from({ length: 6 }, () => post('/scan/stream', key.key, { text: sentences(4), provider: ENGINE_PROVIDER })));
     done = true;
     await reader;
     seen.push((await get('/admin/usage-records?limit=1000', SERVER_KEY)).json().records.map((r: UsageRecord) => r.seq));
@@ -843,10 +870,10 @@ describe('key binding fields and scopes', () => {
 describe('stripeCustomerId is copied at commit time', () => {
   it('rebinding a key after a commit does not change the earlier row', async () => {
     const key = customer(100, 'cus_Before1');
-    expect((await post('/scan', key.key, { text: sentences(1), provider: 'mock' })).statusCode).toBe(200);
+    expect((await post('/scan', key.key, { text: sentences(1), provider: ENGINE_PROVIDER })).statusCode).toBe(200);
     const patched = await app.inject({ method: 'PATCH', url: `/keys/${key.id}`, headers: { 'x-api-key': SERVER_KEY, 'content-type': 'application/json' }, payload: { stripeCustomerId: 'cus_After1' } });
     expect(patched.statusCode).toBe(200);
-    expect((await post('/scan', key.key, { text: sentences(2), provider: 'mock' })).statusCode).toBe(200);
+    expect((await post('/scan', key.key, { text: sentences(2), provider: ENGINE_PROVIDER })).statusCode).toBe(200);
     const records = (await get('/admin/usage-records', SERVER_KEY)).json().records as UsageRecord[];
     expect(records.length).toBe(3);
     expect(records.map((r) => r.stripeCustomerId)).toEqual(['cus_Before1', 'cus_After1', 'cus_After1']);
@@ -855,7 +882,7 @@ describe('stripeCustomerId is copied at commit time', () => {
 
 describe('voids: a full-scan result its owner can never see', () => {
   async function finishedJob(key: { key: string; id: string }, n: number, idem: string): Promise<string> {
-    const est = await post('/scan/full/estimate', key.key, { text: sentences(n), provider: 'mock' });
+    const est = await post('/scan/full/estimate', key.key, { text: sentences(n), provider: ENGINE_PROVIDER });
     expect(est.statusCode).toBe(200);
     const start = await post('/scan/full', key.key, { estimateId: est.json().estimateId }, { 'idempotency-key': idem });
     expect(start.statusCode).toBe(202);
@@ -919,7 +946,7 @@ describe('voids: a full-scan result its owner can never see', () => {
 
   it('job_lost for an unserved job (its terminal row never reached the disk) voids its committed rows', async () => {
     const key = customer(100);
-    const est = await post('/scan/full/estimate', key.key, { text: sentences(2), provider: 'mock' });
+    const est = await post('/scan/full/estimate', key.key, { text: sentences(2), provider: ENGINE_PROVIDER });
     let open!: () => void;
     control.gate = new Promise<void>((resolve) => { open = resolve; });
     const start = await post('/scan/full', key.key, { estimateId: est.json().estimateId }, { 'idempotency-key': 'idem-void-0004' });
