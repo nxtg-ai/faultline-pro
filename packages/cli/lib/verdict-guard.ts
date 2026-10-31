@@ -8,7 +8,7 @@
  * every write path checks against (emma-soul al:ea03474ab4809de5, P2, GoPMO
  * 1.18.11.3).
  */
-import type { ClaimStatus, VerificationResult } from '../types.js';
+import type { ClaimStatus, ProviderVote, VerificationResult } from '../types.js';
 
 /** The only statuses a completed verdict may carry. `loading` and `skipped` are UI states, never verdicts. */
 export const VERDICT_STATUSES = ['supported', 'contradicted', 'mixed', 'unverified'] as const;
@@ -217,16 +217,54 @@ export function isOpenableSource(source: unknown): boolean {
  * under it. It runs before any billed count: isBillableVerdict counts
  * sources by length and sees the cleaned list, and a downgraded claim is
  * `unverified`, so it is never billed and no verified count includes it.
+ *
+ * A consensus result also lists each provider's vote (`providerVotes`), and
+ * a reader sees every vote. The same rule applies to each vote: a supported,
+ * contradicted or mixed vote keeps only its openable sources, and with none
+ * left it reads `unverified` with `sources: []`, NO_SOURCE_EXPLANATION and
+ * `noSourceAbstain: true` (its other fields kept). A vote with any other
+ * status is unchanged. Votes are checked even when the fused verdict is
+ * already not definite. This is a rewrite for the reader after fusion: the
+ * voting, the fused status and the billed count are decided before it and
+ * are not changed by it. Because abstainScanWithoutSource calls this for each
+ * verification, stored results are guarded on read the same way, votes
+ * included. The same object is returned when nothing changed.
  */
 export function abstainWithoutSource<T extends VerificationResult>(result: T): T {
   if (!result || typeof result !== 'object') return result;
-  if (!BILLABLE_STATUSES.has(result.status as string)) return result;
-  const sources: unknown[] = Array.isArray(result.sources) ? result.sources : [];
+  const votes = abstainVotesWithoutSource(result.providerVotes);
+  const withVotes: T = votes === result.providerVotes ? result : { ...result, providerVotes: votes };
+  if (!BILLABLE_STATUSES.has(withVotes.status as string)) return withVotes;
+  const sources: unknown[] = Array.isArray(withVotes.sources) ? withVotes.sources : [];
   const openable = sources.filter(isOpenableSource);
   if (openable.length > 0) {
-    return openable.length === sources.length ? result : { ...result, sources: openable as T['sources'] };
+    return openable.length === sources.length ? withVotes : { ...withVotes, sources: openable as T['sources'] };
   }
-  return { ...result, status: 'unverified', explanation: NO_SOURCE_EXPLANATION, sources: [], noSourceAbstain: true };
+  return { ...withVotes, status: 'unverified', explanation: NO_SOURCE_EXPLANATION, sources: [], noSourceAbstain: true };
+}
+
+/** One vote under the rule above; the same object when nothing changed. */
+function abstainVoteWithoutSource(vote: ProviderVote): ProviderVote {
+  if (!vote || typeof vote !== 'object') return vote;
+  if (!BILLABLE_STATUSES.has(vote.status as string)) return vote;
+  const sources: unknown[] = Array.isArray(vote.sources) ? vote.sources : [];
+  const openable = sources.filter(isOpenableSource);
+  if (openable.length > 0) {
+    return openable.length === sources.length ? vote : { ...vote, sources: openable as ProviderVote['sources'] };
+  }
+  return { ...vote, status: 'unverified', explanation: NO_SOURCE_EXPLANATION, sources: [], noSourceAbstain: true };
+}
+
+/** `votes` with every vote guarded; the same array when no vote changed, and anything not an array as given. */
+function abstainVotesWithoutSource(votes: ProviderVote[] | undefined): ProviderVote[] | undefined {
+  if (!Array.isArray(votes)) return votes;
+  let changed = false;
+  const next = votes.map((v) => {
+    const g = abstainVoteWithoutSource(v);
+    if (g !== v) changed = true;
+    return g;
+  });
+  return changed ? next : votes;
 }
 
 /**

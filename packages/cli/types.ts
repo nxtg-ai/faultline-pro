@@ -114,6 +114,8 @@ export interface ProviderVote {
   apiError?: boolean;
   /** The provider's own reason, when it reported one (e.g. 'provider_unparseable'). */
   apiErrorReason?: ApiErrorReason;
+  /** True when this vote said supported, contradicted or mixed with no source a reader can open, so it is reported as unverified (abstainWithoutSource). */
+  noSourceAbstain?: boolean;
 }
 
 /**

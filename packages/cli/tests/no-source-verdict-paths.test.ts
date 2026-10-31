@@ -5,8 +5,9 @@
  * without at least one source the reader can open. abstainWithoutSource (in
  * lib/verdict-guard.ts) applies the rule; this file checks that every place a
  * single-provider verdict leaves the engine passes through it:
- * - statically: each source file that calls a provider's verifyClaim is a known
- *   exit and calls abstainWithoutSource;
+ * - statically: every call to a provider's verifyClaim, parsed with the
+ *   TypeScript compiler, is pinned by file and enclosing function, and each
+ *   pinned call site has a behavioural test;
  * - by behaviour: OpenAI, Claude, Perplexity, a plugin provider and the mock
  *   provider, through the runner and through scan(), verifyFullScan() and
  *   batchScan() (the paths the API's scan, stream, deep, batch, report, full
@@ -19,6 +20,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
+import ts from 'typescript';
 import { runVerification } from '../cli/verify-runner.js';
 import { scan, verifyFullScan, batchScan } from '../cli/scan.js';
 import { registerProvider } from '../providers/registry.js';
@@ -26,9 +28,10 @@ import { createOpenAIProvider } from '../providers/openai_provider.js';
 import { createClaudeProvider } from '../providers/claude_provider.js';
 import { createPerplexityProvider } from '../providers/perplexity_provider.js';
 import { createMockProvider } from '../providers/mock_provider.js';
+import { consensusVerify } from '../consensus/consensus_engine.js';
 import { NO_SOURCE_EXPLANATION, abstainWithoutSource, billableVerdictCount, isBillableVerdict } from '../lib/verdict-guard.js';
 import type { LLMProvider } from '../providers/base_provider.js';
-import type { Claim, VerificationResult } from '../types.js';
+import type { Claim, ProviderVote, Source, VerificationResult } from '../types.js';
 
 const REPO = resolve(__dirname, '../../..');
 const DEFINITE = ['supported', 'contradicted', 'mixed'] as const;
@@ -77,38 +80,88 @@ describe('abstainWithoutSource', () => {
 });
 
 describe('every provider verifyClaim call site applies the rule', () => {
-  /** Source files (tests and dependencies excluded) under the engine, the API and the MCP server. */
+  /** Source files (tests, scripts and dependencies excluded) under the engine, the API and the MCP server. */
   function sources(dir: string): string[] {
     const out: string[] = [];
     for (const name of readdirSync(dir)) {
       if (name === 'node_modules' || name === 'tests' || name === 'dist' || name.startsWith('.')) continue;
       const p = join(dir, name);
+      // Scripts are operator tools, not paths a reader's verdict leaves through.
+      if (relative(REPO, p) === join('packages', 'cli', 'scripts')) continue;
       if (statSync(p).isDirectory()) out.push(...sources(p));
-      else if (/\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name)) out.push(p);
+      else if (/\.ts$/.test(name) && !/\.d\.ts$/.test(name) && !/\.test\.ts$/.test(name)) out.push(p);
     }
     return out;
   }
 
-  /** The exits: each calls a provider's verifyClaim and must pass the result through abstainWithoutSource. */
-  const EXITS = ['packages/cli/cli/verify-runner.ts', 'packages/api/src/routes/admin-verify.ts'];
+  /** The name of the nearest enclosing named function: a declaration, a method, or the variable a function is assigned to. */
+  function enclosingName(node: ts.Node): string {
+    for (let n: ts.Node | undefined = node.parent; n; n = n.parent) {
+      if ((ts.isFunctionDeclaration(n) || ts.isMethodDeclaration(n) || ts.isFunctionExpression(n)) && n.name) return n.name.getText();
+      if ((ts.isFunctionExpression(n) || ts.isArrowFunction(n)) && ts.isVariableDeclaration(n.parent) && ts.isIdentifier(n.parent.name)) {
+        return n.parent.name.text;
+      }
+      if ((ts.isFunctionExpression(n) || ts.isArrowFunction(n)) && ts.isPropertyAssignment(n.parent)) return n.parent.name.getText();
+    }
+    return '<module>';
+  }
 
-  it('only the known exits call verifyClaim, and each calls abstainWithoutSource', () => {
+  /** Every call whose callee is a property access named verifyClaim, as "file#enclosing function". */
+  function verifyClaimCallSites(): string[] {
     const files = [
       ...sources(join(REPO, 'packages/cli')),
       ...sources(join(REPO, 'packages/api/src')),
       ...sources(join(REPO, 'packages/mcp/src')),
     ];
     expect(files.length).toBeGreaterThan(50);
-    const callers = files
-      .filter((f) => /\.verifyClaim\(/.test(readFileSync(f, 'utf8')))
-      .map((f) => relative(REPO, f))
-      // Scripts are operator tools, not paths a reader's verdict leaves through.
-      .filter((f) => !f.startsWith('packages/cli/scripts/'))
-      .sort();
-    expect(callers).toEqual([...EXITS].sort());
-    for (const exit of EXITS) {
-      expect(readFileSync(join(REPO, exit), 'utf8')).toMatch(/abstainWithoutSource\(/);
+    const sites: string[] = [];
+    for (const file of files) {
+      const sf = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+      const visit = (node: ts.Node): void => {
+        if (ts.isCallExpression(node)) {
+          const callee = ts.isNonNullExpression(node.expression) ? node.expression.expression : node.expression;
+          if ((ts.isPropertyAccessExpression(callee) || ts.isPropertyAccessChain(callee)) && callee.name.text === 'verifyClaim') {
+            sites.push(`${relative(REPO, file).split('\\').join('/')}#${enclosingName(node)}`);
+          }
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(sf);
     }
+    return sites.sort();
+  }
+
+  /**
+   * Every call to a provider's verifyClaim, one entry per call site (file and
+   * nearest enclosing named function). Adding a call site means adding an entry
+   * here and a behavioural test that its result passes through
+   * abstainWithoutSource.
+   * - verify-runner.ts#verifyOneClaim: the runner applies abstainWithoutSource to
+   *   every result (the test just below, and every runner test in this file).
+   * - admin-verify.ts#verifyOne: packages/api/tests/admin-verify-claims.test.ts,
+   *   "counts only the sourced supported verdict as verified: not a zero-source
+   *   supported, an unverified or an API error" (the zero-source supported
+   *   verdict is reported unverified with noSourceAbstain).
+   */
+  const CALL_SITES = [
+    'packages/api/src/routes/admin-verify.ts#verifyOne',
+    'packages/cli/cli/verify-runner.ts#verifyOneClaim',
+  ];
+
+  it('each verifyClaim call site is pinned, one entry per call', () => {
+    expect(verifyClaimCallSites()).toEqual([...CALL_SITES].sort());
+  });
+
+  it('verify-runner.ts#verifyOneClaim: its result reaches the reader through abstainWithoutSource', async () => {
+    const provider = { ...createMockProvider(''), verifyClaim: async (c: Claim) => ({ claimId: c.id, status: 'supported' as const, explanation: 'x', sources: [{ title: 'F', uri: 'ftp://source.example/fact' }] }) };
+    const run = await runVerification([CLAIM], { provider: provider as LLMProvider, providerName: 'mock', consensusRig: null });
+    expectAbstained(run.results[0]);
+  });
+
+  it('admin-verify.ts#verifyOne: its behavioural test exists', () => {
+    const src = readFileSync(join(REPO, 'packages/api/tests/admin-verify-claims.test.ts'), 'utf8');
+    expect(src).toContain("it('counts only the sourced supported verdict as verified: not a zero-source supported, an unverified or an API error'");
+    expect(src).toMatch(/noSourceAbstain/);
   });
 
   it('the Gemini service returns its grounded verdict through abstainWithoutSource', () => {
@@ -229,5 +282,86 @@ describe('every engine entry point, with a plugin provider', () => {
     expect(v.verifiedClaims).toBe(4);
     // Unserved: c1-c3 are unverified; c4 is sourced but a plugin has no engine retriever.
     expect(v.unservedClaimIds).toEqual(expect.arrayContaining(['c1', 'c2', 'c3']));
+  });
+});
+
+describe('consensus votes, through the verify runner', () => {
+  const FTP: Source = { title: 'Fact', uri: 'ftp://source.example/fact' };
+  const JS: Source = { title: 'Fact', uri: 'javascript:alert(1)' };
+  const HTTPS: Source = { title: 'Fact', uri: 'https://source.example/fact' };
+
+  /** A consensus rig with one OpenAI voter answering `status` against `sources` (no network). */
+  function rig(sources: Source[], status = 'supported') {
+    const p = createOpenAIProvider('k') as LLMProvider & { callAPI: () => Promise<string> };
+    vi.spyOn(p, 'callAPI').mockResolvedValue(JSON.stringify({ status, explanation: `Model says ${status}.` }));
+    return { retriever: { name: 'fixture-search', retrieve: async () => sources }, namedProviders: [{ name: 'openai', provider: p }] };
+  }
+
+  /** The fused verdict as the same input gives it with the vote rewrite left out. */
+  async function fusedWithoutVoteRewrite(sources: Source[]): Promise<VerificationResult> {
+    const raw = await consensusVerify(CLAIM, rig(sources).retriever, rig(sources).namedProviders);
+    return abstainWithoutSource({ ...raw, providerVotes: undefined });
+  }
+
+  function expectSameFused(out: VerificationResult, expected: VerificationResult): void {
+    for (const key of ['status', 'explanation', 'sources', 'noSourceAbstain', 'consensus', 'apiError'] as const) {
+      expect(out[key]).toEqual(expected[key]);
+    }
+    expect(out.provenance?.retriever).toBe(expected.provenance?.retriever);
+    expect(isBillableVerdict(out)).toBe(isBillableVerdict(expected));
+    expect(billableVerdictCount({ c1: out })).toBe(billableVerdictCount({ c1: expected }));
+  }
+
+  for (const only of [FTP, JS]) {
+    it(`a supported vote whose only source is ${only.uri} reads unverified, in the result and in onClaimVerified`, async () => {
+      const seen: VerificationResult[] = [];
+      const run = await runVerification([CLAIM], { provider: createMockProvider(''), providerName: 'openai', consensusRig: rig([only]) }, {
+        onClaimVerified: (_c, r) => seen.push(r),
+      });
+      expect(seen.length).toBe(1);
+      for (const out of [run.results[0]!, seen[0]]) {
+        expect(out.providerVotes?.length).toBe(1);
+        const vote = out.providerVotes![0] as ProviderVote;
+        expect(vote).toEqual({ provider: 'openai', status: 'unverified', sources: [], explanation: NO_SOURCE_EXPLANATION, noSourceAbstain: true });
+        expectAbstained(out);
+      }
+      expectSameFused(run.results[0]!, await fusedWithoutVoteRewrite([only]));
+    });
+  }
+
+  it('a supported vote with one https and one ftp source stays supported and keeps only the https source', async () => {
+    const run = await runVerification([CLAIM], { provider: createMockProvider(''), providerName: 'openai', consensusRig: rig([HTTPS, FTP]) });
+    const out = run.results[0]!;
+    expect(out.providerVotes?.length).toBe(1);
+    const vote = out.providerVotes![0];
+    expect(vote.status).toBe('supported');
+    expect(vote.sources).toEqual([HTTPS]);
+    expect(vote.explanation).toBe('Model says supported.');
+    expect(vote.noSourceAbstain).toBeUndefined();
+    expectSameFused(out, await fusedWithoutVoteRewrite([HTTPS, FTP]));
+  });
+
+  it('votes are guarded even when the fused verdict is already unverified; other statuses are left as given', () => {
+    const unverifiedVote: ProviderVote = { provider: 'claude', status: 'unverified', sources: [FTP], explanation: 'x' };
+    const errorVote: ProviderVote = { provider: 'gemini', status: 'unverified', sources: [FTP], apiError: true };
+    const given: VerificationResult = {
+      claimId: 'c1', status: 'unverified', explanation: 'fused', sources: [FTP],
+      providerVotes: [{ provider: 'openai', status: 'contradicted', sources: [FTP], explanation: 'x' }, unverifiedVote, errorVote],
+    };
+    const out = abstainWithoutSource(given);
+    expect(out).not.toBe(given);
+    expect(out.status).toBe('unverified');
+    expect(out.explanation).toBe('fused');
+    expect(out.sources).toEqual([FTP]);
+    expect(out.providerVotes).toEqual([
+      { provider: 'openai', status: 'unverified', sources: [], explanation: NO_SOURCE_EXPLANATION, noSourceAbstain: true },
+      unverifiedVote,
+      errorVote,
+    ]);
+    expect(out.providerVotes![1]).toBe(unverifiedVote);
+    expect(out.providerVotes![2]).toBe(errorVote);
+    // Nothing to change: the same object comes back.
+    const clean: VerificationResult = { claimId: 'c1', status: 'supported', explanation: 'x', sources: [HTTPS], providerVotes: [{ provider: 'openai', status: 'mixed', sources: [HTTPS] }] };
+    expect(abstainWithoutSource(clean)).toBe(clean);
   });
 });
