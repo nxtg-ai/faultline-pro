@@ -176,6 +176,74 @@ export function billableVerdictCount(verifications: unknown): number {
   return list.filter(isBillableVerdict).length;
 }
 
+/** One claim of a scan that was not billed, and why. */
+export interface UnbilledClaim {
+  claimId: string;
+  reason: string;
+}
+
+/** How many of a scan's claims were billed, how many were not, and why each was not. */
+export interface BillingSummary {
+  billedClaims: number;
+  unbilledClaims: number;
+  unbilled: UnbilledClaim[];
+}
+
+/**
+ * Why `value` is not billable under isBillableVerdict. The first match wins:
+ * 1. an API error: its `apiErrorReason` when set, else `provider_error`;
+ * 2. `noSourceAbstain`: `no_source` (a definite verdict downgraded for having
+ *    no source a reader can open);
+ * 3. a status other than supported, contradicted or mixed: the status itself
+ *    (`unverified`, `skipped`, ...); a missing or non-string status reads
+ *    `unverified`;
+ * 4. no source: `no_source`;
+ * 5. no engine retriever: `no_retriever`.
+ * Only called for a value isBillableVerdict refused.
+ */
+function unbilledReason(value: unknown): string {
+  if (!value || typeof value !== 'object') return 'unverified';
+  const v = value as {
+    status?: unknown; sources?: unknown; provenance?: unknown;
+    apiError?: unknown; apiErrorReason?: unknown; noSourceAbstain?: unknown;
+  };
+  if (v.apiError === true) {
+    return typeof v.apiErrorReason === 'string' && v.apiErrorReason.length > 0 ? v.apiErrorReason : 'provider_error';
+  }
+  if (v.noSourceAbstain === true) return 'no_source';
+  if (typeof v.status !== 'string') return 'unverified';
+  if (!BILLABLE_STATUSES.has(v.status)) return v.status;
+  if (!Array.isArray(v.sources) || v.sources.length === 0) return 'no_source';
+  return 'no_retriever';
+}
+
+/**
+ * Which claims of a scan's `verifications` were billed and which were not,
+ * with the reason for each one that was not. `verifications` is an object
+ * keyed by claim id, or an array of results whose `claimId` names the claim
+ * (an entry without one is named by its index). A claim is billed exactly
+ * when isBillableVerdict is true, so `billedClaims` always equals
+ * billableVerdictCount for the same input; billing itself is not decided
+ * here. `unbilled` keeps the claims' order in the input, and its reasons are
+ * unbilledReason's. Anything without verifications has no claims: zero and
+ * zero. The API adds this to each scan or verify result it returns as
+ * `billing`, computed on read from the verifications the caller is given.
+ */
+export function billingSummary(verifications: unknown): BillingSummary {
+  if (!verifications || typeof verifications !== 'object') return { billedClaims: 0, unbilledClaims: 0, unbilled: [] };
+  const entries: Array<[string, unknown]> = Array.isArray(verifications)
+    ? verifications.map((v, i) => {
+      const claimId = v && typeof v === 'object' ? (v as { claimId?: unknown }).claimId : undefined;
+      return [typeof claimId === 'string' ? claimId : String(i), v];
+    })
+    : Object.entries(verifications);
+  const billedClaims = entries.map(([, v]) => v).filter(isBillableVerdict).length;
+  const unbilled = entries
+    .filter(([, v]) => !isBillableVerdict(v))
+    .map(([claimId, v]) => ({ claimId, reason: unbilledReason(v) }));
+  return { billedClaims, unbilledClaims: unbilled.length, unbilled };
+}
+
 /** The explanation every claim downgraded by abstainWithoutSource carries. */
 export const NO_SOURCE_EXPLANATION =
   'The search returned no source this claim can be checked against, so it is not marked supported, contradicted or mixed.';

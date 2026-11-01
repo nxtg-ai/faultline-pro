@@ -11,13 +11,13 @@ import {
 import { recordProviderSpend } from '../store/provider-spend.js';
 import { summarizeScanUsage } from '../store/consensus-cost.js';
 import { getProvider } from '@nxtg/faultline/providers/registry.js';
-import { abstainWithoutSource, isBillableVerdict } from '@nxtg/faultline/lib/verdict-guard.js';
+import { abstainWithoutSource, billingSummary, isBillableVerdict } from '@nxtg/faultline/lib/verdict-guard.js';
 import type { LLMProvider } from '@nxtg/faultline/providers/base_provider.js';
 import { DEFAULT_SCAN_PROVIDER, resolveApiKey } from '@nxtg/faultline/cli/provider-keys.js';
 import { bindEngineProvenance } from '@nxtg/faultline/cli/verify-runner.js';
 import type { UsageLeg } from '@nxtg/faultline/lib/usage-sink.js';
 import { captureOutcome } from '../lib/scan-spend.js';
-import type { Claim, ClaimStatus } from '@nxtg/faultline/types.js';
+import type { Claim, ClaimStatus, VerificationResult } from '@nxtg/faultline/types.js';
 
 /**
  * POST /admin/verify-claims — the verify step alone, for the pre-registered
@@ -45,6 +45,11 @@ import type { Claim, ClaimStatus } from '@nxtg/faultline/types.js';
  * captured any priced usage. When it captured none (mock, every call failed),
  * the batch event falls back to a text-length estimate while every claim here
  * reports `costUsd: 0` with `priced: false`.
+ *
+ * The response also carries `billing`, beside the per-claim results: how many
+ * claims were billed, how many were not, and why each was not (billingSummary,
+ * the same rule as `billable` below), so its claim ids and reasons are our own
+ * labels too.
  *
  * Google grounding terms: the response carries our own status label, flags and
  * cost figures only. No explanation, source or other grounded text ever leaves
@@ -118,6 +123,25 @@ const RESPONSE_SCHEMA = {
           additionalProperties: false,
         },
       },
+      billing: {
+        type: 'object',
+        properties: {
+          billedClaims: { type: 'number' },
+          unbilledClaims: { type: 'number' },
+          unbilled: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                claimId: { type: 'string' },
+                reason: { type: 'string' },
+              },
+              additionalProperties: false,
+            },
+          },
+        },
+        additionalProperties: false,
+      },
     },
     additionalProperties: false,
   },
@@ -163,6 +187,8 @@ interface ClaimRun {
   legs: UsageLeg[];
   /** isBillableVerdict on the full verdict; the outcome drops the sources it needs. */
   billable: boolean;
+  /** The full verdict, kept for billingSummary only; never sent (it holds sources). */
+  verdict: Partial<VerificationResult>;
 }
 
 /** The model the engine logged for this call, else the provider's configured model. */
@@ -186,6 +212,7 @@ async function verifyOne(provider: LLMProvider, providerName: string, input: Ver
     return {
       legs,
       billable: false,
+      verdict: { claimId: input.id, status: 'unverified', apiError: true, apiErrorReason: 'provider_error', sources: [] },
       outcome: { id: input.id, status: 'unverified', apiError: true, parseFallback: false, noSourceAbstain: false, apiErrorReason: 'provider_error', model: null },
     };
   }
@@ -198,6 +225,7 @@ async function verifyOne(provider: LLMProvider, providerName: string, input: Ver
   return {
     legs,
     billable: isBillableVerdict(result),
+    verdict: { ...result, claimId: input.id },
     outcome: {
       id: input.id,
       status: result.status,
@@ -296,6 +324,7 @@ export async function adminVerifyRoutes(fastify: FastifyInstance): Promise<void>
       return reply.status(200).send({
         provider: providerName,
         results: runs.map((run) => ({ ...run.outcome, usage: claimUsage(run.legs) })),
+        billing: billingSummary(runs.map((run) => run.verdict)),
       });
     },
   );

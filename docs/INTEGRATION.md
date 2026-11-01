@@ -78,6 +78,8 @@ Content-Type: application/json
 
 The billable unit is **one claim with a billable verdict**, decided by the engine's `isBillableVerdict` (`packages/cli/lib/verdict-guard.ts`): the verdict is `supported`, `contradicted` or `mixed`, it carries at least one source, the engine set its `provenance.retriever`, and it is not an API error. An `unverified` verdict, a verdict with no source, a verdict without an engine retriever (the mock provider, for one), a provider error (`apiError: true`), a timeout, a failed extraction, a retry the engine refunds, and a claim about the document itself do not count. A cached verdict delivered to you counts like a fresh one when it meets the same rule.
 
+**Which claims were billed, and why not.** A claim is billed only when it gets a supported, contradicted or mixed verdict with at least one source. Unverified claims, claims with no source and claims where the provider failed are not billed. Each result's `billing` field lists them with the reason. `billing` is on the result of `POST /scan` (also `POST /scan/template/:id`), `POST /scan/deep`, the `complete` event of `GET` and `POST /scan/stream`, `GET /scan/full/:jobId` (and its `/stop`) once the job has a result, and `POST /admin/verify-claims` (beside `results`). It reads `{ "billedClaims": 1, "unbilledClaims": 2, "unbilled": [{ "claimId": "c2", "reason": "unverified" }, { "claimId": "c3", "reason": "no_source" }] }`. The reason for each unbilled claim is the first that applies: the provider failed (its `apiErrorReason`, such as `rate_limited` or `timeout`, else `provider_error`); `no_source` (no source a reader can open, so the verdict was reported as unverified); the verdict itself when it is not supported, contradicted or mixed (`unverified`, `skipped`); `no_source`; `no_retriever` (the sources were not retrieved by the engine, the mock provider for one). It is computed from the verifications you are given, so a cached result carries it too, and `billedClaims` is the number the claim meter commits for that result. It only reports billing: what is billed is unchanged.
+
 Before any provider call a route reserves the most claims it may verify (a `/scan` reserves its verify cap, 8, because the claim count is unknown before extraction; `/scan/batch` 8 per text; `/scan/diff` 16; a full-scan job its estimate's fact claims; the estimate itself verifies nothing and reserves nothing; `POST /critique` verifies no claim and reserves nothing; `POST /admin/verify-claims` and GraphQL scans are admin only, and admin keys are never metered). If `used + reserved + requested` would exceed your cap, the whole request is refused before any provider is called (never part-served):
 
 ```json
@@ -352,7 +354,7 @@ data: {"type":"claim_verified","index":1,"claim":{...},"verdict":{...}}
 
 data: {"type":"claim_verified","index":2,"claim":{...},"verdict":{...}}
 
-data: {"type":"complete","overallRisk":"medium","claimCount":3}
+data: {"type":"complete","overallRisk":"medium","claimCount":3,"billing":{"billedClaims":2,"unbilledClaims":1,"unbilled":[{"claimId":"c3","reason":"unverified"}]}}
 ```
 
 **On error**:
@@ -500,6 +502,11 @@ interface ScanResult {
   verifications: Record<string, VerificationResult>;  // keyed by claim id
   overallRisk: 'low' | 'medium' | 'high' | 'critical';
   provider: string;
+  billing: {                       // which claims were billed, and why not (see Claim metering)
+    billedClaims: number;
+    unbilledClaims: number;
+    unbilled: Array<{ claimId: string; reason: string }>;
+  };
 }
 ```
 

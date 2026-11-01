@@ -17,6 +17,7 @@ import { isExtractionError } from '@nxtg/faultline/providers/extraction-error.js
 import { extractionFailedBody } from '../lib/extraction-failure.js';
 import { randomUUID } from 'node:crypto';
 import { commitStreamedClaim, planVerifyCap, releaseClaims, reserveClaims } from '../plugins/claim-meter.js';
+import { billingSummary } from '@nxtg/faultline/lib/verdict-guard.js';
 
 type ScanProvider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
 
@@ -119,7 +120,7 @@ function streamErrorEvent(err: unknown): Record<string, unknown> {
  * Event sequence:
  *   data: {"type":"start","claimCount":N,"provider":"mock"}        ← on first claim verified
  *   data: {"type":"claim_verified","index":0,"claim":{...},"verdict":{...}}  × N
- *   data: {"type":"complete","overallRisk":"low","claimCount":N,"verification":{tier,cap,eligibleClaims,verifiedClaims,uncheckedClaims,uncheckedClaimIds}}
+ *   data: {"type":"complete","overallRisk":"low","claimCount":N,"verification":{tier,cap,eligibleClaims,verifiedClaims,uncheckedClaims,uncheckedClaimIds},"billing":{billedClaims,unbilledClaims,unbilled}}
  *   data: {"type":"error","message":"..."}  (on failure only; plus "error":"extraction_failed","reason" when extraction failed)
  */
 export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
@@ -211,6 +212,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
           overallRisk: result.overallRisk,
           claimCount,
           verification: withVerificationTier(result, verifyPolicy.tier).verification,
+          billing: billingSummary(result.verifications),
         });
 
         // Counted toward the monthly quota only when the result holds a billable verdict.
@@ -239,7 +241,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
    * Event sequence:
    *   data: {"type":"start","claimCount":N,"provider":"..."}
    *   data: {"type":"claim_verified","index":N,"claim":{...},"verdict":{...}}  × N
-   *   data: {"type":"complete","overallRisk":"low|medium|high|critical","claimCount":N,"verification":{...}}
+   *   data: {"type":"complete","overallRisk":"low|medium|high|critical","claimCount":N,"verification":{...},"billing":{...}}
    *   data: {"type":"error","message":"..."}  (on failure only; plus "error":"extraction_failed","reason" when extraction failed)
    */
   fastify.post<{ Body: StreamPostBody }>(
@@ -330,6 +332,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
           overallRisk: result.overallRisk,
           claimCount,
           verification: withVerificationTier(result, verifyPolicy.tier).verification,
+          billing: billingSummary(result.verifications),
         });
 
         // Counted toward the monthly quota only when the result holds a billable verdict.
