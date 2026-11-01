@@ -372,6 +372,18 @@ describe('failure handling', () => {
     await restart();
     expect(getKeyStore().getLoadFailures()).toBe(0);
     expect(await authStatus(key)).toBe(200);
+    // A value whose JSON differs from itself: the store keeps the checked JSON copy, never the object.
+    const shifty = Object.assign(['bogus'], { toJSON: () => ['scan'] }) as unknown as ['scan'];
+    const kept = getKeyStore().create('shifty', shifty);
+    expect(getKeyStore().list().find((k) => k.id === kept.id)?.permissions).toEqual(['scan']);
+    let calls = 0;
+    const flaky = Object.assign(['scan'], { toJSON: () => (++calls === 1 ? ['scan'] : [null]) }) as unknown as ['scan'];
+    getKeyStore().update(kept.id, { permissions: flaky });
+    getKeyStore().create('after', ['scan']); // any later write serializes memory again
+    await restart();
+    expect(getKeyStore().getLoadFailures()).toBe(0);
+    expect(await authStatus(key)).toBe(200);
+    expect(getKeyStore().list().find((k) => k.id === kept.id)?.permissions).toEqual(['scan']);
   });
 
   it('GraphQL createKey with an unknown permission is refused and the keystore still loads', async () => {

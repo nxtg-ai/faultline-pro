@@ -118,7 +118,7 @@ const isDate = (v: unknown): boolean => isString(v) && Number.isFinite(Date.pars
 
 /**
  * One stored key in the shape the loader accepts. Every write goes through this
- * check too (assertStorable), so the store never writes a file it cannot load.
+ * check too (storableCopy), so the store never writes a file it cannot load.
  */
 function isStorableRecord(k: Record<string, unknown>): boolean {
   return k !== null && typeof k === 'object'
@@ -148,12 +148,21 @@ export class KeyFieldError extends Error {
   }
 }
 
-function assertStorable(entry: ApiKey, hashes: KeyHashes | undefined): void {
+/**
+ * The entry as plain JSON data, checked as the loader will read it, or KeyFieldError.
+ * The store keeps this copy, not the caller's objects, so memory and the file hold
+ * the same checked values (an array hole, a toJSON or a getter cannot differ later).
+ */
+function storableCopy(entry: ApiKey, hashes: KeyHashes | undefined): ApiKey {
   if (!hashes) throw new KeyFieldError();
-  // Checked as the file will hold it: JSON turns an array hole or undefined into null,
-  // which the loader refuses, so the check must see that form, not the live object.
-  const asWritten = JSON.parse(JSON.stringify({ ...entry, ...hashes })) as Record<string, unknown>;
-  if (!isStorableRecord(asWritten)) throw new KeyFieldError();
+  let copy: Record<string, unknown>;
+  try {
+    copy = JSON.parse(JSON.stringify(entry)) as Record<string, unknown>;
+  } catch {
+    throw new KeyFieldError();
+  }
+  if (copy === null || typeof copy !== 'object' || !isStorableRecord({ ...copy, ...hashes })) throw new KeyFieldError();
+  return copy as unknown as ApiKey;
 }
 
 /**
@@ -474,11 +483,11 @@ export class KeyStore {
       ...(billing.scopes !== undefined ? { scopes: billing.scopes } : {}),
     };
     const hashes = { keyHash: hashApiKey(key) };
-    assertStorable(entry, hashes);
-    this.keys.push(entry);
-    this.hashes.set(entry.id, hashes);
+    const stored = storableCopy(entry, hashes);
+    this.keys.push(stored);
+    this.hashes.set(stored.id, hashes);
     this.persist();
-    return { ...entry, key };
+    return { ...stored, key };
   }
 
   list(): ApiKey[] {
@@ -678,10 +687,10 @@ export class KeyStore {
     else if (patch.stripeCustomerId !== undefined) entry.stripeCustomerId = patch.stripeCustomerId;
     if (patch.metered !== undefined) entry.metered = patch.metered;
     if (patch.scopes !== undefined) entry.scopes = patch.scopes;
-    assertStorable(entry, this.hashes.get(id));
+    const stored = storableCopy(entry, this.hashes.get(id));
     // Commit onto the live object: other holders keep their reference.
     for (const f of Object.keys(current) as (keyof ApiKey)[]) delete current[f];
-    Object.assign(current, entry);
+    Object.assign(current, stored);
     this.persist();
     return current;
   }
