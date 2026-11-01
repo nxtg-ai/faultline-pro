@@ -75,7 +75,7 @@ describe('1.18.11.7.9 server.json for the MCP Registry', () => {
   });
 
   it('MR5. the publisher namespace is nxtg.ai in reverse-DNS form (DNS or HTTP auth)', () => {
-    expect(doc.name).toMatch(/^ai\.nxtg\/[a-zA-Z0-9._-]+$/);
+    expect(doc.name).toBe('ai.nxtg/faultline');
   });
 
   it('MR6. carries no strategy content', () => {
@@ -197,6 +197,20 @@ describe('1.18.11.7.9 public discovery routes', () => {
       expect(body).toContain('10 USD');
       expect(body).toContain('1,000 USD');
       expect(body).toContain('100 USD');
+    });
+
+    it('PR2b. states the ruled 10 USD monthly minimum with 100 included claims, on /pricing and in llms.txt', async () => {
+      const line = '10 USD a month, which includes your first 100 billable claims; after that, 0.10 USD per billable claim up to your cap.';
+      expect((await server.inject({ method: 'GET', url: '/pricing' })).body).toContain(line);
+      expect((await server.inject({ method: 'GET', url: '/llms.txt' })).body).toContain(line);
+    });
+
+    it('PR2c. llms.txt never says an unverified claim lowers or settles the risk', async () => {
+      const body = (await server.inject({ method: 'GET', url: '/llms.txt' })).body;
+      expect(body).toContain('An unverified claim is not evidence that the text is accurate.');
+      expect(body).not.toMatch(/never read as low risk/);
+      expect(body).toContain('most important factual claims');
+      expect(body).toContain('live web search by default');
     });
 
     it('PR3. states plainly whether a claim with an unverified verdict bills, as the engine decides', async () => {

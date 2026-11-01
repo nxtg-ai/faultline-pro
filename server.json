@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "ai.nxtg/faultline",
   "title": "Faultline",
-  "description": "Extracts factual claims from AI output and checks each one against live web sources.",
+  "description": "Checks the most important factual claims in AI output against live web sources by default.",
   "version": "0.1.0",
   "websiteUrl": "https://faultline-api.fly.dev/llms.txt",
   "repository": {

@@ -28,6 +28,17 @@ function usd(n: number): string {
   return `${n.toLocaleString('en-US', { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 })} USD`;
 }
 
+/**
+ * The ruled monthly minimum: 10 USD including the first 100 billable claims
+ * (ruling Dx3 1aaaa4d2 items 2 and 7, on node 1.18.11.7.7; the Checkout
+ * subscription in faultline-web carries it).
+ */
+export const MONTHLY_BASE_USD = 10;
+export const INCLUDED_CLAIMS = 100;
+export const BASE_PRICE_LINE =
+  `${usd(MONTHLY_BASE_USD)} a month, which includes your first ${INCLUDED_CLAIMS} billable claims; ` +
+  `after that, ${usd(USD_PER_BILLABLE_CLAIM)} per billable claim up to your cap.`;
+
 /** What the engine decides for an unverified verdict that otherwise has every billable mark. */
 export function unverifiedVerdictBills(): boolean {
   return isBillableVerdict({
@@ -46,7 +57,7 @@ function unverifiedSentence(): string {
 export function renderLlmsTxt(): string {
   return `# Faultline API
 
-> Faultline extracts the factual claims in a piece of AI-generated text, checks each claim against live web sources, and returns a verdict per claim (supported, contradicted, mixed or unverified) with the sources it used.
+> Faultline extracts the most important factual claims in a piece of AI-generated text, checks each one against sources from a live web search by default, and returns a verdict per claim (supported, contradicted, mixed or unverified) with the sources it used.
 
 Base URL: ${BASE_URL}
 Authentication: send your API key in the \`x-api-key\` header on every request except the public pages listed below.
@@ -69,11 +80,11 @@ Authentication: send your API key in the \`x-api-key\` header on every request e
 ## Verdicts
 
 - supported, contradicted, mixed: always carry at least one source a reader can open.
-- unverified: no source the claim can be checked against was found, or the check failed. Its risk was not checked; it is never read as low risk.
+- unverified: no source the claim can be checked against was found, or the check failed. An unverified claim is not evidence that the text is accurate.
 
 ## Pricing
 
-- ${usd(USD_PER_BILLABLE_CLAIM)} per billable claim. Details: ${BASE_URL}/pricing
+- ${usd(USD_PER_BILLABLE_CLAIM)} per billable claim. ${BASE_PRICE_LINE} Details: ${BASE_URL}/pricing
 - A claim is billable when its verdict is supported, contradicted or mixed and carries at least one source the engine retrieved. ${unverifiedSentence()}
 
 ## Errors
@@ -111,6 +122,7 @@ export function renderPricingHtml(): string {
 <main>
   <h1>Faultline API pricing</h1>
   <p class="price">${price} per billable claim</p>
+  <p>${BASE_PRICE_LINE}</p>
   <p class="muted">Only claims with a billable verdict are billed.</p>
 
   <h2>Monthly claim cap</h2>
