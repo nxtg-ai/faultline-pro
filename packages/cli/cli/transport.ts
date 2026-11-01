@@ -69,8 +69,10 @@ function explainStatus(status: number, body: string): string {
   switch (status) {
     case 401:
       return 'the API rejected the key (401). Check FAULTLINE_API_KEY.';
+    case 402:
+      return `the key has no quota left for this scan (402): ${body}. Nothing was verified. This is NOT a verdict on your claims.`;
     case 403:
-      return 'the key lacks permission for this operation (403).';
+      return `the key lacks permission for this operation (403): ${body}`;
     case 429:
       return 'rate limit or monthly cap reached (429). This is NOT a verdict on your claims.';
     case 502:

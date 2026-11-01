@@ -111,6 +111,34 @@ describe('hostedScan', () => {
     ).rejects.toThrow(/401/);
   });
 
+  it('says a 402 (no quota left) is not a verdict, and carries the reason', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ error: 'claim_cap_reached' }, 402));
+    const err = await hostedScan(
+      't',
+      undefined,
+      { mode: 'hosted', apiUrl: 'https://x.test', apiKey: 'k' },
+      fetchImpl as unknown as typeof fetch,
+    ).then(
+      () => new Error('resolved'),
+      (e: unknown) => e as Error,
+    );
+    expect(err.message).toMatch(/\(402\)/);
+    expect(err.message).toMatch(/claim_cap_reached/);
+    expect(err.message).toMatch(/NOT a verdict/);
+  });
+
+  it('carries the reason of a 403', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ error: 'consensus_not_in_plan' }, 403));
+    await expect(
+      hostedScan(
+        't',
+        undefined,
+        { mode: 'hosted', apiUrl: 'https://x.test', apiKey: 'k' },
+        fetchImpl as unknown as typeof fetch,
+      ),
+    ).rejects.toThrow(/\(403\): .*consensus_not_in_plan/);
+  });
+
   it('says a 429 is not a verdict on the claims', async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ error: 'slow down' }, 429));
     await expect(

@@ -411,6 +411,8 @@ print(result.overall_risk)  # 'low' | 'medium' | 'high' | 'critical'
 
 `packages/mcp` (`@nxtg/faultline-mcp` 0.1.0) exposes a `verify_claims` tool to Claude Code, Cursor and other MCP clients. It was not published to npm as of 2026-10-01 (`npm view` returned 404), so run it from a checkout. See [`packages/mcp/README.md`](packages/mcp/README.md).
 
+Hosted, with nothing to install: the API serves the same tool at `POST /mcp` (Streamable HTTP, header `x-api-key`), once deployed at `https://faultline-api.fly.dev/mcp`; every scan gate applies. See [docs/INTEGRATION.md §13](docs/INTEGRATION.md#13-hosted-mcp).
+
 ### GitHub Action
 
 The action lives in its own repo, `nxtg-ai/faultline-action` (tag `v1` exists).

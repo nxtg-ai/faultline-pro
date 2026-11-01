@@ -21,6 +21,7 @@
 10. [GraphQL API](#10-graphql-api)
 11. [Other Endpoints Reference](#11-other-endpoints-reference)
 12. [CORS & Security](#12-cors--security)
+13. [Hosted MCP](#13-hosted-mcp)
 
 ---
 
@@ -894,6 +895,73 @@ Server-to-server calls (no `Origin` header) are always allowed.
 **File uploads**: Max 10 MB per request.
 
 **Key security**: API keys are never returned after creation. If lost, rotate the key (`POST /keys/:id/rotate`) — the old key remains valid for 24 hours (grace period) so you can migrate without downtime.
+
+`/mcp` has its own Origin rule, not the one above: see §13.
+
+---
+
+## 13. Hosted MCP
+
+`POST /mcp` is a remote MCP server on the API. An MCP client connects to it with a Faultline API key and nothing to install. It exposes one tool, `verify_claims`, the same tool as the stdio server in `packages/mcp`: same name, input schema, descriptions and output. Both are built from one definition (`buildServer` in `packages/mcp/src/server.ts`), and a test checks that the two `tools/list` answers are equal.
+
+It is available on `https://faultline-api.fly.dev/mcp` once the API is deployed from a commit that has it (`GET /health` reports the deployed `commit`).
+
+### Client configuration
+
+Claude Code:
+
+```bash
+claude mcp add --transport http faultline https://faultline-api.fly.dev/mcp --header "x-api-key: YOUR_FAULTLINE_API_KEY"
+```
+
+Any client that takes a JSON server list (Cursor, Claude Code `.mcp.json`, and others; the exact key names vary by client):
+
+```json
+{
+  "mcpServers": {
+    "faultline": {
+      "type": "http",
+      "url": "https://faultline-api.fly.dev/mcp",
+      "headers": { "x-api-key": "YOUR_FAULTLINE_API_KEY" }
+    }
+  }
+}
+```
+
+The raw protocol, for a quick check:
+
+```bash
+curl -s https://faultline-api.fly.dev/mcp \
+  -H "x-api-key: $FAULTLINE_API_KEY" \
+  -H "content-type: application/json" \
+  -H "accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"verify_claims","arguments":{"text":"The Eiffel Tower is in Paris."}}}'
+```
+
+### Transport
+
+- Streamable HTTP, **stateless**: each POST is handled by a new server and transport. There is no session id (`Mcp-Session-Id` is never issued) and responses are JSON, not an SSE stream. A client may send `initialize` first, as clients do, but no call depends on it.
+- `POST` needs `content-type: application/json` and `accept: application/json, text/event-stream` (406 without it).
+- `GET /mcp` and `DELETE /mcp` answer `405` with `Allow: POST`: there is no stream to open and no session to end.
+- The body limit is the same as `POST /scan`'s.
+
+### What a tool call costs, and which gates apply
+
+A `verify_claims` call runs the scan through this API's own `POST /scan`, in-process, with **your** `x-api-key` and nothing else (no `x-user-tier`, no forwarded headers). So it is a `POST /scan` in every respect: the per-key burst limit (429), the monthly scan quota (402), the fleet provider spend cap (503), the claim meter and claim cap (402 `claim_cap_reached`), the zero-source rule, the result's `overallRisk` and its `billing` field, the scan history and the usage record. A call is counted and billed exactly as the same `POST /scan` would be. `initialize` and `tools/list` run no scan and cost nothing.
+
+`provider` is passed to `POST /scan` as given; leave it out to get the server default (`gemini`, grounded). Consensus is not reachable through the tool.
+
+### Results and errors
+
+- A successful call returns the tool's JSON output (the same object in `structuredContent` and as text): `risk_score`, `overall_risk` (the scan's `overallRisk`), `provider`, `grounded`, `mode: "hosted"`, `claims`, `claims_total`, `degraded`, `unchecked_count`, `billing` (the scan's `billing` field, unchanged) and `summary`. The hosted server writes no audit file; `audit_skipped` says so. The API's own scan history records the scan.
+- When `POST /scan` refuses the scan (402, 403, 429, 503, a 400 for text over 50,000 characters, and so on), the call returns an MCP tool error (`isError: true`) whose text carries the status and `POST /scan`'s error body, and says that nothing was checked. A refusal is never a verdict.
+- A missing or invalid key answers HTTP `401` before any MCP processing, with a JSON-RPC error body `{"jsonrpc":"2.0","error":{"code":-32001,"message":"Unauthorized. Provide a valid x-api-key header."},"id":null}` and no `WWW-Authenticate` header. Other refusals at the door (403 below, 413) also carry a JSON-RPC error body.
+- What a key may scan is decided by `POST /scan` with that key. Today `POST /scan` admits any valid key; it does not check the key's `scan` permission.
+- The measurement key is refused with `403`: its allowlist (`POST /admin/verify-claims`, `GET /usage`) does not include `/mcp`.
+
+### Origin (DNS rebinding)
+
+A request with no `Origin` header (a server-to-server or desktop client) is allowed. A request with an `Origin` header must name an origin listed in `FAULTLINE_MCP_ALLOWED_ORIGINS` (comma-separated, exact match; **empty by default**), or it gets `403` before the key check. The API's general CORS list (`*.nxtg.ai`, `localhost`) does not apply to `/mcp`. An allowlisted browser origin gets CORS headers for itself and a preflight answer (`OPTIONS /mcp`) that allows `Content-Type`, `Accept`, `x-api-key` and `mcp-protocol-version`.
 
 ---
 

@@ -66,6 +66,11 @@ export const PUBLIC_ROUTES: readonly string[] = [
   'GET /notifications',
   // CORS preflight (@fastify/cors).
   'OPTIONS *',
+  // The hosted MCP endpoint's non-POST methods: 405 for GET and DELETE (it is
+  // stateless) and the CORS preflight. No data. POST /mcp needs a key.
+  'GET /mcp',
+  'DELETE /mcp',
+  'OPTIONS /mcp',
 ];
 
 /**
