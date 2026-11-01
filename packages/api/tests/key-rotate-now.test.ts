@@ -36,8 +36,9 @@ async function authStatus(key: string): Promise<number> {
   return (await app.inject({ method: 'GET', url: '/usage', headers: { 'x-api-key': key } })).statusCode;
 }
 
-function rotateNow(id: string, key: string | undefined = ADMIN) {
-  return app.inject({ method: 'POST', url: `/keys/${id}/rotate-now`, headers: key === undefined ? {} : { 'x-api-key': key } });
+/** `key` null sends no x-api-key header. */
+function rotateNow(id: string, key: string | null = ADMIN) {
+  return app.inject({ method: 'POST', url: `/keys/${id}/rotate-now`, headers: key === null ? {} : { 'x-api-key': key } });
 }
 
 async function restart(): Promise<void> {
@@ -123,7 +124,7 @@ describe('POST /keys/:id/rotate-now', () => {
 
   it('no x-api-key gets 403, and a keystore admin key may call it', async () => {
     const target = getKeyStore().create('target', ['scan']);
-    expect((await rotateNow(target.id, undefined)).statusCode).toBe(403);
+    expect((await rotateNow(target.id, null)).statusCode).toBe(403);
     expect(await authStatus(target.key)).toBe(200);
     const admin = getKeyStore().create('ops', ['admin']);
     const res = await rotateNow(target.id, admin.key);

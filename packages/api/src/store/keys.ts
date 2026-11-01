@@ -228,6 +228,17 @@ export interface RotationResult {
   gracePeriodHours:     number;
 }
 
+/** What `rotateNow()` returns. No grace: the replaced key is already rejected. */
+export interface RotateNowResult {
+  id:               string;
+  /** The new key, in plaintext. Shown once. */
+  newKey:           string;
+  /** The replaced key's keyPrefix. Never the key itself. */
+  previousKey:      string;
+  /** Always 0: the replaced key stopped authenticating when the call returned. */
+  gracePeriodHours: 0;
+}
+
 export interface KeyStoreOptions {
   /** Keystore file. Defaults to keystoreFilePath(); null keeps the store in memory only. */
   path?: string | null;
@@ -743,6 +754,29 @@ export class KeyStore {
       previousKeyExpiresAt: expiresAt,
       gracePeriodHours:     ROTATION_GRACE_HOURS,
     };
+  }
+
+  /**
+   * Rotate the key for the given id with no grace period. The new key's hash
+   * replaces the old one, and any previous-key hash (from an earlier graced
+   * rotate) is dropped too, so no earlier key of this id authenticates once
+   * this returns. Written at once (atomic rewrite). Returns the new key in
+   * plaintext, once, and the replaced key's prefix. Null if id not found.
+   */
+  rotateNow(id: string): RotateNowResult | null {
+    const entry = this.keys.find((k) => k.id === id);
+    if (!entry || !this.hashes.has(id)) return null;
+
+    const oldPrefix = entry.keyPrefix;
+    const newKey = randomBytes(32).toString('hex');
+
+    this.hashes.set(id, { keyHash: hashApiKey(newKey) });
+    entry.keyPrefix = newKey.slice(0, KEY_PREFIX_LENGTH);
+    delete entry.previousKeyExpiresAt;
+    entry.lastRotatedAt = new Date().toISOString();
+    this.persist();
+
+    return { id, newKey, previousKey: oldPrefix, gracePeriodHours: 0 };
   }
 
   /** Remove expired previous-key hashes. Returns count of entries cleaned. */

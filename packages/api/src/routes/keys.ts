@@ -707,6 +707,60 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
+  fastify.post<{ Params: { id: string } }>(
+    '/keys/:id/rotate-now',
+    {
+      config: { access: 'admin' },
+      preHandler: requireAdmin,
+      schema: {
+        tags: ['Keys'],
+        summary: 'Rotate an API key now — no grace period, the old key is rejected (401) from the next request',
+        description: [
+          'Generates a cryptographically random replacement key, like `POST /keys/:id/rotate`, but with **no grace period**:',
+          'the replaced key stops authenticating as soon as this call returns, and answers `401` from the next request.',
+          'Use it when a key may have leaked. Any grace key left by an earlier `POST /keys/:id/rotate` is revoked too.',
+          '',
+          'The new key is returned **once** in this response (`newKey`) — store it securely. The server keeps only its',
+          'SHA-256 hash; no previous-key hash is kept. `previousKey` is the replaced key\'s prefix (its first 8 characters).',
+          '`gracePeriodHours` is 0. The key id does not change, so calling this again with the same id rotates again:',
+          'a fresh key is returned and the key from the first call is rejected at once.',
+          '',
+          'Admin only. A subscription.changed notification is dispatched to any subscribers on this key.',
+        ].join('\n'),
+        params: {
+          type: 'object',
+          properties: { id: { type: 'string' } },
+          required: ['id'],
+        },
+        security: [{ apiKey: [] }],
+      },
+    },
+    async (request, reply) => {
+      const result = getKeyStore().rotateNow(request.params.id);
+      if (!result) return reply.status(404).send({ error: 'Key not found.' });
+
+      // Dispatch notification (non-blocking — rotation succeeds regardless)
+      void getNotificationStore().dispatch(
+        'subscription.changed',
+        {
+          keyId:            result.id,
+          change:           'key_rotated_now',
+          gracePeriodHours: 0,
+          message:          'API key rotated with no grace period. The previous key no longer authenticates.',
+        },
+        result.id,
+      ).catch(() => undefined);
+
+      return reply.status(200).send({
+        id:               result.id,
+        newKey:           result.newKey,
+        previousKey:      result.previousKey,
+        gracePeriodHours: result.gracePeriodHours,
+        message:          'New key generated. Your previous key no longer authenticates. Store the new key securely — it will not be shown again.',
+      });
+    },
+  );
+
   // ── Disable / Enable ───────────────────────────────────────────────────────
 
   fastify.patch<{ Params: { id: string } }>(
