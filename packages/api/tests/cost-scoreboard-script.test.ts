@@ -110,6 +110,8 @@ describe('cost-scoreboard.mjs', () => {
     expect(await run([], { ...h.deps, key: KEY, fetch: api.fetch })).toBe(EXIT.USAGE);
     expect(await run(['--out', 'w.json', '--bogus', '1'], { ...h.deps, key: KEY, fetch: api.fetch })).toBe(EXIT.USAGE);
     expect(await run(['--out', 'w.json'], { ...h.deps, env: {}, keyFile: '/nonexistent/hosted-api-key.env', fetch: api.fetch })).toBe(EXIT.USAGE);
+    expect(await run(['--out', 'w.json', '--api', 'not-a-url'], { ...h.deps, key: KEY, fetch: api.fetch })).toBe(EXIT.USAGE);
+    expect(await run(['--out', 'w.json', '--api', 'ftp://example.com'], { ...h.deps, key: KEY, fetch: api.fetch })).toBe(EXIT.USAGE);
     expect(api.calls).toHaveLength(0);
   });
 

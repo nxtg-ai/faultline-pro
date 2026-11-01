@@ -304,6 +304,15 @@ describe('GET /admin/cost-summary', () => {
     expect((await get(SERVER_KEY, `?from=${TO}&to=${FROM}`)).statusCode).toBe(400);
   });
 
+  it('400 for an impossible calendar date or time, never a shifted window', async () => {
+    for (const bad of ['2026-02-30', '2026-02-29', '2026-13-01', '2026-04-31', '2026-10-01T24:00:00Z', '2026-10-01T10:60:00Z', '2026-10-01T10:00:60Z', '2026-10-01T10:00:00+24:00']) {
+      expect(resolveWindow({ from: bad }).ok).toBe(false);
+      expect((await get(SERVER_KEY, `?from=${encodeURIComponent(bad)}&to=2026-12-01`)).statusCode).toBe(400);
+    }
+    const leap = resolveWindow({ from: '2028-02-29', to: '2028-03-07' });
+    expect(leap.ok && leap.from.toISOString()).toBe('2028-02-29T00:00:00.000Z');
+  });
+
   it('403 for a customer key, a pro key and a key holding usage:read', async () => {
     const customer = getKeyStore().create('c', ['scan']);
     const pro = getKeyStore().create('p', ['scan', 'pro']);

@@ -54,6 +54,13 @@ export function parseArgs(argv) {
     opts[flag.slice(2)] = value;
   }
   if (!opts.out) throw new UsageError('--out <path> is required');
+  let api;
+  try {
+    api = new URL(opts.api);
+  } catch {
+    throw new UsageError('--api must be an http or https URL');
+  }
+  if (api.protocol !== 'http:' && api.protocol !== 'https:') throw new UsageError('--api must be an http or https URL');
   return opts;
 }
 

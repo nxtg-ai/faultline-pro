@@ -42,6 +42,15 @@ const ISO_PATTERN = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]
 
 function parseIso(raw: string): Date | null {
   if (!ISO_PATTERN.test(raw)) return null;
+  // Date.parse rolls an impossible date forward (2026-02-30 reads as March 2),
+  // so the calendar parts are checked themselves first.
+  const [y, m, d] = raw.slice(0, 10).split('-').map(Number);
+  const day = new Date(Date.UTC(y, m - 1, d));
+  if (day.getUTCFullYear() !== y || day.getUTCMonth() !== m - 1 || day.getUTCDate() !== d) return null;
+  const time = /T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(raw);
+  if (time && (Number(time[1]) > 23 || Number(time[2]) > 59 || Number(time[3] ?? 0) > 59)) return null;
+  const zone = /([+-])(\d{2}):(\d{2})$/.exec(raw);
+  if (zone && raw.includes('T') && (Number(zone[2]) > 23 || Number(zone[3]) > 59)) return null;
   const ms = Date.parse(raw);
   return Number.isFinite(ms) ? new Date(ms) : null;
 }
