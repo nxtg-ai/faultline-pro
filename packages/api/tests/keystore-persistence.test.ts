@@ -18,13 +18,14 @@ import {
   resetKeyStore,
   keystoreFilePath,
   KeyStore,
+  KeyFieldError,
   KEYSTORE_LOAD_FAILED_LOG,
   KEYSTORE_WRITE_FAILED_LOG,
   ROTATION_GRACE_HOURS,
 } from '../src/store/keys.js';
 
 const ADMIN = 'keystore-persistence-admin-key-0123456789';
-const ENV_KEYS = ['FAULTLINE_API_KEY', 'FAULTLINE_KEYSTORE_FILE', 'FAULTLINE_KEY_IDEMPOTENCY_LEDGER', 'FAULTLINE_CUSTOMER_KEYS'];
+const ENV_KEYS = ['FAULTLINE_API_KEY', 'FAULTLINE_KEYSTORE_FILE', 'FAULTLINE_KEY_IDEMPOTENCY_LEDGER', 'FAULTLINE_CUSTOMER_KEYS', 'FAULTLINE_GRAPHQL'];
 
 let saved: Record<string, string | undefined>;
 let dir: string;
@@ -329,6 +330,59 @@ describe('failure handling', () => {
     expect(await authStatus(key)).toBe(401);
   });
 
+  it('a record whose date does not parse fails the whole file closed (an unparsable expiry never expires)', async () => {
+    for (const field of ['expiresAt', 'createdAt', 'previousKeyExpiresAt', 'lastUsedAt', 'lastRotatedAt']) {
+      process.env.FAULTLINE_KEYSTORE_FILE = join(dir, `${field}.json`);
+      await restart();
+      const a = await createKey();
+      await createKey({ name: 'second', permissions: ['scan'] });
+      const path = process.env.FAULTLINE_KEYSTORE_FILE;
+      const doc = JSON.parse(readFileSync(path, 'utf8')) as { keys: Array<Record<string, unknown>> };
+      doc.keys[1][field] = 'garbage';
+      writeFileSync(path, JSON.stringify(doc));
+      await restart();
+      expect(getKeyStore().size).toBe(0);
+      expect(getKeyStore().getLoadFailures()).toBe(1);
+      expect(await authStatus(a.key)).toBe(401);
+    }
+  });
+
+  it('a field the file could not load is refused at write time and changes nothing', async () => {
+    const { id, key } = await createKey();
+    const before = fileText();
+    // REST PATCH: expiresAt is any string in the schema; the store refuses it.
+    const patch = await app.inject({ method: 'PATCH', url: `/keys/${id}`, headers: { 'x-api-key': ADMIN }, payload: { expiresAt: 'garbage', name: 'renamed' } });
+    expect(patch.statusCode).toBe(400);
+    expect(patch.json().error).toBe('invalid_key_field');
+    expect(fileText()).toBe(before);
+    expect(getKeyStore().list().find((k) => k.id === id)?.name).toBe('customer');
+    // Direct store calls: an unknown permission on create or update.
+    expect(() => getKeyStore().create('bad', ['bogus' as never])).toThrow(KeyFieldError);
+    expect(() => getKeyStore().update(id, { permissions: ['bogus' as never] })).toThrow(KeyFieldError);
+    expect(getKeyStore().size).toBe(1);
+    expect(fileText()).toBe(before);
+    await restart();
+    expect(getKeyStore().getLoadFailures()).toBe(0);
+    expect(await authStatus(key)).toBe(200);
+  });
+
+  it('GraphQL createKey with an unknown permission is refused and the keystore still loads', async () => {
+    process.env.FAULTLINE_GRAPHQL = 'on';
+    await restart();
+    const { key } = await createKey();
+    const before = fileText();
+    const res = await app.inject({
+      method: 'POST', url: '/graphql', headers: { 'x-api-key': ADMIN, 'content-type': 'application/json' },
+      payload: { query: 'mutation { createKey(name:"bad", permissions:["bogus"]) { id permissions } }' },
+    });
+    const body = res.json() as { data?: unknown; errors?: Array<{ extensions?: { code?: string } }> };
+    expect(body.errors?.[0]?.extensions?.code).toBe('BAD_USER_INPUT');
+    expect(fileText()).toBe(before);
+    await restart();
+    expect(getKeyStore().getLoadFailures()).toBe(0);
+    expect(await authStatus(key)).toBe(200);
+  });
+
   it('an unreadable path (a directory where the file should be) gives zero keys and is counted', async () => {
     mkdirSync(file);
     await restart();
@@ -379,6 +433,21 @@ describe('file mode and atomic write', () => {
     await createKey({ name: 'b', permissions: ['scan'] });
     expect(readdirSync(dir).filter((n) => n.endsWith('.tmp'))).toEqual([]);
     expect(readdirSync(dir)).toContain('keystore.json');
+  });
+
+  it('closing the server writes a pending lastUsedAt, and nothing is written after close', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    vi.setSystemTime(new Date('2026-11-01T10:00:00Z'));
+    const { key } = await createKey();
+    getKeyStore().validateKey(key);
+    expect(storedKeys()[0].lastUsedAt).toBeUndefined();
+    await app.close();
+    expect(storedKeys()[0].lastUsedAt).toBe('2026-11-01T10:00:00.000Z');
+    const after = fileText();
+    vi.advanceTimersByTime(120_000);
+    expect(fileText()).toBe(after);
+    app = buildServer();
+    await app.ready();
   });
 
   it('lastUsedAt is written, at most once per interval', async () => {

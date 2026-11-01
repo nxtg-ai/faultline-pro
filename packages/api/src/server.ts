@@ -284,6 +284,7 @@ export function buildServer() {
   });
 
   fastify.addHook('onClose', async () => {
+    getKeyStore().flush();
     getJobScheduler().stop();
     resetJobScheduler();
     getScanQueue().stop();

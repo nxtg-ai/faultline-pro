@@ -3,7 +3,7 @@ import { getAuditLogger } from '../store/audit.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { hasScope, isAdminKeyId, requireAdmin } from '../plugins/auth.js';
 import { esc } from '../lib/html.js';
-import { getKeyStore, KEY_SCOPES, MAX_KEY_IDEMPOTENCY_KEY_LENGTH, ROTATION_GRACE_HOURS } from '../store/keys.js';
+import { getKeyStore, KeyFieldError, KEY_SCOPES, MAX_KEY_IDEMPOTENCY_KEY_LENGTH, ROTATION_GRACE_HOURS } from '../store/keys.js';
 import type { ApiKey, KeyScope, Permission } from '../store/keys.js';
 import { getNotificationStore } from '../store/notifications.js';
 
@@ -631,7 +631,13 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
       if (nonAdminAfter && capAfter !== undefined && !claimCapInBounds(permissions, capAfter)) {
         return reply.status(400).send(CLAIM_CAP_OUT_OF_RANGE);
       }
-      const updated = store.update(request.params.id, patch);
+      let updated;
+      try {
+        updated = store.update(request.params.id, patch);
+      } catch (e) {
+        if (e instanceof KeyFieldError) return reply.status(400).send({ error: 'invalid_key_field', message: 'A field cannot be stored, for example expiresAt is not a date.' });
+        throw e;
+      }
       if (!updated) return reply.status(404).send({ error: 'Key not found.' });
       if (request.body.expiresAt !== undefined) {
         auditRevival(request, [updated.id], request.body.expiresAt === null ? 'expiresAt cleared' : `expiresAt set to ${request.body.expiresAt}`);

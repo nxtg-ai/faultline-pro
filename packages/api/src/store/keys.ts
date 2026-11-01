@@ -1,6 +1,6 @@
 import { randomUUID, randomBytes, timingSafeEqual, createHash } from 'node:crypto';
 import {
-  appendFileSync, closeSync, existsSync, fchmodSync, fsyncSync, mkdirSync, openSync,
+  appendFileSync, closeSync, constants as fsConstants, copyFileSync, existsSync, fchmodSync, fsyncSync, mkdirSync, openSync,
   readFileSync, renameSync, statSync, unlinkSync, writeSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -113,6 +113,44 @@ const PERMISSIONS: readonly Permission[] = ['scan', 'report', 'upload', 'admin',
 
 const isString = (v: unknown): v is string => typeof v === 'string';
 const optional = (v: unknown, check: (x: unknown) => boolean): boolean => v === undefined || check(v);
+/** A timestamp a Date can compare: an unparsable one never expires, so it fails open. */
+const isDate = (v: unknown): boolean => isString(v) && Number.isFinite(Date.parse(v));
+
+/**
+ * One stored key in the shape the loader accepts. Every write goes through this
+ * check too (assertStorable), so the store never writes a file it cannot load.
+ */
+function isStorableRecord(k: Record<string, unknown>): boolean {
+  return k !== null && typeof k === 'object'
+    && isString(k.id) && k.id !== ''
+    && isString(k.keyHash) && SHA256_HEX.test(k.keyHash)
+    && optional(k.previousKeyHash, (v) => isString(v) && SHA256_HEX.test(v))
+    && isString(k.keyPrefix) && k.keyPrefix.length <= KEY_PREFIX_LENGTH
+    && isString(k.name)
+    && Array.isArray(k.permissions) && k.permissions.every((p) => PERMISSIONS.includes(p as Permission))
+    && isDate(k.createdAt)
+    && optional(k.disabled, (v) => typeof v === 'boolean')
+    && optional(k.previousKeyExpiresAt, isDate)
+    && optional(k.lastRotatedAt, isDate)
+    && optional(k.lastUsedAt, isDate)
+    && optional(k.expiresAt, isDate)
+    && optional(k.claimCap, (v) => typeof v === 'number' && Number.isFinite(v))
+    && optional(k.stripeCustomerId, isString)
+    && optional(k.metered, (v) => typeof v === 'boolean')
+    && optional(k.scopes, (v) => Array.isArray(v) && v.every((s) => (KEY_SCOPES as readonly unknown[]).includes(s)));
+}
+
+/** A key field the keystore cannot store (an unknown permission, an unparsable date). Nothing was changed. */
+export class KeyFieldError extends Error {
+  constructor() {
+    super('invalid key field');
+    this.name = 'KeyFieldError';
+  }
+}
+
+function assertStorable(entry: ApiKey, hashes: KeyHashes | undefined): void {
+  if (!hashes || !isStorableRecord({ ...entry, ...hashes } as unknown as Record<string, unknown>)) throw new KeyFieldError();
+}
 
 /**
  * Parse the keystore file. Throws on anything out of shape: one bad record
@@ -126,24 +164,7 @@ function parseKeystoreFile(raw: string): StoredKey[] {
   const seen = new Set<string>();
   return doc.keys.map((r: unknown): StoredKey => {
     const k = r as Record<string, unknown>;
-    const ok = k !== null && typeof k === 'object'
-      && isString(k.id) && k.id !== '' && !seen.has(k.id)
-      && isString(k.keyHash) && SHA256_HEX.test(k.keyHash)
-      && optional(k.previousKeyHash, (v) => isString(v) && SHA256_HEX.test(v))
-      && isString(k.keyPrefix) && k.keyPrefix.length <= KEY_PREFIX_LENGTH
-      && isString(k.name)
-      && Array.isArray(k.permissions) && k.permissions.every((p) => PERMISSIONS.includes(p as Permission))
-      && isString(k.createdAt)
-      && optional(k.disabled, (v) => typeof v === 'boolean')
-      && optional(k.previousKeyExpiresAt, isString)
-      && optional(k.lastRotatedAt, isString)
-      && optional(k.lastUsedAt, isString)
-      && optional(k.expiresAt, isString)
-      && optional(k.claimCap, (v) => typeof v === 'number' && Number.isFinite(v))
-      && optional(k.stripeCustomerId, isString)
-      && optional(k.metered, (v) => typeof v === 'boolean')
-      && optional(k.scopes, (v) => Array.isArray(v) && v.every((s) => (KEY_SCOPES as readonly unknown[]).includes(s)));
-    if (!ok) throw new Error('keystore record out of shape');
+    if (!isStorableRecord(k) || seen.has(k.id as string)) throw new Error('keystore record out of shape');
     seen.add(k.id as string);
     // Copy known fields only, in a fixed order.
     const out: Record<string, unknown> = {};
@@ -214,6 +235,8 @@ export class KeyStore {
   /** When a keystore write was last attempted (ms epoch), for lastUsedAt coalescing. */
   private lastWriteAt = 0;
   private lastUsedTimer: ReturnType<typeof setTimeout> | null = null;
+  /** A bad file could not be moved aside: no write may replace it. */
+  private writesBlocked = false;
 
   constructor(options: KeyStoreOptions = {}) {
     this.path = options.path !== undefined ? options.path : keystoreFilePath();
@@ -238,10 +261,17 @@ export class KeyStore {
     } catch {
       this.loadFailures += 1;
       console.warn(KEYSTORE_LOAD_FAILED_LOG);
+      const aside = `${path}.unreadable-${Date.now()}`;
       try {
-        renameSync(path, `${path}.unreadable-${Date.now()}`);
+        renameSync(path, aside);
       } catch {
-        // Left in place; the next good write replaces it.
+        try {
+          copyFileSync(path, aside, fsConstants.COPYFILE_EXCL);
+        } catch {
+          // The bad file cannot be kept anywhere else, so it must not be overwritten:
+          // every write from now on is refused and counted, and memory keeps serving.
+          this.writesBlocked = true;
+        }
       }
       return;
     }
@@ -277,6 +307,11 @@ export class KeyStore {
     }
     // Set before the attempt, so a failing disk is retried for lastUsedAt at most once per interval.
     this.lastWriteAt = Date.now();
+    if (this.writesBlocked) {
+      this.writeFailures += 1;
+      console.warn(KEYSTORE_WRITE_FAILED_LOG);
+      return;
+    }
     const dir = dirname(path);
     const tmp = join(dir, `.keystore-${process.pid}-${randomBytes(6).toString('hex')}.tmp`);
     let fd: number | undefined;
@@ -300,12 +335,14 @@ export class KeyStore {
       console.warn(KEYSTORE_WRITE_FAILED_LOG);
       return;
     }
-    // Make the rename itself durable. Best effort: not every platform can fsync a directory.
+    // Make the rename itself durable. Until the directory is synced a crash can
+    // bring back the old file, so a failure here is counted like any failed write.
     try {
       const dfd = openSync(dir, 'r');
       try { fsyncSync(dfd); } finally { closeSync(dfd); }
     } catch {
-      // The file is complete either way.
+      this.writeFailures += 1;
+      console.warn(KEYSTORE_WRITE_FAILED_LOG);
     }
   }
 
@@ -322,6 +359,14 @@ export class KeyStore {
       this.persist();
     }, wait);
     this.lastUsedTimer.unref?.();
+  }
+
+  /** Write a pending lastUsedAt now, then stop its timer. Called when the server closes. */
+  flush(): void {
+    if (!this.lastUsedTimer) return;
+    clearTimeout(this.lastUsedTimer);
+    this.lastUsedTimer = null;
+    this.persist();
   }
 
   /** Stop a pending lastUsedAt write. Called when this instance is replaced. */
@@ -424,8 +469,10 @@ export class KeyStore {
       ...(billing.metered !== undefined ? { metered: billing.metered } : {}),
       ...(billing.scopes !== undefined ? { scopes: billing.scopes } : {}),
     };
+    const hashes = { keyHash: hashApiKey(key) };
+    assertStorable(entry, hashes);
     this.keys.push(entry);
-    this.hashes.set(entry.id, { keyHash: hashApiKey(key) });
+    this.hashes.set(entry.id, hashes);
     this.persist();
     return { ...entry, key };
   }
@@ -606,8 +653,10 @@ export class KeyStore {
     metered?: boolean;
     scopes?: KeyScope[];
   }): ApiKey | null {
-    const entry = this.keys.find((k) => k.id === id);
-    if (!entry) return null;
+    const current = this.keys.find((k) => k.id === id);
+    if (!current) return null;
+    // Applied to a copy first, so a field the keystore cannot store changes nothing.
+    const entry: ApiKey = { ...current };
     if (patch.name !== undefined) entry.name = patch.name;
     if (patch.permissions !== undefined) entry.permissions = patch.permissions;
     if (patch.expiresAt !== undefined) {
@@ -625,8 +674,12 @@ export class KeyStore {
     else if (patch.stripeCustomerId !== undefined) entry.stripeCustomerId = patch.stripeCustomerId;
     if (patch.metered !== undefined) entry.metered = patch.metered;
     if (patch.scopes !== undefined) entry.scopes = patch.scopes;
+    assertStorable(entry, this.hashes.get(id));
+    // Commit onto the live object: other holders keep their reference.
+    for (const f of Object.keys(current) as (keyof ApiKey)[]) delete current[f];
+    Object.assign(current, entry);
     this.persist();
-    return entry;
+    return current;
   }
 
   disable(id: string): boolean {
