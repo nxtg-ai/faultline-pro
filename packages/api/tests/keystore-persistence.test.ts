@@ -362,6 +362,11 @@ describe('failure handling', () => {
     // Direct store calls: an unknown permission on create or update.
     expect(() => getKeyStore().create('bad', ['bogus' as never])).toThrow(KeyFieldError);
     expect(() => getKeyStore().update(id, { permissions: ['bogus' as never] })).toThrow(KeyFieldError);
+    // An array hole is written as null, which the loader refuses: refused here too.
+    expect(() => getKeyStore().create('holes', new Array(1))).toThrow(KeyFieldError);
+    expect(() => getKeyStore().create('holes', ['scan'], undefined, { scopes: new Array(1) })).toThrow(KeyFieldError);
+    expect(() => getKeyStore().update(id, { permissions: new Array(1) })).toThrow(KeyFieldError);
+    expect(() => getKeyStore().update(id, { scopes: new Array(1) })).toThrow(KeyFieldError);
     expect(getKeyStore().size).toBe(1);
     expect(fileText()).toBe(before);
     await restart();

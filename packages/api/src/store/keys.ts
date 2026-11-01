@@ -149,7 +149,11 @@ export class KeyFieldError extends Error {
 }
 
 function assertStorable(entry: ApiKey, hashes: KeyHashes | undefined): void {
-  if (!hashes || !isStorableRecord({ ...entry, ...hashes } as unknown as Record<string, unknown>)) throw new KeyFieldError();
+  if (!hashes) throw new KeyFieldError();
+  // Checked as the file will hold it: JSON turns an array hole or undefined into null,
+  // which the loader refuses, so the check must see that form, not the live object.
+  const asWritten = JSON.parse(JSON.stringify({ ...entry, ...hashes })) as Record<string, unknown>;
+  if (!isStorableRecord(asWritten)) throw new KeyFieldError();
 }
 
 /**
