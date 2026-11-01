@@ -419,7 +419,7 @@ components:
         A claim is billed only when it gets a supported, contradicted or mixed
         verdict with at least one source. Unverified claims, claims with no
         source and claims where the provider failed are not billed; `unbilled`
-        lists them with the reason, in the order of the result's verifications.
+        lists them with the reason, in the result's claim order.
         Reasons: the provider's `apiErrorReason` (else `provider_error`),
         `no_source`, the verdict itself (`unverified`, `skipped`), or
         `no_retriever`. Reporting only; billing is unchanged.
