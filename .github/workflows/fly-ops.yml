@@ -11,6 +11,11 @@
 #                           none exists (idempotent)
 #   measurement-key-set     copy the repo secret FAULTLINE_MEASUREMENT_KEY to the
 #                           app; measurement-key-unset removes it
+#   keystore-audit          read-only check of the keystore file on the volume:
+#                           its mode, field names, and for each key only the first
+#                           12 characters of the stored SHA-256, never a value that
+#                           could be a key (a caller compares them with the hash of
+#                           a test key to show the file holds hashes, not keys)
 #
 # Why the ledger volume: /var/log/faultline holds the append-only provider-spend,
 # grounding-allowance and scan-cost ledgers. Without a volume every deploy
@@ -39,6 +44,7 @@ on:
           - claim-meter-off
           - measurement-key-set
           - measurement-key-unset
+          - keystore-audit
       spend_cap_usd:
         description: 'Monthly ceiling in USD for spend-cap-on, a whole number from 1 to 1000'
         required: false
@@ -184,6 +190,35 @@ jobs:
           print("all releases", len(rows))
           for n in sorted(rows, key=lambda x: x["version"]): print("REL", n["version"], n["createdAt"], n["status"])
           PY
+
+      - name: Keystore audit (read-only; no key values printed)
+        if: inputs.action == 'keystore-audit'
+        run: |
+          cat > keystore-audit.js <<'JS'
+          const fs = require('fs');
+          const p = '/var/log/faultline/keystore.json';
+          if (!fs.existsSync(p)) { console.log(JSON.stringify({ file: 'absent' })); process.exit(0); }
+          const stored = new Set(['id', 'keyHash', 'previousKeyHash', 'keyPrefix', 'name', 'permissions', 'createdAt', 'disabled',
+            'previousKeyExpiresAt', 'lastRotatedAt', 'lastUsedAt', 'expiresAt', 'claimCap', 'stripeCustomerId', 'metered', 'scopes']);
+          const hashFields = new Set(['keyHash', 'previousKeyHash']);
+          const doc = JSON.parse(fs.readFileSync(p, 'utf8'));
+          const keys = Array.isArray(doc.keys) ? doc.keys : [];
+          const out = {
+            mode: (fs.statSync(p).mode & 0o777).toString(8),
+            version: doc.version,
+            keys: keys.length,
+            fields: [...new Set(keys.flatMap((k) => Object.keys(k)))].sort(),
+            unknownFields: [...new Set(keys.flatMap((k) => Object.keys(k)).filter((f) => !stored.has(f)))],
+            // A plaintext key is 64 hex characters; only the two hash fields may hold such a value.
+            hex64OutsideHashFields: keys.reduce((n, k) => n + Object.entries(k).filter(([f, v]) =>
+              typeof v === 'string' && /^[0-9a-f]{64}$/.test(v) && !hashFields.has(f)).length, 0),
+            perKey: keys.map((k) => ({ id: k.id, keyHashHead: String(k.keyHash).slice(0, 12), keyHashLength: String(k.keyHash).length,
+              hasPreviousKeyHash: k.previousKeyHash !== undefined, keyPrefixLength: String(k.keyPrefix).length })),
+          };
+          console.log(JSON.stringify(out));
+          JS
+          b64=$(base64 -w0 keystore-audit.js)
+          flyctl ssh console -a "$APP" -C "sh -c 'echo $b64 | base64 -d > /tmp/keystore-audit.js && node /tmp/keystore-audit.js; rm -f /tmp/keystore-audit.js'"
 
       - name: Recent logs (buffer only, request lines)
         if: inputs.action == 'logs'
