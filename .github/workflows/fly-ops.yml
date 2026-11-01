@@ -11,6 +11,11 @@
 #                           none exists (idempotent)
 #   measurement-key-set     copy the repo secret FAULTLINE_MEASUREMENT_KEY to the
 #                           app; measurement-key-unset removes it
+#   keystore-audit          read-only check of the keystore file on the volume:
+#                           its mode, field names, and for each key only the first
+#                           12 characters of the stored SHA-256, never a value that
+#                           could be a key (a caller compares them with the hash of
+#                           a test key to show the file holds hashes, not keys)
 #
 # Why the ledger volume: /var/log/faultline holds the append-only provider-spend,
 # grounding-allowance and scan-cost ledgers. Without a volume every deploy
@@ -39,6 +44,7 @@ on:
           - claim-meter-off
           - measurement-key-set
           - measurement-key-unset
+          - keystore-audit
       spend_cap_usd:
         description: 'Monthly ceiling in USD for spend-cap-on, a whole number from 1 to 1000'
         required: false
@@ -184,6 +190,61 @@ jobs:
           print("all releases", len(rows))
           for n in sorted(rows, key=lambda x: x["version"]): print("REL", n["version"], n["createdAt"], n["status"])
           PY
+
+      - name: Keystore audit (read-only; no key values printed)
+        if: inputs.action == 'keystore-audit'
+        run: |
+          cat > keystore-audit.js <<'JS'
+          // Prints only fixed labels, counts, lengths, booleans, a UUID-shaped id and the
+          // first 12 characters of a well-formed keyHash. Anything else is counted, never shown.
+          const fs = require('fs');
+          const p = '/var/log/faultline/keystore.json';
+          // Returns the one result object; it is written once below and Node exits on its own,
+          // so a large result is never cut off in a pipe.
+          const audit = () => {
+            if (!fs.existsSync(p)) return { file: 'absent' };
+            const stored = ['id', 'keyHash', 'previousKeyHash', 'keyPrefix', 'name', 'permissions', 'createdAt', 'disabled',
+              'previousKeyExpiresAt', 'lastRotatedAt', 'lastUsedAt', 'expiresAt', 'claimCap', 'stripeCustomerId', 'metered', 'scopes'];
+            const HEX64 = /^[0-9a-f]{64}$/i;
+            const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+            let doc;
+            try { doc = JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return { file: 'present', parse: 'failed' }; }
+            const keys = doc && typeof doc === 'object' && Array.isArray(doc.keys) ? doc.keys : null;
+            if (!keys || !keys.every((k) => k && typeof k === 'object' && !Array.isArray(k))) return { file: 'present', shape: 'unexpected' };
+            // Every string anywhere (values and property names, nested, root included) that looks
+            // like a key, outside the two top-level hash fields of a record.
+            let hex64Elsewhere = 0;
+            const walk = (v) => {
+              if (typeof v === 'string') { if (HEX64.test(v)) hex64Elsewhere += 1; return; }
+              if (v && typeof v === 'object') for (const [f, x] of Object.entries(v)) { if (HEX64.test(f)) hex64Elsewhere += 1; walk(x); }
+            };
+            for (const [f, v] of Object.entries(doc)) { if (HEX64.test(f)) hex64Elsewhere += 1; if (f !== 'keys') walk(v); }
+            for (const k of keys) for (const [f, v] of Object.entries(k)) { if ((f === 'keyHash' || f === 'previousKeyHash') && typeof v === 'string') continue; if (HEX64.test(f)) hex64Elsewhere += 1; walk(v); }
+            const names = new Set(keys.flatMap((k) => Object.keys(k)));
+            return {
+              mode: (fs.statSync(p).mode & 0o777).toString(8),
+              version: Number.isFinite(doc.version) ? doc.version : 'not-a-number',
+              keys: keys.length,
+              fields: stored.filter((f) => names.has(f)),
+              unknownFieldCount: [...names].filter((f) => !stored.includes(f)).length,
+              hex64OutsideHashFields: hex64Elsewhere,
+              perKey: keys.map((k) => {
+                const h = typeof k.keyHash === 'string' && /^[0-9a-f]{64}$/.test(k.keyHash) ? k.keyHash : null;
+                return {
+                  id: typeof k.id === 'string' && UUID.test(k.id) ? k.id : 'not-a-uuid',
+                  keyHashHead: h ? h.slice(0, 12) : 'malformed',
+                  hasPreviousKeyHash: k.previousKeyHash !== undefined,
+                  keyPrefixLength: typeof k.keyPrefix === 'string' ? k.keyPrefix.length : -1,
+                };
+              }),
+            };
+          };
+          let result;
+          try { result = audit(); } catch { result = { audit: 'failed' }; }
+          process.stdout.write(JSON.stringify(result) + '\n');
+          JS
+          b64=$(base64 -w0 keystore-audit.js)
+          flyctl ssh console -a "$APP" -C "sh -c 'f=\$(mktemp) && echo $b64 | base64 -d > \"\$f\" && node \"\$f\"; rc=\$?; rm -f \"\$f\"; exit \$rc'"
 
       - name: Recent logs (buffer only, request lines)
         if: inputs.action == 'logs'
