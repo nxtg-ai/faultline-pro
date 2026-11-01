@@ -1,0 +1,26 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "ai.nxtg/faultline",
+  "title": "Faultline",
+  "description": "Extracts factual claims from AI output and checks each one against live web sources.",
+  "version": "0.1.0",
+  "websiteUrl": "https://faultline-api.fly.dev/llms.txt",
+  "repository": {
+    "url": "https://github.com/nxtg-ai/faultline-pro",
+    "source": "github"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://faultline-api.fly.dev/mcp",
+      "headers": [
+        {
+          "name": "X-API-Key",
+          "description": "Your Faultline API key",
+          "isRequired": true,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

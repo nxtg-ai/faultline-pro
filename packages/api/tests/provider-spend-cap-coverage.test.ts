@@ -120,6 +120,10 @@ const PROVIDER_FREE_ROUTES: readonly string[] = [
   'GET /docs/static/*',
   'GET /docs/static/index.html',
   'GET /docs/static/swagger-initializer.js',
+  // Agent discovery (1.18.11.7.9): static OpenAPI document, llms.txt, pricing page.
+  'GET /openapi.json',
+  'GET /llms.txt',
+  'GET /pricing',
   'OPTIONS *',
 
   // Usage, spend, costs and rate limits: read stored counters.
