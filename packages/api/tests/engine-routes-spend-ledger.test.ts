@@ -212,7 +212,9 @@ const CASES: SpendCase[] = [
     name: 'POST /scan/compliance-gate', files: ['routes/compliance-gate.ts'], rows: 1,
     run: async () => {
       const res = await server.inject({ method: 'POST', url: '/scan/compliance-gate', headers, payload: { text: TEXT, provider: 'mock' } });
-      expect(res.statusCode).toBe(200);
+      // The mock's verdicts carry no source, so they read unverified and the scan is high
+      // risk: the gate fails (422) after the scan ran, and the spend row is still written.
+      expect(res.statusCode).toBe(422);
     },
   },
   {

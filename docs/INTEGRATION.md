@@ -503,14 +503,16 @@ interface ScanResult {
 }
 ```
 
-**Risk level heuristic** (approximate):
+**How `overallRisk` is computed** (the same rule on every scan path: quick, full, stream, deep, batch, consensus):
 
 | Risk | When |
 |------|------|
-| `low` | All or most claims supported |
-| `medium` | Some mixed/unverified claims |
-| `high` | Multiple contradicted or high-importance failures |
-| `critical` | Critical-importance claims contradicted |
+| `critical` | More than 2 claims contradicted |
+| `high` | At least 1 claim contradicted, or more than 2 mixed, or unverified claims are at least half of the verdicts |
+| `medium` | At least 1 claim mixed, or at least 1 claim unverified |
+| `low` | Every verdict supported, or no verdicts at all |
+
+An unverified claim (no source found, a provider error, or never checked) means its risk was not checked. It is never read as low risk: it can raise the band, never lower it.
 
 ### RateLimitInfo (headers)
 

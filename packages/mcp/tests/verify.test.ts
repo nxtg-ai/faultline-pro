@@ -388,3 +388,17 @@ describe('autoDetectProvider', () => {
     expect(autoDetectProvider({})).toBe('mock');
   });
 });
+
+describe('verifyClaims — an unverified claim is never read as low risk', () => {
+  // Validates: the engine's overall risk rule through the MCP verify_claims path.
+  it('runs the real engine on the mock provider (every verdict unverified) and reports high', async () => {
+    const { scan } = await import('@nxtg/faultline/cli/scan.js');
+    const out = await verifyClaims(
+      { text: 'The Eiffel Tower is in Paris. Water boils at 100 degrees Celsius at sea level.', provider: 'mock' },
+      { scanFn: scan, transport: { mode: 'local' } },
+    );
+    expect(out.claims.length).toBeGreaterThan(0);
+    expect(out.claims.every((c) => c.verdict === 'UNSUPPORTED')).toBe(true);
+    expect(out.overall_risk).toBe('high');
+  });
+});

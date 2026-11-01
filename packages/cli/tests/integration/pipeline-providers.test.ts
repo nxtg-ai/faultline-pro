@@ -19,23 +19,13 @@ vi.stubGlobal('fetch', mockFetch);
 import { getProvider, registerProvider, listProviders } from '../../providers/registry';
 import { createOpenAIProvider } from '../../providers/openai_provider';
 import { generateComplianceReport } from '../../compliance/report_generator';
+import { calculateRisk } from '../../lib/overall-risk';
 import { mapClaimToRiskCategory } from '../../compliance/eu_ai_act';
 import type { Claim, VerificationResult, AnalysisState } from '../../types';
 import type { LLMProvider, CritiqueResult } from '../../providers/base_provider';
 
 // --- Shared helpers ---
 
-function calculateRisk(
-  verifications: Record<string, VerificationResult>,
-): AnalysisState['overallRisk'] {
-  const values = Object.values(verifications);
-  const contradicted = values.filter((v) => v.status === 'contradicted').length;
-  const mixed = values.filter((v) => v.status === 'mixed').length;
-  if (contradicted > 2) return 'critical';
-  if (contradicted > 0 || mixed > 2) return 'high';
-  if (mixed > 0) return 'medium';
-  return 'low';
-}
 
 function filterClaimsForVerification(claims: Claim[]): Claim[] {
   return claims
@@ -295,7 +285,7 @@ describe('Integration: Multi-Provider Pipeline', () => {
         .rejects.toMatchObject({ name: 'ExtractionError', reason: 'rate_limited' });
     });
 
-    it('Gemini verification failure mid-pipeline → unverified + low risk report', async () => {
+    it('Gemini verification failure mid-pipeline → unverified + high risk report', async () => {
       mockGenerateContent.mockResolvedValueOnce({ text: JSON.stringify(SAMPLE_CLAIMS) });
       // Both verifications fail
       mockGenerateContent.mockRejectedValueOnce(new Error('Rate limited'));
@@ -306,13 +296,14 @@ describe('Integration: Multi-Provider Pipeline', () => {
 
       expect(verifications['c1'].status).toBe('unverified');
       expect(verifications['c2'].status).toBe('unverified');
-      expect(risk).toBe('low');
+      // Nothing was checked, so the risk is not known: never low.
+      expect(risk).toBe('high');
       // c1 "hiring" still matches Annex III domain even when unverified
       expect(report.euRiskSummary.high).toBe(1);
       expect(report.euRiskSummary.minimal).toBe(1);
     });
 
-    it('Claude verification failure mid-pipeline → unverified + low risk report', async () => {
+    it('Claude verification failure mid-pipeline → unverified + high risk report', async () => {
       mockFetch.mockResolvedValueOnce(mockAnthropicResponse(JSON.stringify(SAMPLE_CLAIMS)));
       mockFetch.mockRejectedValueOnce(new Error('Timeout'));
       mockFetch.mockRejectedValueOnce(new Error('Timeout'));
@@ -322,7 +313,8 @@ describe('Integration: Multi-Provider Pipeline', () => {
 
       expect(verifications['c1'].status).toBe('unverified');
       expect(verifications['c2'].status).toBe('unverified');
-      expect(risk).toBe('low');
+      // Nothing was checked, so the risk is not known: never low.
+      expect(risk).toBe('high');
       // Same domain matching behavior as Gemini
       expect(report.euRiskSummary.high).toBe(1);
       expect(report.euRiskSummary.minimal).toBe(1);

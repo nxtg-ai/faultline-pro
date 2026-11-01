@@ -119,7 +119,7 @@ function streamErrorEvent(err: unknown): Record<string, unknown> {
  * Event sequence:
  *   data: {"type":"start","claimCount":N,"provider":"mock"}        ← on first claim verified
  *   data: {"type":"claim_verified","index":0,"claim":{...},"verdict":{...}}  × N
- *   data: {"type":"complete","overallRisk":"low","claimCount":N,"verification":{tier,cap,eligibleClaims,verifiedClaims,uncheckedClaims,uncheckedClaimIds}}
+ *   data: {"type":"complete","overallRisk":"low|medium|high|critical","claimCount":N,"verification":{tier,cap,eligibleClaims,verifiedClaims,uncheckedClaims,uncheckedClaimIds}}
  *   data: {"type":"error","message":"..."}  (on failure only; plus "error":"extraction_failed","reason" when extraction failed)
  */
 export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
