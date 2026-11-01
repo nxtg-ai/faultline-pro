@@ -412,6 +412,29 @@ components:
         confidenceDistribution:
           $ref: '#/components/schemas/ConfidenceDistribution'
 
+    BillingSummary:
+      type: object
+      description: >
+        Which claims of this result were billed, and why the others were not.
+        A claim is billed only when it gets a supported, contradicted or mixed
+        verdict with at least one source. Unverified claims, claims with no
+        source and claims where the provider failed are not billed; `unbilled`
+        lists them with the reason, in the result's claim order.
+        Reasons: the provider's `apiErrorReason` (else `provider_error`),
+        `no_source`, the verdict itself (`unverified`, `skipped`), or
+        `no_retriever`. Reporting only; billing is unchanged.
+      required: [billedClaims, unbilledClaims, unbilled]
+      properties:
+        billedClaims: { type: integer, minimum: 0 }
+        unbilledClaims: { type: integer, minimum: 0 }
+        unbilled:
+          type: array
+          items:
+            type: object
+            required: [claimId, reason]
+            properties:
+              claimId: { type: string }
+              reason: { type: string, example: no_source }
     ScanResult:
       type: object
       required:
@@ -455,6 +478,8 @@ components:
           description: >
             Rule engine findings (PII, bias, toxicity, security patterns)
             detected in the input text.
+        billing:
+          $ref: '#/components/schemas/BillingSummary'
 
     ApiKey:
       type: object
@@ -1602,7 +1627,7 @@ paths:
     get:
       tags: [Scan]
       summary: Stream scan results via Server-Sent Events
-      description: Request and event shapes in docs/INTEGRATION.md. Each delivered billable verdict (isBillableVerdict) is committed to the claim meter as it is sent.
+      description: Request and event shapes in docs/INTEGRATION.md. Each delivered billable verdict (isBillableVerdict) is committed to the claim meter as it is sent. The `complete` event carries `billing` (BillingSummary).
       responses:
         "200":
           description: text/event-stream
@@ -1610,7 +1635,7 @@ paths:
     post:
       tags: [Scan]
       summary: Stream scan results via SSE (POST)
-      description: Request and event shapes in docs/INTEGRATION.md.
+      description: Request and event shapes in docs/INTEGRATION.md. The `complete` event carries `billing` (BillingSummary).
       responses:
         "200":
           description: text/event-stream
@@ -1637,6 +1662,8 @@ paths:
         For a metered key, the first answer that returns verdicts marks the
         job served. An answer of `resultAvailable: false` or 404 `job_lost`
         for a job never served writes void rows for its committed claims, once.
+        Once the job has a result with verifications, the answer carries
+        `billing` (BillingSummary) beside it.
       parameters:
         - name: jobId
           in: path
@@ -2109,7 +2136,7 @@ paths:
       responses:
         "402": { $ref: '#/components/responses/ClaimMeterRefused' }
         "200":
-          description: Scan result with evidence link scoring
+          description: Scan result with evidence link scoring, and `billing` (BillingSummary)
         "401": { $ref: '#/components/responses/Unauthorized' }
         "429": { $ref: '#/components/responses/RateLimited' }
 

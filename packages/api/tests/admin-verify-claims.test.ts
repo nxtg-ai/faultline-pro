@@ -312,12 +312,19 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
     expect(res.body).not.toContain('example.com');
     const keys = allKeys(res.json());
     expect(keys.size).toBeGreaterThan(0);
-    for (const forbidden of ['explanation', 'sources', 'searchEntryPoint', 'groundingMetadata', 'claimId']) {
+    for (const forbidden of ['explanation', 'sources', 'searchEntryPoint', 'groundingMetadata']) {
       expect(keys.has(forbidden)).toBe(false);
     }
+    // A provider result's own claimId never reaches a per-claim result; only
+    // billing names claims, by the ids the caller sent, with our own reason labels.
+    const resultKeys = allKeys(res.json().results);
+    expect(resultKeys.size).toBeGreaterThan(0);
+    expect(resultKeys.has('claimId')).toBe(false);
+    expect(res.json().billing.unbilled.map((u: { claimId: string }) => u.claimId).every((id: string) => id === '1' || id === '2')).toBe(true);
     expect([...keys].sort()).toEqual([
-      'apiError', 'apiErrorReason', 'costUsd', 'groundingCalls', 'id', 'inputTokens', 'model', 'noSourceAbstain',
-      'outputTokens', 'parseFallback', 'priced', 'provider', 'results', 'status', 'usage',
+      'apiError', 'apiErrorReason', 'billedClaims', 'billing', 'claimId', 'costUsd', 'groundingCalls', 'id', 'inputTokens', 'model',
+      'noSourceAbstain', 'outputTokens', 'parseFallback', 'priced', 'provider', 'reason', 'results', 'status', 'unbilled',
+      'unbilledClaims', 'usage',
     ]);
   });
 

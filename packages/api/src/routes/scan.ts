@@ -17,6 +17,7 @@ import { getAnalyticsStore } from '../store/analytics.js';
 import type { RiskLevel } from '../store/analytics.js';
 import { fireWebhookEvent } from '../store/webhooks.js';
 import { issueScanId } from '../lib/scan-access.js';
+import { withBilling } from '../lib/billing.js';
 import { getCircuitBreaker } from '../store/circuit-breaker.js';
 import type { Provider } from '../store/circuit-breaker.js';
 import { getAuditLogger } from '../store/audit.js';
@@ -165,7 +166,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
           commitClaims(request, delivered.scanId, result, effectiveProvider);
           recordDeliveredScan(request, delivered.verifications);
           fireWebhookEvent('scan.complete', delivered, requestOwner(request));
-          return reply.status(200).send(delivered);
+          return reply.status(200).send(withBilling(delivered));
         } catch (err) {
           if (isConsensusUnavailableError(err)) {
             return reply.status(503).send({ error: 'consensus_unavailable', message: CONSENSUS_UNAVAILABLE_MESSAGE });
@@ -214,7 +215,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
         commitClaims(request, delivered.scanId, cached, effectiveProvider);
         recordDeliveredScan(request, (delivered as { verifications?: unknown }).verifications);
         fireWebhookEvent('scan.complete', delivered, requestOwner(request));
-        return reply.status(200).send(delivered);
+        return reply.status(200).send(withBilling(delivered));
       }
       reply.header('X-Cache', 'MISS');
 
@@ -309,7 +310,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
           commitClaims(request, delivered.scanId, result, p);
           recordDeliveredScan(request, delivered.verifications);
           fireWebhookEvent('scan.complete', delivered, requestOwner(request));
-          return reply.status(200).send(delivered);
+          return reply.status(200).send(withBilling(delivered));
         } catch (err) {
           if (isInvalidVerdictError(err)) throw err;
           cb.recordFailure(p);
@@ -382,7 +383,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
       commitClaims(request, delivered.scanId, result, effectiveProvider);
       fireWebhookEvent('scan.complete', delivered, requestOwner(request));
 
-      return reply.status(200).send(delivered);
+      return reply.status(200).send(withBilling(delivered));
     },
   );
 }

@@ -10,6 +10,7 @@ import { describe, it, expect } from 'vitest';
 import { scan } from '../cli/scan.js';
 import { guaranteeClaimPerSentence, splitSentences } from '../cli/scan.js';
 import type { Claim } from '../types.js';
+import { MAX_CLAIM_ID_LENGTH } from '../lib/verdict-guard.js';
 
 // ── Acceptance test (CoS UAT scenario) ───────────────────────────────────────
 
@@ -290,5 +291,32 @@ describe('splitSentences: long word before a boundary', () => {
     const out = splitSentences(input);
     expect(out.length).toBeGreaterThan(0);
     expect(out).toEqual(expected);
+  });
+});
+
+describe('guaranteeClaimPerSentence: synthetic ids are unique within the scan and within the meter limit', () => {
+  it('never reuses an id the model already returned (a model claim named "s2" or "s3")', () => {
+    const text = 'Alpha is first. Beta is second. Gamma is third. Delta is fourth.';
+    const claims: Claim[] = [
+      { id: 's2', text: 'Alpha is first', type: 'fact', importance: 3 },
+      { id: 's3', text: 'Beta is second', type: 'fact', importance: 3 },
+    ];
+    const result = guaranteeClaimPerSentence(text, claims);
+    expect(result.length).toBe(4);
+    const ids = result.map((c) => c.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids.slice(0, 2)).toEqual(['s2', 's3']);
+    expect(ids.slice(2)).toEqual(['s4', 's5']);
+    for (const id of ids) expect(id.length).toBeLessThanOrEqual(MAX_CLAIM_ID_LENGTH);
+  });
+
+  it('many synthetic claims: every id distinct and within the limit', () => {
+    const text = Array.from({ length: 300 }, (_, i) => `Sentence number ${i} states fact ${i * 7}.`).join(' ');
+    const claims: Claim[] = Array.from({ length: 5 }, (_, i) => ({ id: `s${i + 3}`, text: `unrelated claim ${i}`, type: 'fact' as const, importance: 3 }));
+    const result = guaranteeClaimPerSentence(text, claims);
+    expect(result.length).toBe(305);
+    const ids = result.map((c) => c.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of ids) expect(id.length).toBeLessThanOrEqual(MAX_CLAIM_ID_LENGTH);
   });
 });

@@ -1,4 +1,4 @@
-import { abstainScanWithoutSource, abstainWithoutSource, guardVerdict, isBillableVerdict } from '@nxtg/faultline/lib/verdict-guard.js';
+import { abstainScanWithoutSource, abstainWithoutSource, billingSummary, claimOrderOf, guardVerdict, isBillableVerdict, type BillingSummary } from '@nxtg/faultline/lib/verdict-guard.js';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -217,6 +217,12 @@ export interface FullScanJobView {
   /** False for a job reloaded from the ledger after a restart (and for a failed job): no result to serve. */
   resultAvailable: boolean;
   /**
+   * Present with `result` when it has verifications: how many of its claims
+   * were billed, how many were not, and why each was not (billingSummary),
+   * computed from the result as served.
+   */
+  billing?: BillingSummary;
+  /**
    * True once the job is terminal AND its row is on the ledger, so a restart keeps
    * it. False while queued or running, and for a terminal job whose ledger write
    * failed: a restart would then answer job_lost, so fw must settle on this terminal
@@ -330,6 +336,8 @@ export function describeJob(job: FullScanJob): FullScanJobView {
   const served = progress.filter((p) => p.status === 'served').length;
   const unserved = unservedOf(progress);
   const withResult = job.result !== undefined && (job.status === 'done' || job.status === 'stopped');
+  const result = withResult ? abstainScanWithoutSource(job.result) : undefined;
+  const verifications = (result as { verifications?: unknown } | undefined)?.verifications;
   return {
     jobId: job.jobId,
     status: job.status,
@@ -341,7 +349,8 @@ export function describeJob(job: FullScanJob): FullScanJobView {
     units: unitAccounting(job.charged, served),
     resultAvailable: job.status !== 'failed',
     durable: job.durable === true,
-    ...(withResult ? { result: abstainScanWithoutSource(job.result) } : {}),
+    ...(withResult ? { result } : {}),
+    ...(verifications && typeof verifications === 'object' ? { billing: billingSummary(verifications, claimOrderOf(result)) } : {}),
   };
 }
 

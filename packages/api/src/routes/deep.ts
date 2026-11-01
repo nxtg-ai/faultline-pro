@@ -10,6 +10,7 @@ import { getAnalyticsStore } from '../store/analytics.js';
 import type { RiskLevel } from '../store/analytics.js';
 import { fireWebhookEvent } from '../store/webhooks.js';
 import { issueScanId } from '../lib/scan-access.js';
+import { withBilling } from '../lib/billing.js';
 import { getCircuitBreaker } from '../store/circuit-breaker.js';
 import type { Provider } from '../store/circuit-breaker.js';
 import { getScanCache } from '../store/cache.js';
@@ -62,7 +63,7 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
         // Counted like a /scan cache hit: once, when what it serves holds a billable verdict.
         meterScan(keyId, cached.verifications);
         fireWebhookEvent('scan.complete', delivered, requestOwner(request));
-        return reply.status(200).send(delivered);
+        return reply.status(200).send(withBilling(delivered));
       }
       reply.header('X-Cache', 'MISS');
 
@@ -94,7 +95,7 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
           meterScan(keyId, result.verifications);
           fireWebhookEvent('scan.complete', delivered, requestOwner(request));
 
-          return reply.status(200).send(delivered);
+          return reply.status(200).send(withBilling(delivered));
         } catch (err) {
           cb.recordFailure(p);
           lastError = err instanceof Error ? err.message : String(err);
