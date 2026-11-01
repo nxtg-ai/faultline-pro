@@ -73,7 +73,7 @@ function enforceWithBudgetLeft(): void {
 
 /** Push this month's spend past the $1 cap. */
 function spendPastCap(): void {
-  recordProviderSpend(costEvent(1.5));
+  recordProviderSpend(costEvent(1.5), 'customer');
 }
 
 beforeEach(async () => {

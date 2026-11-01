@@ -27,6 +27,7 @@ import { uploadRoutes } from './routes/upload.js';
 import { keysRoutes } from './routes/keys.js';
 import { usageRoutes } from './routes/usage.js';
 import { usageRecordsRoutes } from './routes/usage-records.js';
+import { costSummaryRoutes } from './routes/cost-summary.js';
 import { installGroundingCounter } from './store/grounding-allowance.js';
 import { dashboardRoutes } from './routes/dashboard.js';
 import { webhookRoutes } from './routes/webhooks.js';
@@ -180,6 +181,7 @@ export function buildServer() {
   fastify.register(keysRoutes);
   fastify.register(usageRoutes);
   fastify.register(usageRecordsRoutes);
+  fastify.register(costSummaryRoutes);
   fastify.register(dashboardRoutes);
   fastify.register(webhookRoutes);
   fastify.register(batchRoutes);

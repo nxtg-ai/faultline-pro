@@ -28,7 +28,7 @@ import type { Claim, VerificationResult } from '@nxtg/faultline/types.js';
 import { recordUsage } from '@nxtg/faultline/lib/usage-sink.js';
 import { ExtractionError } from '@nxtg/faultline/providers/extraction-error.js';
 import { buildServer } from '../src/server.js';
-import { resetKeyStore } from '../src/store/keys.js';
+import { getKeyStore, resetKeyStore } from '../src/store/keys.js';
 import { resetRateLimiter } from '../src/store/ratelimit.js';
 import { resetUsageMeter } from '../src/store/usage.js';
 import { resetCache } from '../src/store/cache.js';
@@ -86,14 +86,20 @@ vi.mock('@nxtg/faultline/cli/extract.js', async (importOriginal) => {
 const SERVER_KEY = 'engine-spend-server-key';
 const TEXT = 'Paris is in France. Water boils at 100 C at sea level. The Moon orbits the Earth.';
 const TEXT_2 = 'Mount Everest is in Nepal. The Pacific is an ocean.';
-const ENV_KEYS = ['FAULTLINE_API_KEY', 'FAULTLINE_PROVIDER_SPEND_LEDGER', 'FAULTLINE_PROVIDER_SPEND_CAP', 'FAULTLINE_FULL_JOBS_LEDGER', 'FAULTLINE_GRAPHQL'];
+const ENV_KEYS = ['FAULTLINE_MEASUREMENT_KEY', 'FAULTLINE_API_KEY', 'FAULTLINE_PROVIDER_SPEND_LEDGER', 'FAULTLINE_PROVIDER_SPEND_CAP', 'FAULTLINE_FULL_JOBS_LEDGER', 'FAULTLINE_GRAPHQL'];
 
 let savedEnv: Record<string, string | undefined>;
 let tmpDir: string;
 let spendLedger: string;
 let server: FastifyInstance;
 
-const headers = { 'x-api-key': SERVER_KEY, 'content-type': 'application/json' };
+/** The key every case sends. The server key unless a describe block below swaps it. */
+let callerKey = SERVER_KEY;
+let headers = { 'x-api-key': callerKey, 'content-type': 'application/json' };
+function useKey(key: string): void {
+  callerKey = key;
+  headers = { 'x-api-key': key, 'content-type': 'application/json' };
+}
 
 function spendRows(): Array<Record<string, unknown>> {
   if (!existsSync(spendLedger)) return [];
@@ -162,7 +168,7 @@ const CASES: SpendCase[] = [
   {
     name: 'GET /scan/stream', files: ['routes/stream.ts'], rows: 1,
     run: async () => {
-      const res = await server.inject({ method: 'GET', url: `/scan/stream?provider=mock&text=${encodeURIComponent(TEXT)}`, headers: { 'x-api-key': SERVER_KEY } });
+      const res = await server.inject({ method: 'GET', url: `/scan/stream?provider=mock&text=${encodeURIComponent(TEXT)}`, headers: { 'x-api-key': callerKey } });
       expect(res.body).toContain('"type":"complete"');
     },
   },
@@ -223,7 +229,7 @@ const CASES: SpendCase[] = [
       const boundary = 'SpendUploadBoundary';
       const res = await server.inject({
         method: 'POST', url: '/scan/upload',
-        headers: { 'x-api-key': SERVER_KEY, 'content-type': `multipart/form-data; boundary=${boundary}` },
+        headers: { 'x-api-key': callerKey, 'content-type': `multipart/form-data; boundary=${boundary}` },
         payload: multipart(boundary, 'file', 'doc.pdf', 'application/pdf', Buffer.from('%PDF-1.4 fixture'), { provider: 'mock' }),
       });
       expect(res.statusCode, res.body).toBe(200);
@@ -238,7 +244,7 @@ const CASES: SpendCase[] = [
       const boundary = 'SpendBulkBoundary';
       const res = await server.inject({
         method: 'POST', url: '/scan/bulk?provider=mock',
-        headers: { 'x-api-key': SERVER_KEY, 'content-type': `multipart/form-data; boundary=${boundary}` },
+        headers: { 'x-api-key': callerKey, 'content-type': `multipart/form-data; boundary=${boundary}` },
         payload: multipart(boundary, 'archive', 'docs.zip', 'application/zip', zip.toBuffer()),
       });
       expect(res.statusCode).toBe(202);
@@ -259,7 +265,7 @@ const CASES: SpendCase[] = [
     run: async () => {
       const created = await server.inject({ method: 'POST', url: '/schedules', headers, payload: { name: 'spend', cron: '0 * * * *', text: TEXT, provider: 'mock' } });
       expect(created.statusCode).toBe(201);
-      const res = await server.inject({ method: 'POST', url: `/schedules/${created.json().id}/trigger`, headers: { 'x-api-key': SERVER_KEY } });
+      const res = await server.inject({ method: 'POST', url: `/schedules/${created.json().id}/trigger`, headers: { 'x-api-key': callerKey } });
       expect(res.statusCode).toBe(202);
       await waitForRows(1);
     },
@@ -374,11 +380,13 @@ beforeEach(async () => {
   resetScheduleRunner();
   resetBulkJobStore();
   resetTemplateStore();
+  useKey(SERVER_KEY);
   server = buildServer();
   await server.ready();
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   resetFullScanJobStore();
   resetScanQueue();
   resetJobScheduler();
@@ -400,6 +408,8 @@ describe('every engine call writes a provider-spend row', () => {
       expect(rows.length).toBeGreaterThan(0);
       expect(rows).toHaveLength(c.rows);
       for (const row of rows) expect(row.costUsd as number).toBeGreaterThan(0);
+      // The server key (faultline-web's) is internal traffic on every path.
+      for (const row of rows) expect(row.keyClass).toBe('internal');
     });
   }
 
@@ -411,6 +421,85 @@ describe('every engine call writes a provider-spend row', () => {
     // A case or allowlist entry for a file that no longer calls the engine is stale.
     expect([...covered].filter((f) => !engineFiles.includes(f))).toEqual([]);
     for (const reason of Object.values(ALLOWLIST)) expect(reason.trim()).not.toBe('');
+  });
+});
+
+// Validates: every spend row carries the key class of the key it was spent for.
+describe('every engine path labels its spend row with the caller\'s key class', () => {
+  /** Cases a non-admin key cannot reach: the route (or GraphQL scan resolver) is admin only. */
+  const ADMIN_ONLY = new Set(['POST /admin/verify-claims', 'GraphQL scan query', 'GraphQL scanBatch mutation (two texts)']);
+
+  for (const c of CASES.filter((x) => !ADMIN_ONLY.has(x.name))) {
+    it(`${c.name}: a customer keystore key writes keyClass customer`, async () => {
+      useKey(getKeyStore().create('customer', ['scan']).key);
+      await c.run();
+      const rows = spendRows();
+      expect(rows.length).toBeGreaterThan(0);
+      expect(rows).toHaveLength(c.rows);
+      for (const row of rows) expect(row.keyClass).toBe('customer');
+      // A class, never the key's id.
+      for (const row of rows) expect(row).not.toHaveProperty('keyId');
+    });
+  }
+
+  for (const name of ['POST /scan', 'POST /scan/stream', 'POST /critique', 'POST /admin/verify-claims', 'POST /scan/full/estimate']) {
+    it(`${name}: a keystore key with the admin permission writes keyClass internal`, async () => {
+      useKey(getKeyStore().create('ops', ['scan', 'admin']).key);
+      await CASES.find((x) => x.name === name)!.run();
+      const rows = spendRows();
+      expect(rows.length).toBeGreaterThan(0);
+      for (const row of rows) expect(row.keyClass).toBe('internal');
+    });
+  }
+
+  it('POST /admin/verify-claims: the measurement key writes keyClass measurement', async () => {
+    process.env.FAULTLINE_MEASUREMENT_KEY = 'engine-spend-measurement-key';
+    useKey('engine-spend-measurement-key');
+    await CASES.find((x) => x.name === 'POST /admin/verify-claims')!.run();
+    const rows = spendRows();
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].keyClass).toBe('measurement');
+  });
+
+  it('a job with no recorded owner (the anonymous path) writes keyClass anonymous', async () => {
+    const created = await server.inject({ method: 'POST', url: '/jobs', headers, payload: { text: TEXT, provider: 'mock', schedule: '*/5 * * * *' } });
+    expect(created.statusCode).toBe(201);
+    // Drop the owner the store recorded, as a job created before owners were kept has none.
+    const { getJobStore } = await import('../src/store/jobs.js');
+    vi.spyOn(getJobStore(), 'ownerOf').mockReturnValue(null);
+    await getJobScheduler().triggerJob(created.json().id);
+    const rows = spendRows();
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].keyClass).toBe('anonymous');
+  });
+
+  it('POST /scan/full: a customer key labels the estimate row and the job\'s verify row customer', async () => {
+    useKey(getKeyStore().create('customer', ['scan']).key);
+    const estimate = await server.inject({ method: 'POST', url: '/scan/full/estimate', headers, payload: { text: TEXT, provider: 'mock' } });
+    expect(estimate.statusCode).toBe(200);
+    const started = await server.inject({
+      method: 'POST', url: '/scan/full',
+      headers: { ...headers, 'idempotency-key': 'spend-key-class-0001' },
+      payload: { estimateId: estimate.json().estimateId },
+    });
+    expect(started.statusCode, started.body).toBeLessThan(300);
+    await waitForRows(2);
+    const rows = spendRows();
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.keyClass)).toEqual(['customer', 'customer']);
+    expect(rows[0].stage).toBe('extraction');
+    expect(rows[1]).not.toHaveProperty('stage');
+  });
+
+  it('a full-scan estimate row is marked as extraction; other rows carry no stage', async () => {
+    await CASES.find((x) => x.name === 'POST /scan/full/estimate')!.run();
+    await CASES.find((x) => x.name === 'POST /scan')!.run();
+    const rows = spendRows();
+    expect(rows).toHaveLength(2);
+    expect(rows[0].stage).toBe('extraction');
+    expect(rows[1]).not.toHaveProperty('stage');
   });
 });
 
