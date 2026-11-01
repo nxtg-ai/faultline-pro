@@ -44,6 +44,11 @@ export const PUBLIC_ROUTES: readonly string[] = [
   'GET /docs/static/*',
   'GET /docs/static/index.html',
   'GET /docs/static/swagger-initializer.js',
+  // Agent discovery (GoPMO 1.18.11.7.9): the OpenAPI document, llms.txt and the
+  // per-claim pricing page. Static product description only.
+  'GET /openapi.json',
+  'GET /llms.txt',
+  'GET /pricing',
   // Static HTML shells: the data they show is fetched with a key.
   'GET /claims/view',
   'GET /queue',

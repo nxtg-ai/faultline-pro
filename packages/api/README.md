@@ -15,6 +15,9 @@ Fastify v5 service, deployed on Fly.io as `faultline-api`. Hosted at `https://fa
 | `/critique` | POST | Critique and improved prompt for failed claims |
 | `/usage` | GET | Per-key usage, monthly quota position, and (admin keys only) the provider-spend budget |
 | `/mcp` | POST | Hosted MCP server (Streamable HTTP, stateless): the `verify_claims` tool, scanned through `POST /scan` with the caller's key. `GET` and `DELETE` answer `405` |
+| `/openapi.json` | GET | OpenAPI 3 document built from the live routes (same as `/docs/json`), no auth |
+| `/llms.txt` | GET | Plain-text guide to this API for language models and agents, no auth |
+| `/pricing` | GET | Per-claim price and monthly claim caps (HTML), no auth |
 
 ## Authentication
 
