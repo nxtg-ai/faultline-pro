@@ -162,7 +162,7 @@ See [`examples/ci-integration.yml`](https://github.com/nxtg-ai/faultline-pro/blo
 
 ## MCP Server (`verify_claims`)
 
-This package also ships the `faultline-mcp` bin: an MCP stdio server with one tool, `verify_claims`, for Claude Code, Cursor and any MCP client. It is the server from `packages/mcp` and has the same tool contract. The bin is added in the release after 0.11.1; until that release is on npm, `npx` cannot find it.
+This package also ships the `faultline-mcp` bin: an MCP stdio server with one tool, `verify_claims`, for Claude Code, Cursor and any MCP client. It is the server from `packages/mcp`, with the same tool contract as the hosted MCP endpoint at `POST https://faultline-api.fly.dev/mcp` (Streamable HTTP, `x-api-key` header). On a hosted scan the result also carries `billing`. The bin is added in the release after 0.11.1; until that release is on npm, `npx` cannot find it.
 
 ```bash
 # Claude Code

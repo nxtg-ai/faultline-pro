@@ -5,7 +5,8 @@
  *
  * Relocated from packages/mcp so it installs with the published package. The
  * tool contract (name, input schema, description, output shape) is the same
- * as packages/mcp's; tests/mcp-bin.test.ts compares the two tools/list results.
+ * as packages/mcp's and the hosted POST /mcp's; tests/mcp-bin.test.ts compares
+ * this bin against both.
  *
  * Exposes the Faultline claim-verification pipeline as an MCP tool so an agent
  * harness can check its own output before presenting it as done.
@@ -23,7 +24,13 @@ import { createRequire } from 'node:module';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { verifyClaims, autoDetectProvider, isGrounded, resolveTransport } from './verify.js';
+import {
+  verifyClaims,
+  autoDetectProvider,
+  isGrounded,
+  resolveTransport,
+  type VerifyDeps,
+} from './verify.js';
 
 /** The @nxtg/faultline version, read from the manifest so it cannot drift from the release. */
 export const VERSION: string = (() => {
@@ -61,7 +68,17 @@ const VERIFY_CLAIMS_DESCRIPTION = [
   'deterministic probes, not source retrieval.',
 ].join('\n');
 
-export function buildServer(): McpServer {
+/**
+ * Build the MCP server with its one tool, verify_claims.
+ *
+ * `deps` decides how the tool runs a scan. The stdio bin passes nothing and
+ * resolves the transport from the environment. The hosted endpoint in
+ * packages/api (POST /mcp) calls packages/mcp's buildServer, the source of this
+ * copy, with a hosted transport whose fetch runs the API's own POST /scan
+ * in-process. tests/mcp-bin.test.ts checks that the two still list the same tool
+ * and return the same output fields.
+ */
+export function buildServer(deps: VerifyDeps = {}): McpServer {
   const server = new McpServer({
     name: 'faultline',
     version: VERSION,
@@ -95,7 +112,7 @@ export function buildServer(): McpServer {
     },
     async ({ text, max_claims, provider }) => {
       try {
-        const result = await verifyClaims({ text, max_claims, provider });
+        const result = await verifyClaims({ text, max_claims, provider }, deps);
         return {
           content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
           structuredContent: result as unknown as Record<string, unknown>,

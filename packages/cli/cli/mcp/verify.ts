@@ -16,7 +16,7 @@ import {
   type Transport,
 } from '../transport.js';
 import { toClaimVerdict, toRiskScore, isRealVerdict, type ClaimVerdict } from '../verdict.js';
-import { writeAuditRecord } from './audit.js';
+import { writeAuditRecord, type AuditWriteResult } from './audit.js';
 
 export { isGrounded, resolveTransport };
 
@@ -76,6 +76,12 @@ export interface VerifyClaimsOutput {
   degraded: boolean;
   /** Count of claims whose verification failed to run. */
   unchecked_count: number;
+  /**
+   * How many claims were billed and why each unbilled one was not. Present when
+   * the scan ran on the hosted API, which reports it on every result; absent on
+   * a local scan, which bills nothing.
+   */
+  billing?: unknown;
   /** Pointer to the persisted audit record. Absent when none was written. */
   audit_ref?: string;
   audit_path?: string;
@@ -127,7 +133,17 @@ export interface VerifyDeps {
   fetchImpl?: typeof fetch;
   /** Transport override. Production resolves from the environment. */
   transport?: Transport;
+  /**
+   * Write the local audit record (default true). The hosted endpoint sets this
+   * to false: a server must not write each caller's text to its own disk, and
+   * the API keeps its own scan history for every POST /scan.
+   */
+  audit?: boolean;
 }
+
+/** Why no audit record exists when the caller switched audit writing off. */
+export const AUDIT_OFF_REASON =
+  'audit records are not written by this server; the hosted API keeps its own scan history';
 
 export async function verifyClaims(
   input: VerifyClaimsInput,
@@ -178,7 +194,11 @@ export async function verifyClaims(
     return !v || v.apiError === true;
   }).length;
 
-  const audit = writeAuditRecord(text, result.provider ?? provider, result);
+  const audit: AuditWriteResult =
+    deps.audit === false
+      ? { skipped: AUDIT_OFF_REASON }
+      : writeAuditRecord(text, result.provider ?? provider, result);
+  const billing = (result as { billing?: unknown }).billing;
 
   // A risk band computed over zero real verdicts is not a risk reading, so no
   // score is given for it. (The engine's band for such a scan is never "low":
@@ -204,6 +224,7 @@ export async function verifyClaims(
     truncated: selected.length < allClaims.length,
     degraded: result.degraded === true || uncheckedAll > 0,
     unchecked_count: uncheckedAll,
+    ...(billing !== undefined ? { billing } : {}),
     ...(audit.ref ? { audit_ref: audit.ref, audit_path: audit.path } : {}),
     ...(audit.skipped ? { audit_skipped: audit.skipped } : {}),
   };
