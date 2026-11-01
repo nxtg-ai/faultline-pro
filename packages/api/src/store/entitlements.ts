@@ -14,20 +14,23 @@ import type { Tier } from './ratelimit.js';
  * (FAULTLINE_USAGE_CAP=off) and every cap is env-overridable. Flipping it on with
  * a confirmed number is a one-env-var change, no code change.
  *
- * Default numbers below are CONSERVATIVE, MARGIN-SAFE PLACEHOLDERS derived from the
- * measured economics (paid tier priced to stay positive even at the $0.71 worst
- * case: 19 / 0.71 ≈ 26 break-even → cap 25 keeps margin). They are NOT a pricing
- * decision — they are a safe default until Asif sets the real numbers.
+ * The `pro` and `free` defaults below are the live plan limits, read from
+ * https://faultline.nxtg.ai/pricing on 2026-11-01:
+ *   pro  500 — Pro card: "500 scans/month"
+ *   free 5   — FAQ: "The Free plan gives you 5 scans per month with JSON and SARIF
+ *              export and no card required."
+ * `admin` and `measurement` have no plan on that page and stay unlimited. The
+ * Personal plan (100 scans/month) and Enterprise (contract) have no code tier here.
  */
 
 /** null = unlimited (no monthly cap for this tier). */
 export type MonthlyCap = number | null;
 
-/** Conservative margin-safe placeholder caps. Overridden per-tier by env. */
+/** Per-tier default caps (live plan limits where a plan exists). Overridden per-tier by env. */
 const DEFAULT_MONTHLY_CAPS: Record<Tier, MonthlyCap> = {
-  admin: null, // internal / unlimited
-  pro: 25, // placeholder: $19-tier break-even at worst-case $0.71/scan ≈ 26; 25 keeps margin
-  free: 10, // free acquisition tier — generous enough to prove value, bounded for abuse/COGS
+  admin: null, // internal / unlimited; no plan on the pricing page
+  pro: 500, // Pro plan: "500 scans/month" (faultline.nxtg.ai/pricing, read 2026-11-01)
+  free: 5, // Free plan: "5 scans per month" (faultline.nxtg.ai/pricing FAQ, read 2026-11-01)
   measurement: null, // internal measurement key: it may not call a scan route at all
 };
 

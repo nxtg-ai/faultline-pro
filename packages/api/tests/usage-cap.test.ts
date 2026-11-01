@@ -89,9 +89,9 @@ afterEach(() => {
 // entitlements config
 // =========================================================================
 describe('entitlements — getMonthlyCap / isUsageCapEnabled', () => {
-  it('returns conservative placeholder defaults when no env is set', () => {
-    expect(getMonthlyCap('pro')).toBe(25);
-    expect(getMonthlyCap('free')).toBe(10);
+  it('returns the plan-limit defaults when no env is set (pricing page, read 2026-11-01)', () => {
+    expect(getMonthlyCap('pro')).toBe(500);
+    expect(getMonthlyCap('free')).toBe(5);
     expect(getMonthlyCap('admin')).toBeNull();
   });
 
@@ -109,9 +109,9 @@ describe('entitlements — getMonthlyCap / isUsageCapEnabled', () => {
 
   it('falls back to the default on a garbage or negative env value', () => {
     process.env.FAULTLINE_CAP_PRO = 'banana';
-    expect(getMonthlyCap('pro')).toBe(25);
+    expect(getMonthlyCap('pro')).toBe(500);
     process.env.FAULTLINE_CAP_PRO = '-5';
-    expect(getMonthlyCap('pro')).toBe(25);
+    expect(getMonthlyCap('pro')).toBe(500);
   });
 
   it('accepts a zero cap (blocks all scans)', () => {
