@@ -1,8 +1,8 @@
 # Faultline — We check the receipts on AI output.
 
-**Future-proof your agent stack. The only governance CLI not owned by an AI lab.**
+**Future-proof your agent stack. Independent of every model vendor: NXTG.ai does not build the models Faultline checks.**
 
-Faultline decomposes AI-generated output into atomic claims, verifies each against live evidence, and enforces a CI gate before hallucinations reach production. Built for teams governing LLM agents at scale — provider-agnostic across Gemini, OpenAI, Claude, Perplexity, and local models.
+Faultline decomposes AI-generated output into atomic claims, verifies each against live evidence, and can fail a CI build on the result.
 
 [![Release stage: alpha](https://img.shields.io/badge/stage-alpha-orange.svg)](https://github.com/nxtg-ai/faultline-pro/blob/main/CHANGELOG.md)
 [![CI](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml)
@@ -41,10 +41,9 @@ The hosted API ships three governance records as code: a risk register export (`
 | Atomic claim extraction | Decomposes AI output into fact / opinion / interpretation with importance scoring |
 | Per-claim verification | Verdict: supported / contradicted / mixed / unverified + confidence score |
 | Scan comparison | `POST /scan/compare` + `faultline compare` — new/removed claims, verdict changes, trust score delta |
-| Article-reference report | `faultline compliance-report`: a report that lists which EU AI Act articles a scan's findings may relate to, for your own review; not a legal assessment |
-| Report exit code for CI | `faultline compliance-report --ci` exits 1 when the report flags an article or the scan's overall risk is high or critical |
+| CI gate | `faultline compliance-report --ci` exits 1 when the scan's overall risk is high or critical, an article check in the report has failed, the report's domain checklist item has not passed, or the report score is below `--threshold`; `--strict` also fails on partly met article checks and on checklist items not assessed. Otherwise it exits 0 |
 | Weakest-link detection | Per-claim fragility scoring — finds the claim that most undermines the argument |
-| Claim dependency graph | Mermaid and Graphviz DOT visualizations of claims and their dependencies |
+| Claim dependency graph | Mermaid and Graphviz DOT visualizations |
 | Rules engine | YAML-defined rules; built-in PII, bias, toxicity rulesets |
 | CI gate | `--fail-on high` returns exit code 1; SARIF output for GitHub Code Scanning |
 | Enterprise API | REST API (about 190 routes) with key management, audit trail, rate limiting, webhooks, batch scanning, caching |
@@ -55,7 +54,7 @@ The hosted API ships three governance records as code: a risk register export (`
 | Multi-tenant | Tenant CRUD, API key association, per-tenant usage aggregation |
 | Cost tracking | Per-scan token/cost estimation; `GET /costs` with provider/tenant/date filters |
 | Scan history | `GET /scans/search` — full-text across your API key's past scans (admin key: all), cursor pagination |
-| Industry rule templates | Healthcare, finance, education and government rule sets that match claim text against patterns; `POST /scan/compliance/:template` |
+| Rule templates (HIPAA, SOX, FERPA, Gov) | HIPAA / SOX / FERPA / Gov templates; `POST /scan/compliance/:template` |
 | Bulk import | `POST /scan/bulk` — ZIP of documents, async job, `GET /jobs/:id/progress` |
 | Swagger UI | `GET /docs` — interactive OpenAPI 3.0 spec with Try-it for every endpoint |
 | Claim explainability | `GET /claims/:id/explain` — reasoning chain, evidence found, actionable suggestions |
@@ -64,7 +63,7 @@ The hosted API ships three governance records as code: a risk register export (`
 | Deadline keyword check | `POST /compliance/scan-check` — match claim text against keywords tied to those dates |
 | i18n | `Accept-Language: es/fr/en` — localized error messages and report labels (EN/ES/FR) |
 | Property-based tests | `fast-check` oracle coverage: confidence bounds, dedup invariants, cost aggregation, sort stability |
-| Tenant data export and erasure | Export (`GET /tenants/:id/export` → ZIP) + erasure (`DELETE /tenants/:id/data`) covering scan history, audit log, notifications, webhooks, costs, schedules |
+| GDPR data requests (Article 15 export, Article 17 erasure) | Article 15 export (`GET /tenants/:id/export` → ZIP) + Article 17 erasure (`DELETE /tenants/:id/data`) covering scan history, audit log, notifications, webhooks, costs, schedules |
 | Multi-model consensus | `POST /scan/stream` with `pipelineConfig.consensus: true`. Enterprise only, enforced server-side (403 below Enterprise) |
 | Claim critique | `POST /critique`: critique plus improved prompt for failed claims; API key, rate limit and provider-spend cap apply |
 | Real-time scan streaming | `GET /scan/stream?text=...&provider=mock` — Server-Sent Events; progressive per-claim delivery via `onClaimVerified` callback; streams `start` → `claim_verified` × N → `complete`; no polling required |
@@ -92,8 +91,7 @@ Switch providers with `--provider <name>`. No code changes required. With no pro
 - **Directories** — `--dir ./docs --glob "*.md"`
 
 ### Reports and Rules
-- **Article-reference report** — `faultline compliance-report` lists which EU AI Act articles a scan's findings may relate to, for your own review; not a legal assessment
-- **PDF report** — `POST /scan/report` renders a scan's claims, verdicts and risk as a PDF
+- **Scan reports (PDF)** via `POST /scan/report`
 - **Rules engine** — YAML-defined rules: PII detection, bias indicators, toxicity flags, custom rules
 
 ### Output Formats
@@ -119,12 +117,12 @@ Switch providers with `--provider <name>`. No code changes required. With no pro
 - **Scheduled jobs** — `POST /jobs`: recurring scans on a `*/N * * * *` cron schedule; results dispatched to `webhookUrl`
 - **Provider failover** — automatic chain Gemini → OpenAI → Claude → Perplexity → Mock; circuit breaker trips after 5 failures, resets after 5 minutes; `503` when all providers down
 - **Scan history** — private per API key (the admin key sees all); `GET /scans/search?q=` full-text; stale scan detection (`GET /scans/stale`); usage analytics (`GET /scans/usage`); bulk pruning (`DELETE /scans/stale`); hygiene dashboard; `faultline scans` CLI
-- **Industry rule templates** — healthcare, finance, education and government rule sets that match claim text against patterns; `POST /scan/compliance/:template`; custom template upload
+- **Rule templates (HIPAA, SOX, FERPA, Gov)** — HIPAA / SOX+FINRA / FERPA / Government; `POST /scan/compliance/:template`; custom template upload
 - **Bulk import** — `POST /scan/bulk` (ZIP of documents → async job); `GET /jobs/:id/progress` (percentage + per-file status + summary)
 - **Monitoring** — `GET /health/deep` (subsystem status + provider config flags), `GET /metrics` (Prometheus text), `GET /status` (HTML)
 - **Swagger UI** — `GET /docs` (interactive OpenAPI 3.0), `GET /docs/json`, `GET /docs/yaml`
 - **Claim search** — `GET /claims?text=&verdict=&from=&to=&source=` full-text claim index search
-- **Tenant data export and erasure** — `GET /tenants/:id/export` (admin-gated): ZIP archive with manifest, scan-history, audit-log (NDJSON), notifications, webhooks, usage, costs, schedules; `DELETE /tenants/:id/data` (admin-gated): erases all PII across 8 data categories for a tenant; idempotent; tenant record preserved
+- **GDPR data requests (Article 15 export, Article 17 erasure)** — `GET /tenants/:id/export` (Article 15, admin-gated): ZIP archive with manifest, scan-history, audit-log (NDJSON), notifications, webhooks, usage, costs, schedules; `DELETE /tenants/:id/data` (Article 17, admin-gated): erases all PII across 8 data categories for a tenant; idempotent; tenant record preserved
 - **i18n** — send `Accept-Language: es` or `Accept-Language: fr` for localized error messages; defaults to English
 
 ---
@@ -291,7 +289,7 @@ packages/
 ├── cli/                  # @nxtg/faultline (npm 0.11.1): CLI + scan engine
 │   ├── cli/              # Commands: scan, guard, report, watch, critique, graph, weakest, compare…
 │   ├── providers/        # Gemini, Claude, OpenAI, Perplexity, Mock adapters
-│   ├── compliance/       # Code behind the compliance-report command's article references
+│   ├── compliance/       # EU AI Act risk categories
 │   ├── rules/            # Rule engine (PII, bias, shell injection…)
 │   ├── analysis/         # Weakest-link scoring, claim graph
 │   ├── history/          # Scan history store
@@ -328,7 +326,7 @@ The production web app at https://faultline.nxtg.ai is a separate repo (`faultli
 | `CostStore` | Per-scan token/cost recording, provider rate table, aggregate queries |
 | `ProviderSpend` (`store/provider-spend.ts`) | Append-only USD ledger and monthly rollup behind the $100/month provider-spend cap |
 | `ScanHistoryStore` | Last 1000 scans (newest-first), full-text + filter search, cursor pagination |
-| `ComplianceTemplateStore` | Industry rule templates (healthcare, finance, education, government) + custom template registry |
+| `ComplianceTemplateStore` | HIPAA/SOX/FERPA/Gov templates + custom template registry |
 | `BulkJobStore` | Async ZIP scan jobs: progress tracking, per-file results, summary report |
 
 ---
@@ -469,24 +467,6 @@ Promptfoo tests your prompts. DeepEval scores your RAG pipeline. **Faultline aud
 | Provider auto-failover + circuit breaker | Yes | No | No |
 | Enterprise API with audit trail + caching | Yes | No | No |
 | Python client + MCP server | Yes | No | No |
-
----
-
-## Audit Evidence
-
-Evidence your auditors can read: each claim, its verdict, its sources, kept as a record. The endpoints below produce records for your own review. They do not certify anything or show that any regulatory requirement is met.
-
-### Risk register (`POST /scan/risk-register`)
-
-Admin-only. Aggregates stored scan history (filterable by date range and tenant) into one report, labelled with a lifecycle phase (development, testing, deployment or monitoring), with a `riskDistribution` breakdown, `highRiskCount`, `criticalRiskCount`, and one finding per scan (scan id, timestamp, text preview, overall risk, claim count, provider).
-
-### Hash-chained audit log (`GET /audit/log/manifest`)
-
-Admin-only. Returns each audit log entry with an `entryHash` (SHA-256 of the entry) and a `chainHash` (SHA-256 of `entryHash` plus the previous `chainHash`). The final `rootHash` covers the whole log, so recomputing the chain from the entries shows whether any entry was changed, inserted or removed.
-
-### Approvals (`POST /scans/:id/approve`)
-
-Lets a reviewer approve or reject a scan result they own. Each record holds the reviewer's API key id, the decision (`approved` / `rejected`), an optional note and a UTC timestamp. `GET /scans/:id/approvals` lists the records for a scan.
 
 ---
 
