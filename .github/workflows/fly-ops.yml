@@ -199,30 +199,31 @@ jobs:
           // first 12 characters of a well-formed keyHash. Anything else is counted, never shown.
           const fs = require('fs');
           const p = '/var/log/faultline/keystore.json';
-          const out = (o) => { console.log(JSON.stringify(o)); process.exit(0); };
-          try {
-            if (!fs.existsSync(p)) out({ file: 'absent' });
+          // Returns the one result object; it is written once below and Node exits on its own,
+          // so a large result is never cut off in a pipe.
+          const audit = () => {
+            if (!fs.existsSync(p)) return { file: 'absent' };
             const stored = ['id', 'keyHash', 'previousKeyHash', 'keyPrefix', 'name', 'permissions', 'createdAt', 'disabled',
               'previousKeyExpiresAt', 'lastRotatedAt', 'lastUsedAt', 'expiresAt', 'claimCap', 'stripeCustomerId', 'metered', 'scopes'];
             const HEX64 = /^[0-9a-f]{64}$/i;
             const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
             let doc;
-            try { doc = JSON.parse(fs.readFileSync(p, 'utf8')); } catch { out({ file: 'present', parse: 'failed' }); }
-            const keys = doc && Array.isArray(doc.keys) ? doc.keys : null;
-            if (!keys || !keys.every((k) => k && typeof k === 'object' && !Array.isArray(k))) out({ file: 'present', shape: 'unexpected' });
-            // Every string anywhere (values and property names, nested) that looks like a key,
-            // outside the two top-level hash fields of a record.
+            try { doc = JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return { file: 'present', parse: 'failed' }; }
+            const keys = doc && typeof doc === 'object' && Array.isArray(doc.keys) ? doc.keys : null;
+            if (!keys || !keys.every((k) => k && typeof k === 'object' && !Array.isArray(k))) return { file: 'present', shape: 'unexpected' };
+            // Every string anywhere (values and property names, nested, root included) that looks
+            // like a key, outside the two top-level hash fields of a record.
             let hex64Elsewhere = 0;
             const walk = (v) => {
               if (typeof v === 'string') { if (HEX64.test(v)) hex64Elsewhere += 1; return; }
               if (v && typeof v === 'object') for (const [f, x] of Object.entries(v)) { if (HEX64.test(f)) hex64Elsewhere += 1; walk(x); }
             };
-            walk(doc.version);
+            for (const [f, v] of Object.entries(doc)) { if (HEX64.test(f)) hex64Elsewhere += 1; if (f !== 'keys') walk(v); }
             for (const k of keys) for (const [f, v] of Object.entries(k)) { if ((f === 'keyHash' || f === 'previousKeyHash') && typeof v === 'string') continue; if (HEX64.test(f)) hex64Elsewhere += 1; walk(v); }
             const names = new Set(keys.flatMap((k) => Object.keys(k)));
-            out({
+            return {
               mode: (fs.statSync(p).mode & 0o777).toString(8),
-              version: typeof doc.version === 'number' ? doc.version : 'not-a-number',
+              version: Number.isFinite(doc.version) ? doc.version : 'not-a-number',
               keys: keys.length,
               fields: stored.filter((f) => names.has(f)),
               unknownFieldCount: [...names].filter((f) => !stored.includes(f)).length,
@@ -236,8 +237,11 @@ jobs:
                   keyPrefixLength: typeof k.keyPrefix === 'string' ? k.keyPrefix.length : -1,
                 };
               }),
-            });
-          } catch { out({ audit: 'failed' }); }
+            };
+          };
+          let result;
+          try { result = audit(); } catch { result = { audit: 'failed' }; }
+          process.stdout.write(JSON.stringify(result) + '\n');
           JS
           b64=$(base64 -w0 keystore-audit.js)
           flyctl ssh console -a "$APP" -C "sh -c 'f=\$(mktemp) && echo $b64 | base64 -d > \"\$f\" && node \"\$f\"; rc=\$?; rm -f \"\$f\"; exit \$rc'"
