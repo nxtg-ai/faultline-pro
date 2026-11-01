@@ -182,9 +182,9 @@ export async function verifyClaims(
 
   const audit = writeAuditRecord(text, result.provider ?? provider, result);
 
-  // A risk band computed over zero real verdicts is not a risk reading. The
-  // engine defaults such a scan to "low" because nothing was contradicted —
-  // reporting that number would say "safe" on the basis of nothing checked.
+  // A risk band computed over zero real verdicts is not a risk reading, so no
+  // score is given for it. (The engine's band for such a scan is never "low":
+  // an unverified claim raises it to at least medium, half or more to high.)
   const realVerdictCount = allClaims.filter((c) => {
     const v = result.verifications?.[c.id];
     return v && v.apiError !== true && v.status !== 'skipped' && v.status !== 'loading';

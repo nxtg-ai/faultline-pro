@@ -4,6 +4,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import type { Claim, VerificationResult, AnalysisState } from '../types.js';
 import { generateComplianceReport, type ComplianceReport } from '../compliance/report_generator.js';
+import { calculateRisk } from '../lib/overall-risk.js';
 import { runAllRules, runRules, type Finding } from '../rules/index.js';
 import { isExtractionError, type ExtractionErrorReason } from '../providers/extraction-error.js';
 import {
@@ -148,18 +149,6 @@ export interface VerifyFullScanOptions {
   /** Attach evidence passages from each cited source (see ScanOptions.evidence). */
   evidence?: EvidenceOptions;
   independentEvidence?: IndependentEvidenceOptions;
-}
-
-function calculateRisk(
-  verifications: Record<string, VerificationResult>,
-): AnalysisState['overallRisk'] {
-  const values = Object.values(verifications);
-  const contradicted = values.filter((v) => v.status === 'contradicted').length;
-  const mixed = values.filter((v) => v.status === 'mixed').length;
-  if (contradicted > 2) return 'critical';
-  if (contradicted > 0 || mixed > 2) return 'high';
-  if (mixed > 0) return 'medium';
-  return 'low';
 }
 
 // ── Sentence-level claim coverage guarantee ───────────────────────────────────

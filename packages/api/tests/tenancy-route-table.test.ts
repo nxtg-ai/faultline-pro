@@ -148,7 +148,9 @@ async function seed(app: FastifyInstance, rows: RouteRow[], a: { id: string; key
   for (const r of seedRoutes(rows)) {
     const name = `${r.method} ${r.url}`;
     const res = await inject(app, a.key, r.method, fill(r.url, a.id), SEED_BODIES[name] ?? bodyFor(r, CANARY));
-    if (res.statusCode >= 300) continue;
+    // A failed compliance gate (422) still stores the scan and the gate history entry.
+    const storedOnFail = name === 'POST /scan/compliance-gate' && res.statusCode === 422;
+    if (res.statusCode >= 300 && !storedOnFail) continue;
     seeded.push(name);
     try { collectIds(JSON.parse(res.body), ids); } catch { /* non-JSON */ }
   }
