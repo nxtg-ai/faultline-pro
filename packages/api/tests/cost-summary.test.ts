@@ -309,6 +309,7 @@ describe('GET /admin/cost-summary', () => {
       expect(resolveWindow({ from: bad }).ok).toBe(false);
       expect((await get(SERVER_KEY, `?from=${encodeURIComponent(bad)}&to=2026-12-01`)).statusCode).toBe(400);
     }
+    for (const ok of ['0000-02-29', '0001-01-01', '0099-12-31T23:59:59.123456789+14:00']) expect(resolveWindow({ from: ok }).ok).toBe(true);
     const leap = resolveWindow({ from: '2028-02-29', to: '2028-03-07' });
     expect(leap.ok && leap.from.toISOString()).toBe('2028-02-29T00:00:00.000Z');
   });

@@ -45,7 +45,8 @@ function parseIso(raw: string): Date | null {
   // Date.parse rolls an impossible date forward (2026-02-30 reads as March 2),
   // so the calendar parts are checked themselves first.
   const [y, m, d] = raw.slice(0, 10).split('-').map(Number);
-  const day = new Date(Date.UTC(y, m - 1, d));
+  const day = new Date(0);
+  day.setUTCFullYear(y, m - 1, d); // Date.UTC would read years 0-99 as 1900-1999
   if (day.getUTCFullYear() !== y || day.getUTCMonth() !== m - 1 || day.getUTCDate() !== d) return null;
   const time = /T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(raw);
   if (time && (Number(time[1]) > 23 || Number(time[2]) > 59 || Number(time[3] ?? 0) > 59)) return null;
