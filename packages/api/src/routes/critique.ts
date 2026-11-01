@@ -4,6 +4,7 @@ import { rateLimitScan } from '../plugins/ratelimit.js';
 import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { buildManagedCostEvent, resolveTier } from '../store/costs.js';
 import { recordProviderSpend } from '../store/provider-spend.js';
+import { classifyKeyId } from '../plugins/auth.js';
 import { getProvider } from '@nxtg/faultline/providers/registry.js';
 import type { LLMProvider } from '@nxtg/faultline/providers/base_provider.js';
 import { captureOutcome } from '../lib/scan-spend.js';
@@ -113,7 +114,7 @@ async function runCritiqueWithSpend(
     // Critique judges claims a scan already verified; it extracts and verifies none itself.
     claims: { extracted: 0, verified: 0 },
   });
-  recordProviderSpend(costEvent); // A-110 item 1: the fleet cap must see critique spend
+  recordProviderSpend(costEvent, classifyKeyId(keyId)); // A-110 item 1: the fleet cap must see critique spend
   if (outcome.ok === false) throw outcome.error;
   return outcome.value;
 }

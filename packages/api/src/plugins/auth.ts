@@ -239,6 +239,35 @@ export function isAdminKeyId(keyId: string | undefined): boolean {
 }
 
 /**
+ * Who a provider-spend row's money was spent for. A class, never an id: the
+ * spend ledger stays free of key ids.
+ *
+ *   measurement  the measurement key (FAULTLINE_MEASUREMENT_KEY)
+ *   internal     the server key (FAULTLINE_API_KEY, which faultline-web holds)
+ *                and keystore keys with the 'admin' permission
+ *   customer     every other keystore key
+ *   anonymous    no key: a missing keyId, or the 'unknown' placeholder routes
+ *                and background runners use when no key is recorded
+ */
+export type KeyClass = 'measurement' | 'internal' | 'customer' | 'anonymous';
+
+export const KEY_CLASSES: readonly KeyClass[] = Object.freeze(['customer', 'internal', 'measurement', 'anonymous']);
+
+/** The keyId routes and runners record when a request or job has no key. */
+const NO_KEY_IDS: ReadonlySet<string> = new Set(['', 'unknown', 'anonymous', 'public', NO_KEY_SCOPE]);
+
+/**
+ * The key class of `keyId`, as the spend ledger labels it. A keystore id that
+ * no longer resolves (a deleted key) was a keystore key, so it reads as customer.
+ */
+export function classifyKeyId(keyId: string | undefined | null): KeyClass {
+  if (keyId === MEASUREMENT_KEY_ID) return 'measurement';
+  if (keyId === undefined || keyId === null || NO_KEY_IDS.has(keyId)) return 'anonymous';
+  if (isAdminKeyId(keyId)) return 'internal';
+  return 'customer';
+}
+
+/**
  * The scan-history key scope for a request: `undefined` (fleet-wide) for admin
  * callers, otherwise the caller's own keyId. Pass the result as the `keyId`
  * argument of every ScanHistoryStore read, so a non-admin key only ever sees the

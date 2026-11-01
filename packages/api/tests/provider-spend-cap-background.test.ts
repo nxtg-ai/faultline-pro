@@ -62,7 +62,7 @@ function costEvent(costUsd: number): ManagedScanCostEvent {
 function exhaustBudget(): void {
   process.env.FAULTLINE_PROVIDER_SPEND_CAP = 'on';
   process.env.FAULTLINE_PROVIDER_SPEND_CAP_USD = '1';
-  recordProviderSpend(costEvent(1.5));
+  recordProviderSpend(costEvent(1.5), 'customer');
 }
 
 /** Run one queue tick and wait for the item to reach a final state. */
@@ -106,7 +106,7 @@ describe('providerBudgetRefuses', () => {
   it('refuses capped and unknown tiers only while enforcement is on and the budget is spent', () => {
     // Dormant: nothing is refused, even with the budget spent.
     process.env.FAULTLINE_PROVIDER_SPEND_CAP_USD = '1';
-    recordProviderSpend(costEvent(1.5));
+    recordProviderSpend(costEvent(1.5), 'customer');
     expect(providerBudgetRefuses('free')).toBe(false);
     expect(providerBudgetRefuses(undefined)).toBe(false);
 
@@ -176,7 +176,7 @@ describe('scan queue worker', () => {
   it('with enforcement off a free item runs', async () => {
     const item = getScanQueue().enqueue('key-1', 2, 'The sky is blue.', 'mock', 'free');
     process.env.FAULTLINE_PROVIDER_SPEND_CAP_USD = '1';
-    recordProviderSpend(costEvent(1.5));
+    recordProviderSpend(costEvent(1.5), 'customer');
     await drainQueue(item);
     expect(getScanQueue().get(item.id)!.status).toBe('completed');
     expect(scanMock).toHaveBeenCalledTimes(1);

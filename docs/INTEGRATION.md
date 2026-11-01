@@ -120,6 +120,35 @@ X-Usage-Record-Version: 1
 
 A void is written for a full-scan job whose verdicts can never reach you: after a server restart its result is gone (`resultAvailable: false`), or the job reads `404 job_lost`. If no `GET /scan/full/:jobId` ever returned the job's verdicts to you, the next such answer writes one void row per committed claim of that job, once. A job whose verdicts were returned is never voided.
 
+### Weekly cost by key class
+
+`GET /admin/cost-summary?from=<ISO>&to=<ISO>` (admin keys only: the server key or a keystore key with the `admin` permission; every other key gets 403, the measurement key included) reports what Faultline spent at its providers in a window, split by who it was spent for, beside the claims customers were billed for. It is a read: it writes nothing and changes no billing, verdict or spend-cap behavior.
+
+- `from` and `to` are ISO-8601 timestamps; the window is `[from, to)`. With neither, the window is the last complete week, Monday 00:00Z to Monday 00:00Z. With only `from`, it is the week from `from`; with only `to`, the week before `to`. A value that is not ISO-8601, or `from` not before `to`, is `400`.
+- `classes` has one entry per key class, each `{ costUsd, calls, claimsHandled, billableClaims }` summed from the provider-spend ledger rows whose `ts` is in the window: `costUsd` is the sum of the rows' cost, `calls` the number of rows, `claimsHandled` the sum of `claimCount` (null is 0), `billableClaims` the sum of `verifiedCount` (null is 0). The classes are `customer` (keystore keys without `admin`), `internal` (the server key, which faultline-web holds, and keystore keys with `admin`), `measurement` (the measurement key), `anonymous` (no key) and `unlabelled` (rows written before spend rows carried a key class).
+- `customerBilledClaims` is the number of usage rows in the window in the usage record above (by `ts`), less those a void row cancels, wherever the void falls. `customerUnbilledClaims` is `classes.customer.claimsHandled` minus `customerBilledClaims`, floored at 0.
+- `notes` is a fixed list of caveats: a full-scan estimate's extraction cost is in `costUsd` and `calls` but in no claim count; costs are list prices; older rows are `unlabelled`.
+
+```json
+{
+  "from": "2026-10-19T00:00:00.000Z",
+  "to": "2026-10-26T00:00:00.000Z",
+  "generatedAt": "2026-10-28T09:00:00.000Z",
+  "classes": {
+    "customer":    { "costUsd": 0.8, "calls": 3, "claimsHandled": 14, "billableClaims": 6 },
+    "internal":    { "costUsd": 1,   "calls": 1, "claimsHandled": 3,  "billableClaims": 2 },
+    "measurement": { "costUsd": 2,   "calls": 1, "claimsHandled": 25, "billableClaims": 20 },
+    "anonymous":   { "costUsd": 0,   "calls": 0, "claimsHandled": 0,  "billableClaims": 0 },
+    "unlabelled":  { "costUsd": 0.5, "calls": 2, "claimsHandled": 3,  "billableClaims": 2 }
+  },
+  "customerBilledClaims": 2,
+  "customerUnbilledClaims": 12,
+  "notes": ["..."]
+}
+```
+
+The figures above are the test fixture's, not production numbers. `scripts/cost-scoreboard.mjs --out week.json` calls this route with the admin key (`FAULTLINE_API_KEY`, else the `FAULTLINE_API_KEY=` line of `~/.config/faultline/hosted-api-key.env`; never printed), writes the JSON to `--out` and prints one line with the window and the cost per billed customer claim (`classes.customer.costUsd / customerBilledClaims`, or `n/a` when none was billed).
+
 ---
 
 ## 2. Quick Start
@@ -837,6 +866,7 @@ These are available if your UI needs them.
 | `GET /dashboard` | Admin | Scan counts, risk distribution, provider status |
 | `GET /usage` | API key | Per-day scan counts for your key, and `quota` (monthly scan cap position). A metered key also gets `claims` `{period, cap, used, reserved, remaining, byVerdict: {supported, contradicted, mixed}}`, its claim-meter position this month (UTC; `cap` and `remaining` are `null` while no `claimCap` is set). Admin keys also get `providerBudget` (the fleet provider-spend position), `claimMeter` (`enabled`, fleet claim totals for the month, `ledgerWriteFailures`, `refusedIdentifiers`) and `usageRecords` `{ledgerId, lastSeq, rowsThisPeriod}` |
 | `GET /admin/usage-records` | Scope `usage:read` | The usage record after a `seq`, for billing sync. See §1 The usage record |
+| `GET /admin/cost-summary` | Admin | Provider cost and claim counts by key class over a window. See §1 Weekly cost by key class |
 | `POST /critique` | API key | Critique plus improved prompt for failed claims. Makes a paid LLM call, so it is rate limited and covered by the provider-spend cap and ledger. `provider` must be one of the `/scan` providers (unknown name: `400`). See `docs/provider-spend-cap.md` |
 | `GET /claims` | API key | Your own claim database (searchable, filterable); Gemini-grounded verdicts are not stored |
 | `GET /claims/trending` | API key | Trending + emerging claims, your own |

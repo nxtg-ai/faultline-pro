@@ -174,8 +174,8 @@ describe('provider-spend config', () => {
 // =========================================================================
 describe('provider-spend ledger', () => {
   it('appends one JSONL row per spend and advances the month total', () => {
-    recordProviderSpend(costEvent({ scanId: 'a', costUsd: 0.25 }));
-    recordProviderSpend(costEvent({ scanId: 'b', costUsd: 0.75 }));
+    recordProviderSpend(costEvent({ scanId: 'a', costUsd: 0.25 }), 'customer');
+    recordProviderSpend(costEvent({ scanId: 'b', costUsd: 0.75 }), 'customer');
 
     const rows = readFileSync(tmpLedger, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
     expect(rows).toHaveLength(2);
@@ -187,15 +187,17 @@ describe('provider-spend ledger', () => {
   });
 
   it('never writes PII — a row carries no keyId and no scanned text', () => {
-    recordProviderSpend(costEvent());
+    recordProviderSpend(costEvent(), 'customer');
     const row = JSON.parse(readFileSync(tmpLedger, 'utf8').trim());
     expect(Object.keys(row).sort()).toEqual(
-      ['claimCount', 'costUsd', 'modelId', 'month', 'provider', 'scanId', 'tier', 'ts', 'verifiedCount'],
+      ['claimCount', 'costUsd', 'keyClass', 'modelId', 'month', 'provider', 'scanId', 'tier', 'ts', 'verifiedCount'],
     );
+    // The key class is a label, never an id.
+    expect(row.keyClass).toBe('customer');
   });
 
   it('writes the claim counts from the cost event, so cost per claim reads off the row', () => {
-    const recorded = recordProviderSpend(costEvent({ scanId: 'counted', costUsd: 0.3, claimsExtracted: 6, claimsVerified: 4 }));
+    const recorded = recordProviderSpend(costEvent({ scanId: 'counted', costUsd: 0.3, claimsExtracted: 6, claimsVerified: 4 }), 'customer');
     expect(recorded).toMatchObject({ claimCount: 6, verifiedCount: 4 });
     const rows = readFileSync(tmpLedger, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
     expect(rows).toHaveLength(1);
@@ -203,8 +205,8 @@ describe('provider-spend ledger', () => {
   });
 
   it('writes 0 counts as 0 and an event with no counts as null', () => {
-    recordProviderSpend(costEvent({ scanId: 'zero', claimsExtracted: 0, claimsVerified: 0 }));
-    recordProviderSpend(costEvent({ scanId: 'none' }));
+    recordProviderSpend(costEvent({ scanId: 'zero', claimsExtracted: 0, claimsVerified: 0 }), 'customer');
+    recordProviderSpend(costEvent({ scanId: 'none' }), 'customer');
     const rows = readFileSync(tmpLedger, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({ scanId: 'zero', claimCount: 0, verifiedCount: 0 });
@@ -213,7 +215,7 @@ describe('provider-spend ledger', () => {
 
   it('an old row without claim counts hydrates and counts toward the month total', () => {
     writeFileSync(tmpLedger, JSON.stringify({ ts: 'x', scanId: 'before-counts', month: currentMonth(), tier: 'pro', provider: 'openai', modelId: 'gpt-4o', costUsd: 2.5 }) + '\n');
-    recordProviderSpend(costEvent({ scanId: 'after-counts', costUsd: 1.25, claimsExtracted: 3, claimsVerified: 3 }));
+    recordProviderSpend(costEvent({ scanId: 'after-counts', costUsd: 1.25, claimsExtracted: 3, claimsVerified: 3 }), 'customer');
     expect(getProviderSpendLedger().monthTotalUsd()).toBeCloseTo(3.75, 6);
     resetProviderSpendLedger(); // a restart reads both rows back off the file
     expect(getProviderSpendLedger().monthTotalUsd()).toBeCloseTo(3.75, 6);
@@ -221,22 +223,22 @@ describe('provider-spend ledger', () => {
 
   it('is APPEND-only — an existing ledger is extended, never rewritten', () => {
     writeFileSync(tmpLedger, JSON.stringify({ ts: 'x', scanId: 'pre', month: currentMonth(), tier: 'pro', provider: 'openai', costUsd: 3 }) + '\n');
-    recordProviderSpend(costEvent({ scanId: 'post', costUsd: 1 }));
+    recordProviderSpend(costEvent({ scanId: 'post', costUsd: 1 }), 'customer');
     const rows = readFileSync(tmpLedger, 'utf8').trim().split('\n');
     expect(rows).toHaveLength(2);
     expect(JSON.parse(rows[0]).scanId).toBe('pre');
   });
 
   it('HYDRATES the month total from the ledger — a restart does not reset the budget', () => {
-    recordProviderSpend(costEvent({ scanId: 'before-restart', costUsd: 42.5 }));
+    recordProviderSpend(costEvent({ scanId: 'before-restart', costUsd: 42.5 }), 'customer');
     resetProviderSpendLedger(); // simulate an API restart / redeploy (memory gone, file kept)
     expect(getProviderSpendLedger().monthTotalUsd()).toBeCloseTo(42.5, 6);
   });
 
   it('counts a hydrated row exactly once when new spend lands after a restart', () => {
-    recordProviderSpend(costEvent({ scanId: 'r1', costUsd: 10 }));
+    recordProviderSpend(costEvent({ scanId: 'r1', costUsd: 10 }), 'customer');
     resetProviderSpendLedger();
-    recordProviderSpend(costEvent({ scanId: 'r2', costUsd: 5 }));
+    recordProviderSpend(costEvent({ scanId: 'r2', costUsd: 5 }), 'customer');
     expect(getProviderSpendLedger().monthTotalUsd()).toBeCloseTo(15, 6);
     expect(readFileSync(tmpLedger, 'utf8').trim().split('\n')).toHaveLength(2);
   });
@@ -271,20 +273,20 @@ describe('provider-spend ledger', () => {
     // path through the API (provider creds come only from server env), so a
     // `userkey` label on a real scan is either FW telemetry noise or a spoof —
     // either way the dollars were ours and must be recorded.
-    expect(recordProviderSpend(costEvent({ tier: 'userkey', costUsd: 5 }))).not.toBeNull();
+    expect(recordProviderSpend(costEvent({ tier: 'userkey', costUsd: 5 }), 'customer')).not.toBeNull();
     expect(getProviderSpendLedger().monthTotalUsd()).toBeCloseTo(5, 6);
     expect(JSON.parse(readFileSync(tmpLedger, 'utf8').trim()).tier).toBe('userkey'); // label kept, not obeyed
   });
 
   it('does NOT ledger a zero-cost scan (cache hit, mock, all-error)', () => {
-    expect(recordProviderSpend(costEvent({ costUsd: 0, cacheHit: true }))).toBeNull();
+    expect(recordProviderSpend(costEvent({ costUsd: 0, cacheHit: true }), 'customer')).toBeNull();
     expect(getProviderSpendLedger().monthTotalUsd()).toBe(0);
   });
 
   it('rejects a non-finite or negative cost instead of poisoning the total', () => {
-    expect(recordProviderSpend(costEvent({ costUsd: Number.NaN }))).toBeNull();
-    expect(recordProviderSpend(costEvent({ costUsd: -3 }))).toBeNull();
-    recordProviderSpend(costEvent({ costUsd: 2 }));
+    expect(recordProviderSpend(costEvent({ costUsd: Number.NaN }), 'customer')).toBeNull();
+    expect(recordProviderSpend(costEvent({ costUsd: -3 }), 'customer')).toBeNull();
+    recordProviderSpend(costEvent({ costUsd: 2 }), 'customer');
     expect(getProviderSpendLedger().monthTotalUsd()).toBeCloseTo(2, 6);
   });
 
@@ -292,7 +294,7 @@ describe('provider-spend ledger', () => {
     process.env.FAULTLINE_PROVIDER_SPEND_LEDGER = join(tmpDir, 'nope.jsonl', 'child.jsonl');
     resetProviderSpendLedger();
     writeFileSync(join(tmpDir, 'nope.jsonl'), 'blocks the mkdir'); // path component is a file
-    expect(() => recordProviderSpend(costEvent({ costUsd: 8 }))).not.toThrow();
+    expect(() => recordProviderSpend(costEvent({ costUsd: 8 }), 'customer')).not.toThrow();
     expect(getProviderSpendLedger().monthTotalUsd()).toBeCloseTo(8, 6);
     expect(getProviderSpendLedger().getWriteFailures()).toBe(1);
   });
@@ -304,13 +306,13 @@ describe('provider-spend ledger', () => {
 describe('getProviderSpendStatus', () => {
   it('reports the budget position and flags exhaustion at the cap', () => {
     process.env.FAULTLINE_PROVIDER_SPEND_CAP_USD = '10';
-    recordProviderSpend(costEvent({ costUsd: 4 }));
+    recordProviderSpend(costEvent({ costUsd: 4 }), 'customer');
     const s = getProviderSpendStatus();
     expect(s).toMatchObject({ month: currentMonth(), enforced: false, capUsd: 10, exhausted: false });
     expect(s.spentUsd).toBeCloseTo(4, 6);
     expect(s.remainingUsd).toBeCloseTo(6, 6);
 
-    recordProviderSpend(costEvent({ scanId: 'x2', costUsd: 6 }));
+    recordProviderSpend(costEvent({ scanId: 'x2', costUsd: 6 }), 'customer');
     const s2 = getProviderSpendStatus();
     expect(s2.exhausted).toBe(true);
     expect(s2.remainingUsd).toBe(0);
@@ -333,7 +335,7 @@ describe('enforceProviderSpendCap — integration through /scan', () => {
   /** Push the ledger past the cap so the gate has something to refuse. */
   function exhaustBudget(): void {
     process.env.FAULTLINE_PROVIDER_SPEND_CAP_USD = '1';
-    recordProviderSpend(costEvent({ costUsd: 1.5 }));
+    recordProviderSpend(costEvent({ costUsd: 1.5 }), 'customer');
   }
 
   it('is a no-op when DORMANT — an over-budget scan still runs', async () => {
@@ -384,7 +386,7 @@ describe('enforceProviderSpendCap — integration through /scan', () => {
   it('lets a scan through while budget remains', async () => {
     process.env.FAULTLINE_PROVIDER_SPEND_CAP_USD = '100';
     process.env.FAULTLINE_PROVIDER_SPEND_CAP = 'on';
-    recordProviderSpend(costEvent({ costUsd: 0.42 }));
+    recordProviderSpend(costEvent({ costUsd: 0.42 }), 'customer');
     const created = getKeyStore().create('Pro Key', ['pro', 'scan']);
     const res = await server.inject({
       method: 'POST',
@@ -427,7 +429,7 @@ describe('enforceProviderSpendCap — integration through /scan', () => {
 
   it('exposes the budget on GET /usage to ADMIN only — never to a customer key', async () => {
     process.env.FAULTLINE_PROVIDER_SPEND_CAP_USD = '100';
-    recordProviderSpend(costEvent({ costUsd: 0.42 }));
+    recordProviderSpend(costEvent({ costUsd: 0.42 }), 'customer');
 
     const pro = getKeyStore().create('Pro Key', ['pro', 'scan']);
     const proRes = await server.inject({ method: 'GET', url: '/usage', headers: { 'x-api-key': pro.key } });

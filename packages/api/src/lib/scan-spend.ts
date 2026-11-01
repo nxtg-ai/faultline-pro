@@ -3,6 +3,7 @@ import { billableVerdictCount } from '@nxtg/faultline/lib/verdict-guard.js';
 import { resolveStageProviders, type PipelineConfig } from '@nxtg/faultline/cli/verify-runner.js';
 import { getCostStore, emitScanCostEvent, appendScanCostLog, resolveTier, buildManagedCostEvent, type ManagedScanCostEvent } from '../store/costs.js';
 import { recordProviderSpend } from '../store/provider-spend.js';
+import { classifyKeyId } from '../plugins/auth.js';
 
 /**
  * Every engine call the API makes spends Faultline's own provider keys, so every
@@ -35,7 +36,7 @@ export interface ScanSpendContext {
    * alone (a caller can say provider 'mock' and run every stage on Perplexity).
    */
   pipelineConfig?: PipelineConfig;
-  /** The key that asked. Sets the tier label (same source as POST /scan) and the cost-store owner. */
+  /** The key that asked. Sets the tier label (same source as POST /scan), the cost-store owner and the spend row's key class. */
   keyId: string;
   /** The tier label, when the route takes it from somewhere other than the key (the stream routes read the forwarded plan). */
   tier?: ManagedScanCostEvent['tier'];
@@ -100,5 +101,5 @@ function ledgerScanSpend(
   getCostStore().recordManaged(costEvent, ctx.keyId);
   emitScanCostEvent(costEvent);
   appendScanCostLog(costEvent);
-  recordProviderSpend(costEvent);
+  recordProviderSpend(costEvent, classifyKeyId(ctx.keyId));
 }
