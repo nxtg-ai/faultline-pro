@@ -16,7 +16,13 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { verifyClaims, autoDetectProvider, isGrounded, resolveTransport } from './verify.js';
+import {
+  verifyClaims,
+  autoDetectProvider,
+  isGrounded,
+  resolveTransport,
+  type VerifyDeps,
+} from './verify.js';
 
 export const VERSION = '0.1.0';
 
@@ -46,7 +52,16 @@ const VERIFY_CLAIMS_DESCRIPTION = [
   'deterministic probes, not source retrieval.',
 ].join('\n');
 
-export function buildServer(): McpServer {
+/**
+ * Build the MCP server with its one tool, verify_claims.
+ *
+ * `deps` decides how the tool runs a scan. The stdio server passes nothing and
+ * resolves the transport from the environment. The hosted endpoint in
+ * packages/api (POST /mcp) passes a hosted transport whose fetch runs the API's
+ * own POST /scan in-process with the caller's key. Both build the tool here, so
+ * its name, input schema, descriptions and output cannot drift apart.
+ */
+export function buildServer(deps: VerifyDeps = {}): McpServer {
   const server = new McpServer({
     name: 'faultline',
     version: VERSION,
@@ -80,7 +95,7 @@ export function buildServer(): McpServer {
     },
     async ({ text, max_claims, provider }) => {
       try {
-        const result = await verifyClaims({ text, max_claims, provider });
+        const result = await verifyClaims({ text, max_claims, provider }, deps);
         return {
           content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
           structuredContent: result as unknown as Record<string, unknown>,

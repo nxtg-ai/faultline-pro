@@ -68,11 +68,13 @@ export class HostedScanError extends Error {
 function explainStatus(status: number, body: string): string {
   switch (status) {
     case 401:
-      return 'the API rejected the key (401). Check FAULTLINE_API_KEY.';
+      return `the API rejected the key (401): ${body}. Check FAULTLINE_API_KEY. Nothing was verified. This is NOT a verdict on your claims.`;
+    case 402:
+      return `the key has no quota left for this scan (402): ${body}. Nothing was verified. This is NOT a verdict on your claims.`;
     case 403:
-      return 'the key lacks permission for this operation (403).';
+      return `the key lacks permission for this operation (403): ${body}. Nothing was verified. This is NOT a verdict on your claims.`;
     case 429:
-      return 'rate limit or monthly cap reached (429). This is NOT a verdict on your claims.';
+      return `rate limit or monthly cap reached (429): ${body}. Nothing was verified. This is NOT a verdict on your claims.`;
     case 502:
       return /"reason"\s*:\s*"provider_out_of_credits"/.test(body)
         ? `the API could not extract claims from the text (502): ${body}. Nothing was verified. The provider account is out of credits; retrying will not help until it has credits again.`

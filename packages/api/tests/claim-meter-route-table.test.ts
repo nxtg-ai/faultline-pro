@@ -242,6 +242,19 @@ async function probe(app: FastifyInstance, r: RouteRow, key: Key, marker: string
     }
     case 'POST /scan/compliance/:template':
       return send('POST', fill(r.url, 'healthcare'), { text: sentence(marker), provider: ENGINE_PROVIDER });
+    case 'POST /mcp': {
+      // Hosted MCP: a real verify_claims tools/call. The route scans through POST
+      // /scan in-process with this key, so the meter is POST /scan's. At the HTTP
+      // layer it answers 200 and carries POST /scan's refusal as an MCP tool
+      // error; the probe reports the refusal's status (402 claim_cap_reached).
+      const res = await send('POST', r.url,
+        { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'verify_claims', arguments: { text: sentence(marker), provider: ENGINE_PROVIDER } } },
+        { accept: 'application/json, text/event-stream' });
+      const result = (res.json() as { result?: { isError?: boolean; content?: Array<{ text?: string }> } }).result;
+      const message = result?.content?.[0]?.text ?? '';
+      if (res.statusCode === 200 && result?.isError && /\(402\)/.test(message) && /claim_cap_reached/.test(message)) return { statusCode: 402 };
+      return { statusCode: res.statusCode };
+    }
     default: break;
   }
 
@@ -340,7 +353,7 @@ describe('every verifying route is metered', () => {
         'POST /scan', 'GET /scan/stream', 'POST /scan/stream', 'POST /scan/deep', 'POST /scan/batch', 'POST /scan/upload',
         'POST /scan/template/:id', 'POST /scan/full', 'POST /scan/compliance-gate', 'POST /scan/diff',
         'POST /scan/compliance/:template', 'POST /scan/report', 'POST /scan/eu-report', 'POST /scan/bulk',
-        'POST /jobs', 'POST /queue/scans', 'POST /schedules/:id/trigger',
+        'POST /jobs', 'POST /queue/scans', 'POST /schedules/:id/trigger', 'POST /mcp',
       ]));
       // The estimate extracts but never verifies.
       expect(names).not.toContain('POST /scan/full/estimate');
