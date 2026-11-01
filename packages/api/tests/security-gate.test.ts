@@ -326,13 +326,13 @@ describe('security-gate CLI and committed files', () => {
     expect(r.stdout).toContain('UNACCEPTED HIGH: GHSA-xcpc-8h2w-3j85');
   });
 
-  it('SG-42 security/baseline.json is valid: 117 bearer entries, every one with a disposition and reason', () => {
+  it('SG-42 security/baseline.json is valid: 118 bearer entries, every one with a disposition and reason', () => {
     const baseline = JSON.parse(readFileSync(join(REPO_ROOT, 'security/baseline.json'), 'utf8'));
     // 99 at install (2026-10-02) + 6 false positives in fp's ops scripts, triaged 2026-10-12
     // (vendor-consent-watch.py x3, stripe-revenue-evidence.py x3; reason in each entry)
     // + 2 false positives in the claim meter change, triaged 2026-10-26 (keys.ts
     // Idempotency-Key map hydration, claim-meter.ts count-only log; reason in each entry).
-    expect(baseline.entries.length).toBe(117);
+    expect(baseline.entries.length).toBe(118);
     for (const e of baseline.entries) {
       expect(e.tool).toBe('bearer');
       expect(e.disposition).toMatch(/^(accepted-pre-existing|false-positive|open)$/);
