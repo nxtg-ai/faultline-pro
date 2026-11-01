@@ -331,7 +331,8 @@ describe('security-gate CLI and committed files', () => {
     // 99 at install (2026-10-02) + 6 false positives in fp's ops scripts, triaged 2026-10-12
     // (vendor-consent-watch.py x3, stripe-revenue-evidence.py x3; reason in each entry)
     // + 2 false positives in the claim meter change, triaged 2026-10-26 (keys.ts
-    // Idempotency-Key map hydration, claim-meter.ts count-only log; reason in each entry).
+    // Idempotency-Key map hydration, claim-meter.ts count-only log; reason in each entry)
+    // + 1 false positive, triaged 2026-11-01 (cost-scoreboard.mjs writes to the operator's --out path).
     expect(baseline.entries.length).toBe(118);
     for (const e of baseline.entries) {
       expect(e.tool).toBe('bearer');
@@ -340,7 +341,7 @@ describe('security-gate CLI and committed files', () => {
       expect(e.fp).not.toMatch(/^\d+$/);
     }
     const specific = baseline.entries.filter((e: { disposition: string }) => e.disposition !== 'accepted-pre-existing');
-    expect(specific).toHaveLength(30);
+    expect(specific).toHaveLength(31);
     // The 4 raw_html_using_user_input entries (scans.ts, keys.ts) were OPEN until the
     // fix/scan-history-tenant-scope change escaped them. Bearer 2.1.1 still reports them
     // (it does not recognise esc()), so they stay baselined as false positives marked FIXED.
