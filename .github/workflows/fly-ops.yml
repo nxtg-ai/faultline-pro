@@ -201,7 +201,11 @@ jobs:
           const stored = new Set(['id', 'keyHash', 'previousKeyHash', 'keyPrefix', 'name', 'permissions', 'createdAt', 'disabled',
             'previousKeyExpiresAt', 'lastRotatedAt', 'lastUsedAt', 'expiresAt', 'claimCap', 'stripeCustomerId', 'metered', 'scopes']);
           const hashFields = new Set(['keyHash', 'previousKeyHash']);
-          const doc = JSON.parse(fs.readFileSync(p, 'utf8'));
+          let doc;
+          try { doc = JSON.parse(fs.readFileSync(p, 'utf8')); } catch {
+            // Fixed text only: a parse error message would quote part of the file.
+            console.log(JSON.stringify({ file: 'present', parse: 'failed' })); process.exit(0);
+          }
           const keys = Array.isArray(doc.keys) ? doc.keys : [];
           const out = {
             mode: (fs.statSync(p).mode & 0o777).toString(8),
