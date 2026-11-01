@@ -57,6 +57,8 @@ const CONTRACT = {
     'unchecked_count',
     'unsourced_count',
   ],
+  /** Present only when an audit record was (audit_ref, audit_path) or was not (audit_skipped) written. */
+  optionalOutputKeys: ['audit_path', 'audit_ref', 'audit_skipped'],
 };
 
 /** Child env: no proxy (the fake API is on loopback), no history writes, no stray keys. */
@@ -218,10 +220,9 @@ describe('faultline-mcp bin — called with a key runs on the hosted API', () =>
             verifications: {
               c1: {
                 claimId: 'c1',
-                status: 'verified',
-                confidence: 0.95,
-                reasoning: 'Standard reference value.',
-                sources: [{ title: 'NIST', url: 'https://www.nist.gov/' }],
+                status: 'supported',
+                explanation: 'Standard reference value.',
+                sources: [{ title: 'NIST', uri: 'https://www.nist.gov/' }],
               },
             },
           }),
@@ -254,13 +255,23 @@ describe('faultline-mcp bin — called with a key runs on the hosted API', () =>
       expect(JSON.parse(seen[0].body)).toEqual({ text: 'Water boils at 100 C at sea level.' });
 
       const out = res.structuredContent as Record<string, unknown>;
-      expect(Object.keys(out).sort()).toEqual(CONTRACT.outputKeys);
+      const keys = Object.keys(out);
+      expect(keys.filter((k) => !CONTRACT.optionalOutputKeys.includes(k)).sort()).toEqual(
+        CONTRACT.outputKeys,
+      );
+      // History is off in the child env, so the record is skipped and says why.
+      expect(out.audit_skipped).toBe('FAULTLINE_MCP_NO_HISTORY=1');
+      expect(out).not.toHaveProperty('audit_ref');
       expect(out.mode).toBe('hosted');
       expect(out.grounded).toBe(true);
       expect(out.degraded).toBe(false);
       expect(out.claims_total).toBe(1);
       expect(out.claims).toEqual([
-        expect.objectContaining({ claim: 'Water boils at 100 C at sea level.', verdict: 'VERIFIED' }),
+        expect.objectContaining({
+          claim: 'Water boils at 100 C at sea level.',
+          verdict: 'VERIFIED',
+          evidence_urls: ['https://www.nist.gov/'],
+        }),
       ]);
       expect(stderr()).toMatch(/hosted API/);
       expect(stderr()).not.toContain('fl_test_hosted_key');

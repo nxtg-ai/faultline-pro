@@ -160,6 +160,37 @@ See [`examples/ci-integration.yml`](https://github.com/nxtg-ai/faultline-pro/blo
 
 ---
 
+## MCP Server (`verify_claims`)
+
+This package also ships the `faultline-mcp` bin: an MCP stdio server with one tool, `verify_claims`, for Claude Code, Cursor and any MCP client. It is the server from `packages/mcp` and has the same tool contract. The bin is added in the release after 0.11.1; until that release is on npm, `npx` cannot find it.
+
+```bash
+# Claude Code
+claude mcp add faultline -e FAULTLINE_API_KEY=your-key -- npx -y -p @nxtg/faultline faultline-mcp
+```
+
+```json
+{
+  "mcpServers": {
+    "faultline": {
+      "command": "npx",
+      "args": ["-y", "-p", "@nxtg/faultline", "faultline-mcp"],
+      "env": { "FAULTLINE_API_KEY": "your-key" }
+    }
+  }
+}
+```
+
+The key picks where the check runs:
+
+- `FAULTLINE_API_KEY` set: the scan runs on the hosted API (`https://faultline-api.fly.dev`, override with `FAULTLINE_API_URL`) on Faultline's server-side provider keys, grounded by default.
+- Otherwise it runs in-process on your own provider key. Precedence: `FAULTLINE_PROVIDER`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `PERPLEXITY_API_KEY`. Only Gemini retrieves live sources; the response says `grounded: false` for the others.
+- With neither, the server runs the `mock` provider, which returns synthetic results and verifies nothing, and says so on stderr.
+
+Input: `text` (required), `max_claims`, `provider` (`gemini`, `openai`, `claude`, `perplexity`, `mock`). Each claim comes back `VERIFIED`, `REFUTED`, `UNSUPPORTED`, `MIXED` or `UNCHECKED`. `UNCHECKED` is not a verdict. `degraded: true` means some claims could not be checked. Audit records go to `.faultline/history` (`FAULTLINE_HISTORY_DIR` to move them, `FAULTLINE_MCP_NO_HISTORY=1` to switch them off).
+
+---
+
 ## CLI Usage
 
 ```bash
