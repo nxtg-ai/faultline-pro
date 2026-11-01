@@ -9,11 +9,10 @@
  * an MCP client launched by npx does. Nothing imports the server in-process:
  * the thing being proven is that the shipped executable works.
  *
- * Contract: the hosted /mcp is not reachable from this repo (2026-11-01:
- * POST https://faultline-api.fly.dev/mcp → 404, https://faultline.nxtg.ai/mcp → 404),
- * so the reference contract is the repo's own MCP server, packages/mcp. The
- * fixture below freezes it, and the parity test compares the two bins'
- * tools/list byte for byte so the copies cannot drift apart silently.
+ * Contract: the hosted /mcp is packages/api's POST /mcp (#97), which builds its
+ * tool with packages/mcp's buildServer. The fixture below freezes that
+ * contract; the parity tests compare this bin against packages/mcp's stdio
+ * bin and against the real hosted /mcp route, so the copies cannot drift.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -25,6 +24,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PKG_DIR = join(__dirname, '..');
@@ -58,7 +60,7 @@ const CONTRACT = {
     'unsourced_count',
   ],
   /** Present only when an audit record was (audit_ref, audit_path) or was not (audit_skipped) written. */
-  optionalOutputKeys: ['audit_path', 'audit_ref', 'audit_skipped'],
+  optionalOutputKeys: ['audit_path', 'audit_ref', 'audit_skipped', 'billing'],
 };
 
 /** Child env: no proxy (the fake API is on loopback), no history writes, no stray keys. */
@@ -296,4 +298,90 @@ describe('faultline-mcp bin — called with a key runs on the hosted API', () =>
       await client.close();
     }
   }, 30_000);
+});
+
+describe('faultline-mcp bin — same contract as the hosted /mcp (packages/api POST /mcp)', () => {
+  // The real API app, listening on loopback. The bin is pointed at it with a
+  // key, exactly as a user points it at https://faultline-api.fly.dev.
+  const SERVER_KEY = 'mcp-bin-parity-server-key-0123456789';
+  const TEXT = 'The Eiffel Tower is in Paris. Water boils at 100 degrees Celsius at sea level.';
+  const ENV_KEYS = [
+    'FAULTLINE_API_KEY', 'FAULTLINE_PROVIDER_SPEND_LEDGER', 'FAULTLINE_CLAIM_METER_LEDGER',
+    'FAULTLINE_GROUNDING_LEDGER', 'FAULTLINE_HISTORY_DIR', 'FAULTLINE_MCP_ALLOWED_ORIGINS',
+  ];
+  let saved: Record<string, string | undefined>;
+  let dir: string;
+  let app: { listen: (o: { port: number; host: string }) => Promise<string>; close: () => Promise<void> };
+  let apiUrl: string;
+
+  beforeAll(async () => {
+    saved = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
+    dir = mkdtempSync(join(tmpdir(), 'fl-mcp-bin-parity-'));
+    process.env.FAULTLINE_API_KEY = SERVER_KEY;
+    process.env.FAULTLINE_PROVIDER_SPEND_LEDGER = join(dir, 'provider-spend.jsonl');
+    process.env.FAULTLINE_CLAIM_METER_LEDGER = join(dir, 'claim-meter.jsonl');
+    process.env.FAULTLINE_GROUNDING_LEDGER = join(dir, 'grounding.jsonl');
+    process.env.FAULTLINE_HISTORY_DIR = join(dir, 'history');
+    delete process.env.FAULTLINE_MCP_ALLOWED_ORIGINS;
+    const { buildServer } = await import('../../api/src/server.js');
+    app = buildServer();
+    apiUrl = (await app.listen({ port: 0, host: '127.0.0.1' })).replace('localhost', '127.0.0.1');
+  }, 60_000);
+
+  afterAll(async () => {
+    await app.close();
+    for (const k of ENV_KEYS) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  async function hostedClient() {
+    const client = new Client({ name: 'hosted-parity', version: '1.0.0' });
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(`${apiUrl}/mcp`), {
+        requestInit: { headers: { 'x-api-key': SERVER_KEY } },
+      }),
+    );
+    return client;
+  }
+
+  it('lists the same tool definition as the hosted /mcp', async () => {
+    const hosted = await hostedClient();
+    const ours = await connect(BIN, childEnv());
+    try {
+      const [h, o] = await Promise.all([hosted.listTools(), ours.client.listTools()]);
+      expect(h.tools.map((t) => t.name)).toEqual(['verify_claims']);
+      expect(o.tools).toEqual(h.tools);
+    } finally {
+      await Promise.all([hosted.close(), ours.client.close()]);
+    }
+  }, 60_000);
+
+  it('called with a key against the API, returns the same output fields as the hosted /mcp, billing included', async () => {
+    const hosted = await hostedClient();
+    const ours = await connect(BIN, childEnv({ FAULTLINE_API_KEY: SERVER_KEY, FAULTLINE_API_URL: apiUrl }));
+    try {
+      const args = { name: 'verify_claims', arguments: { text: TEXT, provider: 'mock' } };
+      const h = await hosted.callTool(args);
+      const o = await ours.client.callTool(args);
+      expect(h.isError).toBeFalsy();
+      expect(o.isError).toBeFalsy();
+      const hOut = h.structuredContent as Record<string, unknown>;
+      const oOut = o.structuredContent as Record<string, unknown>;
+      expect((oOut.claims as unknown[]).length).toBeGreaterThan(0);
+
+      // audit_* differ by design: the hosted server writes no local record
+      // (AUDIT_OFF_REASON); the bin skips it here because history is off.
+      const fields = (x: Record<string, unknown>) => Object.keys(x).filter((k) => !k.startsWith('audit_')).sort();
+      expect(fields(oOut)).toEqual(fields(hOut));
+      expect(fields(oOut)).toContain('billing');
+      expect(oOut.mode).toBe('hosted');
+      expect(oOut.billing).toEqual(expect.objectContaining({}));
+      expect(oOut.claims_total).toBe(hOut.claims_total);
+    } finally {
+      await Promise.all([hosted.close(), ours.client.close()]);
+    }
+  }, 60_000);
 });

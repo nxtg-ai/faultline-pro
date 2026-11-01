@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { verifyClaims, autoDetectProvider, isGrounded } from '../cli/mcp/verify.js';
+import { verifyClaims, autoDetectProvider, isGrounded, AUDIT_OFF_REASON } from '../cli/mcp/verify.js';
 import type { ScanResult } from '../cli/scan.js';
 import { ExtractionError } from '../providers/extraction-error.js';
 
@@ -403,5 +403,41 @@ describe('verifyClaims — an unverified claim is never read as low risk', () =>
     expect(out.claims.length).toBeGreaterThan(0);
     expect(out.claims.every((c) => c.verdict === 'UNSUPPORTED')).toBe(true);
     expect(out.overall_risk).toBe('high');
+  });
+});
+
+describe('hosted results: billing and audit', () => {
+  const billing = { billedClaims: 1, unbilled: [{ claimId: 'c2', reason: 'no_source' }] };
+  function hostedFetch(result: object) {
+    return (async () => ({ ok: true, status: 200, json: async () => result, text: async () => '' })) as unknown as typeof fetch;
+  }
+  const hosted = { mode: 'hosted' as const, apiUrl: 'https://x.test', apiKey: 'k' };
+
+  it('passes the API billing field through unchanged', async () => {
+    const out = await verifyClaims({ text: 'check this' }, { fetchImpl: hostedFetch({ ...scanResult(), billing }), transport: hosted });
+    expect(out.billing).toEqual(billing);
+    expect(out.overall_risk).toBe('medium');
+  });
+
+  it('has no billing field when the scan result carries none (a local scan)', async () => {
+    const out = await verifyClaims({ text: 'x', provider: 'mock' }, { scanFn: async () => scanResult(), transport: { mode: 'local' } });
+    expect('billing' in out).toBe(false);
+  });
+
+  it('audit: false writes no record and says why', async () => {
+    const out = await verifyClaims(
+      { text: 'check this' },
+      { fetchImpl: hostedFetch(scanResult()), transport: hosted, audit: false },
+    );
+    expect(out.audit_ref).toBeUndefined();
+    expect(out.audit_path).toBeUndefined();
+    expect(out.audit_skipped).toBe(AUDIT_OFF_REASON);
+    expect(readdirSync(auditRoot)).toEqual([]);
+  });
+
+  it('writes the audit record by default', async () => {
+    const out = await verifyClaims({ text: 'check this' }, { fetchImpl: hostedFetch(scanResult()), transport: hosted });
+    expect(out.audit_ref).toMatch(/^fl_/);
+    expect(existsSync(out.audit_path!)).toBe(true);
   });
 });
