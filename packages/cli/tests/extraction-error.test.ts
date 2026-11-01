@@ -179,6 +179,17 @@ describe('parseExtractedClaims', () => {
     }
   });
 
+  it('rejects the id __proto__ (it would set a plain object\'s prototype, not add an entry); constructor is an ordinary id', () => {
+    let err: unknown;
+    try { parseExtractedClaims(JSON.stringify([claim, { ...claim, id: '__proto__', text: 'SENTINEL claim text' }])); } catch (e) { err = e; }
+    expect(err).toBeInstanceOf(ExtractionError);
+    expect((err as ExtractionError).reason).toBe('invalid_output');
+    expect(((err as ExtractionError).cause as Error).message).toBe('claim 1: invalid or missing id');
+    expect(((err as ExtractionError).cause as Error).message).not.toContain('SENTINEL');
+    const claims = parseExtractedClaims(JSON.stringify([claim, { ...claim, id: 'constructor' }]));
+    expect(claims.map((c) => c.id)).toEqual(['c1', 'constructor']);
+  });
+
   it('distinct ids that differ only in case are kept', () => {
     const claims = parseExtractedClaims(JSON.stringify([claim, { ...claim, id: 'C1' }]));
     expect(claims.map((c) => c.id)).toEqual(['c1', 'C1']);

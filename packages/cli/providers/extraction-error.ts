@@ -121,6 +121,9 @@ const CLAIM_TYPES: ReadonlySet<string> = new Set(['fact', 'opinion', 'interpreta
  * per-sentence guarantee fill synthetic claims around it (codex E1). A numeric id
  * is the only coercion. An id longer than MAX_CLAIM_ID_LENGTH fails too: the claim
  * meter could not commit it, so billing would count a claim nobody is charged for.
+ * The id `__proto__` fails as well: verdicts are kept in plain objects keyed by
+ * claim id, where that key sets the object's prototype instead of adding an entry,
+ * so the meter would commit a claim the billing summary never sees.
  * The cause names the item index and field, never claim text.
  */
 function validateClaim(item: unknown, index: number): Claim {
@@ -130,7 +133,7 @@ function validateClaim(item: unknown, index: number): Claim {
   if (item === null || typeof item !== 'object' || Array.isArray(item)) return fail('object');
   const { id, text, type, importance } = item as Record<string, unknown>;
   const claimId = typeof id === 'number' && Number.isFinite(id) ? String(id) : id;
-  if (typeof claimId !== 'string' || claimId.trim() === '' || claimId.length > MAX_CLAIM_ID_LENGTH) return fail('id');
+  if (typeof claimId !== 'string' || claimId.trim() === '' || claimId.length > MAX_CLAIM_ID_LENGTH || claimId === '__proto__') return fail('id');
   if (typeof text !== 'string' || text.trim() === '') return fail('text');
   if (typeof type !== 'string' || !CLAIM_TYPES.has(type)) return fail('type');
   if (typeof importance !== 'number' || !Number.isInteger(importance) || importance < 1 || importance > 5) {

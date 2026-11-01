@@ -208,6 +208,14 @@ describe('claim ids: billing.billedClaims equals the claims the meter commits', 
       expect(getClaimMeter().usageFor(key.id).used).toBe(outcome.billing!.billedClaims);
     });
 
+    it(`${route}: the claim id __proto__ fails extraction (invalid_output); nothing is billed or metered`, async () => {
+      control.items = [item('__proto__', 'Claim one is a fact.')];
+      const key = customer();
+      expectInvalidExtraction(route, await scanVia(route, key.key, ONE_SENTENCE));
+      expect(getClaimMeter().usageFor(key.id).used).toBe(0);
+      expect(claimMeterRows().length).toBe(0);
+    });
+
     it(`${route}: two claims sharing an id fail extraction (invalid_output); nothing is billed or metered`, async () => {
       control.items = [item('c1', 'Claim one is a fact.'), item('c1', 'Claim two is a fact.')];
       const key = customer();
