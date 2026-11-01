@@ -1,6 +1,7 @@
 import type { ApiErrorReason, Claim } from '../types';
 import { isOutputTruncatedError } from './output-truncation';
 import { isOutOfCreditsError } from './out-of-credits';
+import { MAX_CLAIM_ID_LENGTH } from '../lib/verdict-guard';
 
 /**
  * Why a claim extraction did not produce claims.
@@ -98,7 +99,17 @@ export function parseExtractedClaims(raw: string, unwrap = false): Claim[] {
   if (!Array.isArray(claims)) {
     throw new ExtractionError('invalid_output', new Error(`expected a claims array, got ${claims === null ? 'null' : typeof claims}`));
   }
-  return claims.map((item, index) => validateClaim(item, index));
+  const validated = claims.map((item, index) => validateClaim(item, index));
+  // Ids key the verifications and the claim meter's usage rows: a repeated id
+  // would let one verdict overwrite another after the first was metered.
+  const seen = new Set<string>();
+  validated.forEach((claim, index) => {
+    if (seen.has(claim.id)) {
+      throw new ExtractionError('invalid_output', new Error(`claim ${index}: duplicate id`));
+    }
+    seen.add(claim.id);
+  });
+  return validated;
 }
 
 const CLAIM_TYPES: ReadonlySet<string> = new Set(['fact', 'opinion', 'interpretation']);
@@ -108,7 +119,9 @@ const CLAIM_TYPES: ReadonlySet<string> = new Set(['fact', 'opinion', 'interpreta
  * extraction (invalid_output): the model did not follow the format, so nothing it
  * returned can be trusted as the claim list, and a half-valid list would let the
  * per-sentence guarantee fill synthetic claims around it (codex E1). A numeric id
- * is the only coercion. The cause names the item index and field, never claim text.
+ * is the only coercion. An id longer than MAX_CLAIM_ID_LENGTH fails too: the claim
+ * meter could not commit it, so billing would count a claim nobody is charged for.
+ * The cause names the item index and field, never claim text.
  */
 function validateClaim(item: unknown, index: number): Claim {
   const fail = (field: string): never => {
@@ -117,7 +130,7 @@ function validateClaim(item: unknown, index: number): Claim {
   if (item === null || typeof item !== 'object' || Array.isArray(item)) return fail('object');
   const { id, text, type, importance } = item as Record<string, unknown>;
   const claimId = typeof id === 'number' && Number.isFinite(id) ? String(id) : id;
-  if (typeof claimId !== 'string' || claimId.trim() === '') return fail('id');
+  if (typeof claimId !== 'string' || claimId.trim() === '' || claimId.length > MAX_CLAIM_ID_LENGTH) return fail('id');
   if (typeof text !== 'string' || text.trim() === '') return fail('text');
   if (typeof type !== 'string' || !CLAIM_TYPES.has(type)) return fail('type');
   if (typeof importance !== 'number' || !Number.isInteger(importance) || importance < 1 || importance > 5) {

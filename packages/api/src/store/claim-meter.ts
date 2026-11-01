@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { isBillableVerdict, VERDICT_STATUSES, type VerdictStatus } from '@nxtg/faultline/lib/verdict-guard.js';
+import { isBillableVerdict, MAX_CLAIM_ID_LENGTH, VERDICT_STATUSES, type VerdictStatus } from '@nxtg/faultline/lib/verdict-guard.js';
 import { currentMonth } from './provider-spend.js';
 
 /**
@@ -41,8 +41,11 @@ const DEFAULT_LEDGER_PATH = '/var/log/faultline/claim-meter.jsonl';
 
 /** The version of the row shape served by GET /admin/usage-records. */
 export const USAGE_RECORD_VERSION = 1;
-/** Longest claimId a usage row accepts: a 36-character UUID, ':' and 58 keep `identifier` at 95. */
-export const MAX_CLAIM_ID_LENGTH = 58;
+/**
+ * Longest claimId a usage row accepts: a 36-character UUID, ':' and 58 keep `identifier` at 95.
+ * One constant with extraction's limit (lib/verdict-guard.ts), so the two cannot drift.
+ */
+export { MAX_CLAIM_ID_LENGTH };
 /** Longest usage identifier. A void identifier adds the 5-character `void:` prefix. */
 export const MAX_IDENTIFIER_LENGTH = 95;
 

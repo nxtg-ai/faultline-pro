@@ -232,7 +232,8 @@ function normalizeSentence(s: string): string {
  *
  * If an LLM merges or drops sentences, this function adds a synthetic `fact`
  * claim for each unrepresented sentence. Synthetic IDs use an 's' prefix to
- * distinguish them from LLM-extracted claims (e.g. "s1", "s2").
+ * distinguish them from LLM-extracted claims (e.g. "s1", "s2"), skip any id
+ * already in the scan, and stay far inside MAX_CLAIM_ID_LENGTH.
  *
  * This is the primary defence against claim-merging behaviour and works
  * identically across all providers.
@@ -242,7 +243,16 @@ export function guaranteeClaimPerSentence(text: string, claims: Claim[]): Claim[
   if (sentences.length < 2) return claims;
 
   const result = [...claims];
+  // A synthetic id never reuses one already in the scan (a model may itself
+  // return "s3"): ids key the verifications and the claim meter's rows.
+  const taken = new Set(result.map(c => c.id));
   let idx = result.length + 1;
+  const nextSyntheticId = (): string => {
+    while (taken.has(`s${idx}`)) idx++;
+    const id = `s${idx++}`;
+    taken.add(id);
+    return id;
+  };
 
   for (const sentence of sentences) {
     const normSentence = normalizeSentence(sentence);
@@ -256,7 +266,7 @@ export function guaranteeClaimPerSentence(text: string, claims: Claim[]): Claim[
     });
 
     if (!covered) {
-      result.push({ id: `s${idx++}`, text: sentence, type: 'fact', importance: 3 });
+      result.push({ id: nextSyntheticId(), text: sentence, type: 'fact', importance: 3 });
     }
   }
 

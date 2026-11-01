@@ -139,6 +139,14 @@ export const isInvalidVerdictError = (err: unknown): err is InvalidVerdictError 
 const BILLABLE_STATUSES: ReadonlySet<string> = new Set(['supported', 'contradicted', 'mixed']);
 
 /**
+ * Longest claim id a scan may carry. The claim meter keys each usage row by
+ * `<scanId UUID>:<claimId>` and refuses a longer id, so extraction refuses one
+ * too (providers/extraction-error.ts): a claim the meter cannot commit must
+ * never reach billing. A 36-character UUID, ':' and 58 keep the identifier at 95.
+ */
+export const MAX_CLAIM_ID_LENGTH = 58;
+
+/**
  * A claim that can be billed: its sources were retrieved by the engine. All of
  * these must hold:
  * 1. the verdict is supported, contradicted or mixed;
