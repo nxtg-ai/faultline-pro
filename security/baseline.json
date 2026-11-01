@@ -941,6 +941,14 @@
       "fp": "80969a9db2b183fe4764e5f5d0ae0a99_0",
       "disposition": "false-positive",
       "reason": "false-positive, triaged 2026-10-26: the claim meter logs only an integer count of claims it refused to record; never a claim id, scan id, key or text (tests/claim-meter-store.test.ts asserts the refused id is absent from the log)"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_path_traversal",
+      "uri": "scripts/cost-scoreboard.mjs",
+      "fp": "6078302122c96ef68e1067a2701c2b4f_0",
+      "disposition": "false-positive",
+      "reason": "false-positive, triaged 2026-11-01: writeFileSync writes the summary JSON to the --out path the local operator passes on the command line, in a script run by hand; the API response is the content, never the path, and no remote input reaches a path"
     }
   ]
 }

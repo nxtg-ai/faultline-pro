@@ -1,6 +1,8 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, createReadStream, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { createInterface } from 'node:readline';
 import type { ManagedScanCostEvent } from './costs.js';
+import { KEY_CLASSES, type KeyClass } from '../plugins/auth.js';
 
 /**
  * provider-spend.ts — append-only PROVIDER-SPEND ledger + monthly budget cap.
@@ -50,12 +52,25 @@ export const RULED_MONTHLY_CAP_USD = 100;
 
 const DEFAULT_LEDGER_PATH = '/var/log/faultline/provider-spend.jsonl';
 
-/** One provider-spend transaction. Append-only; no PII (no keyId, no text). */
+/**
+ * One provider-spend transaction. Append-only; no PII (no keyId, no text).
+ * `keyClass` says who the money was spent for (customer, internal, measurement
+ * or anonymous): a class decided from the authenticated key when the row is
+ * built, never the key's id. Rows written before the field existed have none and
+ * read as 'unlabelled'.
+ */
 export interface ProviderSpendEvent {
   ts: string;        // ISO-8601
   scanId: string;
   month: string;     // YYYY-MM (UTC) — the budget period this row belongs to
   tier: string;
+  keyClass: KeyClass;
+  /**
+   * 'extraction' on a row whose call only extracted claims (a full-scan
+   * estimate). Its claims are verified, and counted, by a later row, so cost
+   * summaries take its cost but not its claim count. Absent on every other row.
+   */
+  stage?: 'extraction';
   provider: string;
   modelId?: string;
   costUsd: number;
@@ -224,12 +239,18 @@ export function resetProviderSpendLedger(): void {
  * BLG-005 cost path already builds — single source of cost truth, no second
  * estimate). Call it alongside `emitScanCostEvent` / `appendScanCostLog`.
  */
-export function recordProviderSpend(event: ManagedScanCostEvent): ProviderSpendEvent | null {
+export function recordProviderSpend(
+  event: ManagedScanCostEvent,
+  keyClass: KeyClass,
+  options: { stage?: 'extraction' } = {},
+): ProviderSpendEvent | null {
   return getProviderSpendLedger().record({
     ts: event.ts,
     scanId: event.scanId,
     month: currentMonth(new Date(event.ts)),
     tier: event.tier,
+    keyClass,
+    ...(options.stage ? { stage: options.stage } : {}),
     provider: event.provider,
     modelId: event.modelId,
     costUsd: event.costUsd,
@@ -260,4 +281,92 @@ export function getProviderSpendStatus(now: Date = new Date()): ProviderSpendSta
     remainingUsd: Math.max(0, capUsd - spentUsd),
     exhausted: spentUsd >= capUsd,
   };
+}
+
+// ── Cost summary by key class ───────────────────────────────────────────────
+
+/** A row's class as a summary reads it: rows without a known keyClass are 'unlabelled'. */
+export type SummaryKeyClass = KeyClass | 'unlabelled';
+
+export const SUMMARY_KEY_CLASSES: readonly SummaryKeyClass[] = Object.freeze([...KEY_CLASSES, 'unlabelled']);
+
+/** One class's totals over a window. */
+export interface KeyClassSpend {
+  /** Sum of costUsd of the class's rows in the window. */
+  costUsd: number;
+  /** Number of rows. */
+  calls: number;
+  /** Sum of claimCount (null counts 0). An extraction-only row adds nothing. */
+  claimsHandled: number;
+  /** Sum of verifiedCount (null counts 0). An extraction-only row adds nothing. */
+  billableClaims: number;
+}
+
+export type SpendByKeyClass = Record<SummaryKeyClass, KeyClassSpend>;
+
+const KNOWN_CLASSES: ReadonlySet<string> = new Set(KEY_CLASSES);
+
+function emptyByClass(): SpendByKeyClass {
+  const out = {} as SpendByKeyClass;
+  for (const c of SUMMARY_KEY_CLASSES) out[c] = { costUsd: 0, calls: 0, claimsHandled: 0, billableClaims: 0 };
+  return out;
+}
+
+/** A finite count of at least 0, else 0 (null, missing or garbage counts nothing). */
+function countOf(value: unknown): number {
+  const n = Number(value);
+  return value !== null && value !== undefined && Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/** Add one parsed ledger row to `totals` when its ts falls in [fromMs, toMs). */
+export function addSpendRow(totals: SpendByKeyClass, row: Partial<ProviderSpendEvent>, fromMs: number, toMs: number): void {
+  const ts = typeof row.ts === 'string' ? Date.parse(row.ts) : Number.NaN;
+  if (!Number.isFinite(ts) || ts < fromMs || ts >= toMs) return;
+  const cost = Number(row.costUsd);
+  const cls: SummaryKeyClass = typeof row.keyClass === 'string' && KNOWN_CLASSES.has(row.keyClass)
+    ? row.keyClass as KeyClass : 'unlabelled';
+  const bucket = totals[cls];
+  bucket.calls += 1;
+  if (Number.isFinite(cost) && cost > 0) bucket.costUsd += cost;
+  if (row.stage === 'extraction') return;
+  bucket.claimsHandled += countOf(row.claimCount);
+  bucket.billableClaims += countOf(row.verifiedCount);
+}
+
+/**
+ * Sum the provider-spend ledger by key class over [from, to). The file is read
+ * line by line, so only the running totals are held in memory, never the rows.
+ * A missing ledger sums to zero and an unparseable line is skipped. A read error
+ * part way through throws, so a partial sum is never reported as the total.
+ * Costs are rounded to the micro-dollar to drop floating-point noise.
+ */
+export async function summarizeSpendByKeyClass(from: Date, to: Date, path: string = ledgerPath()): Promise<SpendByKeyClass> {
+  const totals = emptyByClass();
+  const fromMs = from.getTime();
+  const toMs = to.getTime();
+  try {
+    // A regular file only: a device such as /dev/zero reads forever.
+    if (!existsSync(path) || !statSync(path).isFile()) return totals;
+  } catch {
+    return totals;
+  }
+  const lines = createInterface({ input: createReadStream(path, { encoding: 'utf8' }), crlfDelay: Infinity });
+  try {
+    for await (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed === '') continue;
+      let row: Partial<ProviderSpendEvent>;
+      try {
+        row = JSON.parse(trimmed) as Partial<ProviderSpendEvent>;
+      } catch {
+        continue;
+      }
+      if (row === null || typeof row !== 'object') continue;
+      addSpendRow(totals, row, fromMs, toMs);
+    }
+  } finally {
+    lines.close();
+  }
+  for (const c of SUMMARY_KEY_CLASSES) totals[c].costUsd = Math.round(totals[c].costUsd * 1e6) / 1e6;
+  return totals;
 }

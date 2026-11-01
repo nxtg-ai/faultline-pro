@@ -126,6 +126,8 @@ const PROVIDER_FREE_ROUTES: readonly string[] = [
   'GET /usage',
   // The claim meter's usage record: reads committed rows.
   'GET /admin/usage-records',
+  // Reads the provider-spend ledger and the usage record; calls no provider.
+  'GET /admin/cost-summary',
   'GET /costs',
   'GET /costs/percentiles',
   'GET /rate-limits',
@@ -414,7 +416,7 @@ function costEvent(costUsd: number): ManagedScanCostEvent {
 function exhaustBudget(): void {
   process.env.FAULTLINE_PROVIDER_SPEND_CAP = 'on';
   process.env.FAULTLINE_PROVIDER_SPEND_CAP_USD = '1';
-  recordProviderSpend(costEvent(1.5));
+  recordProviderSpend(costEvent(1.5), 'customer');
 }
 
 interface RouteRequest {
