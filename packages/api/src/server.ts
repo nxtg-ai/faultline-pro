@@ -74,6 +74,7 @@ import { approvalsRoutes } from './routes/approvals.js';
 import { weakestRoutes } from './routes/weakest.js';
 import { critiqueRoutes } from './routes/critique.js';
 import { adminVerifyRoutes } from './routes/admin-verify.js';
+import { mcpRoutes } from './routes/mcp.js';
 import { sendWeeklySummaries } from './store/notifications.js';
 import { getKeyExpiryNotifier } from './store/key-expiry-notifier.js';
 import { getKeyRotationNotifier } from './store/key-rotation-notifier.js';
@@ -229,6 +230,8 @@ export function buildServer() {
   fastify.register(weakestRoutes);
   fastify.register(critiqueRoutes);
   fastify.register(adminVerifyRoutes);
+  // Hosted MCP: the verify_claims tool, every scan through POST /scan above.
+  fastify.register(mcpRoutes);
 
   // GraphQL is OFF unless FAULTLINE_GRAPHQL=on (emma-soul al:95753eecd4a6025b,
   // CRITICAL). Its key check had fired only on an exact POST /graphql, so a

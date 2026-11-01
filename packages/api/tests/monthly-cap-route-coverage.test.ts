@@ -45,6 +45,15 @@ const BACKGROUND = 'work runs in a background runner; admission is checked; coun
 
 /** Routes in provider-reaching files that run without the monthly-cap gate, and why. */
 const ALLOWED: Record<string, string> = {
+  // Hosted MCP (routes/mcp.ts). Its file reaches the engine through
+  // @nxtg/faultline-mcp, but the route only ever scans through POST /scan
+  // in-process (fastify.inject) with the caller's key, so the inner POST /scan
+  // runs this gate and counts the scan. Proven by behaviour in
+  // tests/mcp-hosted-gates.test.ts ("the monthly quota applies").
+  'POST /mcp': 'scans only through POST /scan in-process with the caller key; the inner POST /scan checks and counts the monthly quota',
+  'GET /mcp': 'answers 405 (the endpoint is stateless); calls no provider',
+  'DELETE /mcp': 'answers 405 (the endpoint is stateless); calls no provider',
+  'OPTIONS /mcp': 'CORS preflight for the hosted MCP endpoint; calls no provider',
   'POST /admin/verify-claims': 'admin only (requireAdmin); the admin tier has no monthly cap',
   'POST /critique': 'a critique is not a scan; it is behind the burst limiter and the provider spend cap',
   'GET /scan/full/:jobId': 'polls a job; calls no provider',
@@ -127,7 +136,9 @@ const SERVER_LEVEL: Array<[RegExp, string]> = [
   [/^OPTIONS \*$/, 'CORS preflight; calls no provider'],
 ];
 
-const PROVIDER_MODULE = /^@nxtg\/faultline\/(cli\/scan\.js|cli\/critique|providers\/|consensus\/)/;
+// The MCP package and the CLI transport both reach the scan engine (the local
+// transport calls scan() in-process), so a route file importing them is found.
+const PROVIDER_MODULE = /^@nxtg\/(faultline\/(cli\/scan\.js|cli\/critique|cli\/transport|providers\/|consensus\/)|faultline-mcp\/)/;
 
 /**
  * Every module a source file loads at run time: imports, re-exports and dynamic

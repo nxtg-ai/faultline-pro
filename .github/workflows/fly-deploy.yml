@@ -24,6 +24,8 @@ on:
       # The API image builds the scan engine from packages/cli (Dockerfile COPY packages/),
       # so an engine fix only reaches production through this deploy.
       - 'packages/cli/**'
+      # POST /mcp builds its tool from packages/mcp, so a tool change deploys too.
+      - 'packages/mcp/**'
       - 'package-lock.json'
       - 'Dockerfile'
       - 'packages/api/fly.toml'

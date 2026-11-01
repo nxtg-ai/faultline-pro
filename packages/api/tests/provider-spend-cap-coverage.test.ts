@@ -82,6 +82,19 @@ const GATED_ROUTES: readonly string[] = [
 ];
 
 /**
+ * Routes that reach a provider only by calling POST /scan in-process
+ * (fastify.inject) with the caller's own key. The outer route carries no
+ * preHandler gate on purpose: the inner POST /scan runs the gate, and every
+ * other POST /scan gate, on the same code path. The behaviour test below
+ * proves it: with the budget spent, the call is refused with the 503 and no
+ * provider is called.
+ */
+const GATED_THROUGH_SCAN: readonly string[] = [
+  // Hosted MCP: the verify_claims tool scans through POST /scan (routes/mcp.ts).
+  'POST /mcp',
+];
+
+/**
  * Routes that never call a model provider, so they do not run the gate. Each
  * group says why. Moving a route here needs the same reason to hold for it.
  */
@@ -301,6 +314,11 @@ const PROVIDER_FREE_ROUTES: readonly string[] = [
 
   // HTML shell: it calls the gated routes with the viewer's key.
   'GET /playground',
+
+  // Hosted MCP's other methods: 405 for GET and DELETE, and the CORS preflight.
+  'GET /mcp',
+  'DELETE /mcp',
+  'OPTIONS /mcp',
 ];
 
 function asList<T>(value: T | T[] | undefined): T[] {
@@ -339,6 +357,8 @@ describe('provider spend gate: route coverage', () => {
     expect(new Set(PROVIDER_FREE_ROUTES).size).toBe(PROVIDER_FREE_ROUTES.length);
     const both = GATED_ROUTES.filter((r) => PROVIDER_FREE_ROUTES.includes(r));
     expect(both, 'routes on both lists').toEqual([]);
+    const inner = GATED_THROUGH_SCAN.filter((r) => GATED_ROUTES.includes(r) || PROVIDER_FREE_ROUTES.includes(r));
+    expect(inner, 'routes gated through POST /scan and on another list').toEqual([]);
   });
 
   it('every registered route is gated or on the provider-free list', async () => {
@@ -351,6 +371,8 @@ describe('provider spend gate: route coverage', () => {
         if (!gated) problems.push(`${route} is on GATED_ROUTES but has no enforceProviderSpendCap preHandler`);
       } else if (PROVIDER_FREE_ROUTES.includes(route)) {
         if (gated) problems.push(`${route} runs the gate; move it from PROVIDER_FREE_ROUTES to GATED_ROUTES`);
+      } else if (GATED_THROUGH_SCAN.includes(route)) {
+        if (gated) problems.push(`${route} runs the gate itself; move it from GATED_THROUGH_SCAN to GATED_ROUTES`);
       } else {
         problems.push(
           `${route} is a new route on neither list: add enforceProviderSpendCap after the key check `
@@ -359,7 +381,7 @@ describe('provider spend gate: route coverage', () => {
       }
     }
     // Stale entries: a listed route the server no longer registers.
-    for (const route of [...GATED_ROUTES, ...PROVIDER_FREE_ROUTES]) {
+    for (const route of [...GATED_ROUTES, ...PROVIDER_FREE_ROUTES, ...GATED_THROUGH_SCAN]) {
       if (!routes.has(route)) problems.push(`${route} is listed but not registered; remove it from the list`);
     }
     expect(problems).toEqual([]);
@@ -508,6 +530,24 @@ describe('provider spend gate: each gated route refuses a free key with no provi
       expect(getScheduleStore().list()).toHaveLength(0);
     });
   }
+
+  it('POST /mcp: the verify_claims tool reports the 503 for a free key, no provider call', async () => {
+    expect(GATED_THROUGH_SCAN).toEqual(['POST /mcp']);
+    exhaustBudget();
+    const key = getKeyStore().create('Free Key', ['scan']).key;
+    const res = await server.inject({
+      method: 'POST',
+      url: '/mcp',
+      headers: { 'x-api-key': key, 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+      payload: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'verify_claims', arguments: { text, provider: 'mock' } } },
+    });
+    expect(res.statusCode, res.body.slice(0, 300)).toBe(200);
+    const result = (res.json() as { result: { isError?: boolean; content: Array<{ text: string }> } }).result;
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/503/);
+    expect(result.content[0].text).toMatch(/provider budget exhausted/i);
+    for (const spy of providerSpies) expect(spy).not.toHaveBeenCalled();
+  });
 
   it('a paid key still scans: POST /scan/deep answers 200 and runs the scan', async () => {
     exhaustBudget();
