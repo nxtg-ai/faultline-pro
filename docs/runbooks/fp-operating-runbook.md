@@ -117,6 +117,7 @@ Off unless `FAULTLINE_CLAIM_METER=1` is set on the API. With it off, merging or 
 - **Health.** Admin `GET /usage` → `claimMeter.ledgerWriteFailures` must be 0 (above 0: rows are not reaching the volume; they count against caps in memory only and carry no `seq`), `claimMeter.refusedIdentifiers` should be 0 (a claimId over 58 characters or a scanId that is not a UUID was not recorded), and `usageRecords {ledgerId, lastSeq, rowsThisPeriod}` shows where the record is.
 - **Voids.** Written only for full-scan jobs of metered keys: when the owner reads a job whose result was lost (`resultAvailable: false` after a restart, or `404 job_lost`) and no earlier read had returned its verdicts. The first read that returns verdicts appends a copy of the job's terminal row with `resultServedAt` to `full-scan-jobs.jsonl`.
 - **Key idempotency.** `POST /keys` with `Idempotency-Key` keeps a SHA-256 of the value and the key id in `/var/log/faultline/key-idempotency.jsonl` (`FAULTLINE_KEY_IDEMPOTENCY_LEDGER`).
+- **Keystore.** Issued API keys live in `/var/log/faultline/keystore.json` (`FAULTLINE_KEYSTORE_FILE`), hashes only, mode 0600, rewritten atomically on every change and loaded at startup. Watch admin `GET /usage` `keystore.loadFailures` and `keystore.writeFailures`; details in `docs/ledger-volume.md`.
 
 ## Revenue scoreboard timer (GoPMO 1.18.11.1.7)
 

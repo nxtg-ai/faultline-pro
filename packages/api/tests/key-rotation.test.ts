@@ -32,8 +32,10 @@ describe('KeyStore.rotate', () => {
     expect(result?.id).toBe(entry.id);
     expect(typeof result?.newKey).toBe('string');
     expect(result?.newKey).toHaveLength(64); // 32 bytes hex
-    expect(typeof result?.previousKey).toBe('string');
-    expect(result?.previousKey).toBe(originalKey);
+    // The store keeps only hashes, so previousKey is the replaced key's prefix, not the key.
+    expect(result?.previousKey).toBe(originalKey.slice(0, 8));
+    expect(result?.previousKey).toHaveLength(8);
+    expect(getKeyStore().validateKey(originalKey)?.id).toBe(entry.id);
     expect(result?.gracePeriodHours).toBe(ROTATION_GRACE_HOURS);
   });
 
@@ -54,11 +56,12 @@ describe('KeyStore.rotate', () => {
     expect(result?.newKey).not.toBe(original);
   });
 
-  it('entry.key updated to newKey after rotation', () => {
+  it('newKey authenticates and keyPrefix follows it after rotation', () => {
     const entry = getKeyStore().create('Test Key');
     const result = getKeyStore().rotate(entry.id);
     const updated = getKeyStore().validateById(entry.id);
-    expect(updated?.key).toBe(result?.newKey);
+    expect(updated?.keyPrefix).toBe(result!.newKey.slice(0, 8));
+    expect(getKeyStore().validateKey(result!.newKey)?.id).toBe(entry.id);
   });
 
   it('entry.lastRotatedAt set after rotation', () => {
@@ -73,9 +76,11 @@ describe('KeyStore.rotate', () => {
     const r1 = getKeyStore().rotate(entry.id)!;
     const r2 = getKeyStore().rotate(entry.id)!;
     const updated = getKeyStore().validateById(entry.id);
-    // previousKey after second rotation should be r1.newKey
-    expect(updated?.previousKey).toBe(r1.newKey);
-    expect(r2.previousKey).toBe(r1.newKey);
+    // After the second rotation the grace key is r1.newKey; the original key no longer works.
+    expect(updated?.keyPrefix).toBe(r2.newKey.slice(0, 8));
+    expect(r2.previousKey).toBe(r1.newKey.slice(0, 8));
+    expect(getKeyStore().validateKey(r1.newKey)?.id).toBe(entry.id);
+    expect(getKeyStore().validateKey(entry.key)).toBeNull();
   });
 });
 
@@ -157,7 +162,8 @@ describe('KeyStore.cleanExpiredRotations', () => {
     getKeyStore().rotate(entry.id);
     vi.setSystemTime(new Date('2026-03-21T10:01:00Z'));
     expect(getKeyStore().cleanExpiredRotations()).toBe(1);
-    expect(getKeyStore().validateById(entry.id)?.previousKey).toBeUndefined();
+    expect(getKeyStore().validateById(entry.id)?.previousKeyExpiresAt).toBeUndefined();
+    expect(getKeyStore().validateKey(entry.key)).toBeNull();
   });
 });
 
@@ -233,14 +239,15 @@ describe('POST /keys/:id/rotate', () => {
     expect(JSON.parse(res.body).newKey).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it('previousKey matches the original key', async () => {
+  it('previousKey is the original key\'s prefix, never the key itself', async () => {
     const entry = getKeyStore().create('Key');
     const original = entry.key;
     const res = await server.inject({
       method: 'POST', url: `/keys/${entry.id}/rotate`,
       headers: { 'x-api-key': 'admin-secret' },
     });
-    expect(JSON.parse(res.body).previousKey).toBe(original);
+    expect(JSON.parse(res.body).previousKey).toBe(original.slice(0, 8));
+    expect(res.body).not.toContain(original);
   });
 
   it('response includes human-readable message', async () => {
@@ -328,5 +335,7 @@ describe('GET /keys/:id/rotation-status', () => {
     expect(found).toBeDefined();
     expect(found.key).toBeUndefined();
     expect(found.previousKey).toBeUndefined();
+    expect(found.keyHash).toBeUndefined();
+    expect(found.previousKeyHash).toBeUndefined();
   });
 });

@@ -10,6 +10,28 @@ GoPMO 1.18.7.3.2, Faultline beta gate criterion (b): ledgers survive a redeploy.
 - `grounding-prompts.jsonl` (`packages/api/src/store/grounding-allowance.ts`)
 - `scan-cost.jsonl` (`packages/api/src/store/costs.ts`)
 
+and the API keystore, which is rewritten rather than appended:
+
+- `keystore.json` (`packages/api/src/store/keys.ts`), beside `key-idempotency.jsonl` (the `POST /keys` Idempotency-Key ledger)
+
+### The keystore file
+
+Every API key issued with `POST /keys`, `POST /orgs/:id/keys` or GraphQL `createKey` is kept in `keystore.json`. The environment keys (`FAULTLINE_API_KEY`, the server key, and `FAULTLINE_MEASUREMENT_KEY`) are not in it and do not change.
+
+| | |
+|---|---|
+| Path | `keystore.json` in the same directory as the Idempotency-Key ledger (`FAULTLINE_KEY_IDEMPOTENCY_LEDGER`, default `/var/log/faultline/key-idempotency.jsonl`), so `/var/log/faultline/keystore.json` in production. `FAULTLINE_KEYSTORE_FILE` names another file. `FAULTLINE_KEYSTORE_FILE=off` keeps the keystore in memory only; the API test suite sets it so parallel test files never share a file |
+| Shape | `{ "version": 1, "keys": [ ... ] }`. Each key holds `id`, `keyHash`, `keyPrefix`, `name`, `permissions`, `createdAt`, and when set `previousKeyHash`, `previousKeyExpiresAt`, `lastRotatedAt`, `lastUsedAt`, `expiresAt`, `disabled`, `metered`, `claimCap`, `stripeCustomerId`, `scopes` |
+| Secrets | None in the clear. `keyHash` and `previousKeyHash` are SHA-256 hex of the key and, during the 24-hour rotation grace, of the key it replaced. `keyPrefix` is the first 8 characters of the current key, so an operator can tell keys apart; it cannot authenticate. The plaintext is returned once, by the call that creates the key or rotates it, and is not stored anywhere |
+| Write | The whole keystore on every change (create, delete, PATCH, disable, enable, rotate, bulk disable, enable and delete, clearing an expired grace hash): a temp file in the same directory with mode 0600, fsync, rename over `keystore.json`, then fsync of the directory. A crash mid-write leaves the previous file whole. A successful authentication only moves `lastUsedAt`; that is written at most once a minute (a timer writes the latest value when the minute ends) |
+| Load | Once, when the process starts. No file: no keys. A file that exists but cannot be read or parsed, or holds one record out of shape: no keystore keys (they do not authenticate), the server starts anyway, `loadFailures` counts it, one fixed line is logged, and the file is renamed to `keystore.json.unreadable-<ms>` so the next write does not overwrite what may still be recovered |
+| Write failure | The change stays in memory and is served, `writeFailures` counts it, and one fixed line is logged. A restart loses changes made since the last good write |
+| Counters | Admin `GET /usage` returns `keystore: { keys, persisted, loadFailures, writeFailures, idempotencyWriteFailures }`. Both failure counts are per process and start at 0 |
+
+Not in the file: which org or tenant a key belongs to (the org and tenant stores keep their own records), and the list of deleted metered key ids that background jobs check (those jobs do not survive a restart either).
+
+There was no migration. Before this change keys lived only in memory, so production had none when it shipped, and a key made before the deploy does not exist after it.
+
 ### Row shapes
 
 `provider-spend.jsonl`, camelCase: `{ ts, scanId, month, tier, provider, modelId, costUsd, claimCount, verifiedCount }`. Field meanings in `docs/provider-spend-cap.md`.
