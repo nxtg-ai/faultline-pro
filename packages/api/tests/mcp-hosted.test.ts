@@ -270,6 +270,12 @@ describe('/mcp: Origin validation (DNS rebinding)', () => {
     expect(json.result).toBeUndefined();
   });
 
+  it('a present but empty Origin is not "no Origin": 403, no MCP processing', async () => {
+    const res = await postMcp(INITIALIZE(), { origin: '' });
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body).result).toBeUndefined();
+  });
+
   it('a disallowed Origin gets 403 before the key check (no key: still 403, not 401)', async () => {
     const res = await app.inject({
       method: 'POST', url: '/mcp',

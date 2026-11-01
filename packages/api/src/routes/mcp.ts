@@ -54,7 +54,8 @@ export function isMcpOriginAllowed(origin: string, env: NodeJS.ProcessEnv = proc
  * 403 error, so the request ends before the key check or MCP processing.
  */
 function mcpCorsOrigin(origin: string | undefined, cb: (err: Error | null, allow?: string | boolean) => void): void {
-  if (!origin) return cb(null, false);
+  // Only a missing header is "no Origin". A present but empty one is checked like any other.
+  if (origin === undefined) return cb(null, false);
   if (isMcpOriginAllowed(origin)) return cb(null, origin);
   const err = Object.assign(new Error('Origin not allowed for /mcp.'), { statusCode: 403, code: 'ORIGIN_NOT_ALLOWED' });
   cb(err);

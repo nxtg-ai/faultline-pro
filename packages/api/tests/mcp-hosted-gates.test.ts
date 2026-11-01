@@ -185,6 +185,9 @@ describe('POST /mcp: the POST /scan gates hold', () => {
       if (r.isError && /429/.test(r.content[0].text)) limited = r;
     }
     expect(limited, 'the burst limit was reached through /mcp').toBeDefined();
+    // The tool error carries /scan's own 429 body and says it is not a verdict.
+    expect(limited!.content[0].text).toMatch(/resetEpoch/);
+    expect(limited!.content[0].text).toMatch(/NOT a verdict/);
     const before = control.extractCalls;
     const again = toolResult(await callTool(free.key, { text: 'One more claim is true.', provider: ENGINE_PROVIDER }));
     expect(again.isError).toBe(true);
