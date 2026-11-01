@@ -1,4 +1,4 @@
-import { abstainScanWithoutSource, abstainWithoutSource, billingSummary, guardVerdict, isBillableVerdict, type BillingSummary } from '@nxtg/faultline/lib/verdict-guard.js';
+import { abstainScanWithoutSource, abstainWithoutSource, billingSummary, claimOrderOf, guardVerdict, isBillableVerdict, type BillingSummary } from '@nxtg/faultline/lib/verdict-guard.js';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -350,7 +350,7 @@ export function describeJob(job: FullScanJob): FullScanJobView {
     resultAvailable: job.status !== 'failed',
     durable: job.durable === true,
     ...(withResult ? { result } : {}),
-    ...(verifications && typeof verifications === 'object' ? { billing: billingSummary(verifications) } : {}),
+    ...(verifications && typeof verifications === 'object' ? { billing: billingSummary(verifications, claimOrderOf(result)) } : {}),
   };
 }
 

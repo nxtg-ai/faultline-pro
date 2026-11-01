@@ -133,7 +133,7 @@ const ROUTES: Route[] = ['POST /scan', 'GET /scan/stream', 'POST /scan/stream'];
 
 interface Outcome {
   /** billing from the 200 body or the complete event; undefined when the scan failed. */
-  billing?: { billedClaims: number };
+  billing?: { billedClaims: number; unbilled: Array<{ claimId: string; reason: string }> };
   /** The extraction failure, as the route reports it. */
   failure?: { status: number; body: Record<string, unknown> };
   claimVerified: number;
@@ -161,7 +161,7 @@ async function scanVia(route: Route, key: string, text: string): Promise<Outcome
   expect(events.length).toBeGreaterThan(0);
   const claimVerified = events.filter((e) => e.type === 'claim_verified').length;
   const complete = events.find((e) => e.type === 'complete');
-  if (complete) return { billing: complete.billing as { billedClaims: number }, claimVerified };
+  if (complete) return { billing: complete.billing as NonNullable<Outcome["billing"]>, claimVerified };
   const error = events.find((e) => e.type === 'error') as Record<string, unknown>;
   expect(error).toBeDefined();
   return { failure: { status: 200, body: error }, claimVerified };
@@ -227,6 +227,17 @@ describe('claim ids: billing.billedClaims equals the claims the meter commits', 
       control.items = [item(1, 'Claim one is a fact.'), item('1', 'Claim two is a fact.')];
       const key = customer();
       expectInvalidExtraction(route, await scanVia(route, key.key, TWO_SENTENCES));
+    });
+
+    it(`${route}: unbilled claims are listed in claim order, even for integer-like ids`, async () => {
+      // Object keys that look like integers enumerate in numeric order, so an
+      // unordered summary would list '1' before '2'.
+      control.items = [item('2', 'Claim two is a fact.'), item('1', 'Claim three is a fact.')];
+      const key = customer();
+      const outcome = await scanVia(route, key.key, 'Claim two is a fact. Claim three is a fact.');
+      expect(outcome.failure).toBeUndefined();
+      expect(outcome.billing!.billedClaims).toBe(0);
+      expect(outcome.billing!.unbilled.map((u) => u.claimId)).toEqual(['2', '1']);
     });
 
     it(`${route}: distinct ids scan, and billing equals what the meter committed`, async () => {

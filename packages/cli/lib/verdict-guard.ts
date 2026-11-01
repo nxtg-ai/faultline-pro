@@ -232,12 +232,16 @@ function unbilledReason(value: unknown): string {
  * (an entry without one is named by its index). A claim is billed exactly
  * when isBillableVerdict is true, so `billedClaims` always equals
  * billableVerdictCount for the same input; billing itself is not decided
- * here. `unbilled` keeps the claims' order in the input, and its reasons are
- * unbilledReason's. Anything without verifications has no claims: zero and
+ * here. `unbilled` follows `claimOrder` (the scan's claim ids in extraction
+ * order) when given, with any claim it does not name after those, in input
+ * order. Without it, input order is used: an object keyed by claim id
+ * enumerates in insertion order, which is the order verifications finished,
+ * and puts integer-like ids first, so a caller that has the claim list passes
+ * it. The reasons are unbilledReason's. Anything without verifications has no claims: zero and
  * zero. The API adds this to each scan or verify result it returns as
  * `billing`, computed on read from the verifications the caller is given.
  */
-export function billingSummary(verifications: unknown): BillingSummary {
+export function billingSummary(verifications: unknown, claimOrder?: readonly string[]): BillingSummary {
   if (!verifications || typeof verifications !== 'object') return { billedClaims: 0, unbilledClaims: 0, unbilled: [] };
   const entries: Array<[string, unknown]> = Array.isArray(verifications)
     ? verifications.map((v, i) => {
@@ -245,11 +249,25 @@ export function billingSummary(verifications: unknown): BillingSummary {
       return [typeof claimId === 'string' ? claimId : String(i), v];
     })
     : Object.entries(verifications);
+  if (claimOrder && claimOrder.length > 0) {
+    const rank = new Map(claimOrder.map((id, i) => [id, i] as const));
+    const at = (id: string): number => rank.get(id) ?? claimOrder.length;
+    entries.sort(([a], [b]) => at(a) - at(b));
+  }
   const billedClaims = entries.map(([, v]) => v).filter(isBillableVerdict).length;
   const unbilled = entries
     .filter(([, v]) => !isBillableVerdict(v))
     .map(([claimId, v]) => ({ claimId, reason: unbilledReason(v) }));
   return { billedClaims, unbilledClaims: unbilled.length, unbilled };
+}
+
+/** The ids of `result.claims` in order, for billingSummary's `claimOrder`; empty when there is no claim list. */
+export function claimOrderOf(result: unknown): string[] {
+  const claims = result && typeof result === 'object' ? (result as { claims?: unknown }).claims : undefined;
+  if (!Array.isArray(claims)) return [];
+  return claims
+    .map((c) => (c && typeof c === 'object' ? (c as { id?: unknown }).id : undefined))
+    .filter((id): id is string => typeof id === 'string');
 }
 
 /** The explanation every claim downgraded by abstainWithoutSource carries. */

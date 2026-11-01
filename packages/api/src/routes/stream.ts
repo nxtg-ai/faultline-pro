@@ -17,7 +17,7 @@ import { isExtractionError } from '@nxtg/faultline/providers/extraction-error.js
 import { extractionFailedBody } from '../lib/extraction-failure.js';
 import { randomUUID } from 'node:crypto';
 import { commitStreamedClaim, planVerifyCap, releaseClaims, reserveClaims } from '../plugins/claim-meter.js';
-import { billingSummary } from '@nxtg/faultline/lib/verdict-guard.js';
+import { billingSummary, claimOrderOf } from '@nxtg/faultline/lib/verdict-guard.js';
 
 type ScanProvider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
 
@@ -212,7 +212,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
           overallRisk: result.overallRisk,
           claimCount,
           verification: withVerificationTier(result, verifyPolicy.tier).verification,
-          billing: billingSummary(result.verifications),
+          billing: billingSummary(result.verifications, claimOrderOf(result)),
         });
 
         // Counted toward the monthly quota only when the result holds a billable verdict.
@@ -332,7 +332,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
           overallRisk: result.overallRisk,
           claimCount,
           verification: withVerificationTier(result, verifyPolicy.tier).verification,
-          billing: billingSummary(result.verifications),
+          billing: billingSummary(result.verifications, claimOrderOf(result)),
         });
 
         // Counted toward the monthly quota only when the result holds a billable verdict.

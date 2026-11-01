@@ -9,7 +9,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
-import { billableVerdictCount, billingSummary, isBillableVerdict } from '../lib/verdict-guard.js';
+import { billableVerdictCount, billingSummary, claimOrderOf, isBillableVerdict } from '../lib/verdict-guard.js';
 
 const SOURCE = { title: 'S', uri: 'https://example.org/s' };
 const RETRIEVED = { provider: 'gemini', model: 'm', verifiedAt: '2026-10-01T00:00:00.000Z', retriever: 'gemini-grounding' };
@@ -104,5 +104,36 @@ describe('billingSummary', () => {
         expect(reason.length).toBeGreaterThan(0);
       }
     }));
+  });
+});
+
+describe('billingSummary claim order', () => {
+  const unverified = { status: 'unverified', explanation: 'x', sources: [] };
+  const ids = (summary: ReturnType<typeof billingSummary>) => summary.unbilled.map((u) => u.claimId);
+
+  it('follows claimOrder, not the order verifications finished in', () => {
+    const finishedSecondFirst = { second: unverified, first: unverified };
+    expect(ids(billingSummary(finishedSecondFirst))).toEqual(['second', 'first']);
+    expect(ids(billingSummary(finishedSecondFirst, ['first', 'second']))).toEqual(['first', 'second']);
+  });
+
+  it('keeps integer-like ids in claim order (object enumeration would sort them)', () => {
+    const v = { '2': unverified, '1': unverified };
+    expect(ids(billingSummary(v))).toEqual(['1', '2']);
+    expect(ids(billingSummary(v, ['2', '1']))).toEqual(['2', '1']);
+  });
+
+  it('lists claims claimOrder does not name after the named ones, in input order; counts are unchanged', () => {
+    const v = { x: unverified, b: unverified, a: unverified };
+    const summary = billingSummary(v, ['a', 'b']);
+    expect(ids(summary)).toEqual(['a', 'b', 'x']);
+    expect(summary.unbilledClaims).toBe(3);
+    expect(summary.billedClaims).toBe(0);
+  });
+
+  it('claimOrderOf reads result.claims ids in order and ignores anything else', () => {
+    expect(claimOrderOf({ claims: [{ id: '2' }, { id: '1' }, { text: 'no id' }, null] })).toEqual(['2', '1']);
+    expect(claimOrderOf({})).toEqual([]);
+    expect(claimOrderOf(null)).toEqual([]);
   });
 });

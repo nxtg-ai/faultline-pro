@@ -84,7 +84,8 @@ function expectBilling(billing: Billing, verifications?: Record<string, unknown>
   expect([...billing.unbilled].sort(byClaimId)).toEqual(EXPECTED_BILLING.unbilled);
   if (verifications) {
     expect(Object.keys(verifications).sort()).toEqual(['c1', 'c2', 'c3', 'c4']);
-    expect(billing.unbilled.map((u) => u.claimId)).toEqual(Object.keys(verifications).filter((id) => id !== 'c1'));
+    // Unbilled claims follow claim order (c1..c4, c1 billed), not the order verifications finished in.
+    expect(billing.unbilled.map((u) => u.claimId)).toEqual(['c2', 'c3', 'c4']);
   }
 }
 
