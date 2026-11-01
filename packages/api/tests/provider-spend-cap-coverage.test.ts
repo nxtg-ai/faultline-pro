@@ -160,6 +160,7 @@ const PROVIDER_FREE_ROUTES: readonly string[] = [
   'GET /keys/usage/view',
   'POST /keys',
   'POST /keys/:id/rotate',
+  'POST /keys/:id/rotate-now',
   'POST /keys/bulk-delete',
   'POST /keys/bulk-disable',
   'POST /keys/bulk-enable',
