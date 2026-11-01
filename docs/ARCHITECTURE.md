@@ -36,14 +36,23 @@ interface VerificationResult {
 
 ### 3. Risk Scoring
 
-Aggregate verdicts determine the overall risk level:
+Aggregate verdicts determine the overall risk level (`calculateRisk` in `packages/cli/lib/overall-risk.ts`, the one function every scan path uses). Contradicted and mixed verdicts set the band first:
 
 | Condition | Risk Level |
 |-----------|-----------|
 | 3+ contradicted | Critical |
 | 1+ contradicted OR 3+ mixed | High |
 | 1+ mixed | Medium |
-| All supported/unverified | Low |
+| Otherwise | Low |
+
+An unverified claim (no source found, a provider error, or never checked) means its risk was not checked, so it is never read as low risk. It can only raise the band, never lower it:
+
+| Condition | Risk Level |
+|-----------|-----------|
+| Unverified claims are at least half of the verdicts | at least High |
+| 1+ unverified claim | at least Medium |
+
+A scan with no verdicts reads Low. Low therefore means every verdict is supported.
 
 ### 4. EU AI Act Mapping
 

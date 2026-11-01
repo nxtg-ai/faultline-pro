@@ -634,7 +634,8 @@ describe('CLI: history command', () => {
     const { exitCode, output } = await main(['history', '--history-dir', historyDir]);
     expect(exitCode).toBe(0);
     expect(output).toContain('1 entries');
-    expect(output).toContain('LOW');
+    // The mock's verdicts are unverified (no source), which is never read as low risk.
+    expect(output).toContain('HIGH');
   });
 
   it('should show limited entries by default', async () => {

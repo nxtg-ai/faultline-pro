@@ -37,7 +37,7 @@ Binary: `faultline` (or `node packages/cli/bin/faultline.js`)
 | `scan` | `--input <file> --sarif` | ✅ | **Writes `results.sarif` to CWD** AND outputs SARIF to stdout. ℹ️ Not stdout-only — file is written. |
 | `scan` | `--input <file> --rules pii,bias,toxicity,shell-injection,yaml-bias,yaml-pii,yaml-security,yaml-shell-injection` | ✅ | Comma-separated; any subset valid |
 | `scan` | `--input <file> --min-confidence 0.0–1.0` | ✅ | Float filter; low-confidence claims skipped |
-| `scan` | `--input <file> --fail-on critical\|high\|medium\|low` | ✅ | Exits 1 when overall risk ≥ threshold. ℹ️ Mock always returns LOW so exit is 0 in tests |
+| `scan` | `--input <file> --fail-on critical\|high\|medium\|low` | ✅ | Exits 1 when a finding at or above the threshold exists: rule findings by their severity, and per claim contradicted as high, mixed as medium, unverified as low. It does not read `overallRisk`. ℹ️ The mock cites no source, so its verdicts read unverified: the scan's overall risk reads HIGH, `--fail-on low` exits 1 and `medium`, `high`, `critical` exit 0 |
 | `scan` | `--input <file> --history-dir <path>` | ✅ | Saves scan JSON to `<path>/` instead of default history dir |
 | `scan` | `--input <file> --lang <code>` | ✅ | Sets output language (e.g. `en`) |
 | `scan` | `--demo` | ✅ | Self-contained demo; no API key; no `--input` needed |
