@@ -12,6 +12,7 @@
 import type { FastifyInstance } from 'fastify';
 import { isBillableVerdict } from '@nxtg/faultline/lib/verdict-guard.js';
 import { DEFAULT_CLAIM_CAP, MIN_CLAIM_CAP, MAX_CLAIM_CAP } from '../lib/key-issuance.js';
+import { escHtml } from '../lib/html.js';
 
 /** The ruled price: 0.10 USD per billable claim (lib/key-issuance.ts, docs/INTEGRATION.md §1). */
 export const USD_PER_BILLABLE_CLAIM = 0.1;
@@ -81,10 +82,6 @@ Authentication: send your API key in the \`x-api-key\` header on every request e
 - 402 \`claim_cap_reached\`: your key's monthly claim cap cannot cover the request; nothing was verified.
 - 429: per-minute rate limit.
 `;
-}
-
-function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 export function renderPricingHtml(): string {
