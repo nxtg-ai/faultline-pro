@@ -45,7 +45,7 @@ describe('GDPR erasure endpoint (ER1–ER15)', () => {
     resetWebhookStore();
     resetUsageMeter();
 
-    const key = getKeyStore().create('erasure-test-key', ['scan'], 'erasure-key');
+    const key = getKeyStore().create('erasure-test-key', ['scan']);
     keyId = key.id;
     const tenant = getTenantStore().create('Erasure Test Corp', [keyId]);
     tenantId = tenant.id;
@@ -185,7 +185,7 @@ describe('GDPR erasure endpoint (ER1–ER15)', () => {
 
   it('ER14: erasing tenant A does not affect tenant B data', async () => {
     // Create a second tenant with its own scan
-    const key2 = getKeyStore().create('other-key', ['scan'], 'other-key');
+    const key2 = getKeyStore().create('other-key', ['scan']);
     const tenant2 = getTenantStore().create('Other Corp', [key2.id]);
     getScanHistory().record({
       keyId: key2.id, tenantId: tenant2.id, provider: 'mock', overallRisk: 'Low',

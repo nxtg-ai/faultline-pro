@@ -31,6 +31,9 @@ vi.mock('node:fs', async (importOriginal) => {
 
 const { KeyStore, KEYSTORE_WRITE_FAILED_LOG } = await import('../src/store/keys.js');
 
+// The first test pays for loading the store module; under a full parallel suite that can pass 5 s.
+vi.setConfig({ testTimeout: 30_000 });
+
 let dir: string;
 let file: string;
 const BAD = '{broken';

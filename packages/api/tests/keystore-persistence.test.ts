@@ -57,6 +57,9 @@ async function authStatus(key: string): Promise<number> {
   return (await app.inject({ method: 'GET', url: '/usage', headers: { 'x-api-key': key } })).statusCode;
 }
 
+// Every test builds and closes whole servers; under a full parallel suite one can pass 5 s.
+vi.setConfig({ testTimeout: 30_000 });
+
 beforeAll(() => { vi.spyOn(console, 'warn').mockImplementation(() => undefined); });
 afterAll(() => { vi.restoreAllMocks(); });
 
