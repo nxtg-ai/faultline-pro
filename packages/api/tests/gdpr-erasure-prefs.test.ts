@@ -46,7 +46,7 @@ describe('GDPR erasure — notification prefs completeness (EP1–EP15)', () => 
     resetWebhookStore();
     resetUsageMeter();
 
-    const key = getKeyStore().create('prefs-key', ['scan'], 'prefs-key');
+    const key = getKeyStore().create('prefs-key', ['scan']);
     keyId = key.id;
     const tenant = getTenantStore().create('Prefs Test Corp', [keyId]);
     tenantId = tenant.id;
@@ -96,7 +96,7 @@ describe('GDPR erasure — notification prefs completeness (EP1–EP15)', () => 
   // ── EP5: multiple keys — all prefs erased ────────────────────────────────
 
   it('EP5: erases prefs for all keys when tenant has multiple keys', async () => {
-    const key2 = getKeyStore().create('prefs-key-2', ['scan'], 'prefs-key-2');
+    const key2 = getKeyStore().create('prefs-key-2', ['scan']);
     getTenantStore().addKey(tenantId, key2.id);
     getNotificationStore().setPrefs(key2.id, ['scan.failed'], null, 'other@example.com');
 
@@ -119,7 +119,7 @@ describe('GDPR erasure — notification prefs completeness (EP1–EP15)', () => 
   // ── EP7: other tenant's prefs untouched ──────────────────────────────────
 
   it('EP7: erasing tenant A does not delete tenant B notification prefs', async () => {
-    const key2 = getKeyStore().create('other-prefs-key', ['scan'], 'other-prefs-key');
+    const key2 = getKeyStore().create('other-prefs-key', ['scan']);
     getTenantStore().create('Other Corp B', [key2.id]);
     getNotificationStore().setPrefs(key2.id, ['scan.failed'], 'https://b.example.com', null);
 

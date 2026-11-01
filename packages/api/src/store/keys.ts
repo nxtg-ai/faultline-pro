@@ -1,6 +1,9 @@
 import { randomUUID, randomBytes, timingSafeEqual, createHash } from 'node:crypto';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname } from 'node:path';
+import {
+  appendFileSync, closeSync, constants as fsConstants, copyFileSync, existsSync, fchmodSync, fsyncSync, mkdirSync, openSync,
+  readFileSync, renameSync, statSync, unlinkSync, writeSync,
+} from 'node:fs';
+import { dirname, join } from 'node:path';
 
 export type Permission = 'scan' | 'report' | 'upload' | 'admin' | 'pro';
 
@@ -15,30 +18,66 @@ const DEFAULT_IDEMPOTENCY_LEDGER_PATH = '/var/log/faultline/key-idempotency.json
 
 /**
  * Where the POST /keys Idempotency-Key map is kept. `FAULTLINE_KEY_IDEMPOTENCY_LEDGER`
- * overrides. The keystore itself lives in memory; this file sits on the ledger
- * volume so a deploy does not forget which header values already minted a key.
- * It holds a SHA-256 of each header value and the key id, never key material.
+ * overrides. The file sits on the ledger volume so a deploy does not forget
+ * which header values already minted a key. It holds a SHA-256 of each header
+ * value and the key id, never key material.
  */
 export function keyIdempotencyLedgerPath(): string {
   const raw = (process.env.FAULTLINE_KEY_IDEMPOTENCY_LEDGER ?? '').trim();
   return raw === '' ? DEFAULT_IDEMPOTENCY_LEDGER_PATH : raw;
 }
 
+/** `FAULTLINE_KEYSTORE_FILE=off` keeps the keystore in memory only (the test suite sets it). */
+export const KEYSTORE_FILE_OFF = 'off';
+
+/**
+ * Where the keystore is kept: `keystore.json` in the same directory as the
+ * Idempotency-Key ledger (the ledger volume), unless `FAULTLINE_KEYSTORE_FILE`
+ * names another file. Null when that variable is `off`.
+ */
+export function keystoreFilePath(): string | null {
+  const raw = (process.env.FAULTLINE_KEYSTORE_FILE ?? '').trim();
+  if (raw === KEYSTORE_FILE_OFF) return null;
+  return raw === '' ? join(dirname(keyIdempotencyLedgerPath()), 'keystore.json') : raw;
+}
+
 const hashIdempotencyKey = (value: string): string => createHash('sha256').update(value).digest('hex');
+
+/** SHA-256 hex of a key. The keystore keeps only this, never the key itself. */
+export const hashApiKey = (plaintext: string): string => createHash('sha256').update(plaintext).digest('hex');
+
+/** Characters of a key kept in the clear as `keyPrefix`, so an operator can tell keys apart. */
+export const KEY_PREFIX_LENGTH = 8;
+
+/**
+ * A successful authentication changes only `lastUsedAt`. That change is written
+ * at most once per this interval (a timer writes the latest value when the
+ * interval ends), so a busy key does not cost one file write per request.
+ * Every other change is written at once.
+ */
+export const LAST_USED_WRITE_INTERVAL_MS = 60_000;
+
+/** Fixed log lines. They never carry key material. */
+export const KEYSTORE_LOAD_FAILED_LOG = '[keystore] keystore file could not be read; starting with no keystore keys, which will not authenticate.';
+export const KEYSTORE_WRITE_FAILED_LOG = '[keystore] keystore file write failed; keys are served from memory and changes since the last good write are lost on restart.';
 
 export const ROTATION_GRACE_HOURS = 24;
 
+/**
+ * A keystore key as the rest of the API sees it. It holds no secret: the key's
+ * hash, and the previous key's hash during rotation grace, are kept apart by the
+ * store, so spreading an entry into a response cannot leak them.
+ */
 export interface ApiKey {
   id: string;
-  key: string;
+  /** First KEY_PREFIX_LENGTH characters of the current key. Not enough to authenticate. */
+  keyPrefix: string;
   name: string;
   permissions: Permission[];
   createdAt: string;
   /** When true, key is rejected at auth time without deletion */
   disabled?: boolean;
-  /** Previous key value — still accepted until previousKeyExpiresAt */
-  previousKey?: string;
-  /** ISO datetime when previousKey stops being accepted */
+  /** ISO datetime when the previous key (rotation grace) stops being accepted */
   previousKeyExpiresAt?: string;
   /** ISO datetime of the most recent rotation */
   lastRotatedAt?: string;
@@ -55,6 +94,104 @@ export interface ApiKey {
   /** Scopes this key holds (see KEY_SCOPES). */
   scopes?: KeyScope[];
 }
+
+/** What `create()` returns: the new entry plus its plaintext `key`, shown once. */
+export type IssuedApiKey = ApiKey & { key: string };
+
+/** The secret side of an entry: hashes only. */
+interface KeyHashes {
+  keyHash: string;
+  previousKeyHash?: string;
+}
+
+/** One key as written to the keystore file. */
+type StoredKey = ApiKey & KeyHashes;
+
+const KEYSTORE_FILE_VERSION = 1;
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+const PERMISSIONS: readonly Permission[] = ['scan', 'report', 'upload', 'admin', 'pro'];
+
+const isString = (v: unknown): v is string => typeof v === 'string';
+const optional = (v: unknown, check: (x: unknown) => boolean): boolean => v === undefined || check(v);
+/** A timestamp a Date can compare: an unparsable one never expires, so it fails open. */
+const isDate = (v: unknown): boolean => isString(v) && Number.isFinite(Date.parse(v));
+
+/**
+ * One stored key in the shape the loader accepts. Every write goes through this
+ * check too (storableCopy), so the store never writes a file it cannot load.
+ */
+function isStorableRecord(k: Record<string, unknown>): boolean {
+  return k !== null && typeof k === 'object'
+    && isString(k.id) && k.id !== ''
+    && isString(k.keyHash) && SHA256_HEX.test(k.keyHash)
+    && optional(k.previousKeyHash, (v) => isString(v) && SHA256_HEX.test(v))
+    && isString(k.keyPrefix) && k.keyPrefix.length <= KEY_PREFIX_LENGTH
+    && isString(k.name)
+    && Array.isArray(k.permissions) && k.permissions.every((p) => PERMISSIONS.includes(p as Permission))
+    && isDate(k.createdAt)
+    && optional(k.disabled, (v) => typeof v === 'boolean')
+    && optional(k.previousKeyExpiresAt, isDate)
+    && optional(k.lastRotatedAt, isDate)
+    && optional(k.lastUsedAt, isDate)
+    && optional(k.expiresAt, isDate)
+    && optional(k.claimCap, (v) => typeof v === 'number' && Number.isFinite(v))
+    && optional(k.stripeCustomerId, isString)
+    && optional(k.metered, (v) => typeof v === 'boolean')
+    && optional(k.scopes, (v) => Array.isArray(v) && v.every((s) => (KEY_SCOPES as readonly unknown[]).includes(s)));
+}
+
+/** A key field the keystore cannot store (an unknown permission, an unparsable date). Nothing was changed. */
+export class KeyFieldError extends Error {
+  constructor() {
+    super('invalid key field');
+    this.name = 'KeyFieldError';
+  }
+}
+
+/**
+ * The entry as plain JSON data, checked as the loader will read it, or KeyFieldError.
+ * The store keeps this copy, not the caller's objects, so memory and the file hold
+ * the same checked values (an array hole, a toJSON or a getter cannot differ later).
+ */
+function storableCopy(entry: ApiKey, hashes: KeyHashes | undefined): ApiKey {
+  if (!hashes) throw new KeyFieldError();
+  let copy: Record<string, unknown>;
+  try {
+    copy = JSON.parse(JSON.stringify(entry)) as Record<string, unknown>;
+  } catch {
+    throw new KeyFieldError();
+  }
+  if (copy === null || typeof copy !== 'object' || !isStorableRecord({ ...copy, ...hashes })) throw new KeyFieldError();
+  return copy as unknown as ApiKey;
+}
+
+/**
+ * Parse the keystore file. Throws on anything out of shape: one bad record
+ * fails the whole file, so the store starts with no keys rather than a partial set.
+ */
+function parseKeystoreFile(raw: string): StoredKey[] {
+  const doc = JSON.parse(raw) as { version?: unknown; keys?: unknown };
+  if (doc === null || typeof doc !== 'object' || doc.version !== KEYSTORE_FILE_VERSION || !Array.isArray(doc.keys)) {
+    throw new Error('keystore file out of shape');
+  }
+  const seen = new Set<string>();
+  return doc.keys.map((r: unknown): StoredKey => {
+    const k = r as Record<string, unknown>;
+    if (!isStorableRecord(k) || seen.has(k.id as string)) throw new Error('keystore record out of shape');
+    seen.add(k.id as string);
+    // Copy known fields only, in a fixed order.
+    const out: Record<string, unknown> = {};
+    for (const f of STORED_FIELDS) if (k[f] !== undefined) out[f] = k[f];
+    return out as unknown as StoredKey;
+  });
+}
+
+/** Every field a stored key has. The file holds these and nothing else. */
+const STORED_FIELDS = [
+  'id', 'keyHash', 'previousKeyHash', 'keyPrefix', 'name', 'permissions', 'createdAt', 'disabled',
+  'previousKeyExpiresAt', 'lastRotatedAt', 'lastUsedAt', 'expiresAt', 'claimCap', 'stripeCustomerId',
+  'metered', 'scopes',
+] as const;
 
 /** Billing fields set at issuance or with PATCH /keys/:id. */
 export interface KeyBillingFields {
@@ -83,23 +220,192 @@ export interface KeyUsageStat {
 
 export interface RotationResult {
   id:                   string;
+  /** The new key, in plaintext. Shown once. */
   newKey:               string;
+  /** The replaced key's keyPrefix, so the caller knows which key to replace. Never the key itself. */
   previousKey:          string;
   previousKeyExpiresAt: string;
   gracePeriodHours:     number;
 }
 
-class KeyStore {
+export interface KeyStoreOptions {
+  /** Keystore file. Defaults to keystoreFilePath(); null keeps the store in memory only. */
+  path?: string | null;
+}
+
+export class KeyStore {
   private keys: ApiKey[] = [];
+  /** Key id -> the key's hash and, during rotation grace, the previous key's hash. */
+  private hashes = new Map<string, KeyHashes>();
   /** Ids of metered keys that were deleted, so background work they queued is refused, not run free. */
   private revokedMetered = new Set<string>();
   /** SHA-256 of a POST /keys Idempotency-Key value -> the key id it minted. */
   private idempotency = new Map<string, string>();
   private idempotencyWriteFailures = 0;
+  private readonly path: string | null;
+  private loadFailures = 0;
+  private writeFailures = 0;
+  /** When a keystore write was last attempted (ms epoch), for lastUsedAt coalescing. */
+  private lastWriteAt = 0;
+  private lastUsedTimer: ReturnType<typeof setTimeout> | null = null;
+  /** A bad file could not be moved aside: no write may replace it. */
+  private writesBlocked = false;
 
-  constructor() {
+  constructor(options: KeyStoreOptions = {}) {
+    this.path = options.path !== undefined ? options.path : keystoreFilePath();
     this.hydrateIdempotency();
+    this.load();
   }
+
+  // ── Keystore file ─────────────────────────────────────────────────────────
+
+  /**
+   * Load the keystore file. No file: an empty store. A file that cannot be read
+   * or parsed: an empty store (fail closed), counted and logged with one fixed
+   * line. The bad file is moved aside (best effort) so the next write does not
+   * overwrite what an operator may still recover.
+   */
+  private load(): void {
+    const path = this.path;
+    if (path === null || !existsSync(path)) return;
+    let records: StoredKey[];
+    try {
+      records = parseKeystoreFile(readFileSync(path, 'utf8'));
+    } catch {
+      this.loadFailures += 1;
+      console.warn(KEYSTORE_LOAD_FAILED_LOG);
+      const aside = `${path}.unreadable-${Date.now()}`;
+      try {
+        renameSync(path, aside);
+      } catch {
+        try {
+          copyFileSync(path, aside, fsConstants.COPYFILE_EXCL);
+        } catch {
+          // The bad file cannot be kept anywhere else, so it must not be overwritten:
+          // every write from now on is refused and counted, and memory keeps serving.
+          this.writesBlocked = true;
+        }
+      }
+      return;
+    }
+    for (const r of records) {
+      const { keyHash, previousKeyHash, ...entry } = r;
+      this.keys.push(entry);
+      this.hashes.set(entry.id, previousKeyHash !== undefined ? { keyHash, previousKeyHash } : { keyHash });
+    }
+  }
+
+  /** The whole keystore as the file holds it: hashes, never a key. */
+  private serialize(): string {
+    const keys = this.keys.map((entry) => {
+      const merged: Record<string, unknown> = { ...entry, ...this.hashes.get(entry.id) };
+      const out: Record<string, unknown> = {};
+      for (const f of STORED_FIELDS) if (merged[f] !== undefined) out[f] = merged[f];
+      return out;
+    });
+    return JSON.stringify({ version: KEYSTORE_FILE_VERSION, keys }, null, 2) + '\n';
+  }
+
+  /**
+   * Write the whole keystore atomically: a temp file in the same directory,
+   * mode 0600, fsync, then rename over the old file. A failure leaves the old
+   * file as it was, keeps serving from memory, and is counted.
+   */
+  private persist(): void {
+    const path = this.path;
+    if (path === null) return;
+    if (this.lastUsedTimer) {
+      clearTimeout(this.lastUsedTimer);
+      this.lastUsedTimer = null;
+    }
+    // Set before the attempt, so a failing disk is retried for lastUsedAt at most once per interval.
+    this.lastWriteAt = Date.now();
+    if (this.writesBlocked) {
+      this.writeFailures += 1;
+      console.warn(KEYSTORE_WRITE_FAILED_LOG);
+      return;
+    }
+    const dir = dirname(path);
+    const tmp = join(dir, `.keystore-${process.pid}-${randomBytes(6).toString('hex')}.tmp`);
+    let fd: number | undefined;
+    try {
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      fd = openSync(tmp, 'wx', 0o600);
+      fchmodSync(fd, 0o600);
+      const buf = Buffer.from(this.serialize(), 'utf8');
+      let off = 0;
+      while (off < buf.length) off += writeSync(fd, buf, off, buf.length - off);
+      fsyncSync(fd);
+      closeSync(fd);
+      fd = undefined;
+      renameSync(tmp, path);
+    } catch {
+      if (fd !== undefined) {
+        try { closeSync(fd); } catch { /* already failing */ }
+      }
+      try { unlinkSync(tmp); } catch { /* never created */ }
+      this.writeFailures += 1;
+      console.warn(KEYSTORE_WRITE_FAILED_LOG);
+      return;
+    }
+    // Make the rename itself durable. Until the directory is synced a crash can
+    // bring back the old file, so a failure here is counted like any failed write.
+    try {
+      const dfd = openSync(dir, 'r');
+      try { fsyncSync(dfd); } finally { closeSync(dfd); }
+    } catch {
+      this.writeFailures += 1;
+      console.warn(KEYSTORE_WRITE_FAILED_LOG);
+    }
+  }
+
+  /** A lastUsedAt-only change: write now if the last write is older than the interval, else once it ends. */
+  private persistLastUsed(): void {
+    if (this.path === null || this.lastUsedTimer) return;
+    const wait = this.lastWriteAt + LAST_USED_WRITE_INTERVAL_MS - Date.now();
+    if (wait <= 0) {
+      this.persist();
+      return;
+    }
+    this.lastUsedTimer = setTimeout(() => {
+      this.lastUsedTimer = null;
+      this.persist();
+    }, wait);
+    this.lastUsedTimer.unref?.();
+  }
+
+  /** Write a pending lastUsedAt now, then stop its timer. Called when the server closes. */
+  flush(): void {
+    if (!this.lastUsedTimer) return;
+    clearTimeout(this.lastUsedTimer);
+    this.lastUsedTimer = null;
+    this.persist();
+  }
+
+  /** Stop a pending lastUsedAt write. Called when this instance is replaced. */
+  dispose(): void {
+    if (this.lastUsedTimer) {
+      clearTimeout(this.lastUsedTimer);
+      this.lastUsedTimer = null;
+    }
+  }
+
+  /** True when this store writes to a keystore file (false: memory only). */
+  isPersisted(): boolean {
+    return this.path !== null;
+  }
+
+  /** Keystore files that existed but could not be read or parsed (this process). */
+  getLoadFailures(): number {
+    return this.loadFailures;
+  }
+
+  /** Keystore file writes that failed (this process). */
+  getWriteFailures(): number {
+    return this.writeFailures;
+  }
+
+  // ── Idempotency-Key ledger ────────────────────────────────────────────────
 
   private hydrateIdempotency(): void {
     const path = keyIdempotencyLedgerPath();
@@ -151,15 +457,22 @@ class KeyStore {
     return this.idempotencyWriteFailures;
   }
 
+  // ── Keys ──────────────────────────────────────────────────────────────────
+
   /** True when `id` was a metered key that has since been deleted. */
   wasRevokedMetered(id: string): boolean {
     return this.revokedMetered.has(id);
   }
 
-  create(name: string, permissions: Permission[] = ['scan'], expiresAt?: string, billing: KeyBillingFields = {}): ApiKey {
+  /**
+   * Issue a key. The returned object carries the plaintext `key`; the store
+   * keeps only its hash and prefix, so this is the only time it is available.
+   */
+  create(name: string, permissions: Permission[] = ['scan'], expiresAt?: string, billing: KeyBillingFields = {}): IssuedApiKey {
+    const key = randomBytes(32).toString('hex');
     const entry: ApiKey = {
       id: randomUUID(),
-      key: randomBytes(32).toString('hex'),
+      keyPrefix: key.slice(0, KEY_PREFIX_LENGTH),
       name,
       permissions,
       createdAt: new Date().toISOString(),
@@ -169,19 +482,31 @@ class KeyStore {
       ...(billing.metered !== undefined ? { metered: billing.metered } : {}),
       ...(billing.scopes !== undefined ? { scopes: billing.scopes } : {}),
     };
-    this.keys.push(entry);
-    return entry;
+    const hashes = { keyHash: hashApiKey(key) };
+    const stored = storableCopy(entry, hashes);
+    this.keys.push(stored);
+    this.hashes.set(stored.id, hashes);
+    this.persist();
+    return { ...stored, key };
   }
 
   list(): ApiKey[] {
     return this.keys.slice();
   }
 
-  delete(id: string): boolean {
+  /** Remove without writing; callers write once. */
+  private remove(id: string): boolean {
     const idx = this.keys.findIndex((k) => k.id === id);
     if (idx === -1) return false;
     if (this.keys[idx].metered === true) this.revokedMetered.add(id);
     this.keys.splice(idx, 1);
+    this.hashes.delete(id);
+    return true;
+  }
+
+  delete(id: string): boolean {
+    if (!this.remove(id)) return false;
+    this.persist();
     return true;
   }
 
@@ -192,8 +517,9 @@ class KeyStore {
   bulkDelete(ids: string[]): string[] {
     const deleted: string[] = [];
     for (const id of ids) {
-      if (this.delete(id)) deleted.push(id);
+      if (this.remove(id)) deleted.push(id);
     }
+    if (deleted.length > 0) this.persist();
     return deleted;
   }
 
@@ -210,6 +536,7 @@ class KeyStore {
         changed.push(id);
       }
     }
+    if (changed.length > 0) this.persist();
     return changed;
   }
 
@@ -226,32 +553,34 @@ class KeyStore {
         changed.push(id);
       }
     }
+    if (changed.length > 0) this.persist();
     return changed;
   }
 
   /**
-   * Validates a raw key string.
+   * Validates a raw key string by its SHA-256, compared in constant time.
    * Accepts both the current key and the previous key within the 24-hour grace window.
    * Returns null if the key is unknown or the grace period has expired.
    */
   validateKey(key: string): ApiKey | null {
     const now = new Date();
-    const keyBuf = Buffer.from(key);
+    const presented = Buffer.from(hashApiKey(key), 'hex');
     for (const entry of this.keys) {
       if (entry.disabled) continue;
       if (entry.expiresAt && new Date(entry.expiresAt) <= now) continue;
+      const hashes = this.hashes.get(entry.id);
+      if (!hashes) continue;
 
-      const currentBuf = Buffer.from(entry.key);
-      const currentMatch = keyBuf.length === currentBuf.length && timingSafeEqual(keyBuf, currentBuf);
+      const currentMatch = timingSafeEqual(presented, Buffer.from(hashes.keyHash, 'hex'));
 
       let previousMatch = false;
-      if (entry.previousKey && entry.previousKeyExpiresAt && new Date(entry.previousKeyExpiresAt) > now) {
-        const prevBuf = Buffer.from(entry.previousKey);
-        previousMatch = keyBuf.length === prevBuf.length && timingSafeEqual(keyBuf, prevBuf);
+      if (hashes.previousKeyHash && entry.previousKeyExpiresAt && new Date(entry.previousKeyExpiresAt) > now) {
+        previousMatch = timingSafeEqual(presented, Buffer.from(hashes.previousKeyHash, 'hex'));
       }
 
       if (currentMatch || previousMatch) {
         entry.lastUsedAt = now.toISOString();
+        this.persistLastUsed();
         return entry;
       }
     }
@@ -288,7 +617,7 @@ class KeyStore {
 
   /**
    * Returns per-key usage statistics with derived hygiene flags.
-   * No secrets (key, previousKey) are included.
+   * No secrets are included (entries hold none).
    */
   getUsageStats(dormantDays = 30, expiringSoonDays = 7): KeyUsageStat[] {
     const now = Date.now();
@@ -337,8 +666,10 @@ class KeyStore {
     metered?: boolean;
     scopes?: KeyScope[];
   }): ApiKey | null {
-    const entry = this.keys.find((k) => k.id === id);
-    if (!entry) return null;
+    const current = this.keys.find((k) => k.id === id);
+    if (!current) return null;
+    // Applied to a copy first, so a field the keystore cannot store changes nothing.
+    const entry: ApiKey = { ...current };
     if (patch.name !== undefined) entry.name = patch.name;
     if (patch.permissions !== undefined) entry.permissions = patch.permissions;
     if (patch.expiresAt !== undefined) {
@@ -356,13 +687,19 @@ class KeyStore {
     else if (patch.stripeCustomerId !== undefined) entry.stripeCustomerId = patch.stripeCustomerId;
     if (patch.metered !== undefined) entry.metered = patch.metered;
     if (patch.scopes !== undefined) entry.scopes = patch.scopes;
-    return entry;
+    const stored = storableCopy(entry, this.hashes.get(id));
+    // Commit onto the live object: other holders keep their reference.
+    for (const f of Object.keys(current) as (keyof ApiKey)[]) delete current[f];
+    Object.assign(current, stored);
+    this.persist();
+    return current;
   }
 
   disable(id: string): boolean {
     const entry = this.keys.find((k) => k.id === id);
     if (!entry) return false;
     entry.disabled = true;
+    this.persist();
     return true;
   }
 
@@ -370,6 +707,7 @@ class KeyStore {
     const entry = this.keys.find((k) => k.id === id);
     if (!entry) return false;
     entry.disabled = false;
+    this.persist();
     return true;
   }
 
@@ -379,43 +717,47 @@ class KeyStore {
 
   /**
    * Rotate the key for the given id.
-   * Generates a new key, stores the old key as previousKey with a 24-hour expiry.
-   * Returns the rotation result (newKey shown once — caller must relay to user).
-   * Returns null if id not found.
+   * Generates a new key; the old key's hash stays accepted for 24 hours.
+   * Returns the rotation result (newKey shown once — caller must relay to user;
+   * previousKey is the old key's prefix only). Returns null if id not found.
    */
   rotate(id: string): RotationResult | null {
     const entry = this.keys.find((k) => k.id === id);
-    if (!entry) return null;
+    const hashes = this.hashes.get(id);
+    if (!entry || !hashes) return null;
 
-    const oldKey = entry.key;
+    const oldPrefix = entry.keyPrefix;
     const newKey = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + ROTATION_GRACE_HOURS * 3_600_000).toISOString();
 
-    entry.key = newKey;
-    entry.previousKey = oldKey;
+    this.hashes.set(id, { keyHash: hashApiKey(newKey), previousKeyHash: hashes.keyHash });
+    entry.keyPrefix = newKey.slice(0, KEY_PREFIX_LENGTH);
     entry.previousKeyExpiresAt = expiresAt;
     entry.lastRotatedAt = new Date().toISOString();
+    this.persist();
 
     return {
       id,
       newKey,
-      previousKey:          oldKey,
+      previousKey:          oldPrefix,
       previousKeyExpiresAt: expiresAt,
       gracePeriodHours:     ROTATION_GRACE_HOURS,
     };
   }
 
-  /** Remove expired previousKey entries. Returns count of entries cleaned. */
+  /** Remove expired previous-key hashes. Returns count of entries cleaned. */
   cleanExpiredRotations(): number {
     const now = new Date();
     let cleaned = 0;
     for (const entry of this.keys) {
       if (entry.previousKeyExpiresAt && new Date(entry.previousKeyExpiresAt) <= now) {
-        delete entry.previousKey;
+        const hashes = this.hashes.get(entry.id);
+        if (hashes) delete hashes.previousKeyHash;
         delete entry.previousKeyExpiresAt;
         cleaned++;
       }
     }
+    if (cleaned > 0) this.persist();
     return cleaned;
   }
 
@@ -438,6 +780,8 @@ export function getKeyStore(): KeyStore {
   return instance;
 }
 
+/** Replace the store with a new one loaded from the keystore file, as a restart does. */
 export function resetKeyStore(): void {
+  instance?.dispose();
   instance = new KeyStore();
 }

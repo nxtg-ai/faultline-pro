@@ -62,7 +62,7 @@ describe('GDPR schedule erasure (SS1–SS15)', () => {
     resetCostStore();
     resetScheduleStore();
 
-    const key = getKeyStore().create('sched-key', ['scan'], 'sched-key');
+    const key = getKeyStore().create('sched-key', ['scan']);
     keyId = key.id;
     const tenant = getTenantStore().create('Schedule Corp', [keyId]);
     tenantId = tenant.id;
@@ -121,7 +121,7 @@ describe('GDPR schedule erasure (SS1–SS15)', () => {
   // ── SS6: deleteForKeys isolation — other key untouched ────────────────────
 
   it('SS6: deleteForKeys does not affect schedules from other keys', () => {
-    const key2 = getKeyStore().create('other-key', ['scan'], 'other-key');
+    const key2 = getKeyStore().create('other-key', ['scan']);
     getScheduleStore().create({ name: 'Other Sched', cron: CRON, text: 'other' }, key2.id);
 
     getScheduleStore().deleteForKeys([keyId]);
@@ -131,7 +131,7 @@ describe('GDPR schedule erasure (SS1–SS15)', () => {
   // ── SS7: deleteForKeys with multiple keyIds ────────────────────────────────
 
   it('SS7: deleteForKeys accepts multiple keyIds and removes all matching', () => {
-    const key2 = getKeyStore().create('key2', ['scan'], 'key2');
+    const key2 = getKeyStore().create('key2', ['scan']);
     getScheduleStore().create({ name: 'Sched C', cron: CRON, text: 'c' }, key2.id);
 
     const count = getScheduleStore().deleteForKeys([keyId, key2.id]);
@@ -168,7 +168,7 @@ describe('GDPR schedule erasure (SS1–SS15)', () => {
   // ── SS11: schedules.json export isolation ─────────────────────────────────
 
   it('SS11: schedules.json only contains entries for the requested tenant keys', async () => {
-    const key2 = getKeyStore().create('iso-key', ['scan'], 'iso-key');
+    const key2 = getKeyStore().create('iso-key', ['scan']);
     getScheduleStore().create({ name: 'Iso Sched', cron: CRON, text: 'iso' }, key2.id);
 
     const res = await server.inject({ method: 'GET', url: `/tenants/${tenantId}/export`, headers: adminHeaders() });
@@ -196,7 +196,7 @@ describe('GDPR schedule erasure (SS1–SS15)', () => {
   // ── SS14: erasure isolation — other tenant schedules untouched ─────────────
 
   it('SS14: erasing tenant A does not delete tenant B schedules', async () => {
-    const key2 = getKeyStore().create('b-sched-key', ['scan'], 'b-sched-key');
+    const key2 = getKeyStore().create('b-sched-key', ['scan']);
     const tenant2 = getTenantStore().create('Tenant B', [key2.id]);
     getScheduleStore().create({ name: 'B Sched', cron: CRON, text: 'b text' }, key2.id);
 

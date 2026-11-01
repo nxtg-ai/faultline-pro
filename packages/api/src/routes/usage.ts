@@ -18,6 +18,18 @@ function verdictCounts(byVerdict: Record<string, number>): Record<string, number
   return { ...Object.fromEntries(BILLED_VERDICTS.map((v) => [v, 0])), ...byVerdict };
 }
 
+/** Keystore file counters for admin GET /usage. No key material. */
+function keystoreBlock() {
+  const store = getKeyStore();
+  return {
+    keys: store.size,
+    persisted: store.isPersisted(),
+    loadFailures: store.getLoadFailures(),
+    writeFailures: store.getWriteFailures(),
+    idempotencyWriteFailures: store.getIdempotencyWriteFailures(),
+  };
+}
+
 /** A metered key's claim position this month. `cap` and `remaining` are null while no claimCap is set. */
 function claimsBlock(keyId: string) {
   const meter = getClaimMeter();
@@ -83,6 +95,10 @@ export async function usageRoutes(fastify: FastifyInstance): Promise<void> {
     const claims = isMeteredKey(request.keyId) ? claimsBlock(request.keyId) : undefined;
     const claimMeter = isAdmin ? claimMeterBlock() : undefined;
     const usageRecords = isAdmin ? getClaimMeter().status() : undefined;
+    // Keystore file health, admin only. `loadFailures` > 0: the keystore file
+    // existed at startup but could not be read, so its keys do not authenticate.
+    // `writeFailures` > 0: changes are held in memory only and a restart loses them.
+    const keystore = isAdmin ? keystoreBlock() : undefined;
 
     return reply.status(200).send({
       keyId,
@@ -94,6 +110,7 @@ export async function usageRoutes(fastify: FastifyInstance): Promise<void> {
       ...(claims ? { claims } : {}),
       ...(claimMeter ? { claimMeter } : {}),
       ...(usageRecords ? { usageRecords } : {}),
+      ...(keystore ? { keystore } : {}),
     });
   });
 }
