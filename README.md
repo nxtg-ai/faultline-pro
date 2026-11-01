@@ -1,8 +1,8 @@
 # Faultline — We check the receipts on AI output.
 
-**Future-proof your agent stack. The only governance CLI not owned by an AI lab.**
+**Future-proof your agent stack. Independent of every model vendor: NXTG.ai does not build the models Faultline checks.**
 
-Faultline decomposes AI-generated output into atomic claims, verifies each against live evidence, and enforces a CI gate before hallucinations reach production. Built for teams governing LLM agents at scale — provider-agnostic across Gemini, OpenAI, Claude, Perplexity, and local models.
+Faultline decomposes AI-generated output into atomic claims, verifies each against live evidence, and can fail a CI build on the result.
 
 [![Release stage: alpha](https://img.shields.io/badge/stage-alpha-orange.svg)](https://github.com/nxtg-ai/faultline-pro/blob/main/CHANGELOG.md)
 [![CI](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml)
@@ -41,10 +41,9 @@ The hosted API ships three governance records as code: a risk register export (`
 | Atomic claim extraction | Decomposes AI output into fact / opinion / interpretation with importance scoring |
 | Per-claim verification | Verdict: supported / contradicted / mixed / unverified + confidence score |
 | Scan comparison | `POST /scan/compare` + `faultline compare` — new/removed claims, verdict changes, trust score delta |
-| EU AI Act compliance | Risk tier mapping (Unacceptable / High / Limited / Minimal), triggered articles, mitigations |
-| Compliance CI gate | `--ci` flag exits non-zero on non-compliant articles or high/critical risk — enforce EU AI Act in CI/CD |
+| CI gate | `faultline compliance-report --ci` exits 1 when the scan's overall risk is high or critical, an article check in the report has failed, the report's domain checklist item has not passed, or the report score is below `--threshold`; `--strict` also fails on partly met article checks and on checklist items not assessed. Otherwise it exits 0 |
 | Weakest-link detection | Per-claim fragility scoring — finds the claim that most undermines the argument |
-| Claim dependency graph | Mermaid and Graphviz DOT visualizations grouping claims by risk tier |
+| Claim dependency graph | Mermaid and Graphviz DOT visualizations |
 | Rules engine | YAML-defined rules; built-in PII, bias, toxicity rulesets |
 | CI gate | `--fail-on high` returns exit code 1; SARIF output for GitHub Code Scanning |
 | Enterprise API | REST API (about 190 routes) with key management, audit trail, rate limiting, webhooks, batch scanning, caching |
@@ -55,16 +54,16 @@ The hosted API ships three governance records as code: a risk register export (`
 | Multi-tenant | Tenant CRUD, API key association, per-tenant usage aggregation |
 | Cost tracking | Per-scan token/cost estimation; `GET /costs` with provider/tenant/date filters |
 | Scan history | `GET /scans/search` — full-text across your API key's past scans (admin key: all), cursor pagination |
-| Industry compliance | HIPAA / SOX / FERPA / Gov templates; `POST /scan/compliance/:template` |
+| Rule templates (HIPAA, SOX, FERPA, Gov) | HIPAA / SOX / FERPA / Gov templates; `POST /scan/compliance/:template` |
 | Bulk import | `POST /scan/bulk` — ZIP of documents, async job, `GET /jobs/:id/progress` |
 | Swagger UI | `GET /docs` — interactive OpenAPI 3.0 spec with Try-it for every endpoint |
 | Claim explainability | `GET /claims/:id/explain` — reasoning chain, evidence found, actionable suggestions |
 | Scan diff | `POST /scan/diff` — scan two texts, inline diff (added/removed/changed/unchanged) |
-| Regulatory calendar | `GET /compliance/deadlines` — EU AI Act, GDPR, NIST deadlines with days-until |
-| Compliance scan-check | `POST /compliance/scan-check` — match claim text against approaching deadlines |
+| Deadline list | `GET /compliance/deadlines` — a list of upcoming regulatory dates with days until each; no assessment |
+| Deadline keyword check | `POST /compliance/scan-check` — match claim text against keywords tied to those dates |
 | i18n | `Accept-Language: es/fr/en` — localized error messages and report labels (EN/ES/FR) |
 | Property-based tests | `fast-check` oracle coverage: confidence bounds, dedup invariants, cost aggregation, sort stability |
-| GDPR compliance | Article 15 export (`GET /tenants/:id/export` → ZIP) + Article 17 erasure (`DELETE /tenants/:id/data`) covering scan history, audit log, notifications, webhooks, costs, schedules |
+| GDPR data requests (Article 15 export, Article 17 erasure) | Article 15 export (`GET /tenants/:id/export` → ZIP) + Article 17 erasure (`DELETE /tenants/:id/data`) covering scan history, audit log, notifications, webhooks, costs, schedules |
 | Multi-model consensus | `POST /scan/stream` with `pipelineConfig.consensus: true`. Enterprise only, enforced server-side (403 below Enterprise) |
 | Claim critique | `POST /critique`: critique plus improved prompt for failed claims; API key, rate limit and provider-spend cap apply |
 | Real-time scan streaming | `GET /scan/stream?text=...&provider=mock` — Server-Sent Events; progressive per-claim delivery via `onClaimVerified` callback; streams `start` → `claim_verified` × N → `complete`; no polling required |
@@ -91,9 +90,8 @@ Switch providers with `--provider <name>`. No code changes required. With no pro
 - **Text files** — `--input doc.txt`
 - **Directories** — `--dir ./docs --glob "*.md"`
 
-### Compliance
-- **EU AI Act** — risk tier classification per Articles 5–7 and Annex III; prohibited practice detection; transparency obligations
-- **Compliance reports** — audit-ready PDF output via `POST /scan/report`
+### Reports and Rules
+- **Scan reports (PDF)** via `POST /scan/report`
 - **Rules engine** — YAML-defined rules: PII detection, bias indicators, toxicity flags, custom rules
 
 ### Output Formats
@@ -119,12 +117,12 @@ Switch providers with `--provider <name>`. No code changes required. With no pro
 - **Scheduled jobs** — `POST /jobs`: recurring scans on a `*/N * * * *` cron schedule; results dispatched to `webhookUrl`
 - **Provider failover** — automatic chain Gemini → OpenAI → Claude → Perplexity → Mock; circuit breaker trips after 5 failures, resets after 5 minutes; `503` when all providers down
 - **Scan history** — private per API key (the admin key sees all); `GET /scans/search?q=` full-text; stale scan detection (`GET /scans/stale`); usage analytics (`GET /scans/usage`); bulk pruning (`DELETE /scans/stale`); hygiene dashboard; `faultline scans` CLI
-- **Industry compliance templates** — HIPAA / SOX+FINRA / FERPA / Government; `POST /scan/compliance/:template`; custom template upload
+- **Rule templates (HIPAA, SOX, FERPA, Gov)** — HIPAA / SOX+FINRA / FERPA / Government; `POST /scan/compliance/:template`; custom template upload
 - **Bulk import** — `POST /scan/bulk` (ZIP of documents → async job); `GET /jobs/:id/progress` (percentage + per-file status + summary)
 - **Monitoring** — `GET /health/deep` (subsystem status + provider config flags), `GET /metrics` (Prometheus text), `GET /status` (HTML)
 - **Swagger UI** — `GET /docs` (interactive OpenAPI 3.0), `GET /docs/json`, `GET /docs/yaml`
 - **Claim search** — `GET /claims?text=&verdict=&from=&to=&source=` full-text claim index search
-- **GDPR compliance** — `GET /tenants/:id/export` (Article 15, admin-gated): ZIP archive with manifest, scan-history, audit-log (NDJSON), notifications, webhooks, usage, costs, schedules; `DELETE /tenants/:id/data` (Article 17, admin-gated): erases all PII across 8 data categories for a tenant; idempotent; tenant record preserved
+- **GDPR data requests (Article 15 export, Article 17 erasure)** — `GET /tenants/:id/export` (Article 15, admin-gated): ZIP archive with manifest, scan-history, audit-log (NDJSON), notifications, webhooks, usage, costs, schedules; `DELETE /tenants/:id/data` (Article 17, admin-gated): erases all PII across 8 data categories for a tenant; idempotent; tenant record preserved
 - **i18n** — send `Accept-Language: es` or `Accept-Language: fr` for localized error messages; defaults to English
 
 ---
@@ -140,25 +138,16 @@ export GEMINI_API_KEY="your-key"
 npx @nxtg/faultline scan --input your-ai-output.txt --provider gemini
 ```
 
-**Expected output:**
+**Expected output (excerpt):**
 
 ```
-=== FAULTLINE COMPLIANCE REPORT ===
-
 Provider:     Google Gemini
 Overall Risk: HIGH
-EU Risk Tier: HIGH
 
 --- Claim Verifications ---
   [OK] c1: supported     — Confirmed by census data. (confidence: 0.82)
   [!!] c2: contradicted  — Audit found significant bias. (confidence: 0.91)
   [??] c3: mixed         — Evidence varies by region. (confidence: 0.63)
-
---- Triggered EU AI Act Articles ---
-  Annex III §4: Employment and recruitment AI (affects: c2)
-
---- Recommended Mitigations ---
-  High-risk domain detected. Ensure a risk management system is in place (Article 9).
 ```
 
 **Other providers:**
@@ -224,14 +213,14 @@ curl -X POST http://localhost:3010/scan/upload \
   -F "file=@report.pdf"
 ```
 
-Generate a compliance report (PDF):
+Generate a PDF report of a scan:
 
 ```bash
 curl -X POST http://localhost:3010/scan/report \
   -H "x-api-key: your-key" \
   -H "Content-Type: application/json" \
   -d '{"text": "AI system processes medical records.", "provider": "mock"}' \
-  --output compliance-report.pdf
+  --output scan-report.pdf
 ```
 
 Create an API key:
@@ -290,7 +279,6 @@ Input: AI-generated text / PDF / image
   Claim dependency graph — how do failures propagate?
   │
   ▼ Refine
-  EU AI Act risk tier, triggered articles, mitigations
   Critique of failed claims + improved prompt generation
 ```
 
@@ -301,7 +289,7 @@ packages/
 ├── cli/                  # @nxtg/faultline (npm 0.11.1): CLI + scan engine
 │   ├── cli/              # Commands: scan, guard, report, watch, critique, graph, weakest, compare…
 │   ├── providers/        # Gemini, Claude, OpenAI, Perplexity, Mock adapters
-│   ├── compliance/       # EU AI Act risk categories (Articles 5–7, Annex III)
+│   ├── compliance/       # EU AI Act risk categories
 │   ├── rules/            # Rule engine (PII, bias, shell injection…)
 │   ├── analysis/         # Weakest-link scoring, claim graph
 │   ├── history/          # Scan history store
@@ -473,38 +461,12 @@ Promptfoo tests your prompts. DeepEval scores your RAG pipeline. **Faultline aud
 | Verifies claims against live evidence | Yes | No | No |
 | Confidence calibration per claim | Yes | No | No |
 | Weakest-link detection | Yes | No | No |
-| EU AI Act risk classification | Yes | No | No |
 | Claim dependency graph | Yes | No | No |
 | Scan comparison (diff two outputs) | Yes | No | No |
 | FM-agnostic (Gemini / Claude / OpenAI / Perplexity) | Yes | Yes | No (Python) |
 | Provider auto-failover + circuit breaker | Yes | No | No |
 | Enterprise API with audit trail + caching | Yes | No | No |
 | Python client + MCP server | Yes | No | No |
-
----
-
-## EU AI Act Compliance Evidence
-
-Faultline maps each verified claim to the applicable risk tier under the EU AI Act (when high-risk AI system requirements take effect) and other AI governance frameworks:
-
-- **Unacceptable risk** — Article 5 prohibited practices (social scoring, real-time biometric surveillance)
-- **High risk** — Annex III systems (medical, recruitment, credit, law enforcement)
-- **Limited risk** — transparency obligations (deepfakes, chatbots)
-- **Minimal risk** — general-purpose AI outputs with no special obligations
-
-Each scan produces a compliance report listing triggered articles and recommended mitigations.
-
-### Art. 9 — Risk Register (`POST /scan/risk-register`)
-
-EU AI Act Article 9 requires operators of high-risk AI systems to maintain a documented risk management system across the AI lifecycle. Faultline's risk register endpoint aggregates all scan history into a structured report — indexed by lifecycle phase (development, testing, deployment, monitoring) — with a `riskDistribution` breakdown, `highRiskCount`, `criticalRiskCount`, and per-scan findings. Each finding carries the triggered article reference and lifecycle phase so auditors can trace risk back to the point of introduction.
-
-### Art. 12 — Tamper-Evident Audit Log (`GET /audit/log/manifest`)
-
-EU AI Act Article 12 requires that audit logs for high-risk AI systems be tamper-evident and verifiable by competent authorities. Faultline implements a SHA-256 chain manifest: each log entry is hashed individually (`entryHash`), then chained to the previous entry's hash (`chainHash = SHA-256(entryHash + prevChainHash)`). The final `rootHash` covers the entire log. Any modification to any entry — or any insertion/deletion — breaks the chain. Third-party auditors can verify integrity without Faultline tooling using only `openssl dgst -sha256`.
-
-### Art. 14 — Human Sign-Off Record (`POST /scans/:id/approve`)
-
-EU AI Act Article 14 requires meaningful human oversight of high-risk AI system outputs before deployment. Faultline's approval endpoints let a named reviewer formally approve or reject any scan result — recording the reviewer identity (API key), decision (`approved` / `rejected`), optional note, and UTC timestamp. All approvals are queryable via `GET /scans/:id/approvals` and are immutable once recorded, providing a durable audit trail of human sign-off prior to production use.
 
 ---
 
