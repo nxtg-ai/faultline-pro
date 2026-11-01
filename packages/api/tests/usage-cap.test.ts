@@ -89,9 +89,9 @@ afterEach(() => {
 // entitlements config
 // =========================================================================
 describe('entitlements — getMonthlyCap / isUsageCapEnabled', () => {
-  it('returns conservative placeholder defaults when no env is set', () => {
-    expect(getMonthlyCap('pro')).toBe(25);
-    expect(getMonthlyCap('free')).toBe(10);
+  it('returns the plan-limit defaults when no env is set (pricing page, read 2026-11-01)', () => {
+    expect(getMonthlyCap('pro')).toBe(500);
+    expect(getMonthlyCap('free')).toBe(5);
     expect(getMonthlyCap('admin')).toBeNull();
   });
 
@@ -109,9 +109,9 @@ describe('entitlements — getMonthlyCap / isUsageCapEnabled', () => {
 
   it('falls back to the default on a garbage or negative env value', () => {
     process.env.FAULTLINE_CAP_PRO = 'banana';
-    expect(getMonthlyCap('pro')).toBe(25);
+    expect(getMonthlyCap('pro')).toBe(500);
     process.env.FAULTLINE_CAP_PRO = '-5';
-    expect(getMonthlyCap('pro')).toBe(25);
+    expect(getMonthlyCap('pro')).toBe(500);
   });
 
   it('accepts a zero cap (blocks all scans)', () => {
@@ -177,10 +177,10 @@ describe('enforceMonthlyCap — integration through /scan', () => {
   beforeEach(() => { server = buildServer(); });
   afterEach(async () => { await server.close(); });
 
-  it('is a no-op when the gate is DORMANT — a scan passes even over the placeholder cap', async () => {
-    // gate off (default); seed usage far above the pro cap
+  it('is a no-op when the gate is DORMANT — a scan passes even over the default cap', async () => {
+    // gate off (default); seed usage above the pro default cap (500)
     const created = getKeyStore().create('Pro Key', ['pro', 'scan']);
-    for (let i = 0; i < 100; i++) getUsageMeter().increment(created.id);
+    for (let i = 0; i < 600; i++) getUsageMeter().increment(created.id);
     const res = await server.inject({
       method: 'POST',
       url: '/scan',
