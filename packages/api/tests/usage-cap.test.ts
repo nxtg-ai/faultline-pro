@@ -177,10 +177,10 @@ describe('enforceMonthlyCap — integration through /scan', () => {
   beforeEach(() => { server = buildServer(); });
   afterEach(async () => { await server.close(); });
 
-  it('is a no-op when the gate is DORMANT — a scan passes even over the placeholder cap', async () => {
-    // gate off (default); seed usage far above the pro cap
+  it('is a no-op when the gate is DORMANT — a scan passes even over the default cap', async () => {
+    // gate off (default); seed usage above the pro default cap (500)
     const created = getKeyStore().create('Pro Key', ['pro', 'scan']);
-    for (let i = 0; i < 100; i++) getUsageMeter().increment(created.id);
+    for (let i = 0; i < 600; i++) getUsageMeter().increment(created.id);
     const res = await server.inject({
       method: 'POST',
       url: '/scan',
