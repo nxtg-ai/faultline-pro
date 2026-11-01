@@ -497,7 +497,7 @@ describe('POST /admin/verify-claims — the ledgers a scan writes', () => {
       scanId: 'prior', ts: new Date().toISOString(), tier: 'pro', keyMode: 'managed',
       provider: 'gemini', modelId: 'gemini-2.5-flash', inputTokens: 1, outputTokens: 1,
       groundingCalls: 0, costUsd: 1.5, latencyMs: 1,
-    });
+    }, 'customer');
     const res = await server.inject({
       method: 'POST',
       url: '/admin/verify-claims',
@@ -518,7 +518,7 @@ describe('POST /admin/verify-claims — the ledgers a scan writes', () => {
       scanId: 'prior', ts: new Date().toISOString(), tier: 'pro', keyMode: 'managed',
       provider: 'gemini', modelId: 'gemini-2.5-flash', inputTokens: 1, outputTokens: 1,
       groundingCalls: 0, costUsd: 1.5, latencyMs: 1,
-    });
+    }, 'customer');
     // No plan header: the caller cannot be told apart from free traffic.
     const refused = await post({ claims: claims(1), provider: 'mock' });
     expect(refused.statusCode).toBe(503);

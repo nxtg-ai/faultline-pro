@@ -140,7 +140,7 @@ describe('POST /critique — provider-spend cap (N-230)', () => {
       scanId: 'prior-scan', ts: new Date().toISOString(), tier: 'pro', keyMode: 'managed',
       provider: 'openai', modelId: 'gpt-4o-mini', inputTokens: 1, outputTokens: 1,
       groundingCalls: 0, costUsd: 1.5, latencyMs: 1,
-    });
+    }, 'customer');
     const rowsBefore = ledgerRows().length;
     expect(rowsBefore).toBe(1);
 

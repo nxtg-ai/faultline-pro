@@ -529,6 +529,30 @@ export class ClaimMeter {
     return { period, used, reserved, keys, byVerdict, ledgerWriteFailures: this.writeFailures, refusedIdentifiers: this.refused };
   }
 
+  /**
+   * Billed claims in [from, to): usage rows whose ts falls in the window, less
+   * every usage row a void row cancels. A void cancels the row it names wherever
+   * the void itself falls (the rule `index` applies to a period), so a claim
+   * voided after the window closed is not billed in it either. Void rows are
+   * never counted. Read only.
+   */
+  billedUsageBetween(from: Date, to: Date): number {
+    this.ensureHydrated();
+    const fromMs = from.getTime();
+    const toMs = to.getTime();
+    // The usage identifiers void rows cancel, by each void's own `voids` field.
+    const voided = new Set<string>();
+    for (const row of this.records) if (row.kind === 'void' && row.voids !== undefined) voided.add(row.voids);
+    let billed = 0;
+    for (const row of this.records) {
+      if (row.kind !== 'usage' || voided.has(row.identifier)) continue;
+      const ts = Date.parse(row.ts);
+      if (!Number.isFinite(ts) || ts < fromMs || ts >= toMs) continue;
+      billed += 1;
+    }
+    return billed;
+  }
+
   /** Rows this process could not write. 0 = healthy. */
   getWriteFailures(): number {
     return this.writeFailures;

@@ -9,6 +9,7 @@ import {
   resolveTier,
 } from '../store/costs.js';
 import { recordProviderSpend } from '../store/provider-spend.js';
+import { classifyKeyId } from '../plugins/auth.js';
 import { summarizeScanUsage } from '../store/consensus-cost.js';
 import { getProvider } from '@nxtg/faultline/providers/registry.js';
 import { abstainWithoutSource, billingSummary, isBillableVerdict } from '@nxtg/faultline/lib/verdict-guard.js';
@@ -269,7 +270,7 @@ function recordBatchSpend(runs: ClaimRun[], claims: VerifyClaimInput[], provider
   getCostStore().recordManaged(costEvent);
   // Not sent to the telemetry Worker: its /api/scan-costs/stats is per-scan and cannot tell a batch from a scan.
   appendScanCostLog(costEvent);
-  recordProviderSpend(costEvent);
+  recordProviderSpend(costEvent, classifyKeyId(keyId));
 }
 
 /** Price one claim's captured legs, the same way the batch event prices all of them. */

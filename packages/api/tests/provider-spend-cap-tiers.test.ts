@@ -57,7 +57,7 @@ function costEvent(costUsd: number): ManagedScanCostEvent {
 /** Cap $1, $1.50 spent: the budget is exhausted. */
 function exhaustBudget(): void {
   process.env.FAULTLINE_PROVIDER_SPEND_CAP_USD = '1';
-  recordProviderSpend(costEvent(1.5));
+  recordProviderSpend(costEvent(1.5), 'customer');
 }
 
 beforeEach(() => {
@@ -264,7 +264,7 @@ describe('fleet provider-spend cap: free and anonymous traffic only', () => {
   it('with budget left, every caller passes', async () => {
     process.env.FAULTLINE_PROVIDER_SPEND_CAP_USD = '100';
     process.env.FAULTLINE_PROVIDER_SPEND_CAP = 'on';
-    recordProviderSpend(costEvent(0.42));
+    recordProviderSpend(costEvent(0.42), 'customer');
     const free = getKeyStore().create('Free Key', ['scan']);
     expect(getKeyStore().size).toBe(1);
     const route = ROUTES[0];
@@ -275,7 +275,7 @@ describe('fleet provider-spend cap: free and anonymous traffic only', () => {
 
   it('GET /usage (admin) names the tiers the cap applies to', async () => {
     process.env.FAULTLINE_PROVIDER_SPEND_CAP_USD = '100';
-    recordProviderSpend(costEvent(0.42));
+    recordProviderSpend(costEvent(0.42), 'customer');
     const res = await server.inject({ method: 'GET', url: '/usage', headers: { 'x-api-key': SERVER_KEY } });
     expect(res.statusCode).toBe(200);
     const budget = res.json().providerBudget;

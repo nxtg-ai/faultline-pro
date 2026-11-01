@@ -107,7 +107,7 @@ function exhaustBudget(): void {
     scanId: 'prior-scan', ts: new Date().toISOString(), tier: 'free', keyMode: 'managed',
     provider: 'gemini', modelId: 'gemini-2.5-flash', inputTokens: 1, outputTokens: 1,
     groundingCalls: 0, costUsd: 1.5, latencyMs: 1,
-  });
+  }, 'anonymous');
 }
 
 beforeEach(() => {

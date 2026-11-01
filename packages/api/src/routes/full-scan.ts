@@ -5,7 +5,7 @@ import { billableVerdictCount } from '@nxtg/faultline/lib/verdict-guard.js';
 import { partitionForFullScan } from '@nxtg/faultline/cli/full-scan.js';
 import type { UsageLeg } from '@nxtg/faultline/lib/usage-sink.js';
 import { captureOutcome } from '../lib/scan-spend.js';
-import { requireApiKey } from '../plugins/auth.js';
+import { classifyKeyId, requireApiKey } from '../plugins/auth.js';
 import { isExtractionError } from '@nxtg/faultline/providers/extraction-error.js';
 import { sendExtractionFailed } from '../lib/extraction-failure.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
@@ -163,6 +163,10 @@ interface FullScanCostInput {
   /** Grounded verify calls made (0 for an estimate). */
   claimCount: number;
   tier: ManagedScanCostEvent['tier'];
+  /** The key the step ran for: sets the spend row's key class (never written itself). */
+  keyId: string;
+  /** 'extraction' for an estimate: its claims are counted again by the job that verifies them. */
+  stage?: 'extraction';
   latencyMs: number;
   /** Claims in this step and how many got a provider verdict (the cost log's per-claim counts). */
   claims: { extracted: number; verified: number };
@@ -174,11 +178,12 @@ interface FullScanCostInput {
  * ledger. `kind: 'full-scan'` keeps /costs/percentiles comparable (scans only).
  */
 function logFullScanCost(legs: UsageLeg[], input: FullScanCostInput): void {
-  const event = buildManagedCostEvent(legs, { ...input, kind: 'full-scan' });
+  const { keyId, stage, ...cost } = input;
+  const event = buildManagedCostEvent(legs, { ...cost, kind: 'full-scan' });
   getCostStore().recordManaged(event);
   emitScanCostEvent(event);
   appendScanCostLog(event);
-  recordProviderSpend(event);
+  recordProviderSpend(event, classifyKeyId(keyId), { stage });
 }
 
 const isMissingProviderKey = (error: unknown): error is Error =>
@@ -225,6 +230,7 @@ async function runFullScanJob(store: FullScanJobStore, job: FullScanJob): Promis
     provider: job.provider,
     claimCount: outcome.ok ? outcome.value.verification.verifiedClaims : job.verdicts.filter(Boolean).length,
     tier: job.tier,
+    keyId: job.keyId,
     latencyMs: Date.now() - startedAt,
     claims: { extracted: job.verdicts.length, verified: billableVerdictCount(job.verdicts) },
   });
@@ -332,6 +338,8 @@ export async function fullScanRoutes(fastify: FastifyInstance): Promise<void> {
         provider,
         claimCount: 0,
         tier: resolveEntitledTier(keyId, request.headers['x-user-tier']),
+        keyId,
+        stage: 'extraction',
         latencyMs: Date.now() - startedAt,
         claims: { extracted: outcome.ok ? outcome.value.claims.length : 0, verified: 0 },
       });
