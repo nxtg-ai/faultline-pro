@@ -348,7 +348,7 @@ describe('Upload audit + usage', () => {
     getKeyStore().create('Key 1');
     const list1 = getKeyStore().list();
     const list2 = getKeyStore().list();
-    list1.push({ id: 'x', key: 'x', name: 'x', permissions: ['scan'], createdAt: 'x' });
+    list1.push({ id: 'x', keyPrefix: 'x', name: 'x', permissions: ['scan'], createdAt: 'x' });
     expect(getKeyStore().list().length).toBe(list2.length);
   });
 

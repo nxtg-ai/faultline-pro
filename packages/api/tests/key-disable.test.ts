@@ -245,7 +245,7 @@ describe('Auth — disabled key is rejected', () => {
   it('KD14: disabled key is rejected by requireApiKey — returns 401', async () => {
     // Disable via store directly (simulates admin action)
     const store = getKeyStore();
-    const entry = store.list().find((k) => k.key === rawKey)!;
+    const entry = store.validateKey(rawKey)!;
     store.disable(entry.id);
 
     const res = await server.inject({
@@ -259,7 +259,7 @@ describe('Auth — disabled key is rejected', () => {
 
   it('KD15: re-enabled key passes requireApiKey again — returns 200', async () => {
     const store = getKeyStore();
-    const entry = store.list().find((k) => k.key === rawKey)!;
+    const entry = store.validateKey(rawKey)!;
     store.disable(entry.id);
     store.enable(entry.id);
 

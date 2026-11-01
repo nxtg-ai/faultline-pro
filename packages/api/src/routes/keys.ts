@@ -3,7 +3,7 @@ import { getAuditLogger } from '../store/audit.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { hasScope, isAdminKeyId, requireAdmin } from '../plugins/auth.js';
 import { esc } from '../lib/html.js';
-import { getKeyStore, KEY_SCOPES, MAX_KEY_IDEMPOTENCY_KEY_LENGTH, ROTATION_GRACE_HOURS } from '../store/keys.js';
+import { getKeyStore, KeyFieldError, KEY_SCOPES, MAX_KEY_IDEMPOTENCY_KEY_LENGTH, ROTATION_GRACE_HOURS } from '../store/keys.js';
 import type { ApiKey, KeyScope, Permission } from '../store/keys.js';
 import { getNotificationStore } from '../store/notifications.js';
 
@@ -139,8 +139,7 @@ function readIdempotencyKey(request: FastifyRequest): string | null | undefined 
 /** A key as a replayed POST /keys returns it: never the plaintext again. */
 function replayView(keyId: string, entry: ApiKey | null): Record<string, unknown> {
   if (!entry) return { id: keyId, key: null };
-  const { key: _key, previousKey: _prev, ...rest } = entry;
-  return { ...rest, key: null };
+  return { ...entry, key: null };
 }
 
 const CREATE_BODY_SCHEMA = {
@@ -207,7 +206,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
 
   fastify.get('/keys', { config: { access: 'admin' }, preHandler: requireAdmin, schema: { tags: ['Keys'], summary: 'List all API keys (secrets redacted)' } }, async (_request, reply) => {
     const store = getKeyStore();
-    const keys = store.list().map(({ key: _key, previousKey: _prev, ...rest }) => rest);
+    const keys = store.list();
     return reply.status(200).send(keys);
   });
 
@@ -356,7 +355,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const days = Math.min(365, Math.max(1, parseInt(request.query.days ?? '30', 10)));
       const store = getKeyStore();
-      const keys = store.getDormant(days).map(({ key: _key, previousKey: _prev, ...rest }) => rest);
+      const keys = store.getDormant(days);
       return reply.status(200).send({ days, count: keys.length, keys });
     },
   );
@@ -380,7 +379,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const days = Math.min(365, Math.max(1, parseInt(request.query.days ?? '7', 10)));
       const store = getKeyStore();
-      const keys = store.getExpiringSoon(days).map(({ key: _key, previousKey: _prev, ...rest }) => rest);
+      const keys = store.getExpiringSoon(days);
       return reply.status(200).send({ days, count: keys.length, keys });
     },
   );
@@ -392,8 +391,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
       const store = getKeyStore();
       const entry = store.validateById(request.params.id);
       if (!entry) return reply.status(404).send({ error: 'Key not found.' });
-      const { key: _key, previousKey: _prev, ...rest } = entry;
-      return reply.status(200).send(rest);
+      return reply.status(200).send(entry);
     },
   );
 
@@ -633,13 +631,18 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
       if (nonAdminAfter && capAfter !== undefined && !claimCapInBounds(permissions, capAfter)) {
         return reply.status(400).send(CLAIM_CAP_OUT_OF_RANGE);
       }
-      const updated = store.update(request.params.id, patch);
+      let updated;
+      try {
+        updated = store.update(request.params.id, patch);
+      } catch (e) {
+        if (e instanceof KeyFieldError) return reply.status(400).send({ error: 'invalid_key_field', message: 'A field cannot be stored, for example expiresAt is not a date.' });
+        throw e;
+      }
       if (!updated) return reply.status(404).send({ error: 'Key not found.' });
       if (request.body.expiresAt !== undefined) {
         auditRevival(request, [updated.id], request.body.expiresAt === null ? 'expiresAt cleared' : `expiresAt set to ${request.body.expiresAt}`);
       }
-      const { key: _key, previousKey: _prev, ...rest } = updated;
-      return reply.status(200).send(rest);
+      return reply.status(200).send(updated);
     },
   );
 
@@ -659,7 +662,8 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
           'to allow zero-downtime rotation without co-ordinating deployment restarts.',
           '',
           'The new key is returned **once** in this response — store it securely.',
-          'The previous key value is also returned once so the caller knows what to replace.',
+          'The response also carries `previousKey`: the replaced key\'s prefix (its first 8 characters),',
+          'so the caller knows which key to replace. The server keeps only a hash of each key.',
           '',
           'A subscription.changed notification is dispatched to any subscribers on this key.',
         ].join('\n'),

@@ -2,7 +2,7 @@ import { scan } from '@nxtg/faultline/cli/scan.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 import { PROVIDER_BUDGET_EXHAUSTED, providerBudgetRefuses } from '../plugins/provider-spend-cap.js';
 import type { ManagedScanCostEvent } from '../store/costs.js';
-import { getKeyStore } from '../store/keys.js';
+import { getKeyStore, KeyFieldError } from '../store/keys.js';
 import { getUsageMeter } from '../store/usage.js';
 import { getAuditLogger } from '../store/audit.js';
 import { getScanStore } from '../store/scans.js';
@@ -126,7 +126,13 @@ export const resolvers = {
       const permissions = (args.permissions ?? ['scan']) as import('../store/keys.js').Permission[];
       if (!mayIssueKey(permissions)) throw new GraphQLError(CUSTOMER_KEYS_CLOSED.message, { extensions: { code: 'FORBIDDEN' } });
       // A non-admin key is metered at the default cap, like every issued key.
-      const key = getKeyStore().create(args.name, permissions, undefined, issuedKeyBilling(permissions));
+      let key;
+      try {
+        key = getKeyStore().create(args.name, permissions, undefined, issuedKeyBilling(permissions));
+      } catch (e) {
+        if (e instanceof KeyFieldError) throw new GraphQLError('A permission is not one of scan, report, upload, admin, pro.', { extensions: { code: 'BAD_USER_INPUT' } });
+        throw e;
+      }
       return { id: key.id, name: key.name, permissions: key.permissions, createdAt: key.createdAt };
     },
 
