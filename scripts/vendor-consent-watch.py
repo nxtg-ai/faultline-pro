@@ -7,7 +7,9 @@ docs/research/2026-10-05-search-vendor-consent-drafts.md. EMMA-SOUL's ruling
 (al:f24b3825e397565d) asks for a watch that catches ANY reply, a decline as much as a
 yes. So this matches every message from a watched domain, not only a positive one.
 
-engage@nxtg.ai delivers into the Zoho INBOX this reads (probed 2026-10-05).
+engage@nxtg.ai delivers into the Zoho INBOX this reads (probed 2026-10-05). Zoho files some mail
+into other folders: Google Cloud billing alerts land in "Notification" (both positive controls,
+2026-10-13 and 2026-11-01, sat there unseen), so every folder in WATCH_FOLDERS is read.
 Read-only on the mailbox (readonly select, BODY.PEEK, headers only). The credentials
 come from ~/.secrets/geo-stripe.env and are never printed. Each message alerts once:
 seen UIDs are kept in the state file.
@@ -40,6 +42,10 @@ WATCH_TO = ("faultline.pro@nxtg.ai",)
 # faultline.pro@ through a Monitoring email channel. Prepay fails every scan at $0, so such a mail is
 # not a vendor reply: it gets its own label, a P0 handoff and the top-up path.
 BILLING_SENDER_DOMAINS = ("google.com",)
+# Mailbox folders read, in order. IMAP UIDs are per folder, so a message outside INBOX is keyed
+# "<folder>-<uid>"; INBOX keeps the bare UID so the existing state file stays valid. A folder the
+# account does not have is skipped.
+WATCH_FOLDERS = ("INBOX", "Notification", "Spam", "Junk")
 TOPUP_PATH = "docs/runbooks/fp-operating-runbook.md section Google prepay balance"
 SINCE = "01-Oct-2026"  # covers the 2026-10-02 licensing mails as well as the 2026-10-05 consent requests
 CREDS = os.path.expanduser("~/.secrets/geo-stripe.env")
@@ -87,7 +93,7 @@ def handoff_body(f):
         return {
             "handoff_id": f"hf-fp-google-billing-{f['uid']}",
             "content": (f"From fp vendor-consent-watch: Google billing alert to faultline.pro@, sender domain "
-                        f"{f['sender_domain']}, Zoho INBOX uid {f['uid']}. Prepay fails every Gemini scan at $0. fp reads "
+                        f"{f['sender_domain']}, Zoho {f.get('folder', 'INBOX')} uid {f['uid']}. Prepay fails every Gemini scan at $0. fp reads "
                         f"the AI Studio billing balance, follows {TOPUP_PATH}, posts the balance and what it did, then "
                         f"acks this handoff. GoPMO 1.18.11.1.19."),
             "handoff_status": "OPEN", "from_machine": "NXTG-AI", "to_machine": "NXTG-AI",
@@ -98,7 +104,7 @@ def handoff_body(f):
     return {
         "handoff_id": f"hf-fp-vendor-reply-{f['uid']}",
         "content": (f"From fp vendor-consent-watch: vendor reply in a Faultline Pro thread, sender domain "
-                    f"{f['sender_domain']} (watch match {f['domain']}), Zoho INBOX uid {f['uid']}. fp reads it in full, "
+                    f"{f['sender_domain']} (watch match {f['domain']}), Zoho {f.get('folder', 'INBOX')} uid {f['uid']}. fp reads it in full, "
                     f"answers in-thread from faultline.pro@nxtg.ai, posts a one-line receipt, then acks this "
                     f"handoff."),
         "handoff_status": "OPEN", "from_machine": "NXTG-AI", "to_machine": "NXTG-AI",
@@ -112,13 +118,13 @@ def alert_lines(f):
     """(pane text, /alignment and Telegram text). No From or Subject text: these reach an agent pane."""
     hid = handoff_body(f)["handoff_id"]
     if is_billing(f):
-        line = (f"GOOGLE BILLING ALERT to faultline.pro@: sender domain {f['sender_domain']}, Zoho INBOX uid "
-                f"{f['uid']}. Dx3 handoff {hid}. GoPMO 1.18.11.1.19.")
+        line = (f"GOOGLE BILLING ALERT to faultline.pro@: sender domain {f['sender_domain']}, Zoho "
+                f"{f.get('folder', 'INBOX')} uid {f['uid']}. Dx3 handoff {hid}. GoPMO 1.18.11.1.19.")
         return (f"[vendor-consent-watch] {line} Read the AI Studio billing balance now and follow {TOPUP_PATH}; "
                 f"prepay fails every scan at $0.", line + " fp reads the prepay balance and follows the top-up path.")
     line = (f"VENDOR REPLY ({f['domain']} match) in a Faultline Pro thread: sender domain {f['sender_domain']}, "
-            f"Zoho INBOX uid {f['uid']}. Dx3 handoff {hid}.")
-    return (f"[vendor-consent-watch] {line} Read it in the Zoho inbox, answer in-thread from faultline.pro@, "
+            f"Zoho {f.get('folder', 'INBOX')} uid {f['uid']}. Dx3 handoff {hid}.")
+    return (f"[vendor-consent-watch] {line} Read it in that Zoho folder, answer in-thread from faultline.pro@, "
             f"post a receipt, ack the handoff.",
             line + " fp answers in-thread from faultline.pro@.")
 
@@ -178,6 +184,38 @@ def domain_match_ok(watch, sd):
     return sd == watch or sd.endswith("." + watch)
 
 
+def message_key(folder, uid):
+    """The seen-state key and alert id for a message: the bare UID in INBOX, "<folder>-<uid>" elsewhere."""
+    return uid if folder == "INBOX" else f"{folder}-{uid}"
+
+
+def scan_folder(m, folder, searches, seen):
+    """New matches in one folder. Returns [] when the folder cannot be selected."""
+    try:
+        typ, _ = m.select(f'"{folder}"', readonly=True)
+    except imaplib.IMAP4.error:
+        return []
+    if typ != "OK":
+        return []
+    found = []
+    for domain, criteria in searches:
+        _, data = m.uid("SEARCH", None, criteria)
+        for uid in data[0].split():
+            key = message_key(folder, uid.decode())
+            if key in seen:
+                continue
+            _, dd = m.uid("FETCH", uid, "(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])")
+            h = email.message_from_bytes(dd[0][1])
+            seen.add(key)
+            # Zoho's IMAP FROM search also matches the display name ("Donald Brave" hit brave.com,
+            # uid 1040), so a domain match must be the sender's actual domain.
+            if not domain_match_ok(domain, sender_domain(text(h["From"]))):
+                continue
+            found.append({"uid": key, "folder": folder, "domain": domain, "from": text(h["From"]),
+                          "subject": text(h["Subject"])[:140], "date": h["Date"]})
+    return found
+
+
 def main():
     os.makedirs(STATE_DIR, exist_ok=True)
     seen = set()
@@ -205,25 +243,11 @@ def main():
             mid = email.message_from_bytes(dd[0][1])["Message-ID"]
             if mid:
                 ours.add(mid.strip())
-    m.select("INBOX", readonly=True)
     for mid in ours:
         searches.append(("thread", f'(SINCE {SINCE} HEADER References "{mid}")'))
         searches.append(("thread", f'(SINCE {SINCE} HEADER In-Reply-To "{mid}")'))
-    for domain, criteria in searches:
-        _, data = m.uid("SEARCH", None, criteria)
-        for uid in data[0].split():
-            u = uid.decode()
-            if u in seen:
-                continue
-            _, dd = m.uid("FETCH", uid, "(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])")
-            h = email.message_from_bytes(dd[0][1])
-            seen.add(u)
-            # Zoho's IMAP FROM search also matches the display name ("Donald Brave" hit brave.com,
-            # uid 1040), so a domain match must be the sender's actual domain.
-            if not domain_match_ok(domain, sender_domain(text(h["From"]))):
-                continue
-            found.append({"uid": u, "domain": domain, "from": text(h["From"]),
-                          "subject": text(h["Subject"])[:140], "date": h["Date"]})
+    for folder in WATCH_FOLDERS:
+        found += scan_folder(m, folder, searches, seen)
     m.logout()
     for f in found:
         f["sender_domain"] = sender_domain(f["from"])
