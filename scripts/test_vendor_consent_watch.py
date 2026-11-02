@@ -130,3 +130,15 @@ def test_inbox_keeps_bare_uid_and_seen_keys_are_per_folder():
 def test_missing_folder_is_skipped():
     mb = FakeMailbox({"INBOX": {}})
     assert vcw.scan_folder(mb, "Junk", SEARCHES, set()) == []
+
+
+def test_every_alert_text_names_the_folder_the_mail_is_in():
+    # A page that says "INBOX" for a Notification message sends the reader to the wrong folder.
+    for sender, domain in ((GOOGLE, "faultline.pro@nxtg.ai"), ("Someone <someone@exa.ai>", "exa.ai")):
+        f = {"uid": "Notification-7", "folder": "Notification", "domain": domain, "from": sender}
+        f["sender_domain"] = vcw.sender_domain(sender)
+        pane, post = vcw.alert_lines(f)
+        content = vcw.handoff_body(f)["content"]
+        for text in (pane, post, content):
+            assert "Zoho INBOX" not in text and "Zoho inbox" not in text
+        assert "Zoho Notification uid Notification-7" in content

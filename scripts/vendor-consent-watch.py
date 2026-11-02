@@ -93,7 +93,7 @@ def handoff_body(f):
         return {
             "handoff_id": f"hf-fp-google-billing-{f['uid']}",
             "content": (f"From fp vendor-consent-watch: Google billing alert to faultline.pro@, sender domain "
-                        f"{f['sender_domain']}, Zoho INBOX uid {f['uid']}. Prepay fails every Gemini scan at $0. fp reads "
+                        f"{f['sender_domain']}, Zoho {f.get('folder', 'INBOX')} uid {f['uid']}. Prepay fails every Gemini scan at $0. fp reads "
                         f"the AI Studio billing balance, follows {TOPUP_PATH}, posts the balance and what it did, then "
                         f"acks this handoff. GoPMO 1.18.11.1.19."),
             "handoff_status": "OPEN", "from_machine": "NXTG-AI", "to_machine": "NXTG-AI",
@@ -104,7 +104,7 @@ def handoff_body(f):
     return {
         "handoff_id": f"hf-fp-vendor-reply-{f['uid']}",
         "content": (f"From fp vendor-consent-watch: vendor reply in a Faultline Pro thread, sender domain "
-                    f"{f['sender_domain']} (watch match {f['domain']}), Zoho INBOX uid {f['uid']}. fp reads it in full, "
+                    f"{f['sender_domain']} (watch match {f['domain']}), Zoho {f.get('folder', 'INBOX')} uid {f['uid']}. fp reads it in full, "
                     f"answers in-thread from faultline.pro@nxtg.ai, posts a one-line receipt, then acks this "
                     f"handoff."),
         "handoff_status": "OPEN", "from_machine": "NXTG-AI", "to_machine": "NXTG-AI",
@@ -124,7 +124,7 @@ def alert_lines(f):
                 f"prepay fails every scan at $0.", line + " fp reads the prepay balance and follows the top-up path.")
     line = (f"VENDOR REPLY ({f['domain']} match) in a Faultline Pro thread: sender domain {f['sender_domain']}, "
             f"Zoho {f.get('folder', 'INBOX')} uid {f['uid']}. Dx3 handoff {hid}.")
-    return (f"[vendor-consent-watch] {line} Read it in the Zoho inbox, answer in-thread from faultline.pro@, "
+    return (f"[vendor-consent-watch] {line} Read it in that Zoho folder, answer in-thread from faultline.pro@, "
             f"post a receipt, ack the handoff.",
             line + " fp answers in-thread from faultline.pro@.")
 
