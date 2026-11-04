@@ -170,7 +170,7 @@ This package also ships the `faultline-mcp` bin: an MCP stdio server with one to
 FAULTLINE_API_KEY=your-key npx -y -p @nxtg/faultline faultline-mcp
 ```
 
-It lists one tool, `verify_claims`, with the same name, input schema and output as the hosted `/mcp`. A client that can speak Streamable HTTP can skip the install and call `https://faultline-api.fly.dev/mcp` with the `x-api-key` header instead.
+It lists one tool, `verify_claims`, with the same name, input schema and output as the hosted `/mcp`. Without a key the tool refuses every call with "no key: nothing was verified" (an MCP tool error, not a verdict). For a demo that checks nothing, name `provider: "mock"` or set `FAULTLINE_PROVIDER=mock`; the result then says `SYNTHETIC`. A client that can speak Streamable HTTP can skip the install and call `https://faultline-api.fly.dev/mcp` with the `x-api-key` header instead.
 
 ```bash
 # Claude Code

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { verifyClaims, autoDetectProvider, isGrounded, AUDIT_OFF_REASON } from '../src/verify.js';
+import { verifyClaims, autoDetectProvider, isGrounded, AUDIT_OFF_REASON, NO_KEY_MESSAGE, hasNoKey } from '../src/verify.js';
 import type { ScanResult } from '@nxtg/faultline/cli/scan.js';
 import { ExtractionError } from '@nxtg/faultline/providers/extraction-error.js';
 
@@ -30,16 +30,28 @@ function scanResult(over: Partial<ScanResult> = {}): ScanResult {
 
 let auditRoot: string;
 
+// These tests inject a scan and often name no provider. With no key and no
+// provider a local call is refused (see 'no key' below), so they opt into the
+// mock provider explicitly, the way a user asking for a demo would.
+const KEY_VARS = ['FAULTLINE_PROVIDER', 'GEMINI_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'PERPLEXITY_API_KEY'];
+const savedKeys: Record<string, string | undefined> = {};
+
 beforeEach(() => {
   auditRoot = mkdtempSync(join(tmpdir(), 'fl-mcp-'));
   process.env.FAULTLINE_HISTORY_DIR = auditRoot;
   delete process.env.FAULTLINE_MCP_NO_HISTORY;
+  for (const k of KEY_VARS) savedKeys[k] = process.env[k];
+  process.env.FAULTLINE_PROVIDER = 'mock';
 });
 
 afterEach(() => {
   rmSync(auditRoot, { recursive: true, force: true });
   delete process.env.FAULTLINE_HISTORY_DIR;
   delete process.env.FAULTLINE_MCP_NO_HISTORY;
+  for (const k of KEY_VARS) {
+    if (savedKeys[k] === undefined) delete process.env[k];
+    else process.env[k] = savedKeys[k];
+  }
 });
 
 describe('verifyClaims — input handling', () => {
@@ -436,5 +448,57 @@ describe('hosted results: billing and audit', () => {
     const out = await verifyClaims({ text: 'check this' }, { fetchImpl: hostedFetch(scanResult()), transport: hosted });
     expect(out.audit_ref).toMatch(/^fl_/);
     expect(existsSync(out.audit_path!)).toBe(true);
+  });
+});
+
+describe('verifyClaims — no key', () => {
+  function clearKeys(): void {
+    for (const k of KEY_VARS) delete process.env[k];
+  }
+
+  it('refuses a local call with no key and no provider, and never scans', async () => {
+    clearKeys();
+    let scanned = false;
+    const call = verifyClaims(
+      { text: 'The Eiffel Tower in Paris was completed in 1889.' },
+      { scanFn: async () => { scanned = true; return scanResult(); }, transport: { mode: 'local' } },
+    );
+    await expect(call).rejects.toThrow(NO_KEY_MESSAGE);
+    expect(scanned).toBe(false);
+  });
+
+  it('names FAULTLINE_API_KEY first, then a provider key, and the mock opt-in', () => {
+    expect(NO_KEY_MESSAGE).toMatch(/^no key: nothing was verified\./);
+    const hosted = NO_KEY_MESSAGE.indexOf('FAULTLINE_API_KEY');
+    const local = NO_KEY_MESSAGE.indexOf('GEMINI_API_KEY');
+    expect(hosted).toBeGreaterThanOrEqual(0);
+    expect(local).toBeGreaterThan(hosted);
+    expect(NO_KEY_MESSAGE).toMatch(/SYNTHETIC/);
+  });
+
+  it('hasNoKey is true only when no provider key and no FAULTLINE_PROVIDER are set', () => {
+    expect(hasNoKey({})).toBe(true);
+    expect(hasNoKey({ GEMINI_API_KEY: 'g' })).toBe(false);
+    expect(hasNoKey({ OPENAI_API_KEY: 'o' })).toBe(false);
+    expect(hasNoKey({ FAULTLINE_PROVIDER: 'mock' })).toBe(false);
+  });
+
+  it('runs mock when the caller names it, and says SYNTHETIC in the result itself', async () => {
+    clearKeys();
+    const out = await verifyClaims(
+      { text: 'x', provider: 'mock' },
+      { scanFn: async () => scanResult(), transport: { mode: 'local' } },
+    );
+    expect(out.claims.length).toBeGreaterThan(0);
+    expect(out.summary).toMatch(/^SYNTHETIC: the "mock" provider checked nothing/);
+    expect(out.summary).not.toMatch(/model knowledge/);
+  });
+
+  it('a real provider never gets the SYNTHETIC label', async () => {
+    const out = await verifyClaims(
+      { text: 'x', provider: 'gemini' },
+      { scanFn: async () => scanResult({ provider: 'Google Gemini' }), transport: { mode: 'local' } },
+    );
+    expect(out.summary).not.toMatch(/SYNTHETIC/);
   });
 });

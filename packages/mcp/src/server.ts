@@ -24,7 +24,7 @@ import {
   type VerifyDeps,
 } from './verify.js';
 
-export const VERSION = '0.1.0';
+export const VERSION = '0.12.0';
 
 const VERIFY_CLAIMS_DESCRIPTION = [
   'Verify factual claims in a block of text against live sources.',
@@ -89,7 +89,9 @@ export function buildServer(deps: VerifyDeps = {}): McpServer {
           .enum(['gemini', 'openai', 'claude', 'perplexity', 'mock'])
           .optional()
           .describe(
-            'Verification provider. Defaults to whichever provider key is set in the environment; "mock" when none is.',
+            'Verification provider. Defaults to whichever provider key is set in the environment. ' +
+              'With no key set the call is refused and nothing is verified, unless "mock" is named; ' +
+              '"mock" returns SYNTHETIC results and checks nothing.',
           ),
       },
     },
@@ -134,10 +136,17 @@ export function startupNotice(env: NodeJS.ProcessEnv = process.env): string {
 
   const provider = autoDetectProvider(env);
   if (provider === 'mock') {
+    if (env.FAULTLINE_PROVIDER) {
+      return (
+        'faultline-mcp: FAULTLINE_PROVIDER=mock — running the "mock" provider, which returns ' +
+        'SYNTHETIC results and verifies nothing.\n'
+      );
+    }
     return (
-      'faultline-mcp: no provider key and no FAULTLINE_API_KEY found — running the "mock" ' +
-      'provider, which returns SYNTHETIC results and verifies nothing. Set GEMINI_API_KEY ' +
-      '(free: https://aistudio.google.com/apikey) for real verification.\n'
+      'faultline-mcp: no FAULTLINE_API_KEY and no provider key found, so verify_claims refuses ' +
+      'every call and verifies nothing. Set FAULTLINE_API_KEY to a Faultline API key ' +
+      '(https://faultline.nxtg.ai/account/api-key) to verify on the hosted API, or GEMINI_API_KEY ' +
+      '(free: https://aistudio.google.com/apikey) to verify locally.\n'
     );
   }
   if (!isGrounded(provider)) {

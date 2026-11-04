@@ -184,15 +184,42 @@ describe('faultline-mcp bin — stdio handshake and tool contract', () => {
     }
   }, 30_000);
 
-  it('says on stderr that it verifies nothing when it has neither key', async () => {
+  it('with neither key, a call is refused as a tool error and nothing is verified', async () => {
     const { client, stderr } = await connect(BIN, childEnv());
     try {
-      await client.listTools();
-      expect(stderr()).toMatch(/SYNTHETIC/);
+      const res = (await client.callTool({
+        name: 'verify_claims',
+        arguments: { text: 'The Eiffel Tower in Paris was completed in 1889.' },
+      })) as { isError?: boolean; structuredContent?: unknown; content: Array<{ type: string; text: string }> };
+      expect(res.isError).toBe(true);
+      expect(res.structuredContent).toBeUndefined();
+      const text = res.content.map((c) => c.text).join('\n');
+      expect(text).toMatch(/no key: nothing was verified/);
+      expect(text).toMatch(/TOOL FAILURE, not a verdict/);
+      expect(text.indexOf('FAULTLINE_API_KEY')).toBeGreaterThanOrEqual(0);
+      expect(text.indexOf('FAULTLINE_API_KEY')).toBeLessThan(text.indexOf('GEMINI_API_KEY'));
+      expect(stderr()).toMatch(/no FAULTLINE_API_KEY and no provider key found/);
+      expect(stderr()).toMatch(/verifies nothing/);
     } finally {
       await client.close();
     }
   }, 30_000);
+
+  it('runs mock only on opt-in, and says SYNTHETIC in the tool result itself', async () => {
+    const { client, stderr } = await connect(BIN, childEnv({ FAULTLINE_PROVIDER: 'mock' }));
+    try {
+      const res = (await client.callTool({
+        name: 'verify_claims',
+        arguments: { text: 'The Eiffel Tower in Paris was completed in 1889.' },
+      })) as { isError?: boolean; structuredContent?: { summary?: string; claims_total?: number } };
+      expect(res.isError).toBeFalsy();
+      expect(res.structuredContent?.claims_total).toBeGreaterThan(0);
+      expect(res.structuredContent?.summary).toMatch(/^SYNTHETIC: the "mock" provider checked nothing/);
+      expect(stderr()).toMatch(/FAULTLINE_PROVIDER=mock/);
+    } finally {
+      await client.close();
+    }
+  }, 60_000);
 });
 
 describe('faultline-mcp bin — called with a key runs on the hosted API', () => {
