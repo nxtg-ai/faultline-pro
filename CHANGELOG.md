@@ -7,9 +7,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [v0.12.1] — 2026-11-04
+
+> `@nxtg/faultline` 0.12.1: the `faultline-mcp` bin (`npx -y -p @nxtg/faultline faultline-mcp`) refuses to answer without a key instead of returning mock verdicts. The CLI, the API and `packages/mcp` all move to 0.12.1.
+
 ### Changed
 
-- **The API reports 0.12.0.** `packages/api` and `GET /health` move from 0.11.1 to 0.12.0 to match `@nxtg/faultline` 0.12.0, so the four-way version gate (`npm run version-parity`: repo CLI, repo API, npm latest, deployed API) agrees again. No API behaviour changes; the API changes in v0.12.0 below were already live.
+- **`verify_claims` with no key now refuses instead of answering with mock verdicts.** With neither `FAULTLINE_API_KEY` nor a provider key set, and no provider named, the MCP tool returns `isError: true` with "no key: nothing was verified", naming `FAULTLINE_API_KEY` first; it used to run the `mock` provider and return made-up verdicts as a normal result, with the warning only on stderr. `mock` now runs only when asked for by name (`provider: "mock"` or `FAULTLINE_PROVIDER=mock`), and its result summary starts with `SYNTHETIC`. The startup message on stderr says the same. Same change in `packages/mcp`, whose server now reports its own package version, read from its manifest (it was hard-coded to 0.1.0, which the hosted `POST /mcp` showed in `serverInfo`). Found by product-oracle's verdict on GoPMO 1.18.11.7.35.
+- **The API reports the release version.** `packages/api` and `GET /health` moved from 0.11.1 to 0.12.0 after the v0.12.0 publish (#107) and move to 0.12.1 with this release, matching `@nxtg/faultline`, so the four-way version gate (`npm run version-parity`: repo CLI, repo API, npm latest, deployed API) agrees. No API behaviour changes; the API changes in v0.12.0 below were already live.
 
 ## [v0.12.0] — 2026-11-04
 

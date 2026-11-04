@@ -37,6 +37,23 @@ export function autoDetectProvider(env: NodeJS.ProcessEnv = process.env): string
   return 'mock';
 }
 
+/**
+ * What a local call gets when neither FAULTLINE_API_KEY nor a provider key is
+ * set and the caller names no provider. The fallback would be 'mock', which
+ * checks nothing, so the call is refused rather than answered with made-up
+ * verdicts. The server turns it into an isError tool result.
+ */
+export const NO_KEY_MESSAGE =
+  'no key: nothing was verified. Set FAULTLINE_API_KEY to a Faultline API key ' +
+  '(https://faultline.nxtg.ai/account/api-key) to verify on the hosted API, or a provider key ' +
+  'such as GEMINI_API_KEY to verify locally. For a SYNTHETIC demo that checks nothing, name ' +
+  'provider "mock" or set FAULTLINE_PROVIDER=mock.';
+
+/** True when no key is set and no provider is configured, so auto-detection would pick 'mock'. */
+export function hasNoKey(env: NodeJS.ProcessEnv = process.env): boolean {
+  return !env.FAULTLINE_PROVIDER && autoDetectProvider(env) === 'mock';
+}
+
 export interface VerifyClaimsInput {
   text: string;
   max_claims?: number;
@@ -96,7 +113,7 @@ function byImportanceDesc(a: Claim, b: Claim): number {
   return (b.importance ?? 0) - (a.importance ?? 0);
 }
 
-function buildSummary(o: Omit<VerifyClaimsOutput, 'summary'>): string {
+function buildSummary(o: Omit<VerifyClaimsOutput, 'summary'>, synthetic = false): string {
   const counts = o.claims.reduce<Record<string, number>>((acc, c) => {
     acc[c.verdict] = (acc[c.verdict] ?? 0) + 1;
     return acc;
@@ -110,7 +127,11 @@ function buildSummary(o: Omit<VerifyClaimsOutput, 'summary'>): string {
       ` · DEGRADED: ${o.unchecked_count} claim(s) could not be checked (provider error)` +
       ' — this result is not a clean bill of health.';
   }
-  if (!o.grounded) {
+  if (synthetic) {
+    out =
+      'SYNTHETIC: the "mock" provider checked nothing, so these verdicts are made up for testing. ' +
+      out;
+  } else if (!o.grounded) {
     out +=
       ` · NOT GROUNDED: provider "${o.provider}" judged from model knowledge without retrieving` +
       ' sources, so these verdicts carry no evidence. Set GEMINI_API_KEY for source-backed verification.';
@@ -173,6 +194,10 @@ export async function verifyClaims(
   const provider =
     transport.mode === 'hosted' ? input.provider : input.provider || autoDetectProvider();
 
+  if (transport.mode === 'local' && !input.provider && hasNoKey()) {
+    throw new Error(NO_KEY_MESSAGE);
+  }
+
   const result: ScanResult = await runScan(text, provider, transport, {
     scanFn: deps.scanFn,
     fetchImpl: deps.fetchImpl,
@@ -229,7 +254,7 @@ export async function verifyClaims(
     ...(audit.skipped ? { audit_skipped: audit.skipped } : {}),
   };
 
-  return { ...partial, summary: buildSummary(partial) };
+  return { ...partial, summary: buildSummary(partial, provider === 'mock') };
 }
 
 /** Re-exported so the guard subcommand and tests share one definition. */
