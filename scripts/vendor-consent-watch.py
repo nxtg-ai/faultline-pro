@@ -42,6 +42,12 @@ WATCH_TO = ("faultline.pro@nxtg.ai",)
 # faultline.pro@ through a Monitoring email channel. Prepay fails every scan at $0, so such a mail is
 # not a vendor reply: it gets its own label, a P0 handoff and the top-up path.
 BILLING_SENDER_DOMAINS = ("google.com",)
+# Domains we write to whose replies are matched ONLY by thread headers, never by sender domain
+# (GoPMO 1.18.11.7.22 item 5(b), a letter to Google). Every google.com sender is not watched: the
+# mailbox also gets Google account and security notices. Only our own letters count, the Sent mail
+# from a program address below, so the founder's own mail to google.com is never followed.
+THREAD_ONLY_DOMAINS = ("google.com",)
+PROGRAM_SENDERS = ("engage@nxtg.ai", "faultline.pro@nxtg.ai")
 # Mailbox folders read, in order. IMAP UIDs are per folder, so a message outside INBOX is keyed
 # "<folder>-<uid>"; INBOX keeps the bare UID so the existing state file stays valid. A folder the
 # account does not have is skipped.
@@ -84,6 +90,34 @@ def is_billing(f):
     """A Google billing or Monitoring alert, judged by sender domain only (never by display name or subject)."""
     d = f.get("sender_domain", "unknown")
     return any(d == b or d.endswith("." + b) for b in BILLING_SENDER_DOMAINS)
+
+
+def classify(f):
+    """A reply in a thread we started is a vendor reply, even from google.com; only other google.com
+    mail is a billing alert."""
+    if f.get("domain") == "thread":
+        return "vendor-reply"
+    return "google-billing" if is_billing(f) else "vendor-reply"
+
+
+def sent_searches():
+    """Sent-folder searches that find the letters whose replies we follow by thread headers."""
+    out = [f'(SINCE {SINCE} TO "{d}")' for d in WATCH_DOMAINS]
+    senders = f'OR FROM "{PROGRAM_SENDERS[0]}" FROM "{PROGRAM_SENDERS[1]}"'
+    out += [f'(SINCE {SINCE} TO "{d}" {senders})' for d in THREAD_ONLY_DOMAINS]
+    return out
+
+
+def build_searches(ours):
+    """All inbox searches, thread replies first: a message is labelled by the first search that
+    finds it, so a reply in our thread is never relabelled by a domain or To search."""
+    searches = []
+    for mid in sorted(ours):
+        searches.append(("thread", f'(SINCE {SINCE} HEADER References "{mid}")'))
+        searches.append(("thread", f'(SINCE {SINCE} HEADER In-Reply-To "{mid}")'))
+    searches += [(d, f'(SINCE {SINCE} FROM "{d}")') for d in WATCH_DOMAINS]
+    searches += [(t, f'(SINCE {SINCE} TO "{t}")') for t in WATCH_TO]
+    return searches
 
 
 def handoff_body(f):
@@ -230,29 +264,27 @@ def main():
         print(f"vendor-consent-watch: mailbox unreachable: {type(e).__name__}")
         return 1
     found = []
-    searches = [(d, f'(SINCE {SINCE} FROM "{d}")') for d in WATCH_DOMAINS]
-    searches += [(t, f'(SINCE {SINCE} TO "{t}")') for t in WATCH_TO]
     # Replies to anything we sent to a watched domain, matched by threading headers, so a reply from
-    # an address on another domain (a reseller, a personal address) is still caught.
+    # an address on another domain (a reseller, a personal address) is still caught. Thread searches
+    # run first, so a reply that also matches a domain or To search is labelled "thread".
+    searches = []
     ours = set()
     m.select("Sent", readonly=True)
-    for d in WATCH_DOMAINS:
-        _, data = m.uid("SEARCH", None, f'(SINCE {SINCE} TO "{d}")')
+    for crit in sent_searches():
+        _, data = m.uid("SEARCH", None, crit)
         for uid in data[0].split():
             _, dd = m.uid("FETCH", uid, "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")
             mid = email.message_from_bytes(dd[0][1])["Message-ID"]
             if mid:
                 ours.add(mid.strip())
-    for mid in ours:
-        searches.append(("thread", f'(SINCE {SINCE} HEADER References "{mid}")'))
-        searches.append(("thread", f'(SINCE {SINCE} HEADER In-Reply-To "{mid}")'))
+    searches = build_searches(ours)
     for folder in WATCH_FOLDERS:
         found += scan_folder(m, folder, searches, seen)
     m.logout()
     for f in found:
         f["sender_domain"] = sender_domain(f["from"])
         f["handoff_record_id"] = mint_handoff(f)
-        f["kind"] = "google-billing" if is_billing(f) else "vendor-reply"
+        f["kind"] = classify(f)
         pane_text, post_text = alert_lines(f)
         f["pane_woken"] = wake_fp(pane_text)
         with open(LEDGER, "a") as fh:

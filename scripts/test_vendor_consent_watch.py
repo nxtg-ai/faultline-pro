@@ -87,11 +87,15 @@ class FakeMailbox:
         box = self.folders[self.current]
         if cmd == "SEARCH":
             crit = args[1]
+            if "HEADER" in crit:
+                value = crit.rsplit('"', 2)[1]
+                hits = [u for u, msg in box.items() if len(msg) > 2 and msg[2] == value]
+                return ("OK", [" ".join(hits).encode()])
             field, value = ("FROM", crit.split('FROM "')[1].split('"')[0]) if 'FROM "' in crit else \
                 ("TO", crit.split('TO "')[1].split('"')[0])
-            hits = [u for u, (frm, to) in box.items() if value in (frm if field == "FROM" else to)]
+            hits = [u for u, msg in box.items() if value in (msg[0] if field == "FROM" else msg[1])]
             return ("OK", [" ".join(hits).encode()])
-        frm, to = box[args[0].decode()]
+        frm, to = box[args[0].decode()][:2]
         return ("OK", [(b"", f"From: {frm}\r\nSubject: s\r\nDate: d\r\n\r\n".encode())])
 
 
@@ -142,3 +146,46 @@ def test_every_alert_text_names_the_folder_the_mail_is_in():
         for text in (pane, post, content):
             assert "Zoho INBOX" not in text and "Zoho inbox" not in text
         assert "Zoho Notification uid Notification-7" in content
+
+
+# GoPMO 1.18.11.7.22 item 5(b): a letter to Google goes from engage@; its reply must reach fp as a
+# vendor reply, while Google billing alerts keep their P0 path and other google.com mail is ignored.
+GOOGLE_HUMAN = "Jane Doe <jane.doe@google.com>"
+OUR_MID = "<letter-1@nxtg.ai>"
+
+
+def test_google_is_watched_only_through_our_own_threads():
+    assert "google.com" not in vcw.WATCH_DOMAINS
+    crit = [c for c in vcw.sent_searches() if 'TO "google.com"' in c]
+    assert len(crit) == 1
+    assert 'FROM "engage@nxtg.ai"' in crit[0] and 'FROM "faultline.pro@nxtg.ai"' in crit[0]
+
+
+def test_reply_in_our_thread_is_a_vendor_reply_even_from_google():
+    assert vcw.classify({"domain": "thread", "sender_domain": "google.com"}) == "vendor-reply"
+    assert vcw.classify({"domain": "faultline.pro@nxtg.ai", "sender_domain": "google.com"}) == "google-billing"
+    assert vcw.classify({"domain": "exa.ai", "sender_domain": "exa.ai"}) == "vendor-reply"
+
+
+def test_thread_searches_come_first_so_a_google_reply_to_faultline_pro_is_not_billing():
+    searches = vcw.build_searches({OUR_MID})
+    assert [d for d, _ in searches[:2]] == ["thread", "thread"]
+    # The reply is addressed to faultline.pro@ too, so the To search would also find it.
+    mb = FakeMailbox({"INBOX": {"501": (GOOGLE_HUMAN, "faultline.pro@nxtg.ai", OUR_MID)}})
+    found = vcw.scan_folder(mb, "INBOX", searches, set())
+    assert len(found) == 1
+    assert found[0]["domain"] == "thread"
+    assert vcw.classify({**found[0], "sender_domain": vcw.sender_domain(found[0]["from"])}) == "vendor-reply"
+
+
+def test_billing_alert_outside_any_thread_keeps_its_billing_path():
+    mb = FakeMailbox({"INBOX": {"502": (GOOGLE, "faultline.pro@nxtg.ai")}})
+    found = vcw.scan_folder(mb, "INBOX", vcw.build_searches({OUR_MID}), set())
+    assert len(found) == 1 and found[0]["domain"] != "thread"
+    assert vcw.classify({**found[0], "sender_domain": vcw.sender_domain(found[0]["from"])}) == "google-billing"
+
+
+def test_other_google_mail_to_engage_is_not_picked_up():
+    # A Google account notice to engage@, not in our thread and not to faultline.pro@: not ours to page.
+    mb = FakeMailbox({"INBOX": {"503": ("Google <no-reply@accounts.google.com>", "engage@nxtg.ai", "<x@google.com>")}})
+    assert vcw.scan_folder(mb, "INBOX", vcw.build_searches({OUR_MID}), set()) == []
