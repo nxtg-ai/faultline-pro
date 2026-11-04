@@ -48,6 +48,12 @@ BILLING_SENDER_DOMAINS = ("google.com",)
 # from a program address below, so the founder's own mail to google.com is never followed.
 THREAD_ONLY_DOMAINS = ("google.com",)
 PROGRAM_SENDERS = ("engage@nxtg.ai", "faultline.pro@nxtg.ai")
+# A reply to a web form (emma-soul e81e70a5: the letter to Google goes through Cloud's Contact Sales
+# form) starts a new thread, so thread headers cannot match it. This one narrow rule catches it: mail
+# TO engage@ from a sender at exactly google.com that is not a no-reply address. Google account and
+# security notices come from subdomains or no-reply senders, so they stay out.
+GOOGLE_TO_ENGAGE = "google-to-engage"
+ENGAGE = "engage@nxtg.ai"
 # Mailbox folders read, in order. IMAP UIDs are per folder, so a message outside INBOX is keyed
 # "<folder>-<uid>"; INBOX keeps the bare UID so the existing state file stays valid. A folder the
 # account does not have is skipped.
@@ -95,7 +101,7 @@ def is_billing(f):
 def classify(f):
     """A reply in a thread we started is a vendor reply, even from google.com; only other google.com
     mail is a billing alert."""
-    if f.get("domain") == "thread":
+    if f.get("domain") in ("thread", GOOGLE_TO_ENGAGE):
         return "vendor-reply"
     return "google-billing" if is_billing(f) else "vendor-reply"
 
@@ -117,13 +123,16 @@ def build_searches(ours):
         searches.append(("thread", f'(SINCE {SINCE} HEADER In-Reply-To "{mid}")'))
     searches += [(d, f'(SINCE {SINCE} FROM "{d}")') for d in WATCH_DOMAINS]
     searches += [(t, f'(SINCE {SINCE} TO "{t}")') for t in WATCH_TO]
+    # Last, so a billing alert also addressed to faultline.pro@ is claimed by the To search above first
+    # (scan_folder marks a message seen before it checks it).
+    searches.append((GOOGLE_TO_ENGAGE, f'(SINCE {SINCE} TO "{ENGAGE}" FROM "@google.com")'))
     return searches
 
 
 def handoff_body(f):
     """The typed Dx3 handoff for one message. The id comes from the mailbox UID, so a re-run updates
     the same row."""
-    if is_billing(f):
+    if classify(f) == "google-billing":
         return {
             "handoff_id": f"hf-fp-google-billing-{f['uid']}",
             "content": (f"From fp vendor-consent-watch: Google billing alert to faultline.pro@, sender domain "
@@ -139,7 +148,7 @@ def handoff_body(f):
         "handoff_id": f"hf-fp-vendor-reply-{f['uid']}",
         "content": (f"From fp vendor-consent-watch: vendor reply in a Faultline Pro thread, sender domain "
                     f"{f['sender_domain']} (watch match {f['domain']}), Zoho {f.get('folder', 'INBOX')} uid {f['uid']}. fp reads it in full, "
-                    f"answers in-thread from faultline.pro@nxtg.ai, posts a one-line receipt, then acks this "
+                    f"answers in-thread from the address our mail came from (faultline.pro@ or engage@), posts a one-line receipt, then acks this "
                     f"handoff."),
         "handoff_status": "OPEN", "from_machine": "NXTG-AI", "to_machine": "NXTG-AI",
         "subject": f"[fp] VENDOR REPLY {f['domain']}: sender domain {f['sender_domain']}", "priority": "P1",
@@ -151,16 +160,16 @@ def handoff_body(f):
 def alert_lines(f):
     """(pane text, /alignment and Telegram text). No From or Subject text: these reach an agent pane."""
     hid = handoff_body(f)["handoff_id"]
-    if is_billing(f):
+    if classify(f) == "google-billing":
         line = (f"GOOGLE BILLING ALERT to faultline.pro@: sender domain {f['sender_domain']}, Zoho "
                 f"{f.get('folder', 'INBOX')} uid {f['uid']}. Dx3 handoff {hid}. GoPMO 1.18.11.1.19.")
         return (f"[vendor-consent-watch] {line} Read the AI Studio billing balance now and follow {TOPUP_PATH}; "
                 f"prepay fails every scan at $0.", line + " fp reads the prepay balance and follows the top-up path.")
     line = (f"VENDOR REPLY ({f['domain']} match) in a Faultline Pro thread: sender domain {f['sender_domain']}, "
             f"Zoho {f.get('folder', 'INBOX')} uid {f['uid']}. Dx3 handoff {hid}.")
-    return (f"[vendor-consent-watch] {line} Read it in that Zoho folder, answer in-thread from faultline.pro@, "
+    return (f"[vendor-consent-watch] {line} Read it in that Zoho folder, answer in-thread from the address our mail came from, "
             f"post a receipt, ack the handoff.",
-            line + " fp answers in-thread from faultline.pro@.")
+            line + " fp answers in-thread from the address our mail came from.")
 
 
 def mint_handoff(f):
@@ -210,9 +219,18 @@ def sender_domain(from_header):
     return m.group(1).lower() if m else "unknown"
 
 
-def domain_match_ok(watch, sd):
+def is_no_reply(from_header):
+    """True for an automated sender address: no-reply, noreply, do-not-reply and the like."""
+    m = re.search(r"([A-Za-z0-9._%+-]+)@[A-Za-z0-9.-]+>?\s*$", from_header or "")
+    return bool(m) and re.search(r"no-?reply|do-?not-?reply", m.group(1), re.I) is not None
+
+
+def domain_match_ok(watch, sd, from_header=""):
     """A watched-domain hit counts only when the sender's own domain is that domain or a subdomain.
-    Thread and To matches pass through: a reply in our thread may come from any address."""
+    Thread and To matches pass through: a reply in our thread may come from any address. The
+    google-to-engage rule takes only a person at exactly google.com."""
+    if watch == GOOGLE_TO_ENGAGE:
+        return sd == "google.com" and not is_no_reply(from_header)
     if watch not in WATCH_DOMAINS:
         return True
     return sd == watch or sd.endswith("." + watch)
@@ -243,7 +261,7 @@ def scan_folder(m, folder, searches, seen):
             seen.add(key)
             # Zoho's IMAP FROM search also matches the display name ("Donald Brave" hit brave.com,
             # uid 1040), so a domain match must be the sender's actual domain.
-            if not domain_match_ok(domain, sender_domain(text(h["From"]))):
+            if not domain_match_ok(domain, sender_domain(text(h["From"])), text(h["From"])):
                 continue
             found.append({"uid": key, "folder": folder, "domain": domain, "from": text(h["From"]),
                           "subject": text(h["Subject"])[:140], "date": h["Date"]})
