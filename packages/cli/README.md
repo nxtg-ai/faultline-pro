@@ -10,7 +10,7 @@ Forensic verification of AI-generated claims. Extract atomic facts, verify again
 
 > **Release stage: alpha.** Usable today, with sharp edges. Verdict accuracy has not yet been measured on a labelled test set, and anything may change before 1.0.
 
-Version in this repo: 0.12.0, the first with the `faultline-mcp` bin. npm served 0.11.1 when this was written (`npm view @nxtg/faultline version`, 2026-10-02) until `publish.yml` publishes 0.12.0; check with `npm view @nxtg/faultline version`.
+Version in this repo: 0.12.1. The `faultline-mcp` bin first shipped in 0.12.0; 0.12.1 makes it refuse to answer without a key. Check what npm serves with `npm view @nxtg/faultline version`.
 
 ---
 
@@ -162,7 +162,7 @@ See [`examples/ci-integration.yml`](https://github.com/nxtg-ai/faultline-pro/blo
 
 ## MCP Server (`verify_claims`)
 
-This package also ships the `faultline-mcp` bin: an MCP stdio server with one tool, `verify_claims`, for Claude Code, Cursor and any MCP client. It is the server from `packages/mcp`, with the same tool contract as the hosted MCP endpoint at `POST https://faultline-api.fly.dev/mcp` (Streamable HTTP, `x-api-key` header). On a hosted scan the result also carries `billing`. The bin ships from `@nxtg/faultline@0.12.0`; 0.11.1 and earlier do not have it.
+This package also ships the `faultline-mcp` bin: an MCP stdio server with one tool, `verify_claims`, for Claude Code, Cursor and any MCP client. It is the server from `packages/mcp`, with the same tool contract as the hosted MCP endpoint at `POST https://faultline-api.fly.dev/mcp` (Streamable HTTP, `x-api-key` header). On a hosted scan the result also carries `billing`. The bin ships from `@nxtg/faultline@0.12.0`; the current release, `@nxtg/faultline@0.12.1`, also refuses a call made without a key. 0.11.1 and earlier do not have the bin.
 
 **Run it with a key.** One command, nothing to install first. The MCP client starts the server over stdio and passes the key in its environment:
 

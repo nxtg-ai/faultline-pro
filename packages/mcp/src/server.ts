@@ -13,6 +13,7 @@
  * stream. All diagnostics go to stderr.
  */
 
+import { createRequire } from 'node:module';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -24,7 +25,15 @@ import {
   type VerifyDeps,
 } from './verify.js';
 
-export const VERSION = '0.12.0';
+/** This package's version, read from its manifest so the hosted POST /mcp cannot drift from the release. */
+export const VERSION: string = (() => {
+  try {
+    const require = createRequire(import.meta.url);
+    return (require('../package.json') as { version: string }).version;
+  } catch {
+    return '0.0.0-unknown';
+  }
+})();
 
 const VERIFY_CLAIMS_DESCRIPTION = [
   'Verify factual claims in a block of text against live sources.',
