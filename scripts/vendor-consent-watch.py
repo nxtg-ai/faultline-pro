@@ -42,6 +42,18 @@ WATCH_TO = ("faultline.pro@nxtg.ai",)
 # faultline.pro@ through a Monitoring email channel. Prepay fails every scan at $0, so such a mail is
 # not a vendor reply: it gets its own label, a P0 handoff and the top-up path.
 BILLING_SENDER_DOMAINS = ("google.com",)
+# Domains we write to whose replies are matched ONLY by thread headers, never by sender domain
+# (GoPMO 1.18.11.7.22 item 5(b), a letter to Google). Every google.com sender is not watched: the
+# mailbox also gets Google account and security notices. Only our own letters count, the Sent mail
+# from a program address below, so the founder's own mail to google.com is never followed.
+THREAD_ONLY_DOMAINS = ("google.com",)
+PROGRAM_SENDERS = ("engage@nxtg.ai", "faultline.pro@nxtg.ai")
+# A reply to a web form (emma-soul e81e70a5: the letter to Google goes through Cloud's Contact Sales
+# form) starts a new thread, so thread headers cannot match it. This one narrow rule catches it: mail
+# TO engage@ from a sender at exactly google.com that is not a no-reply address. Google account and
+# security notices come from subdomains or no-reply senders, so they stay out.
+GOOGLE_TO_ENGAGE = "google-to-engage"
+ENGAGE = "engage@nxtg.ai"
 # Mailbox folders read, in order. IMAP UIDs are per folder, so a message outside INBOX is keyed
 # "<folder>-<uid>"; INBOX keeps the bare UID so the existing state file stays valid. A folder the
 # account does not have is skipped.
@@ -81,15 +93,48 @@ def say(msg):
 
 
 def is_billing(f):
-    """A Google billing or Monitoring alert, judged by sender domain only (never by display name or subject)."""
+    """A Google billing or Monitoring alert: an automated (no-reply) sender address at google.com or a
+    subdomain. Judged by the sender address only, never by display name or subject. A person at
+    google.com is not a billing alert, whichever of our addresses they wrote to."""
     d = f.get("sender_domain", "unknown")
-    return any(d == b or d.endswith("." + b) for b in BILLING_SENDER_DOMAINS)
+    return any(d == b or d.endswith("." + b) for b in BILLING_SENDER_DOMAINS) and is_no_reply(f.get("from", ""))
+
+
+def classify(f):
+    """A reply in a thread we started is a vendor reply, even from google.com; only other google.com
+    mail is a billing alert."""
+    if f.get("domain") in ("thread", GOOGLE_TO_ENGAGE):
+        return "vendor-reply"
+    return "google-billing" if is_billing(f) else "vendor-reply"
+
+
+def sent_searches():
+    """Sent-folder searches that find the letters whose replies we follow by thread headers."""
+    out = [f'(SINCE {SINCE} TO "{d}")' for d in WATCH_DOMAINS]
+    senders = f'OR FROM "{PROGRAM_SENDERS[0]}" FROM "{PROGRAM_SENDERS[1]}"'
+    out += [f'(SINCE {SINCE} TO "{d}" {senders})' for d in THREAD_ONLY_DOMAINS]
+    return out
+
+
+def build_searches(ours):
+    """All inbox searches, thread replies first: a message is labelled by the first search that
+    finds it, so a reply in our thread is never relabelled by a domain or To search."""
+    searches = []
+    for mid in sorted(ours):
+        searches.append(("thread", f'(SINCE {SINCE} HEADER References "{mid}")'))
+        searches.append(("thread", f'(SINCE {SINCE} HEADER In-Reply-To "{mid}")'))
+    searches += [(d, f'(SINCE {SINCE} FROM "{d}")') for d in WATCH_DOMAINS]
+    searches += [(t, f'(SINCE {SINCE} TO "{t}")') for t in WATCH_TO]
+    # Last, so a billing alert also addressed to faultline.pro@ is claimed by the To search above first
+    # (scan_folder marks a message seen before it checks it).
+    searches.append((GOOGLE_TO_ENGAGE, f'(SINCE {SINCE} TO "{ENGAGE}" FROM "@google.com")'))
+    return searches
 
 
 def handoff_body(f):
     """The typed Dx3 handoff for one message. The id comes from the mailbox UID, so a re-run updates
     the same row."""
-    if is_billing(f):
+    if classify(f) == "google-billing":
         return {
             "handoff_id": f"hf-fp-google-billing-{f['uid']}",
             "content": (f"From fp vendor-consent-watch: Google billing alert to faultline.pro@, sender domain "
@@ -105,7 +150,7 @@ def handoff_body(f):
         "handoff_id": f"hf-fp-vendor-reply-{f['uid']}",
         "content": (f"From fp vendor-consent-watch: vendor reply in a Faultline Pro thread, sender domain "
                     f"{f['sender_domain']} (watch match {f['domain']}), Zoho {f.get('folder', 'INBOX')} uid {f['uid']}. fp reads it in full, "
-                    f"answers in-thread from faultline.pro@nxtg.ai, posts a one-line receipt, then acks this "
+                    f"answers in-thread from the address our mail came from (faultline.pro@ or engage@), posts a one-line receipt, then acks this "
                     f"handoff."),
         "handoff_status": "OPEN", "from_machine": "NXTG-AI", "to_machine": "NXTG-AI",
         "subject": f"[fp] VENDOR REPLY {f['domain']}: sender domain {f['sender_domain']}", "priority": "P1",
@@ -117,16 +162,16 @@ def handoff_body(f):
 def alert_lines(f):
     """(pane text, /alignment and Telegram text). No From or Subject text: these reach an agent pane."""
     hid = handoff_body(f)["handoff_id"]
-    if is_billing(f):
+    if classify(f) == "google-billing":
         line = (f"GOOGLE BILLING ALERT to faultline.pro@: sender domain {f['sender_domain']}, Zoho "
                 f"{f.get('folder', 'INBOX')} uid {f['uid']}. Dx3 handoff {hid}. GoPMO 1.18.11.1.19.")
         return (f"[vendor-consent-watch] {line} Read the AI Studio billing balance now and follow {TOPUP_PATH}; "
                 f"prepay fails every scan at $0.", line + " fp reads the prepay balance and follows the top-up path.")
     line = (f"VENDOR REPLY ({f['domain']} match) in a Faultline Pro thread: sender domain {f['sender_domain']}, "
             f"Zoho {f.get('folder', 'INBOX')} uid {f['uid']}. Dx3 handoff {hid}.")
-    return (f"[vendor-consent-watch] {line} Read it in that Zoho folder, answer in-thread from faultline.pro@, "
+    return (f"[vendor-consent-watch] {line} Read it in that Zoho folder, answer in-thread from the address our mail came from, "
             f"post a receipt, ack the handoff.",
-            line + " fp answers in-thread from faultline.pro@.")
+            line + " fp answers in-thread from the address our mail came from.")
 
 
 def mint_handoff(f):
@@ -176,9 +221,18 @@ def sender_domain(from_header):
     return m.group(1).lower() if m else "unknown"
 
 
-def domain_match_ok(watch, sd):
+def is_no_reply(from_header):
+    """True for an automated sender address: no-reply, noreply, do-not-reply and the like."""
+    m = re.search(r"([A-Za-z0-9._%+-]+)@[A-Za-z0-9.-]+>?\s*$", from_header or "")
+    return bool(m) and re.search(r"no-?reply|do-?not-?reply", m.group(1), re.I) is not None
+
+
+def domain_match_ok(watch, sd, from_header=""):
     """A watched-domain hit counts only when the sender's own domain is that domain or a subdomain.
-    Thread and To matches pass through: a reply in our thread may come from any address."""
+    Thread and To matches pass through: a reply in our thread may come from any address. The
+    google-to-engage rule takes only a person at exactly google.com."""
+    if watch == GOOGLE_TO_ENGAGE:
+        return sd == "google.com" and not is_no_reply(from_header)
     if watch not in WATCH_DOMAINS:
         return True
     return sd == watch or sd.endswith("." + watch)
@@ -206,11 +260,12 @@ def scan_folder(m, folder, searches, seen):
                 continue
             _, dd = m.uid("FETCH", uid, "(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])")
             h = email.message_from_bytes(dd[0][1])
-            seen.add(key)
             # Zoho's IMAP FROM search also matches the display name ("Donald Brave" hit brave.com,
-            # uid 1040), so a domain match must be the sender's actual domain.
-            if not domain_match_ok(domain, sender_domain(text(h["From"]))):
+            # uid 1040), so a domain match must be the sender's actual domain. A message is marked
+            # seen only once a search accepts it: a rejected hit stays open to the later searches.
+            if not domain_match_ok(domain, sender_domain(text(h["From"])), text(h["From"])):
                 continue
+            seen.add(key)
             found.append({"uid": key, "folder": folder, "domain": domain, "from": text(h["From"]),
                           "subject": text(h["Subject"])[:140], "date": h["Date"]})
     return found
@@ -230,29 +285,27 @@ def main():
         print(f"vendor-consent-watch: mailbox unreachable: {type(e).__name__}")
         return 1
     found = []
-    searches = [(d, f'(SINCE {SINCE} FROM "{d}")') for d in WATCH_DOMAINS]
-    searches += [(t, f'(SINCE {SINCE} TO "{t}")') for t in WATCH_TO]
     # Replies to anything we sent to a watched domain, matched by threading headers, so a reply from
-    # an address on another domain (a reseller, a personal address) is still caught.
+    # an address on another domain (a reseller, a personal address) is still caught. Thread searches
+    # run first, so a reply that also matches a domain or To search is labelled "thread".
+    searches = []
     ours = set()
     m.select("Sent", readonly=True)
-    for d in WATCH_DOMAINS:
-        _, data = m.uid("SEARCH", None, f'(SINCE {SINCE} TO "{d}")')
+    for crit in sent_searches():
+        _, data = m.uid("SEARCH", None, crit)
         for uid in data[0].split():
             _, dd = m.uid("FETCH", uid, "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")
             mid = email.message_from_bytes(dd[0][1])["Message-ID"]
             if mid:
                 ours.add(mid.strip())
-    for mid in ours:
-        searches.append(("thread", f'(SINCE {SINCE} HEADER References "{mid}")'))
-        searches.append(("thread", f'(SINCE {SINCE} HEADER In-Reply-To "{mid}")'))
+    searches = build_searches(ours)
     for folder in WATCH_FOLDERS:
         found += scan_folder(m, folder, searches, seen)
     m.logout()
     for f in found:
         f["sender_domain"] = sender_domain(f["from"])
         f["handoff_record_id"] = mint_handoff(f)
-        f["kind"] = "google-billing" if is_billing(f) else "vendor-reply"
+        f["kind"] = classify(f)
         pane_text, post_text = alert_lines(f)
         f["pane_woken"] = wake_fp(pane_text)
         with open(LEDGER, "a") as fh:
