@@ -93,9 +93,11 @@ def say(msg):
 
 
 def is_billing(f):
-    """A Google billing or Monitoring alert, judged by sender domain only (never by display name or subject)."""
+    """A Google billing or Monitoring alert: an automated (no-reply) sender address at google.com or a
+    subdomain. Judged by the sender address only, never by display name or subject. A person at
+    google.com is not a billing alert, whichever of our addresses they wrote to."""
     d = f.get("sender_domain", "unknown")
-    return any(d == b or d.endswith("." + b) for b in BILLING_SENDER_DOMAINS)
+    return any(d == b or d.endswith("." + b) for b in BILLING_SENDER_DOMAINS) and is_no_reply(f.get("from", ""))
 
 
 def classify(f):
@@ -258,11 +260,12 @@ def scan_folder(m, folder, searches, seen):
                 continue
             _, dd = m.uid("FETCH", uid, "(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])")
             h = email.message_from_bytes(dd[0][1])
-            seen.add(key)
             # Zoho's IMAP FROM search also matches the display name ("Donald Brave" hit brave.com,
-            # uid 1040), so a domain match must be the sender's actual domain.
+            # uid 1040), so a domain match must be the sender's actual domain. A message is marked
+            # seen only once a search accepts it: a rejected hit stays open to the later searches.
             if not domain_match_ok(domain, sender_domain(text(h["From"])), text(h["From"])):
                 continue
+            seen.add(key)
             found.append({"uid": key, "folder": folder, "domain": domain, "from": text(h["From"]),
                           "subject": text(h["Subject"])[:140], "date": h["Date"]})
     return found

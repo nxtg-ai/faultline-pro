@@ -163,9 +163,9 @@ def test_google_is_watched_only_through_our_own_threads():
 
 
 def test_reply_in_our_thread_is_a_vendor_reply_even_from_google():
-    assert vcw.classify({"domain": "thread", "sender_domain": "google.com"}) == "vendor-reply"
-    assert vcw.classify({"domain": "faultline.pro@nxtg.ai", "sender_domain": "google.com"}) == "google-billing"
-    assert vcw.classify({"domain": "exa.ai", "sender_domain": "exa.ai"}) == "vendor-reply"
+    assert vcw.classify({"domain": "thread", "sender_domain": "google.com", "from": "x <alerting-noreply@google.com>"}) == "vendor-reply"
+    assert vcw.classify({"domain": "faultline.pro@nxtg.ai", "sender_domain": "google.com", "from": "x <alerting-noreply@google.com>"}) == "google-billing"
+    assert vcw.classify({"domain": "exa.ai", "sender_domain": "exa.ai", "from": "x <a@exa.ai>"}) == "vendor-reply"
 
 
 def test_thread_searches_come_first_so_a_google_reply_to_faultline_pro_is_not_billing():
@@ -241,3 +241,36 @@ def test_billing_alert_to_both_addresses_still_reaches_the_billing_path():
     found = vcw.scan_folder(mb, "INBOX", vcw.build_searches(set()), set())
     assert len(found) == 1 and found[0]["domain"] == "faultline.pro@nxtg.ai"
     assert vcw.classify({**found[0], "sender_domain": vcw.sender_domain(found[0]["from"])}) == "google-billing"
+
+
+def test_google_person_to_both_aliases_in_a_new_thread_is_not_billing():
+    # Codex round 2 on #109, case 1: the faultline.pro@ To search claims it first.
+    mb = FakeMailbox({"INBOX": {"701": ("Rep <rep@google.com>", "engage@nxtg.ai, faultline.pro@nxtg.ai")}})
+    found = vcw.scan_folder(mb, "INBOX", vcw.build_searches(set()), set())
+    assert len(found) == 1
+    f = {**found[0], "sender_domain": vcw.sender_domain(found[0]["from"])}
+    assert vcw.classify(f) == "vendor-reply"
+    assert vcw.handoff_body(f)["priority"] == "P1"
+    assert "BILLING" not in vcw.alert_lines(f)[1]
+
+
+def test_a_rejected_display_name_hit_does_not_swallow_a_real_engage_reply():
+    # Codex round 2 on #109, case 2: FROM "exa.ai" matches the display name, the domain check rejects
+    # it, and it must still reach the engage@ rule instead of being marked seen.
+    seen = set()
+    mb = FakeMailbox({"INBOX": {"702": ("exa.ai liaison <rep@google.com>", "engage@nxtg.ai")}})
+    found = vcw.scan_folder(mb, "INBOX", vcw.build_searches(set()), seen)
+    assert len(found) == 1 and found[0]["domain"] == vcw.GOOGLE_TO_ENGAGE
+    assert seen == {"702"}
+
+
+def test_a_rejected_hit_is_not_marked_seen():
+    seen = set()
+    mb = FakeMailbox({"INBOX": {"703": ("Donald Brave <donald@example.org>", "axw@nxtg.ai")}})
+    assert vcw.scan_folder(mb, "INBOX", vcw.build_searches(set()), seen) == []
+    assert seen == set()
+
+
+def test_a_person_at_google_is_never_a_billing_alert():
+    assert not vcw.is_billing(msg("Rep <rep@google.com>"))
+    assert vcw.is_billing(msg("Google Cloud Billing Alerts <CloudPlatform-noreply@google.com>"))
