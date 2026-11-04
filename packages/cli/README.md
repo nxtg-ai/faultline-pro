@@ -193,7 +193,7 @@ The key picks where the check runs:
 
 - `FAULTLINE_API_KEY` set: the scan runs on the hosted API (`https://faultline-api.fly.dev`, override with `FAULTLINE_API_URL`) on Faultline's server-side provider keys, grounded by default.
 - Otherwise it runs in-process on your own provider key. Precedence: `FAULTLINE_PROVIDER`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `PERPLEXITY_API_KEY`. Only Gemini retrieves live sources; the response says `grounded: false` for the others.
-- With neither, the server runs the `mock` provider, which returns synthetic results and verifies nothing, and says so on stderr.
+- With neither, and no provider named, `verify_claims` refuses: it returns an MCP tool error, "no key: nothing was verified", and checks nothing. Name `provider: "mock"` or set `FAULTLINE_PROVIDER=mock` for a demo; the `mock` result says `SYNTHETIC` and verifies nothing.
 
 Input: `text` (required), `max_claims`, `provider` (`gemini`, `openai`, `claude`, `perplexity`, `mock`). Each claim comes back `VERIFIED`, `REFUTED`, `UNSUPPORTED`, `MIXED` or `UNCHECKED`. `UNCHECKED` is not a verdict. `degraded: true` means some claims could not be checked. Audit records go to `.faultline/history` (`FAULTLINE_HISTORY_DIR` to move them, `FAULTLINE_MCP_NO_HISTORY=1` to switch them off).
 
