@@ -54,6 +54,13 @@ PROGRAM_SENDERS = ("engage@nxtg.ai", "faultline.pro@nxtg.ai")
 # security notices come from subdomains or no-reply senders, so they stay out.
 GOOGLE_TO_ENGAGE = "google-to-engage"
 ENGAGE = "engage@nxtg.ai"
+# The founder sent the same letter through the form under his own name (emma-soul al:d814d1038b6ecdd4),
+# so the reply comes TO the mailbox's own address. Same narrow rule as engage@: a person at exactly
+# google.com, from the day of that letter only. The address is the mailbox login, so no personal
+# address is written here, and nothing else in that inbox is matched.
+GOOGLE_TO_OWNER = "google-to-owner"
+OWNER_SINCE = "04-Nov-2026"
+GOOGLE_PERSON_RULES = (GOOGLE_TO_ENGAGE, GOOGLE_TO_OWNER)
 # Mailbox folders read, in order. IMAP UIDs are per folder, so a message outside INBOX is keyed
 # "<folder>-<uid>"; INBOX keeps the bare UID so the existing state file stays valid. A folder the
 # account does not have is skipped.
@@ -103,7 +110,7 @@ def is_billing(f):
 def classify(f):
     """A reply in a thread we started is a vendor reply, even from google.com; only other google.com
     mail is a billing alert."""
-    if f.get("domain") in ("thread", GOOGLE_TO_ENGAGE):
+    if f.get("domain") == "thread" or f.get("domain") in GOOGLE_PERSON_RULES:
         return "vendor-reply"
     return "google-billing" if is_billing(f) else "vendor-reply"
 
@@ -116,7 +123,7 @@ def sent_searches():
     return out
 
 
-def build_searches(ours):
+def build_searches(ours, owner=None):
     """All inbox searches, thread replies first: a message is labelled by the first search that
     finds it, so a reply in our thread is never relabelled by a domain or To search."""
     searches = []
@@ -128,6 +135,8 @@ def build_searches(ours):
     # Last, so a billing alert also addressed to faultline.pro@ is claimed by the To search above first
     # (scan_folder marks a message seen before it checks it).
     searches.append((GOOGLE_TO_ENGAGE, f'(SINCE {SINCE} TO "{ENGAGE}" FROM "@google.com")'))
+    if owner:
+        searches.append((GOOGLE_TO_OWNER, f'(SINCE {OWNER_SINCE} TO "{owner}" FROM "@google.com")'))
     return searches
 
 
@@ -230,8 +239,8 @@ def is_no_reply(from_header):
 def domain_match_ok(watch, sd, from_header=""):
     """A watched-domain hit counts only when the sender's own domain is that domain or a subdomain.
     Thread and To matches pass through: a reply in our thread may come from any address. The
-    google-to-engage rule takes only a person at exactly google.com."""
-    if watch == GOOGLE_TO_ENGAGE:
+    google-to-engage and google-to-owner rules take only a person at exactly google.com."""
+    if watch in GOOGLE_PERSON_RULES:
         return sd == "google.com" and not is_no_reply(from_header)
     if watch not in WATCH_DOMAINS:
         return True
@@ -298,7 +307,7 @@ def main():
             mid = email.message_from_bytes(dd[0][1])["Message-ID"]
             if mid:
                 ours.add(mid.strip())
-    searches = build_searches(ours)
+    searches = build_searches(ours, owner=env["ZOHO_SMTP_USER"])
     for folder in WATCH_FOLDERS:
         found += scan_folder(m, folder, searches, seen)
     m.logout()

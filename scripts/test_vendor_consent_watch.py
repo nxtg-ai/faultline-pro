@@ -274,3 +274,35 @@ def test_a_rejected_hit_is_not_marked_seen():
 def test_a_person_at_google_is_never_a_billing_alert():
     assert not vcw.is_billing(msg("Rep <rep@google.com>"))
     assert vcw.is_billing(msg("Google Cloud Billing Alerts <CloudPlatform-noreply@google.com>"))
+
+
+OWNER = "owner@nxtg.example"
+
+
+def test_google_person_writing_to_the_mailbox_owner_is_a_vendor_reply():
+    # emma-soul al:d814d1038b6ecdd4: the founder sent the form under his own address.
+    mb = FakeMailbox({"INBOX": {"801": ("A Rep <a.rep@google.com>", OWNER, "<new@google.com>")}})
+    found = vcw.scan_folder(mb, "INBOX", vcw.build_searches(set(), owner=OWNER), set())
+    assert len(found) == 1 and found[0]["domain"] == vcw.GOOGLE_TO_OWNER
+    f = {**found[0], "sender_domain": vcw.sender_domain(found[0]["from"])}
+    assert vcw.classify(f) == "vendor-reply"
+    assert vcw.handoff_body(f)["priority"] == "P1"
+    assert "BILLING" not in vcw.alert_lines(f)[1]
+
+
+def test_other_mail_to_the_mailbox_owner_is_not_picked_up():
+    mb = FakeMailbox({"INBOX": {
+        "802": ("Google Cloud <CloudPlatform-noreply@google.com>", OWNER),
+        "803": ("Google <no-reply@accounts.google.com>", OWNER),
+        "804": ("Workspace <workspace@google.com.evil.example>", OWNER),
+        "805": ("A Friend <friend@example.com>", OWNER),
+    }})
+    seen = set()
+    assert vcw.scan_folder(mb, "INBOX", vcw.build_searches(set(), owner=OWNER), seen) == []
+    assert seen == set()
+
+
+def test_owner_rule_starts_on_the_day_of_the_letter_and_needs_an_owner():
+    owner_rules = [c for d, c in vcw.build_searches(set(), owner=OWNER) if d == vcw.GOOGLE_TO_OWNER]
+    assert owner_rules == [f'(SINCE 04-Nov-2026 TO "{OWNER}" FROM "@google.com")']
+    assert all(d != vcw.GOOGLE_TO_OWNER for d, _ in vcw.build_searches(set()))
