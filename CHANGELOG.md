@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **The API reports 0.12.0.** `packages/api` and `GET /health` move from 0.11.1 to 0.12.0 to match `@nxtg/faultline` 0.12.0, so the four-way version gate (`npm run version-parity`: repo CLI, repo API, npm latest, deployed API) agrees again. No API behaviour changes; the API changes in v0.12.0 below were already live.
+
 ## [v0.12.0] — 2026-11-04
 
 > The API changes below shipped to `https://faultline-api.fly.dev` as they merged, while `packages/api` and `GET /health` still read 0.11.1. This release is the `@nxtg/faultline` npm package; the API version is bumped separately.
