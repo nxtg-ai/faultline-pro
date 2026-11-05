@@ -20,6 +20,9 @@ jobs:
   semgrep:
     name: Semgrep SAST
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write   # upload the SARIF to code scanning
     container:
       image: semgrep/semgrep
     steps:
@@ -35,6 +38,13 @@ jobs:
           path: semgrep.sarif
           if-no-files-found: error
           retention-days: 30
+      # Code scanning is the triage surface (free on a public repo). The upload was
+      # removed while the repo was private, which froze the alerts at April's results.
+      - name: Upload SARIF to code scanning
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
 
   bearer:
     name: Bearer (Data Privacy)
@@ -140,6 +150,9 @@ jobs:
   gitleaks:
     name: Secret Scanning
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write   # upload the SARIF to code scanning
     env:
       GITLEAKS_VERSION: 8.30.1
     steps:
@@ -168,3 +181,9 @@ jobs:
           name: gitleaks-sarif
           path: gitleaks.sarif
           retention-days: 30
+      - name: Upload SARIF to code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gitleaks.sarif
+          category: gitleaks
