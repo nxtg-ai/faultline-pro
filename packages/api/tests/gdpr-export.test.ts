@@ -58,7 +58,7 @@ describe('GDPR export endpoint (GE1–GE15)', () => {
     resetUsageMeter();
 
     // Create a key + tenant
-    const key = getKeyStore().create('export-test-key', ['scan'], 'tenant-key');
+    const key = getKeyStore().create('export-test-key', ['scan']);
     keyId = key.id;
     const tenant = getTenantStore().create('GDPR Test Corp', [keyId]);
     tenantId = tenant.id;
@@ -226,7 +226,7 @@ describe('GDPR export endpoint (GE1–GE15)', () => {
 
   it('GE14: scan-history.json contains only the requested tenants scans', async () => {
     // Create a second tenant + key with its own scan
-    const key2 = getKeyStore().create('other-key', ['scan'], 'other-key');
+    const key2 = getKeyStore().create('other-key', ['scan']);
     const tenant2 = getTenantStore().create('Other Corp', [key2.id]);
     getScanHistory().record({
       keyId: key2.id, tenantId: tenant2.id, provider: 'mock', overallRisk: 'Low',

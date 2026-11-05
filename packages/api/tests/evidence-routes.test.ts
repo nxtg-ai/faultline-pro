@@ -50,22 +50,25 @@ import { resetCache } from '../src/store/cache.js';
 import { resetProviderSpendLedger } from '../src/store/provider-spend.js';
 import { resetGroundingAllowanceLedger, uninstallGroundingCounter } from '../src/store/grounding-allowance.js';
 import { setOutboundFetch, resetOutboundFetch, setOutboundResolver, resetOutboundResolver } from '../src/lib/outbound-url.js';
-import { registerProvider } from '@nxtg/faultline/providers/registry.js';
 import { clearRobotsCache } from '@nxtg/faultline/evidence/robots.js';
 
 // A non-Gemini retriever: its links are plain publisher-side redirects, not Google grounding Links.
 const OTHER_REDIRECT = 'https://links.example/r/kestrel';
 const OTHER_PRIVATE_HOP = 'https://links.example/r/internal';
-registerProvider('mock', () => ({
-  name: 'Other retriever fixture',
-  modelId: 'fixture-v1',
-  extractClaims: async () => [{ id: 'c1', text: 'The Eiffel Tower was completed in 1889.', type: 'fact', importance: 5 }],
-  verifyClaim: async (c: { id: string }) => ({
-    claimId: c.id, status: 'supported', explanation: 'Opened on 31 March 1889 to great acclaim.',
-    sources: [{ title: 'kestrelvane.example', uri: OTHER_REDIRECT }, { title: 'internal.example', uri: OTHER_PRIVATE_HOP }],
-  }),
-  generateCritiqueAndPrompt: async () => ({ critique: '', improvedPrompt: '' }),
-}) as never);
+// The built-in 'mock' provider is replaced for this file only, through the
+// module mock: the production registry refuses to replace a built-in id.
+vi.mock('@nxtg/faultline/providers/mock_provider.js', () => ({
+  createMockProvider: () => ({
+    name: 'Other retriever fixture',
+    modelId: 'fixture-v1',
+    extractClaims: async () => [{ id: 'c1', text: 'The Eiffel Tower was completed in 1889.', type: 'fact', importance: 5 }],
+    verifyClaim: async (c: { id: string }) => ({
+      claimId: c.id, status: 'supported', explanation: 'Opened on 31 March 1889 to great acclaim.',
+      sources: [{ title: 'kestrelvane.example', uri: OTHER_REDIRECT }, { title: 'internal.example', uri: OTHER_PRIVATE_HOP }],
+    }),
+    generateCritiqueAndPrompt: async () => ({ critique: '', improvedPrompt: '' }),
+  }) as never,
+}));
 
 const PAGE = '<html><body><p>Construction finished in March 1889, and the Eiffel Tower was completed in time for the Exposition.</p></body></html>';
 const ENV_KEYS = ['FAULTLINE_GROUNDING_LEDGER', 'FAULTLINE_PROVIDER_SPEND_LEDGER', 'GEMINI_API_KEY', 'FAULTLINE_CONSENSUS', 'FAULTLINE_EVIDENCE_FETCH', 'FAULTLINE_OUTBOUND_ALLOW_PRIVATE'];

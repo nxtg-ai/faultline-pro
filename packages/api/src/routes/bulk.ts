@@ -1,10 +1,22 @@
+import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import AdmZip from 'adm-zip';
 import { requireApiKey } from '../plugins/auth.js';
+import { enforceMonthlyCap } from '../plugins/usage-cap.js';
+import {
+  enforceProviderSpendCap,
+  PROVIDER_BUDGET_EXHAUSTED,
+  providerBudgetRefuses,
+  resolveSpendCapTier,
+} from '../plugins/provider-spend-cap.js';
 import { ownsOrAdmin } from '../lib/ownership.js';
 import { getBulkJobStore } from '../store/bulk-jobs.js';
-import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scanInRequestMode } from '../lib/grounding.js';
+import { scanWithSpend } from '../lib/scan-spend.js';
 import type { Provider } from '../store/jobs.js';
+import { ENGINE_VERIFY_CAP, meteredScan } from '../lib/claim-meter.js';
+import { engineVerifyCap, requireClaimHeadroom } from '../plugins/claim-meter.js';
+import type { ManagedScanCostEvent } from '../store/costs.js';
 
 const ALLOWED_EXTENSIONS = new Set(['.txt', '.md', '.json']);
 
@@ -17,6 +29,8 @@ async function processBulkJob(
   jobId: string,
   zipBuffer: Buffer,
   provider: Provider,
+  keyId: string,
+  spendCapTier: ManagedScanCostEvent['tier'],
 ): Promise<void> {
   const store = getBulkJobStore();
   store.update(jobId, { status: 'running' });
@@ -34,11 +48,21 @@ async function processBulkJob(
     .getEntries()
     .filter((e) => !e.isDirectory && ALLOWED_EXTENSIONS.has(getExtension(e.entryName)));
 
-  for (const entry of entries) {
+  for (const [index, entry] of entries.entries()) {
+    // The route gate ran once, at upload. Each file is a provider call, so the
+    // budget is checked again before each one: once it refuses, this file and
+    // every remaining one fail unscanned.
+    if (providerBudgetRefuses(spendCapTier)) {
+      for (const skipped of entries.slice(index)) {
+        store.recordFileResult(jobId, { filename: skipped.entryName, status: 'failed', error: PROVIDER_BUDGET_EXHAUSTED });
+      }
+      break;
+    }
     const filename = entry.entryName;
     try {
       const text = entry.getData().toString('utf8');
-      const result = await scan(text, provider);
+      // Each file is metered on its own; once the key's cap is reached the rest fail unscanned.
+      const result = await meteredScan(keyId, ENGINE_VERIFY_CAP, randomUUID(), provider, () => scanWithSpend({ text, provider, keyId }, () => scanInRequestMode(text, provider)));
       store.recordFileResult(jobId, {
         filename,
         status: 'done',
@@ -58,7 +82,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
   // POST /scan/bulk — accepts ZIP archive, returns jobId immediately (202)
   fastify.post<{ Querystring: { provider?: string } }>(
     '/scan/bulk',
-    { config: { access: 'owner' }, preHandler: requireApiKey, schema: { tags: ['Jobs'], summary: 'Upload ZIP of documents for async bulk scan' } },
+    { config: { access: 'owner' }, preHandler: [requireApiKey, enforceMonthlyCap, enforceProviderSpendCap, requireClaimHeadroom(engineVerifyCap())], schema: { tags: ['Jobs'], summary: 'Upload ZIP of documents for async bulk scan' } },
     async (request, reply) => {
       let zipBuffer: Buffer | null = null;
 
@@ -107,7 +131,8 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       // Fire-and-forget background processing
-      void processBulkJob(job.id, zipBuffer, provider);
+      const spendCapTier = resolveSpendCapTier(request.keyId, request.headers['x-user-tier']);
+      void processBulkJob(job.id, zipBuffer, provider, request.keyId ?? 'unknown', spendCapTier);
 
       return reply.status(202).send({ jobId: job.id });
     },

@@ -9,14 +9,21 @@ import type {
 } from '../types.js';
 import type { LLMProvider, Retriever } from '../providers/base_provider.js';
 import { sanitizeVerifyError } from '../services/verify-error.js';
+import { classifyApiError } from '../providers/extraction-error.js';
+import { RetrievalError } from '../providers/retrieval-error.js';
 
 /**
  * Grounded multi-model consensus engine — "ground every claim by construction".
  *
  * Pipeline per claim:
  *   1. RETRIEVE shared sources via a provider-agnostic Retriever.
+ *      - The search failed: no provider is asked, and the claim is unverified
+ *        with apiError (not checked, never cached or billed).
+ *      - The search ran and found nothing: no provider is asked, and the claim
+ *        is unverified (checked, nothing to judge it against).
  *   2. FAN OUT to N providers IN PARALLEL, each judging the claim against the
- *      SAME retrieved sources (verifyClaimGrounded).
+ *      SAME retrieved sources (verifyClaimGrounded). Only with at least one
+ *      shared source does any provider vote.
  *   3. FUSE the per-provider verdicts into ONE top-level verdict.
  *
  * Locks:
@@ -90,17 +97,31 @@ async function runProviderVote(
       sources,
       explanation: sanitizeVerifyError(err),
       apiError: true,
+      // Keep why the call failed (rate limit, empty account, ...) so fusion and reports can say it.
+      apiErrorReason: classifyApiError(err),
     };
   }
 }
 
-/** Reasons a provider reports about its reply, as opposed to the call failing. */
-const REPLY_REASONS: ReadonlySet<ApiErrorReason> = new Set<ApiErrorReason>(['provider_unparseable', 'output_truncated']);
+/**
+ * Failure reasons a fused result carries when every failed vote shares one: the
+ * two reply reasons, and an empty provider account, which no re-run can fix.
+ */
+const SHARED_REASONS: ReadonlySet<ApiErrorReason> = new Set<ApiErrorReason>([
+  'provider_unparseable',
+  'output_truncated',
+  'provider_out_of_credits',
+]);
 
-/** The reply reason every failed vote shares, or undefined when they differ or any vote has none. */
-function sharedReplyReasonOf(errored: ProviderVote[]): ApiErrorReason | undefined {
+/** True for a failure reason a fused result (and a failed consensus scan) carries when every failed vote shares it. */
+export function isSharedFailureReason(reason: unknown): reason is ApiErrorReason {
+  return typeof reason === 'string' && SHARED_REASONS.has(reason as ApiErrorReason);
+}
+
+/** The reason every failed vote shares, or undefined when they differ, any vote has none, or it is not carried. */
+function sharedReasonOf(errored: ProviderVote[]): ApiErrorReason | undefined {
   const first = errored[0]?.apiErrorReason;
-  if (!first || !REPLY_REASONS.has(first)) return undefined;
+  if (!first || !SHARED_REASONS.has(first)) return undefined;
   return errored.every((v) => v.apiErrorReason === first) ? first : undefined;
 }
 
@@ -131,7 +152,8 @@ function tallyStatuses(realVotes: ProviderVote[]): {
 
 /**
  * Fuse per-provider votes into one verdict. Exported for direct unit testing of
- * the fusion logic independently of any live provider/retriever.
+ * the fusion logic independently of any live provider/retriever. With zero
+ * sources the result is always `unverified`: no verdict without a source.
  */
 export function fuseVotes(
   claim: Claim,
@@ -150,18 +172,31 @@ export function fuseVotes(
     // was never actually checked.
     const errored = votes.filter((v) => v.apiError);
     const anyError = errored.length > 0;
-    // When every failed vote failed on its reply for the same reason (unreadable,
-    // al:5b18840b0116047a item c; or cut off at its ceiling, GoPMO 1.18.11.7.18), the
-    // claim carries that reason; any other mix keeps the default reason.
-    const sharedReplyReason = anyError ? sharedReplyReasonOf(errored) : undefined;
+    // When every failed vote failed for the same carried reason (an unreadable reply,
+    // a reply cut off at its ceiling, or an empty provider account), the claim
+    // carries that reason; any other mix keeps the default reason.
+    const sharedReason = anyError ? sharedReasonOf(errored) : undefined;
     return {
       claimId: claim.id,
       status: 'unverified',
       explanation: 'No provider returned a verdict; consensus unavailable.',
       sources,
       ...(anyError ? { apiError: true } : {}),
-      ...(sharedReplyReason ? { apiErrorReason: sharedReplyReason } : {}),
+      ...(sharedReason ? { apiErrorReason: sharedReason } : {}),
       consensus: { agreement: 'split', providerCount: 0, dissenting: 0 },
+      providerVotes: votes,
+    };
+  }
+
+  // No definite verdict without a source, whoever calls this: the votes stay
+  // listed, the claim reads as checked with nothing to judge it against.
+  if (sources.length === 0) {
+    return {
+      claimId: claim.id,
+      status: 'unverified',
+      explanation: NO_SOURCES_EXPLANATION,
+      sources,
+      consensus: { agreement: 'split', providerCount, dissenting: 0 },
       providerVotes: votes,
     };
   }
@@ -210,6 +245,21 @@ function buildFusedExplanation(
   return `Consensus (${agreement}, ${realVotes.length} providers: ${names}): ${lead}`;
 }
 
+/** The explanation on a claim whose search ran and returned no source. */
+export const NO_SOURCES_EXPLANATION = 'No sources were found for this claim, so no verdict was given.';
+
+/** A consensus result with no provider votes: the claim never reached a provider. */
+function noVoteResult(claim: Claim, explanation: string): VerificationResult {
+  return {
+    claimId: claim.id,
+    status: 'unverified',
+    explanation,
+    sources: [],
+    consensus: { agreement: 'split', providerCount: 0, dissenting: 0 },
+    providerVotes: [],
+  };
+}
+
 /**
  * Verify a claim by grounded multi-model consensus.
  *
@@ -222,31 +272,43 @@ export async function consensusVerify(
   retriever: Retriever,
   providers: NamedProvider[],
 ): Promise<VerificationResult> {
-  // 1. RETRIEVE shared sources (never throws → [] on failure).
-  let sources: Source[] = [];
-  let retrievedAt: string | undefined;
+  // 1. RETRIEVE shared sources. Any rejection is a failed search, whatever the
+  // retriever threw; it is classified so the claim says why it was not checked.
+  let sources: Source[];
   try {
     sources = await retriever.retrieve(claim.text);
-    retrievedAt = new Date().toISOString();
-  } catch {
-    sources = [];
+  } catch (err) {
+    const failure = RetrievalError.fromError(err);
+    return { ...noVoteResult(claim, failure.message), apiError: true, apiErrorReason: failure.reason };
   }
+  const retrievedAt = new Date().toISOString();
+
+  // A claim with no retrieved source gets no verdict: nothing is asked, nothing is spent.
+  // A retriever that resolves something other than a list counts as no source,
+  // so this function still never throws.
+  if (!Array.isArray(sources) || sources.length === 0) return noVoteResult(claim, NO_SOURCES_EXPLANATION);
 
   // 2. FAN OUT in parallel; each runProviderVote is pre-caught (LOCK B).
   const votes = await Promise.all(
     providers.map((named) => runProviderVote(named, claim, sources)),
   );
 
-  // 3. FUSE, then bind who produced the verdict and when (GoPMO 1.18.11.3 P1a).
+  // 3. FUSE, then bind who produced the verdict and when.
   const fused = fuseVotes(claim, sources, votes);
   if (fused.apiError) return fused;
+  // Provenance names only the providers that returned a real verdict; a failed
+  // one stays listed in providerVotes as unavailable. With no real verdict
+  // there is no producer to name, so there is no provenance.
+  const voters = providers.filter((p, i) => isRealVerdict(votes[i]));
+  if (voters.length === 0) return fused;
   return {
     ...fused,
     provenance: {
       provider: 'consensus',
-      model: providers.map((p) => `${p.name}:${p.provider.modelId}`).join('+'),
+      model: voters.map((p) => `${p.name}:${p.provider.modelId}`).join('+'),
       verifiedAt: new Date().toISOString(),
-      ...(retrievedAt !== undefined ? { retriever: retriever.name, retrievedAt } : {}),
+      retriever: retriever.name,
+      retrievedAt,
     },
   };
 }

@@ -158,7 +158,8 @@ describe('geminiService.ts — cleanJson branches + verifyClaim fallbacks', () =
   it('GS4d: no suggestions in the response means no fields on the verdict', async () => {
     mockGenerateContent.mockResolvedValue({
       text: '{"status":"supported","explanation":"ok"}',
-      candidates: [{ groundingMetadata: { groundingChunks: [], webSearchQueries: [], searchEntryPoint: { renderedContent: '' } } }],
+      // One web source, so the supported verdict stands and only the empty suggestion fields are under test.
+      candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'S', uri: 'https://s.example/a' } }], webSearchQueries: [], searchEntryPoint: { renderedContent: '' } } }],
     });
 
     const result = await verifyClaim(CLAIM, 'test-key');
@@ -304,7 +305,8 @@ describe('verifyClaim — N-215 calibration prompt hardening (CAL-1–CAL-5)', (
   it('CAL-4: mock returns "mixed" for conflicting evidence → status "mixed" preserved', async () => {
     mockGenerateContent.mockResolvedValue({
       text: '{"status":"mixed","explanation":"Some studies support, others refute — contested scientific consensus."}',
-      candidates: [],
+      // One web source: a sourceless mixed verdict is reported as unverified.
+      candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'S', uri: 'https://s.example/a' } }] } }],
     });
 
     const result = await verifyClaim(

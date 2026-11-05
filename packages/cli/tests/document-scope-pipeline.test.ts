@@ -33,7 +33,10 @@ beforeEach(() => {
     claimId: claim.id,
     status: DOC_TEXTS.has(claim.text) ? 'contradicted' : 'supported',
     explanation: 'Mock verification.',
-    sources: [],
+    // One openable source, so the engine's zero-source rule (abstainWithoutSource)
+    // keeps both the world facts' 'supported' and a leaked document claim's
+    // 'contradicted' as returned.
+    sources: [{ title: 'Mock source', uri: 'https://example.com/mock-source' }],
   }));
 });
 

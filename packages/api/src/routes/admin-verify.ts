@@ -9,14 +9,22 @@ import {
   resolveTier,
 } from '../store/costs.js';
 import { recordProviderSpend } from '../store/provider-spend.js';
+import { classifyKeyId } from '../plugins/auth.js';
 import { summarizeScanUsage } from '../store/consensus-cost.js';
 import { getProvider } from '@nxtg/faultline/providers/registry.js';
-import { billableVerdictCount } from '@nxtg/faultline/lib/verdict-guard.js';
+import { abstainWithoutSource, billingSummary, isBillableVerdict } from '@nxtg/faultline/lib/verdict-guard.js';
 import { DOCUMENT_SCOPE_EXPLANATION, isDocumentRelative } from '@nxtg/faultline/lib/claim-scope.js';
 import type { LLMProvider } from '@nxtg/faultline/providers/base_provider.js';
 import { DEFAULT_SCAN_PROVIDER, resolveApiKey } from '@nxtg/faultline/cli/provider-keys.js';
-import { captureUsage, type UsageLeg } from '@nxtg/faultline/lib/usage-sink.js';
-import type { Claim, ClaimStatus } from '@nxtg/faultline/types.js';
+import { bindEngineProvenance, retrieveThenVerify, usesParallelGrounding } from '@nxtg/faultline/cli/verify-runner.js';
+import type { UsageLeg } from '@nxtg/faultline/lib/usage-sink.js';
+import type { Retriever } from '@nxtg/faultline/providers/base_provider.js';
+import { ParallelSearchRetriever, PARALLEL_SEARCH_MODES } from '@nxtg/faultline/providers/parallel_search_retriever.js';
+import type { GroundingMode } from '@nxtg/faultline/cli/grounding.js';
+import { captureOutcome, withSearchLabel } from '../lib/scan-spend.js';
+import { requestGrounding } from '../lib/grounding.js';
+import { isGroundedGeminiLeg } from '../store/grounding-allowance.js';
+import type { Claim, ClaimStatus, VerificationResult } from '@nxtg/faultline/types.js';
 
 /**
  * POST /admin/verify-claims — the verify step alone, for the pre-registered
@@ -51,10 +59,26 @@ import type { Claim, ClaimStatus } from '@nxtg/faultline/types.js';
  * the batch event falls back to a text-length estimate while every claim here
  * reports `costUsd: 0` with `priced: false`.
  *
+ * The response also carries `billing`, beside the per-claim results: how many
+ * claims were billed, how many were not, and why each was not (billingSummary,
+ * the same rule as `billable` below), so its claim ids and reasons are our own
+ * labels too.
+ *
  * Google grounding terms: the response carries our own status label, flags and
- * cost figures only. No source or other grounded text ever leaves this route;
- * the only explanation that does is the fixed document-scope label above,
- * never a provider's text.
+ * cost figures only. No source or other grounded text ever leaves this route
+ * (`sourcesCount` is a count); the only explanation that does is the fixed
+ * document-scope label above, never a provider's text.
+ *
+ * Grounding (docs/grounding-providers.md): the optional body field `grounding`
+ * ('google' | 'parallel') picks the arm, so the accuracy harness can run both
+ * on the same claims; absent, the server's FAULTLINE_GROUNDING decides, as on
+ * every hosted path. 'parallel' on gemini runs the engine's retrieve-then-judge
+ * (retrieveThenVerify): one Parallel search, then one Gemini judge call with no
+ * googleSearch tool. `parallelMode` picks Parallel's mode for that arm (default
+ * FAULTLINE_PARALLEL_MODE, else advanced). The response names the arm that ran
+ * (`grounding`), and each claim's usage counts its Google grounded calls apart
+ * from every other search (`googleGroundingCalls`). The document-scope check
+ * runs first in both arms, so a document claim makes no Parallel search either.
  */
 
 export const MAX_VERIFY_CLAIMS = 25;
@@ -84,6 +108,8 @@ const BODY_SCHEMA = {
       },
     },
     provider: { type: 'string', enum: PROVIDER_ENUM },
+    grounding: { type: 'string', enum: ['google', 'parallel'] },
+    parallelMode: { type: 'string', enum: PARALLEL_SEARCH_MODES },
   },
   additionalProperties: false,
 } as const;
@@ -97,6 +123,7 @@ const RESPONSE_SCHEMA = {
     type: 'object',
     properties: {
       provider: { type: 'string' },
+      grounding: { type: 'string' },
       results: {
         type: 'array',
         items: {
@@ -109,6 +136,7 @@ const RESPONSE_SCHEMA = {
             noSourceAbstain: { type: 'boolean' },
             apiErrorReason: { type: ['string', 'null'] },
             model: { type: ['string', 'null'] },
+            sourcesCount: { type: 'number' },
             documentScope: { type: 'boolean' },
             explanation: { type: 'string' },
             usage: {
@@ -117,6 +145,7 @@ const RESPONSE_SCHEMA = {
                 inputTokens: { type: 'number' },
                 outputTokens: { type: 'number' },
                 groundingCalls: { type: 'number' },
+                googleGroundingCalls: { type: 'number' },
                 costUsd: { type: 'number' },
                 priced: { type: 'boolean' },
               },
@@ -125,6 +154,25 @@ const RESPONSE_SCHEMA = {
           },
           additionalProperties: false,
         },
+      },
+      billing: {
+        type: 'object',
+        properties: {
+          billedClaims: { type: 'number' },
+          unbilledClaims: { type: 'number' },
+          unbilled: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                claimId: { type: 'string' },
+                reason: { type: 'string' },
+              },
+              additionalProperties: false,
+            },
+          },
+        },
+        additionalProperties: false,
       },
     },
     additionalProperties: false,
@@ -139,6 +187,8 @@ interface VerifyClaimInput {
 interface VerifyClaimsBody {
   claims: VerifyClaimInput[];
   provider?: VerifyProviderName;
+  grounding?: GroundingMode;
+  parallelMode?: (typeof PARALLEL_SEARCH_MODES)[number];
 }
 
 /** What the route returns per claim. Nothing grounded: no explanation, no sources. */
@@ -147,11 +197,13 @@ export interface VerifyClaimOutcome {
   status: ClaimStatus;
   apiError: boolean;
   parseFallback: boolean;
-  /** A grounded 'contradicted' with no source, reported as 'unverified' (VerificationResult.noSourceAbstain). */
+  /** A supported, contradicted or mixed verdict with no source, reported as 'unverified' (VerificationResult.noSourceAbstain). */
   noSourceAbstain: boolean;
   /** Why an unchecked claim went unchecked (a label such as output_truncated); null on a verdict. */
   apiErrorReason: string | null;
   model: string | null;
+  /** How many sources the verdict carries (a count; no source leaves this route). */
+  sourcesCount: number;
   /** Present, true, only when the claim is about the document itself and was not sent to the provider. */
   documentScope?: true;
   /** DOCUMENT_SCOPE_EXPLANATION, present only with documentScope. Never provider text. */
@@ -164,7 +216,10 @@ export interface VerifyClaimOutcome {
 export interface ClaimUsage {
   inputTokens: number;
   outputTokens: number;
+  /** Every search leg: Google grounded prompts, OpenAI web_search and Parallel searches alike. */
   groundingCalls: number;
+  /** Gemini calls that carried the googleSearch tool only (the grounding allowance's count). */
+  googleGroundingCalls: number;
   costUsd: number;
   /** False when the claim captured no priced usage (mock, a failed call); costUsd is then 0. */
   priced: boolean;
@@ -173,6 +228,10 @@ export interface ClaimUsage {
 interface ClaimRun {
   outcome: VerifyClaimOutcome;
   legs: UsageLeg[];
+  /** isBillableVerdict on the full verdict; the outcome drops the sources it needs. */
+  billable: boolean;
+  /** The full verdict, kept for billingSummary only; never sent (it holds sources). */
+  verdict: Partial<VerificationResult>;
 }
 
 /** The model the engine logged for this call, else the provider's configured model. */
@@ -183,41 +242,63 @@ function modelOf(legs: UsageLeg[], provider: LLMProvider): string | null {
 
 /**
  * Verify one claim with one provider call. A thrown error is reported as
- * `apiError` (the call did not produce a verdict), never as a verdict.
+ * `apiError` (the call did not produce a verdict), never as a verdict. The
+ * claim is billable only on the engine's rule (isBillableVerdict), with its
+ * provenance bound by the engine, never taken from the provider.
  */
-async function verifyOne(provider: LLMProvider, input: VerifyClaimInput): Promise<ClaimRun> {
+async function verifyOne(provider: LLMProvider, providerName: string, input: VerifyClaimInput, retriever: Retriever | null): Promise<ClaimRun> {
   if (isDocumentRelative(input.text)) {
-    // No provider call, so no usage legs and no spend.
+    // Checked before either grounding arm: no provider call, no Parallel search,
+    // so no usage legs and no spend.
     return {
       legs: [],
+      billable: false,
+      verdict: { claimId: input.id, status: 'unverified', sources: [] },
       outcome: {
         id: input.id, status: 'unverified', apiError: false, parseFallback: false, noSourceAbstain: false,
-        apiErrorReason: null, model: null, documentScope: true, explanation: DOCUMENT_SCOPE_EXPLANATION,
+        apiErrorReason: null, model: null, sourcesCount: 0, documentScope: true, explanation: DOCUMENT_SCOPE_EXPLANATION,
       },
     };
   }
   const claim: Claim = { id: input.id, text: input.text, type: 'fact', importance: 3 };
-  try {
-    const { result, legs } = await captureUsage(() => provider.verifyClaim(claim));
+  // The legs are kept when the call throws: a call that failed after reaching the
+  // provider still spent, and the batch's spend row must count it.
+  const { outcome, legs } = await captureOutcome(() => (retriever
+    ? retrieveThenVerify(claim, provider, providerName, retriever)
+    : provider.verifyClaim(claim)));
+  if (outcome.ok === false) {
     return {
       legs,
-      outcome: {
-        id: input.id,
-        status: result.status,
-        apiError: result.apiError === true,
-        parseFallback: result.parseFallback === true,
-        noSourceAbstain: result.noSourceAbstain === true,
-        apiErrorReason: result.apiError === true ? (result.apiErrorReason ?? 'provider_error') : null,
-        // A failed call produced no verdict and no engine model record.
-        model: result.apiError === true ? null : modelOf(legs, provider),
-      },
-    };
-  } catch {
-    return {
-      legs: [],
-      outcome: { id: input.id, status: 'unverified', apiError: true, parseFallback: false, noSourceAbstain: false, apiErrorReason: 'provider_error', model: null },
+      billable: false,
+      verdict: { claimId: input.id, status: 'unverified', apiError: true, apiErrorReason: 'provider_error', sources: [] },
+      outcome: { id: input.id, status: 'unverified', apiError: true, parseFallback: false, noSourceAbstain: false, apiErrorReason: 'provider_error', model: null, sourcesCount: 0 },
     };
   }
+  // Provenance is bound here with the runner's rule: the retriever comes from
+  // the engine's table, only for the built-in instance this route resolved, and any
+  // retriever the provider set on itself is dropped. A definite verdict with no
+  // source is reported as unverified, as on every other verify path
+  // (abstainWithoutSource); otherwise status and sources are left as returned.
+  // The parallel arm's provenance is bound by retrieveThenVerify (retriever 'parallel-search'),
+  // never by the engine table, which would name gemini-grounding.
+  const bound = retriever ? outcome.value : bindEngineProvenance(outcome.value, providerName, provider, new Date().toISOString());
+  const result = abstainWithoutSource(bound);
+  return {
+    legs,
+    billable: isBillableVerdict(result),
+    verdict: { ...result, claimId: input.id },
+    outcome: {
+      id: input.id,
+      status: result.status,
+      apiError: result.apiError === true,
+      parseFallback: result.parseFallback === true,
+      noSourceAbstain: result.noSourceAbstain === true,
+      apiErrorReason: result.apiError === true ? (result.apiErrorReason ?? 'provider_error') : null,
+      // A failed call produced no verdict and no engine model record.
+      model: result.apiError === true ? null : modelOf(legs, provider),
+      sourcesCount: Array.isArray(result.sources) ? result.sources.length : 0,
+    },
+  };
 }
 
 /** Run `worker` over `items` with at most `limit` in flight; results keep input order. */
@@ -239,10 +320,10 @@ function recordBatchSpend(runs: ClaimRun[], claims: VerifyClaimInput[], provider
   const legs = runs.flatMap((run) => run.legs);
   const costEvent = buildManagedCostEvent(legs, {
     text: claims.map((claim) => claim.text).join('\n'),
-    provider: providerName,
+    provider: withSearchLabel(providerName, legs),
     // A document-scope claim made no provider call, so it is not a served claim.
     claimCount: runs.filter((run) => !run.outcome.apiError && run.outcome.documentScope !== true).length,
-    claims: { extracted: claims.length, verified: billableVerdictCount(runs.map((run) => run.outcome)) },
+    claims: { extracted: claims.length, verified: runs.filter((run) => run.billable).length },
     tier: resolveTier(keyId),
     latencyMs: Date.now() - startMs,
     // A benchmark batch, not a scan: kept out of per-scan percentiles, still counted as spend below.
@@ -251,7 +332,7 @@ function recordBatchSpend(runs: ClaimRun[], claims: VerifyClaimInput[], provider
   getCostStore().recordManaged(costEvent);
   // Not sent to the telemetry Worker: its /api/scan-costs/stats is per-scan and cannot tell a batch from a scan.
   appendScanCostLog(costEvent);
-  recordProviderSpend(costEvent);
+  recordProviderSpend(costEvent, classifyKeyId(keyId));
 }
 
 /** Price one claim's captured legs, the same way the batch event prices all of them. */
@@ -263,6 +344,7 @@ export function claimUsage(legs: UsageLeg[]): ClaimUsage {
     inputTokens: usage.inputTokens,
     outputTokens: usage.outputTokens,
     groundingCalls: usage.groundingCalls,
+    googleGroundingCalls: legs.filter(isGroundedGeminiLeg).length,
     costUsd: priced ? usage.costUsd : 0,
     priced,
   };
@@ -299,13 +381,23 @@ export async function adminVerifyRoutes(fastify: FastifyInstance): Promise<void>
         return reply.status(503).send({ error: 'provider_not_configured', provider: providerName });
       }
 
+      // The arm: the body's field, else the server's mode, decided once for the batch.
+      const requested: GroundingMode = request.body.grounding ?? requestGrounding();
+      const parallel = usesParallelGrounding(providerName, undefined, { grounding: requested });
+      const retriever = parallel
+        ? new ParallelSearchRetriever((process.env.PARALLEL_API_KEY ?? '').trim(), { mode: request.body.parallelMode })
+        : null;
+
       const startMs = Date.now();
-      const runs = await mapWithConcurrency(claims, VERIFY_CLAIMS_CONCURRENCY, (claim) => verifyOne(provider, claim));
+      const runs = await mapWithConcurrency(claims, VERIFY_CLAIMS_CONCURRENCY, (claim) => verifyOne(provider, providerName, claim, retriever));
       recordBatchSpend(runs, claims, providerName, request.keyId ?? 'unknown', startMs);
 
       return reply.status(200).send({
         provider: providerName,
+        // The arm that ran: 'parallel' only where the engine applies it (a gemini verify).
+        grounding: parallel ? 'parallel' : 'google',
         results: runs.map((run) => ({ ...run.outcome, usage: claimUsage(run.legs) })),
+        billing: billingSummary(runs.map((run) => run.verdict)),
       });
     },
   );

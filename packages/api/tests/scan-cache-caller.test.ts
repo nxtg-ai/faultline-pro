@@ -41,17 +41,20 @@ import { resetKeyStore, getKeyStore } from '../src/store/keys.js';
 import { resetCache, getScanCache, holdsGroundedResults } from '../src/store/cache.js';
 import { resetProviderSpendLedger } from '../src/store/provider-spend.js';
 import { resetGroundingAllowanceLedger, uninstallGroundingCounter } from '../src/store/grounding-allowance.js';
-import { registerProvider } from '@nxtg/faultline/providers/registry.js';
 import { setUrlFetcher, resetUrlFetcher } from '../src/lib/url-validator.js';
 import { getCacheWarmer, getWarmupStore, WARMUP_RETIRED } from '../src/store/cache-warmup.js';
 
-registerProvider('mock', () => ({
-  name: 'Cache fixture',
-  modelId: 'fixture-v1',
-  extractClaims: async () => [{ id: 'c1', text: 'The Eiffel Tower was completed in 1889.', type: 'fact', importance: 5 }],
-  verifyClaim: async (c: { id: string }) => ({ claimId: c.id, status: 'supported', explanation: 'ok', sources: [{ title: 'p', uri: 'https://publisher.example/a' }] }),
-  generateCritiqueAndPrompt: async () => ({ critique: '', improvedPrompt: '' }),
-}) as never);
+// The built-in 'mock' provider is replaced for this file only, through the
+// module mock: the production registry refuses to replace a built-in id.
+vi.mock('@nxtg/faultline/providers/mock_provider.js', () => ({
+  createMockProvider: () => ({
+    name: 'Cache fixture',
+    modelId: 'fixture-v1',
+    extractClaims: async () => [{ id: 'c1', text: 'The Eiffel Tower was completed in 1889.', type: 'fact', importance: 5 }],
+    verifyClaim: async (c: { id: string }) => ({ claimId: c.id, status: 'supported', explanation: 'ok', sources: [{ title: 'p', uri: 'https://publisher.example/a' }] }),
+    generateCritiqueAndPrompt: async () => ({ critique: '', improvedPrompt: '' }),
+  }) as never,
+}));
 
 const SERVER_KEY = 'srv-cache-caller-test-key-0123456789';
 const ENV_KEYS = ['FAULTLINE_GROUNDING_LEDGER', 'FAULTLINE_PROVIDER_SPEND_LEDGER', 'GEMINI_API_KEY', 'FAULTLINE_CONSENSUS', 'FAULTLINE_API_KEY'];

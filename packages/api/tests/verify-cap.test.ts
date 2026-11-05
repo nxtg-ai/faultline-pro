@@ -71,7 +71,9 @@ const verificationOf = (json: Json): Json => json.verification as Json;
 
 describe('VERIFY_CAP_BY_TIER', () => {
   it('lists every plan, and every plan is 8', () => {
-    expect(Object.keys(VERIFY_CAP_BY_TIER).sort()).toEqual([...ALL_TIERS].sort());
+    // 'measurement' is the measurement key's label, not a forwardable plan; that key cannot scan.
+    expect(Object.keys(VERIFY_CAP_BY_TIER).sort()).toEqual([...ALL_TIERS, 'measurement'].sort());
+    expect(VERIFY_CAP_BY_TIER.measurement).toBe(8);
     for (const tier of ALL_TIERS) {
       expect(VERIFY_CAP_BY_TIER[tier]).toBe(8);
       expect(verifyCapForTier(tier)).toBe(8);

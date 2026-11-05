@@ -5,39 +5,93 @@
  *
  * Validates: N-228 (Faultline paid-tier margin protection).
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+
+// A scan counts toward the monthly quota only when its result holds a billable
+// verdict (supported, contradicted or mixed, with a source, an engine-set
+// retriever, and not an API error). So these tests scan on the real built-in
+// gemini provider, which the engine grants its 'gemini-grounding' retriever,
+// with only the Google SDK mocked to give a sourced verdict.
+// tests/scan-quota-billable.test.ts covers the scans that must not count.
+vi.mock('@google/genai', () => ({
+  GoogleGenAI: class {
+    models = {
+      generateContent: async (params: { config?: { tools?: Array<Record<string, unknown>> } }) => {
+        const grounded = (params.config?.tools ?? []).some((t) => 'googleSearch' in t);
+        if (!grounded) {
+          return {
+            text: JSON.stringify([{ id: 'c1', text: 'The sky is blue.', type: 'fact', importance: 5 }]),
+            usageMetadata: { promptTokenCount: 150, candidatesTokenCount: 40 },
+          };
+        }
+        return {
+          text: JSON.stringify({ status: 'supported', explanation: 'Found.' }),
+          modelVersion: 'gemini-2.5-flash',
+          usageMetadata: { promptTokenCount: 90, candidatesTokenCount: 20 },
+          candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'Publisher', uri: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/x' } }] } }],
+        };
+      },
+    };
+  },
+}));
+
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.js';
 import { resetKeyStore, getKeyStore } from '../src/store/keys.js';
 import { getUsageMeter, resetUsageMeter } from '../src/store/usage.js';
 import { getMonthlyCap, isUsageCapEnabled } from '../src/store/entitlements.js';
 import { nextMonthResetEpoch } from '../src/plugins/usage-cap.js';
+import { resetCache } from '../src/store/cache.js';
+import { resetProviderSpendLedger } from '../src/store/provider-spend.js';
+import { resetGroundingAllowanceLedger, uninstallGroundingCounter } from '../src/store/grounding-allowance.js';
+import { resetCircuitBreaker } from '../src/store/circuit-breaker.js';
 
 // ---- env helpers: cap gate is driven entirely by process.env ----
 const CAP_ENV_KEYS = ['FAULTLINE_USAGE_CAP', 'FAULTLINE_CAP_PRO', 'FAULTLINE_CAP_FREE', 'FAULTLINE_CAP_ADMIN'];
+// The gemini scans below run with these set; each test gets its own ledgers.
+const SCAN_ENV_KEYS = [
+  'FAULTLINE_GROUNDING_LEDGER', 'FAULTLINE_PROVIDER_SPEND_LEDGER', 'GEMINI_API_KEY', 'FAULTLINE_CONSENSUS', 'FAULTLINE_EVIDENCE_FETCH',
+];
 let savedEnv: Record<string, string | undefined>;
+let tmpDir: string;
 
 beforeEach(() => {
   savedEnv = {};
-  for (const k of CAP_ENV_KEYS) savedEnv[k] = process.env[k];
-  for (const k of CAP_ENV_KEYS) delete process.env[k];
+  for (const k of [...CAP_ENV_KEYS, ...SCAN_ENV_KEYS]) savedEnv[k] = process.env[k];
+  for (const k of [...CAP_ENV_KEYS, ...SCAN_ENV_KEYS]) delete process.env[k];
+  tmpDir = mkdtempSync(join(tmpdir(), 'fl-usage-cap-'));
+  process.env.FAULTLINE_GROUNDING_LEDGER = join(tmpDir, 'grounding-prompts.jsonl');
+  process.env.FAULTLINE_PROVIDER_SPEND_LEDGER = join(tmpDir, 'provider-spend.jsonl');
+  process.env.GEMINI_API_KEY = 'test-gemini';
+  process.env.FAULTLINE_EVIDENCE_FETCH = 'off';
+  resetGroundingAllowanceLedger();
+  resetProviderSpendLedger();
+  resetCache();
+  resetCircuitBreaker();
   resetUsageMeter();
   resetKeyStore();
 });
 afterEach(() => {
-  for (const k of CAP_ENV_KEYS) {
+  for (const k of [...CAP_ENV_KEYS, ...SCAN_ENV_KEYS]) {
     if (savedEnv[k] === undefined) delete process.env[k];
     else process.env[k] = savedEnv[k];
   }
+  uninstallGroundingCounter();
+  resetGroundingAllowanceLedger();
+  resetProviderSpendLedger();
+  rmSync(tmpDir, { recursive: true, force: true });
 });
 
 // =========================================================================
 // entitlements config
 // =========================================================================
 describe('entitlements — getMonthlyCap / isUsageCapEnabled', () => {
-  it('returns conservative placeholder defaults when no env is set', () => {
-    expect(getMonthlyCap('pro')).toBe(25);
-    expect(getMonthlyCap('free')).toBe(10);
+  it('returns the plan-limit defaults when no env is set (pricing page, read 2026-11-01)', () => {
+    expect(getMonthlyCap('pro')).toBe(500);
+    expect(getMonthlyCap('free')).toBe(5);
     expect(getMonthlyCap('admin')).toBeNull();
   });
 
@@ -55,9 +109,9 @@ describe('entitlements — getMonthlyCap / isUsageCapEnabled', () => {
 
   it('falls back to the default on a garbage or negative env value', () => {
     process.env.FAULTLINE_CAP_PRO = 'banana';
-    expect(getMonthlyCap('pro')).toBe(25);
+    expect(getMonthlyCap('pro')).toBe(500);
     process.env.FAULTLINE_CAP_PRO = '-5';
-    expect(getMonthlyCap('pro')).toBe(25);
+    expect(getMonthlyCap('pro')).toBe(500);
   });
 
   it('accepts a zero cap (blocks all scans)', () => {
@@ -123,15 +177,15 @@ describe('enforceMonthlyCap — integration through /scan', () => {
   beforeEach(() => { server = buildServer(); });
   afterEach(async () => { await server.close(); });
 
-  it('is a no-op when the gate is DORMANT — a scan passes even over the placeholder cap', async () => {
-    // gate off (default); seed usage far above the pro cap
+  it('is a no-op when the gate is DORMANT — a scan passes even over the default cap', async () => {
+    // gate off (default); seed usage above the pro default cap (500)
     const created = getKeyStore().create('Pro Key', ['pro', 'scan']);
-    for (let i = 0; i < 100; i++) getUsageMeter().increment(created.id);
+    for (let i = 0; i < 600; i++) getUsageMeter().increment(created.id);
     const res = await server.inject({
       method: 'POST',
       url: '/scan',
       headers: { 'x-api-key': created.key, 'content-type': 'application/json' },
-      payload: { text: 'The sky is blue.', provider: 'mock' },
+      payload: { text: 'The sky is blue.', provider: 'gemini' },
     });
     expect(res.statusCode).not.toBe(402); // dormant gate never blocks
   });
@@ -146,7 +200,7 @@ describe('enforceMonthlyCap — integration through /scan', () => {
       method: 'POST',
       url: '/scan',
       headers: { 'x-api-key': created.key, 'content-type': 'application/json' },
-      payload: { text: 'The sky is blue.', provider: 'mock' },
+      payload: { text: 'The sky is blue.', provider: 'gemini' },
     });
     expect(res.statusCode).toBe(402);
     expect(res.headers['x-usage-limit']).toBe('3');
@@ -168,7 +222,7 @@ describe('enforceMonthlyCap — integration through /scan', () => {
       method: 'POST',
       url: '/scan',
       headers: { 'x-api-key': created.key, 'content-type': 'application/json' },
-      payload: { text: 'The sky is blue.', provider: 'mock' },
+      payload: { text: 'The sky is blue.', provider: 'gemini' },
     });
     expect(res.statusCode).not.toBe(402);
     // header set on the allowed request (before this scan's own increment)
@@ -183,10 +237,40 @@ describe('enforceMonthlyCap — integration through /scan', () => {
       method: 'POST',
       url: '/scan',
       headers: { 'x-api-key': created.key, 'content-type': 'application/json' },
-      payload: { text: 'The sky is blue.', provider: 'mock' },
+      payload: { text: 'The sky is blue.', provider: 'gemini' },
     });
     expect(res.statusCode).toBe(200);
     expect(getUsageMeter().getMonthlyCount(created.id)).toBe(1);
+  });
+
+  it('a query string on POST /scan still counts the scan (matched on the route, not the raw URL)', async () => {
+    const created = getKeyStore().create('Pro Key', ['pro', 'scan']);
+    const res = await server.inject({
+      method: 'POST',
+      url: '/scan?x=1',
+      headers: { 'x-api-key': created.key, 'content-type': 'application/json' },
+      payload: { text: 'The sky is blue.', provider: 'gemini' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(getUsageMeter().getMonthlyCount(created.id)).toBe(1);
+  });
+
+  it('a query string cannot slip past the cap once it is reached', async () => {
+    process.env.FAULTLINE_USAGE_CAP = 'on';
+    process.env.FAULTLINE_CAP_PRO = '2';
+    const created = getKeyStore().create('Pro Key', ['pro', 'scan']);
+    const statuses: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      const res = await server.inject({
+        method: 'POST',
+        url: `/scan?n=${i}`,
+        headers: { 'x-api-key': created.key, 'content-type': 'application/json' },
+        payload: { text: `The sky is blue ${i}.`, provider: 'gemini' },
+      });
+      statuses.push(res.statusCode);
+    }
+    expect(statuses).toEqual([200, 200, 402]);
+    expect(getUsageMeter().getMonthlyCount(created.id)).toBe(2);
   });
 
   it('never caps an admin (unlimited) key even when the gate is on', async () => {
@@ -198,7 +282,7 @@ describe('enforceMonthlyCap — integration through /scan', () => {
       method: 'POST',
       url: '/scan',
       headers: { 'x-api-key': admin.key, 'content-type': 'application/json' },
-      payload: { text: 'The sky is blue.', provider: 'mock' },
+      payload: { text: 'The sky is blue.', provider: 'gemini' },
     });
     expect(res.statusCode).not.toBe(402);
   });

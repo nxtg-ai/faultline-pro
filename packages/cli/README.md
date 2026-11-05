@@ -10,7 +10,7 @@ Forensic verification of AI-generated claims. Extract atomic facts, verify again
 
 > **Release stage: alpha.** Usable today, with sharp edges. Verdict accuracy has not yet been measured on a labelled test set, and anything may change before 1.0.
 
-Current npm version: 0.11.1 (`npm view @nxtg/faultline version`, 2026-10-02).
+Version in this repo: 0.12.1. The `faultline-mcp` bin first shipped in 0.12.0; 0.12.1 makes it refuse to answer without a key. Check what npm serves with `npm view @nxtg/faultline version`.
 
 ---
 
@@ -157,6 +157,45 @@ The action lives in its own repo (`nxtg-ai/faultline-action`, tag `v1` exists):
 ```
 
 See [`examples/ci-integration.yml`](https://github.com/nxtg-ai/faultline-pro/blob/main/examples/ci-integration.yml) for a full workflow with SARIF upload to GitHub Code Scanning.
+
+---
+
+## MCP Server (`verify_claims`)
+
+This package also ships the `faultline-mcp` bin: an MCP stdio server with one tool, `verify_claims`, for Claude Code, Cursor and any MCP client. It is the server from `packages/mcp`, with the same tool contract as the hosted MCP endpoint at `POST https://faultline-api.fly.dev/mcp` (Streamable HTTP, `x-api-key` header). On a hosted scan the result also carries `billing`. The bin ships from `@nxtg/faultline@0.12.0`; the current release, `@nxtg/faultline@0.12.1`, also refuses a call made without a key. 0.11.1 and earlier do not have the bin.
+
+**Run it with a key.** One command, nothing to install first. The MCP client starts the server over stdio and passes the key in its environment:
+
+```bash
+FAULTLINE_API_KEY=your-key npx -y -p @nxtg/faultline faultline-mcp
+```
+
+It lists one tool, `verify_claims`, with the same name, input schema and output as the hosted `/mcp`. Without a key the tool refuses every call with "no key: nothing was verified" (an MCP tool error, not a verdict). For a demo that checks nothing, name `provider: "mock"` or set `FAULTLINE_PROVIDER=mock`; the result then says `SYNTHETIC`. A client that can speak Streamable HTTP can skip the install and call `https://faultline-api.fly.dev/mcp` with the `x-api-key` header instead.
+
+```bash
+# Claude Code
+claude mcp add faultline -e FAULTLINE_API_KEY=your-key -- npx -y -p @nxtg/faultline faultline-mcp
+```
+
+```json
+{
+  "mcpServers": {
+    "faultline": {
+      "command": "npx",
+      "args": ["-y", "-p", "@nxtg/faultline", "faultline-mcp"],
+      "env": { "FAULTLINE_API_KEY": "your-key" }
+    }
+  }
+}
+```
+
+The key picks where the check runs:
+
+- `FAULTLINE_API_KEY` set: the scan runs on the hosted API (`https://faultline-api.fly.dev`, override with `FAULTLINE_API_URL`) on Faultline's server-side provider keys, grounded by default.
+- Otherwise it runs in-process on your own provider key. Precedence: `FAULTLINE_PROVIDER`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `PERPLEXITY_API_KEY`. Only Gemini retrieves live sources; the response says `grounded: false` for the others.
+- With neither, and no provider named, `verify_claims` refuses: it returns an MCP tool error, "no key: nothing was verified", and checks nothing. Name `provider: "mock"` or set `FAULTLINE_PROVIDER=mock` for a demo; the `mock` result says `SYNTHETIC` and verifies nothing.
+
+Input: `text` (required), `max_claims`, `provider` (`gemini`, `openai`, `claude`, `perplexity`, `mock`). Each claim comes back `VERIFIED`, `REFUTED`, `UNSUPPORTED`, `MIXED` or `UNCHECKED`. `UNCHECKED` is not a verdict. `degraded: true` means some claims could not be checked. Audit records go to `.faultline/history` (`FAULTLINE_HISTORY_DIR` to move them, `FAULTLINE_MCP_NO_HISTORY=1` to switch them off).
 
 ---
 

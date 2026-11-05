@@ -36,6 +36,7 @@ export interface ExpiringSoonResult {
 export interface RotateResult {
   id: string;
   newKey: string;
+  /** The replaced key's 8-character prefix (the server stores only hashes). */
   previousKey: string;
   previousKeyExpiresAt: string;
   gracePeriodHours: number;

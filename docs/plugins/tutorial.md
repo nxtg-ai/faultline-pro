@@ -158,6 +158,8 @@ export default plugin;
 
 Use it via: `faultline scan --provider my-llm --text "..."`
 
+A plugin provider needs its own name. The built-in ids (`gemini`, `claude`, `openai`, `perplexity`, `mock`), in any case and with surrounding spaces, are refused: `registerProvider` throws and the plugin fails to load. A plugin provider never gets the engine retriever a built-in provider carries.
+
 ---
 
 ## 4. Test locally

@@ -1,9 +1,11 @@
 import type { EvidenceOptions } from '../evidence/passage.js';
 import type { IndependentEvidenceOptions } from '../evidence/independent.js';
+import { groundingFromEnv, type GroundingMode } from './grounding.js';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import type { Claim, VerificationResult, AnalysisState } from '../types.js';
 import { generateComplianceReport, type ComplianceReport } from '../compliance/report_generator.js';
+import { calculateRisk } from '../lib/overall-risk.js';
 import { runAllRules, runRules, type Finding } from '../rules/index.js';
 import { isExtractionError, type ExtractionErrorReason } from '../providers/extraction-error.js';
 import { markDocumentScope } from '../lib/claim-scope.js';
@@ -76,6 +78,12 @@ export interface ScanOptions {
   evidence?: EvidenceOptions;
   /** Attach a second retriever's passages as independentEvidence (off unless set). */
   independentEvidence?: IndependentEvidenceOptions;
+  /**
+   * Which search grounds a non-consensus gemini verify (cli/grounding.ts).
+   * Absent means google, today's behaviour. The engine never reads
+   * FAULTLINE_GROUNDING itself: the caller decides per request and passes it.
+   */
+  grounding?: GroundingMode;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -149,18 +157,8 @@ export interface VerifyFullScanOptions {
   /** Attach evidence passages from each cited source (see ScanOptions.evidence). */
   evidence?: EvidenceOptions;
   independentEvidence?: IndependentEvidenceOptions;
-}
-
-function calculateRisk(
-  verifications: Record<string, VerificationResult>,
-): AnalysisState['overallRisk'] {
-  const values = Object.values(verifications);
-  const contradicted = values.filter((v) => v.status === 'contradicted').length;
-  const mixed = values.filter((v) => v.status === 'mixed').length;
-  if (contradicted > 2) return 'critical';
-  if (contradicted > 0 || mixed > 2) return 'high';
-  if (mixed > 0) return 'medium';
-  return 'low';
+  /** See ScanOptions.grounding. */
+  grounding?: GroundingMode;
 }
 
 // ── Sentence-level claim coverage guarantee ───────────────────────────────────
@@ -198,12 +196,16 @@ function isSentenceBoundary(lastWord: string, punct: string, next: string): bool
  */
 export function splitSentences(text: string): string[] {
   const sentences: string[] = [];
-  const boundary = /([.!?]+)(["'\)\]\u201d\u2019]*)\s+(["'\(\[\u201c\u2018]*)(\S?)/g;
+  const boundary = /(?<![.!?])([.!?]+)(["'\)\]\u201d\u2019]*)\s+(["'\(\[\u201c\u2018]*)(\S?)/g;
   let start = 0;
   let m: RegExpExecArray | null;
   while ((m = boundary.exec(text)) !== null) {
     const head = text.slice(start, m.index);
-    const lastWord = head.slice(head.search(/\S+$/) >= 0 ? head.search(/\S+$/) : head.length);
+    // Walk back from the end of head over non-whitespace (same set as \s). Linear, unlike
+    // head.search(/\S+$/), which is quadratic on a long run of non-space characters.
+    let wordStart = head.length;
+    while (wordStart > 0 && !/\s/.test(head[wordStart - 1]!)) wordStart--;
+    const lastWord = head.slice(wordStart);
     if (!isSentenceBoundary(lastWord, m[1]!, m[4] ?? '')) {
       boundary.lastIndex = m.index + m[1]!.length; // keep scanning past this period
       continue;
@@ -229,7 +231,8 @@ function normalizeSentence(s: string): string {
  *
  * If an LLM merges or drops sentences, this function adds a synthetic `fact`
  * claim for each unrepresented sentence. Synthetic IDs use an 's' prefix to
- * distinguish them from LLM-extracted claims (e.g. "s1", "s2").
+ * distinguish them from LLM-extracted claims (e.g. "s1", "s2"), skip any id
+ * already in the scan, and stay far inside MAX_CLAIM_ID_LENGTH.
  *
  * This is the primary defence against claim-merging behaviour and works
  * identically across all providers.
@@ -239,7 +242,16 @@ export function guaranteeClaimPerSentence(text: string, claims: Claim[]): Claim[
   if (sentences.length < 2) return claims;
 
   const result = [...claims];
+  // A synthetic id never reuses one already in the scan (a model may itself
+  // return "s3"): ids key the verifications and the claim meter's rows.
+  const taken = new Set(result.map(c => c.id));
   let idx = result.length + 1;
+  const nextSyntheticId = (): string => {
+    while (taken.has(`s${idx}`)) idx++;
+    const id = `s${idx++}`;
+    taken.add(id);
+    return id;
+  };
 
   for (const sentence of sentences) {
     const normSentence = normalizeSentence(sentence);
@@ -253,7 +265,7 @@ export function guaranteeClaimPerSentence(text: string, claims: Claim[]): Claim[
     });
 
     if (!covered) {
-      result.push({ id: `s${idx++}`, text: sentence, type: 'fact', importance: 3 });
+      result.push({ id: nextSyntheticId(), text: sentence, type: 'fact', importance: 3 });
     }
   }
 
@@ -290,7 +302,7 @@ export async function scan(
   pipelineConfig?: PipelineConfig,
   options?: ScanOptions,
 ): Promise<ScanResult> {
-  const { extractionProvider, verifier } = resolveScanProviders(providerName, pipelineConfig);
+  const { extractionProvider, verifier } = resolveScanProviders(providerName, pipelineConfig, { grounding: options?.grounding });
 
   onProgress?.('Extracting claims...');
   const rawClaims = await extractionProvider.extractClaims(text);
@@ -363,7 +375,7 @@ export async function verifyFullScan(
   claims: Claim[],
   opts: VerifyFullScanOptions = {},
 ): Promise<FullScanResult> {
-  const verifier = resolveVerifier(opts.providerName, opts.pipelineConfig);
+  const verifier = resolveVerifier(opts.providerName, opts.pipelineConfig, { grounding: opts.grounding });
   return runFullVerification(claims, verifier, { ...opts, provider: verifier.provider.name });
 }
 
@@ -404,7 +416,8 @@ async function runFullVerification(
   const complianceReport = generateComplianceReport(run.attempted, run.verifications, overallRisk, context.minConfidence);
   const verification = buildFullVerificationSummary(partition, run.results);
   // Positional, like the summary: an id-keyed count would lose a failure behind a duplicate id.
-  const verificationErrors = verification.unservedClaimIds.length;
+  // Only provider errors count; an unserved claim without one (unverified, no source) was checked.
+  const verificationErrors = run.results.filter((r) => r?.apiError === true).length;
 
   return {
     input: context.text?.substring(0, 200) ?? '',
@@ -505,7 +518,10 @@ export async function batchScan(
         filesSkipped++;
         continue;
       }
-      const result = await scan(text, providerName, minConfidence);
+      // A local batch: the user's own FAULTLINE_GROUNDING, else exactly the call it was before.
+      const result = groundingFromEnv() === 'parallel'
+        ? await scan(text, providerName, minConfidence, undefined, undefined, undefined, undefined, { grounding: 'parallel' })
+        : await scan(text, providerName, minConfidence);
       results.push({ file: relative(dir, file), result });
     } catch (err) {
       filesSkipped++;

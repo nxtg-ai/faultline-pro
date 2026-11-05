@@ -14,6 +14,10 @@ Fastify v5 service, deployed on Fly.io as `faultline-api`. Hosted at `https://fa
 | `/scan/report` | POST | Scan text, return a PDF compliance report |
 | `/critique` | POST | Critique and improved prompt for failed claims |
 | `/usage` | GET | Per-key usage, monthly quota position, and (admin keys only) the provider-spend budget |
+| `/mcp` | POST | Hosted MCP server (Streamable HTTP, stateless): the `verify_claims` tool, scanned through `POST /scan` with the caller's key. `GET` and `DELETE` answer `405` |
+| `/openapi.json` | GET | OpenAPI 3 document built from the live routes (same as `/docs/json`), no auth |
+| `/llms.txt` | GET | Plain-text guide to this API for language models and agents, no auth |
+| `/pricing` | GET | Per-claim price and monthly claim caps (HTML), no auth |
 
 ## Authentication
 
@@ -224,6 +228,12 @@ This route makes a paid LLM call on Faultline's provider keys, so it needs an AP
 
 ---
 
+### `POST /mcp`
+
+A remote MCP server: Streamable HTTP, stateless (a new server and transport per request, no session id, JSON responses). It serves one tool, `verify_claims`, built from `packages/mcp`'s own definition, so it is the same tool as the stdio server. A tool call runs `POST /scan` in-process (`fastify.inject`) with the caller's `x-api-key` and no other header, so every `POST /scan` gate and the `billing` field apply unchanged; a refusal comes back as an MCP tool error. No key, or a bad one: `401` with a JSON-RPC error body. A present `Origin` must be on `FAULTLINE_MCP_ALLOWED_ORIGINS` (default empty) or the request gets `403`. Route: `src/routes/mcp.ts`. Client setup: `docs/INTEGRATION.md` §13.
+
+---
+
 ### `GET /usage`
 
 Returns `{ keyId, usage, quota }`. `quota` is `{ tier, enforced, limit, used, remaining, resetEpoch }` for the monthly scan quota. Admin keys also receive `providerBudget` (`{ month, enforced, capUsd, spentUsd, remainingUsd, exhausted }`). Other keys never see it, because it is Faultline's own spend.
@@ -263,6 +273,10 @@ npm run dev --workspace=packages/api   # http://localhost:3010 (default PORT 301
 | `FAULTLINE_PROVIDER_SPEND_CAP_USD` | no | Monthly ceiling in USD, default `100` |
 | `FAULTLINE_PROVIDER_SPEND_LEDGER` | no | Ledger path, default `/var/log/faultline/provider-spend.jsonl` |
 | `FAULTLINE_USAGE_CAP` | no | `on` enforces the per-key monthly scan quota. Default off |
+| `FAULTLINE_GROUNDING` | no | `parallel`: every `gemini` verify, on every key and scan path and `/mcp`, searches Parallel then judges with no Google search (`docs/grounding-providers.md`). Unset: Google grounding |
+| `PARALLEL_API_KEY` | with `FAULTLINE_GROUNDING=parallel` | Parallel Search API key. Missing: every claim reads as not checked, never a Google fallback |
+| `FAULTLINE_PARALLEL_MODE` | no | Parallel search mode: `advanced` (default), `basic`, `fast`, `turbo` |
+| `FAULTLINE_MCP_ALLOWED_ORIGINS` | no | Comma-separated browser origins `/mcp` accepts. Default empty: a request with an `Origin` header gets `403`; one without is allowed |
 
 ## Deployment
 

@@ -15,7 +15,8 @@ const PROD_429_LEAK =
 const LEAK_MARKERS = ['RESOURCE_EXHAUSTED', 'generativelanguage', 'generate_content_free_tier', 'limit: 5', '{'];
 
 const CLAIM: Claim = { id: 'c1', text: 'A test claim', type: 'fact', importance: 3 };
-const emptyRetriever: Retriever = { name: 'test-retriever', retrieve: async () => [] as Source[] };
+// One shared source, so the providers are asked and their failures are what is under test.
+const oneSourceRetriever: Retriever = { name: 'test-retriever', retrieve: async () => [{ title: 'S', uri: 'https://example.org/s' }] as Source[] };
 
 function throwingProvider(name: string): { name: string; provider: LLMProvider } {
   return {
@@ -39,7 +40,7 @@ function goodProvider(name: string): { name: string; provider: LLMProvider } {
 
 describe('consensus error path — no raw leak, apiError flagged', () => {
   it('a throwing provider never leaks the raw blob into the vote and sets apiError', async () => {
-    const result = await consensusVerify(CLAIM, emptyRetriever, [throwingProvider('gemini')]);
+    const result = await consensusVerify(CLAIM, oneSourceRetriever, [throwingProvider('gemini')]);
     // fused explanation is clean
     for (const m of LEAK_MARKERS) expect(result.explanation).not.toContain(m);
     // the vote itself is sanitized + flagged
@@ -52,7 +53,7 @@ describe('consensus error path — no raw leak, apiError flagged', () => {
   });
 
   it('a real verdict present → NOT flagged apiError (claim was checked)', async () => {
-    const result = await consensusVerify(CLAIM, emptyRetriever, [throwingProvider('gemini'), goodProvider('openai')]);
+    const result = await consensusVerify(CLAIM, oneSourceRetriever, [throwingProvider('gemini'), goodProvider('openai')]);
     expect(result.status).toBe('supported');
     expect(result.apiError).toBeUndefined();
     for (const m of LEAK_MARKERS) expect(result.explanation).not.toContain(m);

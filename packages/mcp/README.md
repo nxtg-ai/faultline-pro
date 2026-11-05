@@ -10,7 +10,7 @@ Agents assert things that aren't true, confidently, in the exact register that r
 
 ## Install
 
-> **Not on npm yet.** As of 2026-10-01 `npm view @nxtg/faultline-mcp` returns 404, so `npx -y @nxtg/faultline-mcp` fails. Until it is published, run it from a checkout of this repo: after `npm install` at the repo root, use `node /absolute/path/to/packages/mcp/bin/faultline-mcp.js` where the commands below say `npx -y @nxtg/faultline-mcp`. Package version in the repo: 0.1.0.
+> **Not on npm yet.** As of 2026-10-01 `npm view @nxtg/faultline-mcp` returns 404, so `npx -y @nxtg/faultline-mcp` fails. Until it is published, run it from a checkout of this repo: after `npm install` at the repo root, use `node /absolute/path/to/packages/mcp/bin/faultline-mcp.js` where the commands below say `npx -y @nxtg/faultline-mcp`. Package version in the repo: 0.12.1.
 
 **Claude Code**
 
@@ -50,9 +50,9 @@ faultline-mcp ready — provider: openai (NOT GROUNDED). This provider judges cl
 from model knowledge without retrieving sources, so verdicts carry no evidence.
 ```
 
-Provider precedence: `FAULTLINE_PROVIDER` → `GEMINI_API_KEY` → `OPENAI_API_KEY` → `ANTHROPIC_API_KEY` → `PERPLEXITY_API_KEY` → `mock`.
+Provider precedence: `FAULTLINE_PROVIDER` → `GEMINI_API_KEY` → `OPENAI_API_KEY` → `ANTHROPIC_API_KEY` → `PERPLEXITY_API_KEY`.
 
-With no provider key and no `FAULTLINE_API_KEY` the server runs the `mock` provider, which returns **synthetic results and verifies nothing**. It exists for CI wiring, not for use. (The `faultline` CLI is stricter: since v0.10.1 it refuses to run with no key instead of falling back to `mock`. The MCP server still falls back and says so on startup.)
+With no provider key and no `FAULTLINE_API_KEY`, and no provider named, `verify_claims` **refuses**: it returns an MCP tool error, "no key: nothing was verified", naming `FAULTLINE_API_KEY` first, and checks nothing. The startup message on stderr says the same. The `mock` provider runs only when asked for by name (`provider: "mock"` or `FAULTLINE_PROVIDER=mock`); it returns **synthetic results and verifies nothing**, and its summary starts with `SYNTHETIC`. It exists for CI wiring, not for use.
 
 ## Tool: `verify_claims`
 
@@ -74,7 +74,7 @@ With no provider key and no `FAULTLINE_API_KEY` the server runs the `mock` provi
 | `MIXED` | evidence both supports and contradicts |
 | `UNCHECKED` | **not a verdict** — verification did not run |
 
-`UNCHECKED` is deliberately not folded into `UNSUPPORTED`. "We never checked" and "we checked and found nothing" are opposite statements, and collapsing them makes a rate-limit or an expired key look like a caught hallucination. `unchecked_reason` says which it was: `provider_error` (the provider call failed), `provider_unparseable` (the provider's reply could not be read), `output_truncated` (the reply was cut off at its output-token ceiling, see `docs/cost-ceilings.md`), or `not_verifiable` (opinions and non-factual statements are not checkable).
+`UNCHECKED` is deliberately not folded into `UNSUPPORTED`. "We never checked" and "we checked and found nothing" are opposite statements, and collapsing them makes a rate-limit or an expired key look like a caught hallucination. `unchecked_reason` says which it was: `provider_error` (the provider call failed), `provider_out_of_credits` (the provider account has no credits left, so a re-run will not help until it has credits again), `provider_unparseable` (the provider's reply could not be read), `output_truncated` (the reply was cut off at its output-token ceiling, see `docs/cost-ceilings.md`), or `not_verifiable` (opinions and non-factual statements are not checkable).
 
 **Response fields that matter**
 

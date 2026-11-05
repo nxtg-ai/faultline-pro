@@ -1,16 +1,21 @@
+import { groundingOption } from '../lib/grounding.js';
 import { apiEvidenceOptions, apiIndependentEvidenceOptions } from '../lib/evidence.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { extractForFullScan, verifyFullScan, type FullScanResult } from '@nxtg/faultline/cli/scan.js';
 import { billableVerdictCount } from '@nxtg/faultline/lib/verdict-guard.js';
 import { partitionForFullScan } from '@nxtg/faultline/cli/full-scan.js';
-import { captureUsage, type UsageLeg } from '@nxtg/faultline/lib/usage-sink.js';
-import { requireApiKey } from '../plugins/auth.js';
+import type { UsageLeg } from '@nxtg/faultline/lib/usage-sink.js';
+import { captureOutcome, withSearchLabel } from '../lib/scan-spend.js';
+import { classifyKeyId, requireApiKey } from '../plugins/auth.js';
 import { isExtractionError } from '@nxtg/faultline/providers/extraction-error.js';
 import { sendExtractionFailed } from '../lib/extraction-failure.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
-import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
+import { enforceProviderSpendCap, resolveSpendCapTier } from '../plugins/provider-spend-cap.js';
+import { admitMonthlyScans, enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { isServerKeyId, resolveEntitledTier } from '../plugins/consensus-entitlement.js';
 import { recordProviderSpend } from '../store/provider-spend.js';
+import { committedClaim, jobRecordScanId, meterCheck, reserveClaimsFor } from '../lib/claim-meter.js';
+import { getClaimMeter, isClaimMeterEnabled, type ClaimReservation } from '../store/claim-meter.js';
 import { getUsageMeter } from '../store/usage.js';
 import {
   getCostStore,
@@ -23,6 +28,7 @@ import {
   getFullScanJobStore,
   describeJob,
   describeLedgerRow,
+  type ClaimProgress,
   type FullScanJob,
   type FullScanJobStore,
   type StartedJob,
@@ -158,6 +164,10 @@ interface FullScanCostInput {
   /** Grounded verify calls made (0 for an estimate). */
   claimCount: number;
   tier: ManagedScanCostEvent['tier'];
+  /** The key the step ran for: sets the spend row's key class (never written itself). */
+  keyId: string;
+  /** 'extraction' for an estimate: its claims are counted again by the job that verifies them. */
+  stage?: 'extraction';
   latencyMs: number;
   /** Claims in this step and how many got a provider verdict (the cost log's per-claim counts). */
   claims: { extracted: number; verified: number };
@@ -169,25 +179,12 @@ interface FullScanCostInput {
  * ledger. `kind: 'full-scan'` keeps /costs/percentiles comparable (scans only).
  */
 function logFullScanCost(legs: UsageLeg[], input: FullScanCostInput): void {
-  const event = buildManagedCostEvent(legs, { ...input, kind: 'full-scan' });
+  const { keyId, stage, ...cost } = input;
+  const event = buildManagedCostEvent(legs, { ...cost, provider: withSearchLabel(cost.provider, legs), kind: 'full-scan' });
   getCostStore().recordManaged(event);
   emitScanCostEvent(event);
   appendScanCostLog(event);
-  recordProviderSpend(event);
-}
-
-type Outcome<T> = { ok: true; value: T } | { ok: false; error: unknown };
-
-/** Run `fn` inside a usage scope and keep the legs even when it throws (a failed call can still have spent). */
-async function captureOutcome<T>(fn: () => Promise<T>): Promise<{ outcome: Outcome<T>; legs: UsageLeg[] }> {
-  const { result, legs } = await captureUsage(async (): Promise<Outcome<T>> => {
-    try {
-      return { ok: true, value: await fn() };
-    } catch (error) {
-      return { ok: false, error };
-    }
-  });
-  return { outcome: result, legs };
+  recordProviderSpend(event, classifyKeyId(keyId), { stage });
 }
 
 const isMissingProviderKey = (error: unknown): error is Error =>
@@ -205,8 +202,19 @@ const isMissingProviderKey = (error: unknown): error is Error =>
  * - `failed`: the run threw outright (e.g. the provider has no key), so no result
  *   reached the caller: served 0, refund = charged. A per-claim provider error is
  *   NOT this; it is an unserved claim inside a `done` job.
+ *
+ * A metered job's key is checked again when the job starts, as every other
+ * queued run checks it: a key disabled, expired or deleted while the job waited
+ * fails the job with `key_revoked` before any provider call, and its
+ * reservation is released (finish runs the settle hook, which commits nothing
+ * for a failed job).
  */
 async function runFullScanJob(store: FullScanJobStore, job: FullScanJob): Promise<void> {
+  if (job.metered === true && ownerRevoked(job.keyId)) {
+    job.refusedReason = 'key_revoked';
+    store.finish(job, 'failed');
+    return;
+  }
   const startedAt = Date.now();
   const text = job.text;
   const { outcome, legs } = await captureOutcome<FullScanResult>(() => verifyFullScan(job.claims, {
@@ -216,6 +224,8 @@ async function runFullScanJob(store: FullScanJobStore, job: FullScanJob): Promis
     signal: job.controller.signal,
     evidence: apiEvidenceOptions(),
     independentEvidence: apiIndependentEvidenceOptions(),
+    // Read when the job runs: the mode is passed to the engine, never set in process.env.
+    ...groundingOption(),
     onClaim: (_claim, verdict, index) => store.recordVerdict(job, index, verdict),
   }));
   logFullScanCost(legs, {
@@ -223,6 +233,7 @@ async function runFullScanJob(store: FullScanJobStore, job: FullScanJob): Promis
     provider: job.provider,
     claimCount: outcome.ok ? outcome.value.verification.verifiedClaims : job.verdicts.filter(Boolean).length,
     tier: job.tier,
+    keyId: job.keyId,
     latencyMs: Date.now() - startedAt,
     claims: { extracted: job.verdicts.length, verified: billableVerdictCount(job.verdicts) },
   });
@@ -231,6 +242,41 @@ async function runFullScanJob(store: FullScanJobStore, job: FullScanJob): Promis
     return;
   }
   store.finish(job, job.controller.signal.aborted ? 'stopped' : 'done', outcome.value);
+}
+
+// ── Claim meter ─────────────────────────────────────────────────────────────
+
+/** True when the key may no longer reserve: disabled, expired or deleted (the meter's key_revoked). */
+function ownerRevoked(keyId: string): boolean {
+  const check = meterCheck(keyId);
+  return check.kind === 'refused' && check.refusal.body.error === 'key_revoked';
+}
+
+/**
+ * Commit a finished job's served claims (a verdict, `unverified` included) and
+ * release the rest of its reservation. A failed job served nothing.
+ */
+function settleJobClaims(reservation: ClaimReservation, job: FullScanJob, progress: ClaimProgress[]): void {
+  const served = progress.flatMap((p) => {
+    if (p.status !== 'served') return [];
+    const claim = committedClaim(p.claimId, p.verdict, job.provider);
+    return claim ? [claim] : [];
+  });
+  reservation.commit(jobRecordScanId(job.jobId), served);
+  reservation.release();
+}
+
+/**
+ * Voids for a result its owner can never see. Called when the owner is
+ * answered `resultAvailable: false` (the verdicts were lost with the process)
+ * or `job_lost`. Unless the job's result was served first, every usage row the
+ * owner committed for the job is cancelled, once (a void identifier already
+ * recorded is skipped). A failed job commits nothing, so it has nothing to void.
+ * With the meter off nothing is appended to the usage record, voids included.
+ */
+function voidUnseenResult(jobId: string, keyId: string, served: boolean): void {
+  if (served || !isClaimMeterEnabled()) return;
+  getClaimMeter().voidScan(keyId, jobRecordScanId(jobId));
 }
 
 // ── Routes ──────────────────────────────────────────────────────────────────
@@ -244,13 +290,36 @@ function readIdempotencyKey(request: FastifyRequest): string | null | undefined 
   return IDEMPOTENCY_KEY_PATTERN.test(raw) ? raw : null;
 }
 
+/**
+ * Monthly-cap admission for POST /scan/full. A new job is one scan, checked before
+ * it is queued; the handler counts it when it admits the job. An idempotent replay
+ * of a job that exists runs nothing, so it is neither checked nor counted; a missing
+ * or malformed Idempotency-Key is left to the handler's 400.
+ */
+export async function enforceMonthlyCapForNewJob(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const idempotencyKey = readIdempotencyKey(request);
+  if (typeof idempotencyKey !== 'string') return;
+  if (getFullScanJobStore().jobForIdempotencyKey(request.keyId ?? 'unknown', idempotencyKey)) return;
+  admitMonthlyScans(request, reply, 1);
+}
+
 function sendLookup(reply: FastifyReply, jobId: string, keyId: string, stop: boolean): FastifyReply {
   const store = getFullScanJobStore();
   const found = store.lookup(jobId, keyId);
-  if (found.kind === 'error') return reply.status(found.statusCode).send({ error: found.error });
-  if (found.kind === 'row') return reply.status(200).send(describeLedgerRow(found.row));
+  if (found.kind === 'error') {
+    if (found.error === 'job_lost') voidUnseenResult(jobId, keyId, false);
+    return reply.status(found.statusCode).send({ error: found.error });
+  }
+  if (found.kind === 'row') {
+    const view = describeLedgerRow(found.row);
+    voidUnseenResult(jobId, keyId, found.row.resultServedAt !== undefined);
+    return reply.status(200).send(view);
+  }
   if (stop) store.stop(found.job);
-  return reply.status(200).send(describeJob(found.job));
+  const view = describeJob(found.job);
+  // The owner now holds verdicts: the job's result counts as served, so it is never voided.
+  if (view.progress.some((p) => p.status === 'served')) store.markResultServed(found.job);
+  return reply.status(200).send(view);
 }
 
 export async function fullScanRoutes(fastify: FastifyInstance): Promise<void> {
@@ -258,7 +327,7 @@ export async function fullScanRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan/full/estimate',
     {
       config: { access: 'key' },
-      preHandler: [requireApiKey, rateLimitScan, limitFullScanEstimates, enforceProviderSpendCap],
+      preHandler: [requireApiKey, rateLimitScan, limitFullScanEstimates, enforceMonthlyCap, enforceProviderSpendCap],
       schema: { tags: ['Scan'], summary: 'Price a full scan: extract claims, count fact claims and units', body: ESTIMATE_BODY },
     },
     async (request, reply) => {
@@ -272,6 +341,8 @@ export async function fullScanRoutes(fastify: FastifyInstance): Promise<void> {
         provider,
         claimCount: 0,
         tier: resolveEntitledTier(keyId, request.headers['x-user-tier']),
+        keyId,
+        stage: 'extraction',
         latencyMs: Date.now() - startedAt,
         claims: { extracted: outcome.ok ? outcome.value.claims.length : 0, verified: 0 },
       });
@@ -312,7 +383,7 @@ export async function fullScanRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan/full',
     {
       config: { access: 'owner' },
-      preHandler: [requireApiKey, rateLimitScan, enforceProviderSpendCap],
+      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCapForNewJob, enforceProviderSpendCap],
       schema: { tags: ['Scan'], summary: 'Start a full scan from an estimate (Idempotency-Key required)', body: START_BODY },
     },
     async (request, reply) => {
@@ -343,12 +414,26 @@ export async function fullScanRoutes(fastify: FastifyInstance): Promise<void> {
       // A job whose terminal row cannot reach the disk would read as job_lost after a
       // restart and be refunded in full although served: refuse it before any spend.
       if (!store.ledgerWritable()) return reply.status(503).send({ error: 'ledger_unavailable' });
+      // The monthly-cap check again, in this synchronous step, so the check and the
+      // count below cannot be split by another start (the prehandler refuses earlier).
+      if (!admitMonthlyScans(request, reply, 1)) return reply;
+      // The claim meter reserves the estimate's fact claims (an estimate reserves nothing).
+      const metered = reserveClaimsFor(request.keyId, estimate.factClaims);
+      if (metered.ok === false) return reply.status(metered.statusCode).send(metered.body);
 
       const job = store.startJob(estimate, {
         idempotencyKey,
         tier: resolveEntitledTier(keyId, request.headers['x-user-tier']),
+        spendCapTier: resolveSpendCapTier(request.keyId, request.headers['x-user-tier']),
       });
-      // Counted here, once per job: the server.ts onResponse hook counts only /scan and /scan/upload.
+      const reservation = metered.reservation;
+      if (reservation) {
+        job.metered = true;
+        job.onTerminal = (finished, progress) => settleJobClaims(reservation, finished, progress);
+      }
+      // Counted here, once per job, when it is admitted, whatever its outcome: the
+      // server.ts onResponse hook counts only /scan and /scan/upload. Settling only
+      // served work needs the allowance reserved at admission, which is not built yet.
       getUsageMeter().increment(keyId);
       store.enqueue(job, (queued) => runFullScanJob(store, queued));
       return reply.status(202).send(accepted({ jobId: job.jobId, estimateId, units: job.charged, factClaims: job.factClaims }));

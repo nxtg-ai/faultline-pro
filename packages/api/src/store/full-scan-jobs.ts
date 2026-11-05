@@ -1,4 +1,4 @@
-import { guardVerdict } from '@nxtg/faultline/lib/verdict-guard.js';
+import { abstainScanWithoutSource, abstainWithoutSource, billingSummary, claimOrderOf, guardVerdict, isBillableVerdict, type BillingSummary } from '@nxtg/faultline/lib/verdict-guard.js';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -10,6 +10,7 @@ import {
   type UnitAccounting,
 } from '@nxtg/faultline/cli/scan.js';
 import type { ManagedScanCostEvent } from './costs.js';
+import { PROVIDER_BUDGET_EXHAUSTED, providerBudgetRefuses } from '../plugins/provider-spend-cap.js';
 
 /**
  * full-scan-jobs.ts — estimates, jobs, the run queue and the terminal-job ledger
@@ -33,10 +34,13 @@ import type { ManagedScanCostEvent } from './costs.js';
  * Google's grounding terms forbid caching grounded output), and NO user-ref (it
  * lives in memory only while a job is active, to enforce one job per user).
  *
- * Units: a fact claim is SERVED when its check ran and returned a verdict
- * (including 'unverified'); it is unserved when the provider failed after the
- * engine's retries (apiError) or it never started. served = ceil(served / 8);
- * refund = charged - served (emma-soul ruling al:c747e63f2fc26683).
+ * Units: a fact claim is SERVED when its verdict is billable (isBillableVerdict:
+ * supported, contradicted or mixed, with at least one source, a retriever the
+ * engine bound, and no apiError). It is unserved when the provider failed after
+ * the engine's retries (apiError, with the provider's reason), when its check
+ * gave no billable verdict ('unverified', zero sources, or no engine retriever:
+ * reason 'no_sourced_verdict'), or when it never
+ * started ('not_attempted'). served = ceil(served / 8); refund = charged - served.
  */
 
 type Tier = ManagedScanCostEvent['tier'];
@@ -70,11 +74,19 @@ const JOB_ID_PATTERN = /^fsj_([0-9a-z]{1,11})_[0-9a-f]{32}$/;
 export type FullScanJobStatus = 'queued' | 'running' | 'done' | 'stopped' | 'failed';
 export type TerminalStatus = 'done' | 'stopped' | 'failed';
 
-/** Why a fact claim got no verdict. The engine's reasons plus 'not_attempted'. */
-export type UnservedReason = ApiErrorReason | 'not_attempted';
+/**
+ * Why a fact claim was not served. The engine's error reasons, 'no_sourced_verdict'
+ * (the check ran but gave no billable verdict: 'unverified', no source, or no
+ * retriever the engine bound), and
+ * 'not_attempted', 'provider_budget_exhausted' (the job waited in the queue
+ * and the provider spend gate refused it before it started), and 'key_revoked'
+ * (the job waited in the queue and its metered key was disabled, expired or
+ * deleted before it started).
+ */
+export type UnservedReason = ApiErrorReason | 'no_sourced_verdict' | 'not_attempted' | typeof PROVIDER_BUDGET_EXHAUSTED | 'key_revoked';
 export const UNSERVED_REASONS: readonly UnservedReason[] = [
-  'rate_limited', 'provider_unavailable', 'timeout', 'provider_error', 'provider_unparseable', 'output_truncated',
-  'not_attempted',
+  'rate_limited', 'provider_out_of_credits', 'provider_unavailable', 'timeout', 'provider_error', 'provider_unparseable', 'output_truncated',
+  'no_sourced_verdict', 'not_attempted', PROVIDER_BUDGET_EXHAUSTED, 'key_revoked',
 ];
 
 export interface UnservedClaim {
@@ -118,6 +130,14 @@ export interface FullScanJob {
   createdAt: number;
   provider: string;
   tier: Tier;
+  /**
+   * The provider spend gate's tier (from resolveSpendCapTier), checked again when
+   * the job leaves the queue. Not `tier`: that one reads a server-key call with no
+   * header as enterprise. Never part of a response or a ledger row.
+   */
+  spendCapTier: Tier;
+  /** Why a job that never started was failed; its claims carry this reason instead of not_attempted. */
+  refusedReason?: UnservedReason;
   factClaims: number;
   /** Units charged at the estimate. Never recomputed. */
   charged: number;
@@ -134,6 +154,16 @@ export interface FullScanJob {
   finishedAt?: string;
   /** Set at finish: whether the terminal row reached the ledger, so a restart keeps it. */
   durable?: boolean;
+  /**
+   * Called once when the job reaches a terminal status, with each fact claim's
+   * final state (the claim meter commits the served ones). Every terminal path
+   * runs through `finish`, including a job the queue finishes without running.
+   */
+  onTerminal?: (job: FullScanJob, progress: ClaimProgress[]) => void;
+  /** True when the claim meter holds a reservation for this job (a metered key with the meter on). */
+  metered?: boolean;
+  /** When a GET first returned this job's verdicts to its owner (see FullScanLedgerRow.resultServedAt). Metered jobs only. */
+  resultServedAt?: string;
 }
 
 /** One terminal job on disk. Counts and ids only (see the header). */
@@ -148,11 +178,17 @@ export interface FullScanLedgerRow {
   factClaims: number;
   units: UnitAccounting;
   servedClaims: number;
-  /** Served claims by verdict status (supported, contradicted, unverified, mixed). */
+  /** Served claims by verdict status (supported, contradicted, mixed). */
   verdicts: Record<string, number>;
   /** Unserved claims by reason. */
   reasons: Partial<Record<UnservedReason, number>>;
   unserved: UnservedClaim[];
+  /**
+   * When a GET first returned this job's verdicts to its owner. Written as a
+   * second copy of the terminal row (the ledger is append-only; the last row for
+   * a job wins on reload). A served result is never voided by the claim meter.
+   */
+  resultServedAt?: string;
 }
 
 /** A started job as a replayed POST /scan/full answers it (in memory or reloaded from the ledger). */
@@ -168,15 +204,24 @@ export interface FullScanJobView {
   jobId: string;
   status: FullScanJobStatus;
   factClaims: number;
-  /** Fact claims with a verdict (served). */
+  /** Fact claims with a billable verdict (served). */
   checked: number;
-  /** Fact claims whose check ran and failed (apiError); never-started claims are not counted. */
+  /**
+   * Fact claims whose check ran and failed (apiError). Never-started claims and
+   * claims checked without a sourced verdict ('no_sourced_verdict') are not counted.
+   */
   failed: number;
   progress: ClaimProgress[];
   unserved: UnservedClaim[];
   units: UnitAccounting;
   /** False for a job reloaded from the ledger after a restart (and for a failed job): no result to serve. */
   resultAvailable: boolean;
+  /**
+   * Present with `result` when it has verifications: how many of its claims
+   * were billed, how many were not, and why each was not (billingSummary),
+   * computed from the result as served.
+   */
+  billing?: BillingSummary;
   /**
    * True once the job is terminal AND its row is on the ledger, so a restart keeps
    * it. False while queued or running, and for a terminal job whose ledger write
@@ -258,20 +303,23 @@ const reasonOf = (verdict: VerificationResult): UnservedReason => verdict.apiErr
  * is unserved: its own provider reason, `provider_error` when a verdict had landed
  * before the run threw, `not_attempted` when it never started.
  */
-function failedClaim(claimId: string, verdict: VerificationResult | undefined): ClaimProgress {
-  if (verdict === undefined) return { claimId, status: 'unserved', reason: 'not_attempted' };
+function failedClaim(claimId: string, verdict: VerificationResult | undefined, refusedReason?: UnservedReason): ClaimProgress {
+  if (verdict === undefined) return { claimId, status: 'unserved', reason: refusedReason ?? 'not_attempted' };
   const reason = verdict.apiError === true ? reasonOf(verdict) : 'provider_error';
   return { claimId, status: 'unserved', reason, verdict };
 }
 
 function claimProgress(job: FullScanJob): ClaimProgress[] {
   return job.factIds.map((claimId, i): ClaimProgress => {
-    const verdict = job.verdicts[i];
-    if (job.status === 'failed') return failedClaim(claimId, verdict);
+    // Guarded on read as well as on record: the GET view never serves a definite verdict without an openable source.
+    const recorded = job.verdicts[i];
+    const verdict = recorded === undefined ? undefined : abstainWithoutSource(recorded);
+    if (job.status === 'failed') return failedClaim(claimId, verdict, job.refusedReason);
     if (verdict === undefined) {
       return isTerminal(job.status) ? { claimId, status: 'unserved', reason: 'not_attempted' } : { claimId, status: 'pending' };
     }
     if (verdict.apiError === true) return { claimId, status: 'unserved', reason: reasonOf(verdict), verdict };
+    if (!isBillableVerdict(verdict)) return { claimId, status: 'unserved', reason: 'no_sourced_verdict', verdict };
     return { claimId, status: 'served', verdict };
   });
 }
@@ -280,7 +328,7 @@ const unservedOf = (progress: ClaimProgress[]): UnservedClaim[] =>
   progress.flatMap((p) => (p.status === 'unserved' && p.reason ? [{ claimId: p.claimId, reason: p.reason }] : []));
 
 const ranAndFailed = (unserved: UnservedClaim[]): number =>
-  unserved.filter((u) => u.reason !== 'not_attempted').length;
+  unserved.filter((u) => u.reason !== 'not_attempted' && u.reason !== 'no_sourced_verdict').length;
 
 /** The GET view of a job held in memory. */
 export function describeJob(job: FullScanJob): FullScanJobView {
@@ -288,6 +336,8 @@ export function describeJob(job: FullScanJob): FullScanJobView {
   const served = progress.filter((p) => p.status === 'served').length;
   const unserved = unservedOf(progress);
   const withResult = job.result !== undefined && (job.status === 'done' || job.status === 'stopped');
+  const result = withResult ? abstainScanWithoutSource(job.result) : undefined;
+  const verifications = (result as { verifications?: unknown } | undefined)?.verifications;
   return {
     jobId: job.jobId,
     status: job.status,
@@ -299,7 +349,8 @@ export function describeJob(job: FullScanJob): FullScanJobView {
     units: unitAccounting(job.charged, served),
     resultAvailable: job.status !== 'failed',
     durable: job.durable === true,
-    ...(withResult ? { result: job.result } : {}),
+    ...(withResult ? { result } : {}),
+    ...(verifications && typeof verifications === 'object' ? { billing: billingSummary(verifications, claimOrderOf(result)) } : {}),
   };
 }
 
@@ -342,6 +393,7 @@ export function ledgerRowFor(job: FullScanJob & { status: TerminalStatus; finish
     verdicts: tally(servedVerdicts, (p) => p.verdict!.status),
     reasons: tally(view.unserved, (u) => u.reason) as Partial<Record<UnservedReason, number>>,
     unserved: view.unserved,
+    ...(job.resultServedAt !== undefined ? { resultServedAt: job.resultServedAt } : {}),
   };
 }
 
@@ -375,6 +427,14 @@ class FullScanRunQueue {
     private readonly onRefused: (job: FullScanJob) => void = () => {},
   ) {}
 
+  /**
+   * The provider spend gate, asked again when a queued job would start: a job
+   * admitted under the budget can wait for a slot until after it is spent.
+   */
+  private budgetRefuses(job: FullScanJob): boolean {
+    return providerBudgetRefuses(job.spendCapTier);
+  }
+
   enqueue(job: FullScanJob, run: FullScanJobRunner): void {
     this.waiting.push({ job, run });
     this.pump();
@@ -388,6 +448,11 @@ class FullScanRunQueue {
     while (this.running < maxRunningJobs() && this.waiting.length > 0) {
       const next = this.waiting.shift()!;
       if (next.job.status !== 'queued') continue; // stopped while waiting
+      if (this.budgetRefuses(next.job)) {
+        next.job.refusedReason = PROVIDER_BUDGET_EXHAUSTED;
+        this.onRefused(next.job);
+        continue;
+      }
       if (!this.canStart()) {
         this.onRefused(next.job);
         continue;
@@ -550,7 +615,7 @@ class FullScanJobStore {
    */
   startJob(
     estimate: FullScanEstimate,
-    opts: { idempotencyKey: string; tier: Tier },
+    opts: { idempotencyKey: string; tier: Tier; spendCapTier: Tier },
     now: number = Date.now(),
   ): FullScanJob {
     const claims = estimate.claims ?? [];
@@ -564,6 +629,7 @@ class FullScanJobStore {
       createdAt: now,
       provider: estimate.provider,
       tier: opts.tier,
+      spendCapTier: opts.spendCapTier,
       factClaims: estimate.factClaims,
       charged: estimate.units,
       claims,
@@ -594,8 +660,11 @@ class FullScanJobStore {
   /** Record a verdict as it lands (index = position among the job's fact claims). */
   recordVerdict(job: FullScanJob, index: number, verdict: VerificationResult): void {
     if (isTerminal(job.status)) return;
-    // A malformed verdict is stored as an unserved provider error (refunded), never as given.
-    job.verdicts[index] = guardVerdict(verdict, job.factIds[index] ?? verdict?.claimId ?? '');
+    // Shape first, on the verdict as given: a malformed verdict (any source entry without a
+    // string uri included) is stored as an unserved provider error (refunded), never as given.
+    // Only a well-formed verdict then has unopenable sources dropped, and a definite verdict
+    // left with none is stored as unverified.
+    job.verdicts[index] = abstainWithoutSource(guardVerdict(verdict, job.factIds[index] ?? verdict?.claimId ?? ''));
   }
 
   /**
@@ -623,6 +692,29 @@ class FullScanJobStore {
     job.claims = [];
     job.text = '';
     job.durable = this.persist(ledgerRowFor(job as FullScanJob & { status: TerminalStatus; finishedAt: string }));
+    const onTerminal = job.onTerminal;
+    job.onTerminal = undefined;
+    try {
+      onTerminal?.(job, claimProgress(job));
+    } catch {
+      // A failing hook never changes the job's terminal status.
+    }
+  }
+
+  /**
+   * Record that the owner was shown a metered job's verdicts, once. While the job is
+   * active the mark is held in memory and goes on its terminal row; after that
+   * a copy of the terminal row carrying the mark is appended.
+   */
+  markResultServed(job: FullScanJob, now: Date = new Date()): void {
+    // Only a metered job can be voided, so only it needs the mark: other jobs' ledger rows stay as they were.
+    if (job.metered !== true || job.resultServedAt !== undefined) return;
+    job.resultServedAt = now.toISOString();
+    if (!isTerminal(job.status)) return;
+    const row = this.ledgerRows.get(job.jobId);
+    if (!row) return;
+    const served = { ...row, resultServedAt: job.resultServedAt };
+    this.persist(served);
   }
 
   /**

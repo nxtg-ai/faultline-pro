@@ -1,5 +1,5 @@
 import type { Claim, VerificationResult, Source } from '../types';
-import type { LLMProvider, ImageInput, CritiqueResult, ProviderFactory, Retriever } from './base_provider';
+import type { LLMProvider, ImageInput, CritiqueResult, ProviderFactory, Retriever, GroundedVerifyOptions } from './base_provider';
 import { extractClaims, verifyClaim, verifyClaimGrounded, retrieveSources, generateCritiqueAndPrompt, GEMINI_MODEL } from '../services/geminiService';
 
 /**
@@ -27,8 +27,8 @@ class GeminiProvider implements LLMProvider {
     return verifyClaim(claim, this.apiKey);
   }
 
-  async verifyClaimGrounded(claim: Claim, sources: Source[]): Promise<VerificationResult> {
-    return verifyClaimGrounded(claim, sources, this.apiKey);
+  async verifyClaimGrounded(claim: Claim, sources: Source[], opts?: GroundedVerifyOptions): Promise<VerificationResult> {
+    return verifyClaimGrounded(claim, sources, this.apiKey, opts);
   }
 
   async generateCritiqueAndPrompt(originalText: string, failedClaims: Claim[]): Promise<CritiqueResult> {
@@ -45,6 +45,7 @@ export const createGeminiProvider: ProviderFactory = (apiKey: string): LLMProvid
  * sources for a claim. This is the DEFAULT retrieval backend, not the only
  * possible one — a Tavily/Serper/Brave/Custom-Search Retriever can be dropped
  * in as a separate impl selected by config (that seam is the whole point).
+ * A failed search rejects with RetrievalError (see retrieveSources).
  */
 export class GeminiGroundingRetriever implements Retriever {
   readonly name = 'gemini-grounding';

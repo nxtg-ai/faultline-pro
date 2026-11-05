@@ -1,8 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
+import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
-import { scan } from '@nxtg/faultline/cli/scan.js';
+import { enforceMonthlyCap } from '../plugins/usage-cap.js';
+import { recordDeliveredScan } from '../lib/scan-quota.js';
+import { scanInRequestMode } from '../lib/grounding.js';
+import { scanWithSpend } from '../lib/scan-spend.js';
 import { extractTextFromBuffer } from '@nxtg/faultline/cli/extract.js';
+import { commitClaims, engineVerifyCap, reserveClaims } from '../plugins/claim-meter.js';
 import { getAnalyticsStore } from '../store/analytics.js';
 import type { RiskLevel } from '../store/analytics.js';
 import { fireWebhookEvent } from '../store/webhooks.js';
@@ -16,7 +21,7 @@ type Provider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
 export async function uploadRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/scan/upload',
-    { config: { access: 'key' }, preHandler: [requireApiKey, rateLimitScan], schema: { tags: ['Scan'], summary: 'Upload PDF or image for OCR scan' } },
+    { config: { access: 'key' }, preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap, reserveClaims(engineVerifyCap())], schema: { tags: ['Scan'], summary: 'Upload PDF or image for OCR scan' } },
     async (request, reply) => {
       let buffer: Buffer | null = null;
       let mimetype = '';
@@ -76,9 +81,11 @@ export async function uploadRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       try {
-        const result = await scan(text, provider);
+        const result = await scanWithSpend({ text, provider, keyId: request.keyId ?? 'unknown' }, () => scanInRequestMode(text, provider));
         getAnalyticsStore().record(request.keyId ?? 'unknown', result.overallRisk as RiskLevel);
         const delivered = issueScanId(result, request.keyId);
+        commitClaims(request, delivered.scanId, result, provider ?? 'gemini');
+        recordDeliveredScan(request, delivered.verifications);
         fireWebhookEvent('scan.complete', delivered, requestOwner(request));
         return reply.status(200).send(delivered);
       } catch (scanErr) {

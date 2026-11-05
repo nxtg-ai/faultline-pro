@@ -92,7 +92,7 @@ describe('Integration: Full Pipeline (Mocked)', () => {
     // c5 → supported
     mockGenerateContent.mockResolvedValueOnce({
       text: JSON.stringify({ status: 'supported', explanation: 'Confirmed by geography.' }),
-      candidates: [{ groundingMetadata: { groundingChunks: [] } }],
+      candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'Atlas', uri: 'https://atlas.example/fr' } }] } }],
     });
 
     const verifications: Record<string, VerificationResult> = {};
@@ -214,7 +214,7 @@ describe('Integration: Full Pipeline (Mocked)', () => {
     // Verify through provider
     mockGenerateContent.mockResolvedValueOnce({
       text: JSON.stringify({ status: 'supported', explanation: 'OK.' }),
-      candidates: [{ groundingMetadata: { groundingChunks: [] } }],
+      candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'S', uri: 'https://s.example/a' } }] } }],
     });
     const verification = await provider.verifyClaim(claims[0]);
     expect(verification.status).toBe('supported');

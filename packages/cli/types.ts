@@ -32,6 +32,13 @@ export interface Source {
    */
   snippet?: string;
   /**
+   * The search service's own excerpts from the page, as it returned them
+   * (the parallel grounding mode; `snippet` is these joined for the judge).
+   */
+  excerpts?: string[];
+  /** The page's publication date as the search service reported it (Parallel `publish_date`), when it did. */
+  publishDate?: string;
+  /**
    * The passage of the fetched page that best matches the claim, with the fetch
    * time (evidence/passage.ts). Taken from the page's own bytes, never from the
    * model's reply; `snippet` above is model-derived and is not evidence.
@@ -120,15 +127,19 @@ export interface ProviderVote {
   apiError?: boolean;
   /** The provider's own reason, when it reported one (e.g. 'provider_unparseable'). */
   apiErrorReason?: ApiErrorReason;
+  /** True when this vote said supported, contradicted or mixed with no source a reader can open, so it is reported as unverified (abstainWithoutSource). */
+  noSourceAbstain?: boolean;
 }
 
 /**
  * What a provider failure was, after the engine's retries: 429, 503, a timeout, or anything else.
+ * 'provider_out_of_credits' is a provider account with no credits left (often also a 429), which a
+ * retry cannot fix, unlike 'rate_limited' (providers/out-of-credits.ts).
  * Two are about the reply rather than the call: 'provider_unparseable' (no readable verdict) and
  * 'output_truncated' (the reply stopped at its output-token ceiling, providers/call-ceilings.ts).
  */
 export type ApiErrorReason =
-  | 'rate_limited' | 'provider_unavailable' | 'timeout' | 'provider_error' | 'provider_unparseable' | 'output_truncated';
+  | 'rate_limited' | 'provider_out_of_credits' | 'provider_unavailable' | 'timeout' | 'provider_error' | 'provider_unparseable' | 'output_truncated';
 
 /**
  * Who produced a verdict and when, bound at the provider call itself (Honor
@@ -144,7 +155,8 @@ export interface VerdictProvenance {
   verifiedAt: string;
   /**
    * What retrieved the evidence: 'gemini-grounding' for a Gemini grounded call
-   * (Google Search runs inside the same request), or the consensus rig's
+   * (Google Search runs inside the same request), 'parallel-search' for the
+   * parallel grounding mode (retrieve, then judge), or the consensus rig's
    * retriever name. Absent when no retrieval ran.
    */
   retriever?: string;
@@ -154,6 +166,12 @@ export interface VerdictProvenance {
    * its shared retrieval returned. Absent when no retrieval ran.
    */
   retrievedAt?: string;
+  /**
+   * The retriever's own model or mode label, when the retriever is a separate
+   * search service (the parallel grounding mode records 'parallel-search-default').
+   * Absent for a Gemini grounded call and for consensus.
+   */
+  retrieverModel?: string;
 }
 
 export interface VerificationResult {
@@ -188,10 +206,11 @@ export interface VerificationResult {
    */
   parseFallback?: boolean;
   /**
-   * True when a grounded Gemini reply said 'contradicted' with no grounding source
-   * and the engine reported 'unverified' instead (absence of evidence is not a
-   * refutation; fw al:3dc2e0b227eaedd6). Absent otherwise. It lets the accuracy
-   * run count how often this fires and against which gold labels.
+   * True when a provider returned 'supported', 'contradicted' or 'mixed' with no
+   * source and the engine reported 'unverified' instead (abstainWithoutSource in
+   * lib/verdict-guard.ts): a definite verdict needs a source the reader can open.
+   * Absent otherwise. It lets the accuracy run count how often this fires and
+   * against which gold labels.
    */
   noSourceAbstain?: boolean;
   /**
@@ -200,7 +219,12 @@ export interface VerificationResult {
    * grounding terms require them to be shown, unaltered, wherever this
    * verdict's explanation or sources are shown to the end user. Present only
    * on a Gemini Grounding with Google Search verdict that returned them;
-   * absent on every other path. Never persisted to disk by Faultline.
+   * absent on every other path, and removed when the engine abstains
+   * (abstainWithoutSource: a verdict Faultline rewrote is not Google's
+   * grounded result, so it does not carry Google's Search Suggestions).
+   * The hosted API and the scan cache never write it to disk. The stdio MCP
+   * server's local history (.faultline/history, on the user's own machine,
+   * under the user's own key) stores the full scan result, including it.
    */
   searchEntryPoint?: { renderedContent: string };
   /** Who produced this verdict and when (see VerdictProvenance). */
@@ -212,7 +236,7 @@ export interface VerificationResult {
    * `sources`: those are what the verdict was grounded on.
    */
   independentEvidence?: IndependentEvidence;
-  /** The Google Search queries the grounded prompt ran (same source, same rule). */
+  /** The Google Search queries the grounded prompt ran (same source, same rule, also removed on abstain). */
   webSearchQueries?: string[];
   /**
    * Consensus metadata — present only on fused multi-provider verdicts emitted

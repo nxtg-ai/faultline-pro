@@ -100,6 +100,13 @@ export interface ExportScanRow {
   provider: string;
   overall_risk: string;
   claim_count: number;
+  /**
+   * How many verification results the history entry stores, whatever their
+   * outcome: unverified, unsourced and errored results count too. It is not a
+   * count of billable claims (that rule is `isBillableVerdict`, used by the
+   * hosted API's cost and spend ledgers). The name is kept because this is an
+   * export format.
+   */
   verified_count: number;
   supported_count: number;
   contradicted_count: number;

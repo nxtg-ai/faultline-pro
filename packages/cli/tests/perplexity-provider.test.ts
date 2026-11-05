@@ -515,3 +515,65 @@ describe('PerplexityProvider', () => {
     });
   });
 });
+
+describe('PerplexityProvider usage reporting', () => {
+  const usageReply = (content: string) => ({
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    json: async () => ({
+      choices: [{ message: { content }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 1200, completion_tokens: 300 },
+      citations: ['https://example.org/source'],
+    }),
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    delete process.env.FAULTLINE_PERPLEXITY_MODEL;
+  });
+
+  it('reports the usage of an extraction call to the scan in flight', async () => {
+    mockFetch.mockResolvedValueOnce(usageReply('{"claims":[{"id":"c1","text":"Paris is in France","type":"fact","importance":5}]}'));
+    const { captureUsage } = await import('../lib/usage-sink');
+    const { result, legs } = await captureUsage(() => createPerplexityProvider('test-key').extractClaims('Paris is in France.'));
+    expect(result).toHaveLength(1);
+    expect(legs).toEqual([{ provider: 'perplexity', model: 'sonar-pro', inputTokens: 1200, outputTokens: 300, isGrounding: true }]);
+  });
+
+  it('reports the usage of a billed extraction whose output cannot be read, then fails it', async () => {
+    mockFetch.mockResolvedValueOnce(usageReply('not json at all'));
+    const { captureUsage } = await import('../lib/usage-sink');
+    const { result, legs } = await captureUsage(async () => {
+      try {
+        await createPerplexityProvider('test-key').extractClaims('Paris is in France.');
+        return null;
+      } catch (err) {
+        return err;
+      }
+    });
+    expect(result).toBeInstanceOf(ExtractionError);
+    expect(legs).toHaveLength(1);
+    expect(legs[0]).toMatchObject({ provider: 'perplexity', model: 'sonar-pro', inputTokens: 1200, outputTokens: 300 });
+  });
+
+  it('reports the usage of a verify call, under the configured model', async () => {
+    process.env.FAULTLINE_PERPLEXITY_MODEL = 'sonar';
+    mockFetch.mockResolvedValueOnce(usageReply('{"status":"supported","explanation":"ok"}'));
+    const { captureUsage } = await import('../lib/usage-sink');
+    const claim: Claim = { id: 'c1', text: 'Paris is in France', type: 'fact', importance: 5 };
+    const { result, legs } = await captureUsage(() => createPerplexityProvider('test-key').verifyClaim(claim));
+    expect(result.status).toBe('supported');
+    expect(legs).toEqual([{ provider: 'perplexity', model: 'sonar', inputTokens: 1200, outputTokens: 300, isGrounding: true }]);
+    delete process.env.FAULTLINE_PERPLEXITY_MODEL;
+  });
+
+  it('reports nothing for a call that got no HTTP response body (non-2xx)', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 503, statusText: 'Service Unavailable', json: async () => ({}) });
+    const { captureUsage } = await import('../lib/usage-sink');
+    const { legs } = await captureUsage(async () => {
+      await createPerplexityProvider('test-key').extractClaims('Paris is in France.').catch(() => undefined);
+    });
+    expect(legs).toHaveLength(0);
+  });
+});

@@ -6,8 +6,11 @@ import type {} from 'mercurius';
 declare module 'mercurius' {
   interface MercuriusContext {
     keyId: string;
+    spendCapTier: ManagedScanCostEvent['tier'];
   }
 }
+import type { ManagedScanCostEvent } from './store/costs.js';
+import { resolveSpendCapTier } from './plugins/provider-spend-cap.js';
 import { schema as gqlSchema } from './graphql/schema.js';
 import { resolvers as gqlResolvers } from './graphql/resolvers.js';
 import { parseLang } from '@nxtg/faultline/lib/i18n.js';
@@ -23,6 +26,8 @@ import { reportRoutes } from './routes/report.js';
 import { uploadRoutes } from './routes/upload.js';
 import { keysRoutes } from './routes/keys.js';
 import { usageRoutes } from './routes/usage.js';
+import { usageRecordsRoutes } from './routes/usage-records.js';
+import { costSummaryRoutes } from './routes/cost-summary.js';
 import { installGroundingCounter } from './store/grounding-allowance.js';
 import { dashboardRoutes } from './routes/dashboard.js';
 import { webhookRoutes } from './routes/webhooks.js';
@@ -69,6 +74,8 @@ import { approvalsRoutes } from './routes/approvals.js';
 import { weakestRoutes } from './routes/weakest.js';
 import { critiqueRoutes } from './routes/critique.js';
 import { adminVerifyRoutes } from './routes/admin-verify.js';
+import { mcpRoutes } from './routes/mcp.js';
+import { discoveryRoutes } from './routes/discovery.js';
 import { sendWeeklySummaries } from './store/notifications.js';
 import { getKeyExpiryNotifier } from './store/key-expiry-notifier.js';
 import { getKeyRotationNotifier } from './store/key-rotation-notifier.js';
@@ -79,9 +86,12 @@ import { getJobScheduler, resetJobScheduler } from './store/jobs.js';
 import { getNpmMetricsStore, resetNpmMetricsStore } from './store/npm-metrics.js';
 import { getAuditLogger, hashInput } from './store/audit.js';
 import { getUsageMeter } from './store/usage.js';
+import { deliveredBillableVerdicts } from './lib/scan-quota.js';
 import { stopFullScanJobPruning } from './store/full-scan-jobs.js';
 import { FAULTLINE_API_VERSION } from './version.js';
 import { applyRouteAccess } from './lib/route-access.js';
+import { releaseClaims } from './plugins/claim-meter.js';
+import { refuseMeasurementOutsideAllowlist, warnIfMeasurementKeyCollides } from './plugins/auth.js';
 
 const MAX_FILE_SIZE = 10_485_760; // 10MB
 
@@ -101,6 +111,11 @@ export function buildServer() {
   // before schema validation (lib/route-access.ts). Added before any plugin
   // registers so it sees every route, the plugins' own included.
   fastify.addHook('onRoute', applyRouteAccess);
+
+  // The measurement key may call only MEASUREMENT_ROUTES. This runs first on
+  // every route, public ones and unmatched URLs included.
+  fastify.addHook('onRequest', refuseMeasurementOutsideAllowlist);
+  warnIfMeasurementKeyCollides();
 
   fastify.register(cors, {
     origin: (origin, cb) => {
@@ -167,6 +182,8 @@ export function buildServer() {
   fastify.register(uploadRoutes);
   fastify.register(keysRoutes);
   fastify.register(usageRoutes);
+  fastify.register(usageRecordsRoutes);
+  fastify.register(costSummaryRoutes);
   fastify.register(dashboardRoutes);
   fastify.register(webhookRoutes);
   fastify.register(batchRoutes);
@@ -214,6 +231,9 @@ export function buildServer() {
   fastify.register(weakestRoutes);
   fastify.register(critiqueRoutes);
   fastify.register(adminVerifyRoutes);
+  // Hosted MCP: the verify_claims tool, every scan through POST /scan above.
+  fastify.register(mcpRoutes);
+  fastify.register(discoveryRoutes);
 
   // GraphQL is OFF unless FAULTLINE_GRAPHQL=on (emma-soul al:95753eecd4a6025b,
   // CRITICAL). Its key check had fired only on an exact POST /graphql, so a
@@ -237,7 +257,9 @@ export function buildServer() {
       graphiql: false,
       context: (request: FastifyRequest) => {
         const keyId = request.keyId ?? 'anonymous';
-        return { keyId };
+        // The spend-gate tier, read here because the resolvers see no request.
+        const spendCapTier = resolveSpendCapTier(request.keyId, request.headers['x-user-tier']);
+        return { keyId, spendCapTier };
       },
     });
   }
@@ -269,6 +291,7 @@ export function buildServer() {
   });
 
   fastify.addHook('onClose', async () => {
+    getKeyStore().flush();
     getJobScheduler().stop();
     resetJobScheduler();
     getScanQueue().stop();
@@ -286,6 +309,8 @@ export function buildServer() {
   });
 
   fastify.addHook('onResponse', async (request: FastifyRequest, reply: FastifyReply) => {
+    // Free any claims the request reserved and did not commit (every error path).
+    releaseClaims(request);
     const startMs = (request as FastifyRequest & { _startMs?: number })._startMs ?? Date.now();
     const latencyMs = Date.now() - startMs;
     const keyId = request.keyId ?? 'unknown';
@@ -293,8 +318,11 @@ export function buildServer() {
     const method = request.method;
     const statusCode = reply.statusCode;
 
+    // Matched on the route pattern, not the raw URL: '/scan?x=1' is still POST /scan
+    // and must count toward quota and be audited with its input hash.
+    const route = request.routeOptions?.url;
     const isScanPost =
-      method === 'POST' && (endpoint === '/scan' || endpoint === '/scan/upload');
+      method === 'POST' && (route === '/scan' || route === '/scan/upload');
 
     let inputHash: string | undefined;
     if (isScanPost && typeof (request.body as Record<string, unknown>)?.text === 'string') {
@@ -303,7 +331,9 @@ export function buildServer() {
 
     getAuditLogger().log({ timestamp: new Date().toISOString(), keyId, endpoint, method, statusCode, latencyMs, inputHash });
 
-    if (isScanPost && statusCode === 200) {
+    // Only a scan whose delivered result holds a billable verdict counts; the
+    // handler records that count (lib/scan-quota.ts).
+    if (isScanPost && statusCode === 200 && deliveredBillableVerdicts(request) > 0) {
       getUsageMeter().increment(keyId);
     }
   });

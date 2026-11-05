@@ -10,6 +10,7 @@ import { describe, it, expect } from 'vitest';
 import { scan } from '../cli/scan.js';
 import { guaranteeClaimPerSentence, splitSentences } from '../cli/scan.js';
 import type { Claim } from '../types.js';
+import { MAX_CLAIM_ID_LENGTH } from '../lib/verdict-guard.js';
 
 // ── Acceptance test (CoS UAT scenario) ───────────────────────────────────────
 
@@ -190,5 +191,132 @@ describe('splitSentences(): case citations and abbreviations', () => {
       // A backstop claim is a whole sentence, so it carries the citation it is about.
       if (/Ninth Circuit/.test(c.text)) expect(c.text).toContain('Delmont v. Arcadia Freight Systems');
     }
+  });
+});
+
+// ── Linear time on long punctuation runs ────────────────────────────────────
+
+describe('splitSentences: long punctuation runs', () => {
+  it.each(['!', '.'])('returns quickly on a 50,000-character run of %s with no following space', (ch) => {
+    const text = 'a ' + ch.repeat(50_000);
+    const t0 = performance.now();
+    const out = splitSentences(text);
+    const elapsed = performance.now() - t0;
+    expect(Array.isArray(out)).toBe(true);
+    expect(elapsed).toBeLessThan(200);
+  });
+
+  // Expected outputs were recorded from splitSentences before the lookbehind
+  // was added, so these pin the behaviour on ordinary text.
+  const cases: Array<[string, string[]]> = [
+    ['He said "This is true." Then he left the room quickly.',
+      ['He said "This is true."', 'Then he left the room quickly.']],
+    ['Is that really the case?! Nobody seems to know the answer.',
+      ['Is that really the case?!', 'Nobody seems to know the answer.']],
+    ['Wait for it... The results came in late last night.',
+      ['Wait for it...', 'The results came in late last night.']],
+    ['Dr. Smith treated the patient. The patient recovered fully afterwards.',
+      ['Dr. Smith treated the patient.', 'The patient recovered fully afterwards.']],
+    ['The sky is blue.  The grass is green today.',
+      ['The sky is blue.', 'The grass is green today.']],
+    ['The study (published in 2020.) was cited widely. Critics disagreed with its method.',
+      ['The study (published in 2020.) was cited widely.', 'Critics disagreed with its method.']],
+    ['This is amazing!!! Everyone should try it today.',
+      ['This is amazing!!!', 'Everyone should try it today.']],
+    ['The trial ended in March. It was a total success!!!',
+      ['The trial ended in March.', 'It was a total success!!!']],
+    ["She asked 'why not?' Then she walked away from the desk.",
+      ["She asked 'why not?'", 'Then she walked away from the desk.']],
+    ['Prices rose 5.2 percent in 2023. Wages did not keep up.',
+      ['Prices rose 5.2 percent in 2023.', 'Wages did not keep up.']],
+  ];
+
+  it.each(cases)('splits %j exactly as before', (input, expected) => {
+    const out = splitSentences(input);
+    expect(out.length).toBeGreaterThan(0);
+    expect(out).toEqual(expected);
+  });
+});
+
+describe('splitSentences: long word before a boundary', () => {
+  it.each([' . ', '. '])('returns quickly when 50,000 letters are followed by %j', (sep) => {
+    const text = 'a'.repeat(50_000) + sep + 'Next three words.';
+    const t0 = performance.now();
+    const out = splitSentences(text);
+    const elapsed = performance.now() - t0;
+    expect(out.length).toBeGreaterThan(0);
+    expect(elapsed).toBeLessThan(200);
+  });
+
+  // Expected outputs were recorded from splitSentences before the last word was
+  // found with a backward scan, so these pin the behaviour on ordinary text.
+  const cases: Array<[string, string[]]> = [
+    ['Dr. Smith arrived at noon. He examined the patient carefully.',
+      ['Dr. Smith arrived at noon.', 'He examined the patient carefully.']],
+    ['Use a solvent, e.g. Acetone works well. Then rinse the glass twice.',
+      ['Use a solvent, e.g. Acetone works well.', 'Then rinse the glass twice.']],
+    ['John F. Kennedy was elected in 1960. He served until 1963 in office.',
+      ['John F. Kennedy was elected in 1960.', 'He served until 1963 in office.']],
+    ['The U.S. Army grew quickly. Recruitment doubled within one year.',
+      ['The U.S. Army grew quickly.', 'Recruitment doubled within one year.']],
+    ['Growth was 3.75 percent last year. Analysts expected far more than that.',
+      ['Growth was 3.75 percent last year.', 'Analysts expected far more than that.']],
+    ['It cost $4.50 at the store. Nobody complained about the price.',
+      ['It cost $4.50 at the store.', 'Nobody complained about the price.']],
+    ['"We won the case." The lawyer smiled at the waiting crowd.',
+      ['"We won the case."', 'The lawyer smiled at the waiting crowd.']],
+    ['She said “no.” Then she left the room quietly.',
+      ['She said “no.” Then she left the room quietly.']],
+    ['See the report (Fig. 3) for details. Results varied by region.',
+      ['See the report (Fig. 3) for details.', 'Results varied by region.']],
+    ['The value was high \t. Then it fell sharply after lunch.',
+      ['The value was high \t.', 'Then it fell sharply after lunch.']],
+    ['The value was high\n. Then it fell sharply after lunch.',
+      ['The value was high\n.', 'Then it fell sharply after lunch.']],
+    ['The vote was close . Then the count was repeated twice.',
+      ['The vote was close .', 'Then the count was repeated twice.']],
+    ['He met Mr. Jones at the bank. They talked about rates.',
+      ['He met Mr. Jones at the bank.', 'They talked about rates.']],
+    ['He met Dr. Smith at the clinic today.',
+      ['He met Dr. Smith at the clinic today.']],
+    ['He thanked Prof. Lee for the long talk.',
+      ['He thanked Prof. Lee for the long talk.']],
+    ['The note said\tMr. Jones would come back tomorrow.',
+      ['The note said\tMr. Jones would come back tomorrow.']],
+    ['The list read\ne.g. Apples and pears were fine. Nothing else was.',
+      ['The list read\ne.g. Apples and pears were fine.', 'Nothing else was.']],
+  ];
+
+  it.each(cases)('splits %j exactly as before', (input, expected) => {
+    const out = splitSentences(input);
+    expect(out.length).toBeGreaterThan(0);
+    expect(out).toEqual(expected);
+  });
+});
+
+describe('guaranteeClaimPerSentence: synthetic ids are unique within the scan and within the meter limit', () => {
+  it('never reuses an id the model already returned (a model claim named "s2" or "s3")', () => {
+    const text = 'Alpha is first. Beta is second. Gamma is third. Delta is fourth.';
+    const claims: Claim[] = [
+      { id: 's2', text: 'Alpha is first', type: 'fact', importance: 3 },
+      { id: 's3', text: 'Beta is second', type: 'fact', importance: 3 },
+    ];
+    const result = guaranteeClaimPerSentence(text, claims);
+    expect(result.length).toBe(4);
+    const ids = result.map((c) => c.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids.slice(0, 2)).toEqual(['s2', 's3']);
+    expect(ids.slice(2)).toEqual(['s4', 's5']);
+    for (const id of ids) expect(id.length).toBeLessThanOrEqual(MAX_CLAIM_ID_LENGTH);
+  });
+
+  it('many synthetic claims: every id distinct and within the limit', () => {
+    const text = Array.from({ length: 300 }, (_, i) => `Sentence number ${i} states fact ${i * 7}.`).join(' ');
+    const claims: Claim[] = Array.from({ length: 5 }, (_, i) => ({ id: `s${i + 3}`, text: `unrelated claim ${i}`, type: 'fact' as const, importance: 3 }));
+    const result = guaranteeClaimPerSentence(text, claims);
+    expect(result.length).toBe(305);
+    const ids = result.map((c) => c.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of ids) expect(id.length).toBeLessThanOrEqual(MAX_CLAIM_ID_LENGTH);
   });
 });

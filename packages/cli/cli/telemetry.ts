@@ -14,6 +14,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { isExtractionError, type ExtractionErrorReason } from '../providers/extraction-error.js';
+import { isOutOfCreditsError } from '../providers/out-of-credits.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -116,6 +117,8 @@ export function sendTelemetry(
  */
 const EXTRACTION_ERROR_CODES: Record<ExtractionErrorReason, ErrorCode> = {
   rate_limited: 'RATE_LIMIT',
+  // No new code: the telemetry schema is fixed; an empty provider account is a provider error, not a rate limit.
+  provider_out_of_credits: 'API_ERROR',
   timeout: 'TIMEOUT',
   provider_unavailable: 'PROVIDER_UNAVAILABLE',
   invalid_output: 'PARSE_ERROR',
@@ -132,6 +135,7 @@ export function classifyError(err: unknown): ErrorCode {
     if (name === 'AbortError') return 'TIMEOUT';
     if (err.message.includes('ENOTFOUND') || err.message.includes('ECONNREFUSED')) return 'NETWORK_ERROR';
     if (err.message.includes('API key') || err.message.includes('api key')) return 'API_KEY_MISSING';
+    if (isOutOfCreditsError(err)) return 'API_ERROR';
     if (err.message.includes('rate limit') || err.message.includes('429')) return 'RATE_LIMIT';
     if (err.message.toLowerCase().includes('parse') || err.message.includes('JSON')) return 'PARSE_ERROR';
   }

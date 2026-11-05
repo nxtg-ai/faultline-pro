@@ -21,6 +21,7 @@
 10. [GraphQL API](#10-graphql-api)
 11. [Other Endpoints Reference](#11-other-endpoints-reference)
 12. [CORS & Security](#12-cors--security)
+13. [Hosted MCP](#13-hosted-mcp)
 
 ---
 
@@ -44,6 +45,8 @@ x-api-key: fl_your_key_here
 
 **Customer keys.** An admin caller can issue non-admin keys (`POST /keys`, `POST /orgs/:id/keys`, GraphQL `createKey`). Each key reads and changes only its own stored data; another key gets `404`. An org role never mints an admin key. The server flag `FAULTLINE_CUSTOMER_KEYS` controls issuance: when it is off, every path refuses a non-admin key (`403 customer_keys_closed`) and `PATCH /keys/:id` refuses to change a key's permissions to a non-admin set.
 
+**Grounding provider.** The server flag `FAULTLINE_GROUNDING` picks the search behind a `gemini` verify on every key and every scan path, the hosted `POST /mcp` included. Unset (the default), one Gemini call with Google Search searches and judges. `parallel` makes the verify retrieve, then judge: Parallel's Search API (`PARALLEL_API_KEY`, mode `FAULTLINE_PARALLEL_MODE`, default `advanced`) finds the sources, and Gemini judges against them with no search tool. A verdict then carries `provenance.retriever: "parallel-search"`, and each source carries `publishDate` and `excerpts` when Parallel returned them. A failed Parallel search leaves the claim not checked (`apiError: true`) and never falls back to Google. See `docs/grounding-providers.md`.
+
 **Per-key isolation.** Everything the API stores belongs to the key that created it: stored scans, queued scans, scheduled jobs and schedules, bulk and full-scan jobs, templates, rules, compliance history, cost rows, approvals, notification preferences and history, and claim-index entries. A non-admin key reads, lists, changes and uses only its own; another key's object answers `404` exactly like one that does not exist, and lists leave it out. `GET /costs?keyId=` and `GET /notifications/history?keyId=&tenantId=` filters are admin-only (`403` for another key's id or any tenant filter). `GET /rate-limits.json` shows a key only its own row and alerts. Approving a scan (`POST /scans/:id/approve`) needs a stored scan of the calling key. An admin key (the server key or a key with the `admin` permission) sees everything, including records stored before owners were recorded, which no other key can reach. A request with no key gets `401` (or `403` on admin routes) before its body is validated.
 
 **Getting a key for your team**: Make a `POST /keys` request with your admin key. The new key's secret is shown **once** in the response — store it immediately.
@@ -60,6 +63,98 @@ Content-Type: application/json
 ```
 
 **Permission values**: `scan` `report` `upload` `admin` `pro`
+
+**Claim cap and billing fields.** The claim meter is off unless the server runs with `FAULTLINE_CLAIM_METER=1`. With it on, only keys whose `metered` is `true` are metered; every other key, admin keys, the server key and the measurement key (`FAULTLINE_MEASUREMENT_KEY`) run exactly as with the meter off. **Every non-admin key issued from now on is metered by default** (a non-admin key is one whose `permissions` do not include `admin`): `POST /keys`, `POST /orgs/:id/keys` and GraphQL `createKey` give it `metered: true` and `claimCap: 1000` (1,000 claims, 100 USD a month at 0.10 USD per billable claim) when the request sets neither. `POST /keys` keeps an explicit `claimCap` or `metered`; `metered: false` is accepted only from an admin caller. A non-admin key's `claimCap` must be an integer from 100 to 10,000 (10 to 1,000 USD a month) on `POST /keys` and on `PATCH /keys/:id`; anything else is `400 {"error":"claim_cap_out_of_range","min":100,"max":10000}`. A numeric string cap is coerced like every other field (`"500"` is `500`, whatever shape `permissions` takes), and the rule is on the coerced value: `"50"`, `"100.5"`, `-1` and `100000001` are all `claim_cap_out_of_range` for a non-admin key. Admin keys are never metered by default and take any `claimCap`, `0` included. The server key and the measurement key are environment keys, not issued keys, and are never metered. A metered key carries `claimCap`, the number of claims it may have verified per calendar month (UTC), and may carry `stripeCustomerId` (`cus_...`), which is copied onto each usage row when the row is committed (changing it later never moves past rows). A metered key with no `claimCap` is refused with `402 {"error":"claim_cap_unset"}`; one with no `stripeCustomerId` runs and its rows carry `null`. Keys may also hold `scopes`: `usage:read` (read the usage record) and `keys:write` (set `claimCap`, `stripeCustomerId`, `metered` or `scopes`). Admin keys pass every scope, and only an admin may grant scopes. `POST /keys` and `PATCH /keys/:id` are admin-only; `null` clears `claimCap` or `stripeCustomerId`, except that a metered non-admin key cannot have its cap cleared (`400 {"error":"claim_cap_required"}`). `PATCH /keys/:id` checks the key as it will be after the patch: a key that ends up non-admin must hold any `claimCap` it has in 100 to 10,000, metered or not (`claim_cap_out_of_range`), and one that ends up metered must have one (`claim_cap_required`), and an admin key re-scoped to non-admin becomes `metered: true` with `claimCap: 1000` unless the same patch sets `metered` or `claimCap` (a cap it already holds is kept and checked). A refused patch changes nothing.
+
+```http
+POST /keys
+x-api-key: {admin-key}
+Idempotency-Key: acme-subscription-0001
+Content-Type: application/json
+
+{ "name": "acme-prod", "permissions": ["scan"], "metered": true, "claimCap": 5000, "stripeCustomerId": "cus_ABC123" }
+```
+
+`Idempotency-Key` (optional, 1 to 200 characters): the first call mints the key (`201`, with the plaintext `key` once). A later call with the same value returns `200` with the same `id` and `"key": null`, and mints nothing. The plaintext is never shown again; `POST /keys/:id/rotate` issues a fresh one. The server keeps a hash of each value and the key id it minted on the ledger volume, so a deploy does not forget them.
+
+**How keys are stored.** Issued keys survive a deploy or restart: the keystore is written to a file on the server's persistent volume, with every field a key has (permissions, name, dates, `disabled`, `metered`, `claimCap`, `stripeCustomerId`, `scopes`, rotation state), so a key behaves the same after a restart, claim cap and meter included. The server keeps only a SHA-256 hash of each key, never the key itself. The plaintext `key` appears once, in the `201` response to `POST /keys` (also `POST /orgs/:id/keys`), and `newKey` appears once in the response to `POST /keys/:id/rotate`; nothing else ever returns them, and they cannot be recovered. Responses that describe a key carry `keyPrefix`, the first 8 characters of the current key, so you can tell keys apart. The rotate response's `previousKey` is the replaced key's `keyPrefix`, not the full key; the replaced key keeps working for 24 hours (`previousKeyExpiresAt`), across restarts too. `newKey` also appears once in the response to `POST /keys/:id/rotate-now` (below). If the keystore file cannot be read at startup the server starts with no issued keys (they answer `401`) rather than guessing; the admin key is unaffected.
+
+**Rotate a key now, with no grace period (admin only).** `POST /keys/:id/rotate-now` (no body) replaces the key the way `POST /keys/:id/rotate` does, but the replaced key stops authenticating as soon as the call returns: the very next request with it answers `401`. Use it when a key may have leaked. It needs an admin key (the server's `FAULTLINE_API_KEY` or a keystore key with `admin`); any other key, or none, gets `403`, and an unknown id gets `404`. The `200` response is `{ "id", "newKey", "previousKey", "gracePeriodHours": 0, "message" }`: `newKey` is the new key in plaintext, shown this once; `previousKey` is the replaced key's `keyPrefix`; there is no `previousKeyExpiresAt`. The keystore keeps only the new key's SHA-256, written at once by the same atomic rewrite as every other change, and keeps no `previousKeyHash`: a grace key left by an earlier `POST /keys/:id/rotate` is revoked too. The key id does not change, so a second call with the same id rotates again: `200` with a fresh `newKey`, and the key from the first call answers `401` at once. The replaced key presented to `rotate-now` itself is just an unknown key (`403` from the admin gate). Subscribers on the key get a `subscription.changed` notification with `change: "key_rotated_now"`. The graced `POST /keys/:id/rotate` is unchanged.
+
+### Claim metering
+
+The billable unit is **one claim with a billable verdict**, decided by the engine's `isBillableVerdict` (`packages/cli/lib/verdict-guard.ts`): the verdict is `supported`, `contradicted` or `mixed`, it carries at least one source, the engine set its `provenance.retriever`, and it is not an API error. An `unverified` verdict, a verdict with no source, a verdict without an engine retriever (the mock provider, for one), a provider error (`apiError: true`), a timeout, a failed extraction, a retry the engine refunds, and a claim about the document itself do not count. A cached verdict delivered to you counts like a fresh one when it meets the same rule.
+
+**Which claims were billed, and why not.** A claim is billed only when it gets a supported, contradicted or mixed verdict with at least one source. Unverified claims, claims with no source and claims where the provider failed are not billed. Each result's `billing` field lists them with the reason. `billing` is on the result of `POST /scan` (also `POST /scan/template/:id`), `POST /scan/deep`, the `complete` event of `GET` and `POST /scan/stream`, `GET /scan/full/:jobId` (and its `/stop`) once the job has a result, and `POST /admin/verify-claims` (beside `results`). It reads `{ "billedClaims": 1, "unbilledClaims": 2, "unbilled": [{ "claimId": "c2", "reason": "unverified" }, { "claimId": "c3", "reason": "no_source" }] }`. The reason for each unbilled claim is the first that applies: the provider failed (its `apiErrorReason`, such as `rate_limited` or `timeout`, else `provider_error`); `no_source` (no source a reader can open, so the verdict was reported as unverified); the verdict itself when it is not supported, contradicted or mixed (`unverified`, `skipped`); `no_source`; `no_retriever` (the sources were not retrieved by the engine, the mock provider for one). It is computed from the verifications you are given, so a cached result carries it too, and `billedClaims` is the number the claim meter commits for that result. It only reports billing: what is billed is unchanged.
+
+Before any provider call a route reserves the most claims it may verify (a `/scan` reserves its verify cap, 8, because the claim count is unknown before extraction; `/scan/batch` 8 per text; `/scan/diff` 16; a full-scan job its estimate's fact claims; the estimate itself verifies nothing and reserves nothing; `POST /critique` verifies no claim and reserves nothing; `POST /admin/verify-claims` and GraphQL scans are admin only, and admin keys are never metered). If `used + reserved + requested` would exceed your cap, the whole request is refused before any provider is called (never part-served):
+
+```json
+HTTP/1.1 402 Payment Required
+{ "error": "claim_cap_reached", "cap": 5000, "used": 4996, "remaining": 4, "period": "2026-11", "resetsAt": "2026-12-01T00:00:00.000Z" }
+```
+
+`used` counts committed usage rows minus their void rows for the key and month. After the run the claims with a billable verdict are committed and the unused part of the reservation is released, so a 3-claim text costs at most 3, and an `unverified` claim costs nothing. Routes that queue work (`POST /jobs`, `POST /schedules`, `POST /schedules/:id/trigger`, `POST /queue/scans`, `POST /scan/bulk`) answer the same `402` when the key cannot cover one run, and each run reserves again when it executes; a run over the cap fails with `claim_cap_reached` and calls no provider. A metered key that is disabled, expired or deleted makes no new reservation: its requests are already refused at authentication (`401`), and work it queued earlier (jobs, schedules, queued and bulk scans) fails with `key_revoked` when it runs, calling no provider. Its committed rows stay. Read your position from `GET /usage` (`claims`, below).
+
+### The usage record
+
+Each committed claim is one row of an append-only record on the ledger volume (`claim-meter.jsonl`). The billing side reads it with `GET /admin/usage-records?after=<seq>&limit=<1..1000>` (default `after=0`, `limit=500`), which needs scope `usage:read`:
+
+```json
+HTTP/1.1 200 OK
+X-Usage-Record-Version: 1
+
+{
+  "ledgerId": "5b0c3d1e-2f4a-4c55-9a7e-0d1f2e3a4b5c",
+  "records": [
+    { "seq": 41, "ts": "2026-11-03T10:15:02.114Z", "period": "2026-11", "kind": "usage",
+      "keyId": "3f9c...", "stripeCustomerId": "cus_ABC123",
+      "scanId": "8d2f6a4e-1b3c-4d5e-8f90-a1b2c3d4e5f6", "claimId": "c1",
+      "verdict": "supported", "provider": "gemini",
+      "identifier": "8d2f6a4e-1b3c-4d5e-8f90-a1b2c3d4e5f6:c1" }
+  ],
+  "nextAfter": 41,
+  "hasMore": false
+}
+```
+
+- `seq` is an integer, rising by one per row from 1, never reused. Rows come back in `seq` order, and a row is returned only once every lower `seq` is returnable, so a reader paging with `after=nextAfter` never sees a gap.
+- `kind` is `usage` (one committed claim) or `void` (cancels one usage row; it carries `voids`, the cancelled usage identifier, and `identifier` = `void:` + that identifier). A duplicate identifier is written and counted once.
+- `identifier` is `scanId:claimId`, at most 95 characters (a void identifier, with its `void:` prefix, at most 100). `scanId` is a UUID: for a scan the API answered as `scan-<uuid>` it is the bare `<uuid>`; for a full-scan job `fsj_<time>_<32 hex>` it is those 32 hex characters as a UUID. A claimId longer than 58 characters is not recorded (and counted on admin `GET /usage`).
+- `ledgerId` is written once, in the record's first line, and changes only if the record is re-created; `null` before the first row. When it changes, start again from `after=0`.
+- `period` is the UTC month of `ts` (commit time). A void lowers `used` in the month of the row it cancels.
+- No claim text, evidence or key material is ever in a row. The read changes nothing. This API makes no call to Stripe.
+
+A void is written for a full-scan job whose verdicts can never reach you: after a server restart its result is gone (`resultAvailable: false`), or the job reads `404 job_lost`. If no `GET /scan/full/:jobId` ever returned the job's verdicts to you, the next such answer writes one void row per committed claim of that job, once. A job whose verdicts were returned is never voided.
+
+### Weekly cost by key class
+
+`GET /admin/cost-summary?from=<ISO>&to=<ISO>` (admin keys only: the server key or a keystore key with the `admin` permission; every other key gets 403, the measurement key included) reports what Faultline spent at its providers in a window, split by who it was spent for, beside the claims customers were billed for. It is a read: it writes nothing and changes no billing, verdict or spend-cap behavior.
+
+- `from` and `to` are ISO-8601 timestamps; the window is `[from, to)`. With neither, the window is the last complete week, Monday 00:00Z to Monday 00:00Z. With only `from`, it is the week from `from`; with only `to`, the week before `to`. A value that is not ISO-8601, or `from` not before `to`, is `400`.
+- `classes` has one entry per key class, each `{ costUsd, calls, claimsHandled, billableClaims }` summed from the provider-spend ledger rows whose `ts` is in the window: `costUsd` is the sum of the rows' cost, `calls` the number of rows, `claimsHandled` the sum of `claimCount` (null is 0), `billableClaims` the sum of `verifiedCount` (null is 0). The classes are `customer` (keystore keys without `admin`), `internal` (the server key, which faultline-web holds, and keystore keys with `admin`), `measurement` (the measurement key), `anonymous` (no key) and `unlabelled` (rows written before spend rows carried a key class).
+- `customerBilledClaims` is the number of usage rows in the window in the usage record above (by `ts`), less those a void row cancels, wherever the void falls. `customerUnbilledClaims` is `classes.customer.claimsHandled` minus `customerBilledClaims`, floored at 0.
+- `notes` is a fixed list of caveats: a full-scan estimate's extraction cost is in `costUsd` and `calls` but in no claim count; costs are list prices; older rows are `unlabelled`.
+
+```json
+{
+  "from": "2026-10-19T00:00:00.000Z",
+  "to": "2026-10-26T00:00:00.000Z",
+  "generatedAt": "2026-10-28T09:00:00.000Z",
+  "classes": {
+    "customer":    { "costUsd": 0.8, "calls": 3, "claimsHandled": 14, "billableClaims": 6 },
+    "internal":    { "costUsd": 1,   "calls": 1, "claimsHandled": 3,  "billableClaims": 2 },
+    "measurement": { "costUsd": 2,   "calls": 1, "claimsHandled": 25, "billableClaims": 20 },
+    "anonymous":   { "costUsd": 0,   "calls": 0, "claimsHandled": 0,  "billableClaims": 0 },
+    "unlabelled":  { "costUsd": 0.5, "calls": 2, "claimsHandled": 3,  "billableClaims": 2 }
+  },
+  "customerBilledClaims": 2,
+  "customerUnbilledClaims": 12,
+  "notes": ["..."]
+}
+```
+
+The figures above are the test fixture's, not production numbers. `scripts/cost-scoreboard.mjs --out week.json` calls this route with the admin key (`FAULTLINE_API_KEY`, else the `FAULTLINE_API_KEY=` line of `~/.config/faultline/hosted-api-key.env`; never printed), writes the JSON to `--out` and prints one line with the window and the cost per billed customer claim (`classes.customer.costUsd / customerBilledClaims`, or `n/a` when none was billed).
 
 ---
 
@@ -142,7 +237,7 @@ X-Cache: HIT | MISS       (whether the result came from cache)
 
 ### POST `/scan/batch` — Multiple texts in one call
 
-Submit 1–10 texts. Each text counts as one unit against your rate limit.
+Submit 1–10 texts. Each text counts as one unit against your rate limit. When the monthly scan quota is on, the whole batch is refused with `402` (same body as `/scan`) if the texts would take the key past its cap; a batch is never part-served.
 
 **Request**
 
@@ -295,7 +390,7 @@ data: {"type":"claim_verified","index":1,"claim":{...},"verdict":{...}}
 
 data: {"type":"claim_verified","index":2,"claim":{...},"verdict":{...}}
 
-data: {"type":"complete","overallRisk":"medium","claimCount":3}
+data: {"type":"complete","overallRisk":"medium","claimCount":3,"billing":{"billedClaims":2,"unbilledClaims":1,"unbilled":[{"claimId":"c3","reason":"unverified"}]}}
 ```
 
 **On error**:
@@ -376,6 +471,9 @@ interface VerificationResult {
   // Google Search Suggestions, present only on a Gemini grounded verdict (see below)
   searchEntryPoint?: { renderedContent: string };
   webSearchQueries?: string[];
+  // true when the provider said supported, contradicted or mixed with no source and the
+  // verdict was returned as unverified instead (see "No definite verdict without a source")
+  noSourceAbstain?: boolean;
   // Who produced the verdict and when; absent when the check never ran (apiError)
   provenance?: {
     provider: string;     // 'gemini', 'openai', 'claude', 'perplexity', 'mock' or 'consensus'
@@ -430,6 +528,8 @@ An empty `sources` list means the second retriever found nothing. OpenAI's terms
 | `mixed` | Sources conflict or evidence is ambiguous |
 | `unverified` | Insufficient evidence to determine either way |
 
+**No definite verdict without a source.** `supported`, `contradicted` and `mixed` always come with at least one source the reader can open. When a provider returns one of them with no source (on Gemini: the search ran but returned no grounding chunk with a web uri), the verdict is returned as `unverified` with `noSourceAbstain: true` and the explanation "The search returned no source this claim can be checked against, so it is not marked supported, contradicted or mixed." `provenance`, `webSearchQueries` and `searchEntryPoint` are kept as they were. A source counts only when its `uri` is an absolute `http` or `https` URL; any other source (empty, relative, `javascript:`, `ftp:`, missing) is dropped from the verdict. This holds on every provider and every path, including scans served from the cache or read back from storage. OpenAI and Claude single-provider verify cite no source, so their verdicts always read `unverified`; consensus already gives no vote without a retrieved source. Such a claim is not billable and is not counted toward the scan quota or the claim meter.
+
 ### ScanResult
 
 ```typescript
@@ -438,17 +538,24 @@ interface ScanResult {
   verifications: Record<string, VerificationResult>;  // keyed by claim id
   overallRisk: 'low' | 'medium' | 'high' | 'critical';
   provider: string;
+  billing: {                       // which claims were billed, and why not (see Claim metering)
+    billedClaims: number;
+    unbilledClaims: number;
+    unbilled: Array<{ claimId: string; reason: string }>;
+  };
 }
 ```
 
-**Risk level heuristic** (approximate):
+**How `overallRisk` is computed** (the same rule on every scan path: quick, full, stream, deep, batch, consensus):
 
 | Risk | When |
 |------|------|
-| `low` | All or most claims supported |
-| `medium` | Some mixed/unverified claims |
-| `high` | Multiple contradicted or high-importance failures |
-| `critical` | Critical-importance claims contradicted |
+| `critical` | More than 2 claims contradicted |
+| `high` | At least 1 claim contradicted, or more than 2 mixed, or unverified claims are at least half of the verdicts |
+| `medium` | At least 1 claim mixed, or at least 1 claim unverified |
+| `low` | Every verdict supported, or no verdicts at all |
+
+An unverified claim (no source found, a provider error, or never checked) means its risk was not checked. It is never read as low risk: it can raise the band, never lower it.
 
 ### RateLimitInfo (headers)
 
@@ -481,8 +588,11 @@ All errors return JSON with this shape:
 | `404` | `NOT_FOUND` | Resource not found |
 | `429` | `RATE_LIMIT_EXCEEDED` | Too many requests for this key |
 | `500` | `INTERNAL_ERROR` | Unexpected server error |
-| `502` | `extraction_failed` | Claim extraction failed at the provider (body `{"error":"extraction_failed","reason":"rate_limited"\|"provider_unavailable"\|"timeout"\|"invalid_output"\|"provider_error"\|"output_truncated"}`). `output_truncated` means the provider stopped at the output-token ceiling (`docs/cost-ceilings.md`). Nothing was checked; retry. `/scan/stream` sends the same fields in its `{"type":"error"}` event. Before 2026-10-13 a failed extraction was hidden and the scan ran on one synthetic claim per sentence. |
+| `402` | `claim_cap_reached` | Your metered key's monthly claim cap cannot cover this request. Body `{"error":"claim_cap_reached","cap":N,"used":N,"remaining":N,"period":"YYYY-MM","resetsAt":"<ISO>"}`. Nothing was verified. See §1 Claim metering. |
+| `402` | `claim_cap_unset` | Your key is metered but has no `claimCap`. Body `{"error":"claim_cap_unset"}`. Nothing was verified. |
+| `502` | `extraction_failed` | Claim extraction failed at the provider (body `{"error":"extraction_failed","reason":"rate_limited"\|"provider_out_of_credits"\|"provider_unavailable"\|"timeout"\|"invalid_output"\|"provider_error"\|"output_truncated"}`). `output_truncated` means the provider stopped at the output-token ceiling (`docs/cost-ceilings.md`). `provider_out_of_credits` means the provider account has no credits left (for example OpenAI's 429 `insufficient_quota`); a retry cannot succeed until credits are restored. Nothing was checked; for the other reasons, retry. `/scan/stream` sends the same fields in its `{"type":"error"}` event. Before 2026-10-13 a failed extraction was hidden and the scan ran on one synthetic claim per sentence. |
 | `502` | `invalid_verdict` | `POST /scan` only. The result carried a verdict status outside the stored allowlist (`supported`, `contradicted`, `mixed`, `unverified`, plus `skipped` for a claim not sent to verification), a source without a string `uri`, or an `overallRisk` outside `low`/`medium`/`high`/`critical`. Body `{"error":"An unexpected error occurred.","code":"invalid_verdict"}`. Nothing was stored or cached. Inside a scan the engine already replaces a malformed verdict with `unverified` plus `apiError: true`, `apiErrorReason: "provider_error"`, so this status means a value got past the engine. |
+| `502` | `consensus_unavailable` | A consensus scan (`pipelineConfig.consensus: true`) where no voter returned a verdict, so nothing was checked and no scan was counted toward the monthly quota. When every failed vote shares one reason, the body carries it: `{"error":"consensus_unavailable","message":"...","reason":"provider_out_of_credits"\|"provider_unparseable"\|"output_truncated"}`. With `provider_out_of_credits` the voters' provider accounts have no credits left and a retry will not help until they do; the message says so. With mixed reasons there is no `reason` field. `/scan/stream` sends the same fields in its `{"type":"error"}` event and sends no `complete` event. A consensus request whose named voters have no API key at all gets `503 consensus_unavailable` before any provider call, with no `reason`. |
 | `503` | `SERVICE_UNAVAILABLE` | No providers configured, or all circuit-broken |
 
 **Rate limit error body** (429):
@@ -547,7 +657,7 @@ Rate limits are applied per API key, per minute, on scan endpoints only.
 | `pro` | 100 req/min | Key with `pro` permission |
 | `admin` | 10,000 req/min | Key with `admin` permission |
 
-**Other gates in front of a scan.** Rate limiting above is per minute. Two more gates exist and ship **dormant** (they do nothing until an operator turns them on): a per-key monthly scan quota (`FAULTLINE_USAGE_CAP`, `402`, see `docs/usage-cap.md`) and a fleet-wide provider-spend cap (`FAULTLINE_PROVIDER_SPEND_CAP`, `503`, see `docs/provider-spend-cap.md`). The spend ledger records every managed scan and every `/critique` call whether or not the gate is on.
+**Other gates in front of a scan.** Rate limiting above is per minute. Two more gates exist and ship **dormant** (they do nothing until an operator turns them on): a per-key monthly scan quota (`FAULTLINE_USAGE_CAP`, `402`, see `docs/usage-cap.md`) (a scan counts toward it only when its result holds at least one billable verdict: `supported`, `contradicted` or `mixed`, with at least one source, a retriever the engine bound, and not an API error; a 200 where every claim was an API error, `unverified`, unsourced or without an engine retriever counts nothing, and a query string on the URL changes nothing; every route that runs a scan in the request checks the quota before any provider call, `POST /scan/upload` before reading the file; `POST /scan/batch` counts one scan per text and is refused whole if it does not fit; a full scan is checked when a new job starts and counts one scan when the job is admitted, including if it later fails, while an idempotent replay is neither checked nor counted; `POST /scan/deep`, `POST /scan/diff`, `POST /scan/report`, `POST /scan/eu-report`, `POST /scan/compliance/:template` and `POST /scan/compliance-gate` count like `POST /scan`; `POST /scan/bulk`, `POST /queue/scans` and `POST /schedules/:id/trigger` are checked but not counted yet; the check does not reserve the allowance, so requests admitted at the same moment can together pass the cap; `POST /jobs`, `POST /schedules` and GraphQL are not checked yet, see `docs/usage-cap.md`) and a fleet-wide provider-spend cap (`FAULTLINE_PROVIDER_SPEND_CAP`, `503`, see `docs/provider-spend-cap.md`). The spend ledger records every managed scan and every `/critique` call whether or not the gate is on.
 
 **Alert threshold**: The server emits an internal alert when a key reaches 80% of its limit. Rate limit headers are present on every scan response for proactive checking.
 
@@ -761,7 +871,9 @@ These are available if your UI needs them.
 | `GET /status.json` | None | Machine-readable uptime, incidents, stats |
 | `GET /metrics` | Admin | Prometheus-format metrics (admin key only) |
 | `GET /dashboard` | Admin | Scan counts, risk distribution, provider status |
-| `GET /usage` | API key | Per-day scan counts for your key, and `quota` (monthly scan cap position). Admin keys also get `providerBudget` (the fleet provider-spend position) |
+| `GET /usage` | API key | Per-day scan counts for your key, and `quota` (monthly scan cap position). A metered key also gets `claims` `{period, cap, used, reserved, remaining, byVerdict: {supported, contradicted, mixed}}`, its claim-meter position this month (UTC; `cap` and `remaining` are `null` while no `claimCap` is set). Admin keys also get `providerBudget` (the fleet provider-spend position), `claimMeter` (`enabled`, fleet claim totals for the month, `ledgerWriteFailures`, `refusedIdentifiers`) and `usageRecords` `{ledgerId, lastSeq, rowsThisPeriod}` |
+| `GET /admin/usage-records` | Scope `usage:read` | The usage record after a `seq`, for billing sync. See §1 The usage record |
+| `GET /admin/cost-summary` | Admin | Provider cost and claim counts by key class over a window. See §1 Weekly cost by key class |
 | `POST /critique` | API key | Critique plus improved prompt for failed claims. Makes a paid LLM call, so it is rate limited and covered by the provider-spend cap and ledger. `provider` must be one of the `/scan` providers (unknown name: `400`). See `docs/provider-spend-cap.md` |
 | `GET /claims` | API key | Your own claim database (searchable, filterable); Gemini-grounded verdicts are not stored |
 | `GET /claims/trending` | API key | Trending + emerging claims, your own |
@@ -818,7 +930,74 @@ Server-to-server calls (no `Origin` header) are always allowed.
 
 **File uploads**: Max 10 MB per request.
 
-**Key security**: API keys are never returned after creation. If lost, rotate the key (`POST /keys/:id/rotate`) — the old key remains valid for 24 hours (grace period) so you can migrate without downtime.
+**Key security**: API keys are never returned after creation. If lost, rotate the key (`POST /keys/:id/rotate`) — the old key remains valid for 24 hours (grace period) so you can migrate without downtime. If the key may have leaked, use `POST /keys/:id/rotate-now` instead: no grace period, the old key answers `401` from the next request.
+
+`/mcp` has its own Origin rule, not the one above: see §13.
+
+---
+
+## 13. Hosted MCP
+
+`POST /mcp` is a remote MCP server on the API. An MCP client connects to it with a Faultline API key and nothing to install. It exposes one tool, `verify_claims`, the same tool as the stdio server in `packages/mcp`: same name, input schema, descriptions and output. Both are built from one definition (`buildServer` in `packages/mcp/src/server.ts`), and a test checks that the two `tools/list` answers are equal.
+
+It is available on `https://faultline-api.fly.dev/mcp` once the API is deployed from a commit that has it (`GET /health` reports the deployed `commit`).
+
+### Client configuration
+
+Claude Code:
+
+```bash
+claude mcp add --transport http faultline https://faultline-api.fly.dev/mcp --header "x-api-key: YOUR_FAULTLINE_API_KEY"
+```
+
+Any client that takes a JSON server list (Cursor, Claude Code `.mcp.json`, and others; the exact key names vary by client):
+
+```json
+{
+  "mcpServers": {
+    "faultline": {
+      "type": "http",
+      "url": "https://faultline-api.fly.dev/mcp",
+      "headers": { "x-api-key": "YOUR_FAULTLINE_API_KEY" }
+    }
+  }
+}
+```
+
+The raw protocol, for a quick check:
+
+```bash
+curl -s https://faultline-api.fly.dev/mcp \
+  -H "x-api-key: $FAULTLINE_API_KEY" \
+  -H "content-type: application/json" \
+  -H "accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"verify_claims","arguments":{"text":"The Eiffel Tower is in Paris."}}}'
+```
+
+### Transport
+
+- Streamable HTTP, **stateless**: each POST is handled by a new server and transport. There is no session id (`Mcp-Session-Id` is never issued) and responses are JSON, not an SSE stream. A client may send `initialize` first, as clients do, but no call depends on it.
+- `POST` needs `content-type: application/json` and `accept: application/json, text/event-stream` (406 without it).
+- `GET /mcp` and `DELETE /mcp` answer `405` with `Allow: POST`: there is no stream to open and no session to end.
+- The body limit is the same as `POST /scan`'s.
+
+### What a tool call costs, and which gates apply
+
+A `verify_claims` call runs the scan through this API's own `POST /scan`, in-process, with **your** `x-api-key` and nothing else (no `x-user-tier`, no forwarded headers). So it is a `POST /scan` in every respect: the per-key burst limit (429), the monthly scan quota (402), the fleet provider spend cap (503), the claim meter and claim cap (402 `claim_cap_reached`), the zero-source rule, the result's `overallRisk` and its `billing` field, the scan history and the usage record. A call is counted and billed exactly as the same `POST /scan` would be. `initialize` and `tools/list` run no scan and cost nothing.
+
+`provider` is passed to `POST /scan` as given; leave it out to get the server default (`gemini`, grounded). Consensus is not reachable through the tool.
+
+### Results and errors
+
+- A successful call returns the tool's JSON output (the same object in `structuredContent` and as text): `risk_score`, `overall_risk` (the scan's `overallRisk`), `provider`, `grounded`, `mode: "hosted"`, `claims`, `claims_total`, `degraded`, `unchecked_count`, `billing` (the scan's `billing` field, unchanged) and `summary`. The hosted server writes no audit file; `audit_skipped` says so. The API's own scan history records the scan.
+- When `POST /scan` refuses the scan (402, 403, 429, 503, a 400 for text over 50,000 characters, and so on), the call returns an MCP tool error (`isError: true`) whose text carries the status and `POST /scan`'s error body, and says that nothing was checked. A refusal is never a verdict.
+- A missing or invalid key answers HTTP `401` before any MCP processing, with a JSON-RPC error body `{"jsonrpc":"2.0","error":{"code":-32001,"message":"Unauthorized. Provide a valid x-api-key header."},"id":null}` and no `WWW-Authenticate` header. Other refusals at the door (403 below, 413) also carry a JSON-RPC error body.
+- What a key may scan is decided by `POST /scan` with that key. Today `POST /scan` admits any valid key; it does not check the key's `scan` permission.
+- The measurement key is refused with `403`: its allowlist (`POST /admin/verify-claims`, `GET /usage`) does not include `/mcp`.
+
+### Origin (DNS rebinding)
+
+A request with no `Origin` header (a server-to-server or desktop client) is allowed. A request with an `Origin` header must name an origin listed in `FAULTLINE_MCP_ALLOWED_ORIGINS` (comma-separated, exact match; **empty by default**), or it gets `403` before the key check. The API's general CORS list (`*.nxtg.ai`, `localhost`) does not apply to `/mcp`. An allowlisted browser origin gets CORS headers for itself and a preflight answer (`OPTIONS /mcp`) that allows `Content-Type`, `Accept`, `x-api-key` and `mcp-protocol-version`.
 
 ---
 

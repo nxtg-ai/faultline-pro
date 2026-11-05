@@ -1,6 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey, isAdminRequest } from '../plugins/auth.js';
+import { engineVerifyCap, requireClaimHeadroom } from '../plugins/claim-meter.js';
+import { enforceProviderSpendCap, resolveSpendCapTier } from '../plugins/provider-spend-cap.js';
 import { getScanQueue, tierToPriority } from '../store/scan-queue.js';
+import { enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { getKeyStore } from '../store/keys.js';
 import { ownsOrAdmin } from '../lib/ownership.js';
 import type { QueuePriority } from '../store/scan-queue.js';
@@ -38,7 +41,7 @@ export async function queueRoutes(fastify: FastifyInstance): Promise<void> {
     '/queue/scans',
     {
       config: { access: 'owner' },
-      preHandler: [requireApiKey],
+      preHandler: [requireApiKey, enforceMonthlyCap, enforceProviderSpendCap, requireClaimHeadroom(engineVerifyCap())],
       schema: {
         tags: ['Jobs'],
         summary: 'Enqueue a scan for async processing',
@@ -54,7 +57,8 @@ export async function queueRoutes(fastify: FastifyInstance): Promise<void> {
 
       let item;
       try {
-        item = getScanQueue().enqueue(keyId, priority, text, provider);
+        const tier = resolveSpendCapTier(request.keyId, request.headers['x-user-tier']);
+        item = getScanQueue().enqueue(keyId, priority, text, provider, tier);
       } catch (err) {
         return reply.status(503).send({ error: err instanceof Error ? err.message : String(err) });
       }
