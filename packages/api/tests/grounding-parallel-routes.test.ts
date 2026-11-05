@@ -333,7 +333,7 @@ describe('FAULTLINE_GROUNDING=parallel: Parallel then Gemini, no googleSearch, o
       expect(out.claims.length).toBeGreaterThan(0);
       expect(out.mode).toBe('hosted');
       // Every verdict cites the Parallel results, none a Google grounding link.
-      expect(out.claims.every((c) => c.verdict === 'VERIFIED' && c.evidence_urls.includes('https://history.example/eiffel'))).toBe(true);
+      expect(out.claims.every((c) => c.verdict === 'VERIFIED' && c.evidence_urls.some((u) => u === 'https://history.example/eiffel'))).toBe(true);
       expect(sdk.configs.length).toBeGreaterThan(0);
       expect(googleSearchCalls()).toBe(0);
       expect(parallelBodies).toHaveLength(2);

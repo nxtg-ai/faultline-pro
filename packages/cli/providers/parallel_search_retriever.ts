@@ -76,10 +76,24 @@ const STOPWORDS = new Set([
  * punctuation stripped) in order, in groups of up to six, at most two groups.
  * A claim with no content word gets its own text, cut to six words.
  */
+const WORD_START = /^[\p{L}\p{N}$£€]$/u;
+const WORD_END = /^[\p{L}\p{N}%$.,-]$/u;
+
+/** One word with leading and trailing punctuation removed, in one linear pass over its characters. */
+function trimWord(word: string): string {
+  const chars = Array.from(word);
+  let start = 0;
+  let end = chars.length;
+  while (start < end && !WORD_START.test(chars[start])) start += 1;
+  while (end > start && !WORD_END.test(chars[end - 1])) end -= 1;
+  while (end > start && (chars[end - 1] === '.' || chars[end - 1] === ',')) end -= 1;
+  return chars.slice(start, end).join('');
+}
+
 export function keywordQueries(claimText: string): string[] {
   const words = claimText
     .split(/\s+/)
-    .map((w) => w.replace(/^[^\p{L}\p{N}$£€]+|[^\p{L}\p{N}%$.,-]+$|[.,]+$/gu, ''))
+    .map(trimWord)
     .filter((w) => w.length > 0);
   const content = words.filter((w) => !STOPWORDS.has(w.toLowerCase()));
   const pool = content.length > 0 ? content : words;

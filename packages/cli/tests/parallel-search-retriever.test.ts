@@ -169,3 +169,15 @@ describe('every failure is a classified RetrievalError, never a fallback', () =>
     expect((await failure(new ParallelSearchRetriever('k').retrieve(CLAIM))).reason).toBe('provider_error');
   });
 });
+
+describe('keywordQueries on hostile input (CodeQL: polynomial regex)', () => {
+  it('trims a long run of punctuation in linear time and still yields a query', () => {
+    const t0 = Date.now();
+    const out = keywordQueries('#'.repeat(200_000) + 'Eiffel ' + ','.repeat(200_000) + ' Paris');
+    expect(Date.now() - t0).toBeLessThan(2000);
+    expect(out.length).toBeGreaterThan(0);
+    expect(out[0]).toContain('Eiffel');
+    expect(out[0]).toContain('Paris');
+  });
+});
+
