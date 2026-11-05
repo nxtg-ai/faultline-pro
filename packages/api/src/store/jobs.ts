@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scanInRequestMode } from '../lib/grounding.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 import { fireWebhookEvent, webhookSafeData, keyIsLive, sanitizeErrorText } from './webhooks.js';
 import type { WebhookEventOwner } from './webhooks.js';
@@ -187,7 +187,7 @@ class JobScheduler {
       // Each run is metered against the creator's key; over its cap the run fails unscanned.
       const meterKeyId = owner !== null && owner !== 'public' ? owner.keyId : undefined;
       const result = await meteredScan(meterKeyId, ENGINE_VERIFY_CAP, randomUUID(), job.provider,
-        () => scanWithSpend({ text: job.text, provider: job.provider, keyId: ownerKeyId }, () => scan(job.text, job.provider)));
+        () => scanWithSpend({ text: job.text, provider: job.provider, keyId: ownerKeyId }, () => scanInRequestMode(job.text, job.provider)));
       const nextRunAt = new Date(Date.now() + job.intervalMs).toISOString();
       getJobStore().update(job.id, {
         lastRunAt: now,

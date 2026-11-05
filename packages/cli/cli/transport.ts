@@ -20,6 +20,7 @@
  */
 
 import { scan, type ScanResult } from './scan.js';
+import { scanLocal } from './local-scan.js';
 
 /** Hosted API used when FAULTLINE_API_URL is not set explicitly. */
 export const DEFAULT_API_URL = 'https://faultline-api.fly.dev';
@@ -141,7 +142,8 @@ export async function runScan(
   if (transport.mode === 'hosted') {
     return hostedScan(text, provider, transport, deps.fetchImpl ?? fetch);
   }
-  return (deps.scanFn ?? scan)(text, provider);
+  // Local: the user's own FAULTLINE_GROUNDING applies (scanLocal); unset, it is exactly scan().
+  return (deps.scanFn ?? scanLocal)(text, provider);
 }
 
 /**

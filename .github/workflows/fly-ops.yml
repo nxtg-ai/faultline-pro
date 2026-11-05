@@ -11,6 +11,10 @@
 #                           none exists (idempotent)
 #   measurement-key-set     copy the repo secret FAULTLINE_MEASUREMENT_KEY to the
 #                           app; measurement-key-unset removes it
+#   parallel-key-set        copy the repo secret PARALLEL_API_KEY to the app
+#   grounding-parallel-on   FAULTLINE_GROUNDING=parallel: every hosted verify on
+#                           gemini searches Parallel, then judges with no Google
+#                           search; grounding-parallel-off unsets it (Google)
 #   keystore-audit          read-only check of the keystore file on the volume:
 #                           its mode, field names, and for each key only the first
 #                           12 characters of the stored SHA-256, never a value that
@@ -38,6 +42,9 @@ on:
           - logs
           - customer-keys-on
           - customer-keys-off
+          - parallel-key-set
+          - grounding-parallel-on
+          - grounding-parallel-off
           - spend-cap-on
           - spend-cap-off
           - claim-meter-on
@@ -91,6 +98,33 @@ jobs:
       - name: Customer keys off
         if: inputs.action == 'customer-keys-off'
         run: flyctl secrets unset FAULTLINE_CUSTOMER_KEYS -a "$APP"
+
+      # Parallel Search key (docs/grounding-providers.md). Copies the repo secret
+      # PARALLEL_API_KEY to the app secret of the same name. The value only passes
+      # through env and is never echoed. Setting it restarts the machine.
+      - name: Parallel key set
+        if: inputs.action == 'parallel-key-set'
+        env:
+          PARALLEL_KEY: ${{ secrets.PARALLEL_API_KEY }}
+        run: |
+          if [ -z "$PARALLEL_KEY" ]; then
+            echo "::error::Repo secret PARALLEL_API_KEY is empty or not set. Nothing was changed."
+            exit 1
+          fi
+          flyctl secrets set PARALLEL_API_KEY="$PARALLEL_KEY" -a "$APP"
+
+      # Grounding provider (FAULTLINE_GROUNDING, docs/grounding-providers.md). "on"
+      # moves every hosted verify on gemini, every key and every scan path plus
+      # /mcp, to Parallel's search then Gemini with no googleSearch tool; set the
+      # Parallel key first, or every claim reads as not checked. "off" unsets it,
+      # back to Google grounding. Each restarts the machine.
+      - name: Grounding parallel on
+        if: inputs.action == 'grounding-parallel-on'
+        run: flyctl secrets set FAULTLINE_GROUNDING=parallel -a "$APP"
+
+      - name: Grounding parallel off
+        if: inputs.action == 'grounding-parallel-off'
+        run: flyctl secrets unset FAULTLINE_GROUNDING -a "$APP"
 
       # Fleet provider spend cap (docs/provider-spend-cap.md). "on" sets the gate
       # and the monthly ceiling in one secrets call, so it is one release; once the

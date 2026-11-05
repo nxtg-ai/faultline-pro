@@ -372,3 +372,78 @@ class TestCli:
         expected = np.random.default_rng(20260929).integers(0, 631, (2000, 631))
         assert idx.shape == (2000, 631)
         assert np.array_equal(idx, expected)
+
+
+
+# ── Grounding arms (runner --arm, GoPMO 1.18.11.7.22 grounding provider) ──────
+
+BINARY_GOLD = [g for g in GOLD if g["gold"] in ("true", "false")][:60]
+
+
+def arm_rows(arm, right_every, cost, google_calls):
+    """Rows for one arm: every `right_every`-th binary item wrong, the rest right."""
+    rows = []
+    for k, g in enumerate(BINARY_GOLD):
+        right = k % right_every != 0
+        truth = g["gold"] == "true"
+        status = ("supported" if truth else "contradicted") if right else ("contradicted" if truth else "supported")
+        rows.append({"id": g["id"], "arm": arm, "gold": g["gold"], "status": status, "verdict": status,
+                     "apiError": False, "sourcesCount": 3, "costUsd": cost, "googleGroundingCalls": google_calls})
+    rows[0] = {**rows[0], "status": "unverified", "verdict": "unverified", "apiError": True, "sourcesCount": 0}
+    return rows
+
+
+def write_arm(path, rows):
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    return path
+
+
+class TestArms:
+    def test_arm_block_rates_costs_and_google_calls(self):
+        items = scorer.join(arm_rows("google", 4, 0.0351, 1), GOLD)
+        assert len(items) > 0
+        block = scorer.arm_block(items)
+        assert block["n"] == 60
+        assert block["unverified_rate"] == pytest.approx(1 / 60)
+        assert block["failure_rate"] == pytest.approx(1 / 60)
+        assert block["mean_cost_usd_per_claim"] == pytest.approx(0.0351)
+        assert block["google_grounded_calls"] == 60
+        assert block["balanced_accuracy"]["value"] is not None
+
+    def test_paired_difference_is_parallel_minus_google_with_a_2000_resample_ci(self, tmp_path):
+        a = write_arm(tmp_path / "a.google.jsonl", arm_rows("google", 3, 0.0351, 1))
+        p = write_arm(tmp_path / "a.parallel.jsonl", arm_rows("parallel", 6, 0.0052, 0))
+        report = scorer.arms_report([a, p], GOLD)
+        assert set(report["arms"]) == {"google", "parallel"}
+        diff = report["ba_difference"]["parallel - google"]
+        ba = {name: arm["balanced_accuracy"]["value"] for name, arm in report["arms"].items()}
+        assert diff["value"] == pytest.approx(ba["parallel"] - ba["google"])
+        assert diff["value"] > 0
+        lo, hi = diff["ci95"]
+        assert lo <= diff["value"] <= hi
+        assert diff["resamples"] == 2000 and diff["seed"] == scorer.SEED
+        assert report["arms"]["parallel"]["google_grounded_calls"] == 0
+        assert report["arms"]["google"]["google_grounded_calls"] == 60
+        assert report["arms"]["parallel"]["mean_cost_usd_per_claim"] == pytest.approx(0.0052)
+        # Deterministic: the pinned resample matrix gives the same CI on a second run.
+        assert scorer.arms_report([a, p], GOLD)["ba_difference"]["parallel - google"]["ci95"] == [lo, hi]
+
+    def test_cli_writes_the_summary_json(self, tmp_path):
+        a = write_arm(tmp_path / "r.google.jsonl", arm_rows("google", 3, 0.0351, 1))
+        p = write_arm(tmp_path / "r.parallel.jsonl", arm_rows("parallel", 5, 0.0052, 0))
+        out = tmp_path / "r.summary.json"
+        r = cli("--arms", a, p, "--json", out)
+        assert r.returncode == 0, r.stdout + r.stderr
+        summary = json.loads(out.read_text())
+        assert summary["arms"]["google"]["n"] == 60
+        assert "parallel - google" in summary["ba_difference"]
+        assert "BA parallel - google" in r.stdout
+
+    def test_refuses_a_row_whose_gold_differs_and_an_arm_given_twice(self, tmp_path):
+        rows = arm_rows("google", 3, 0.0, 1)
+        rows[5] = {**rows[5], "gold": "false" if rows[5]["gold"] == "true" else "true"}
+        bad = write_arm(tmp_path / "bad.jsonl", rows)
+        assert cli("--arms", bad).returncode == 2
+        a = write_arm(tmp_path / "x.jsonl", arm_rows("google", 3, 0.0, 1))
+        b = write_arm(tmp_path / "y.jsonl", arm_rows("google", 3, 0.0, 1))
+        assert cli("--arms", a, b).returncode == 2

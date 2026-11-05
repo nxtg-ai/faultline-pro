@@ -45,6 +45,8 @@ const KEY = ['runner', 'ADMINKEY', 'must-never-print', '4242'].join('-');
 
 interface FakeState {
   usageExtra?: Record<string, unknown>;
+  /** When set, an apiError answer still reports this usage (a call that failed after spending). */
+  failUsage?: { costUsd: number; googleGroundingCalls: number };
   dropVerifyOnce?: boolean;
   groundedPrompts: number;
   commit: string | null;
@@ -61,6 +63,10 @@ interface FakeState {
   attemptsById: Map<number, number>;
   verifyStatus: number;
   verifyBody?: unknown;
+  /** The grounding and parallelMode fields of every verify request, in order. */
+  arms?: Array<{ grounding?: string; parallelMode?: string }>;
+  /** When set, the engine answers this grounding whatever was asked. */
+  ranGrounding?: string;
   /** When set, /usage reports the day full (1,000) once this many verify calls happened in the current process. */
   capAfterCallsThisRun?: number;
   /** verifyCalls when the current runner process started. */
@@ -87,6 +93,7 @@ function freshState(): FakeState {
     verifyStatus: 200,
     runStartCalls: 0,
     usageExtra: undefined,
+    failUsage: undefined,
   };
 }
 
@@ -119,7 +126,9 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     state.verifyCalls += 1;
     if (state.dropVerifyOnce) { state.dropVerifyOnce = false; req.socket.destroy(); return; }
     if (state.verifyStatus !== 200) return send(res, state.verifyStatus, state.verifyBody ?? {});
-    const { claims } = JSON.parse(await readBody(req)) as { claims: Array<{ id: string; text: string }> };
+    const { claims, grounding, parallelMode } = JSON.parse(await readBody(req)) as { claims: Array<{ id: string; text: string }>; grounding?: string; parallelMode?: string };
+    (state.arms ??= []).push({ grounding, parallelMode });
+    const parallelArm = grounding === 'parallel';
     const results = claims.map(({ id }) => {
       const n = Number(id);
       const attempt = (state.attemptsById.get(n) ?? 0) + 1;
@@ -127,10 +136,14 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       const fail = attempt <= (state.failFirst.get(n) ?? 0);
       if (!fail) state.groundedPrompts += 1;
       return fail
-        ? { id, status: 'unverified', apiError: true, apiErrorReason: n % 2 === 0 ? 'output_truncated' : 'not a label!', parseFallback: false, model: null }
-        : { id, status: n % 3 === 0 ? 'contradicted' : 'supported', apiError: false, parseFallback: n % 7 === 0, model: state.model(state.verifyCalls) };
+        ? { id, status: 'unverified', apiError: true, apiErrorReason: n % 2 === 0 ? 'output_truncated' : 'not a label!', parseFallback: false, model: null, ...(state.failUsage ? { usage: state.failUsage } : {}) }
+        : {
+          id, status: n % 3 === 0 ? 'contradicted' : 'supported', apiError: false, parseFallback: n % 7 === 0, model: state.model(state.verifyCalls),
+          sourcesCount: parallelArm ? 5 : 2,
+          usage: { costUsd: parallelArm ? 0.00508 : 0.03508, googleGroundingCalls: parallelArm ? 0 : 1, groundingCalls: 1 },
+        };
     });
-    return send(res, 200, { provider: 'gemini', results });
+    return send(res, 200, { provider: 'gemini', grounding: state.ranGrounding ?? grounding ?? 'google', results });
   }
   return send(res, 404, { error: 'not found' });
 }
@@ -222,7 +235,8 @@ describe('accuracy-g0 runner: a complete run', () => {
     expect(written).toHaveLength(100);
     expect(written.map((row) => row.id)).toEqual([...SUBSAMPLE_IDS].sort((a, b) => a - b));
     expect(Object.keys(written[0]).sort()).toEqual(
-      ['apiError', 'apiErrorReason', 'attempts', 'engineSha', 'gold', 'id', 'model', 'noSourceAbstain', 'parseFallback', 'status', 'ts'],
+      ['apiError', 'apiErrorReason', 'arm', 'attempts', 'costUsd', 'engineSha', 'gold', 'googleGroundingCalls', 'id', 'model', 'noSourceAbstain',
+        'parseFallback', 'sourcesCount', 'status', 'ts', 'verdict'],
     );
     expect(written.every((row) => row.engineSha === state.commit && row.model === 'gemini-2.5-flash')).toBe(true);
     expect(written.every((row) => row.gold === 'true' || row.gold === 'false')).toBe(true);
@@ -661,4 +675,157 @@ describe('accuracy-g0 runner: against the real API server with the measurement k
       resetProviderSpendLedger();
     }
   }, 60_000);
+});
+
+describe('accuracy-g0 runner: grounding arms and a seeded subsample (GoPMO 1.18.11.7.22 grounding provider)', () => {
+  it('--arm both --sample 20 --seed 7: the same 20 items on each arm, one file per arm, the arm sent to the route', async () => {
+    const out = join(dir, 'arms.jsonl');
+    const r = await run(['--set', 'full', '--arm', 'both', '--sample', '20', '--seed', '7', '--out', out]);
+    expect(r.code).toBe(0);
+    const google = rows(join(dir, 'arms.google.jsonl'));
+    const parallel = rows(join(dir, 'arms.parallel.jsonl'));
+    expect(google.length).toBeGreaterThan(0);
+    expect(google).toHaveLength(20);
+    expect(parallel).toHaveLength(20);
+    expect(parallel.map((row) => row.id)).toEqual(google.map((row) => row.id));
+    expect(new Set(google.map((row) => row.arm))).toEqual(new Set(['google']));
+    expect(new Set(parallel.map((row) => row.arm))).toEqual(new Set(['parallel']));
+    expect(parallel[0]).toMatchObject({ verdict: parallel[0].status, sourcesCount: 5, costUsd: 0.00508, googleGroundingCalls: 0 });
+    expect(google[0]).toMatchObject({ sourcesCount: 2, costUsd: 0.03508, googleGroundingCalls: 1 });
+    expect(new Set(state.arms!.map((a) => JSON.stringify(a)))).toEqual(new Set([
+      JSON.stringify({ grounding: 'google' }), JSON.stringify({ grounding: 'parallel', parallelMode: 'advanced' }),
+    ]));
+    // The summary comes from the scorer; with no python3/numpy the run says how to write it.
+    expect(existsSync(join(dir, 'arms.summary.json')) || /arm summary was not written/.test(r.out)).toBe(true);
+    if (existsSync(join(dir, 'arms.summary.json'))) {
+      const summary = JSON.parse(readFileSync(join(dir, 'arms.summary.json'), 'utf8'));
+      expect(Object.keys(summary.arms).sort()).toEqual(['google', 'parallel']);
+      expect(summary.arms.parallel.google_grounded_calls).toBe(0);
+      expect(summary.arms.google.google_grounded_calls).toBe(20);
+      expect(summary.ba_difference['parallel - google'].resamples).toBe(2000);
+    }
+    expect(r.out).not.toContain(KEY);
+  });
+
+  it('the same seed picks the same items; another seed picks others', async () => {
+    const a = await run(['--set', 'full', '--arm', 'parallel-fast', '--sample', '15', '--seed', '3', '--out', join(dir, 'a.jsonl')]);
+    const b = await run(['--set', 'full', '--arm', 'parallel-fast', '--sample', '15', '--seed', '3', '--out', join(dir, 'b.jsonl')]);
+    const c = await run(['--set', 'full', '--arm', 'parallel-fast', '--sample', '15', '--seed', '4', '--out', join(dir, 'c.jsonl')]);
+    expect([a.code, b.code, c.code]).toEqual([0, 0, 0]);
+    const ids = (f: string) => rows(join(dir, f)).map((row) => row.id);
+    expect(ids('a.jsonl').length).toBeGreaterThan(0);
+    expect(ids('a.jsonl')).toHaveLength(15);
+    expect(ids('b.jsonl')).toEqual(ids('a.jsonl'));
+    expect(ids('c.jsonl')).not.toEqual(ids('a.jsonl'));
+    expect(state.arms!.every((arm) => arm.grounding === 'parallel' && arm.parallelMode === 'fast')).toBe(true);
+  });
+
+  it('--resume keeps the cost and Google calls of attempts made before the stop', async () => {
+    // Codex review of the grounding PR, finding 1: the spend map reset on every process.
+    const out = join(dir, 'g.jsonl');
+    const first = await run(['--set', 'full', '--arm', 'google', '--sample', '2', '--seed', '7', '--out', out]);
+    expect(first.code).toBe(0);
+    const ids = rows(out).map((row) => row.id);
+    expect(ids).toHaveLength(2);
+    // A second, failing-then-stopped run on a fresh file: one spent failure, then the allowance stop.
+    const out2 = join(dir, 'g2.jsonl');
+    state.failFirst.set(ids[0] as number, 1);
+    state.failUsage = { costUsd: 0.0351, googleGroundingCalls: 1 };
+    state.attemptsById.clear();
+    state.capAfterCallsThisRun = 1;
+    const stopped = await run(['--set', 'full', '--arm', 'google', '--sample', '2', '--seed', '7', '--out', out2]);
+    expect(stopped.code).toBe(3);
+    state.capAfterCallsThisRun = undefined;
+    state.groundedPrompts = 0;
+    const resumed = await run(['--set', 'full', '--arm', 'google', '--sample', '2', '--seed', '7', '--out', out2, '--resume']);
+    expect(resumed.code).toBe(0);
+    const row = rows(out2).find((r) => r.id === ids[0])!;
+    expect(row).toMatchObject({ apiError: false, attempts: 2, googleGroundingCalls: 2 });
+    expect(row.costUsd).toBeCloseTo(0.0351 + 0.03508, 6);
+  }, 30_000);
+
+  it('--resume keeps the spend of an item that used all its calls before the stop', async () => {
+    // Codex round 2 on the grounding PR: closeExhausted wrote such an item at 0 cost.
+    const out = join(dir, 'ex.jsonl');
+    const id = 4; // the one item --sample 1 --seed 19 picks from the full set
+    writeFileSync(`${out}.attempts.jsonl`, [1, 2, 3, 4].map((attempt) => JSON.stringify({ id, attempt, ts: 't' })).join('\n') + '\n');
+    writeFileSync(`${out}.spend.jsonl`, [1, 2, 3, 4].map((attempt) => JSON.stringify({ id, arm: 'google', attempt, costUsd: 0.04, googleGroundingCalls: 1 })).join('\n') + '\n');
+    writeFileSync(out, '');
+    const before = state.verifyCalls;
+    const r = await run(['--set', 'full', '--arm', 'google', '--sample', '1', '--seed', '19', '--out', out, '--resume']);
+    expect(r.code).toBe(0);
+    const written = rows(out);
+    expect(written).toHaveLength(1);
+    expect(written[0]).toMatchObject({ id, attempts: 4, apiError: true, googleGroundingCalls: 4 });
+    expect(written[0].costUsd).toBeCloseTo(0.16, 6);
+    expect(state.verifyCalls).toBe(before); // no fifth call
+  }, 30_000);
+
+  it('a fresh run refuses a leftover spend ledger (exit 2, no verify call)', async () => {
+    // Codex round 3 on the grounding PR: a stale spend ledger was summed into a fresh run.
+    const out = join(dir, 'stale.jsonl');
+    writeFileSync(`${out}.spend.jsonl`, JSON.stringify({ id: 4, arm: 'google', attempt: 1, costUsd: 0.007, googleGroundingCalls: 1 }) + '\n');
+    const before = state.verifyCalls;
+    const r = await run(['--set', 'full', '--arm', 'google', '--sample', '1', '--seed', '19', '--out', out]);
+    expect(r.code).toBe(2);
+    expect(r.out).toMatch(/spend ledger exists; pass --resume/);
+    expect(state.verifyCalls).toBe(before);
+  });
+
+  it('a stop after a paid answer keeps its spend, and the other arm cannot resume that file', async () => {
+    // Opus seat on the grounding PR: an engine that ignores the arm answers 200 and is paid,
+    // then the arm check stops the run; the spend must be on record, and a google resume refused.
+    state.ranGrounding = 'google';
+    const out = join(dir, 'ignored.jsonl');
+    const stopped = await run(['--set', 'full', '--arm', 'parallel', '--sample', '3', '--seed', '1', '--out', out]);
+    expect(stopped.code).toBe(1);
+    const spend = rows(`${out}.spend.jsonl`);
+    expect(spend).toHaveLength(3);
+    expect(spend.every((row) => row.arm === 'parallel' && row.googleGroundingCalls === 0)).toBe(true);
+    expect(rows(`${out}.attempts.jsonl`).every((row) => row.arm === 'parallel')).toBe(true);
+    const before = state.verifyCalls;
+    const resumed = await run(['--set', 'full', '--arm', 'google', '--sample', '3', '--seed', '1', '--out', out, '--resume']);
+    expect(resumed.code).toBe(2);
+    expect(resumed.out).toMatch(/holds arm parallel, not google/);
+    expect(state.verifyCalls).toBe(before);
+    // The attempt ledger refuses on its own, without the spend ledger's help.
+    rmSync(`${out}.spend.jsonl`);
+    const again = await run(['--set', 'full', '--arm', 'google', '--sample', '3', '--seed', '1', '--out', out, '--resume']);
+    expect(again.code).toBe(2);
+    expect(again.out).toMatch(/attempt ledger .* holds arm parallel, not google/);
+    expect(state.verifyCalls).toBe(before);
+  }, 30_000);
+
+  it('--resume refuses an out file written by another arm (exit 2, no verify call)', async () => {
+    // Codex review of the grounding PR, finding 2: google rows satisfied a parallel resume.
+    const out = join(dir, 'mixed.jsonl');
+    const first = await run(['--set', 'full', '--arm', 'google', '--sample', '2', '--seed', '7', '--out', out]);
+    expect(first.code).toBe(0);
+    expect(rows(out)).toHaveLength(2);
+    const before = state.verifyCalls;
+    const r = await run(['--set', 'full', '--arm', 'parallel', '--sample', '2', '--seed', '7', '--out', out, '--resume']);
+    expect(r.code).toBe(2);
+    expect(r.out).toMatch(/holds rows from arm google, not parallel/);
+    expect(state.verifyCalls).toBe(before);
+  });
+
+  it('stops when the engine ran another grounding than the arm asked for', async () => {
+    state.ranGrounding = 'google';
+    const r = await run(['--set', 'full', '--arm', 'parallel', '--sample', '5', '--seed', '1', '--out', join(dir, 'p.jsonl')]);
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(/asked for the parallel arm, the engine ran google grounding/);
+    expect(rows(join(dir, 'p.jsonl'))).toHaveLength(0);
+  });
+
+  it.each([
+    [['--arm', 'bing'], /--arm must be/],
+    [['--sample', '5'], /--sample and --seed go together/],
+    [['--sample', '0', '--seed', '1'], /--sample must be/],
+    [['--sample', '5', '--seed', '-1'], /--seed must be/],
+  ])('refuses %j before anything is sent', async (args, message) => {
+    const r = await run(['--set', 'full', ...args, '--out', join(dir, 'x.jsonl')]);
+    expect(r.code).toBe(2);
+    expect(r.out).toMatch(message);
+    expect(state.requests).toBe(0);
+  });
 });

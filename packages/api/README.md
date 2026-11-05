@@ -273,6 +273,9 @@ npm run dev --workspace=packages/api   # http://localhost:3010 (default PORT 301
 | `FAULTLINE_PROVIDER_SPEND_CAP_USD` | no | Monthly ceiling in USD, default `100` |
 | `FAULTLINE_PROVIDER_SPEND_LEDGER` | no | Ledger path, default `/var/log/faultline/provider-spend.jsonl` |
 | `FAULTLINE_USAGE_CAP` | no | `on` enforces the per-key monthly scan quota. Default off |
+| `FAULTLINE_GROUNDING` | no | `parallel`: every `gemini` verify, on every key and scan path and `/mcp`, searches Parallel then judges with no Google search (`docs/grounding-providers.md`). Unset: Google grounding |
+| `PARALLEL_API_KEY` | with `FAULTLINE_GROUNDING=parallel` | Parallel Search API key. Missing: every claim reads as not checked, never a Google fallback |
+| `FAULTLINE_PARALLEL_MODE` | no | Parallel search mode: `advanced` (default), `basic`, `fast`, `turbo` |
 | `FAULTLINE_MCP_ALLOWED_ORIGINS` | no | Comma-separated browser origins `/mcp` accepts. Default empty: a request with an `Origin` header gets `403`; one without is allowed |
 
 ## Deployment

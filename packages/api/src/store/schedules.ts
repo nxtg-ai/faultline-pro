@@ -12,7 +12,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scanInRequestMode } from '../lib/grounding.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 import { getNotificationStore, type NotificationEventType } from './notifications.js';
 import { fetchOutbound, fetchOutboundFollow } from '../lib/outbound-url.js';
@@ -378,7 +378,7 @@ class ScheduleRunner {
 
       // Each run is metered against the schedule's key; over its cap the run fails unscanned.
       const result = await meteredScan(schedule.keyId, ENGINE_VERIFY_CAP, randomUUID(), schedule.provider,
-        () => scanWithSpend({ text: inputText, provider: schedule.provider, keyId: schedule.keyId }, () => scan(inputText, schedule.provider)));
+        () => scanWithSpend({ text: inputText, provider: schedule.provider, keyId: schedule.keyId }, () => scanInRequestMode(inputText, schedule.provider)));
       const durationMs = Date.now() - start;
       const runResult: Omit<ScheduleRunResult, 'runId'> = {
         ranAt,

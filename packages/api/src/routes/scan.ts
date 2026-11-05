@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { apiEvidenceOptions, apiIndependentEvidenceOptions } from '../lib/evidence.js';
+import { groundingOption } from '../lib/grounding.js';
 import { assertValidScanResult, isInvalidVerdictError } from '@nxtg/faultline/lib/verdict-guard.js';
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey, resolveRequestTenantId } from '../plugins/auth.js';
@@ -117,7 +118,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
       // Server-side only: the cap comes from the entitled plan, never the body
       // (ScanOptions is not PipelineConfig, so no body field reaches it).
       const verifyPolicy = resolveVerifyPolicy(keyId, request.headers['x-user-tier']);
-      const scanOptions = { verifyCap: verifyPolicy.cap, evidence: apiEvidenceOptions(), independentEvidence: apiIndependentEvidenceOptions() };
+      const scanOptions = { verifyCap: verifyPolicy.cap, evidence: apiEvidenceOptions(), independentEvidence: apiIndependentEvidenceOptions(), ...groundingOption() };
 
       // FR-3: pipelineConfig path — bypass cache and circuit breaker, use explicit providers
       if (pipelineConfig) {
@@ -373,7 +374,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
       const verifyPolicy = resolveVerifyPolicy(keyId, request.headers['x-user-tier']);
       const scanned = await scanWithSpend({ text, provider: effectiveProvider, keyId }, () => scan(
         text, effectiveProvider, undefined, undefined, undefined, undefined, undefined,
-        { verifyCap: verifyPolicy.cap, evidence: apiEvidenceOptions(), independentEvidence: apiIndependentEvidenceOptions() },
+        { verifyCap: verifyPolicy.cap, evidence: apiEvidenceOptions(), independentEvidence: apiIndependentEvidenceOptions(), ...groundingOption() },
       ));
       const result = withVerificationTier(scanned, verifyPolicy.tier);
 

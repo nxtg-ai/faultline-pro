@@ -1,5 +1,6 @@
 import type { EvidenceOptions } from '../evidence/passage.js';
 import type { IndependentEvidenceOptions } from '../evidence/independent.js';
+import { groundingFromEnv, type GroundingMode } from './grounding.js';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import type { Claim, VerificationResult, AnalysisState } from '../types.js';
@@ -76,6 +77,12 @@ export interface ScanOptions {
   evidence?: EvidenceOptions;
   /** Attach a second retriever's passages as independentEvidence (off unless set). */
   independentEvidence?: IndependentEvidenceOptions;
+  /**
+   * Which search grounds a non-consensus gemini verify (cli/grounding.ts).
+   * Absent means google, today's behaviour. The engine never reads
+   * FAULTLINE_GROUNDING itself: the caller decides per request and passes it.
+   */
+  grounding?: GroundingMode;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -149,6 +156,8 @@ export interface VerifyFullScanOptions {
   /** Attach evidence passages from each cited source (see ScanOptions.evidence). */
   evidence?: EvidenceOptions;
   independentEvidence?: IndependentEvidenceOptions;
+  /** See ScanOptions.grounding. */
+  grounding?: GroundingMode;
 }
 
 // ── Sentence-level claim coverage guarantee ───────────────────────────────────
@@ -292,7 +301,7 @@ export async function scan(
   pipelineConfig?: PipelineConfig,
   options?: ScanOptions,
 ): Promise<ScanResult> {
-  const { extractionProvider, verifier } = resolveScanProviders(providerName, pipelineConfig);
+  const { extractionProvider, verifier } = resolveScanProviders(providerName, pipelineConfig, { grounding: options?.grounding });
 
   onProgress?.('Extracting claims...');
   const rawClaims = await extractionProvider.extractClaims(text);
@@ -365,7 +374,7 @@ export async function verifyFullScan(
   claims: Claim[],
   opts: VerifyFullScanOptions = {},
 ): Promise<FullScanResult> {
-  const verifier = resolveVerifier(opts.providerName, opts.pipelineConfig);
+  const verifier = resolveVerifier(opts.providerName, opts.pipelineConfig, { grounding: opts.grounding });
   return runFullVerification(claims, verifier, { ...opts, provider: verifier.provider.name });
 }
 
@@ -506,7 +515,10 @@ export async function batchScan(
         filesSkipped++;
         continue;
       }
-      const result = await scan(text, providerName, minConfidence);
+      // A local batch: the user's own FAULTLINE_GROUNDING, else exactly the call it was before.
+      const result = groundingFromEnv() === 'parallel'
+        ? await scan(text, providerName, minConfidence, undefined, undefined, undefined, undefined, { grounding: 'parallel' })
+        : await scan(text, providerName, minConfidence);
       results.push({ file: relative(dir, file), result });
     } catch (err) {
       filesSkipped++;

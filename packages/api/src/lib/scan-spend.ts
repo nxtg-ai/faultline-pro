@@ -81,6 +81,20 @@ export async function scanWithSpend<T extends ScanLike>(ctx: ScanSpendContext, r
   return result;
 }
 
+/** The search service name a leg of this provider family is labelled with in a spend row. */
+const SEARCH_LEG_LABELS: Readonly<Record<string, string>> = Object.freeze({ parallel: 'parallel-search' });
+
+/**
+ * A spend row's provider label plus the search services its legs actually
+ * called (the parallel grounding mode adds 'parallel-search'), so a row says
+ * what was paid for. Taken from the captured legs, never from the request.
+ */
+export function withSearchLabel(label: string, legs: UsageLeg[]): string {
+  const searched = [...new Set(legs.map((leg) => SEARCH_LEG_LABELS[leg.provider ?? '']).filter((x): x is string => typeof x === 'string'))];
+  const parts = label.split('+');
+  return [...parts, ...searched.filter((s) => !parts.includes(s))].join('+');
+}
+
 function ledgerScanSpend(
   legs: UsageLeg[],
   ctx: ScanSpendContext,
@@ -91,7 +105,7 @@ function ledgerScanSpend(
   const verification = stages.consensusVoters ?? [stages.verification];
   const costEvent = buildManagedCostEvent(legs, {
     text: ctx.text,
-    provider: [...new Set([stages.extraction, ...verification])].join('+'),
+    provider: withSearchLabel([...new Set([stages.extraction, ...verification])].join('+'), legs),
     stageProviders: { extraction: stages.extraction, verification },
     claimCount: counts.groundingCalls,
     tier: ctx.tier ?? resolveTier(ctx.keyId),

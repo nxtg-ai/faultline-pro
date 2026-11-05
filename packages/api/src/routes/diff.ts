@@ -5,7 +5,7 @@ import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { meterScan } from '../lib/scan-quota.js';
-import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scanInRequestMode } from '../lib/grounding.js';
 import { commitClaims, engineVerifyCap, reserveClaims } from '../plugins/claim-meter.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 
@@ -78,8 +78,8 @@ export async function diffRoutes(fastify: FastifyInstance): Promise<void> {
 
       const keyId = request.keyId ?? 'unknown';
       const [scanBefore, scanAfter] = await Promise.all([
-        scanWithSpend({ text: before, provider: effectiveProvider, keyId }, () => scan(before, effectiveProvider)),
-        scanWithSpend({ text: after, provider: effectiveProvider, keyId }, () => scan(after, effectiveProvider)),
+        scanWithSpend({ text: before, provider: effectiveProvider, keyId }, () => scanInRequestMode(before, effectiveProvider)),
+        scanWithSpend({ text: after, provider: effectiveProvider, keyId }, () => scanInRequestMode(after, effectiveProvider)),
       ]) as unknown as [ScanResult, ScanResult];
       // Both scans' verdicts reach the caller (claims and changed verdicts).
       commitClaims(request, randomUUID(), scanBefore, effectiveProvider);

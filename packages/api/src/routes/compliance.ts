@@ -6,7 +6,7 @@ import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { meterScan } from '../lib/scan-quota.js';
-import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scanInRequestMode } from '../lib/grounding.js';
 import { commitClaims, engineVerifyCap, reserveClaims } from '../plugins/claim-meter.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 
@@ -181,7 +181,7 @@ export async function complianceRoutes(fastify: FastifyInstance): Promise<void> 
       const { text, provider } = request.body;
 
       try {
-        const scanResult = await scanWithSpend({ text, provider, keyId: request.keyId ?? 'unknown' }, () => scan(text, provider));
+        const scanResult = await scanWithSpend({ text, provider, keyId: request.keyId ?? 'unknown' }, () => scanInRequestMode(text, provider));
         commitClaims(request, randomUUID(), scanResult, provider ?? 'gemini');
         const complianceAnalysis = store.applyTemplate(
           template,

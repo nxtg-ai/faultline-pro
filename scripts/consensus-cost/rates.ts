@@ -85,6 +85,13 @@ export const LIVE_RATES: Record<string, Rate | null> = {
   //   https://amnic.com/blogs/perplexity-api-pricing). Not from a live official page.
   'sonar-pro':        { inputPerM: 3.00, outputPerM: 15.00, groundingPerCall: 0.006 },
   'sonar':            { inputPerM: 1.00, outputPerM: 1.00, groundingPerCall: 0.005 },
+  // Parallel Search API, one billed request per search, no tokens. Advanced and Basic
+  //   5 USD / 1,000 requests, Fast and Turbo 1 USD / 1,000. Source: https://parallel.ai/pricing
+  //   (read 2026-11-05). Key = the retriever's mode label (parallel_search_retriever.ts).
+  'parallel-search-advanced': { inputPerM: 0, outputPerM: 0, groundingPerCall: 0.005 },
+  'parallel-search-basic':    { inputPerM: 0, outputPerM: 0, groundingPerCall: 0.005 },
+  'parallel-search-fast':     { inputPerM: 0, outputPerM: 0, groundingPerCall: 0.001 },
+  'parallel-search-turbo':    { inputPerM: 0, outputPerM: 0, groundingPerCall: 0.001 },
 };
 
 /**

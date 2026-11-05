@@ -26,6 +26,13 @@ export interface Source {
    */
   snippet?: string;
   /**
+   * The search service's own excerpts from the page, as it returned them
+   * (the parallel grounding mode; `snippet` is these joined for the judge).
+   */
+  excerpts?: string[];
+  /** The page's publication date as the search service reported it (Parallel `publish_date`), when it did. */
+  publishDate?: string;
+  /**
    * The passage of the fetched page that best matches the claim, with the fetch
    * time (evidence/passage.ts). Taken from the page's own bytes, never from the
    * model's reply; `snippet` above is model-derived and is not evidence.
@@ -142,7 +149,8 @@ export interface VerdictProvenance {
   verifiedAt: string;
   /**
    * What retrieved the evidence: 'gemini-grounding' for a Gemini grounded call
-   * (Google Search runs inside the same request), or the consensus rig's
+   * (Google Search runs inside the same request), 'parallel-search' for the
+   * parallel grounding mode (retrieve, then judge), or the consensus rig's
    * retriever name. Absent when no retrieval ran.
    */
   retriever?: string;
@@ -152,6 +160,12 @@ export interface VerdictProvenance {
    * its shared retrieval returned. Absent when no retrieval ran.
    */
   retrievedAt?: string;
+  /**
+   * The retriever's own model or mode label, when the retriever is a separate
+   * search service (the parallel grounding mode records 'parallel-search-default').
+   * Absent for a Gemini grounded call and for consensus.
+   */
+  retrieverModel?: string;
 }
 
 export interface VerificationResult {

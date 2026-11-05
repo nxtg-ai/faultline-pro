@@ -1,4 +1,5 @@
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scanInRequestMode } from '../lib/grounding.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 import { PROVIDER_BUDGET_EXHAUSTED, providerBudgetRefuses } from '../plugins/provider-spend-cap.js';
 import type { ManagedScanCostEvent } from '../store/costs.js';
@@ -78,7 +79,7 @@ export const resolvers = {
       requireAdmin(ctx);
       requireProviderBudget(ctx);
       const provider = (args.provider ?? 'mock') as Provider;
-      const result = await scanWithSpend({ text: args.text, provider, keyId: ctx.keyId }, () => scan(args.text, provider));
+      const result = await scanWithSpend({ text: args.text, provider, keyId: ctx.keyId }, () => scanInRequestMode(args.text, provider));
       const stored = getScanStore().record(ctx.keyId, args.text, result as unknown as Record<string, unknown>);
       return toScanResult(stored.id, result as unknown as Record<string, unknown>, stored.scannedAt);
     },
@@ -148,7 +149,7 @@ export const resolvers = {
       const texts = args.texts.slice(0, 20);
       const results = await Promise.all(
         texts.map(async (text) => {
-          const result = await scanWithSpend({ text, provider, keyId: ctx.keyId }, () => scan(text, provider));
+          const result = await scanWithSpend({ text, provider, keyId: ctx.keyId }, () => scanInRequestMode(text, provider));
           const stored = getScanStore().record(ctx.keyId, text, result as unknown as Record<string, unknown>);
           return toScanResult(stored.id, result as unknown as Record<string, unknown>, stored.scannedAt);
         }),

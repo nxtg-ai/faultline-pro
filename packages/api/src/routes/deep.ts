@@ -4,7 +4,7 @@ import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { meterScan } from '../lib/scan-quota.js';
-import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scanInRequestMode } from '../lib/grounding.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 import { getAnalyticsStore } from '../store/analytics.js';
 import type { RiskLevel } from '../store/analytics.js';
@@ -78,7 +78,7 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
       let lastError = '';
       for (const p of chain) {
         try {
-          const result = await scanWithSpend({ text, provider: p, keyId }, () => scan(text, p));
+          const result = await scanWithSpend({ text, provider: p, keyId }, () => scanInRequestMode(text, p));
           cb.recordSuccess(p);
 
           // Build evidence links from source URLs in verifications

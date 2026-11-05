@@ -7,6 +7,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Parallel's Search API as a grounding provider (`FAULTLINE_GROUNDING=parallel`).** With the flag set, a `gemini` verify retrieves, then judges. One Parallel search (`POST https://api.parallel.ai/v1/search`) finds the sources, in mode `FAULTLINE_PARALLEL_MODE` (default `advanced`). One Gemini call with no `googleSearch` tool then judges the claim against their excerpts. On the hosted API the flag covers every key, the server key included, every scan path, full-scan jobs and both MCP surfaces. The mode is read per request and passed to the engine as an argument. The local CLI and stdio MCP on the user's own key change only if the user sets the variable.
+  - A Parallel verdict carries `provenance.retriever: "parallel-search"` and `retrieverModel`. Its sources keep `publishDate` and `excerpts`.
+  - A failed Parallel search leaves the claim not checked, with a reason, and never falls back to Google.
+  - Each search is priced in the provider-spend ledger: 0.005 USD on advanced and basic, 0.001 USD on fast and turbo. It is not counted against the Google grounding allowance.
+  - `POST /admin/verify-claims` takes `grounding` and `parallelMode`, and reports `grounding`, `sourcesCount` and `usage.googleGroundingCalls`.
+  - `scripts/accuracy-g0.mjs` takes `--arm google|parallel|parallel-fast|both` and `--sample N --seed S`. Each run ends with a summary from the scorer's new `--arms` mode: balanced accuracy per arm, a paired bootstrap 95% CI of the difference, the unverified rate, the mean cost per claim and the Google grounded calls.
+  - `fly-ops.yml` gains `parallel-key-set`, `grounding-parallel-on` and `grounding-parallel-off`.
+  - The reason is licensing: Google's grounding terms limit Grounded Results to display to the end user who submitted the prompt. Docs: `docs/grounding-providers.md`.
+
 ### Fixed
 
 - **A verdict the engine rewrote no longer ships with Google's Search Suggestions.** When a Gemini grounded verdict (supported, contradicted or mixed) has no source a reader can open, the engine reports it as `unverified` with its own explanation. It used to keep `searchEntryPoint` and `webSearchQueries` from Google's grounded response, so a result Faultline had modified was shown beside Google's Search Suggestions chip, which Google's grounding terms do not allow. Those fields, and any raw grounding metadata, are now removed from an abstained verdict and from an abstained consensus vote, including results stored before this change, when they are read. `provenance` is kept. A verdict that passes keeps its Search Suggestions unaltered. The change is in the engine (`packages/cli/lib/verdict-guard.ts`), so `POST /scan`, `/scan/stream`, the full scan, the hosted `POST /mcp` and the `faultline-mcp` bin all get it.

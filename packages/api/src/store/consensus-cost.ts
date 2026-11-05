@@ -55,6 +55,14 @@ export const CONSENSUS_MODEL_RATES: Record<string, Rate> = {
   'gpt-4o':           { inputPerM: 2.50, outputPerM: 10.00, groundingPerCall: 0.010 },
   'sonar-pro':        { inputPerM: 3.00, outputPerM: 15.00, groundingPerCall: 0.006 },
   'sonar':            { inputPerM: 1.00, outputPerM: 1.00, groundingPerCall: 0.005 },
+  // Parallel Search API (the parallel grounding mode's retriever): one billed request per
+  // search, no tokens. Advanced (the default mode) and Basic 5 USD per 1,000 requests, Fast
+  // and Turbo 1 USD per 1,000 (https://parallel.ai/pricing, read 2026-11-05). Keyed by the
+  // retriever's mode label (packages/cli/providers/parallel_search_retriever.ts).
+  'parallel-search-advanced': { inputPerM: 0, outputPerM: 0, groundingPerCall: 0.005 },
+  'parallel-search-basic':    { inputPerM: 0, outputPerM: 0, groundingPerCall: 0.005 },
+  'parallel-search-fast':     { inputPerM: 0, outputPerM: 0, groundingPerCall: 0.001 },
+  'parallel-search-turbo':    { inputPerM: 0, outputPerM: 0, groundingPerCall: 0.001 },
 };
 
 /**
@@ -70,6 +78,8 @@ export const CALLTYPE_DEFAULT_MODEL: Record<string, string> = {
   'grounded-verify:claude': 'claude-opus-4-8',
   'grounded-verify:gemini': 'gemini-2.5-flash',
   'web_search':             'gpt-4o',
+  // A Parallel leg always carries its mode label; this is the default mode, for a leg that lost it.
+  'parallel-search':        'parallel-search-advanced',
 };
 
 /** One LLM/retrieval call in a scan's fan-out, with real provider-reported usage. */
