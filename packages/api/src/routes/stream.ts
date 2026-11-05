@@ -121,7 +121,8 @@ function streamErrorEvent(err: unknown): Record<string, unknown> {
  * Event sequence:
  *   data: {"type":"start","claimCount":N,"provider":"mock"}        ← on first claim verified
  *   data: {"type":"claim_verified","index":0,"claim":{...},"verdict":{...}}  × N
- *   data: {"type":"complete","overallRisk":"low|medium|high|critical","claimCount":N,"verification":{tier,cap,eligibleClaims,verifiedClaims,uncheckedClaims,uncheckedClaimIds},"billing":{billedClaims,unbilledClaims,unbilled}}
+ *   data: {"type":"complete","overallRisk":"low|medium|high|critical","claimCount":N,"verification":{tier,cap,eligibleClaims,verifiedClaims,uncheckedClaims,uncheckedClaimIds},"billing":{billedClaims,unbilledClaims,unbilled},"evidenceCoverage":{...}}
+ *   (evidenceCoverage only when the independent search ran; same value as POST /scan)
  *   data: {"type":"error","message":"..."}  (on failure only; plus "error":"extraction_failed","reason" when extraction failed)
  */
 export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
@@ -214,6 +215,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
           claimCount,
           verification: withVerificationTier(result, verifyPolicy.tier).verification,
           billing: billingSummary(result.verifications, claimOrderOf(result)),
+          ...(result.evidenceCoverage ? { evidenceCoverage: result.evidenceCoverage } : {}),
         });
 
         // Counted toward the monthly quota only when the result holds a billable verdict.
@@ -242,7 +244,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
    * Event sequence:
    *   data: {"type":"start","claimCount":N,"provider":"..."}
    *   data: {"type":"claim_verified","index":N,"claim":{...},"verdict":{...}}  × N
-   *   data: {"type":"complete","overallRisk":"low|medium|high|critical","claimCount":N,"verification":{...},"billing":{...}}
+   *   data: {"type":"complete","overallRisk":"low|medium|high|critical","claimCount":N,"verification":{...},"billing":{...},"evidenceCoverage":{...}}
    *   data: {"type":"error","message":"..."}  (on failure only; plus "error":"extraction_failed","reason" when extraction failed)
    */
   fastify.post<{ Body: StreamPostBody }>(
@@ -334,6 +336,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
           claimCount,
           verification: withVerificationTier(result, verifyPolicy.tier).verification,
           billing: billingSummary(result.verifications, claimOrderOf(result)),
+          ...(result.evidenceCoverage ? { evidenceCoverage: result.evidenceCoverage } : {}),
         });
 
         // Counted toward the monthly quota only when the result holds a billable verdict.

@@ -1,8 +1,8 @@
 import type { Source } from '../types';
-import type { Retriever } from './base_provider';
+import type { StatusRetriever, RetrievalOutcome } from './base_provider';
 import { recordUsage } from '../lib/usage-sink';
 import { CALL_CEILINGS } from './call-ceilings';
-import { isResponsesTruncated, OutputTruncatedError } from './output-truncation';
+import { isOutputTruncatedError, isResponsesTruncated, OutputTruncatedError } from './output-truncation';
 import { RetrievalError } from './retrieval-error';
 import { isOutOfCreditsText, outOfCreditsTag, readErrorBody } from './out-of-credits';
 
@@ -35,19 +35,23 @@ interface UrlCitation {
 interface OutputContent {
   type?: string;
   text?: string;
+  /** Set on a { type:'refusal' } item: the model declined the request. */
+  refusal?: string;
   annotations?: UrlCitation[];
 }
 
 interface OutputItem {
   type?: string;
+  /** Set on a { type:'web_search_call' } item: 'failed' when the search itself failed. */
+  status?: string;
   content?: OutputContent[];
 }
 
 interface ResponsesPayload {
   output?: OutputItem[];
   status?: string;
-  incomplete_details?: { reason?: string } | null;
   error?: { code?: string; message?: string } | null;
+  incomplete_details?: { reason?: string } | null;
 }
 
 /**
@@ -72,7 +76,7 @@ export function responsesFailure(payload: ResponsesPayload): RetrievalError | nu
   return new RetrievalError('provider_error', new Error(`OpenAI Responses status ${status}: ${why}`));
 }
 
-export class OpenAIWebSearchRetriever implements Retriever {
+export class OpenAIWebSearchRetriever implements StatusRetriever {
   readonly name = 'openai-web-search';
   private readonly apiKey: string;
   /** The model that runs the web_search call (recorded in provenance and usage). */
@@ -94,12 +98,17 @@ export class OpenAIWebSearchRetriever implements Retriever {
   /**
    * Resolves the sources found, [] when the search ran and found none. A search
    * that could not run throws RetrievalError with the classified reason, so a
-   * failure never reads as "searched, found nothing".
+   * failure never reads as "searched, found nothing" (the consensus engine then
+   * reports the claim as not checked). A caller that wants the typed status
+   * instead of a throw uses retrieveWithStatus.
    */
   async retrieve(claimText: string): Promise<Source[]> {
     if (!this.apiKey) throw new RetrievalError('provider_error', new Error('no OpenAI API key for the source search'));
     try {
       const data = await this.callAPI(claimText);
+      // A search that failed or stopped early is a failed retrieval too, checked before any citation is read.
+      const failure = responsesFailure(data);
+      if (failure) throw failure;
       return parseResponsesSources(data, MAX_RESULTS);
     } catch (err) {
       const failure = RetrievalError.fromError(err);
@@ -109,6 +118,22 @@ export class OpenAIWebSearchRetriever implements Retriever {
       }
       throw failure;
     }
+  }
+
+  /** The search with how it ended (see RetrievalStatus). Never throws. */
+  async retrieveWithStatus(claimText: string): Promise<RetrievalOutcome> {
+    if (!this.apiKey) return { status: 'provider_error', sources: [], detail: 'missing api key' };
+    let data: ResponsesPayload;
+    try {
+      data = await this.callAPI(claimText);
+    } catch (err) {
+      const outcome = classifyRetrievalError(err);
+      if (typeof process !== 'undefined' && process.env?.FAULTLINE_DEBUG) {
+        process.stderr.write(`[openai-web-search] retrieve failed: ${outcome.status} (${outcome.detail})\n`);
+      }
+      return outcome;
+    }
+    return classifyResponsesPayload(data, MAX_RESULTS);
   }
 
   /**
@@ -140,10 +165,18 @@ export class OpenAIWebSearchRetriever implements Retriever {
     if (!response.ok) {
       // An empty account is often a 429 too: the fixed tag lets the classifier tell it from a rate limit.
       const tag = outOfCreditsTag(response.status, await readErrorBody(response));
-      throw new Error(`OpenAI Responses API error: ${response.status} ${response.statusText}${tag}`);
+      throw new RetrievalHttpError(response.status, response.statusText, tag);
     }
 
-    const payload = (await response.json()) as ResponsesPayload;
+    let payload: ResponsesPayload;
+    try {
+      payload = (await response.json()) as ResponsesPayload;
+    } catch {
+      throw new RetrievalParseError();
+    }
+    // JSON null, a list or a bare value is not a Responses payload: say so
+    // before anything below reads a field off it.
+    if (!isObject(payload)) throw new RetrievalShapeError();
     // BLG-005 defect-1+2: the web_search retrieval leg is ~84–90% of per-scan
     // cost and sits behind the Retriever seam (NOT the LLMProvider fan-out) —
     // capture it here or production undercounts by ~10×. isGrounding bills the
@@ -157,13 +190,129 @@ export class OpenAIWebSearchRetriever implements Retriever {
       outputTokens: usage?.output_tokens ?? 0,
       isGrounding: true,
     });
-    // A search cut off at its ceiling is a failed retrieval: retrieve() rethrows it as RetrievalError.
+    // A search cut off at its ceiling is a failed retrieval: retrieve() rethrows it
+    // as RetrievalError, retrieveWithStatus() reports it as provider_error.
     if (isResponsesTruncated(payload)) throw new OutputTruncatedError('openai-web-search', 'retrieve');
-    // A search that failed or stopped early is a failed retrieval too, checked before any citation is read.
-    const failure = responsesFailure(payload);
-    if (failure) throw failure;
+    // A failed or unfinished payload is judged by the caller: retrieve() through
+    // responsesFailure, retrieveWithStatus() through classifyResponsesPayload.
     return payload;
   }
+}
+
+/**
+ * The Responses API answered non-2xx. `tag` is the fixed out-of-credits suffix
+ * (out-of-credits.ts), so RetrievalError.fromError can tell an empty account
+ * from a rate limit; it never carries the provider's own text.
+ */
+export class RetrievalHttpError extends Error {
+  readonly status: number;
+  constructor(status: number, statusText: string, tag = '') {
+    super(`OpenAI Responses API error: ${status} ${statusText}${tag}`);
+    this.name = 'RetrievalHttpError';
+    this.status = status;
+  }
+}
+
+/** A 2xx reply whose body was not JSON. */
+export class RetrievalParseError extends Error {
+  constructor() {
+    super('OpenAI Responses API reply was not valid JSON');
+    this.name = 'RetrievalParseError';
+  }
+}
+
+/** A 2xx reply that was JSON but not an object (null, a list or a bare value). */
+export class RetrievalShapeError extends Error {
+  constructor() {
+    super('OpenAI Responses API reply was not an object');
+    this.name = 'RetrievalShapeError';
+  }
+}
+
+/**
+ * The status for a search that threw. The detail is a fixed phrase, never the
+ * error message, so no response text reaches a report.
+ */
+export function classifyRetrievalError(err: unknown): RetrievalOutcome {
+  const name = typeof err === 'object' && err !== null ? (err as { name?: unknown }).name : undefined;
+  if (name === 'TimeoutError' || name === 'AbortError') return { status: 'timeout', sources: [], detail: 'deadline reached' };
+  if (err instanceof RetrievalHttpError) return { status: 'provider_error', sources: [], detail: `http ${err.status}` };
+  if (err instanceof RetrievalParseError) return { status: 'parse_error', sources: [], detail: 'bad json' };
+  if (err instanceof RetrievalShapeError) return { status: 'parse_error', sources: [], detail: 'unexpected shape' };
+  if (isOutputTruncatedError(err)) return { status: 'provider_error', sources: [], detail: 'output truncated' };
+  if (err instanceof TypeError) return { status: 'provider_error', sources: [], detail: 'network error' };
+  return { status: 'provider_error', sources: [], detail: 'request failed' };
+}
+
+/** Response statuses that end a search without a usable answer. */
+/** Response statuses named in the detail; any other non-completed status reads 'response not completed'. */
+const NAMED_STATUSES = new Set(['failed', 'cancelled', 'incomplete', 'in_progress', 'queued']);
+
+const PARSE_ERROR: RetrievalOutcome = { status: 'parse_error', sources: [], detail: 'unexpected shape' };
+
+/**
+ * The status for a 2xx Responses payload. Failures are read first, so a
+ * message that cites pages never turns a failed search into hits:
+ *
+ * - a content-filter stop is policy_block;
+ * - a response status other than completed (failed, cancelled, incomplete,
+ *   in_progress, queued or anything else), a response error
+ *   object, or a web_search_call item that failed is provider_error (or
+ *   timeout or policy_block when the error code says so);
+ * - a refusal is policy_block;
+ * - a payload that is not an object, an output that is not a list of objects,
+ *   a message whose content is not a list of objects, an output_text block
+ *   whose text is not a string or whose annotations are not a list, or a
+ *   url_citation whose url is not a string, is parse_error.
+ *
+ * Only a reply that passes all of that and cites nothing is zero. Details are
+ * fixed phrases: no error message, code or response text is carried.
+ */
+export function classifyResponsesPayload(data: ResponsesPayload, maxResults = MAX_RESULTS): RetrievalOutcome {
+  if (!isObject(data) || !Array.isArray(data.output)) return PARSE_ERROR;
+  if (isObject(data.incomplete_details) && data.incomplete_details.reason === 'content_filter') {
+    return { status: 'policy_block', sources: [], detail: 'content filter' };
+  }
+  if (data.error !== undefined && data.error !== null) return classifyResponseError(data.error);
+  // Only a completed response (or one with no status at all) is a finished
+  // search, as responsesFailure rules for retrieve(): an in_progress or queued
+  // reply's citations are partial and never count as hits or zero.
+  if (data.status !== undefined && data.status !== null && data.status !== 'completed') {
+    const named = typeof data.status === 'string' && NAMED_STATUSES.has(data.status);
+    return { status: 'provider_error', sources: [], detail: named ? `response ${data.status}` : 'response not completed' };
+  }
+  if (!data.output.every(isObject)) return PARSE_ERROR;
+  if (data.output.some((it) => it.type === 'web_search_call' && it.status === 'failed')) {
+    return { status: 'provider_error', sources: [], detail: 'search call failed' };
+  }
+  const messages = data.output.filter((it) => it.type === 'message');
+  if (!messages.every((m) => Array.isArray(m.content) && m.content.every(isObject))) return PARSE_ERROR;
+  const blocks = messages.flatMap((m) => m.content as OutputContent[]);
+  if (blocks.some((c) => c.type === 'refusal')) return { status: 'policy_block', sources: [], detail: 'refusal' };
+  if (!blocks.every(isWellFormedBlock)) return PARSE_ERROR;
+  const sources = parseResponsesSources(data, maxResults);
+  return sources.length > 0 ? { status: 'hits', sources } : { status: 'zero', sources: [] };
+}
+
+/** A response error object, named by its code only: the message may echo the request. */
+function classifyResponseError(error: unknown): RetrievalOutcome {
+  const code = isObject(error) && typeof error.code === 'string' ? error.code.toLowerCase() : '';
+  if (code.includes('timeout') || code.includes('timed_out')) return { status: 'timeout', sources: [], detail: 'response timed out' };
+  if (/content_filter|content_policy|safety|policy_violation/.test(code)) {
+    return { status: 'policy_block', sources: [], detail: 'response blocked' };
+  }
+  return { status: 'provider_error', sources: [], detail: 'response failed' };
+}
+
+/** An output_text block must carry string text and a list of annotation objects; a url_citation, a string url. */
+function isWellFormedBlock(block: OutputContent): boolean {
+  if (block.type !== 'output_text') return true;
+  if (typeof block.text !== 'string' || !Array.isArray(block.annotations)) return false;
+  return block.annotations.every((a) => isObject(a) && (a.type !== 'url_citation' || typeof a.url === 'string'));
+}
+
+function isObject(value: unknown): value is Record<string, any> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /**

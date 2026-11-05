@@ -170,6 +170,69 @@ describe('every failure is a classified RetrievalError, never a fallback', () =>
   });
 });
 
+// Validates: typed secondary retrieval status (the Parallel retriever reports how its search ended)
+describe('retrieveWithStatus: how the search ended, never a throw', () => {
+  it('hits: usable results come back as sources', async () => {
+    mockFetch.mockResolvedValueOnce(json(RESULTS));
+    const out = await new ParallelSearchRetriever('pk-1').retrieveWithStatus(CLAIM);
+    expect(out.sources.length).toBeGreaterThan(0);
+    expect(out.status).toBe('hits');
+    expect(out.sources.map((s) => s.uri)).toEqual(['https://a.example/1', 'https://b.example/2']);
+    expect(out.detail).toBeUndefined();
+  });
+
+  it('zero: a 200 with no result a reader can open, where retrieve() rejects', async () => {
+    mockFetch.mockResolvedValueOnce(json({ search_id: 's', results: [] }));
+    const r = new ParallelSearchRetriever('pk-1');
+    expect(await r.retrieveWithStatus(CLAIM)).toEqual({ status: 'zero', sources: [] });
+    mockFetch.mockResolvedValueOnce(json({ search_id: 's', results: [{ url: 'ftp://x', title: 'x', excerpts: [] }] }));
+    expect(await r.retrieveWithStatus(CLAIM)).toEqual({ status: 'zero', sources: [] });
+    mockFetch.mockResolvedValueOnce(json({ search_id: 's', results: [] }));
+    expect((await failure(r.retrieve(CLAIM))).reason).toBe('provider_error');
+  });
+
+  it('provider_error: no key (no request), an HTTP error with only its code, a network error', async () => {
+    expect(await new ParallelSearchRetriever('').retrieveWithStatus(CLAIM)).toEqual({ status: 'provider_error', sources: [], detail: 'missing api key' });
+    expect(mockFetch).not.toHaveBeenCalled();
+    mockFetch.mockResolvedValueOnce(new Response('SECRET upstream body', { status: 500, statusText: 'Server Error' }));
+    const r = new ParallelSearchRetriever('pk-1');
+    const out = await r.retrieveWithStatus(CLAIM);
+    expect(out).toEqual({ status: 'provider_error', sources: [], detail: 'http 500' });
+    expect(JSON.stringify(out)).not.toContain('SECRET');
+    mockFetch.mockRejectedValueOnce(new TypeError('fetch failed'));
+    expect(await r.retrieveWithStatus(CLAIM)).toEqual({ status: 'provider_error', sources: [], detail: 'network error' });
+  });
+
+  it('timeout: the call was stopped by its deadline', async () => {
+    mockFetch.mockRejectedValueOnce(new DOMException('Parallel search timed out', 'TimeoutError'));
+    const r = new ParallelSearchRetriever('pk-1');
+    expect(await r.retrieveWithStatus(CLAIM)).toEqual({ status: 'timeout', sources: [], detail: 'deadline reached' });
+    mockFetch.mockRejectedValueOnce(new DOMException('aborted', 'AbortError'));
+    expect((await r.retrieveWithStatus(CLAIM)).status).toBe('timeout');
+  });
+
+  it('parse_error: a malformed result entry, even beside a valid one; retrieve() keeps main\'s rule', async () => {
+    const r = new ParallelSearchRetriever('pk-1');
+    for (const body of [{ results: [null] }, { results: [{ url: 42 }] }, { results: ['garbage'] }, { results: [RESULTS.results[0], null] }]) {
+      mockFetch.mockResolvedValueOnce(json(body));
+      expect(await r.retrieveWithStatus(CLAIM)).toEqual({ status: 'parse_error', sources: [], detail: 'unexpected shape' });
+    }
+    // retrieve() is unchanged: it keeps the valid entry and drops the malformed one.
+    mockFetch.mockResolvedValueOnce(json({ results: [RESULTS.results[0], null] }));
+    expect((await r.retrieve(CLAIM)).map((s) => s.uri)).toEqual(['https://a.example/1']);
+  });
+
+  it('parse_error: a 200 that is not JSON, or has no results list', async () => {
+    mockFetch.mockResolvedValueOnce(new Response('<html>', { status: 200 }));
+    const r = new ParallelSearchRetriever('pk-1');
+    expect(await r.retrieveWithStatus(CLAIM)).toEqual({ status: 'parse_error', sources: [], detail: 'bad json' });
+    for (const body of [null, [], { search_id: 's' }, { results: 'bad' }]) {
+      mockFetch.mockResolvedValueOnce(json(body));
+      expect(await r.retrieveWithStatus(CLAIM)).toEqual({ status: 'parse_error', sources: [], detail: 'unexpected shape' });
+    }
+  });
+});
+
 describe('keywordQueries on hostile input (CodeQL: polynomial regex)', () => {
   it('trims a long run of punctuation in linear time and still yields a query', () => {
     const t0 = Date.now();

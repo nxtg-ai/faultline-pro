@@ -1,6 +1,6 @@
 import type { Claim, VerificationResult, Source } from '../types';
-import type { LLMProvider, ImageInput, CritiqueResult, ProviderFactory, Retriever, GroundedVerifyOptions } from './base_provider';
-import { extractClaims, verifyClaim, verifyClaimGrounded, retrieveSources, generateCritiqueAndPrompt, GEMINI_MODEL } from '../services/geminiService';
+import type { LLMProvider, ImageInput, CritiqueResult, ProviderFactory, GroundedVerifyOptions, RetrievalOutcome, StatusRetriever } from './base_provider';
+import { extractClaims, verifyClaim, verifyClaimGrounded, retrieveSources, retrieveSourcesWithStatus, generateCritiqueAndPrompt, GEMINI_MODEL } from '../services/geminiService';
 
 /**
  * Gemini provider — wraps the existing geminiService.ts functions
@@ -47,11 +47,17 @@ export const createGeminiProvider: ProviderFactory = (apiKey: string): LLMProvid
  * in as a separate impl selected by config (that seam is the whole point).
  * A failed search rejects with RetrievalError (see retrieveSources).
  */
-export class GeminiGroundingRetriever implements Retriever {
+export class GeminiGroundingRetriever implements StatusRetriever {
   readonly name = 'gemini-grounding';
   constructor(private apiKey: string) {}
 
+  /** The sources, or [] when the search ran and found none. A failed search rejects with RetrievalError. */
   retrieve(claimText: string): Promise<Source[]> {
     return retrieveSources(claimText, this.apiKey);
+  }
+
+  /** The search with how it ended (see RetrievalStatus). Never throws. */
+  retrieveWithStatus(claimText: string): Promise<RetrievalOutcome> {
+    return retrieveSourcesWithStatus(claimText, this.apiKey);
   }
 }
