@@ -1,0 +1,62 @@
+{
+  "goldSha256": "b87f971ce324c87e0427f100fe24b50594b9d44e3a764490b1bef188917dbae1",
+  "seed": 20260929,
+  "resamples": 2000,
+  "arms": {
+    "google": {
+      "run": "docs/research/data/grounding-arms-2026-11-05.google.jsonl",
+      "runSha256": "e75c23142805d2a40a04807911c647c63e0dbe1f7f3796d585f798e99b822606",
+      "n": 200,
+      "binary_n": 193,
+      "balanced_accuracy": {
+        "value": 0.7198948948948949,
+        "ci95": [
+          0.6417080983415827,
+          0.8000642648671841
+        ],
+        "undefinedResamples": 0
+      },
+      "unverified_rate": 0.095,
+      "failure_rate": 0.0,
+      "mean_cost_usd_per_claim": 0.038620219000000004,
+      "total_cost_usd": 7.7240438000000005,
+      "google_grounded_calls": 204,
+      "mean_sources_per_claim": 2.65
+    },
+    "parallel": {
+      "run": "docs/research/data/grounding-arms-2026-11-05.parallel.jsonl",
+      "runSha256": "8ff7fe108eed7b33f535992e73be6695fb67bcdd7cc0d9a2f502b5d77c32afc0",
+      "n": 200,
+      "binary_n": 193,
+      "balanced_accuracy": {
+        "value": 0.8015015015015015,
+        "ci95": [
+          0.7292065619572604,
+          0.8705773562023562
+        ],
+        "undefinedResamples": 0
+      },
+      "unverified_rate": 0.02,
+      "failure_rate": 0.0,
+      "mean_cost_usd_per_claim": 0.0102456225,
+      "total_cost_usd": 2.0491245,
+      "google_grounded_calls": 0,
+      "mean_sources_per_claim": 8.0
+    }
+  },
+  "ba_difference": {
+    "parallel - google": {
+      "n": 193,
+      "value": 0.08160660660660657,
+      "ci95": [
+        0.01836174681940125,
+        0.14819861257361258
+      ],
+      "undefinedResamples": 0,
+      "resamples": 2000,
+      "seed": 20260929,
+      "status_agreement_rate": 0.8341968911917098,
+      "ci_contains_zero": false
+    }
+  }
+}
