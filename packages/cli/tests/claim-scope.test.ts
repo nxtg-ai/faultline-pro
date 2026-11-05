@@ -12,6 +12,7 @@ import {
   hasProposition,
   hasAttribution,
   isScopeStatement,
+  isPlainScopeObject,
 } from '../lib/claim-scope.js';
 import type { Claim } from '../types.js';
 
@@ -22,12 +23,10 @@ const DOCUMENT_RELATIVE: string[] = [
   'This report covers three open-weight models.',
   'This document compares Llama 3 8B and Mistral 7B.',
   'Here we compare latency on consumer GPUs.',
-  'We focus on models that run on a single GPU.',
   'We exclude mixture-of-experts models from the comparison.',
   'This comparison excludes closed-weight models.',
   'This post is about running language models locally.',
   'This section discusses licensing terms.',
-  'The overview only includes models released after 2023.',
   'The write-up doesn’t cover fine-tuning.',
   'The main focus of this report is inference cost.',
   'Below, we compare memory use at 4-bit and 8-bit precision.',
@@ -103,6 +102,49 @@ const MOVED_TO_WORLD: Array<[string, string]> = [
   ['This guide recommends 4-bit quantization for laptops.', '"recommends" asserts that 4-bit quantization suits laptops'],
   ['Overall, this review shows Mistral 7B ahead on code tasks.', '"shows" asserts a benchmark result'],
   ['We do not recommend running 13B models on 8 GB of memory.', '"recommend" asserts a claim about memory requirements'],
+  // Moved by the allow-shape (Codex review of 1cf17d3): the object is not a plain noun phrase.
+  ['We focus on models that run on a single GPU.', '"that run on a single GPU" is a relative clause; whether a model runs on one GPU is checkable'],
+  ['The overview only includes models released after 2023.', '"released after 2023" is a participle clause; a release date is checkable'],
+];
+
+/** Codex review of 1cf17d3: the two P1 reproductions, each a world claim inside a scope sentence. */
+const CODEX_REPRODUCTIONS: Array<[string, string]> = [
+  ['This report covers the fact that the Earth is flat.', 'a "that" clause after the object'],
+  ['This report covers three models, all of which run without electricity.', 'a comma and "all of which" after the object'],
+  ['This report covers climate; la Tierra es plana.', 'a semicolon and Spanish after the object'],
+  ['This report covers climate and asserts-that the Earth is flat.', 'a hyphen hiding "asserts that"'],
+];
+
+/** Further world claims inside scope sentences: each one breaks the noun-phrase shape a different way. */
+const ADVERSARIAL_SCOPE_WORLD: Array<[string, string]> = [
+  ['This report covers vaccines and causes autism in children.', 'second verb after "and"'],
+  ['This report covers vaccines and kills.', 'an -s verb right after "and"'],
+  ['This report covers the moon landing hoax the government staged in 1969.', 'a determiner after a content word opens a clause'],
+  ['Our analysis focuses on vaccines whose side effects kill thousands.', '"whose"'],
+  ['This section discusses climate where sea levels rose 3 meters.', '"where"'],
+  ['This report covers climate while the Arctic melts.', '"while"'],
+  ['This report covers inflation if rates rise.', '"if"'],
+  ['This report covers climate - the Earth cools.', 'a dash joins a second clause'],
+  ['This report covers climate: warming stopped in 1998.', 'a colon'],
+  ['This report covers models trained on stolen data.', 'a participle clause'],
+  ['This report covers models built on stolen data.', 'an irregular participle clause'],
+  ['This report covers three models all run without electricity.', 'a quantifier after a content word'],
+  ['This report covers climate la Tierra plana.', 'Spanish with no punctuation'],
+  ['This report covers vaccines killed millions.', 'a past verb after the object'],
+  ['This report covers the drug cures cancer.', 'a plural-looking verb followed by its object'],
+  ['This report covers climate, and the Arctic melts.', 'a comma after the object'],
+  ['This report covers climate and it warms.', 'a pronoun subject'],
+  ['This document compares Llama 3 and Mistral 7B because Llama is faster.', '"because" and "is"'],
+  ['We compare three models that outperform GPT-4.', '"that"'],
+  ['This report covers climate and the Arctic melted.', 'a past verb'],
+  ['This report covers the claim (now disproven) that ivermectin works.', 'brackets'],
+  ['This report covers “the Earth is flat”.', 'curly quotes'],
+  ['This report covers climate change, la cual es falsa.', 'a comma and Spanish'],
+  ['This report covers the vaccine-is-dangerous theory.', 'a hyphen hiding "is"'],
+  ['This report covers climate -- the Earth cools.', 'a double hyphen'],
+  // Each of these two is caught by one rule alone (the mutation check showed the others shadowed them).
+  ['This report covers a treatment which works.', 'only the clause marker "which" catches it'],
+  ['This report covers the cure a startup sells.', 'only the determiner after a content word catches it'],
 ];
 
 /** The independent review's 30 world claims. Every one must stay checkable. */
@@ -158,6 +200,48 @@ describe('isDocumentRelative: claims about the world', () => {
 
   it.each(MOVED_TO_WORLD)('false: %s (%s)', (text, reason) => {
     expect(isDocumentRelative(text), `expected a world claim (${reason}): ${text}`).toBe(false);
+  });
+});
+
+describe('isDocumentRelative: the allow-shape (Codex review of 1cf17d3)', () => {
+  it.each(CODEX_REPRODUCTIONS)('reproduction false: %s (%s)', (text, why) => {
+    expect(isScopeStatement(scopeTokens(text)), 'subject and verb alone read as scope').toBe(true);
+    expect(isPlainScopeObject(text), `object is not a plain noun phrase (${why})`).toBe(false);
+    expect(isDocumentRelative(text), `expected a world claim (${why}): ${text}`).toBe(false);
+  });
+
+  it.each(ADVERSARIAL_SCOPE_WORLD)('adversarial false: %s (%s)', (text, why) => {
+    expect(isScopeStatement(scopeTokens(text)), 'subject and verb alone read as scope').toBe(true);
+    expect(isDocumentRelative(text), `expected a world claim (${why}): ${text}`).toBe(false);
+  });
+
+  it('the unhyphenated and hyphenated "asserts that" both return false', () => {
+    expect(isDocumentRelative('This report covers climate and asserts that the Earth is flat.')).toBe(false);
+    expect(isDocumentRelative('This report covers climate and asserts-that the Earth is flat.')).toBe(false);
+  });
+
+  it('every document-relative case passes the allow-shape on its own', () => {
+    const all = [...DOCUMENT_RELATIVE, ...REVIEW_DOCUMENT_RELATIVE];
+    expect(all.length).toBeGreaterThan(20);
+    for (const text of all) expect(isPlainScopeObject(text), text).toBe(true);
+  });
+
+  it('each shape rule does its own work: the same scope sentence passes, then fails on one change', () => {
+    const base = 'This report covers three open-weight models.';
+    expect(isDocumentRelative(base)).toBe(true);
+    // A final full stop is the only punctuation allowed after the verb.
+    expect(isDocumentRelative('This report covers three open-weight models')).toBe(true);
+    expect(isDocumentRelative('This report covers three, open-weight models.')).toBe(false);
+    // Clause marker, auxiliary, pronoun, other-language word.
+    expect(isDocumentRelative('This report covers three open-weight models which')).toBe(false);
+    expect(isDocumentRelative('This report covers three open-weight models are.')).toBe(false);
+    expect(isDocumentRelative('This report covers three open-weight models and them.')).toBe(false);
+    expect(isDocumentRelative('This report covers three open-weight models und.')).toBe(false);
+    // Non-ASCII anywhere.
+    expect(isDocumentRelative('This report covers three open-weight modèles.')).toBe(false);
+    // Bounded length: 12 object words pass, 13 do not.
+    expect(isDocumentRelative('This report covers costs of bb cc in dd ee for ff gg at hh.')).toBe(true);
+    expect(isDocumentRelative('This report covers costs of bb cc in dd ee for ff gg at hh ii.')).toBe(false);
   });
 });
 
@@ -225,10 +309,10 @@ describe('isDocumentRelative: edge inputs', () => {
     expect(isDocumentRelative('THIS REPORT COVERS THREE MODELS.')).toBe(true);
   });
 
-  it('handles a long claim in linear time', () => {
+  it('handles a long claim in linear time (and a sentence over 30 words is never scope)', () => {
     const long = 'this report covers '.repeat(20_000);
     const start = Date.now();
-    expect(isDocumentRelative(long)).toBe(true);
+    expect(isDocumentRelative(long)).toBe(false);
     expect(isDocumentRelative('x '.repeat(50_000))).toBe(false);
     expect(Date.now() - start).toBeLessThan(2_000);
   });
@@ -238,7 +322,9 @@ describe('isDocumentRelative: edge inputs', () => {
     const word = `${'&'.repeat(100_000)}x`;
     const start = Date.now();
     expect(hasAttribution(scopeTokens(word), word)).toBe(false);
-    expect(isDocumentRelative(`This report covers ${word}`)).toBe(isDocumentRelative('This report covers x'));
+    // Punctuation inside the object fails the allow-shape; the plain object passes.
+    expect(isDocumentRelative(`This report covers ${word}`)).toBe(false);
+    expect(isDocumentRelative('This report covers x')).toBe(true);
     expect(Date.now() - start).toBeLessThan(2_000);
   });
 

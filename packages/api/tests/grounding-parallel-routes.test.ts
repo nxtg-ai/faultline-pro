@@ -532,6 +532,29 @@ describe('FAULTLINE_GROUNDING=parallel: a claim about the document itself makes 
     });
   }, 30_000);
 
+  it.each(['parallel', 'google'] as const)('GET /scan/stream (%s): the document claim reaches no provider and gets no claim_verified event', async (mode) => {
+    if (mode === 'google') delete process.env.FAULTLINE_GROUNDING;
+    sdk.extraClaims = [{ id: 'c3', text: DOC_CLAIM, type: 'fact', importance: 5 }];
+    await withServer(async (server, key) => {
+      const res = await server.inject({
+        method: 'GET',
+        url: `/scan/stream?text=${encodeURIComponent(TEXT)}&provider=gemini`,
+        headers: { 'x-api-key': key },
+      });
+      expect(res.statusCode).toBe(200);
+      const events = res.body.split('\n\n').filter((c) => c.startsWith('data: ')).map((c) => JSON.parse(c.slice(6)));
+      const verified = events.filter((e) => e.type === 'claim_verified').map((e) => e.verdict.claimId as string);
+      expect(verified.sort()).toEqual(['c1', 'c2']);
+      // Only the extraction prompt and the two world claims' calls reached Gemini; none carried the document claim.
+      expect(sdk.prompts.length).toBeGreaterThan(0);
+      expect(sdk.prompts.some((p) => p.includes(DOC_CLAIM.slice(0, 40)))).toBe(false);
+      expect(sdk.configs).toHaveLength(3);
+      expect(searchedFor(DOC_CLAIM)).toBe(false);
+      expect(parallelBodies).toHaveLength(mode === 'parallel' ? 2 : 0);
+      expect(googleSearchCalls()).toBe(mode === 'parallel' ? 0 : 2);
+    });
+  }, 30_000);
+
   it('a full-scan job: the estimate prices the two world facts, and the job searches for them only', async () => {
     sdk.extraClaims = [{ id: 'c3', text: DOC_CLAIM, type: 'fact', importance: 5 }];
     await withServer(async (server, key) => {

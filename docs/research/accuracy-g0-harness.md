@@ -162,6 +162,8 @@ Re-measured 2026-10-26 after the check was narrowed to scope and structure state
 
 The earlier, broader version of the check also flagged 0 of these 661 lines, so the gold set alone could not show its false positives on attributed world claims ("the report concludes that ..."). Those are covered by the 30-claim world table in `packages/cli/tests/claim-scope.test.ts`.
 
+The check now also requires an allow-shape (Codex review of 1cf17d3): after the scope verb, the sentence must be a short list of plain noun phrases, with no clause marker, second verb, joining punctuation or other-language text. Re-run over the same 661 lines on 2026-11-05 with that rule: 0 flagged. The world claims hidden inside scope sentences that the rule exists for ("This report covers the fact that the Earth is flat.") are in the "allow-shape" tables of the same test file.
+
 ## Tests
 
 | Suite | File |

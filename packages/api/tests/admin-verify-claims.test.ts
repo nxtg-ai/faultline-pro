@@ -346,7 +346,17 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
 });
 
 describe('POST /admin/verify-claims — claims about the document itself', () => {
-  const DOC_CLAIM = 'The analysis does not focus on 70B+ models with small active parameter counts. FALSE-CLAIM';
+  // FALSE-CLAIM makes the mock answer 'contradicted' if the claim ever reached it. It sits
+  // inside the noun phrase: a trailing second sentence would fail the allow-shape (below).
+  const DOC_CLAIM = 'The analysis does not focus on FALSE-CLAIM models with small active parameter counts.';
+
+  it('verifies a scope sentence followed by a second sentence (the allow-shape fails closed)', async () => {
+    const res = await post({ claims: [{ id: 'two', text: 'The analysis does not focus on 70B+ models with small active parameter counts. FALSE-CLAIM' }] });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().results[0]).toMatchObject({ id: 'two', status: 'contradicted', apiError: false });
+    expect(res.json().results[0]).not.toHaveProperty('documentScope');
+    expect(sdk.calls).toBe(1);
+  });
 
   it('returns unverified with the fixed explanation and makes no provider call for a document claim', async () => {
     const res = await post({ claims: [{ id: 'doc', text: DOC_CLAIM }, { id: 'world', text: 'The Eiffel Tower is in Paris.' }] });

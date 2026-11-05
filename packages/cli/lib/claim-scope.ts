@@ -10,7 +10,7 @@
  * covers, focuses on, includes or excludes, compares, how it is organised. A
  * sentence that reports a proposition ("The report concludes that smoking causes
  * lung cancer") is a world claim even though its subject is a report: the
- * proposition still has to be checked. So the check fires only when all three hold:
+ * proposition still has to be checked. So the check fires only when all four hold:
  *
  *   1. no proposition: no verb such as shows, finds, concludes, argues,
  *      recommends or describes anywhere, and no "states that" clause;
@@ -19,7 +19,13 @@
  *   3. a scope statement: an explicit document subject ("this report", "our
  *      analysis", "the following section", "we") followed by a scope or
  *      structure verb. A bare "the report" only counts with a narrow set of
- *      scope verbs, because it often names someone else's report.
+ *      scope verbs, because it often names someone else's report;
+ *   4. the allow-shape (isPlainScopeObject, below): everything after the scope
+ *      verb is a short list of plain noun phrases and nothing else. Rules 1
+ *      and 2 are lists of words that block; rule 4 is a shape that must be
+ *      met, so a sentence the lists did not foresee ("covers the fact that
+ *      ...", "covers three models, all of which ...", "covers climate; la
+ *      Tierra es plana") fails it.
  *
  * The check is deterministic and makes no model call. It works on word tokens
  * with fixed-position comparisons against small word sets, so its cost is linear
@@ -111,9 +117,6 @@ const BASE_SCOPE_VERBS = new Set([
 const BE_CONTINUATIONS = new Set([
   'about', 'focused', 'limited', 'restricted', 'organised', 'organized', 'structured', 'divided',
 ]);
-
-/** Words after a scope verb that turn it into a proposition ("covers how smoking causes cancer"). */
-const CLAUSE_OPENERS = new Set(['how', 'why', 'whether', 'that']);
 
 /**
  * Verbs that introduce a proposition. Any one of them anywhere in the claim means
@@ -254,19 +257,16 @@ function findSubject(t: string[]): Subject | null {
   return null;
 }
 
-/** True when the token after a scope verb does not open a "how/why/that" clause. */
-function noClause(t: string[], i: number): boolean {
-  return !CLAUSE_OPENERS.has(t[i]);
-}
-
 /**
- * True when the tokens from `start` are a scope or structure predicate for a
- * subject of this kind. Present tense only: "the focus of the analysis was ..."
- * describes a past event, not the document's scope.
+ * Where the object of a scope or structure predicate starts, for a subject of
+ * this kind, or -1 when the tokens from `start` are not such a predicate.
+ * Present tense only: "the focus of the analysis was ..." describes a past
+ * event, not the document's scope. What follows the returned index is the
+ * object; isPlainScopeObject decides whether it has the allowed shape.
  */
-function isScopePredicate(t: string[], start: number, kind: SubjectKind): boolean {
+function scopeObjectStart(t: string[], start: number, kind: SubjectKind): number {
   let i = start;
-  if (kind === 'focus') return t[i] === 'is' && t[i + 1] !== undefined;
+  if (kind === 'focus') return t[i] === 'is' && t[i + 1] !== undefined ? i + 1 : -1;
 
   let onlyBefore = false;
   if (ADVERBS.has(t[i])) { onlyBefore = t[i] === 'only'; i++; }
@@ -276,7 +276,7 @@ function isScopePredicate(t: string[], start: number, kind: SubjectKind): boolea
     i++;
     if (t[i] === 'not') i++;
     if (ADVERBS.has(t[i])) i++;
-    return BE_CONTINUATIONS.has(t[i]) && t[i + 1] !== undefined && noClause(t, i + 1);
+    return BE_CONTINUATIONS.has(t[i]) && t[i + 1] !== undefined ? i + 1 : -1;
   }
 
   let verb: string | undefined;
@@ -291,26 +291,28 @@ function isScopePredicate(t: string[], start: number, kind: SubjectKind): boolea
     // Third person for "this report covers", base form for "these sections cover".
     verb = THIRD_PERSON[t[i]] ?? (BASE_SCOPE_VERBS.has(t[i]) ? t[i] : undefined);
   }
-  if (verb === undefined) return false;
+  if (verb === undefined) return -1;
   const after = i + 1;
   const only = onlyBefore || t[after] === 'only';
   const explicit = kind === 'explicit';
+  // The object starts at `index` when `ok` holds and there is a word there.
+  const at = (ok: boolean, index: number = after): number => (ok && t[index] !== undefined ? index : -1);
 
   switch (verb) {
     case 'focus': {
       const on = ADVERBS.has(t[after]) ? after + 1 : after;
-      return t[on] === 'on' && t[on + 1] !== undefined && noClause(t, on + 1);
+      return at(t[on] === 'on', on + 1);
     }
     case 'cover':
-      return t[after] !== undefined && noClause(t, after);
+      return at(true);
     case 'compare':
-      return kind !== 'bare' && t[after] !== undefined && noClause(t, after);
+      return at(kind !== 'bare');
     case 'consider':
-      return only && t[after] !== undefined;
+      return at(only);
     case 'include':
     case 'exclude':
-      if (kind === 'author') return hasDocReferenceFrom(t, after, true);
-      return explicit || only;
+      if (kind === 'author') return at(hasDocReferenceFrom(t, after, true));
+      return at(explicit || only);
     case 'discuss':
     case 'evaluate':
     case 'examine':
@@ -318,29 +320,285 @@ function isScopePredicate(t: string[], start: number, kind: SubjectKind): boolea
       // "We discuss ..." only with an explicit document reference later
       // ("... of this comparison", "... in the following sections").
       if (kind === 'author') {
-        return (verb === 'discuss' || verb === 'outline') && noClause(t, after) && hasDocReferenceFrom(t, after, false);
+        return at((verb === 'discuss' || verb === 'outline') && hasDocReferenceFrom(t, after, false));
       }
-      return (explicit || verb === 'outline') && t[after] !== undefined && noClause(t, after);
+      return at(explicit || verb === 'outline');
     case 'present': {
       const object = ['our', 'the', 'its', 'a', 'an'].includes(t[after]) ? after + 1 : after;
-      return METHOD_NOUNS.has(t[object]) || (t[object] === 'evaluation' && t[object + 1] === 'criteria');
+      return at(METHOD_NOUNS.has(t[object]) || (t[object] === 'evaluation' && t[object + 1] === 'criteria'));
     }
     case 'have':
     case 'contain':
     case 'consist': {
-      if (kind === 'author') return false;
+      if (kind === 'author') return -1;
       const n = verb === 'consist' && t[after] === 'of' ? after + 1 : after;
-      return (NUMBER_WORDS.has(t[n]) || /^[0-9]+$/.test(t[n] ?? '')) && STRUCTURE_NOUNS.has(t[n + 1]);
+      return at((NUMBER_WORDS.has(t[n]) || /^[0-9]+$/.test(t[n] ?? '')) && STRUCTURE_NOUNS.has(t[n + 1]));
     }
     default:
-      return false;
+      return -1;
   }
 }
 
-/** True when the claim is a statement about the document's own scope or structure. */
-export function isScopeStatement(tokens: string[]): boolean {
+/** Where the object of the claim's scope predicate starts, or -1 when the claim is not a scope statement. */
+function scopeObjectIndex(tokens: string[]): number {
   const subject = findSubject(tokens);
-  return subject !== null && isScopePredicate(tokens, subject.next, subject.kind);
+  return subject === null ? -1 : scopeObjectStart(tokens, subject.next, subject.kind);
+}
+
+/**
+ * True when the claim's subject and verb are a statement about the document's
+ * own scope or structure (rule 3). The object's shape is rule 4's, separately.
+ */
+export function isScopeStatement(tokens: string[]): boolean {
+  return scopeObjectIndex(tokens) !== -1;
+}
+
+// ---------------------------------------------------------------------------
+// Rule 4, the allow-shape.
+//
+// After the scope subject and verb, the rest of the sentence must be a short
+// list of plain noun phrases and nothing else:
+//
+//   object := [preposition] NP ((preposition | and | or | plus) NP)*
+//   NP     := (determiner | number)* content-word{1,5}     (or numbers alone)
+//
+// It fails, and the claim is verified, on any of:
+//   - a clause marker: that, which, who, whom, whose, where, when, why, how,
+//     whether, if, because, since, while, although, unless, as, but, so, "the
+//     fact", not, ... ("all/some/none/each of which" fail on "which");
+//   - a second finite verb: an auxiliary or copula (is, was, has, does, will,
+//     can, ...), a proposition or scope verb, a past form or participle after
+//     the first word of a noun phrase ("models trained on ..."), a plural-
+//     looking word followed by another content word ("vaccines cause autism"),
+//     or an -s or past word opening a phrase after "and"/"or" ("and causes");
+//   - a determiner after a content word, or a pronoun: the subject of a new
+//     clause ("covers the hoax the government staged", "... and it is");
+//   - any punctuation after the verb other than a final full stop: a comma,
+//     percent sign, apostrophe-free symbol, ...;
+//   - anywhere in the sentence: a semicolon, colon, dash, bracket, double
+//     quote, question or exclamation mark, slash, a non-ASCII character other
+//     than a curly apostrophe, or a hyphenated word with a clause marker, verb
+//     or empty part inside it ("asserts-that", "-", "climate-");
+//   - a common function word of another language (la, es, est, der, ist, ...);
+//   - an object over 12 words, a sentence over 30 words.
+//
+// When in doubt it answers false. A miss costs one ordinary check of a claim;
+// a false positive is a world claim nobody checked.
+//
+// Known limit: with no lexicon, a noun phrase ending in an -s verb after a
+// determiner ("... and the Arctic melts") has the same shape as one ending in a
+// plural noun ("... and the parameter counts"), so the shape cannot tell them
+// apart.
+// ---------------------------------------------------------------------------
+
+/** Words that open a second clause or introduce a proposition. */
+const CLAUSE_MARKERS = new Set([
+  'that', 'which', 'who', 'whom', 'whose', 'where', 'when', 'whenever', 'wherever', 'why',
+  'how', 'whether', 'if', 'because', 'since', 'although', 'though', 'unless', 'until',
+  'while', 'whereas', 'so', 'but', 'yet', 'nor', 'then', 'what', 'whatever', 'whichever',
+  'whoever', 'fact', 'facts', 'once', 'as', 'thus', 'hence', 'therefore', 'not', 'like',
+  'unlike', 'despite', 'including', 'excluding', 'namely', 'ie', 'eg', 'etc',
+]);
+
+/** Auxiliaries and copulas: each one makes a finite verb. */
+const AUXILIARIES = new Set([
+  'is', 'are', 'was', 'were', 'am', 'be', 'been', 'being', 'has', 'have', 'had', 'do',
+  'does', 'did', 'will', 'would', 'can', 'could', 'may', 'might', 'must', 'shall',
+  'should', 'ought', 'cannot', 'get', 'gets', 'got',
+]);
+
+/** Pronouns: in the object they are the subject of a new clause. */
+const PRONOUNS = new Set([
+  'it', 'they', 'he', 'she', 'we', 'i', 'you', 'them', 'him', 'her', 'us', 'there', 'here',
+  'itself', 'themselves',
+]);
+
+/** Common function words of other languages written in ASCII. Text in another language is not read as scope. */
+const FOREIGN_WORDS = new Set([
+  'la', 'el', 'los', 'las', 'es', 'est', 'son', 'sont', 'une', 'un', 'le', 'les', 'des', 'du',
+  'der', 'die', 'das', 'ist', 'und', 'sind', 'ein', 'eine', 'nicht', 'il', 'lo', 'gli', 'och',
+  'het', 'een', 'pas', 'ne', 'que', 'qui', 'y', 'e', 'de', 'del', 'en', 'sie', 'er', 'wir',
+  'nous', 'vous', 'ils', 'elle', 'esta', 'este', 'sao', 'nao', 'muy', 'pero', 'con', 'por',
+  'para', 'sur', 'avec', 'dans', 'mit', 'auf', 'zu', 'non', 'ja', 'si',
+]);
+
+/** Irregular past forms and participles: a second verb when they follow a noun ("models built on ..."). */
+const IRREGULAR_PAST = new Set([
+  'built', 'made', 'sold', 'taken', 'took', 'given', 'gave', 'written', 'wrote', 'held', 'kept',
+  'left', 'lost', 'paid', 'put', 'run', 'ran', 'seen', 'saw', 'sent', 'set', 'spent', 'stolen',
+  'stole', 'told', 'thought', 'grown', 'grew', 'known', 'knew', 'drawn', 'drew', 'driven', 'drove',
+  'eaten', 'ate', 'fallen', 'fell', 'hidden', 'hid', 'broken', 'broke', 'chosen', 'chose', 'done',
+  'gone', 'went', 'begun', 'began', 'bought', 'brought', 'caught', 'fought', 'taught', 'sought',
+  'dealt', 'felt', 'led', 'meant', 'met', 'hurt', 'lent', 'bred', 'fed', 'fled', 'spread',
+  'struck', 'sworn', 'torn', 'worn', 'born', 'became', 'come', 'came', 'rose', 'risen', 'thrown',
+  'threw', 'flown', 'flew', 'spoken', 'spoke', 'frozen', 'froze', 'sung', 'sang', 'sunk', 'sank',
+  'swum', 'swam', 'won',
+]);
+
+/** Words that may only open a noun phrase: determiners, quantifiers and number words. */
+const DETERMINERS = new Set([
+  'the', 'a', 'an', 'this', 'these', 'those', 'its', 'their', 'our', 'his', 'each', 'every', 'all',
+  'some', 'any', 'both', 'several', 'many', 'few', 'fewer', 'more', 'less', 'most', 'roughly',
+  'approximately', 'around', 'nearly', 'almost', 'only', 'just', 'than', 'least', 'one', 'other',
+  'no', 'such', 'either', 'neither', 'another',
+  ...NUMBER_WORDS,
+]);
+
+/** Prepositions that may join two noun phrases of the object. */
+const PREPOSITIONS = new Set([
+  'on', 'in', 'of', 'for', 'from', 'with', 'without', 'at', 'into', 'to', 'across', 'between',
+  'among', 'under', 'over', 'after', 'before', 'within', 'beyond', 'about', 'per', 'via',
+  'versus', 'vs', 'against', 'through', 'during', 'up', 'onto', 'toward', 'towards', 'above',
+  'below', 'beside', 'inside', 'outside', 'throughout',
+]);
+
+/** Coordinators that may join two noun phrases. */
+const COORDINATORS = new Set(['and', 'or', 'plus']);
+
+/** Words that are a second clause's verb wherever they appear: proposition verbs, noun-or-verbs, scope verbs. */
+const VERB_WORDS = new Set([...PROPOSITION_VERBS, ...NOUN_OR_VERB, ...Object.keys(THIRD_PERSON)]);
+
+const MAX_OBJECT_WORDS = 12;
+const MAX_CONTENT_RUN = 5;
+const MAX_CLAIM_WORDS = 30;
+
+/** A word that starts with a digit: "2023", "70b+", "8b". */
+function isNumberish(word: string): boolean {
+  return /^[0-9]/.test(word);
+}
+
+/** Looks like a past form or participle: "trained", "released", "built". */
+function looksPast(word: string): boolean {
+  return (!word.includes('-') && word.length > 4 && word.endsWith('ed')) || IRREGULAR_PAST.has(word);
+}
+
+/** Looks like a plural noun or a third-person verb: "models", "causes". Not "class", "virus", "analysis". */
+function looksPluralOrThirdPerson(word: string): boolean {
+  return !word.includes('-') && word.length > 3 && word.endsWith('s')
+    && !word.endsWith('ss') && !word.endsWith('us') && !word.endsWith('is') && !word.endsWith("'s");
+}
+
+/** Never allowed in the object: clause markers, auxiliaries, verbs, pronouns, other-language words. */
+function isBlockedWord(word: string): boolean {
+  return CLAUSE_MARKERS.has(word) || AUXILIARIES.has(word) || VERB_WORDS.has(word)
+    || PRONOUNS.has(word) || FOREIGN_WORDS.has(word);
+}
+
+/** A word that can sit in a noun phrase's run of content words. */
+function isContentWord(word: string): boolean {
+  return !isBlockedWord(word) && !DETERMINERS.has(word) && !PREPOSITIONS.has(word) && !COORDINATORS.has(word);
+}
+
+/** True for a hyphenated word with an empty part ("-", "climate-") or a blocked part ("asserts-that"). */
+function hasBlockedHyphenPart(word: string): boolean {
+  if (!word.includes('-')) return false;
+  const parts = word.split('-');
+  if (parts.some((part) => part === '')) return true;
+  return parts.some((part) => isBlockedWord(part));
+}
+
+/** The claim as word and punctuation parts, in order; its words are exactly scopeTokens(text). */
+type ShapePart = { word: string } | { punct: string };
+
+function shapeParts(text: string): ShapePart[] {
+  const parts: ShapePart[] = [];
+  // The capture group keeps the separators: even pieces are words, odd pieces separators.
+  const pieces = text.toLowerCase().replace(/[‘’]/g, "'").split(/([^a-z0-9'+-]+)/);
+  pieces.forEach((piece, index) => {
+    if (index % 2 === 0) {
+      if (piece === '') return;
+      for (const word of CONTRACTIONS[piece] ?? [piece]) parts.push({ word });
+      return;
+    }
+    for (const ch of piece) if (ch.trim() !== '') parts.push({ punct: ch });
+  });
+  return parts;
+}
+
+/** Characters that join, quote or question a second clause wherever they are. */
+const CLAUSE_PUNCTUATION = new Set([';', ':', '!', '?', '(', ')', '[', ']', '{', '}', '"', '/', '\\', '|']);
+
+/** Whole-sentence checks: punctuation, script, hyphenated words and length. */
+function passesSentenceShape(text: string, tokens: string[]): boolean {
+  for (const ch of text) {
+    if (CLAUSE_PUNCTUATION.has(ch)) return false;
+    // Non-ASCII: other-language or mixed-script text, curly quotes, dashes. Curly apostrophes are fine.
+    if (ch.charCodeAt(0) > 127 && ch !== '‘' && ch !== '’') return false;
+  }
+  if (tokens.length > MAX_CLAIM_WORDS) return false;
+  return !tokens.some(hasBlockedHyphenPart);
+}
+
+/**
+ * True when `words`, the object of the scope verb, is a short list of plain
+ * noun phrases: [preposition] NP ((preposition | coordinator) NP)*, each NP a
+ * run of determiners or numbers, then one to five content words.
+ */
+function isNounPhraseList(words: string[]): boolean {
+  const n = words.length;
+  if (n === 0 || n > MAX_OBJECT_WORDS) return false;
+  let i = PREPOSITIONS.has(words[0]) ? 1 : 0;
+  let afterCoordinator = false;
+  for (;;) {
+    const start = i;
+    while (i < n && (DETERMINERS.has(words[i]) || isNumberish(words[i]))) i++;
+    let content = 0;
+    while (i < n && !PREPOSITIONS.has(words[i]) && !COORDINATORS.has(words[i])) {
+      const word = words[i];
+      // Blocked words, and a determiner after a content word (a new clause's subject).
+      if (!isContentWord(word) && !isNumberish(word)) return false;
+      const next = words[i + 1];
+      const nextIsContent = next !== undefined && !PREPOSITIONS.has(next) && !COORDINATORS.has(next);
+      // A past form after the phrase's first word is a second verb ("models trained on ...").
+      if (content > 0 && looksPast(word)) return false;
+      // "vaccines cause autism": a plural-looking word followed by another content
+      // word, other than an -ly adverb or a past form (the rule above judges that).
+      if (looksPluralOrThirdPerson(word) && nextIsContent && !next.endsWith('ly') && !looksPast(next)) return false;
+      // "... and causes autism", "... and kills", "... and killed millions": an -s
+      // or past word straight after "and"/"or", with no determiner or number first.
+      if (afterCoordinator && content === 0 && i === start && (looksPluralOrThirdPerson(word) || looksPast(word))) return false;
+      content++;
+      i++;
+    }
+    if (content > MAX_CONTENT_RUN) return false;
+    // Determiners alone are not a noun phrase; numbers alone are ("after 2023").
+    if (content === 0 && !words.slice(start, i).some(isNumberish)) return false;
+    if (i >= n) return true;
+    afterCoordinator = COORDINATORS.has(words[i]);
+    i++;
+    if (i >= n) return false;
+  }
+}
+
+/**
+ * Rule 4, the allow-shape: true when the sentence passes the whole-sentence
+ * checks and everything after its scope verb is a plain noun-phrase list with
+ * no punctuation but a final full stop. False for anything else, including a
+ * sentence that is not a scope statement at all.
+ */
+export function isPlainScopeObject(text: string): boolean {
+  if (typeof text !== 'string' || text === '') return false;
+  const tokens = scopeTokens(text);
+  if (!passesSentenceShape(text, tokens)) return false;
+  const objectStart = scopeObjectIndex(tokens);
+  if (objectStart < 1) return false;
+  // The object is every part after the last word before it, punctuation included.
+  const parts = shapeParts(text);
+  let words = 0;
+  let from = -1;
+  for (let p = 0; p < parts.length && from === -1; p++) {
+    if ('word' in parts[p] && ++words === objectStart) from = p + 1;
+  }
+  if (from === -1) return false;
+  const rest = parts.slice(from);
+  let end = rest.length;
+  while (end > 0 && 'punct' in rest[end - 1] && (rest[end - 1] as { punct: string }).punct === '.') end--;
+  const object: string[] = [];
+  for (const part of rest.slice(0, end)) {
+    if ('punct' in part) return false;
+    object.push(part.word);
+  }
+  return isNounPhraseList(object);
 }
 
 /**
@@ -358,7 +616,7 @@ export function isDocumentRelative(text: string): boolean {
   const tokens = scopeTokens(text);
   if (hasProposition(tokens)) return false;
   if (hasAttribution(tokens, text)) return false;
-  return isScopeStatement(tokens);
+  return isScopeStatement(tokens) && isPlainScopeObject(text);
 }
 
 /**
