@@ -228,6 +228,16 @@ describe('GET /claims/trending', () => {
     expect(idx.size).toBe(0);
   });
 
+  it('ClaimIndex.ingest stores nothing for a null caller (server key with no user ref)', () => {
+    // A null caller would be one bucket shared by every such request, so nothing is indexed for it.
+    const idx = getClaimIndex();
+    idx.ingest([{ id: 'c1', text: 'Claim A' }, { id: 'c2', text: 'Claim B' }], {}, 'scan-n1', null);
+    expect(idx.size).toBe(0);
+    expect(idx.getTrending(null, 10)).toEqual([]);
+    idx.ingest([{ id: 'c1', text: 'Claim A' }], {}, 'scan-n2', TEST_CLAIM_CALLER);
+    expect(idx.size).toBe(1);
+  });
+
   it('ClaimIndex.size reflects total unique claims', () => {
     const idx = getClaimIndex();
     idx.ingest([{ id: 'c1', text: 'Claim A' }, { id: 'c2', text: 'Claim B' }], {}, 'scan-1', TEST_CLAIM_CALLER);
