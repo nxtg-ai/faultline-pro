@@ -4,12 +4,12 @@ import type { Claim, VerificationResult } from '../types';
 import { sanitizeVerifyError } from './verify-error';
 import { recordUsage } from '../lib/usage-sink';
 import { ExtractionError, classifyApiError, parseExtractedClaims } from '../providers/extraction-error';
-import { readVerdictReply, truncatedVerdict, unparseableVerdict } from '../providers/verdict-reply';
+import { readVerdictReply, truncatedVerdict, unparseableVerdict, SOURCES_ADDRESS_KEY, SOURCES_ADDRESS_RULE } from '../providers/verdict-reply';
 import { geminiCeilingConfig } from '../providers/call-ceilings';
 import { isGeminiTruncated, OutputTruncatedError } from '../providers/output-truncation';
 import type { RetrievalOutcome } from '../providers/base_provider';
 import { RetrievalError } from '../providers/retrieval-error';
-import { abstainWithoutSource } from '../lib/verdict-guard';
+import { abstainWithoutSource, notCheckableVerdict } from '../lib/verdict-guard';
 
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 
@@ -169,11 +169,14 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
     Use "contradicted" ONLY when the preponderance of robust, consistent evidence clearly refutes the claim with no meaningful body of contrary peer-reviewed evidence.
     When in doubt between "contradicted" and "mixed", always choose "mixed".
 
+    ${SOURCES_ADDRESS_RULE}
+
     OUTPUT INSTRUCTION:
     Return strictly a JSON object. Do not include markdown formatting or preamble.
     JSON Format:
     {
       "status": "supported" | "contradicted" | "mixed" | "unverified",
+      "${SOURCES_ADDRESS_KEY}": true | false,
       "explanation": "Concise engineering assessment (max 2 sentences)."
     }
   `;
@@ -229,6 +232,8 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
 
     // A definite verdict with no source the reader can open is reported as
     // unverified (abstainWithoutSource); absence of evidence is not a verdict.
+    // A reply saying the sources do not address the claim makes it not
+    // checkable, whatever its status (notCheckableVerdict, applied there).
     return abstainWithoutSource({
       claimId: claim.id,
       status: verdict.status,
@@ -236,6 +241,7 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
       sources: uniqueSources.slice(0, 3),
       ...searchSuggestionsOf(response.candidates?.[0]?.groundingMetadata),
       provenance: { provider: 'gemini', model: servedModel, verifiedAt: returnedAt, retriever: 'gemini-grounding', retrievedAt: returnedAt },
+      ...(verdict.sourcesAddressClaim === false ? { notCheckable: true } : {}),
     });
 
   } catch (error) {
@@ -458,10 +464,13 @@ export const verifyClaimGrounded = async (
   claim: Claim,
   sources: Array<{ title: string; uri: string; snippet?: string }>,
   apiKey: string,
-  opts: { withExcerpts?: boolean } = {},
+  opts: { withExcerpts?: boolean; sourcesRule?: boolean } = {},
 ): Promise<VerificationResult> => {
   if (!apiKey) throw new Error('API Key required');
 
+  // The sources rule is asked for and read only when the caller sets it (the
+  // parallel grounding mode), so the consensus prompt is unchanged.
+  const sourcesRule = opts.sourcesRule === true;
   const sourceBlock = sources.length > 0
     ? sources.map((s, i) => groundedSourceLine(s, i, opts.withExcerpts === true)).join('\n')
     : '(no sources retrieved)';
@@ -479,9 +488,11 @@ export const verifyClaimGrounded = async (
     Determine if the claim holds up ("supported"), fails ("contradicted"), or is
     inconclusive ("mixed"). If the sources are empty or insufficient, judge from
     your own knowledge and lean "mixed" when uncertain.
-
+${sourcesRule ? `
+    ${SOURCES_ADDRESS_RULE}
+` : ''}
     Return strictly a JSON object. No markdown, no preamble.
-    { "status": "supported" | "contradicted" | "mixed" | "unverified", "explanation": "Concise assessment (max 2 sentences)." }
+    { "status": "supported" | "contradicted" | "mixed" | "unverified", ${sourcesRule ? `"${SOURCES_ADDRESS_KEY}": true | false, ` : ''}"explanation": "Concise assessment (max 2 sentences)." }
   `;
 
   try {
@@ -499,12 +510,14 @@ export const verifyClaimGrounded = async (
     // An unreadable reply is a failed vote, not a 'mixed' one (al:5b18840b0116047a item c).
     if (!verdict) return { ...unparseableVerdict(claim.id), sources };
 
-    return {
+    const result: VerificationResult = {
       claimId: claim.id,
       status: verdict.status,
       explanation: verdict.explanation,
       sources,
     };
+    // The judge said these sources are not about the claim: not checkable, no sources kept.
+    return sourcesRule && verdict.sourcesAddressClaim === false ? notCheckableVerdict(result) : result;
   } catch (error) {
     // Grounded verify never ran (quota 429 / model 503 / network). Sanitize —
     // never leak the raw provider payload into a customer report — and flag

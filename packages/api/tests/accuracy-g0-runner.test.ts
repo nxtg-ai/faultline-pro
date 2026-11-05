@@ -54,6 +54,8 @@ interface FakeState {
   model: (call: number) => string;
   /** id → number of leading attempts answered with apiError (Infinity = always). */
   failFirst: Map<number, number>;
+  /** When set, the parallel arm answers every even id as not checkable (GoPMO 1.18.11.7.19). */
+  notCheckableEvenOnParallel?: boolean;
   verifyCalls: number;
   requests: number;
   /** x-api-key values on every request except GET /health. */
@@ -135,6 +137,13 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       state.attemptsById.set(n, attempt);
       const fail = attempt <= (state.failFirst.get(n) ?? 0);
       if (!fail) state.groundedPrompts += 1;
+      if (!fail && parallelArm && state.notCheckableEvenOnParallel && n % 2 === 0) {
+        return {
+          id, status: 'unverified', apiError: false, parseFallback: false, noSourceAbstain: false, notCheckable: true,
+          model: state.model(state.verifyCalls), sourcesCount: 0,
+          usage: { costUsd: 0.00508, googleGroundingCalls: 0, groundingCalls: 1 },
+        };
+      }
       return fail
         ? { id, status: 'unverified', apiError: true, apiErrorReason: n % 2 === 0 ? 'output_truncated' : 'not a label!', parseFallback: false, model: null, ...(state.failUsage ? { usage: state.failUsage } : {}) }
         : {
@@ -235,7 +244,7 @@ describe('accuracy-g0 runner: a complete run', () => {
     expect(written).toHaveLength(100);
     expect(written.map((row) => row.id)).toEqual([...SUBSAMPLE_IDS].sort((a, b) => a - b));
     expect(Object.keys(written[0]).sort()).toEqual(
-      ['apiError', 'apiErrorReason', 'arm', 'attempts', 'costUsd', 'engineSha', 'gold', 'googleGroundingCalls', 'id', 'model', 'noSourceAbstain',
+      ['apiError', 'apiErrorReason', 'arm', 'attempts', 'costUsd', 'engineSha', 'gold', 'googleGroundingCalls', 'id', 'model', 'noSourceAbstain', 'notCheckable',
         'parseFallback', 'sourcesCount', 'status', 'ts', 'verdict'],
     );
     expect(written.every((row) => row.engineSha === state.commit && row.model === 'gemini-2.5-flash')).toBe(true);
@@ -678,6 +687,25 @@ describe('accuracy-g0 runner: against the real API server with the measurement k
 });
 
 describe('accuracy-g0 runner: grounding arms and a seeded subsample (GoPMO 1.18.11.7.22 grounding provider)', () => {
+  it('a not-checkable answer is written as notCheckable, not retried, and its share is in the arm summary', async () => {
+    state.notCheckableEvenOnParallel = true;
+    const out = join(dir, 'nc.jsonl');
+    const r = await run(['--set', 'full', '--arm', 'parallel', '--sample', '20', '--seed', '7', '--out', out]);
+    expect(r.code).toBe(0);
+    const written = rows(out);
+    expect(written).toHaveLength(20);
+    const flagged = written.filter((row) => row.notCheckable === true);
+    expect(flagged.length).toBeGreaterThan(0);
+    expect(flagged.every((row) => Number(row.id) % 2 === 0 && row.status === 'unverified' && row.apiError === false && row.attempts === 1)).toBe(true);
+    expect(written.filter((row) => Number(row.id) % 2 !== 0).every((row) => row.notCheckable === false)).toBe(true);
+    const summaryPath = join(dir, 'nc.summary.json');
+    expect(existsSync(summaryPath) || /arm summary was not written/.test(r.out)).toBe(true);
+    if (existsSync(summaryPath)) {
+      const summary = JSON.parse(readFileSync(summaryPath, 'utf8'));
+      expect(summary.arms.parallel.not_checkable_rate).toBeCloseTo(flagged.length / 20, 10);
+    }
+  });
+
   it('--arm both --sample 20 --seed 7: the same 20 items on each arm, one file per arm, the arm sent to the route', async () => {
     const out = join(dir, 'arms.jsonl');
     const r = await run(['--set', 'full', '--arm', 'both', '--sample', '20', '--seed', '7', '--out', out]);

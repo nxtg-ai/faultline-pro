@@ -21,6 +21,14 @@ export interface GroundedVerifyOptions {
    * the consensus prompts are unchanged.
    */
   withExcerpts?: boolean;
+  /**
+   * Ask the judge whether the sources address the claim at all (the sources
+   * rule, providers/verdict-reply.ts) and read its answer: a reply with
+   * `sourcesAddressClaim: false` is not checkable (GoPMO 1.18.11.7.19). Set by
+   * the parallel grounding mode. Off by default, so the consensus prompts are
+   * unchanged.
+   */
+  sourcesRule?: boolean;
 }
 
 /**

@@ -1,5 +1,6 @@
 import type { Claim, ClaimStatus, VerificationResult } from '../types.js';
 import type { ComplianceReport } from '../compliance/report_generator.js';
+import { isNotCheckable } from '../lib/verdict-guard.js';
 
 /**
  * Fragility assessment for a single verified claim.
@@ -153,8 +154,8 @@ function buildSummary(weakestClaim: ClaimFragility | null, argumentStrength: str
  * result, ranks them from most fragile to least fragile, and classifies the
  * overall argument strength.
  *
- * Claims without a corresponding entry in the verifications record are excluded
- * from the analysis entirely.
+ * Claims without a corresponding entry in the verifications record, and
+ * not-checkable claims (isNotCheckable), are excluded from the analysis entirely.
  *
  * @param claims - All extracted claims
  * @param verifications - Verification results keyed by claim ID
@@ -170,7 +171,8 @@ export function analyzeWeakestLinks(
 
   for (const claim of claims) {
     const verification = verifications[claim.id];
-    if (!verification) continue;
+    // A not-checkable claim says nothing about the argument's strength (GoPMO 1.18.11.7.19).
+    if (!verification || isNotCheckable(verification)) continue;
 
     const confidenceScore = lookupConfidenceScore(claim.id, complianceReport);
     const fragilityScore = computeFragilityScore(

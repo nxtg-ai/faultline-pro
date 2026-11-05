@@ -37,9 +37,15 @@ import { NO_SOURCE_EXPLANATION, isBillableVerdict } from '../lib/verdict-guard';
 
 const CLAIM: Claim = { id: 'c4', text: 'The underlying pro se complaint had cited 32 cases.', type: 'fact', importance: 3 };
 const NO_RESULTS = '{"status":"contradicted","explanation":"No search results were found that identify an underlying pro se complaint citing 32 cases."}';
-/** sha256 (first 16 hex) of each verify prompt for CLAIM, as measured by G0 on 47b72f0 (BA 0.763). */
+/**
+ * sha256 (first 16 hex) of each verify prompt for CLAIM, as measured by G0 on 47b72f0 (BA 0.763),
+ * except the two that carry the sources rule (GoPMO 1.18.11.7.19): geminiGrounded (the google arm,
+ * was a02663d97aeb677f) and geminiParallel (the parallel arm's judge, not pinned before). Their G0
+ * arm run, before and after on the same seeded 200 claims, is owed before this wording ships.
+ */
 const FINGERPRINTS = {
-  geminiGrounded: 'a02663d97aeb677f',
+  geminiGrounded: '9688389c9afec158',
+  geminiParallel: 'e32c1d64f20a71f8',
   geminiConsensus: 'a32aa1bab5a7acde',
   sharedConsensus: 'b122686a73d834a9',
   openai: '0fda1aedb7347549',
@@ -152,6 +158,7 @@ describe('verify prompts are the G0-measured wording (47b72f0)', () => {
     sdk.reply = { text: reply, candidates: [] };
     await verifyClaim(CLAIM, 'k');
     await verifyClaimGrounded(CLAIM, [], 'k');
+    await verifyClaimGrounded(CLAIM, [{ title: 'T', uri: 'https://t.example', snippet: 'An excerpt.' }], 'k', { withExcerpts: true, sourcesRule: true });
     const bodies: string[] = [];
     mockFetch.mockImplementation(async (url: string, init: { body: string }) => {
       bodies.push(init.body);
@@ -166,6 +173,7 @@ describe('verify prompts are the G0-measured wording (47b72f0)', () => {
     const prompts = {
       geminiGrounded: sdk.prompts[0],
       geminiConsensus: sdk.prompts[1],
+      geminiParallel: sdk.prompts[2],
       sharedConsensus: buildGroundedPrompt(CLAIM, []),
       openai: text(bodies[0]),
       claude: text(bodies[1]),

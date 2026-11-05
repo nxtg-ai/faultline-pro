@@ -202,11 +202,13 @@ export interface BillingSummary {
  * 1. an API error: its `apiErrorReason` when set, else `provider_error`;
  * 2. `noSourceAbstain`: `no_source` (a definite verdict downgraded for having
  *    no source a reader can open);
- * 3. a status other than supported, contradicted or mixed: the status itself
+ * 3. `notCheckable`: `not_checkable` (the judge said the sources do not
+ *    address the claim);
+ * 4. a status other than supported, contradicted or mixed: the status itself
  *    (`unverified`, `skipped`, ...); a missing or non-string status reads
  *    `unverified`;
- * 4. no source: `no_source`;
- * 5. no engine retriever: `no_retriever`.
+ * 5. no source: `no_source`;
+ * 6. no engine retriever: `no_retriever`.
  * Only called for a value isBillableVerdict refused.
  */
 function unbilledReason(value: unknown): string {
@@ -219,6 +221,7 @@ function unbilledReason(value: unknown): string {
     return typeof v.apiErrorReason === 'string' && v.apiErrorReason.length > 0 ? v.apiErrorReason : 'provider_error';
   }
   if (v.noSourceAbstain === true) return 'no_source';
+  if ((v as { notCheckable?: unknown }).notCheckable === true) return 'not_checkable';
   if (typeof v.status !== 'string') return 'unverified';
   if (!BILLABLE_STATUSES.has(v.status)) return v.status;
   if (!Array.isArray(v.sources) || v.sources.length === 0) return 'no_source';
@@ -309,7 +312,9 @@ export function isOpenableSource(source: unknown): boolean {
  * (`noSourceAbstain: true`, for example one stored before this rule) has the
  * same fields removed on read. A verdict that passes keeps every grounded
  * field: its Search Suggestions must be shown with it. Anything else is
- * returned unchanged. Where a
+ * returned unchanged. A not-checkable result (isNotCheckable) is returned
+ * as notCheckableVerdict makes it, whatever its status, before any of the
+ * above. Where a
  * verdict is produced (the verify runner, the full-scan job store) it runs
  * after guardVerdict, never before: a source entry with no string uri is a
  * malformed verdict (a provider error), not an unopenable source. Every place
@@ -339,6 +344,7 @@ export function abstainWithoutSource<T extends VerificationResult>(result: T): T
   if (!result || typeof result !== 'object') return result;
   const votes = abstainVotesWithoutSource(result.providerVotes);
   const withVotes: T = votes === result.providerVotes ? result : { ...result, providerVotes: votes };
+  if (isNotCheckable(withVotes)) return notCheckableVerdict(withVotes);
   if (!BILLABLE_STATUSES.has(withVotes.status as string)) {
     return withVotes.noSourceAbstain === true ? withoutGroundedResponse(withVotes) : withVotes;
   }
@@ -348,6 +354,47 @@ export function abstainWithoutSource<T extends VerificationResult>(result: T): T
     return openable.length === sources.length ? withVotes : { ...withVotes, sources: openable as T['sources'] };
   }
   return { ...withoutGroundedResponse(withVotes), status: 'unverified', explanation: NO_SOURCE_EXPLANATION, sources: [], noSourceAbstain: true };
+}
+
+/** The explanation every claim the judge marked not checkable carries. */
+export const NOT_CHECKABLE_EXPLANATION =
+  'The sources found do not address this claim, so it could not be checked against them. It adds no risk.';
+
+/**
+ * True when `value` is a not-checkable result: `notCheckable: true` and not an
+ * API error (a check that never ran stays an API error, whatever else it
+ * carries). The flag decides, not the status: a not-checkable result is
+ * always reported `unverified` (notCheckableVerdict).
+ */
+export function isNotCheckable(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as { notCheckable?: unknown; apiError?: unknown };
+  return v.notCheckable === true && v.apiError !== true;
+}
+
+/**
+ * `result` as a not-checkable claim (GoPMO 1.18.11.7.19): status `unverified`,
+ * NOT_CHECKABLE_EXPLANATION, `sources: []`, `notCheckable: true`, and no
+ * `noSourceAbstain`. The sources are dropped because they are not about the
+ * claim, and every field of Google's grounded response
+ * (GROUNDED_RESPONSE_FIELDS) is removed, as abstainWithoutSource does: the
+ * reported result is no longer Google's grounded result. Provenance and every
+ * other field are kept. The same object when it already has this shape.
+ * The Gemini verify calls make this when the judge's reply says
+ * `sourcesAddressClaim: false`, whatever status it gave; abstainWithoutSource
+ * applies it again wherever a verdict leaves the engine or is read from a store.
+ */
+export function notCheckableVerdict<T extends VerificationResult>(result: T): T {
+  const settled = result.status === 'unverified'
+    && result.explanation === NOT_CHECKABLE_EXPLANATION
+    && Array.isArray(result.sources) && result.sources.length === 0
+    && result.notCheckable === true
+    && !('noSourceAbstain' in result)
+    && !GROUNDED_RESPONSE_FIELDS.some((k) => k in result);
+  if (settled) return result;
+  const out: T = { ...withoutGroundedResponse(result), status: 'unverified', explanation: NOT_CHECKABLE_EXPLANATION, sources: [], notCheckable: true };
+  delete (out as { noSourceAbstain?: boolean }).noSourceAbstain;
+  return out;
 }
 
 /** One vote under the rule above; the same object when nothing changed. */

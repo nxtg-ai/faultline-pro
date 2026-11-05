@@ -19,7 +19,7 @@ import type { GroundingMode } from './grounding.js';
 import { consensusVerify, type NamedProvider } from '../consensus/consensus_engine.js';
 import { classifyApiError } from '../providers/extraction-error.js';
 import { OUT_OF_CREDITS_VERIFY_MESSAGE } from '../services/verify-error.js';
-import { abstainWithoutSource, guardVerdict } from '../lib/verdict-guard.js';
+import { abstainWithoutSource, guardVerdict, isNotCheckable } from '../lib/verdict-guard.js';
 import { attachEvidence, type EvidenceOptions } from '../evidence/passage.js';
 import { attachIndependentEvidence, type IndependentEvidenceOptions } from '../evidence/independent.js';
 
@@ -543,7 +543,9 @@ function notCheckedResult(claim: Claim, explanation: string, reason: Verificatio
  * Retrieve, then judge: the parallel grounding mode for one claim, one call
  * each, no retry. The retriever finds the sources; the provider judges the
  * claim against exactly those (verifyClaimGrounded, excerpts in the prompt),
- * with no search of its own. The verdict's sources are the retrieved set.
+ * with no search of its own. The verdict's sources are the retrieved set,
+ * except on a claim the judge said those sources do not address: it reads
+ * not checkable, with no sources (sourcesRule, GoPMO 1.18.11.7.19).
  *
  * A failed search (RetrievalError or any rejection) makes the claim not
  * checked with the classified reason; nothing else is searched instead. A
@@ -574,7 +576,7 @@ export async function retrieveThenVerify(
   }
   let judged: VerificationResult;
   try {
-    judged = await provider.verifyClaimGrounded(claim, sources, { withExcerpts: true });
+    judged = await provider.verifyClaimGrounded(claim, sources, { withExcerpts: true, sourcesRule: true });
   } catch (err) {
     return notCheckedResult(claim, sanitizeVerifyError(err), classifyApiError(err));
   }
@@ -586,8 +588,9 @@ export async function retrieveThenVerify(
   return {
     ...judged,
     claimId: claim.id,
-    // The retrieved set, whatever the judge echoed back.
-    sources,
+    // The retrieved set, whatever the judge echoed back. None on a claim the
+    // judge said the sources do not address (notCheckableVerdict).
+    sources: isNotCheckable(judged) ? [] : sources,
     provenance: {
       provider: providerName,
       model: typeof own?.model === 'string' && own.model.length > 0 ? own.model : provider.modelId,

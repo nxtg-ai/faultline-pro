@@ -1,4 +1,5 @@
 import type { AnalysisState, VerificationResult } from '../types.js';
+import { isNotCheckable } from './verdict-guard.js';
 
 export type OverallRisk = AnalysisState['overallRisk'];
 
@@ -23,10 +24,14 @@ function atLeast(band: OverallRisk, floor: OverallRisk): OverallRisk {
  *   unverified claims are at least half of the verdicts -> at least high
  *   at least one unverified claim                       -> at least medium
  *
+ * A not-checkable claim (isNotCheckable: the judge said the sources do not
+ * address it, GoPMO 1.18.11.7.19) adds no risk: it is left out of every count
+ * above, the total included, so the band is the band of the other claims.
+ *
  * A scan with no verdicts reads low, as before.
  */
 export function calculateRisk(verifications: Record<string, VerificationResult>): OverallRisk {
-  const values = Object.values(verifications);
+  const values = Object.values(verifications).filter((v) => !isNotCheckable(v));
   const total = values.length;
   const contradicted = values.filter((v) => v.status === 'contradicted').length;
   const mixed = values.filter((v) => v.status === 'mixed').length;
