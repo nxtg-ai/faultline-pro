@@ -346,9 +346,9 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
 });
 
 describe('POST /admin/verify-claims — claims about the document itself', () => {
-  // FALSE-CLAIM makes the mock answer 'contradicted' if the claim ever reached it. It sits
-  // inside the noun phrase: a trailing second sentence would fail the allow-shape (below).
-  const DOC_CLAIM = 'The analysis does not focus on 70B+ FALSE-CLAIM.';
+  // The object holds only closed-vocabulary words, so no FALSE-CLAIM marker fits in it; a leak
+  // would show as a provider call (sdk.calls) and a result without documentScope.
+  const DOC_CLAIM = 'The analysis does not focus on large models.';
 
   it('verifies a scope sentence followed by a second sentence (the allow-shape fails closed)', async () => {
     const res = await post({ claims: [{ id: 'two', text: 'The analysis does not focus on 70B+ models with small active parameter counts. FALSE-CLAIM' }] });
@@ -378,7 +378,7 @@ describe('POST /admin/verify-claims — claims about the document itself', () =>
   });
 
   it('makes no provider call at all for a batch of document claims', async () => {
-    const res = await post({ claims: [{ id: 'a', text: DOC_CLAIM }, { id: 'b', text: 'The focus of the analysis is on roughly 7B-class models.' }] });
+    const res = await post({ claims: [{ id: 'a', text: DOC_CLAIM }, { id: 'b', text: 'The focus of the analysis is on small models.' }] });
     expect(res.statusCode).toBe(200);
     expect(res.json().results.map((r: { status: string }) => r.status)).toEqual(['unverified', 'unverified']);
     expect(sdk.calls).toBe(0);

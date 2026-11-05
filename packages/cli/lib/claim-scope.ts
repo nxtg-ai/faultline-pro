@@ -1,7 +1,7 @@
 /**
  * Claim scope: is a claim about the world, or about the document it came from?
  *
- * "The focus of the analysis is on 7B-class models" is true by construction for
+ * "The focus of the analysis is on small models" is true by construction for
  * the author of the analysis. Checking it against the web compares it with other
  * people's analyses and can return a contradiction that means nothing. Such a
  * claim is never sent for verification and never gets a verdict.
@@ -21,11 +21,11 @@
  *      structure verb. A bare "the report" only counts with a narrow set of
  *      scope verbs, because it often names someone else's report;
  *   4. the allow-shape (isPlainScopeObject, below): everything after the scope
- *      verb is a short list of plain noun phrases and nothing else. Rules 1
- *      and 2 are lists of words that block; rule 4 is a shape that must be
- *      met, so a sentence the lists did not foresee ("covers the fact that
- *      ...", "covers three models, all of which ...", "covers climate; la
- *      Tierra es plana") fails it.
+ *      verb is a short list of noun phrases built only from a closed
+ *      vocabulary of document-part and topic-label words. Rules 1 and 2 are
+ *      lists of words that block; rule 4 lists the only words allowed, so a
+ *      sentence no list foresaw ("covers climate and people live forever",
+ *      "covers climate; la Tierra es plana") fails it.
  *
  * The check is deterministic and makes no model call. It works on word tokens
  * with fixed-position comparisons against small word sets, so its cost is linear
@@ -354,156 +354,79 @@ export function isScopeStatement(tokens: string[]): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Rule 4, the allow-shape.
+// Rule 4, the allow-shape: a closed vocabulary.
 //
-// After the scope subject and verb, the rest of the sentence must be a short
-// list of plain noun phrases and nothing else:
+// Word lists that block (rules 1 and 2) and shape heuristics over arbitrary
+// words cannot prove a sentence holds no proposition: any unforeseen word can
+// be a verb ("covers climate and people live forever"). So the object after the
+// scope verb may hold ONLY words from the closed lists below:
 //
-//   object := [preposition] NP ((preposition | and | or | plus) NP)*
-//   NP     := (determiner | number)* content-word{1,5}     (or numbers alone)
+//   object := [preposition] NP ((preposition | and | or) NP)*
+//   NP     := determiner* modifier* [noun-modifier] head
 //
-// It fails, and the claim is verified, on any of:
-//   - a clause marker: that, which, who, whom, whose, where, when, why, how,
-//     whether, if, because, since, while, although, unless, as, but, so, "the
-//     fact", not, ... ("all/some/none/each of which" fail on "which");
-//   - a second finite verb: an auxiliary or copula (is, was, has, does, will,
-//     can, ...), a proposition or scope verb, a past form or participle after
-//     the first word of a noun phrase ("models trained on ..."), a plural-
-//     looking word followed by another content word ("vaccines cause autism"),
-//     or an -s or past word opening a phrase after "and"/"or" ("and causes");
-//   - a determiner after a content word, or a pronoun: the subject of a new
-//     clause ("covers the hoax the government staged", "... and it is");
-//   - any punctuation after the verb other than a final full stop: a comma,
-//     percent sign, apostrophe-free symbol, ...;
-//   - anywhere in the sentence: a semicolon, colon, dash, bracket, double
-//     quote, question or exclamation mark, slash, a non-ASCII character other
-//     than a curly apostrophe, or a hyphenated word with a clause marker, verb
-//     or empty part inside it ("asserts-that", "-", "climate-");
-//   - a common function word of another language (la, es, est, der, ist, ...);
-//   - an object over 12 words, a sentence over 30 words.
+//   determiner    DETERMINERS: the, a, this, our, three, 10, billion, ...
+//   modifier      MODIFIERS: main, key, following, open, small, ...
+//   noun-modifier NOUN_MODIFIERS: evaluation, case, research, background
+//   head          OBJECT_HEADS: document-part and topic-label nouns (section,
+//                 methods, results, limitations, models, data, ...)
+//   preposition   OBJECT_PREPOSITIONS: of, in, on, for, from, with, ...
 //
-// When in doubt it answers false. A miss costs one ordinary check of a claim;
-// a false positive is a world claim nobody checked.
+// Every NP has exactly one head noun, so no two open nouns sit side by side
+// and no word outside the lists can carry a verb. "and"/"or" join two NPs
+// only. Any other word anywhere in the object, a hyphenated word, a bare
+// number with letters ("70b+"), punctuation after the verb other than a final
+// full stop, or non-ASCII text anywhere means false: the claim is verified.
 //
-// With no lexicon, a noun phrase ending in an -s verb ("... and the Arctic
-// melts") has the same shape as one ending in a plural noun ("... the parameter
-// counts"). The shape cannot tell them apart, so it refuses both: any noun
-// phrase of two or more content words whose last word ends in "s" (not "ss",
-// "us", "is") fails. This trades precision for safety on purpose.
+// A word missing from these lists only means the claim gets verified. That is
+// the safe direction: verifying a real scope statement costs one ordinary
+// check, skipping a world claim is the product's worst outcome. So
+// "This report covers climate." is verified on purpose.
 // ---------------------------------------------------------------------------
 
-/** Words that open a second clause or introduce a proposition. */
-const CLAUSE_MARKERS = new Set([
-  'that', 'which', 'who', 'whom', 'whose', 'where', 'when', 'whenever', 'wherever', 'why',
-  'how', 'whether', 'if', 'because', 'since', 'although', 'though', 'unless', 'until',
-  'while', 'whereas', 'so', 'but', 'yet', 'nor', 'then', 'what', 'whatever', 'whichever',
-  'whoever', 'fact', 'facts', 'once', 'as', 'thus', 'hence', 'therefore', 'not', 'like',
-  'unlike', 'despite', 'including', 'excluding', 'namely', 'ie', 'eg', 'etc',
+/** Head nouns an object may end its noun phrase on: parts of a document and labels for its topics. */
+const TOPIC_HEADS = [
+  'introduction', 'background', 'overview', 'summary', 'scope', 'method', 'methods',
+  'methodology', 'approach', 'approaches', 'results', 'findings', 'limitations',
+  'conclusion', 'conclusions', 'discussion', 'references', 'appendix', 'appendices',
+  'evaluation', 'criteria', 'benchmarks', 'experiments', 'studies', 'data', 'dataset',
+  'datasets', 'model', 'models', 'analysis', 'comparison', 'assumptions', 'glossary',
+  'sources',
+];
+
+/** The closed head-noun vocabulary: TOPIC_HEADS plus the lists of document and part nouns above. */
+const OBJECT_HEADS = new Set([
+  ...TOPIC_HEADS, ...DOC_NOUNS, ...PART_NOUNS, ...STRUCTURE_NOUNS, ...METHOD_NOUNS,
 ]);
 
-/** Auxiliaries and copulas: each one makes a finite verb. */
-const AUXILIARIES = new Set([
-  'is', 'are', 'was', 'were', 'am', 'be', 'been', 'being', 'has', 'have', 'had', 'do',
-  'does', 'did', 'will', 'would', 'can', 'could', 'may', 'might', 'must', 'shall',
-  'should', 'ought', 'cannot', 'get', 'gets', 'got',
+/** Nouns that may stand before the head ("evaluation criteria", "case studies"). */
+const NOUN_MODIFIERS = new Set(['evaluation', 'case', 'research', 'background']);
+
+/** Adjectives that may stand before the head. */
+const MODIFIERS = new Set([
+  'main', 'key', 'primary', 'following', 'preceding', 'next', 'previous', 'first', 'second',
+  'third', 'final', 'last', 'other', 'related', 'open', 'closed', 'small', 'large', 'local',
 ]);
 
-/** Pronouns: in the object they are the subject of a new clause. */
-const PRONOUNS = new Set([
-  'it', 'they', 'he', 'she', 'we', 'i', 'you', 'them', 'him', 'her', 'us', 'there', 'here',
-  'itself', 'themselves',
-]);
-
-/** Common function words of other languages written in ASCII. Text in another language is not read as scope. */
-const FOREIGN_WORDS = new Set([
-  'la', 'el', 'los', 'las', 'es', 'est', 'son', 'sont', 'une', 'un', 'le', 'les', 'des', 'du',
-  'der', 'die', 'das', 'ist', 'und', 'sind', 'ein', 'eine', 'nicht', 'il', 'lo', 'gli', 'och',
-  'het', 'een', 'pas', 'ne', 'que', 'qui', 'y', 'e', 'de', 'del', 'en', 'sie', 'er', 'wir',
-  'nous', 'vous', 'ils', 'elle', 'esta', 'este', 'sao', 'nao', 'muy', 'pero', 'con', 'por',
-  'para', 'sur', 'avec', 'dans', 'mit', 'auf', 'zu', 'non', 'ja', 'si',
-]);
-
-/** Irregular past forms and participles: a second verb when they follow a noun ("models built on ..."). */
-const IRREGULAR_PAST = new Set([
-  'built', 'made', 'sold', 'taken', 'took', 'given', 'gave', 'written', 'wrote', 'held', 'kept',
-  'left', 'lost', 'paid', 'put', 'run', 'ran', 'seen', 'saw', 'sent', 'set', 'spent', 'stolen',
-  'stole', 'told', 'thought', 'grown', 'grew', 'known', 'knew', 'drawn', 'drew', 'driven', 'drove',
-  'eaten', 'ate', 'fallen', 'fell', 'hidden', 'hid', 'broken', 'broke', 'chosen', 'chose', 'done',
-  'gone', 'went', 'begun', 'began', 'bought', 'brought', 'caught', 'fought', 'taught', 'sought',
-  'dealt', 'felt', 'led', 'meant', 'met', 'hurt', 'lent', 'bred', 'fed', 'fled', 'spread',
-  'struck', 'sworn', 'torn', 'worn', 'born', 'became', 'come', 'came', 'rose', 'risen', 'thrown',
-  'threw', 'flown', 'flew', 'spoken', 'spoke', 'frozen', 'froze', 'sung', 'sang', 'sunk', 'sank',
-  'swum', 'swam', 'won',
-]);
-
-/** Words that may only open a noun phrase: determiners, quantifiers and number words. */
+/** Words that may open a noun phrase: determiners, quantifiers and number words. */
 const DETERMINERS = new Set([
-  'the', 'a', 'an', 'this', 'these', 'those', 'its', 'their', 'our', 'his', 'each', 'every', 'all',
-  'some', 'any', 'both', 'several', 'many', 'few', 'fewer', 'more', 'less', 'most', 'roughly',
-  'approximately', 'around', 'nearly', 'almost', 'only', 'just', 'than', 'least', 'one', 'other',
-  'no', 'such', 'either', 'neither', 'another',
-  // Number words and pointers count as determiners: "10 billion parameters", "the following sections".
-  'hundred', 'thousand', 'million', 'billion', 'trillion', 'dozen',
-  ...POINTERS,
+  'the', 'a', 'an', 'this', 'these', 'those', 'its', 'our', 'their', 'each', 'every', 'all',
+  'some', 'any', 'both', 'several', 'many', 'few', 'fewer', 'more', 'most', 'only', 'than',
+  'hundred', 'thousand', 'million', 'billion', 'one',
   ...NUMBER_WORDS,
 ]);
 
 /** Prepositions that may join two noun phrases of the object. */
-const PREPOSITIONS = new Set([
-  'on', 'in', 'of', 'for', 'from', 'with', 'without', 'at', 'into', 'to', 'across', 'between',
-  'among', 'under', 'over', 'after', 'before', 'within', 'beyond', 'about', 'per', 'via',
-  'versus', 'vs', 'against', 'through', 'during', 'up', 'onto', 'toward', 'towards', 'above',
-  'below', 'beside', 'inside', 'outside', 'throughout',
-]);
+const OBJECT_PREPOSITIONS = new Set(['of', 'in', 'on', 'for', 'from', 'with', 'across', 'between', 'into', 'within', 'to']);
 
 /** Coordinators that may join two noun phrases. */
-const COORDINATORS = new Set(['and', 'or', 'plus']);
-
-/** Words that are a second clause's verb wherever they appear: proposition verbs, noun-or-verbs, scope verbs. */
-const VERB_WORDS = new Set([...PROPOSITION_VERBS, ...NOUN_OR_VERB, ...Object.keys(THIRD_PERSON)]);
+const COORDINATORS = new Set(['and', 'or']);
 
 const MAX_OBJECT_WORDS = 12;
-const MAX_CONTENT_RUN = 5;
 const MAX_CLAIM_WORDS = 30;
 
-/** A word that starts with a digit: "2023", "70b+", "8b". */
-function isNumberish(word: string): boolean {
-  return /^[0-9]/.test(word);
-}
-
-/** Looks like a past form or participle: "trained", "released", "built". */
-function looksPast(word: string): boolean {
-  return (!word.includes('-') && word.length > 4 && word.endsWith('ed')) || IRREGULAR_PAST.has(word);
-}
-
-/** Looks like a plural noun or a third-person verb: "models", "causes". Not "class", "virus", "analysis". */
-function looksPluralOrThirdPerson(word: string): boolean {
-  return !word.includes('-') && word.length > 3 && word.endsWith('s')
-    && !word.endsWith('ss') && !word.endsWith('us') && !word.endsWith('is') && !word.endsWith("'s");
-}
-
-/** Ends in "s" but not "ss", "us" or "is": could be a third-person verb ("kills", "melts"). */
-function mayBeFiniteVerb(word: string): boolean {
-  return word.endsWith('s') && !word.endsWith('ss') && !word.endsWith('us') && !word.endsWith('is');
-}
-
-/** Never allowed in the object: clause markers, auxiliaries, verbs, pronouns, other-language words. */
-function isBlockedWord(word: string): boolean {
-  return CLAUSE_MARKERS.has(word) || AUXILIARIES.has(word) || VERB_WORDS.has(word)
-    || PRONOUNS.has(word) || FOREIGN_WORDS.has(word);
-}
-
-/** A word that can sit in a noun phrase's run of content words. */
-function isContentWord(word: string): boolean {
-  return !isBlockedWord(word) && !DETERMINERS.has(word) && !PREPOSITIONS.has(word) && !COORDINATORS.has(word);
-}
-
-/** True for a hyphenated word with an empty part ("-", "climate-") or a blocked part ("asserts-that"). */
-function hasBlockedHyphenPart(word: string): boolean {
-  if (!word.includes('-')) return false;
-  const parts = word.split('-');
-  if (parts.some((part) => part === '')) return true;
-  return parts.some((part) => isBlockedWord(part));
+/** A determiner, or a plain number made of digits only ("10", "2023"). */
+function isDeterminer(word: string): boolean {
+  return DETERMINERS.has(word) || /^[0-9]+$/.test(word);
 }
 
 /** The claim as word and punctuation parts, in order; its words are exactly scopeTokens(text). */
@@ -524,62 +447,35 @@ function shapeParts(text: string): ShapePart[] {
   return parts;
 }
 
-/** Characters that join, quote or question a second clause wherever they are. */
-const CLAUSE_PUNCTUATION = new Set([';', ':', '!', '?', '(', ')', '[', ']', '{', '}', '"', '/', '\\', '|']);
-
-/** Whole-sentence checks: punctuation, script, hyphenated words and length. */
+/** Whole-sentence checks: no non-ASCII character but a curly apostrophe, and a bounded length. */
 function passesSentenceShape(text: string, tokens: string[]): boolean {
   for (const ch of text) {
-    if (CLAUSE_PUNCTUATION.has(ch)) return false;
-    // Non-ASCII: other-language or mixed-script text, curly quotes, dashes. Curly apostrophes are fine.
     if (ch.charCodeAt(0) > 127 && ch !== '‘' && ch !== '’') return false;
   }
-  if (tokens.length > MAX_CLAIM_WORDS) return false;
-  return !tokens.some(hasBlockedHyphenPart);
+  return tokens.length <= MAX_CLAIM_WORDS;
 }
 
 /**
- * True when `words`, the object of the scope verb, is a short list of plain
- * noun phrases: [preposition] NP ((preposition | coordinator) NP)*, each NP a
- * run of determiners or numbers, then one to five content words.
+ * True when `words`, the object of the scope verb, is [preposition] NP
+ * ((preposition | and | or) NP)*, each NP determiners, modifiers, an optional
+ * noun-modifier and exactly one head noun, every word from the closed lists.
  */
-function isNounPhraseList(words: string[]): boolean {
+function isClosedNounPhraseList(words: string[]): boolean {
   const n = words.length;
   if (n === 0 || n > MAX_OBJECT_WORDS) return false;
-  let i = PREPOSITIONS.has(words[0]) ? 1 : 0;
-  let afterCoordinator = false;
+  // Any hyphenated word, even a listed one ("write-up"), so a hyphen can never
+  // join a verb onto a listed word.
+  if (words.some((word) => word.includes('-'))) return false;
+  let i = OBJECT_PREPOSITIONS.has(words[0]) ? 1 : 0;
   for (;;) {
-    const start = i;
-    while (i < n && (DETERMINERS.has(words[i]) || isNumberish(words[i]))) i++;
-    let content = 0;
-    while (i < n && !PREPOSITIONS.has(words[i]) && !COORDINATORS.has(words[i])) {
-      const word = words[i];
-      // Blocked words, and a determiner after a content word (a new clause's subject).
-      if (!isContentWord(word) && !isNumberish(word)) return false;
-      const next = words[i + 1];
-      const nextIsContent = next !== undefined && !PREPOSITIONS.has(next) && !COORDINATORS.has(next);
-      // A past form after the phrase's first word is a second verb ("models trained on ...").
-      if (content > 0 && looksPast(word)) return false;
-      // "vaccines cause autism": a plural-looking word followed by another content
-      // word, other than an -ly adverb or a past form (the rule above judges that).
-      if (looksPluralOrThirdPerson(word) && nextIsContent && !next.endsWith('ly') && !looksPast(next)) return false;
-      // "... and causes autism", "... and kills", "... and killed millions": an -s
-      // or past word straight after "and"/"or", with no determiner or number first.
-      if (afterCoordinator && content === 0 && i === start && (looksPluralOrThirdPerson(word) || looksPast(word))) return false;
-      content++;
-      i++;
-    }
-    if (content > MAX_CONTENT_RUN) return false;
-    // "the drug kills", "the Arctic melts": two or more content words ending in an
-    // -s word may be a subject and its finite verb. "the parameter counts" has the
-    // same shape, so it fails too. That trades precision for safety on purpose:
-    // verifying a real scope statement costs one search, while skipping a world
-    // claim is the worst outcome. A single-word head ("three models") still passes.
-    if (content >= 2 && mayBeFiniteVerb(words[i - 1])) return false;
-    // Determiners alone are not a noun phrase; numbers alone are ("after 2023").
-    if (content === 0 && !words.slice(start, i).some(isNumberish)) return false;
+    while (i < n && isDeterminer(words[i])) i++;
+    while (i < n && MODIFIERS.has(words[i])) i++;
+    // An optional noun-modifier, only when a head follows it ("evaluation criteria").
+    if (i + 1 < n && NOUN_MODIFIERS.has(words[i]) && OBJECT_HEADS.has(words[i + 1])) i++;
+    if (i >= n || !OBJECT_HEADS.has(words[i])) return false;
+    i++;
     if (i >= n) return true;
-    afterCoordinator = COORDINATORS.has(words[i]);
+    if (!OBJECT_PREPOSITIONS.has(words[i]) && !COORDINATORS.has(words[i])) return false;
     i++;
     if (i >= n) return false;
   }
@@ -587,9 +483,9 @@ function isNounPhraseList(words: string[]): boolean {
 
 /**
  * Rule 4, the allow-shape: true when the sentence passes the whole-sentence
- * checks and everything after its scope verb is a plain noun-phrase list with
- * no punctuation but a final full stop. False for anything else, including a
- * sentence that is not a scope statement at all.
+ * checks and everything after its scope verb is a noun-phrase list drawn only
+ * from the closed vocabulary, with no punctuation but a final full stop. False
+ * for anything else, including a sentence that is not a scope statement.
  */
 export function isPlainScopeObject(text: string): boolean {
   if (typeof text !== 'string' || text === '') return false;
@@ -613,7 +509,7 @@ export function isPlainScopeObject(text: string): boolean {
     if ('punct' in part) return false;
     object.push(part.word);
   }
-  return isNounPhraseList(object);
+  return isClosedNounPhraseList(object);
 }
 
 /**
@@ -621,7 +517,8 @@ export function isPlainScopeObject(text: string): boolean {
  * rather than the world.
  *
  * @example
- *   isDocumentRelative('The analysis does not focus on 70B+ models.')            // true
+ *   isDocumentRelative('The analysis does not focus on large models.')           // true
+ *   isDocumentRelative('This report covers climate.')                            // false: "climate" is not in the list
  *   isDocumentRelative('This report contains five sections.')                    // true
  *   isDocumentRelative('The report concludes that smoking causes lung cancer.')  // false
  *   isDocumentRelative('This paper is about gravitational waves found by LIGO.') // false

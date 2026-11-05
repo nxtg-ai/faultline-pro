@@ -458,7 +458,7 @@ describe('FAULTLINE_GROUNDING=parallel: Parallel then Gemini, no googleSearch, o
 
 // Validates: PR #72 document scope, the skip applies the same way in the parallel arm
 describe('FAULTLINE_GROUNDING=parallel: a claim about the document itself makes no Parallel search', () => {
-  const DOC_CLAIM = 'The analysis does not focus on 70B+ models with mixture-of-experts routing.';
+  const DOC_CLAIM = 'The analysis does not focus on large models.';
   beforeEach(() => { process.env.FAULTLINE_GROUNDING = 'parallel'; });
 
   /** True when any Parallel request body carries the document claim's text. */
@@ -503,7 +503,7 @@ describe('FAULTLINE_GROUNDING=parallel: a claim about the document itself makes 
       const res = await server.inject({
         method: 'POST', url: '/admin/verify-claims',
         headers: { 'x-api-key': SERVER_KEY, 'content-type': 'application/json' },
-        payload: { claims: [{ id: 'a', text: DOC_CLAIM }, { id: 'b', text: 'The focus of the analysis is on roughly 7B-class models.' }], grounding: 'parallel' },
+        payload: { claims: [{ id: 'a', text: DOC_CLAIM }, { id: 'b', text: 'The focus of the analysis is on small models.' }], grounding: 'parallel' },
       });
       expect(res.statusCode).toBe(200);
       expect(res.json().grounding).toBe('parallel');
