@@ -420,9 +420,11 @@ function classifyGeminiRetrieval(response: unknown): RetrievalOutcome {
   return uniqueSources.length > 0 ? { status: 'hits', sources: uniqueSources } : { status: 'zero', sources: [] };
 }
 
-/** The status and its fixed detail only, never the error or the reply. */
+/** With FAULTLINE_DEBUG set: the status and its fixed detail only, never the error or the reply. */
 function logRetrieveFailure(outcome: RetrievalOutcome): RetrievalOutcome {
-  console.error(`[gemini-grounding] retrieve failed: ${outcome.status} (${outcome.detail})`);
+  if (typeof process !== 'undefined' && process.env?.FAULTLINE_DEBUG) {
+    process.stderr.write(`[gemini-grounding] retrieve failed: ${outcome.status} (${outcome.detail})\n`);
+  }
   return outcome;
 }
 
