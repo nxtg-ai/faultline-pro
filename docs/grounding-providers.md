@@ -50,8 +50,8 @@ node scripts/accuracy-g0.mjs --set full --arm both --sample 200 --seed 20261105 
 python3 scripts/accuracy-g0-score.py --arms docs/research/data/grounding-arms.google.jsonl docs/research/data/grounding-arms.parallel.jsonl
 ```
 
-- The runner writes one JSONL row per claim for each arm: id, gold, verdict, sources count, cost in USD (retries included) and Google grounded calls.
-- It then writes `<base>.summary.json`: balanced accuracy per arm, the paired bootstrap 95% CI of BA(parallel) minus BA(google) (2,000 resamples, the scorer's fixed seed), the unverified rate, the mean cost per claim, and the Google grounded calls per arm.
+- The runner writes one JSONL row per claim for each arm: id, gold, verdict, sources count, `notCheckable`, cost in USD (retries included) and Google grounded calls.
+- It then writes `<base>.summary.json`: balanced accuracy per arm, the paired bootstrap 95% CI of BA(parallel) minus BA(google) (2,000 resamples, the scorer's fixed seed), the unverified rate, the not-checkable rate (rows with `notCheckable: true`, a part of the unverified rate), the mean cost per claim, and the Google grounded calls per arm.
 - `--arm parallel-fast` runs arm P on Parallel's `fast` mode as an optional extra.
 
 ## Why

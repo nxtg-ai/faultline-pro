@@ -1,5 +1,6 @@
 import type { Claim, VerificationResult, ClaimStatus } from '../types.js';
 import type { CritiqueResult } from '../providers/base_provider.js';
+import { isNotCheckable } from '../lib/verdict-guard.js';
 
 /**
  * Verification statuses that indicate a claim needs attention.
@@ -33,7 +34,7 @@ export interface CritiqueAnalysis {
  * A claim is included only when it has a corresponding entry in the
  * verifications record AND that entry's status is in FAILED_STATUSES.
  * Claims without a verification result are excluded (they were never
- * verified, not "failed").
+ * verified, not "failed"), and so are not-checkable claims (isNotCheckable).
  *
  * @param claims - All extracted claims from the scan
  * @param verifications - Verification results keyed by claim ID
@@ -45,7 +46,8 @@ export function extractFailedClaims(
 ): Claim[] {
   return claims.filter((claim) => {
     const verification = verifications[claim.id];
-    return verification !== undefined && FAILED_STATUSES.has(verification.status);
+    // A claim the sources do not address was not checked; it is not a failure (GoPMO 1.18.11.7.19).
+    return verification !== undefined && FAILED_STATUSES.has(verification.status) && !isNotCheckable(verification);
   });
 }
 

@@ -12,7 +12,7 @@ import { recordProviderSpend } from '../store/provider-spend.js';
 import { classifyKeyId } from '../plugins/auth.js';
 import { summarizeScanUsage } from '../store/consensus-cost.js';
 import { getProvider } from '@nxtg/faultline/providers/registry.js';
-import { abstainWithoutSource, billingSummary, isBillableVerdict } from '@nxtg/faultline/lib/verdict-guard.js';
+import { abstainWithoutSource, billingSummary, isBillableVerdict, isNotCheckable } from '@nxtg/faultline/lib/verdict-guard.js';
 import type { LLMProvider } from '@nxtg/faultline/providers/base_provider.js';
 import { DEFAULT_SCAN_PROVIDER, resolveApiKey } from '@nxtg/faultline/cli/provider-keys.js';
 import { bindEngineProvenance, retrieveThenVerify, usesParallelGrounding } from '@nxtg/faultline/cli/verify-runner.js';
@@ -125,6 +125,7 @@ const RESPONSE_SCHEMA = {
             apiError: { type: 'boolean' },
             parseFallback: { type: 'boolean' },
             noSourceAbstain: { type: 'boolean' },
+            notCheckable: { type: 'boolean' },
             apiErrorReason: { type: ['string', 'null'] },
             model: { type: ['string', 'null'] },
             sourcesCount: { type: 'number' },
@@ -188,6 +189,8 @@ export interface VerifyClaimOutcome {
   parseFallback: boolean;
   /** A supported, contradicted or mixed verdict with no source, reported as 'unverified' (VerificationResult.noSourceAbstain). */
   noSourceAbstain: boolean;
+  /** The judge said the sources do not address the claim; reported 'unverified', adds no risk (VerificationResult.notCheckable). */
+  notCheckable: boolean;
   /** Why an unchecked claim went unchecked (a label such as output_truncated); null on a verdict. */
   apiErrorReason: string | null;
   model: string | null;
@@ -243,7 +246,7 @@ async function verifyOne(provider: LLMProvider, providerName: string, input: Ver
       legs,
       billable: false,
       verdict: { claimId: input.id, status: 'unverified', apiError: true, apiErrorReason: 'provider_error', sources: [] },
-      outcome: { id: input.id, status: 'unverified', apiError: true, parseFallback: false, noSourceAbstain: false, apiErrorReason: 'provider_error', model: null, sourcesCount: 0 },
+      outcome: { id: input.id, status: 'unverified', apiError: true, parseFallback: false, noSourceAbstain: false, notCheckable: false, apiErrorReason: 'provider_error', model: null, sourcesCount: 0 },
     };
   }
   // Provenance is bound here with the runner's rule: the retriever comes from
@@ -265,6 +268,7 @@ async function verifyOne(provider: LLMProvider, providerName: string, input: Ver
       apiError: result.apiError === true,
       parseFallback: result.parseFallback === true,
       noSourceAbstain: result.noSourceAbstain === true,
+      notCheckable: isNotCheckable(result),
       apiErrorReason: result.apiError === true ? (result.apiErrorReason ?? 'provider_error') : null,
       // A failed call produced no verdict and no engine model record.
       model: result.apiError === true ? null : modelOf(legs, provider),

@@ -223,6 +223,18 @@ export interface VerificationResult {
    */
   noSourceAbstain?: boolean;
   /**
+   * True when the judge said the sources do not address the claim at all
+   * (`sourcesAddressClaim: false` in its reply, GoPMO 1.18.11.7.19): for
+   * example a claim about the scanned text itself, whose sources are about
+   * other things. Such a claim reads `unverified` with NOT_CHECKABLE_EXPLANATION
+   * and no sources, whatever status the judge gave (lib/verdict-guard.ts). It
+   * is not a failure and not a verdict: it adds no risk (calculateRisk leaves
+   * it out), is never billed, and maps to UNCHECKED / not_verifiable on the
+   * guard and MCP surfaces. Absent on every other result, so a claim the
+   * sources do address is unchanged.
+   */
+  notCheckable?: boolean;
+  /**
    * Google Search Suggestions for the grounded prompt behind this verdict,
    * passed through unaltered from `candidates[0].groundingMetadata`. Google's
    * grounding terms require them to be shown, unaltered, wherever this

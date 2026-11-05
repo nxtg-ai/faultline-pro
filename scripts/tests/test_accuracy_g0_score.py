@@ -409,6 +409,22 @@ class TestArms:
         assert block["mean_cost_usd_per_claim"] == pytest.approx(0.0351)
         assert block["google_grounded_calls"] == 60
         assert block["balanced_accuracy"]["value"] is not None
+        assert block["not_checkable_rate"] == 0
+
+    def test_not_checkable_rate_counts_flagged_unverified_rows_only(self):
+        # GoPMO 1.18.11.7.19: a not-checkable row is unverified and predicts nothing.
+        rows = arm_rows("parallel", 4, 0.0052, 0)
+        rows[1] = {**rows[1], "status": "unverified", "verdict": "unverified", "notCheckable": True, "sourcesCount": 0}
+        rows[2] = {**rows[2], "status": "unverified", "verdict": "unverified", "notCheckable": True, "sourcesCount": 0}
+        # The flag on a failure or a definite status is not counted.
+        rows[0] = {**rows[0], "notCheckable": True}
+        rows[3] = {**rows[3], "notCheckable": True}
+        items = scorer.join(rows, GOLD)
+        assert len(items) == 60
+        block = scorer.arm_block(items)
+        assert block["not_checkable_rate"] == pytest.approx(2 / 60)
+        assert block["unverified_rate"] == pytest.approx(3 / 60)
+        assert scorer.prediction(items[1]) is None
 
     def test_paired_difference_is_parallel_minus_google_with_a_2000_resample_ci(self, tmp_path):
         a = write_arm(tmp_path / "a.google.jsonl", arm_rows("google", 3, 0.0351, 1))

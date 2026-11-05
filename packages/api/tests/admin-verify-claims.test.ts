@@ -57,6 +57,10 @@ vi.mock('@google/genai', () => ({
           // A supported verdict whose search returned no source: not a billable verdict.
           return { ...grounded, candidates: [{ groundingMetadata: { groundingChunks: [] } }], text: JSON.stringify({ status: 'supported', explanation: EXPLANATION_SENTINEL }) };
         }
+        if (prompt.includes('NOT-ADDRESSED')) {
+          // The judge says the sources it found are not about the claim (GoPMO 1.18.11.7.19).
+          return { ...grounded, text: JSON.stringify({ status: 'contradicted', sourcesAddressClaim: false, explanation: EXPLANATION_SENTINEL }) };
+        }
         const status = prompt.includes('FALSE-CLAIM') ? 'contradicted' : prompt.includes('NO-VERDICT') ? 'unverified' : 'supported';
         return { ...grounded, text: JSON.stringify({ status, explanation: EXPLANATION_SENTINEL }) };
       },
@@ -271,8 +275,8 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
     const body = res.json();
     expect(body.provider).toBe('gemini');
     expect(body.results).toEqual([
-      { id: '10', status: 'contradicted', apiError: false, parseFallback: false, noSourceAbstain: false, apiErrorReason: null, model: 'gemini-2.5-flash', sourcesCount: 1, usage: GEMINI_USAGE },
-      { id: '11', status: 'supported', apiError: false, parseFallback: false, noSourceAbstain: false, apiErrorReason: null, model: 'gemini-2.5-flash', sourcesCount: 1, usage: GEMINI_USAGE },
+      { id: '10', status: 'contradicted', apiError: false, parseFallback: false, noSourceAbstain: false, notCheckable: false, apiErrorReason: null, model: 'gemini-2.5-flash', sourcesCount: 1, usage: GEMINI_USAGE },
+      { id: '11', status: 'supported', apiError: false, parseFallback: false, noSourceAbstain: false, notCheckable: false, apiErrorReason: null, model: 'gemini-2.5-flash', sourcesCount: 1, usage: GEMINI_USAGE },
     ]);
     expect(sdk.calls).toBe(2);
   });
@@ -281,7 +285,7 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
   it('reports a non-JSON model reply as apiError with parseFallback, never as mixed', async () => {
     const res = await post({ claims: [{ id: '3', text: 'NOT-JSON reply please.' }] });
     expect(res.json().results[0]).toEqual({
-      id: '3', status: 'unverified', apiError: true, parseFallback: true, noSourceAbstain: false, apiErrorReason: 'provider_unparseable', model: null, sourcesCount: 0,
+      id: '3', status: 'unverified', apiError: true, parseFallback: true, noSourceAbstain: false, notCheckable: false, apiErrorReason: 'provider_unparseable', model: null, sourcesCount: 0,
       // The unreadable reply still spent tokens, so it is priced.
       usage: GEMINI_USAGE,
     });
@@ -290,7 +294,7 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
   it('labels a reply cut off at the output ceiling output_truncated, never a verdict (GoPMO 1.18.11.7.18)', async () => {
     const res = await post({ claims: [{ id: '6', text: 'CUT-OFF reply.' }] });
     expect(res.json().results[0]).toEqual({
-      id: '6', status: 'unverified', apiError: true, parseFallback: false, noSourceAbstain: false, apiErrorReason: 'output_truncated', model: null, sourcesCount: 0,
+      id: '6', status: 'unverified', apiError: true, parseFallback: false, noSourceAbstain: false, notCheckable: false, apiErrorReason: 'output_truncated', model: null, sourcesCount: 0,
       usage: GEMINI_USAGE,
     });
   });
@@ -323,7 +327,7 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
     expect(res.json().billing.unbilled.map((u: { claimId: string }) => u.claimId).every((id: string) => id === '1' || id === '2')).toBe(true);
     expect([...keys].sort()).toEqual([
       'apiError', 'apiErrorReason', 'billedClaims', 'billing', 'claimId', 'costUsd', 'googleGroundingCalls', 'grounding',
-      'groundingCalls', 'id', 'inputTokens', 'model', 'noSourceAbstain', 'outputTokens', 'parseFallback', 'priced', 'provider',
+      'groundingCalls', 'id', 'inputTokens', 'model', 'noSourceAbstain', 'notCheckable', 'outputTokens', 'parseFallback', 'priced', 'provider',
       'reason', 'results', 'sourcesCount', 'status', 'unbilled', 'unbilledClaims', 'usage',
     ]);
   });
@@ -445,20 +449,24 @@ describe('POST /admin/verify-claims — the ledgers a scan writes', () => {
       { id: 'no-source', text: 'NO-SOURCE The Eiffel Tower is in Paris.' },
       { id: 'unverified', text: 'NO-VERDICT The Eiffel Tower is in Paris.' },
       { id: 'error', text: 'THROW-ME' },
+      { id: 'not-addressed', text: 'NOT-ADDRESSED This report covers three models.' },
     ] });
     expect(res.statusCode).toBe(200);
-    const results = res.json().results as Array<{ id: string; status: string; apiError: boolean; noSourceAbstain: boolean }>;
-    expect(results).toHaveLength(4);
+    const results = res.json().results as Array<{ id: string; status: string; apiError: boolean; noSourceAbstain: boolean; notCheckable: boolean; sourcesCount: number }>;
+    expect(results).toHaveLength(5);
     // The zero-source supported verdict is reported as unverified, flagged noSourceAbstain.
-    expect(results.map((r) => [r.id, r.status, r.apiError, r.noSourceAbstain])).toEqual([
-      ['sourced', 'supported', false, false],
-      ['no-source', 'unverified', false, true],
-      ['unverified', 'unverified', false, false],
-      ['error', 'unverified', true, false],
+    // The claim the judge said its sources do not address is unverified, flagged notCheckable, with no source.
+    expect(results.map((r) => [r.id, r.status, r.apiError, r.noSourceAbstain, r.notCheckable, r.sourcesCount])).toEqual([
+      ['sourced', 'supported', false, false, false, 1],
+      ['no-source', 'unverified', false, true, false, 0],
+      ['unverified', 'unverified', false, false, false, 1],
+      ['error', 'unverified', true, false, false, 0],
+      ['not-addressed', 'unverified', false, false, true, 0],
     ]);
+    expect(res.json().billing.unbilled).toContainEqual({ claimId: 'not-addressed', reason: 'not_checkable' });
     const rows = spendRows();
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ claimCount: 4, verifiedCount: 1 });
+    expect(rows[0]).toMatchObject({ claimCount: 5, verifiedCount: 1 });
     const events = getCostStore().getManagedEvents();
     expect(events).toHaveLength(1);
     expect(JSON.parse(scanCostLogRow(events[0]))).toMatchObject({ verified_count: 1 });

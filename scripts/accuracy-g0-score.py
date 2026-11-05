@@ -83,6 +83,11 @@ def prediction(item: dict) -> str | None:
     return {"supported": "true", "contradicted": "false"}.get(outcome(item))
 
 
+def is_not_checkable(item: dict) -> bool:
+    """An unverified row whose judge said the sources do not address the claim. It predicts nothing."""
+    return item.get("notCheckable") is True and outcome(item) == "unverified"
+
+
 def is_time_sensitive(claim: str) -> bool:
     return bool(YEAR_RE.search(claim) or TIME_WORD_RE.search(claim))
 
@@ -397,6 +402,9 @@ def arm_block(items: list[dict]) -> dict:
         "balanced_accuracy": with_ci(binary, binary_metrics)["balanced_accuracy"] if binary else None,
         "unverified_rate": unverified / n if n else None,
         "failure_rate": sum(1 for item in items if outcome(item) == "failure") / n if n else None,
+        # The share the judge marked not checkable (an unverified row with notCheckable true;
+        # GoPMO 1.18.11.7.19). Part of unverified_rate, reported on its own.
+        "not_checkable_rate": sum(1 for item in items if is_not_checkable(item)) / n if n else None,
         "mean_cost_usd_per_claim": (sum(costs) / n) if n else None,
         "total_cost_usd": sum(costs),
         "google_grounded_calls": int(sum(_number(item.get("googleGroundingCalls")) for item in items)),
@@ -460,6 +468,7 @@ def arms_readout(report: dict) -> str:
         cost = arm["mean_cost_usd_per_claim"]
         lines.append(
             f"  {name:<14} n={arm['n']} binary={arm['binary_n']}  BA {ba_text}  unverified {arm['unverified_rate']:.4f}  "
+            f"not checkable {(arm['not_checkable_rate'] or 0):.4f}  "
             f"mean cost ${(cost or 0):.5f}/claim  Google grounded calls {arm['google_grounded_calls']}"
         )
     for label, diff in report.get("ba_difference", {}).items():

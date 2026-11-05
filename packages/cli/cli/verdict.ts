@@ -22,6 +22,7 @@
  */
 
 import type { ClaimStatus, VerificationResult, Source } from '../types.js';
+import { isNotCheckable } from '../lib/verdict-guard.js';
 
 /**
  * Verdicts exposed by the guard CLI and the MCP server.
@@ -97,7 +98,9 @@ export interface ClaimVerdict {
    * not help until it has credits), its
    * reply could not be read ('provider_unparseable', ours, not a verdict), its
    * reply was cut off at the output ceiling ('output_truncated'), or the claim
-   * was not verifiable. Distinct from a claim checked and found unsupported.
+   * was not verifiable ('not_verifiable': no verification record, or the
+   * judge said the sources do not address it, `notCheckable`). Distinct from a
+   * claim checked and found unsupported.
    */
   unchecked_reason?: UncheckedReason;
 }
@@ -133,7 +136,8 @@ export function toClaimVerdict(
     };
   }
 
-  const verdict = toVerdict(verification.status, verification.apiError);
+  // A claim the sources do not address was not checked, and is not a provider failure.
+  const verdict = isNotCheckable(verification) ? 'UNCHECKED' : toVerdict(verification.status, verification.apiError);
   const sources = Array.isArray(verification.sources) ? verification.sources : [];
   const evidence_urls = sources
     .map((s) => s?.uri)

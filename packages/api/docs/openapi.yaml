@@ -195,6 +195,14 @@ components:
             $ref: '#/components/schemas/Source'
         independentEvidence:
           $ref: '#/components/schemas/IndependentEvidence'
+        notCheckable:
+          type: boolean
+          description: >
+            True when the judge said the sources found do not address the claim
+            at all, for example a claim about the scanned text itself. The claim
+            reads `unverified` with no sources and a fixed explanation. It is
+            not checkable, not a failed check: it adds no risk to `overallRisk`
+            and is never billed. Absent on every other result.
 
     RetrievalStatus:
       type: string
@@ -506,8 +514,8 @@ components:
         source and claims where the provider failed are not billed; `unbilled`
         lists them with the reason, in the result's claim order.
         Reasons: the provider's `apiErrorReason` (else `provider_error`),
-        `no_source`, the verdict itself (`unverified`, `skipped`), or
-        `no_retriever`. Reporting only; billing is unchanged.
+        `no_source`, `not_checkable` (the sources do not address the claim),
+        the verdict itself (`unverified`, `skipped`), or `no_retriever`. Reporting only; billing is unchanged.
       required: [billedClaims, unbilledClaims, unbilled]
       properties:
         billedClaims: { type: integer, minimum: 0 }
