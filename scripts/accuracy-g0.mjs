@@ -718,8 +718,8 @@ async function runArm(options, deps = {}) {
     const items = options.sample !== undefined ? seededSample(selected, options.sample, options.seed) : selected;
     if (options.sample !== undefined) log(`sample ${items.length} of ${selected.length} items, seed ${options.seed}`);
     const ledger = ledgerPath(options.out);
-    if (!options.resume && (existsSync(options.out) || existsSync(ledger))) {
-      throw new RunStop(EXIT.REFUSED, `REFUSED: ${options.out} or its attempt ledger exists; pass --resume to continue it`);
+    if (!options.resume && (existsSync(options.out) || existsSync(ledger) || existsSync(spendPath(options.out)))) {
+      throw new RunStop(EXIT.REFUSED, `REFUSED: ${options.out} or its attempt ledger exists, or its spend ledger exists; pass --resume to continue it`);
     }
     mkdirSync(path.dirname(options.out), { recursive: true });
     const done = readDone(options.out);

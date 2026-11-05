@@ -761,6 +761,17 @@ describe('accuracy-g0 runner: grounding arms and a seeded subsample (GoPMO 1.18.
     expect(state.verifyCalls).toBe(before); // no fifth call
   }, 30_000);
 
+  it('a fresh run refuses a leftover spend ledger (exit 2, no verify call)', async () => {
+    // Codex round 3 on the grounding PR: a stale spend ledger was summed into a fresh run.
+    const out = join(dir, 'stale.jsonl');
+    writeFileSync(`${out}.spend.jsonl`, JSON.stringify({ id: 4, arm: 'google', attempt: 1, costUsd: 0.007, googleGroundingCalls: 1 }) + '\n');
+    const before = state.verifyCalls;
+    const r = await run(['--set', 'full', '--arm', 'google', '--sample', '1', '--seed', '19', '--out', out]);
+    expect(r.code).toBe(2);
+    expect(r.out).toMatch(/spend ledger exists; pass --resume/);
+    expect(state.verifyCalls).toBe(before);
+  });
+
   it('--resume refuses an out file written by another arm (exit 2, no verify call)', async () => {
     // Codex review of the grounding PR, finding 2: google rows satisfied a parallel resume.
     const out = join(dir, 'mixed.jsonl');
