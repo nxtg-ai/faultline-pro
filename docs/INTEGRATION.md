@@ -537,7 +537,7 @@ An empty `sources` list means the second retriever found nothing. OpenAI's terms
 
 - adds no risk: `overallRisk` is computed as if it were not in the scan;
 - is not billed (`billing.unbilled` reason `not_checkable`) and is not counted toward the scan quota or the claim meter;
-- reads `UNCHECKED` with `unchecked_reason: "not_verifiable"` on `faultline guard` and the MCP `verify_claims` tool, which is not a degraded scan and does not trip `--fail-on`;
+- reads `UNCHECKED` with `unchecked_reason: "not_verifiable"` on `faultline guard` and the MCP `verify_claims` tool, which is not a degraded scan and does not trip `--fail-on`. It is not a verdict for the MCP tool's `risk_score`: a scan whose only claims are not checkable gets `risk_score: null` and "risk UNKNOWN";
 - is left out of the critique's failed claims and the weakest-link ranking.
 
 This applies to a Gemini verify in both grounding modes (`google` and `parallel`). It also applies to a world claim whose sources do not address it. A claim the sources do address keeps its verdict. Consensus votes are unchanged. Only a JSON `true` or `false` is read; a reply without the key keeps its verdict.

@@ -16,6 +16,7 @@ import {
   type Transport,
 } from '../transport.js';
 import { toClaimVerdict, toRiskScore, isRealVerdict, type ClaimVerdict } from '../verdict.js';
+import { isNotCheckable } from '../../lib/verdict-guard.js';
 import { writeAuditRecord, type AuditWriteResult } from './audit.js';
 
 export { isGrounded, resolveTransport };
@@ -228,9 +229,12 @@ export async function verifyClaims(
   // A risk band computed over zero real verdicts is not a risk reading, so no
   // score is given for it. (The engine's band for such a scan is never "low":
   // an unverified claim raises it to at least medium, half or more to high.)
+  // A not-checkable claim is no verdict either: the engine leaves it out of the
+  // band, so a scan of only such claims reads "low" with nothing behind it
+  // (GoPMO 1.18.11.7.19).
   const realVerdictCount = allClaims.filter((c) => {
     const v = result.verifications?.[c.id];
-    return v && v.apiError !== true && v.status !== 'skipped' && v.status !== 'loading';
+    return v && v.apiError !== true && v.status !== 'skipped' && v.status !== 'loading' && !isNotCheckable(v);
   }).length;
 
   const unsourcedCount = claims.filter(

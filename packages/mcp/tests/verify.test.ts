@@ -3,6 +3,8 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { verifyClaims, autoDetectProvider, isGrounded, AUDIT_OFF_REASON, NO_KEY_MESSAGE, hasNoKey } from '../src/verify.js';
+import { calculateRisk } from '@nxtg/faultline/lib/overall-risk.js';
+import { notCheckableVerdict } from '@nxtg/faultline/lib/verdict-guard.js';
 import type { ScanResult } from '@nxtg/faultline/cli/scan.js';
 import { ExtractionError } from '@nxtg/faultline/providers/extraction-error.js';
 
@@ -500,5 +502,47 @@ describe('verifyClaims — no key', () => {
       { scanFn: async () => scanResult({ provider: 'Google Gemini' }), transport: { mode: 'local' } },
     );
     expect(out.summary).not.toMatch(/SYNTHETIC/);
+  });
+});
+
+// GoPMO 1.18.11.7.19: a not-checkable claim is no verdict, so a scan of only
+// such claims has no risk reading ("no reading without evidence").
+describe('verifyClaims — not-checkable claims give no risk reading', () => {
+  const DOC = 'This report covers three models.';
+  const run = async (verifications: ScanResult['verifications'], claims: ScanResult['claims']) =>
+    verifyClaims({ text: 'x' }, {
+      audit: false,
+      transport: { mode: 'local' },
+      scanFn: async () => ({
+        input: 'x', provider: 'gemini', claims, verifications,
+        overallRisk: calculateRisk(verifications),
+      }) as unknown as ScanResult,
+    });
+
+  it('all not checkable: risk_score null and risk UNKNOWN, not LOW', async () => {
+    const nc = notCheckableVerdict({ claimId: 'd1', status: 'contradicted', explanation: 'e', sources: [{ title: 't', uri: 'https://t.example' }] });
+    expect(calculateRisk({ d1: nc })).toBe('low');
+    const out = await run({ d1: nc }, [{ id: 'd1', text: DOC, type: 'fact', importance: 3 }]);
+    expect(out.claims).toHaveLength(1);
+    expect(out.claims[0]).toMatchObject({ verdict: 'UNCHECKED', unchecked_reason: 'not_verifiable' });
+    expect(out.risk_score).toBeNull();
+    expect(out.summary).toMatch(/risk UNKNOWN/);
+    expect(out.summary).not.toMatch(/risk LOW/);
+    expect(out.degraded).toBe(false);
+  });
+
+  it('beside one real verdict: the score is that verdict\'s reading', async () => {
+    const nc = notCheckableVerdict({ claimId: 'd1', status: 'contradicted', explanation: 'e', sources: [] });
+    const verifications = {
+      d1: nc,
+      w1: { claimId: 'w1', status: 'supported' as const, explanation: 'ok', sources: [{ title: 's', uri: 'https://s.example' }] },
+    };
+    const out = await run(verifications, [
+      { id: 'd1', text: DOC, type: 'fact', importance: 3 },
+      { id: 'w1', text: 'The Eiffel Tower is in Paris.', type: 'fact', importance: 3 },
+    ]);
+    expect(out.claims).toHaveLength(2);
+    expect(out.risk_score).toBe(15);
+    expect(out.summary).toMatch(/risk LOW/);
   });
 });

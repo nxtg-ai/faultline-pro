@@ -12,7 +12,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **A claim the sources do not address is not checkable, and adds no risk.** The Gemini verify prompt in both grounding modes (`google` and `parallel`) now asks the judge one more thing: do the sources say anything about the subject of the claim (`"sourcesAddressClaim": true | false` in its JSON reply). When the answer is `false`, the claim is `unverified` with `notCheckable: true`, no sources, and a fixed explanation, whatever status the judge gave. A claim about the scanned text itself ("This report covers three models.") used to be judged against unrelated sources and come back `contradicted`, which raised the scan's risk. Now:
   - `overallRisk` leaves the claim out.
   - It is never billed, and `billing.unbilled` gives the reason `not_checkable`.
-  - `faultline guard` and the MCP `verify_claims` tool show it as `UNCHECKED`, reason `not_verifiable`, not as a degraded scan.
+  - `faultline guard` and the MCP `verify_claims` tool show it as `UNCHECKED`, reason `not_verifiable`, not as a degraded scan. On the MCP tool it is no verdict for `risk_score`, so a scan of only such claims reads `risk_score: null` ("risk UNKNOWN"), not low.
   - The critique and the weakest-link ranking leave it out.
   - A world claim whose sources do not address it is also not checkable. This is intended.
   - A claim the sources do address keeps today's verdict. A reply without the key is read as before, and the consensus prompts are unchanged.
