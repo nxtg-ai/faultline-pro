@@ -26,13 +26,13 @@ jobs:
     container:
       image: semgrep/semgrep
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       # Without --error, semgrep exits 0 when it only has findings and non-zero
       # when it fails, so a crash fails this step. Findings are judged by the gate job.
       - name: Run Semgrep
         run: semgrep scan --config auto --sarif --output semgrep.sarif
       - name: Upload SARIF artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: semgrep-sarif
           path: semgrep.sarif
@@ -41,7 +41,7 @@ jobs:
       # Code scanning is the triage surface (free on a public repo). The upload was
       # removed while the repo was private, which froze the alerts at April's results.
       - name: Upload SARIF to code scanning
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@9418214df1f2c4b8128c770156c409013b07d6b9 # v3
         with:
           sarif_file: semgrep.sarif
           category: semgrep
@@ -50,12 +50,12 @@ jobs:
     name: Bearer (Data Privacy)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       # exit-code 0 applies only to "findings reported"; a Bearer error still
       # exits non-zero (Bearer pkg/commands/artifact/run.go). The version is
       # pinned so the rule set cannot drift under the baseline.
       - name: Run Bearer
-        uses: bearer/bearer-action@v2
+        uses: bearer/bearer-action@828eeb928ce2f4a7ca5ed57fb8b59508cb8c79bc # v2
         with:
           version: 2.1.1
           format: sarif
@@ -63,7 +63,7 @@ jobs:
           diff: false
           exit-code: 0
       - name: Upload SARIF artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bearer-sarif
           path: bearer.sarif
@@ -75,15 +75,15 @@ jobs:
     needs: [semgrep, bearer]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: semgrep-sarif
           path: sarif/semgrep
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: bearer-sarif
           path: sarif/bearer
@@ -100,8 +100,8 @@ jobs:
     name: npm audit gate (production deps)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
       # npm audit exits 1 both for "advisories found" and for errors, so its exit
@@ -119,7 +119,7 @@ jobs:
         run: node scripts/security-gate.mjs --npm npm-audit.json --accepted security/accepted-advisories.json
       - name: Upload audit report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: npm-audit-json
           path: npm-audit.json
@@ -129,8 +129,8 @@ jobs:
     name: Bandit (Python SAST)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
       - name: Install Bandit
@@ -141,7 +141,7 @@ jobs:
         run: bandit -r . -lll -iii -f sarif -o bandit.sarif --exclude ./.venv,./node_modules,./.claude
       - name: Upload SARIF artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bandit-sarif
           path: bandit.sarif
@@ -156,7 +156,7 @@ jobs:
     env:
       GITLEAKS_VERSION: 8.30.1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
       # Pinned release URL plus checksum. The old "latest/download" URL with a
@@ -176,14 +176,14 @@ jobs:
         run: gitleaks detect --source . --redact --verbose --report-format sarif --report-path gitleaks.sarif --exit-code 1
       - name: Upload SARIF artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: gitleaks-sarif
           path: gitleaks.sarif
           retention-days: 30
       - name: Upload SARIF to code scanning
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@9418214df1f2c4b8128c770156c409013b07d6b9 # v3
         with:
           sarif_file: gitleaks.sarif
           category: gitleaks

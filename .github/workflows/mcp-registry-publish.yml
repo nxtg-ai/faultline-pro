@@ -25,7 +25,7 @@ jobs:
       # sha256 of mcp-publisher_linux_amd64.tar.gz, from that release's registry_1.8.1_checksums.txt
       MCP_PUBLISHER_SHA256: a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: server.json version equals the API version
         run: |
