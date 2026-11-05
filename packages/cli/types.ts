@@ -202,7 +202,9 @@ export interface VerificationResult {
    * absent on every other path, and removed when the engine abstains
    * (abstainWithoutSource: a verdict Faultline rewrote is not Google's
    * grounded result, so it does not carry Google's Search Suggestions).
-   * Never persisted to disk by Faultline.
+   * The hosted API and the scan cache never write it to disk. The stdio MCP
+   * server's local history (.faultline/history, on the user's own machine,
+   * under the user's own key) stores the full scan result, including it.
    */
   searchEntryPoint?: { renderedContent: string };
   /** Who produced this verdict and when (see VerdictProvenance). */
