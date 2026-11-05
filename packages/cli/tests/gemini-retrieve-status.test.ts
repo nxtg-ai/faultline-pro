@@ -73,6 +73,22 @@ describe('retrieveSourcesWithStatus', () => {
     expect(await retrieveSourcesWithStatus(CLAIM, 'k')).toEqual({ status: 'provider_error', sources: [], detail: 'request failed' });
   });
 
+  it('with FAULTLINE_DEBUG set, a failure writes one line naming only the status and detail', async () => {
+    const saved = process.env.FAULTLINE_DEBUG;
+    process.env.FAULTLINE_DEBUG = '1';
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      sdk.error = Object.assign(new Error('SECRET CLAIM sk-secret upstream body'), { status: 503 });
+      await retrieveSourcesWithStatus(CLAIM, 'k');
+      const logged = write.mock.calls.map((c) => String(c[0])).join('');
+      expect(logged.length).toBeGreaterThan(0);
+      expect(logged).toBe('[gemini-grounding] retrieve failed: provider_error (http 503)\n');
+    } finally {
+      write.mockRestore();
+      if (saved === undefined) delete process.env.FAULTLINE_DEBUG; else process.env.FAULTLINE_DEBUG = saved;
+    }
+  });
+
   it('timeout: the call was stopped by a deadline', async () => {
     sdk.error = new DOMException('The operation timed out.', 'TimeoutError');
     expect(await retrieveSourcesWithStatus(CLAIM, 'k')).toEqual({ status: 'timeout', sources: [], detail: 'deadline reached' });
