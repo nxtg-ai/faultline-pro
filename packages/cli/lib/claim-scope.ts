@@ -385,10 +385,11 @@ export function isScopeStatement(tokens: string[]): boolean {
 // When in doubt it answers false. A miss costs one ordinary check of a claim;
 // a false positive is a world claim nobody checked.
 //
-// Known limit: with no lexicon, a noun phrase ending in an -s verb after a
-// determiner ("... and the Arctic melts") has the same shape as one ending in a
-// plural noun ("... and the parameter counts"), so the shape cannot tell them
-// apart.
+// With no lexicon, a noun phrase ending in an -s verb ("... and the Arctic
+// melts") has the same shape as one ending in a plural noun ("... the parameter
+// counts"). The shape cannot tell them apart, so it refuses both: any noun
+// phrase of two or more content words whose last word ends in "s" (not "ss",
+// "us", "is") fails. This trades precision for safety on purpose.
 // ---------------------------------------------------------------------------
 
 /** Words that open a second clause or introduce a proposition. */
@@ -441,6 +442,9 @@ const DETERMINERS = new Set([
   'some', 'any', 'both', 'several', 'many', 'few', 'fewer', 'more', 'less', 'most', 'roughly',
   'approximately', 'around', 'nearly', 'almost', 'only', 'just', 'than', 'least', 'one', 'other',
   'no', 'such', 'either', 'neither', 'another',
+  // Number words and pointers count as determiners: "10 billion parameters", "the following sections".
+  'hundred', 'thousand', 'million', 'billion', 'trillion', 'dozen',
+  ...POINTERS,
   ...NUMBER_WORDS,
 ]);
 
@@ -476,6 +480,11 @@ function looksPast(word: string): boolean {
 function looksPluralOrThirdPerson(word: string): boolean {
   return !word.includes('-') && word.length > 3 && word.endsWith('s')
     && !word.endsWith('ss') && !word.endsWith('us') && !word.endsWith('is') && !word.endsWith("'s");
+}
+
+/** Ends in "s" but not "ss", "us" or "is": could be a third-person verb ("kills", "melts"). */
+function mayBeFiniteVerb(word: string): boolean {
+  return word.endsWith('s') && !word.endsWith('ss') && !word.endsWith('us') && !word.endsWith('is');
 }
 
 /** Never allowed in the object: clause markers, auxiliaries, verbs, pronouns, other-language words. */
@@ -561,6 +570,12 @@ function isNounPhraseList(words: string[]): boolean {
       i++;
     }
     if (content > MAX_CONTENT_RUN) return false;
+    // "the drug kills", "the Arctic melts": two or more content words ending in an
+    // -s word may be a subject and its finite verb. "the parameter counts" has the
+    // same shape, so it fails too. That trades precision for safety on purpose:
+    // verifying a real scope statement costs one search, while skipping a world
+    // claim is the worst outcome. A single-word head ("three models") still passes.
+    if (content >= 2 && mayBeFiniteVerb(words[i - 1])) return false;
     // Determiners alone are not a noun phrase; numbers alone are ("after 2023").
     if (content === 0 && !words.slice(start, i).some(isNumberish)) return false;
     if (i >= n) return true;

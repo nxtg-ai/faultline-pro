@@ -19,26 +19,27 @@ import type { Claim } from '../types.js';
 /** Statements about the document's own scope or structure. */
 const DOCUMENT_RELATIVE: string[] = [
   'The focus of the analysis is on roughly 7B-class models.',
-  'The analysis does not focus on 70B+ models with small active parameter counts.',
-  'This report covers three open-weight models.',
+  'The analysis does not focus on 70B+ models.',
+  'This report covers three models.',
+  'This report covers models.',
   'This document compares Llama 3 8B and Mistral 7B.',
   'Here we compare latency on consumer GPUs.',
-  'We exclude mixture-of-experts models from the comparison.',
-  'This comparison excludes closed-weight models.',
+  'We exclude mixture-of-experts routing from the comparison.',
+  'This comparison excludes closed-weight software.',
   'This post is about running language models locally.',
-  'This section discusses licensing terms.',
+  'This section discusses licensing.',
   'The write-up doesn’t cover fine-tuning.',
   'The main focus of this report is inference cost.',
   'Below, we compare memory use at 4-bit and 8-bit precision.',
-  'In this report, we compare three open-weight models.',
-  'These sections cover licensing and hardware requirements.',
+  'In this report, we compare three models.',
+  'These sections cover licensing and hardware.',
   'The report is organised into four sections.',
 ];
 
 /** The ten document-relative formulations the independent review found missed. */
 const REVIEW_DOCUMENT_RELATIVE: string[] = [
-  'This study focuses on small language models.',
-  'Our analysis focuses on open source models.',
+  'This study focuses on models.',
+  'Our analysis focuses on open source software.',
   'This answer considers only models with fewer than 10 billion parameters.',
   'I discuss three approaches in the following sections.',
   'We discuss the limitations of this comparison.',
@@ -105,6 +106,36 @@ const MOVED_TO_WORLD: Array<[string, string]> = [
   // Moved by the allow-shape (Codex review of 1cf17d3): the object is not a plain noun phrase.
   ['We focus on models that run on a single GPU.', '"that run on a single GPU" is a relative clause; whether a model runs on one GPU is checkable'],
   ['The overview only includes models released after 2023.', '"released after 2023" is a participle clause; a release date is checkable'],
+];
+
+/**
+ * Formerly expected true, now false by the "-s word ends a phrase of two or more
+ * content words" rule: the last word could be a finite verb ("the drug kills"),
+ * and the shape cannot tell "parameter counts" from "Arctic melts". Each is a real
+ * scope statement that now costs one ordinary check; that is the intended trade.
+ */
+const MOVED_BY_FINAL_S_RULE: string[] = [
+  'The analysis does not focus on 70B+ models with small active parameter counts.',
+  'This report covers three open-weight models.',
+  'We exclude mixture-of-experts models from the comparison.',
+  'This comparison excludes closed-weight models.',
+  'This section discusses licensing terms.',
+  'In this report, we compare three open-weight models.',
+  'These sections cover licensing and hardware requirements.',
+  'This study focuses on small language models.',
+  'Our analysis focuses on open source models.',
+];
+
+/** The residual the allow-shape could not close before: a subject and an -s verb that read as a noun phrase. */
+const FINAL_S_WORLD: Array<[string, string]> = [
+  ['This report covers the drug kills.', 'reproduction: "drug kills"'],
+  ['This report covers climate and the Arctic melts.', 'reproduction: "Arctic melts"'],
+  ['This report covers the vaccine works.', '"vaccine works"'],
+  ['This report covers the policy fails.', '"policy fails"'],
+  ['Our analysis focuses on the economy grows.', '"economy grows"'],
+  ['This section discusses the virus spreads.', '"virus spreads"'],
+  ['This report covers inflation and the dollar falls.', '"dollar falls" after "and"'],
+  ['This report covers the parameter counts.', 'a real plural, refused on purpose: same shape'],
 ];
 
 /** Codex review of 1cf17d3: the two P1 reproductions, each a world claim inside a scope sentence. */
@@ -215,6 +246,26 @@ describe('isDocumentRelative: the allow-shape (Codex review of 1cf17d3)', () => 
     expect(isDocumentRelative(text), `expected a world claim (${why}): ${text}`).toBe(false);
   });
 
+  it.each(FINAL_S_WORLD)('final -s word false: %s (%s)', (text, why) => {
+    expect(isScopeStatement(scopeTokens(text)), 'subject and verb alone read as scope').toBe(true);
+    expect(isDocumentRelative(text), `expected a world claim (${why}): ${text}`).toBe(false);
+  });
+
+  it.each(MOVED_BY_FINAL_S_RULE)('moved to verified by the final -s rule: %s', (text) => {
+    expect(isScopeStatement(scopeTokens(text))).toBe(true);
+    expect(isDocumentRelative(text), `now verified on purpose: ${text}`).toBe(false);
+  });
+
+  it('a single-word plural head still passes; two content words ending in -s do not', () => {
+    expect(isDocumentRelative('This report covers models.')).toBe(true);
+    expect(isDocumentRelative('This report covers three models.')).toBe(true);
+    expect(isDocumentRelative('This report covers language models.')).toBe(false);
+    // "ss", "us" and "is" endings are not read as a verb.
+    expect(isDocumentRelative('This report covers business class.')).toBe(true);
+    expect(isDocumentRelative('This report covers consumer GPUs.')).toBe(true);
+    expect(isDocumentRelative('This report covers risk analysis.')).toBe(true);
+  });
+
   it('the unhyphenated and hyphenated "asserts that" both return false', () => {
     expect(isDocumentRelative('This report covers climate and asserts that the Earth is flat.')).toBe(false);
     expect(isDocumentRelative('This report covers climate and asserts-that the Earth is flat.')).toBe(false);
@@ -227,18 +278,18 @@ describe('isDocumentRelative: the allow-shape (Codex review of 1cf17d3)', () => 
   });
 
   it('each shape rule does its own work: the same scope sentence passes, then fails on one change', () => {
-    const base = 'This report covers three open-weight models.';
+    const base = 'This report covers three open-weight software.';
     expect(isDocumentRelative(base)).toBe(true);
     // A final full stop is the only punctuation allowed after the verb.
-    expect(isDocumentRelative('This report covers three open-weight models')).toBe(true);
-    expect(isDocumentRelative('This report covers three, open-weight models.')).toBe(false);
+    expect(isDocumentRelative('This report covers three open-weight software')).toBe(true);
+    expect(isDocumentRelative('This report covers three, open-weight software.')).toBe(false);
     // Clause marker, auxiliary, pronoun, other-language word.
-    expect(isDocumentRelative('This report covers three open-weight models which')).toBe(false);
-    expect(isDocumentRelative('This report covers three open-weight models are.')).toBe(false);
-    expect(isDocumentRelative('This report covers three open-weight models and them.')).toBe(false);
-    expect(isDocumentRelative('This report covers three open-weight models und.')).toBe(false);
+    expect(isDocumentRelative('This report covers three open-weight software which')).toBe(false);
+    expect(isDocumentRelative('This report covers three open-weight software are.')).toBe(false);
+    expect(isDocumentRelative('This report covers three open-weight software and them.')).toBe(false);
+    expect(isDocumentRelative('This report covers three open-weight software und.')).toBe(false);
     // Non-ASCII anywhere.
-    expect(isDocumentRelative('This report covers three open-weight modèles.')).toBe(false);
+    expect(isDocumentRelative('This report covers three open-weight softwäre.')).toBe(false);
     // Bounded length: 12 object words pass, 13 do not.
     expect(isDocumentRelative('This report covers costs of bb cc in dd ee for ff gg at hh.')).toBe(true);
     expect(isDocumentRelative('This report covers costs of bb cc in dd ee for ff gg at hh ii.')).toBe(false);
@@ -290,8 +341,8 @@ describe('isDocumentRelative: each exclusion does its own work', () => {
   });
 
   it('"we exclude" needs the document as the thing excluded from', () => {
-    expect(isDocumentRelative('We exclude closed models from this analysis.')).toBe(true);
-    expect(isDocumentRelative('We exclude closed models from production.')).toBe(false);
+    expect(isDocumentRelative('We exclude proprietary software from this analysis.')).toBe(true);
+    expect(isDocumentRelative('We exclude proprietary software from production.')).toBe(false);
   });
 });
 

@@ -348,7 +348,7 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
 describe('POST /admin/verify-claims — claims about the document itself', () => {
   // FALSE-CLAIM makes the mock answer 'contradicted' if the claim ever reached it. It sits
   // inside the noun phrase: a trailing second sentence would fail the allow-shape (below).
-  const DOC_CLAIM = 'The analysis does not focus on FALSE-CLAIM models with small active parameter counts.';
+  const DOC_CLAIM = 'The analysis does not focus on 70B+ FALSE-CLAIM.';
 
   it('verifies a scope sentence followed by a second sentence (the allow-shape fails closed)', async () => {
     const res = await post({ claims: [{ id: 'two', text: 'The analysis does not focus on 70B+ models with small active parameter counts. FALSE-CLAIM' }] });

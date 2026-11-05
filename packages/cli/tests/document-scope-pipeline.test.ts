@@ -12,7 +12,9 @@ import { renderReport, renderReportAs, DOCUMENT_SCOPE_HEADING } from '../cli/rep
 import type { Claim, VerificationResult } from '../types.js';
 
 const DOC_FOCUS = 'The focus of the analysis is on roughly 7B-class models.';
-const DOC_EXCLUDES = 'The analysis does not focus on 70B+ models with small active parameter counts.';
+// The report's original sentence ended "... with small active parameter counts"; a phrase of two
+// or more words ending in an -s word is now verified on purpose (lib/claim-scope.ts), so the fixture is shorter.
+const DOC_EXCLUDES = 'The analysis does not focus on 70B+ models.';
 const WORLD_1 = 'Mistral 7B was released in September 2023.';
 const WORLD_2 = 'Llama 2 was released by Meta in July 2023.';
 
