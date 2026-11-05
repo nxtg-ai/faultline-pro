@@ -245,7 +245,8 @@ export function classifyRetrievalError(err: unknown): RetrievalOutcome {
 }
 
 /** Response statuses that end a search without a usable answer. */
-const TERMINAL_FAILURES = new Set(['failed', 'cancelled', 'incomplete']);
+/** Response statuses named in the detail; any other non-completed status reads 'response not completed'. */
+const NAMED_STATUSES = new Set(['failed', 'cancelled', 'incomplete', 'in_progress', 'queued']);
 
 const PARSE_ERROR: RetrievalOutcome = { status: 'parse_error', sources: [], detail: 'unexpected shape' };
 
@@ -254,7 +255,8 @@ const PARSE_ERROR: RetrievalOutcome = { status: 'parse_error', sources: [], deta
  * message that cites pages never turns a failed search into hits:
  *
  * - a content-filter stop is policy_block;
- * - a response status of failed, cancelled or incomplete, a response error
+ * - a response status other than completed (failed, cancelled, incomplete,
+ *   in_progress, queued or anything else), a response error
  *   object, or a web_search_call item that failed is provider_error (or
  *   timeout or policy_block when the error code says so);
  * - a refusal is policy_block;
@@ -272,8 +274,12 @@ export function classifyResponsesPayload(data: ResponsesPayload, maxResults = MA
     return { status: 'policy_block', sources: [], detail: 'content filter' };
   }
   if (data.error !== undefined && data.error !== null) return classifyResponseError(data.error);
-  if (typeof data.status === 'string' && TERMINAL_FAILURES.has(data.status)) {
-    return { status: 'provider_error', sources: [], detail: `response ${data.status}` };
+  // Only a completed response (or one with no status at all) is a finished
+  // search, as responsesFailure rules for retrieve(): an in_progress or queued
+  // reply's citations are partial and never count as hits or zero.
+  if (data.status !== undefined && data.status !== null && data.status !== 'completed') {
+    const named = typeof data.status === 'string' && NAMED_STATUSES.has(data.status);
+    return { status: 'provider_error', sources: [], detail: named ? `response ${data.status}` : 'response not completed' };
   }
   if (!data.output.every(isObject)) return PARSE_ERROR;
   if (data.output.some((it) => it.type === 'web_search_call' && it.status === 'failed')) {

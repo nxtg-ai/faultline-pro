@@ -211,6 +211,17 @@ describe('retrieveWithStatus: how the search ended, never a throw', () => {
     expect((await r.retrieveWithStatus(CLAIM)).status).toBe('timeout');
   });
 
+  it('parse_error: a malformed result entry, even beside a valid one; retrieve() keeps main\'s rule', async () => {
+    const r = new ParallelSearchRetriever('pk-1');
+    for (const body of [{ results: [null] }, { results: [{ url: 42 }] }, { results: ['garbage'] }, { results: [RESULTS.results[0], null] }]) {
+      mockFetch.mockResolvedValueOnce(json(body));
+      expect(await r.retrieveWithStatus(CLAIM)).toEqual({ status: 'parse_error', sources: [], detail: 'unexpected shape' });
+    }
+    // retrieve() is unchanged: it keeps the valid entry and drops the malformed one.
+    mockFetch.mockResolvedValueOnce(json({ results: [RESULTS.results[0], null] }));
+    expect((await r.retrieve(CLAIM)).map((s) => s.uri)).toEqual(['https://a.example/1']);
+  });
+
   it('parse_error: a 200 that is not JSON, or has no results list', async () => {
     mockFetch.mockResolvedValueOnce(new Response('<html>', { status: 200 }));
     const r = new ParallelSearchRetriever('pk-1');

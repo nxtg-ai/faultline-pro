@@ -403,12 +403,17 @@ function classifyGeminiRetrieval(response: unknown): RetrievalOutcome {
   if (typeof finish === 'string' && GEMINI_POLICY_STOPS.has(finish)) return { status: 'policy_block', sources: [], detail: 'safety stop' };
   if (finish !== undefined && finish !== 'STOP') return { status: 'provider_error', sources: [], detail: 'candidate not finished' };
 
-  const chunks = candidate.groundingMetadata?.groundingChunks;
+  const metadata: unknown = candidate.groundingMetadata;
+  // No metadata on a normal finish is a search that found nothing; metadata
+  // that is not an object is unreadable, never zero.
+  if (metadata === undefined || metadata === null) return { status: 'zero', sources: [] };
+  if (typeof metadata !== 'object' || Array.isArray(metadata)) return GEMINI_PARSE_ERROR;
+  const chunks = (metadata as { groundingChunks?: unknown }).groundingChunks;
   if (chunks === undefined || chunks === null) return { status: 'zero', sources: [] };
   if (!Array.isArray(chunks)) return GEMINI_PARSE_ERROR;
   const sources: Array<{ title: string; uri: string }> = [];
   for (const chunk of chunks) {
-    if (typeof chunk !== 'object' || chunk === null) return GEMINI_PARSE_ERROR;
+    if (typeof chunk !== 'object' || chunk === null || Array.isArray(chunk)) return GEMINI_PARSE_ERROR;
     const web = (chunk as { web?: { title?: unknown; uri?: unknown } }).web;
     if (!web) continue;
     if (typeof web.uri !== 'string') return GEMINI_PARSE_ERROR;

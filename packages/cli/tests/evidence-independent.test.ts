@@ -12,7 +12,7 @@ import { OpenAIWebSearchRetriever } from '../providers/openai_web_search_retriev
 import { GeminiGroundingRetriever } from '../providers/gemini_provider.js';
 import { ParallelSearchRetriever } from '../providers/parallel_search_retriever.js';
 import type { RetrievalOutcome } from '../providers/base_provider.js';
-import { scan } from '../cli/scan.js';
+import { scan, buildEvidenceCoverage } from '../cli/scan.js';
 import { registerProvider } from '../providers/registry.js';
 import type { Claim, Source, VerificationResult } from '../types.js';
 
@@ -176,6 +176,25 @@ describe('attachIndependentEvidence', () => {
     expect(v.independentEvidence!.sources).toEqual([]);
     // [] from retrieve() cannot tell a failure from an empty search, so it is not asked.
     expect(legacy.retrieve).not.toHaveBeenCalled();
+  });
+
+  it('an in_progress OpenAI reply that cites a page is provider_error, and the scan coverage is partial, never complete', async () => {
+    const citing = {
+      type: 'message',
+      content: [{ type: 'output_text', text: 'Partial answer.', annotations: [{ type: 'url_citation', title: 'B', url: 'https://britannica.com/partial', start_index: 0, end_index: 7 }] }],
+    };
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, statusText: 'OK', json: async () => ({ status: 'in_progress', output: [citing] }) })));
+    try {
+      const f = pageFetch(() => html(PAGE));
+      const v = await attachIndependentEvidence(verdict(), CLAIM_TEXT, { retriever: new OpenAIWebSearchRetriever('k'), fetch: f });
+      expect(v.independentEvidence).toBeDefined();
+      expect(v.independentEvidence!.status).toBe('provider_error');
+      expect(v.independentEvidence!.sources).toEqual([]);
+      expect(pages(f)).toEqual([]);
+      expect(buildEvidenceCoverage({ c1: v })).toEqual({ state: 'partial', checked: 1, corroborated: 0, byStatus: { provider_error: 1 } });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('every built-in retriever reports a typed outcome', () => {

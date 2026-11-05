@@ -96,6 +96,19 @@ describe('retrieveSourcesWithStatus', () => {
     expect(await retrieveSourcesWithStatus(CLAIM, 'k')).toEqual({ status: 'provider_error', sources: [], detail: 'candidate not finished' });
   });
 
+  it('parse_error: unreadable groundingMetadata or a chunk that is a list; absent metadata on a normal finish stays zero', async () => {
+    const r = new GeminiGroundingRetriever('k');
+    for (const reply of [
+      { candidates: [{ finishReason: 'STOP', groundingMetadata: 'unreadable' }] },
+      { candidates: [{ finishReason: 'STOP', groundingMetadata: { groundingChunks: [[]] } }] },
+    ]) {
+      sdk.reply = reply;
+      expect(await r.retrieveWithStatus(CLAIM)).toEqual({ status: 'parse_error', sources: [], detail: 'unexpected shape' });
+    }
+    sdk.reply = { candidates: [{ finishReason: 'STOP' }] };
+    expect(await r.retrieveWithStatus(CLAIM)).toEqual({ status: 'zero', sources: [] });
+  });
+
   it('parse_error: a reply that is not a candidate list, or carries malformed chunks', async () => {
     for (const reply of [null, 'text', {}, { candidates: 'bad' }, { candidates: [null] }, grounded('STOP', 'bad' as never), grounded('STOP', [null]), grounded('STOP', [{ web: { uri: 7 } }])]) {
       sdk.reply = reply;

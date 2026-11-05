@@ -165,8 +165,8 @@ export class ParallelSearchRetriever implements StatusRetriever {
    * The same search, with how it ended (see RetrievalStatus). Never throws.
    * Details are fixed phrases: no error text, claim text or key is carried.
    * A 200 whose results hold no source a reader can open is zero here, where
-   * retrieve() rejects it; a body that is not JSON, or has no results list, is
-   * parse_error.
+   * retrieve() rejects it; a body that is not JSON, has no results list, or
+   * holds any malformed result entry, is parse_error.
    */
   async retrieveWithStatus(claimText: string): Promise<RetrievalOutcome> {
     if (!this.apiKey) return { status: 'provider_error', sources: [], detail: 'missing api key' };
@@ -179,6 +179,11 @@ export class ParallelSearchRetriever implements StatusRetriever {
       return outcome;
     }
     if (typeof payload !== 'object' || payload === null || Array.isArray(payload) || !Array.isArray((payload as ParallelPayload).results)) {
+      return { status: 'parse_error', sources: [], detail: 'unexpected shape' };
+    }
+    // Checked before parseParallelResults, which drops a malformed entry: one
+    // malformed entry makes the whole reply parse_error, even next to valid ones.
+    if (!((payload as ParallelPayload).results as unknown[]).every(isWellFormedResult)) {
       return { status: 'parse_error', sources: [], detail: 'unexpected shape' };
     }
     const sources = parseParallelResults(payload as ParallelPayload);
@@ -221,6 +226,15 @@ export class ParallelSearchRetriever implements StatusRetriever {
       clearTimeout(timer);
     }
   }
+}
+
+/** A result entry is an object whose url is a string; title and excerpts, when present, are a string and a list. */
+function isWellFormedResult(r: unknown): boolean {
+  if (typeof r !== 'object' || r === null || Array.isArray(r)) return false;
+  const e = r as ParallelResult;
+  if (typeof e.url !== 'string') return false;
+  if (e.title !== undefined && e.title !== null && typeof e.title !== 'string') return false;
+  return e.excerpts === undefined || e.excerpts === null || Array.isArray(e.excerpts);
 }
 
 /** The status for a search that threw. The detail is a fixed phrase, never the error message. */

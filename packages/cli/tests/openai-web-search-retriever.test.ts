@@ -353,6 +353,20 @@ describe('OpenAIWebSearchRetriever', () => {
       ] }],
     };
 
+    it('a 200 reply with status in_progress is provider_error in retrieveWithStatus and a RetrievalError in retrieve(), with or without a citation', async () => {
+      const r = new OpenAIWebSearchRetriever('test-key');
+      for (const body of [{ status: 'in_progress', output: [] }, { status: 'in_progress', output: [CITING_MESSAGE] }]) {
+        mockFetch.mockResolvedValueOnce(jsonReply(body));
+        const out = await r.retrieveWithStatus('claim');
+        expect(out).toEqual({ status: 'provider_error', sources: [], detail: 'response in_progress' });
+        mockFetch.mockResolvedValueOnce(jsonReply(body));
+        await expect(r.retrieve('claim')).rejects.toMatchObject({ name: 'RetrievalError', reason: 'provider_error' });
+      }
+      // A status the code does not name is still a failure, with a fixed detail.
+      mockFetch.mockResolvedValueOnce(jsonReply({ status: 'SECRET-weird', output: [CITING_MESSAGE] }));
+      expect(await r.retrieveWithStatus('claim')).toEqual({ status: 'provider_error', sources: [], detail: 'response not completed' });
+    });
+
     it('a 200 reply with status failed and an error object is provider_error, and carries none of the error text', async () => {
       mockFetch.mockResolvedValueOnce(jsonReply(FAILED));
       const out = await new OpenAIWebSearchRetriever('test-key').retrieveWithStatus('claim');
