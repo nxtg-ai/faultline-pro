@@ -744,6 +744,23 @@ describe('accuracy-g0 runner: grounding arms and a seeded subsample (GoPMO 1.18.
     expect(row.costUsd).toBeCloseTo(0.0351 + 0.03508, 6);
   }, 30_000);
 
+  it('--resume keeps the spend of an item that used all its calls before the stop', async () => {
+    // Codex round 2 on the grounding PR: closeExhausted wrote such an item at 0 cost.
+    const out = join(dir, 'ex.jsonl');
+    const id = 4; // the one item --sample 1 --seed 19 picks from the full set
+    writeFileSync(`${out}.attempts.jsonl`, [1, 2, 3, 4].map((attempt) => JSON.stringify({ id, attempt, ts: 't' })).join('\n') + '\n');
+    writeFileSync(`${out}.spend.jsonl`, [1, 2, 3, 4].map((attempt) => JSON.stringify({ id, arm: 'google', attempt, costUsd: 0.04, googleGroundingCalls: 1 })).join('\n') + '\n');
+    writeFileSync(out, '');
+    const before = state.verifyCalls;
+    const r = await run(['--set', 'full', '--arm', 'google', '--sample', '1', '--seed', '19', '--out', out, '--resume']);
+    expect(r.code).toBe(0);
+    const written = rows(out);
+    expect(written).toHaveLength(1);
+    expect(written[0]).toMatchObject({ id, attempts: 4, apiError: true, googleGroundingCalls: 4 });
+    expect(written[0].costUsd).toBeCloseTo(0.16, 6);
+    expect(state.verifyCalls).toBe(before); // no fifth call
+  }, 30_000);
+
   it('--resume refuses an out file written by another arm (exit 2, no verify call)', async () => {
     // Codex review of the grounding PR, finding 2: google rows satisfied a parallel resume.
     const out = join(dir, 'mixed.jsonl');

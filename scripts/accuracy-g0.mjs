@@ -581,21 +581,23 @@ function appendRows(file, rows) {
  * Items whose ledger already holds MAX_CALLS calls get no fifth call: they are
  * written as failures with attempts = MAX_CALLS, the calls actually made.
  */
-function closeExhausted(pending, attempts, options, engine, log) {
+function closeExhausted(pending, attempts, options, engine, log, spent = new Map()) {
   const exhausted = pending.filter((item) => (attempts.get(item.id) ?? 0) >= MAX_CALLS);
-  appendRows(options.out, exhausted.map((item) => buildRow(item, null, MAX_CALLS, engine.engineSha, options.runArm)));
+  appendRows(options.out, exhausted.map((item) => buildRow(item, null, MAX_CALLS, engine.engineSha, options.runArm,
+    spent.get(item.id) ?? { costUsd: 0, googleGroundingCalls: 0 })));
   if (exhausted.length > 0) log(`${exhausted.length} item(s) already had ${MAX_CALLS} calls in the ledger: written as failures, not called again`);
   return pending.filter((item) => (attempts.get(item.id) ?? 0) < MAX_CALLS);
 }
 
 async function runBatches({ request, allowance, options, pending, engine, done, attempts, log }) {
   let model = [...done.values()].find((row) => row.model)?.model ?? null;
-  const queue = closeExhausted(pending, attempts, options, engine, log);
-  const ledger = ledgerPath(options.out);
-  let retryRound = 0;
   const arm = options.runArm ?? 'google';
   const spendFile = spendPath(options.out);
+  // Restored before closeExhausted, so an item that used all its calls before a stop keeps what they cost.
   const spent = readSpend(spendFile, arm);
+  const queue = closeExhausted(pending, attempts, options, engine, log, spent);
+  const ledger = ledgerPath(options.out);
+  let retryRound = 0;
   while (queue.length > 0) {
     const batch = queue.splice(0, BATCH_SIZE);
     await guardAllowance(allowance, batch.length, log);
