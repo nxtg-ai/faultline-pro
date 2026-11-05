@@ -298,8 +298,18 @@ export function isOpenableSource(source: unknown): boolean {
  * source the reader can open (isOpenableSource). When `result` has one of
  * those statuses, sources that cannot be opened are dropped from it; when none
  * remain, it is returned as `unverified` with `noSourceAbstain: true` and
- * NO_SOURCE_EXPLANATION; every other field (provenance, webSearchQueries,
- * searchEntryPoint) is kept. Anything else is returned unchanged. Where a
+ * NO_SOURCE_EXPLANATION, and every field taken from Google's grounded
+ * response (GROUNDED_RESPONSE_FIELDS: the Search Suggestions in
+ * `searchEntryPoint` and `webSearchQueries`, and any raw grounding metadata)
+ * is removed. Google's grounding terms forbid modifying a Grounded Result,
+ * and its Search Suggestions go with the grounded result they belong to, so a
+ * verdict Faultline rewrote carries only Faultline's own words. Provenance
+ * (who was asked and when) is Faultline's record, not Google's output, and is
+ * kept; so is every other field. A verdict already abstained
+ * (`noSourceAbstain: true`, for example one stored before this rule) has the
+ * same fields removed on read. A verdict that passes keeps every grounded
+ * field: its Search Suggestions must be shown with it. Anything else is
+ * returned unchanged. Where a
  * verdict is produced (the verify runner, the full-scan job store) it runs
  * after guardVerdict, never before: a source entry with no string uri is a
  * malformed verdict (a provider error), not an unopenable source. Every place
@@ -316,7 +326,8 @@ export function isOpenableSource(source: unknown): boolean {
  * a reader sees every vote. The same rule applies to each vote: a supported,
  * contradicted or mixed vote keeps only its openable sources, and with none
  * left it reads `unverified` with `sources: []`, NO_SOURCE_EXPLANATION and
- * `noSourceAbstain: true` (its other fields kept). A vote with any other
+ * `noSourceAbstain: true`, with the grounded response fields removed the
+ * same way (its other fields kept). A vote with any other
  * status is unchanged. Votes are checked even when the fused verdict is
  * already not definite. This is a rewrite for the reader after fusion: the
  * voting, the fused status and the billed count are decided before it and
@@ -328,25 +339,53 @@ export function abstainWithoutSource<T extends VerificationResult>(result: T): T
   if (!result || typeof result !== 'object') return result;
   const votes = abstainVotesWithoutSource(result.providerVotes);
   const withVotes: T = votes === result.providerVotes ? result : { ...result, providerVotes: votes };
-  if (!BILLABLE_STATUSES.has(withVotes.status as string)) return withVotes;
+  if (!BILLABLE_STATUSES.has(withVotes.status as string)) {
+    return withVotes.noSourceAbstain === true ? withoutGroundedResponse(withVotes) : withVotes;
+  }
   const sources: unknown[] = Array.isArray(withVotes.sources) ? withVotes.sources : [];
   const openable = sources.filter(isOpenableSource);
   if (openable.length > 0) {
     return openable.length === sources.length ? withVotes : { ...withVotes, sources: openable as T['sources'] };
   }
-  return { ...withVotes, status: 'unverified', explanation: NO_SOURCE_EXPLANATION, sources: [], noSourceAbstain: true };
+  return { ...withoutGroundedResponse(withVotes), status: 'unverified', explanation: NO_SOURCE_EXPLANATION, sources: [], noSourceAbstain: true };
 }
 
 /** One vote under the rule above; the same object when nothing changed. */
 function abstainVoteWithoutSource(vote: ProviderVote): ProviderVote {
   if (!vote || typeof vote !== 'object') return vote;
-  if (!BILLABLE_STATUSES.has(vote.status as string)) return vote;
+  if (!BILLABLE_STATUSES.has(vote.status as string)) {
+    return vote.noSourceAbstain === true ? withoutGroundedResponse(vote) : vote;
+  }
   const sources: unknown[] = Array.isArray(vote.sources) ? vote.sources : [];
   const openable = sources.filter(isOpenableSource);
   if (openable.length > 0) {
     return openable.length === sources.length ? vote : { ...vote, sources: openable as ProviderVote['sources'] };
   }
-  return { ...vote, status: 'unverified', explanation: NO_SOURCE_EXPLANATION, sources: [], noSourceAbstain: true };
+  return { ...withoutGroundedResponse(vote), status: 'unverified', explanation: NO_SOURCE_EXPLANATION, sources: [], noSourceAbstain: true };
+}
+
+/**
+ * The fields a verdict can carry from Google's grounded response besides its
+ * status, explanation and sources (which the abstain rule replaces):
+ * `searchEntryPoint` and `webSearchQueries` are set by the Gemini grounded
+ * verify (searchSuggestionsOf in services/geminiService.ts); the raw
+ * grounding metadata names are never set by the engine and are removed in
+ * case a stored or provider-built object carries them.
+ */
+export const GROUNDED_RESPONSE_FIELDS = [
+  'searchEntryPoint',
+  'webSearchQueries',
+  'groundingMetadata',
+  'groundingChunks',
+  'groundingSupports',
+] as const;
+
+/** `v` without GROUNDED_RESPONSE_FIELDS; the same object when it has none of them. */
+function withoutGroundedResponse<V extends object>(v: V): V {
+  if (!GROUNDED_RESPONSE_FIELDS.some((k) => k in v)) return v;
+  const out: Record<string, unknown> = { ...(v as Record<string, unknown>) };
+  for (const k of GROUNDED_RESPONSE_FIELDS) delete out[k];
+  return out as V;
 }
 
 /** `votes` with every vote guarded; the same array when no vote changed, and anything not an array as given. */
