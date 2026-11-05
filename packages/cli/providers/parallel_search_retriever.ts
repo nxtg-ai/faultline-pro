@@ -1,5 +1,5 @@
 import type { Source } from '../types';
-import type { Retriever } from './base_provider';
+import type { RetrievalOutcome, StatusRetriever } from './base_provider';
 import { recordUsage } from '../lib/usage-sink';
 import { RetrievalError } from './retrieval-error';
 import { outOfCreditsTag, readErrorBody } from './out-of-credits';
@@ -122,7 +122,7 @@ interface ParallelPayload {
   results?: unknown;
 }
 
-export class ParallelSearchRetriever implements Retriever {
+export class ParallelSearchRetriever implements StatusRetriever {
   readonly name = 'parallel-search';
   readonly mode: ParallelSearchMode;
   /** The mode label recorded in provenance and usage. */
@@ -161,6 +161,35 @@ export class ParallelSearchRetriever implements Retriever {
     }
   }
 
+  /**
+   * The same search, with how it ended (see RetrievalStatus). Never throws.
+   * Details are fixed phrases: no error text, claim text or key is carried.
+   * A 200 whose results hold no source a reader can open is zero here, where
+   * retrieve() rejects it; a body that is not JSON, has no results list, or
+   * holds any malformed result entry, is parse_error.
+   */
+  async retrieveWithStatus(claimText: string): Promise<RetrievalOutcome> {
+    if (!this.apiKey) return { status: 'provider_error', sources: [], detail: 'missing api key' };
+    let payload: unknown;
+    try {
+      payload = await this.callAPI(claimText);
+    } catch (err) {
+      const outcome = classifyParallelError(err);
+      if (process.env.FAULTLINE_DEBUG) process.stderr.write(`[parallel-search] retrieve failed: ${outcome.status} (${outcome.detail})\n`);
+      return outcome;
+    }
+    if (typeof payload !== 'object' || payload === null || Array.isArray(payload) || !Array.isArray((payload as ParallelPayload).results)) {
+      return { status: 'parse_error', sources: [], detail: 'unexpected shape' };
+    }
+    // Checked before parseParallelResults, which drops a malformed entry: one
+    // malformed entry makes the whole reply parse_error, even next to valid ones.
+    if (!((payload as ParallelPayload).results as unknown[]).every(isWellFormedResult)) {
+      return { status: 'parse_error', sources: [], detail: 'unexpected shape' };
+    }
+    const sources = parseParallelResults(payload as ParallelPayload);
+    return sources.length > 0 ? { status: 'hits', sources } : { status: 'zero', sources: [] };
+  }
+
   /** The request body for one claim. Exported shape for tests; only fields the reference lists. */
   requestBody(claimText: string): Record<string, unknown> {
     return {
@@ -197,6 +226,26 @@ export class ParallelSearchRetriever implements Retriever {
       clearTimeout(timer);
     }
   }
+}
+
+/** A result entry is an object whose url is a string; title and excerpts, when present, are a string and a list. */
+function isWellFormedResult(r: unknown): boolean {
+  if (typeof r !== 'object' || r === null || Array.isArray(r)) return false;
+  const e = r as ParallelResult;
+  if (typeof e.url !== 'string') return false;
+  if (e.title !== undefined && e.title !== null && typeof e.title !== 'string') return false;
+  return e.excerpts === undefined || e.excerpts === null || Array.isArray(e.excerpts);
+}
+
+/** The status for a search that threw. The detail is a fixed phrase, never the error message. */
+function classifyParallelError(err: unknown): RetrievalOutcome {
+  const name = typeof err === 'object' && err !== null ? (err as { name?: unknown }).name : undefined;
+  if (name === 'TimeoutError' || name === 'AbortError') return { status: 'timeout', sources: [], detail: 'deadline reached' };
+  if (err instanceof SyntaxError) return { status: 'parse_error', sources: [], detail: 'bad json' };
+  const http = err instanceof Error ? /^Parallel Search API error: (\d{3}) /.exec(err.message) : null;
+  if (http) return { status: 'provider_error', sources: [], detail: `http ${http[1]}` };
+  if (err instanceof TypeError) return { status: 'provider_error', sources: [], detail: 'network error' };
+  return { status: 'provider_error', sources: [], detail: 'request failed' };
 }
 
 /**

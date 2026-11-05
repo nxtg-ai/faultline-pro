@@ -1,5 +1,6 @@
 import type { ComplianceReport } from '../compliance/report_generator.js';
 import type { ScanResult } from './scan.js';
+import type { RetrievalStatus, VerificationResult } from '../types.js';
 import { auditTrail } from './audit-trail.js';
 
 export type OutputFormat = 'json' | 'markdown' | 'html' | 'sarif';
@@ -22,6 +23,28 @@ export function renderReportAs(data: ScanResult, format: OutputFormat, sarifOpti
   }
 }
 
+/** Non-hits statuses in the order the PARTIAL EVIDENCE line lists them. */
+const SHORTFALL_ORDER: RetrievalStatus[] = ['zero', 'timeout', 'provider_error', 'parse_error', 'policy_block'];
+
+/**
+ * The one line that says the independent search did not corroborate every
+ * checked claim, or null when it did or never ran.
+ */
+export function partialEvidenceLine(data: ScanResult): string | null {
+  const cov = data.evidenceCoverage;
+  if (!cov || cov.state !== 'partial') return null;
+  const parts = SHORTFALL_ORDER
+    .filter((s) => (cov.byStatus[s] ?? 0) > 0)
+    .map((s) => `${cov.byStatus[s]} ${s}`);
+  return `PARTIAL EVIDENCE: independent corroboration for ${cov.corroborated} of ${cov.checked} checked claims; ${parts.join(', ')}`;
+}
+
+/** The independent search status for a claim when it ran and did not return sources, else null. */
+function independentShortfall(result: VerificationResult): RetrievalStatus | null {
+  const status = result.independentEvidence?.status;
+  return status && status !== 'hits' ? status : null;
+}
+
 /**
  * Render a human-readable plaintext summary from a scan result JSON.
  */
@@ -35,6 +58,8 @@ export function renderReport(data: ScanResult): string {
   lines.push(`Overall Risk: ${data.overallRisk.toUpperCase()}`);
   lines.push(`EU Risk Tier: ${report.euRiskSummary.highestTier.toUpperCase()}`);
   lines.push(`Generated:    ${report.generatedAt}`);
+  const partialText = partialEvidenceLine(data);
+  if (partialText) lines.push(partialText);
   lines.push('');
 
   // Risk summary
@@ -75,7 +100,9 @@ export function renderReport(data: ScanResult): string {
         : '[--]';
       const score = scoreMap.get(claimId);
       const scoreSuffix = score !== undefined ? ` (confidence: ${score.toFixed(2)})` : '';
-      lines.push(`  ${icon} ${claimId}: ${result.status} — ${result.explanation}${scoreSuffix}`);
+      const shortfall = independentShortfall(result);
+      const independentSuffix = shortfall ? ` [independent search: ${shortfall}]` : '';
+      lines.push(`  ${icon} ${claimId}: ${result.status} — ${result.explanation}${scoreSuffix}${independentSuffix}`);
     }
     lines.push('');
   }
@@ -156,6 +183,11 @@ function renderMarkdownReport(data: ScanResult): string {
   lines.push(`| **EU Risk Tier** | ${riskBadge(report.euRiskSummary.highestTier)} |`);
   lines.push(`| **Generated** | ${report.generatedAt} |`);
   lines.push('');
+  const partialMd = partialEvidenceLine(data);
+  if (partialMd) {
+    lines.push(`> ${partialMd}`);
+    lines.push('');
+  }
 
   // EU AI Act Risk Summary
   lines.push('## EU AI Act Risk Summary');
@@ -200,7 +232,9 @@ function renderMarkdownReport(data: ScanResult): string {
       const icon = statusIcon(result.status);
       const score = scoreMap.get(claimId);
       const scoreStr = score !== undefined ? score.toFixed(2) : '—';
-      lines.push(`| ${claimId} | ${icon} ${result.status} | ${scoreStr} | ${result.explanation} |`);
+      const shortfall = independentShortfall(result);
+      const independentNote = shortfall ? ` (independent search: ${shortfall})` : '';
+      lines.push(`| ${claimId} | ${icon} ${result.status} | ${scoreStr} | ${result.explanation}${independentNote} |`);
     }
     lines.push('');
   }
