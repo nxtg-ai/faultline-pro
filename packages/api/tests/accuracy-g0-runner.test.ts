@@ -772,6 +772,30 @@ describe('accuracy-g0 runner: grounding arms and a seeded subsample (GoPMO 1.18.
     expect(state.verifyCalls).toBe(before);
   });
 
+  it('a stop after a paid answer keeps its spend, and the other arm cannot resume that file', async () => {
+    // Opus seat on the grounding PR: an engine that ignores the arm answers 200 and is paid,
+    // then the arm check stops the run; the spend must be on record, and a google resume refused.
+    state.ranGrounding = 'google';
+    const out = join(dir, 'ignored.jsonl');
+    const stopped = await run(['--set', 'full', '--arm', 'parallel', '--sample', '3', '--seed', '1', '--out', out]);
+    expect(stopped.code).toBe(1);
+    const spend = rows(`${out}.spend.jsonl`);
+    expect(spend).toHaveLength(3);
+    expect(spend.every((row) => row.arm === 'parallel' && row.googleGroundingCalls === 0)).toBe(true);
+    expect(rows(`${out}.attempts.jsonl`).every((row) => row.arm === 'parallel')).toBe(true);
+    const before = state.verifyCalls;
+    const resumed = await run(['--set', 'full', '--arm', 'google', '--sample', '3', '--seed', '1', '--out', out, '--resume']);
+    expect(resumed.code).toBe(2);
+    expect(resumed.out).toMatch(/holds arm parallel, not google/);
+    expect(state.verifyCalls).toBe(before);
+    // The attempt ledger refuses on its own, without the spend ledger's help.
+    rmSync(`${out}.spend.jsonl`);
+    const again = await run(['--set', 'full', '--arm', 'google', '--sample', '3', '--seed', '1', '--out', out, '--resume']);
+    expect(again.code).toBe(2);
+    expect(again.out).toMatch(/attempt ledger .* holds arm parallel, not google/);
+    expect(state.verifyCalls).toBe(before);
+  }, 30_000);
+
   it('--resume refuses an out file written by another arm (exit 2, no verify call)', async () => {
     // Codex review of the grounding PR, finding 2: google rows satisfied a parallel resume.
     const out = join(dir, 'mixed.jsonl');

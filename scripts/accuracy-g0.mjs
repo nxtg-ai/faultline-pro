@@ -317,12 +317,14 @@ export function ledgerPath(out) {
 }
 
 /** Calls already made per id, restored from the ledger. Refuses a gap or repeat. */
-export function readLedger(file) {
+export function readLedger(file, arm = 'google') {
   const counts = new Map();
   if (!existsSync(file)) return counts;
   for (const line of readFileSync(file, 'utf8').split('\n')) {
     if (line.trim() === '') continue;
-    const { id, attempt } = JSON.parse(line);
+    const { id, attempt, arm: lineArm = 'google' } = JSON.parse(line);
+    // A line from before arms existed has no arm field and was a google run.
+    if (lineArm !== arm) throw new RunStop(EXIT.REFUSED, `REFUSED: attempt ledger ${file} holds arm ${lineArm}, not ${arm}`);
     const expected = (counts.get(id) ?? 0) + 1;
     if (attempt !== expected) throw new Error(`attempt ledger ${file}: id ${id} has attempt ${attempt} where ${expected} was due`);
     counts.set(id, attempt);
@@ -331,9 +333,9 @@ export function readLedger(file) {
 }
 
 /** Append one call per item and flush it to disk before the request goes out. */
-function recordCalls(file, entries) {
+function recordCalls(file, entries, arm = 'google') {
   const ts = new Date().toISOString();
-  const text = entries.map(({ id, attempt }) => JSON.stringify({ id, attempt, ts })).join('\n') + '\n';
+  const text = entries.map(({ id, attempt }) => JSON.stringify({ id, attempt, arm, ts })).join('\n') + '\n';
   const fd = openSync(file, 'a');
   try {
     writeSync(fd, text);
@@ -465,7 +467,7 @@ function sleep(ms) {
 }
 
 /** POST one batch. Returns results by id, or null when the whole call failed. */
-async function postBatch(request, batch, stopOnNoAnswer = false, arm = 'google') {
+async function postBatch(request, batch, stopOnNoAnswer = false, arm = 'google', onAnswer = () => {}) {
   let response;
   try {
     response = await request('POST', '/admin/verify-claims', {
@@ -490,6 +492,8 @@ async function postBatch(request, batch, stopOnNoAnswer = false, arm = 'google')
     throw new RunStop(EXIT.ERROR, `the API rejected the batch (${status} ${json?.error ?? ''})`);
   }
   if (status !== 200 || !Array.isArray(json?.results)) return null;
+  // Spend is recorded before any check below can stop the run: a 200 answer was paid for.
+  onAnswer(json.results);
   // The engine names the arm it ran. A parallel arm the engine did not run is not that arm.
   const ran = json.grounding ?? 'google';
   if (ran !== ARMS[arm].grounding) {
@@ -603,23 +607,33 @@ async function runBatches({ request, allowance, options, pending, engine, done, 
     await guardAllowance(allowance, batch.length, log);
     await guardEngine(request, engine);
     const calls = batch.map((item) => ({ id: item.id, attempt: (attempts.get(item.id) ?? 0) + 1 }));
-    recordCalls(ledger, calls);
+    recordCalls(ledger, calls, arm);
     for (const { id, attempt } of calls) attempts.set(id, attempt);
-    const results = await postBatch(request, batch, allowance.length > 1, arm);
+    const inBatch = new Set(batch.map((item) => item.id));
+    const onAnswer = (answers) => {
+      const spendRows = [];
+      const counted = new Set();
+      for (const answer of answers) {
+        const id = Number(answer?.id);
+        if (!inBatch.has(id) || counted.has(id)) continue;
+        counted.add(id);
+        const costUsd = count(answer?.usage?.costUsd);
+        const googleGroundingCalls = count(answer?.usage?.googleGroundingCalls);
+        spendRows.push({ id, arm, attempt: attempts.get(id), costUsd, googleGroundingCalls });
+        const so = spent.get(id) ?? { costUsd: 0, googleGroundingCalls: 0 };
+        so.costUsd += costUsd;
+        so.googleGroundingCalls += googleGroundingCalls;
+        spent.set(id, so);
+      }
+      recordSpend(spendFile, spendRows);
+    };
+    const results = await postBatch(request, batch, allowance.length > 1, arm, onAnswer);
     const rows = [];
     const retry = [];
-    const spendRows = batch.map((item) => {
-      const result = results?.get(item.id) ?? null;
-      return { id: item.id, arm, attempt: attempts.get(item.id), costUsd: count(result?.usage?.costUsd), googleGroundingCalls: count(result?.usage?.googleGroundingCalls) };
-    });
-    recordSpend(spendFile, spendRows);
     for (const item of batch) {
       const result = results?.get(item.id) ?? null;
       const tries = attempts.get(item.id);
       const so = spent.get(item.id) ?? { costUsd: 0, googleGroundingCalls: 0 };
-      so.costUsd += count(result?.usage?.costUsd);
-      so.googleGroundingCalls += count(result?.usage?.googleGroundingCalls);
-      spent.set(item.id, so);
       const failed = !result || result.apiError === true;
       if (failed && tries < MAX_CALLS) retry.push(item);
       else rows.push(buildRow(item, result, tries, engine.engineSha, arm, so));
@@ -734,7 +748,7 @@ async function runArm(options, deps = {}) {
     }
     const request = makeClient(options.api, key);
     const engine = await resolveEngine(request, options, done);
-    const attempts = readLedger(ledger);
+    const attempts = readLedger(ledger, options.runArm ?? 'google');
     if (done.size > 0 && !existsSync(ledger)) {
       throw new RunStop(EXIT.REFUSED, `REFUSED: ${options.out} has rows but no attempt ledger (${ledger}); the call counts cannot be restored`);
     }
