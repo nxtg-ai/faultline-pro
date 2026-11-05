@@ -3,8 +3,9 @@
 // Exit clauses, one block each:
 //  - server.json for the official MCP Registry: remote-only, one Streamable HTTP
 //    remote at https://faultline-api.fly.dev/mcp, an X-API-Key header that is
-//    required and secret, a publisher name under nxtg.ai; valid against the
-//    registry's own schema (vendored, 2025-12-11).
+//    required and secret, a publisher name under the nxtg-ai GitHub org, the
+//    API's own version; valid against the registry's own schema (vendored,
+//    2025-12-11).
 //  - GET /openapi.json is served, with no key, and matches the live routes both ways.
 //  - GET /llms.txt is served for the API, with no key.
 //  - GET /pricing is public and shows only the ruled per-claim price and caps,
@@ -74,8 +75,22 @@ describe('1.18.11.7.9 server.json for the MCP Registry', () => {
     expect(typeof headers[0].description).toBe('string');
   });
 
-  it('MR5. the publisher namespace is nxtg.ai in reverse-DNS form (DNS or HTTP auth)', () => {
-    expect(doc.name).toBe('ai.nxtg/faultline');
+  it('MR5. the publisher namespace is the nxtg-ai GitHub org (GitHub OIDC auth from this repo)', () => {
+    expect(doc.name).toBe('io.github.nxtg-ai/faultline');
+  });
+
+  it('MR7. the listed version is the API version that serves the remote', () => {
+    const api = JSON.parse(readFileSync(resolve(REPO_ROOT, 'packages/api/package.json'), 'utf8'));
+    expect(typeof api.version).toBe('string');
+    expect(doc.version).toBe(api.version);
+  });
+
+  it('MR8. the website link is the API-key section of the pricing page, tagged with ref=mcp-registry', () => {
+    const url = new URL(doc.websiteUrl);
+    expect(url.origin).toBe('https://faultline.nxtg.ai');
+    expect(url.pathname).toBe('/pricing');
+    expect(url.searchParams.get('ref')).toBe('mcp-registry');
+    expect(url.hash).toBe('#api-key');
   });
 
   it('MR6. carries no strategy content', () => {

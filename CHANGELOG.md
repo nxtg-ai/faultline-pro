@@ -9,6 +9,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **Faultline is ready to list on the official MCP Registry.** `server.json` now uses the `io.github.nxtg-ai/faultline` namespace, so the new `mcp-registry-publish.yml` workflow can publish it with GitHub OIDC from this repository and no stored secret. The listing carries the API version (`0.12.1`; a test keeps it equal to `packages/api`) and links to the API-key section of the pricing page with `ref=mcp-registry`. The workflow pins `mcp-publisher` v1.8.1 by checksum, validates the file, publishes it and reads the entry back. The server stays remote-only: one Streamable HTTP remote at `https://faultline-api.fly.dev/mcp` with a required, secret `X-API-Key` header.
 - **A claim the sources do not address is not checkable, and adds no risk.** The Gemini verify prompt in both grounding modes (`google` and `parallel`) now asks the judge one more thing: do the sources say anything about the subject of the claim (`"sourcesAddressClaim": true | false` in its JSON reply). When the answer is `false`, the claim is `unverified` with `notCheckable: true`, no sources, and a fixed explanation, whatever status the judge gave. A claim about the scanned text itself ("This report covers three models.") used to be judged against unrelated sources and come back `contradicted`, which raised the scan's risk. Now:
   - `overallRisk` leaves the claim out.
   - It is never billed, and `billing.unbilled` gives the reason `not_checkable`.
