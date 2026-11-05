@@ -18,7 +18,7 @@ faultline-web calls the engine's `POST /scan/stream` and `POST /critique` with t
 
 npm publishing runs in GitHub Actions with OIDC trusted publishing (npm retired 2FA-token publishing). **Never `npm login` / `npm publish` locally.** `npm whoami` returning E401 on NXTG-AI is normal.
 
-1. Bump `packages/cli/package.json` and `packages/api/package.json` to the same version; bump `packages/mcp/package.json`'s `@nxtg/faultline` dependency; `npm install --package-lock-only --ignore-scripts`.
+1. Bump `packages/cli/package.json`, `packages/api/package.json` and the root `server.json` `version` to the same version (`agent-discovery.test.ts` MR7 fails if `server.json` lags); bump `packages/mcp/package.json`'s `@nxtg/faultline` dependency; `npm install --package-lock-only --ignore-scripts`.
 2. Roll `CHANGELOG.md` `[Unreleased]` into `## [vX.Y.Z] — YYYY-MM-DD`, leave an empty `[Unreleased]`.
 3. Update pinned versions in `README.md`, `CLAUDE.md`, `packages/*/README.md` (`grep -rn "<old version>"`).
 4. Run `packages/api` and `packages/cli` vitest; commit `release: vX.Y.Z`; push `main` (the api `package.json` change triggers the Fly deploy).
@@ -28,6 +28,7 @@ npm publishing runs in GitHub Actions with OIDC trusted publishing (npm retired 
 **Release stage** (dx3-pm owns the value; registry `~/ASIF/governance/product-maturity-registry.yml`): Faultline is **alpha**. The one constant is `packages/cli/cli/release-stage.ts`; it drives `faultline version` and `GET /health` `stage`. `packages/cli/tests/release-stage.test.ts` fails until README, npm README, llms.txt and the CHANGELOG stage line match it. Never put the stage in the SemVer string. On a promotion: registry first (dx3-pm, founder rules beta and up), then flip the constant, fix what the test names, release.
 7. `gh workflow run publish.yml --ref vX.Y.Z`, then `gh run watch`.
 8. Verify all four agree: `npm view @nxtg/faultline version`, `/health` version, tag, then `gh workflow run version-parity.yml` must pass.
+9. After the Fly deploy serves the new version, `gh workflow run mcp-registry-publish.yml --ref main`; it reads the entry back from `registry.modelcontextprotocol.io`.
 
 Push quirk: the pre-push hook chain can print `failed to push some refs` and still let later `&&` steps run. After any push, check `git status -sb` shows no `[ahead N]`.
 

@@ -1,10 +1,10 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "ai.nxtg/faultline",
+  "name": "io.github.nxtg-ai/faultline",
   "title": "Faultline",
   "description": "Checks the most important factual claims in AI output against live web sources by default.",
-  "version": "0.1.0",
-  "websiteUrl": "https://faultline-api.fly.dev/llms.txt",
+  "version": "0.12.1",
+  "websiteUrl": "https://faultline.nxtg.ai/pricing?ref=mcp-registry#api-key",
   "repository": {
     "url": "https://github.com/nxtg-ai/faultline-pro",
     "source": "github"

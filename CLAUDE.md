@@ -44,7 +44,7 @@ Four-phase pipeline in `packages/cli`: **Extract** (atomic claims), **Verify** (
 - Fail safely when evidence or provider access is unavailable: an unverified claim is reported as unverified, never as a verdict.
 - Never use the caller-supplied `x-user-tier` header for a money or entitlement decision on its own.
 - Docs, README and CHANGELOG move in the same change as the code.
-- Releases: bumping `packages/cli/package.json` means a tag, a GitHub release, the publish workflow (OIDC trusted publishing, never a local `npm publish`) and a CHANGELOG roll, with `packages/api` on the same version.
+- Releases: bumping `packages/cli/package.json` means a tag, a GitHub release, the publish workflow (OIDC trusted publishing, never a local `npm publish`) and a CHANGELOG roll, with `packages/api` and the root `server.json` on the same version. After the release, run `mcp-registry-publish.yml` to update the MCP Registry listing.
 
 ## Public / Private Boundary
 
