@@ -23,6 +23,8 @@ const sdk = vi.hoisted(() => ({
   prompts: [] as string[],
   /** Claims the extraction reply adds after the two world facts (the document-scope tests set it). */
   extraClaims: [] as Array<Record<string, unknown>>,
+  /** When set, the extraction reply is exactly these claims (the all-document tests set it). */
+  onlyClaims: null as Array<Record<string, unknown>> | null,
 }));
 
 vi.mock('@google/genai', () => ({
@@ -49,7 +51,7 @@ vi.mock('@google/genai', () => ({
           };
         }
         return {
-          text: JSON.stringify([
+          text: JSON.stringify(sdk.onlyClaims ?? [
             { id: 'c1', text: 'The Eiffel Tower was completed in 1889.', type: 'fact', importance: 4 },
             { id: 'c2', text: 'Mount Everest is the highest mountain above sea level.', type: 'fact', importance: 4 },
             ...sdk.extraClaims,
@@ -66,7 +68,8 @@ import { buildServer } from '../src/server.js';
 import { isGroundedVerification } from '../src/store/cache.js';
 import { resetCache } from '../src/store/cache.js';
 import { resetKeyStore, getKeyStore } from '../src/store/keys.js';
-import { resetProviderSpendLedger } from '../src/store/provider-spend.js';
+import { resetProviderSpendLedger, getProviderSpendStatus } from '../src/store/provider-spend.js';
+import { getCostStore } from '../src/store/costs.js';
 import { resetGroundingAllowanceLedger, uninstallGroundingCounter } from '../src/store/grounding-allowance.js';
 import { resetRateLimiter } from '../src/store/ratelimit.js';
 import { resetCircuitBreaker } from '../src/store/circuit-breaker.js';
@@ -123,6 +126,7 @@ beforeEach(() => {
   sdk.configs.length = 0;
   sdk.prompts.length = 0;
   sdk.extraClaims = [];
+  sdk.onlyClaims = null;
   parallelBodies.length = 0;
   parallelHeaders.length = 0;
   parallelReply = 'ok';
@@ -575,6 +579,97 @@ describe('FAULTLINE_GROUNDING=parallel: a claim about the document itself makes 
       expect(searchedFor(DOC_CLAIM)).toBe(false);
       expect(googleSearchCalls()).toBe(0);
       expect(JSON.stringify(job)).toContain('"retriever":"parallel-search"');
+    });
+  }, 30_000);
+});
+
+// Validates: PR #72 document scope, no provider call means no cost event and no spend (Codex round 3)
+describe('a run where every claim is about the document records no cost and no spend', () => {
+  const DOC_ONLY = 'This report covers three models.';
+
+  /** Managed cost events, spend-ledger rows and this month's spend total, read together. */
+  const spendSnapshot = () => ({
+    managed: getCostStore().getManagedEvents().length,
+    rows: spendRows().length,
+    spentUsd: getProviderSpendStatus().spentUsd,
+  });
+
+  it.each(['google', 'parallel'] as const)('POST /admin/verify-claims, grounding %s: no managed cost event, monthly spend unchanged', async (grounding) => {
+    await withServer(async (server) => {
+      const before = spendSnapshot();
+      const res = await server.inject({
+        method: 'POST', url: '/admin/verify-claims',
+        headers: { 'x-api-key': SERVER_KEY, 'content-type': 'application/json' },
+        payload: { grounding, claims: [{ id: 'doc', text: DOC_ONLY }] },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().grounding).toBe(grounding);
+      expect(res.json().results).toHaveLength(1);
+      expect(res.json().results[0]).toMatchObject({ id: 'doc', documentScope: true, status: 'unverified' });
+      expect(res.json().results[0].usage).toMatchObject({ costUsd: 0, priced: false });
+      // No provider ran, so nothing may be priced, logged or added to the month.
+      expect(sdk.configs).toHaveLength(0);
+      expect(parallelBodies).toHaveLength(0);
+      expect(spendSnapshot()).toEqual(before);
+    });
+  }, 30_000);
+
+  it('POST /admin/verify-claims with one world claim beside it still records the batch', async () => {
+    await withServer(async (server) => {
+      const before = spendSnapshot();
+      const res = await server.inject({
+        method: 'POST', url: '/admin/verify-claims',
+        headers: { 'x-api-key': SERVER_KEY, 'content-type': 'application/json' },
+        payload: { grounding: 'google', claims: [{ id: 'doc', text: DOC_ONLY }, { id: 'w', text: 'The Eiffel Tower was completed in 1889.' }] },
+      });
+      expect(res.statusCode).toBe(200);
+      const after = spendSnapshot();
+      expect(after.managed).toBe(before.managed + 1);
+      expect(after.rows).toBe(before.rows + 1);
+      expect(after.spentUsd).toBeGreaterThan(before.spentUsd);
+    });
+  }, 30_000);
+
+  it.each(['scan', 'stream'] as const)('POST /%s with only a document claim: one spend row, priced from the real extraction call, not an estimate', async (route) => {
+    sdk.onlyClaims = [{ id: 'c1', text: DOC_ONLY, type: 'fact', importance: 5 }];
+    await withServer(async (server, key) => {
+      const before = spendSnapshot();
+      const res = route === 'scan'
+        ? await server.inject({ method: 'POST', url: '/scan', headers: { 'x-api-key': key, 'content-type': 'application/json' }, payload: { text: DOC_ONLY, provider: 'gemini' } })
+        : await server.inject({ method: 'GET', url: `/scan/stream?text=${encodeURIComponent(DOC_ONLY)}&provider=gemini`, headers: { 'x-api-key': key } });
+      expect(res.statusCode).toBe(200);
+      // The extraction is a provider call (150 input, 40 output tokens in the mock), so it is spend.
+      expect(sdk.configs).toHaveLength(1);
+      const rows = spendRows().slice(before.rows);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].costUsd).toBeCloseTo((150 * 0.30 + 40 * 2.50) / 1_000_000, 10);
+    });
+  }, 30_000);
+
+  it('a full-scan job with no fact claims records the estimate only, no verify cost', async () => {
+    sdk.onlyClaims = [{ id: 'c1', text: DOC_ONLY, type: 'fact', importance: 5 }];
+    await withServer(async (server, key) => {
+      const headers = { 'x-api-key': key, 'content-type': 'application/json' };
+      const est = await server.inject({ method: 'POST', url: '/scan/full/estimate', headers, payload: { text: DOC_ONLY, provider: 'gemini' } });
+      expect(est.statusCode).toBe(200);
+      expect(est.json().factClaims).toBe(0);
+      // The estimate's extraction did call the provider, so it is priced and logged once.
+      const afterEstimate = spendSnapshot();
+      expect(afterEstimate.managed).toBeGreaterThan(0);
+      expect(afterEstimate.rows).toBeGreaterThan(0);
+      const started = await server.inject({ method: 'POST', url: '/scan/full', headers: { ...headers, 'idempotency-key': 'idem-doc-only-job' }, payload: { estimateId: est.json().estimateId } });
+      expect(started.statusCode).toBe(202);
+      const jobId = started.json().jobId as string;
+      const deadline = Date.now() + 10_000;
+      let job: Record<string, any> = {};
+      while (job.status !== 'done') {
+        if (Date.now() > deadline) throw new Error('job did not finish');
+        job = (await server.inject({ method: 'GET', url: `/scan/full/${jobId}`, headers: { 'x-api-key': key } })).json();
+        if (job.status !== 'done') await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      // Only the extraction prompt reached Gemini; the job verified nothing and spent nothing.
+      expect(sdk.configs).toHaveLength(1);
+      expect(spendSnapshot()).toEqual(afterEstimate);
     });
   }, 30_000);
 });

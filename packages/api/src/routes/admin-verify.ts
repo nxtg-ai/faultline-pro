@@ -317,6 +317,10 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, worker: (item
 
 /** Price the batch's captured usage and write it to the ledgers a scan writes. */
 function recordBatchSpend(runs: ClaimRun[], claims: VerifyClaimInput[], providerName: string, keyId: string, startMs: number): void {
+  // Every claim was about the document, so no provider ran: there is nothing to
+  // price. buildManagedCostEvent would fall back to a text-length estimate and
+  // invent a cost, so record no event and no spend at all.
+  if (runs.every((run) => run.outcome.documentScope === true)) return;
   const legs = runs.flatMap((run) => run.legs);
   const costEvent = buildManagedCostEvent(legs, {
     text: claims.map((claim) => claim.text).join('\n'),

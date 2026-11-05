@@ -228,15 +228,20 @@ async function runFullScanJob(store: FullScanJobStore, job: FullScanJob): Promis
     ...groundingOption(),
     onClaim: (_claim, verdict, index) => store.recordVerdict(job, index, verdict),
   }));
-  logFullScanCost(legs, {
-    text,
-    provider: job.provider,
-    claimCount: outcome.ok ? outcome.value.verification.verifiedClaims : job.verdicts.filter(Boolean).length,
-    tier: job.tier,
-    keyId: job.keyId,
-    latencyMs: Date.now() - startedAt,
-    claims: { extracted: job.verdicts.length, verified: billableVerdictCount(job.verdicts) },
-  });
+  // A job with no fact claims (every claim about the document, or not checkable)
+  // calls no provider: its estimate already logged the extraction. Pricing it here
+  // would fall back to a text-length estimate and invent a cost, so it logs none.
+  if (job.factIds.length > 0) {
+    logFullScanCost(legs, {
+      text,
+      provider: job.provider,
+      claimCount: outcome.ok ? outcome.value.verification.verifiedClaims : job.verdicts.filter(Boolean).length,
+      tier: job.tier,
+      keyId: job.keyId,
+      latencyMs: Date.now() - startedAt,
+      claims: { extracted: job.verdicts.length, verified: billableVerdictCount(job.verdicts) },
+    });
+  }
   if (outcome.ok === false) {
     store.finish(job, 'failed');
     return;
