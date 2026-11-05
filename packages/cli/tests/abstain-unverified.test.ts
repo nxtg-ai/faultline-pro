@@ -103,10 +103,12 @@ describe('grounded Gemini: no definite verdict without a source', () => {
       expect(r.explanation).toBe(NO_SOURCE_EXPLANATION);
       expect(r.sources).toEqual([]);
       expect(r.apiError).toBeUndefined();
-      // Provenance and the Search Suggestions fields are kept as they were.
+      // Provenance is Faultline's record and is kept. Google's grounded fields are
+      // removed: the terms forbid modifying a Grounded Result, so a rewritten
+      // verdict does not ship beside Google's Search Suggestions.
       expect(r.provenance).toMatchObject({ provider: 'gemini', retriever: 'gemini-grounding' });
-      expect(r.webSearchQueries).toEqual(QUERIES);
-      expect(r.searchEntryPoint).toEqual(ENTRY);
+      expect('webSearchQueries' in r).toBe(false);
+      expect('searchEntryPoint' in r).toBe(false);
       expect(isBillableVerdict(r)).toBe(false);
     });
 
@@ -118,7 +120,8 @@ describe('grounded Gemini: no definite verdict without a source', () => {
       expect(r.explanation).toBe(NO_SOURCE_EXPLANATION);
       expect(r.sources).toEqual([]);
       expect(r.apiError).toBeUndefined();
-      expect(r.webSearchQueries).toEqual(QUERIES);
+      expect('webSearchQueries' in r).toBe(false);
+      expect('searchEntryPoint' in r).toBe(false);
     });
 
     it(`${status} with one web source stays ${status}`, async () => {
@@ -129,6 +132,9 @@ describe('grounded Gemini: no definite verdict without a source', () => {
       expect('noSourceAbstain' in r).toBe(false);
       expect(r.sources).toEqual([{ title: 'Court', uri: 'https://court.example/op' }]);
       expect(isBillableVerdict(r)).toBe(true);
+      // A verdict that passes keeps its Search Suggestions unaltered: the terms require them with it.
+      expect(r.searchEntryPoint).toEqual(ENTRY);
+      expect(r.webSearchQueries).toEqual(QUERIES);
     });
   }
 });

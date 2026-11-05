@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A verdict the engine rewrote no longer ships with Google's Search Suggestions.** When a Gemini grounded verdict (supported, contradicted or mixed) has no source a reader can open, the engine reports it as `unverified` with its own explanation. It used to keep `searchEntryPoint` and `webSearchQueries` from Google's grounded response, so a result Faultline had modified was shown beside Google's Search Suggestions chip, which Google's grounding terms do not allow. Those fields, and any raw grounding metadata, are now removed from an abstained verdict and from an abstained consensus vote, including results stored before this change, when they are read. `provenance` is kept. A verdict that passes keeps its Search Suggestions unaltered. The change is in the engine (`packages/cli/lib/verdict-guard.ts`), so `POST /scan`, `/scan/stream`, the full scan, the hosted `POST /mcp` and the `faultline-mcp` bin all get it.
+
 ## [v0.12.1] — 2026-11-04
 
 > `@nxtg/faultline` 0.12.1: the `faultline-mcp` bin (`npx -y -p @nxtg/faultline faultline-mcp`) refuses to answer without a key instead of returning mock verdicts. The CLI, the API and `packages/mcp` all move to 0.12.1.

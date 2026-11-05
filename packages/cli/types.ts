@@ -199,7 +199,10 @@ export interface VerificationResult {
    * grounding terms require them to be shown, unaltered, wherever this
    * verdict's explanation or sources are shown to the end user. Present only
    * on a Gemini Grounding with Google Search verdict that returned them;
-   * absent on every other path. Never persisted to disk by Faultline.
+   * absent on every other path, and removed when the engine abstains
+   * (abstainWithoutSource: a verdict Faultline rewrote is not Google's
+   * grounded result, so it does not carry Google's Search Suggestions).
+   * Never persisted to disk by Faultline.
    */
   searchEntryPoint?: { renderedContent: string };
   /** Who produced this verdict and when (see VerdictProvenance). */
@@ -211,7 +214,7 @@ export interface VerificationResult {
    * `sources`: those are what the verdict was grounded on.
    */
   independentEvidence?: IndependentEvidence;
-  /** The Google Search queries the grounded prompt ran (same source, same rule). */
+  /** The Google Search queries the grounded prompt ran (same source, same rule, also removed on abstain). */
   webSearchQueries?: string[];
   /**
    * Consensus metadata — present only on fused multi-provider verdicts emitted

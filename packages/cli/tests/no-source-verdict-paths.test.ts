@@ -48,7 +48,7 @@ function expectAbstained(v: VerificationResult | undefined): void {
 
 describe('abstainWithoutSource', () => {
   for (const status of DEFINITE) {
-    it(`${status} with no source becomes unverified and keeps every other field`, () => {
+    it(`${status} with no source becomes unverified, drops Google's grounded fields and keeps the rest`, () => {
       const given = {
         claimId: 'c1', status, explanation: 'model text', sources: [],
         provenance: { provider: 'gemini', model: 'm', verifiedAt: 'T', retriever: 'gemini-grounding', retrievedAt: 'T' },
@@ -57,8 +57,9 @@ describe('abstainWithoutSource', () => {
       const out = abstainWithoutSource(given);
       expectAbstained(out);
       expect(out.provenance).toEqual(given.provenance);
-      expect(out.webSearchQueries).toEqual(['q']);
-      expect(out.searchEntryPoint).toEqual({ renderedContent: '<b>x</b>' });
+      expect(out.claimId).toBe('c1');
+      expect('webSearchQueries' in out).toBe(false);
+      expect('searchEntryPoint' in out).toBe(false);
       // A missing sources field counts as no source too.
       expectAbstained(abstainWithoutSource({ claimId: 'c1', status, explanation: 'x' } as unknown as VerificationResult));
     });
