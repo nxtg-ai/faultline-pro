@@ -292,13 +292,14 @@ describe('Contract: ScanResultSchema (scan() pipeline output)', () => {
     }
   });
 
-  it('overallRisk is consistent with verifications (no contradiction → not high/critical)', async () => {
+  it('overallRisk is consistent with verifications (all unverified, no contradiction → high, never low)', async () => {
     const result = await scan('AI will cure cancer by 2025.', 'mock');
     const verdicts = Object.values(result.verifications).map(v => v.status);
-    const hasContradicted = verdicts.includes('contradicted');
-    if (!hasContradicted) {
-      expect(['low', 'medium']).toContain(result.overallRisk);
-    }
+    expect(verdicts.length).toBeGreaterThan(0);
+    // The mock cites no source, so every verdict reads unverified: risk not checked.
+    expect(verdicts.every(s => s === 'unverified')).toBe(true);
+    expect(verdicts).not.toContain('contradicted');
+    expect(result.overallRisk).toBe('high');
   });
 
   it('compliance report inside ScanResult conforms to schema', async () => {

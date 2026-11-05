@@ -555,7 +555,8 @@ describe('CLI: main()', () => {
     it('should exit 0 when no findings exceed threshold', async () => {
       const inputFile = join(tmpDir, 'clean-failon.txt');
       writeFileSync(inputFile, 'Quarterly revenue grew steadily.');
-      const { exitCode } = await main(['scan', '--input', inputFile, '--provider', 'mock', '--fail-on', 'low']);
+      // The mock cites no source, so its claim is unverified (a low finding); medium is not exceeded.
+      const { exitCode } = await main(['scan', '--input', inputFile, '--provider', 'mock', '--fail-on', 'medium']);
       expect(exitCode).toBe(0);
     });
 

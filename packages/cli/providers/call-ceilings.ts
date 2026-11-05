@@ -74,6 +74,20 @@ export const CALL_CEILINGS = deepFreeze({
   openaiResponses: {
     retrieve: { maxOutputTokens: 2048, basis: 'sample n=5: max 811' },
   },
+  /**
+   * providers/parallel_search_retriever.ts, Parallel Search API (v1/search). A search reply has
+   * no output tokens, so its ceiling bounds the results and the excerpt text the judge reads
+   * (its input tokens); fields advanced_settings.max_results,
+   * advanced_settings.excerpt_settings.max_chars_per_result and max_chars_total.
+   */
+  parallelSearch: {
+    retrieve: {
+      maxResults: 8,
+      maxCharsPerResult: 1500,
+      maxCharsTotal: 12000,
+      basis: 'not measured (no key on the build host); the v1 reference defaults max_results to 10, 8 keeps the judge prompt near 12,000 excerpt characters',
+    },
+  },
   /** providers/claude_provider.ts, Messages API; field max_tokens (was 4096 for every call). */
   claude: {
     extract: { maxOutputTokens: 16384, basis: 'sample n=1: 369 for 6 claims; was 4096 for every call, which could cut a long extraction' },

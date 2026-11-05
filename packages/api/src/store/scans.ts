@@ -1,4 +1,4 @@
-import { assertValidScanResult } from '@nxtg/faultline/lib/verdict-guard.js';
+import { abstainScanWithoutSource, assertValidScanResult } from '@nxtg/faultline/lib/verdict-guard.js';
 import { randomUUID } from 'node:crypto';
 
 export interface StoredScan {
@@ -7,6 +7,16 @@ export interface StoredScan {
   text: string;
   result: Record<string, unknown>;
   scannedAt: string;
+}
+
+/**
+ * A stored scan as read: abstainScanWithoutSource applied to its result, so a
+ * definite verdict stored without an openable source reads as unverified. The
+ * stored entry is not rewritten.
+ */
+function guarded(entry: StoredScan): StoredScan {
+  const result = abstainScanWithoutSource(entry.result);
+  return result === entry.result ? entry : { ...entry, result };
 }
 
 class ScanStore {
@@ -29,11 +39,12 @@ class ScanStore {
 
   list(keyId?: string, limit = 50): StoredScan[] {
     const filtered = keyId ? this.scans.filter((s) => s.keyId === keyId) : this.scans;
-    return filtered.slice(-limit);
+    return filtered.slice(-limit).map(guarded);
   }
 
   getById(id: string): StoredScan | undefined {
-    return this.scans.find((s) => s.id === id);
+    const entry = this.scans.find((s) => s.id === id);
+    return entry === undefined ? undefined : guarded(entry);
   }
 
   reset(): void {

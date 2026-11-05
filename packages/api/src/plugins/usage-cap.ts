@@ -16,8 +16,9 @@ import { getMonthlyCap, isUsageCapEnabled } from '../store/entitlements.js';
  *  - A `null` cap for a tier (e.g. admin) is unlimited — no-op.
  *  - Otherwise: if the key's current-month scan count has reached the cap, respond
  *    402 Payment Required with an upgrade message; else set X-Usage-* headers and
- *    allow. The count is incremented on a SUCCESSFUL scan (in the route), so failed
- *    scans never burn a user's quota.
+ *    allow. A scan is counted only when its delivered result holds at least one
+ *    billable verdict (lib/scan-quota.ts), so a scan that failed, or delivered
+ *    only unverified or unsourced verdicts, never uses up a customer's quota.
  *
  * Must run AFTER requireApiKey (needs request.keyId).
  */
@@ -29,21 +30,26 @@ export function nextMonthResetEpoch(now: Date = new Date()): number {
   return Math.floor(Date.UTC(year, month + 1, 1) / 1000);
 }
 
-export async function enforceMonthlyCap(request: FastifyRequest, reply: FastifyReply): Promise<void> {
-  if (!isUsageCapEnabled()) return; // dormant — mechanism deployed, gate inactive
+/**
+ * The admission check: refuse with 402 when `scans` more scans would take the key
+ * past its monthly cap (used + scans > cap). Returns false when it refused.
+ */
+export function admitMonthlyScans(request: FastifyRequest, reply: FastifyReply, scans: number): boolean {
+  if (!isUsageCapEnabled()) return true; // dormant — mechanism deployed, gate inactive
 
   const keyId = request.keyId ?? 'unknown';
   const tier = resolveTier(keyId);
   const cap = getMonthlyCap(tier);
-  if (cap === null) return; // unlimited tier
+  if (cap === null) return true; // unlimited tier
 
   const used = getUsageMeter().getMonthlyCount(keyId);
   const resetEpoch = nextMonthResetEpoch();
+  const remaining = Math.max(0, cap - used);
 
-  if (used >= cap) {
+  if (used + scans > cap) {
     reply
       .header('X-Usage-Limit', String(cap))
-      .header('X-Usage-Remaining', '0')
+      .header('X-Usage-Remaining', String(remaining))
       .header('X-Usage-Reset', String(resetEpoch))
       .status(402)
       .send({
@@ -51,15 +57,21 @@ export async function enforceMonthlyCap(request: FastifyRequest, reply: FastifyR
         tier,
         limit: cap,
         used,
-        remaining: 0,
+        remaining,
         resetEpoch,
         upgrade: 'Upgrade your plan or wait for your monthly quota to reset. See https://faultline.nxtg.ai/pricing',
       });
-    return;
+    return false;
   }
 
   reply
     .header('X-Usage-Limit', String(cap))
-    .header('X-Usage-Remaining', String(cap - used))
+    .header('X-Usage-Remaining', String(remaining))
     .header('X-Usage-Reset', String(resetEpoch));
+  return true;
+}
+
+/** The one-scan admission check, as a prehandler. */
+export async function enforceMonthlyCap(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  admitMonthlyScans(request, reply, 1);
 }

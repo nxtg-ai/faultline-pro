@@ -3,11 +3,13 @@ import { GoogleGenAI } from "@google/genai";
 import type { Claim, VerificationResult } from '../types';
 import { sanitizeVerifyError } from './verify-error';
 import { recordUsage } from '../lib/usage-sink';
-import { ExtractionError, parseExtractedClaims } from '../providers/extraction-error';
+import { ExtractionError, classifyApiError, parseExtractedClaims } from '../providers/extraction-error';
 import { readVerdictReply, truncatedVerdict, unparseableVerdict } from '../providers/verdict-reply';
 import { geminiCeilingConfig } from '../providers/call-ceilings';
 import { isGeminiTruncated, OutputTruncatedError } from '../providers/output-truncation';
 import type { RetrievalOutcome } from '../providers/base_provider';
+import { RetrievalError } from '../providers/retrieval-error';
+import { abstainWithoutSource } from '../lib/verdict-guard';
 
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 
@@ -213,7 +215,8 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
     const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
     if (chunks) {
       chunks.forEach((chunk: any) => {
-        if (chunk.web) {
+        // A chunk without a web uri is not a source the reader can open.
+        if (typeof chunk.web?.uri === 'string' && chunk.web.uri.length > 0) {
           sources.push({
             title: chunk.web.title || 'Source',
             uri: chunk.web.uri
@@ -224,21 +227,16 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
 
     const uniqueSources = sources.filter((v, i, a) => a.findIndex(t => t.uri === v.uri) === i);
 
-    // A grounded 'contradicted' needs a source that says the claim is false. With
-    // no grounding source at all the model is reporting absence of evidence, which
-    // is 'unverified', never a refutation (fw al:3dc2e0b227eaedd6, EP4 c4).
-    const noSourceAbstain = verdict.status === 'contradicted' && uniqueSources.length === 0;
-    const status = noSourceAbstain ? 'unverified' : verdict.status;
-
-    return {
+    // A definite verdict with no source the reader can open is reported as
+    // unverified (abstainWithoutSource); absence of evidence is not a verdict.
+    return abstainWithoutSource({
       claimId: claim.id,
-      status,
+      status: verdict.status,
       explanation: verdict.explanation,
       sources: uniqueSources.slice(0, 3),
-      ...(noSourceAbstain ? { noSourceAbstain: true } : {}),
       ...searchSuggestionsOf(response.candidates?.[0]?.groundingMetadata),
       provenance: { provider: 'gemini', model: servedModel, verifiedAt: returnedAt, retriever: 'gemini-grounding', retrievedAt: returnedAt },
-    };
+    });
 
   } catch (error) {
     console.error(`Error verifying claim ${claim.id}:`, error);
@@ -252,6 +250,8 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
       // support found". apiError lets every consumer tell the two apart instead
       // of silently reporting a confident-but-false 'unverified' verdict.
       apiError: true,
+      // An empty account keeps its reason, so the CLI does not ask for a re-run that cannot succeed.
+      ...(classifyApiError(error) === 'provider_out_of_credits' ? { apiErrorReason: 'provider_out_of_credits' as const } : {}),
     };
   }
 };
@@ -279,18 +279,78 @@ export const searchSuggestionsOf = (
 };
 
 /**
+ * Why a Gemini source-search reply did not finish normally, or null when it did.
+ * Used by the consensus source search only; the default verify path keeps its
+ * own handling. A missing finishReason is read as a normal finish.
+ */
+export const retrievalBlockedReason = (response: unknown): string | null => {
+  const r = response as { promptFeedback?: { blockReason?: unknown }; candidates?: Array<{ finishReason?: unknown }> } | null;
+  if (r?.promptFeedback?.blockReason) return 'prompt blocked';
+  if (!Array.isArray(r?.candidates) || r.candidates.length === 0) return 'returned no candidate';
+  const finish = r.candidates[0]?.finishReason;
+  if (finish !== undefined && finish !== 'STOP' && finish !== 'MAX_TOKENS') return `stopped early (${String(finish)})`;
+  return null;
+};
+
+/**
+ * The one grounded source-search call, capped at the retrieve ceiling
+ * (providers/call-ceilings.ts). retrieveSources and retrieveSourcesWithStatus
+ * both make it, so the two cannot drift apart on prompt, model or ceiling.
+ */
+const callSourceSearch = (claimText: string, apiKey: string) => {
+  const prompt = `Search the web for evidence relevant to this claim. Return a one-sentence summary of what you found.\n\nClaim: "${claimText}"`;
+  return getClient(apiKey).models.generateContent({
+    model: GEMINI_MODEL,
+    contents: prompt,
+    config: { ...geminiCeilingConfig('retrieve'), tools: [{ googleSearch: {} }] },
+  });
+};
+
+/**
  * Retrieve grounding sources for a claim using gemini's native googleSearch
  * tool — the same grounding mechanism `verifyClaim` uses, but exposed as a
  * pure retrieval primitive for the consensus engine's Retriever seam.
  *
- * Returns up to 3 de-duplicated sources. Returns [] on any failure (the
- * consensus engine treats an empty retrieval as "no shared evidence", and
- * every provider then judges from parametric knowledge against that empty set).
- * A caller that must tell a failure from an empty search uses
- * retrieveSourcesWithStatus.
+ * Returns up to 3 de-duplicated sources, or [] when the search ran and found
+ * none. A search that could not run (no key, an API error, a blocked prompt, no
+ * candidate, a stop other than STOP, a reply cut off at its ceiling) throws
+ * RetrievalError with the classified reason, so the
+ * consensus engine reports the claim as not checked instead of judging it
+ * against an empty source list.
  */
-export const retrieveSources = async (claimText: string, apiKey: string): Promise<Array<{ title: string; uri: string }>> =>
-  (await retrieveSourcesWithStatus(claimText, apiKey)).sources;
+export const retrieveSources = async (claimText: string, apiKey: string): Promise<Array<{ title: string; uri: string }>> => {
+  if (!apiKey) throw new RetrievalError('provider_error', new Error('no Gemini API key for the source search'));
+  if (!claimText) return [];
+
+  try {
+    const response = await callSourceSearch(claimText, apiKey);
+
+    recordGeminiUsage(response, true, 'grounded-retrieve:gemini');
+    // A blocked prompt, no candidate, or a stop for any reason other than a normal
+    // finish is a failed retrieval, not a search that found nothing.
+    const blocked = retrievalBlockedReason(response);
+    if (blocked) throw new RetrievalError('provider_error', new Error(`Gemini source search ${blocked}`));
+    // A cut-off retrieval is a failed retrieval, classified in the catch below.
+    if (isGeminiTruncated(response)) throw new OutputTruncatedError('gemini', 'retrieve');
+    const sources: Array<{ title: string; uri: string }> = [];
+    const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+    if (chunks) {
+      chunks.forEach((chunk: any) => {
+        // A chunk without a web uri is not a source the reader can open.
+        if (typeof chunk.web?.uri === 'string' && chunk.web.uri.length > 0) {
+          sources.push({ title: chunk.web.title || 'Source', uri: chunk.web.uri });
+        }
+      });
+    }
+    const uniqueSources = sources.filter((v, i, a) => a.findIndex(t => t.uri === v.uri) === i);
+    return uniqueSources.slice(0, 3);
+  } catch (error) {
+    const failure = RetrievalError.fromError(error);
+    // The reason only: the raw error can carry the provider payload.
+    console.error(`Source search failed: ${failure.reason}`);
+    throw failure;
+  }
+};
 
 /** Candidate stops that mean the model or Google's filters withheld the answer. */
 const GEMINI_POLICY_STOPS = new Set(['SAFETY', 'BLOCKLIST', 'PROHIBITED_CONTENT', 'SPII', 'RECITATION', 'IMAGE_SAFETY']);
@@ -307,16 +367,9 @@ export const retrieveSourcesWithStatus = async (claimText: string, apiKey: strin
   if (!apiKey) return { status: 'provider_error', sources: [], detail: 'missing api key' };
   if (!claimText) return { status: 'provider_error', sources: [], detail: 'no claim text' };
 
-  const prompt = `Search the web for evidence relevant to this claim. Return a one-sentence summary of what you found.\n\nClaim: "${claimText}"`;
-
   let response: unknown;
   try {
-    const ai = getClient(apiKey);
-    response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: prompt,
-      config: { ...geminiCeilingConfig('retrieve'), tools: [{ googleSearch: {} }] },
-    });
+    response = await callSourceSearch(claimText, apiKey);
   } catch (error) {
     return logRetrieveFailure(classifyGeminiRetrieveError(error));
   }
@@ -359,6 +412,8 @@ function classifyGeminiRetrieval(response: unknown): RetrievalOutcome {
     const web = (chunk as { web?: { title?: unknown; uri?: unknown } }).web;
     if (!web) continue;
     if (typeof web.uri !== 'string') return GEMINI_PARSE_ERROR;
+    // A chunk without a web uri is not a source the reader can open.
+    if (web.uri.length === 0) continue;
     sources.push({ title: typeof web.title === 'string' && web.title ? web.title : 'Source', uri: web.uri });
   }
   const uniqueSources = sources.filter((v, i, a) => a.findIndex(t => t.uri === v.uri) === i).slice(0, 3);
@@ -372,6 +427,21 @@ function logRetrieveFailure(outcome: RetrievalOutcome): RetrievalOutcome {
 }
 
 /**
+ * One source line of the shared-source prompt: `[n] title — uri`, plus the
+ * source's excerpt text on the next line when `withExcerpts` is set and the
+ * source has one (the parallel grounding mode; the judge cannot open links).
+ */
+export const groundedSourceLine = (
+  s: { title: string; uri: string; snippet?: string },
+  i: number,
+  withExcerpts: boolean,
+): string => {
+  const line = `[${i + 1}] ${s.title} — ${s.uri}`;
+  const excerpt = withExcerpts && typeof s.snippet === 'string' ? s.snippet.trim() : '';
+  return excerpt ? `${line}\n    Excerpt: ${excerpt}` : line;
+};
+
+/**
  * Verify a claim AGAINST a shared, pre-retrieved set of sources.
  * Unlike `verifyClaim` (which runs its own googleSearch), this judges using
  * ONLY the supplied sources, so it can participate in a consensus fan-out where
@@ -379,13 +449,14 @@ function logRetrieveFailure(outcome: RetrievalOutcome): RetrievalOutcome {
  */
 export const verifyClaimGrounded = async (
   claim: Claim,
-  sources: Array<{ title: string; uri: string }>,
+  sources: Array<{ title: string; uri: string; snippet?: string }>,
   apiKey: string,
+  opts: { withExcerpts?: boolean } = {},
 ): Promise<VerificationResult> => {
   if (!apiKey) throw new Error('API Key required');
 
   const sourceBlock = sources.length > 0
-    ? sources.map((s, i) => `[${i + 1}] ${s.title} — ${s.uri}`).join('\n')
+    ? sources.map((s, i) => groundedSourceLine(s, i, opts.withExcerpts === true)).join('\n')
     : '(no sources retrieved)';
 
   const prompt = `
@@ -438,6 +509,8 @@ export const verifyClaimGrounded = async (
       explanation: sanitizeVerifyError(error),
       sources,
       apiError: true,
+      // An empty account keeps its reason, so the CLI does not ask for a re-run that cannot succeed.
+      ...(classifyApiError(error) === 'provider_out_of_credits' ? { apiErrorReason: 'provider_out_of_credits' as const } : {}),
     };
   }
 };

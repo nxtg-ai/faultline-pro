@@ -1,4 +1,4 @@
-import type { Claim, VerificationResult } from '../types';
+import type { Claim, Source, VerificationResult } from '../types';
 import type { LLMProvider, CritiqueResult, ProviderFactory } from './base_provider';
 
 /**
@@ -29,6 +29,16 @@ class MockProvider implements LLMProvider {
       status: 'supported' as const,
       explanation: 'Mock verification: supported.',
       sources: [],
+    };
+  }
+
+  /** Offline consensus voter: judges every claim supported against whatever sources it was given. */
+  async verifyClaimGrounded(claim: Claim, sources: Source[]): Promise<VerificationResult> {
+    return {
+      claimId: claim.id,
+      status: 'supported' as const,
+      explanation: 'Mock grounded verification: supported.',
+      sources,
     };
   }
 

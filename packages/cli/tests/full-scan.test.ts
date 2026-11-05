@@ -10,6 +10,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Claim, VerificationResult } from '../types.js';
+import { OUT_OF_CREDITS_VERIFY_MESSAGE } from '../services/verify-error.js';
 
 const { mockExtractClaims, mockVerifyClaim } = vi.hoisted(() => ({
   mockExtractClaims: vi.fn(),
@@ -24,6 +25,9 @@ vi.mock('../providers/registry.js', () => ({
     verifyClaim: mockVerifyClaim,
     generateCritiqueAndPrompt: vi.fn().mockResolvedValue({ critique: '', improvedPrompt: '' }),
   })),
+  // Stands in for the built-in gemini instance, the only provider the engine
+  // grants a retriever (see ENGINE_PROVIDER below).
+  builtInProviderIdOf: vi.fn(() => 'gemini'),
 }));
 
 import {
@@ -37,6 +41,17 @@ import {
   CLAIMS_PER_UNIT,
   type FullVerificationSummary,
 } from '../cli/scan.js';
+
+/**
+ * The provider id the verify stage resolves to. A claim is billable (served)
+ * only when the engine bound a retriever to its verdict, and the engine binds
+ * one only to the built-in instance of the provider id it resolved: 'gemini'
+ * gets 'gemini-grounding'. The registry above is mocked, so no real Gemini call
+ * is made; the mock reports the fixture as the built-in gemini instance. Under
+ * 'mock' no verdict would be served, because the mock provider has no engine
+ * retriever.
+ */
+const ENGINE_PROVIDER = 'gemini';
 
 /** One sentence, so the per-sentence guarantee adds no synthetic claim. */
 const ONE_SENTENCE = 'Full scan fixture input text.';
@@ -65,8 +80,9 @@ function mixedFixture(): Claim[] {
 const MIXED_FACT_IDS = Array.from({ length: 12 }, (_, i) => `f${i + 1}`);
 const IMPORTANCE_ONE_IDS = ['f1', 'f6', 'f11'];
 
+/** A billable verdict: supported with one source (a zero-source verdict is never served). */
 function supported(claim: Claim): VerificationResult {
-  return { claimId: claim.id, status: 'supported', explanation: 'ok', sources: [] };
+  return { claimId: claim.id, status: 'supported', explanation: 'ok', sources: [{ title: 'S', uri: 'https://example.org/s' }] };
 }
 
 function apiErrorFor(claim: Claim): VerificationResult {
@@ -81,9 +97,18 @@ function failIds(failing: Set<string>) {
 
 const verifiedIds = (): string[] => mockVerifyClaim.mock.calls.map(([c]) => (c as Claim).id);
 
+const savedGeminiKey = process.env.GEMINI_API_KEY;
+
 beforeEach(() => {
   vi.clearAllMocks();
+  // Key resolution needs a value for 'gemini'; the mocked registry never uses it.
+  process.env.GEMINI_API_KEY = 'test-key';
   mockVerifyClaim.mockImplementation(async (c: Claim) => supported(c));
+});
+
+afterEach(() => {
+  if (savedGeminiKey === undefined) delete process.env.GEMINI_API_KEY;
+  else process.env.GEMINI_API_KEY = savedGeminiKey;
 });
 
 describe('unitsForFullScan / unitAccounting (doc §4 worked examples)', () => {
@@ -123,7 +148,7 @@ describe('unitsForFullScan / unitAccounting (doc §4 worked examples)', () => {
 describe('scan(mode full)', () => {
   it('verifies all 12 facts, including importance 1, in extraction order', async () => {
     mockExtractClaims.mockResolvedValue(mixedFixture());
-    const r = await scan(ONE_SENTENCE, 'mock', undefined, undefined, undefined, undefined, undefined, { mode: 'full' });
+    const r = await scan(ONE_SENTENCE, ENGINE_PROVIDER, undefined, undefined, undefined, undefined, undefined, { mode: 'full' });
 
     expect(mockVerifyClaim).toHaveBeenCalledTimes(12);
     expect(verifiedIds()).toEqual(MIXED_FACT_IDS);
@@ -134,13 +159,13 @@ describe('scan(mode full)', () => {
 
   it('ignores verifyCap: cap 3 still verifies all 12 facts', async () => {
     mockExtractClaims.mockResolvedValue(mixedFixture());
-    await scan(ONE_SENTENCE, 'mock', undefined, undefined, undefined, undefined, undefined, { mode: 'full', verifyCap: 3 });
+    await scan(ONE_SENTENCE, ENGINE_PROVIDER, undefined, undefined, undefined, undefined, undefined, { mode: 'full', verifyCap: 3 });
     expect(mockVerifyClaim).toHaveBeenCalledTimes(12);
   });
 
   it('never sends opinions or interpretations to verify and lists them as not checkable', async () => {
     mockExtractClaims.mockResolvedValue(mixedFixture());
-    const r = await scan(ONE_SENTENCE, 'mock', undefined, undefined, undefined, undefined, undefined, { mode: 'full' });
+    const r = await scan(ONE_SENTENCE, ENGINE_PROVIDER, undefined, undefined, undefined, undefined, undefined, { mode: 'full' });
 
     expect(verifiedIds()).not.toContain('o1');
     expect(verifiedIds()).not.toContain('o2');
@@ -164,7 +189,7 @@ describe('scan(mode full)', () => {
   it('fires onClaimVerified once per fact', async () => {
     mockExtractClaims.mockResolvedValue(mixedFixture());
     const onClaim = vi.fn();
-    await scan(ONE_SENTENCE, 'mock', undefined, undefined, undefined, onClaim, undefined, { mode: 'full' });
+    await scan(ONE_SENTENCE, ENGINE_PROVIDER, undefined, undefined, undefined, onClaim, undefined, { mode: 'full' });
     expect(onClaim).toHaveBeenCalledTimes(12);
     expect(onClaim.mock.calls.every(([, , , total]) => total === 12)).toBe(true);
   });
@@ -174,7 +199,7 @@ describe('scan(mode full)', () => {
     const failing = new Set(thirtyOne.slice(20).map((c) => c.id)); // f21..f31
     mockExtractClaims.mockResolvedValue(thirtyOne);
     mockVerifyClaim.mockImplementation(failIds(failing));
-    const r = await scan(ONE_SENTENCE, 'mock', undefined, undefined, undefined, undefined, undefined, { mode: 'full' });
+    const r = await scan(ONE_SENTENCE, ENGINE_PROVIDER, undefined, undefined, undefined, undefined, undefined, { mode: 'full' });
     const v = r.verification as FullVerificationSummary;
 
     expect(mockVerifyClaim).toHaveBeenCalledTimes(31);
@@ -190,7 +215,7 @@ describe('scan(mode full)', () => {
   it('31 facts with 2 lost to 429 refunds nothing', async () => {
     mockExtractClaims.mockResolvedValue(facts(31));
     mockVerifyClaim.mockImplementation(failIds(new Set(['f4', 'f17'])));
-    const r = await scan(ONE_SENTENCE, 'mock', undefined, undefined, undefined, undefined, undefined, { mode: 'full' });
+    const r = await scan(ONE_SENTENCE, ENGINE_PROVIDER, undefined, undefined, undefined, undefined, undefined, { mode: 'full' });
     const v = r.verification as FullVerificationSummary;
 
     expect(v.servedClaims).toBe(29);
@@ -205,12 +230,26 @@ describe('scan(mode full)', () => {
     mockVerifyClaim
       .mockResolvedValueOnce(apiErrorFor(dupA))
       .mockResolvedValueOnce(supported(dupB));
-    const r = await scan(ONE_SENTENCE, 'mock', undefined, undefined, undefined, undefined, undefined, { mode: 'full' });
+    const r = await scan(ONE_SENTENCE, ENGINE_PROVIDER, undefined, undefined, undefined, undefined, undefined, { mode: 'full' });
     const v = r.verification as FullVerificationSummary;
     expect(v.servedClaims).toBe(1);
     expect(v.unservedClaimIds).toEqual(['dup']);
     expect(r.verificationErrors).toBe(1);
     expect(r.degraded).toBe(true);
+  });
+
+  it('a checked claim with no sourced verdict is unserved but not an error: the scan is not degraded', async () => {
+    mockExtractClaims.mockResolvedValue(facts(3));
+    mockVerifyClaim
+      .mockImplementationOnce(async (c: Claim) => supported(c))
+      .mockImplementationOnce(async (c: Claim) => ({ claimId: c.id, status: 'supported', explanation: 'no source', sources: [] }))
+      .mockImplementationOnce(async (c: Claim) => ({ claimId: c.id, status: 'unverified', explanation: 'inconclusive', sources: [] }));
+    const r = await scan(ONE_SENTENCE, ENGINE_PROVIDER, undefined, undefined, undefined, undefined, undefined, { mode: 'full' });
+    const v = r.verification as FullVerificationSummary;
+    expect(v.servedClaims).toBe(1);
+    expect(v.unservedClaimIds).toEqual(['f2', 'f3']);
+    expect(r.verificationErrors).toBe(0);
+    expect(r.degraded).toBe(false);
   });
 
   describe('a provider that throws on every retry', () => {
@@ -223,7 +262,7 @@ describe('scan(mode full)', () => {
         if (c.id === 'f2') throw new Error('HTTP 503 model overloaded');
         return supported(c);
       });
-      const pending = scan(ONE_SENTENCE, 'mock', undefined, undefined, undefined, undefined, undefined, { mode });
+      const pending = scan(ONE_SENTENCE, ENGINE_PROVIDER, undefined, undefined, undefined, undefined, undefined, { mode });
       await vi.advanceTimersByTimeAsync(10_000);
       return pending;
     }
@@ -285,7 +324,7 @@ describe('extractForFullScan', () => {
 describe('verifyFullScan', () => {
   it('verifies exactly the passed facts, with no re-extraction, and calls onClaim once per fact', async () => {
     const onClaim = vi.fn();
-    const r = await verifyFullScan(mixedFixture(), { providerName: 'mock', onClaim });
+    const r = await verifyFullScan(mixedFixture(), { providerName: ENGINE_PROVIDER, onClaim });
 
     expect(mockExtractClaims).toHaveBeenCalledTimes(0);
     expect(verifiedIds()).toEqual(MIXED_FACT_IDS);
@@ -303,8 +342,8 @@ describe('verifyFullScan', () => {
   });
 
   it('runs local rules only when given the text', async () => {
-    const withText = await verifyFullScan(facts(1), { providerName: 'mock', text: ONE_SENTENCE });
-    const without = await verifyFullScan(facts(1), { providerName: 'mock' });
+    const withText = await verifyFullScan(facts(1), { providerName: ENGINE_PROVIDER, text: ONE_SENTENCE });
+    const without = await verifyFullScan(facts(1), { providerName: ENGINE_PROVIDER });
     expect(withText.input).toBe(ONE_SENTENCE);
     expect(without.input).toBe('');
     expect(without.ruleFindings).toEqual([]);
@@ -313,7 +352,7 @@ describe('verifyFullScan', () => {
   it('abort stops new claims: 12 facts, abort at the first verdict, 8 in flight finish, 4 not attempted', async () => {
     const controller = new AbortController();
     const onClaim = vi.fn(() => controller.abort());
-    const r = await verifyFullScan(facts(12), { providerName: 'mock', onClaim, signal: controller.signal });
+    const r = await verifyFullScan(facts(12), { providerName: ENGINE_PROVIDER, onClaim, signal: controller.signal });
 
     expect(mockVerifyClaim).toHaveBeenCalledTimes(8);
     expect(onClaim).toHaveBeenCalledTimes(8);
@@ -326,7 +365,7 @@ describe('verifyFullScan', () => {
   it('an already-aborted signal starts nothing and refunds every unit', async () => {
     const controller = new AbortController();
     controller.abort();
-    const r = await verifyFullScan(facts(10), { providerName: 'mock', signal: controller.signal });
+    const r = await verifyFullScan(facts(10), { providerName: ENGINE_PROVIDER, signal: controller.signal });
 
     expect(mockVerifyClaim).toHaveBeenCalledTimes(0);
     expect(r.notAttemptedClaimIds).toHaveLength(10);
@@ -340,7 +379,7 @@ describe('quick mode is unchanged (regression)', () => {
   for (const options of [undefined, { mode: 'quick' as const }, { mode: 'deep' as unknown as 'quick' }]) {
     it(`options ${JSON.stringify(options)}: cap 8, importance-1 facts and opinions never verified`, async () => {
       mockExtractClaims.mockResolvedValue(mixedFixture());
-      const r = await scan(ONE_SENTENCE, 'mock', undefined, undefined, undefined, undefined, undefined, options);
+      const r = await scan(ONE_SENTENCE, ENGINE_PROVIDER, undefined, undefined, undefined, undefined, undefined, options);
 
       expect(mockVerifyClaim).toHaveBeenCalledTimes(8);
       for (const id of IMPORTANCE_ONE_IDS) expect(verifiedIds()).not.toContain(id);
@@ -381,7 +420,7 @@ describe('verify concurrency', () => {
 
   it('concurrency 4 never has more than 4 claims in flight, and a 5th starts only when one finishes', async () => {
     const gate = gatedVerifier();
-    const pending = verifyFullScan(facts(10), { providerName: 'mock', concurrency: 4 });
+    const pending = verifyFullScan(facts(10), { providerName: ENGINE_PROVIDER, concurrency: 4 });
     await gate.settle();
 
     expect(gate.inFlight()).toBe(4);
@@ -398,7 +437,7 @@ describe('verify concurrency', () => {
 
   it('defaults to VERIFY_CONCURRENCY (8) in flight', async () => {
     const gate = gatedVerifier();
-    const pending = verifyFullScan(facts(12), { providerName: 'mock' });
+    const pending = verifyFullScan(facts(12), { providerName: ENGINE_PROVIDER });
     await gate.settle();
     expect(gate.inFlight()).toBe(VERIFY_CONCURRENCY);
     while (gate.waiting.length > 0) await gate.releaseOne();
@@ -422,7 +461,7 @@ describe('apiErrorReason on a claim whose provider threw on every retry', () => 
 
   async function reasonFor(error: unknown): Promise<VerificationResult> {
     mockVerifyClaim.mockImplementation(async () => { throw error; });
-    const pending = verifyFullScan(facts(1), { providerName: 'mock' });
+    const pending = verifyFullScan(facts(1), { providerName: ENGINE_PROVIDER });
     await vi.advanceTimersByTimeAsync(10_000);
     return (await pending).verifications.f1;
   }
@@ -430,6 +469,7 @@ describe('apiErrorReason on a claim whose provider threw on every retry', () => 
   const cases: Array<[unknown, string, string]> = [
     [new Error('429 Too Many Requests'), 'rate_limited', 'Rate limit reached. Upgrade for higher limits: https://faultline.nxtg.ai/pricing'],
     [new Error('RESOURCE_EXHAUSTED: quota'), 'rate_limited', 'Verify failed after retries.'],
+    [new Error('OpenAI API error: 429 Too Many Requests (out_of_credits)'), 'provider_out_of_credits', OUT_OF_CREDITS_VERIFY_MESSAGE],
     [new Error('HTTP 503 model overloaded'), 'provider_unavailable', 'Verify failed after retries.'],
     [new Error('Service Unavailable'), 'provider_unavailable', 'Verify failed after retries.'],
     [new Error('request timed out after 30000ms'), 'timeout', 'Verify failed after retries.'],
@@ -448,7 +488,7 @@ describe('apiErrorReason on a claim whose provider threw on every retry', () => 
   }
 
   it('a real verdict carries no apiErrorReason', async () => {
-    const r = await verifyFullScan(facts(1), { providerName: 'mock' });
+    const r = await verifyFullScan(facts(1), { providerName: ENGINE_PROVIDER });
     expect(r.verifications.f1.status).toBe('supported');
     expect(r.verifications.f1).not.toHaveProperty('apiErrorReason');
   });

@@ -19,6 +19,7 @@ const FORWARDABLE_TIERS = new Set<Tier>(['enterprise', 'pro', 'personal', 'free'
  * by faultline-web alone, so it is the only caller whose forwarded headers
  * (x-user-tier, x-faultline-user-ref) are trusted. Deliberately narrower than
  * auth.ts isAdminKeyId: a keystore key with the 'admin' permission is not fw.
+ * The measurement key (keyId 'measurement') is not the server key either.
  */
 export function isServerKeyId(keyId: string): boolean {
   return keyId === 'admin';
@@ -35,6 +36,7 @@ export function isServerKeyId(keyId: string): boolean {
  * to 'free'. With no header the admin key is an internal caller → enterprise.
  *
  * Any keystore key gets the tier its own permissions grant; the header is ignored.
+ * The measurement key gets 'measurement' and its header is ignored too.
  * (resolveTier never returns 'enterprise' for a keystore key today, so direct API
  * keys cannot reach consensus until an enterprise permission exists.)
  */

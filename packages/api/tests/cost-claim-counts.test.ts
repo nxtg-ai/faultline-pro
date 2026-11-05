@@ -47,7 +47,7 @@ describe('POST /scan records its claim counts', () => {
   });
   afterEach(async () => { await server.close(); delete process.env.FAULTLINE_API_KEY; });
 
-  it('a mock scan logs claims extracted and claims with a verdict', async () => {
+  it('a mock scan logs claims extracted, and no billable claim: the mock cites no source', async () => {
     const res = await server.inject({ method: 'POST', url: '/scan', headers: { 'x-api-key': ADMIN, 'content-type': 'application/json' }, payload: { text: 'The Eiffel Tower is in Paris. Water boils at 100 C at sea level.', provider: 'mock' } });
     expect(res.statusCode).toBe(200);
     const claims = JSON.parse(res.body).claims.length;
@@ -55,6 +55,8 @@ describe('POST /scan records its claim counts', () => {
     const events = getCostStore().getManagedEvents(1);
     expect(events.length).toBe(1);
     expect(events[0].claimsExtracted).toBe(claims);
-    expect(events[0].claimsVerified).toBe(claims);
+    // Every mock verdict is supported with zero sources: no source, no bill.
+    expect(JSON.parse(res.body).verifications.c1.sources).toEqual([]);
+    expect(events[0].claimsVerified).toBe(0);
   });
 });

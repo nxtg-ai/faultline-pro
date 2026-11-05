@@ -205,11 +205,12 @@ describe('consensusVerify — end to end (mocked)', () => {
     expect(r.providerVotes?.find(v => v.provider === 'legacy')?.status).toBe('unverified');
   });
 
-  it('empty retrieval still yields a verdict (providers judge against empty shared set)', async () => {
+  it('empty retrieval yields no verdict: providers that would agree are never asked', async () => {
     const providers = [named(mockProvider('mixed', 'gemini')), named(mockProvider('mixed', 'openai'))];
     const r = await consensusVerify(CLAIM, emptyRetriever, providers);
-    expect(r.status).toBe('mixed');
-    expect(r.consensus?.agreement).toBe('unanimous');
+    expect(r.status).toBe('unverified');
+    expect(r.apiError).toBeUndefined();
+    expect(r.providerVotes).toEqual([]);
     expect(r.sources).toEqual([]); // honest: no shared evidence retrieved
   });
 

@@ -10,6 +10,7 @@ import type { EvidenceFetch } from '../evidence/passage.js';
 import { clearRobotsCache } from '../evidence/robots.js';
 import { OpenAIWebSearchRetriever } from '../providers/openai_web_search_retriever.js';
 import { GeminiGroundingRetriever } from '../providers/gemini_provider.js';
+import { ParallelSearchRetriever } from '../providers/parallel_search_retriever.js';
 import type { RetrievalOutcome } from '../providers/base_provider.js';
 import { scan } from '../cli/scan.js';
 import { registerProvider } from '../providers/registry.js';
@@ -180,6 +181,7 @@ describe('attachIndependentEvidence', () => {
   it('every built-in retriever reports a typed outcome', () => {
     expect(typeof new OpenAIWebSearchRetriever('k').retrieveWithStatus).toBe('function');
     expect(typeof new GeminiGroundingRetriever('k').retrieveWithStatus).toBe('function');
+    expect(typeof new ParallelSearchRetriever('k').retrieveWithStatus).toBe('function');
   });
 
   it('a Google grounding Link returned by the second retriever is still never fetched', async () => {

@@ -7,6 +7,7 @@ vi.stubGlobal('fetch', mockFetch);
 import {
   OpenAIWebSearchRetriever,
   parseResponsesSources,
+  responsesFailure,
 } from '../providers/openai_web_search_retriever';
 
 /**
@@ -200,15 +201,40 @@ describe('OpenAIWebSearchRetriever', () => {
       ]);
     });
 
-    it('returns [] (never throws) on a non-ok API response', async () => {
+    it('rejects with RetrievalError rate_limited on a 429, not an empty list', async () => {
       mockFetch.mockResolvedValueOnce({ ok: false, status: 429, statusText: 'Too Many Requests' });
       const retriever = new OpenAIWebSearchRetriever('test-key');
-      await expect(retriever.retrieve('claim')).resolves.toEqual([]);
+      await expect(retriever.retrieve('claim')).rejects.toMatchObject({ name: 'RetrievalError', reason: 'rate_limited' });
     });
 
-    it('returns [] without calling the API when the key is empty', async () => {
+    it('rejects with RetrievalError provider_out_of_credits on a 429 insufficient_quota, never "re-run shortly"', async () => {
+      const body = JSON.stringify({
+        error: { message: 'You exceeded your current quota, please check your plan and billing details.', type: 'insufficient_quota', code: 'insufficient_quota' },
+      });
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 429, statusText: 'Too Many Requests', text: async () => body });
+      const retriever = new OpenAIWebSearchRetriever('test-key');
+      const err = (await retriever.retrieve('claim').catch((e: unknown) => e)) as Error & { reason?: string };
+      expect(err).toMatchObject({ name: 'RetrievalError', reason: 'provider_out_of_credits' });
+      expect(err.message).toContain('will not help');
+      expect(err.message).not.toMatch(/shortly/);
+      expect(err.message).not.toContain('billing details');
+    });
+
+    it('a 429 rate_limit_exceeded body stays rate_limited', async () => {
+      const body = JSON.stringify({ error: { message: 'Rate limit reached for requests', code: 'rate_limit_exceeded' } });
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 429, statusText: 'Too Many Requests', text: async () => body });
+      const retriever = new OpenAIWebSearchRetriever('test-key');
+      await expect(retriever.retrieve('claim')).rejects.toMatchObject({ name: 'RetrievalError', reason: 'rate_limited' });
+    });
+
+    it('a failed Responses payload with code insufficient_quota is provider_out_of_credits', () => {
+      expect(responsesFailure({ status: 'failed', error: { code: 'insufficient_quota' } })?.reason).toBe('provider_out_of_credits');
+      expect(responsesFailure({ status: 'failed', error: { code: 'rate_limit_exceeded' } })?.reason).toBe('rate_limited');
+    });
+
+    it('rejects without calling the API when the key is empty: no key is not "found nothing"', async () => {
       const retriever = new OpenAIWebSearchRetriever('');
-      await expect(retriever.retrieve('claim')).resolves.toEqual([]);
+      await expect(retriever.retrieve('claim')).rejects.toMatchObject({ name: 'RetrievalError', reason: 'provider_error' });
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
@@ -250,8 +276,9 @@ describe('OpenAIWebSearchRetriever', () => {
       expect(out.sources).toEqual([]);
       mockFetch.mockRejectedValueOnce(new DOMException('The operation was aborted.', 'AbortError'));
       expect((await r.retrieveWithStatus('claim')).status).toBe('timeout');
+      // retrieve() rejects instead: a failed search is never "found nothing" (#81).
       mockFetch.mockRejectedValueOnce(new DOMException('The operation timed out.', 'TimeoutError'));
-      await expect(r.retrieve('claim')).resolves.toEqual([]);
+      await expect(r.retrieve('claim')).rejects.toMatchObject({ name: 'RetrievalError', reason: 'timeout' });
     });
 
     it('provider_error: an HTTP 500, with the status code as the only detail', async () => {
@@ -259,7 +286,7 @@ describe('OpenAIWebSearchRetriever', () => {
       const out = await new OpenAIWebSearchRetriever('test-key').retrieveWithStatus('claim');
       expect(out).toEqual({ status: 'provider_error', sources: [], detail: 'http 500' });
       mockFetch.mockResolvedValueOnce({ ok: false, status: 500, statusText: 'Internal Server Error' });
-      await expect(new OpenAIWebSearchRetriever('test-key').retrieve('claim')).resolves.toEqual([]);
+      await expect(new OpenAIWebSearchRetriever('test-key').retrieve('claim')).rejects.toMatchObject({ name: 'RetrievalError', reason: 'provider_error' });
     });
 
     it('provider_error: a network error', async () => {
@@ -271,7 +298,7 @@ describe('OpenAIWebSearchRetriever', () => {
     it('provider_error: a missing API key, with no request made', async () => {
       const r = new OpenAIWebSearchRetriever('');
       expect(await r.retrieveWithStatus('claim')).toEqual({ status: 'provider_error', sources: [], detail: 'missing api key' });
-      await expect(r.retrieve('claim')).resolves.toEqual([]);
+      await expect(r.retrieve('claim')).rejects.toMatchObject({ name: 'RetrievalError', reason: 'provider_error' });
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
@@ -284,7 +311,7 @@ describe('OpenAIWebSearchRetriever', () => {
       mockFetch.mockResolvedValueOnce(jsonReply({ output: [{ type: 'message', content: 'not-a-list' }] }));
       expect((await r.retrieveWithStatus('claim')).status).toBe('parse_error');
       mockFetch.mockResolvedValueOnce(jsonReply(null));
-      await expect(r.retrieve('claim')).resolves.toEqual([]);
+      await expect(r.retrieve('claim')).rejects.toMatchObject({ name: 'RetrievalError', reason: 'provider_error' });
     });
 
     it('policy_block: a Responses refusal or a content-filter stop', async () => {
@@ -423,7 +450,7 @@ describe('OpenAIWebSearchRetriever', () => {
       const r = new OpenAIWebSearchRetriever('test-key');
       expect(await r.retrieveWithStatus('claim')).toEqual({ status: 'parse_error', sources: [], detail: 'unexpected shape' });
       mockFetch.mockResolvedValueOnce(jsonReply(null));
-      await expect(r.retrieve('claim')).resolves.toEqual([]);
+      await expect(r.retrieve('claim')).rejects.toMatchObject({ name: 'RetrievalError', reason: 'provider_error' });
     });
   });
 

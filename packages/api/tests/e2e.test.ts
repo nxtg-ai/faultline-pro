@@ -44,7 +44,12 @@ vi.mock('@nxtg/faultline/cli/scan.js', () => ({
     provider: 'mock',
     claims: [{ id: 'c1', text: 'AI generated the universe in 2023.', type: 'fact', importance: 4 }],
     verifications: {
-      c1: { claimId: 'c1', status: 'supported', explanation: 'Confirmed.', sources: [{ title: 'Source A', uri: 'https://example.com' }] },
+      // The verdict a consensus scan gives, carrying the consensus engine's
+      // retriever, so a scan with it is billable and counts toward usage (S8).
+      c1: {
+        claimId: 'c1', status: 'supported', explanation: 'Confirmed.', sources: [{ title: 'Source A', uri: 'https://example.com' }],
+        provenance: { provider: 'consensus', model: 'openai:gpt-4o-mini+claude:claude-test', verifiedAt: '2026-10-01T00:00:00.000Z', retriever: 'openai-web-search', retrievedAt: '2026-10-01T00:00:00.000Z' },
+      },
     },
     overallRisk: 'low',
     complianceReport: { riskTier: 'minimal', findings: [], claimMappings: [], euRiskSummary: { totalClaims: 1, highestTier: 'minimal', unacceptable: 0, high: 0, limited: 0, minimal: 1 } },

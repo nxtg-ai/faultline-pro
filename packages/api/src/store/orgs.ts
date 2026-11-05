@@ -16,8 +16,9 @@
 
 import { randomUUID, randomBytes } from 'node:crypto';
 import { getKeyStore } from './keys.js';
+import { issuedKeyBilling } from '../lib/key-issuance.js';
 import { getUsageMeter } from './usage.js';
-import type { ApiKey, Permission } from './keys.js';
+import type { IssuedApiKey, Permission } from './keys.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -264,13 +265,14 @@ class OrgStore {
   // ── Scoped API Keys ──
 
   /** Create a new API key scoped to the org via the global key store. */
-  createOrgKey(orgId: string, keyName: string, permissions: Permission[], creatorKeyId: string): { orgKey: OrgKey; apiKey: ApiKey } {
+  createOrgKey(orgId: string, keyName: string, permissions: Permission[], creatorKeyId: string): { orgKey: OrgKey; apiKey: IssuedApiKey } {
     const org = this.orgs.get(orgId);
     if (!org) throw new Error('Organization not found.');
     if (org.keys.length >= MAX_ORG_KEYS) {
       throw new Error(`Org key limit reached (max ${MAX_ORG_KEYS}).`);
     }
-    const apiKey = getKeyStore().create(`[${org.slug}] ${keyName}`, permissions);
+    // A non-admin org key is metered at the default cap, like every issued key.
+    const apiKey = getKeyStore().create(`[${org.slug}] ${keyName}`, permissions, undefined, issuedKeyBilling(permissions));
     const orgKey: OrgKey = {
       keyId:   apiKey.id,
       keyName,

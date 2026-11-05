@@ -3,6 +3,8 @@ import type { StatusRetriever, RetrievalOutcome } from './base_provider';
 import { recordUsage } from '../lib/usage-sink';
 import { CALL_CEILINGS } from './call-ceilings';
 import { isOutputTruncatedError, isResponsesTruncated, OutputTruncatedError } from './output-truncation';
+import { RetrievalError } from './retrieval-error';
+import { isOutOfCreditsText, outOfCreditsTag, readErrorBody } from './out-of-credits';
 
 /**
  * OpenAIWebSearchRetriever — provider-agnostic grounding via OpenAI's Responses
@@ -52,6 +54,28 @@ interface ResponsesPayload {
   incomplete_details?: { reason?: string } | null;
 }
 
+/**
+ * The failure an HTTP 200 Responses payload reports, or null when it reports
+ * none. Only `completed`, or no status and no error object, is a finished
+ * search. Anything else (`failed`, `cancelled`, `in_progress`, `incomplete` for
+ * a reason other than the output limit, or an error object with no status) is
+ * a search that did not finish: its citations, if any, are partial and are not
+ * passed on. The output limit is reported separately as output_truncated.
+ */
+export function responsesFailure(payload: ResponsesPayload): RetrievalError | null {
+  const status = payload?.status;
+  if (status === 'completed') return null;
+  if (status == null && !payload?.error) return null;
+  if (status === 'incomplete' && payload.incomplete_details?.reason === 'max_output_tokens') return null;
+  if (status === 'failed' || (status == null && payload?.error)) {
+    const code = payload.error?.code ?? '';
+    const reason = isOutOfCreditsText(code) ? 'provider_out_of_credits' : /rate_limit/i.test(code) ? 'rate_limited' : 'provider_error';
+    return new RetrievalError(reason, new Error(`OpenAI Responses status ${status ?? 'missing'}: ${code || 'no error code'}`));
+  }
+  const why = status === 'incomplete' ? payload.incomplete_details?.reason ?? 'no reason given' : 'did not complete';
+  return new RetrievalError('provider_error', new Error(`OpenAI Responses status ${status}: ${why}`));
+}
+
 export class OpenAIWebSearchRetriever implements StatusRetriever {
   readonly name = 'openai-web-search';
   private readonly apiKey: string;
@@ -71,9 +95,29 @@ export class OpenAIWebSearchRetriever implements StatusRetriever {
       DEFAULT_MODEL;
   }
 
-  /** The sources, or [] when the search failed or found nothing. Never throws (the consensus engine relies on that). */
+  /**
+   * Resolves the sources found, [] when the search ran and found none. A search
+   * that could not run throws RetrievalError with the classified reason, so a
+   * failure never reads as "searched, found nothing" (the consensus engine then
+   * reports the claim as not checked). A caller that wants the typed status
+   * instead of a throw uses retrieveWithStatus.
+   */
   async retrieve(claimText: string): Promise<Source[]> {
-    return (await this.retrieveWithStatus(claimText)).sources;
+    if (!this.apiKey) throw new RetrievalError('provider_error', new Error('no OpenAI API key for the source search'));
+    try {
+      const data = await this.callAPI(claimText);
+      // A search that failed or stopped early is a failed retrieval too, checked before any citation is read.
+      const failure = responsesFailure(data);
+      if (failure) throw failure;
+      return parseResponsesSources(data, MAX_RESULTS);
+    } catch (err) {
+      const failure = RetrievalError.fromError(err);
+      if (typeof process !== 'undefined' && process.env?.FAULTLINE_DEBUG) {
+        // The reason only: the raw error can carry the provider payload.
+        process.stderr.write(`[openai-web-search] retrieve failed: ${failure.reason}\n`);
+      }
+      throw failure;
+    }
   }
 
   /** The search with how it ended (see RetrievalStatus). Never throws. */
@@ -83,8 +127,6 @@ export class OpenAIWebSearchRetriever implements StatusRetriever {
     try {
       data = await this.callAPI(claimText);
     } catch (err) {
-      // Retrieval must never throw into the consensus engine: [] degrades the
-      // claim to parametric judgement, surfaced honestly by the providers.
       const outcome = classifyRetrievalError(err);
       if (typeof process !== 'undefined' && process.env?.FAULTLINE_DEBUG) {
         process.stderr.write(`[openai-web-search] retrieve failed: ${outcome.status} (${outcome.detail})\n`);
@@ -120,7 +162,11 @@ export class OpenAIWebSearchRetriever implements StatusRetriever {
       ...(this.timeoutMs ? { signal: AbortSignal.timeout(this.timeoutMs) } : {}),
     });
 
-    if (!response.ok) throw new RetrievalHttpError(response.status, response.statusText);
+    if (!response.ok) {
+      // An empty account is often a 429 too: the fixed tag lets the classifier tell it from a rate limit.
+      const tag = outOfCreditsTag(response.status, await readErrorBody(response));
+      throw new RetrievalHttpError(response.status, response.statusText, tag);
+    }
 
     let payload: ResponsesPayload;
     try {
@@ -144,17 +190,24 @@ export class OpenAIWebSearchRetriever implements StatusRetriever {
       outputTokens: usage?.output_tokens ?? 0,
       isGrounding: true,
     });
-    // A search cut off at its ceiling is a failed retrieval: retrieve() turns the throw into [].
+    // A search cut off at its ceiling is a failed retrieval: retrieve() rethrows it
+    // as RetrievalError, retrieveWithStatus() reports it as provider_error.
     if (isResponsesTruncated(payload)) throw new OutputTruncatedError('openai-web-search', 'retrieve');
+    // A failed or unfinished payload is judged by the caller: retrieve() through
+    // responsesFailure, retrieveWithStatus() through classifyResponsesPayload.
     return payload;
   }
 }
 
-/** The Responses API answered non-2xx. */
+/**
+ * The Responses API answered non-2xx. `tag` is the fixed out-of-credits suffix
+ * (out-of-credits.ts), so RetrievalError.fromError can tell an empty account
+ * from a rate limit; it never carries the provider's own text.
+ */
 export class RetrievalHttpError extends Error {
   readonly status: number;
-  constructor(status: number, statusText: string) {
-    super(`OpenAI Responses API error: ${status} ${statusText}`);
+  constructor(status: number, statusText: string, tag = '') {
+    super(`OpenAI Responses API error: ${status} ${statusText}${tag}`);
     this.name = 'RetrievalHttpError';
     this.status = status;
   }

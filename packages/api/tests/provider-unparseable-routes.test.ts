@@ -32,9 +32,17 @@ const CLAIMS = [
 
 vi.mock('@nxtg/faultline/providers/registry.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@nxtg/faultline/providers/registry.js')>();
+  // Test-only: a fixture resolved under a built-in id stands in for that
+  // built-in's own instance, which the real registry records for its factories.
+  const standIns = new WeakMap<object, string>();
+  const standIn = <T,>(name: string | undefined, p: T): T => {
+    if (name !== undefined && actual.isBuiltInProviderName(name) && p && typeof p === 'object') standIns.set(p, name);
+    return p;
+  };
   return {
     ...actual,
-    getProvider: vi.fn(() => ({
+    builtInProviderIdOf: vi.fn((p: unknown) => (p && typeof p === 'object' ? standIns.get(p) : undefined) ?? actual.builtInProviderIdOf(p)),
+    getProvider: vi.fn((_key: string, name?: string) => standIn(name, {
       name: 'Unparseable Fixture',
       modelId: 'fixture-v1',
       extractClaims: async () => CLAIMS,

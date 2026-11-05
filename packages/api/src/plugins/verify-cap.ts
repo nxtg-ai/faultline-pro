@@ -17,6 +17,7 @@ export const VERIFY_CAP_BY_TIER: Readonly<Record<Tier, number>> = Object.freeze(
   free: 8,
   anon: 8,
   userkey: 8,
+  measurement: 8,
 });
 
 /** The cap for a plan; a missing or invalid table entry falls back to the engine default (8). */

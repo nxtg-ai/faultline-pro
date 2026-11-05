@@ -1,7 +1,13 @@
+import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
+import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
-import { scan } from '@nxtg/faultline/cli/scan.js';
+import { enforceMonthlyCap } from '../plugins/usage-cap.js';
+import { meterScan } from '../lib/scan-quota.js';
+import { scanInRequestMode } from '../lib/grounding.js';
+import { commitClaims, engineVerifyCap, reserveClaims } from '../plugins/claim-meter.js';
+import { scanWithSpend } from '../lib/scan-spend.js';
 
 type Provider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
 
@@ -63,17 +69,21 @@ export async function diffRoutes(fastify: FastifyInstance): Promise<void> {
     '/scan/diff',
     {
       config: { access: 'key' },
-      preHandler: [requireApiKey, rateLimitScan],
+      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap, reserveClaims(engineVerifyCap(2))],
       schema: { tags: ['Scan'], summary: 'Diff two texts — new/removed/changed claims with inline view', body: BODY_SCHEMA },
     },
     async (request, reply) => {
       const { before, after, provider } = request.body;
       const effectiveProvider: Provider = provider ?? 'openai';
 
+      const keyId = request.keyId ?? 'unknown';
       const [scanBefore, scanAfter] = await Promise.all([
-        scan(before, effectiveProvider),
-        scan(after, effectiveProvider),
+        scanWithSpend({ text: before, provider: effectiveProvider, keyId }, () => scanInRequestMode(before, effectiveProvider)),
+        scanWithSpend({ text: after, provider: effectiveProvider, keyId }, () => scanInRequestMode(after, effectiveProvider)),
       ]) as unknown as [ScanResult, ScanResult];
+      // Both scans' verdicts reach the caller (claims and changed verdicts).
+      commitClaims(request, randomUUID(), scanBefore, effectiveProvider);
+      commitClaims(request, randomUUID(), scanAfter, effectiveProvider);
 
       const beforeByText = new Map(scanBefore.claims.map(c => [normalize(c.text), c]));
       const afterByText  = new Map(scanAfter.claims.map(c => [normalize(c.text), c]));
@@ -131,6 +141,8 @@ export async function diffRoutes(fastify: FastifyInstance): Promise<void> {
         }
       }
 
+      // One request, one scan: counted once when either side it serves holds a billable verdict.
+      meterScan(keyId, [...Object.values(scanBefore.verifications), ...Object.values(scanAfter.verifications)]);
       return reply.status(200).send({
         before: scanBefore,
         after: scanAfter,

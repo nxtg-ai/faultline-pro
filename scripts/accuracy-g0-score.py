@@ -7,6 +7,15 @@ section 8 agreement rule: a per-item floor AND an equivalence margin).
 
     python3 scripts/accuracy-g0-score.py RUN.jsonl [--set full|verify-subsample]
         [--json OUT.json] [--paired OTHER.jsonl]
+    python3 scripts/accuracy-g0-score.py --arms A.jsonl [P.jsonl ...] [--json OUT.json]
+
+--arms summarises grounding arms run on the same items by the runner's --arm
+(docs/grounding-providers.md): per arm, balanced accuracy with its 95% CI, the
+unverified rate, the mean cost per claim and the Google grounded calls; and,
+when a google arm and a parallel arm are both given, the paired bootstrap 95%
+CI of BA(parallel) - BA(google) on their shared binary ids (the same pinned
+resample matrix as section 4: RESAMPLES draws, SEED). An arm comparison is not
+the pre-registered run, so section 5 validity is not applied to it.
 
 Reads only the runner's output rows and the committed gold file, so a score is
 reproducible at $0. An INVALID run (prereg section 5) is never scored: the
@@ -370,6 +379,98 @@ def paired(primary: list[dict], other: list[dict]) -> dict:
     }
 
 
+# ── Grounding arms (runner --arm) ────────────────────────────────────────────
+
+def _number(value) -> float:
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value >= 0 else 0.0
+
+
+def arm_block(items: list[dict]) -> dict:
+    """One arm's summary: BA with CI on binary items, and per-claim rates and costs on every item."""
+    n = len(items)
+    binary = [item for item in items if item["gold"] in BINARY]
+    unverified = sum(1 for item in items if outcome(item) in ("unverified", "failure"))
+    costs = [_number(item.get("costUsd")) for item in items]
+    return {
+        "n": n,
+        "binary_n": len(binary),
+        "balanced_accuracy": with_ci(binary, binary_metrics)["balanced_accuracy"] if binary else None,
+        "unverified_rate": unverified / n if n else None,
+        "failure_rate": sum(1 for item in items if outcome(item) == "failure") / n if n else None,
+        "mean_cost_usd_per_claim": (sum(costs) / n) if n else None,
+        "total_cost_usd": sum(costs),
+        "google_grounded_calls": int(sum(_number(item.get("googleGroundingCalls")) for item in items)),
+        "mean_sources_per_claim": (sum(_number(item.get("sourcesCount")) for item in items) / n) if n else None,
+    }
+
+
+def arm_name(rows: list[dict], path: Path) -> str:
+    names = sorted({row.get("arm") for row in rows if isinstance(row.get("arm"), str)})
+    if len(names) > 1:
+        raise Refused(f"{path} mixes arms {names}")
+    return names[0] if names else path.stem
+
+
+def paired_difference(primary: list[dict], other: list[dict]) -> dict:
+    """BA(primary) - BA(other) on shared binary ids, paired-bootstrapped (reuses `paired`)."""
+    p = paired(primary, other)
+    if p["n"] == 0:
+        return {"n": 0, "value": None, "ci95": [None, None]}
+    diff = p["ba_difference"]
+    return {
+        "n": p["n"],
+        "value": diff["value"],
+        "ci95": diff["ci95"],
+        "undefinedResamples": diff.get("undefinedResamples"),
+        "resamples": RESAMPLES,
+        "seed": SEED,
+        "status_agreement_rate": p["status_agreement_rate"],
+        "ci_contains_zero": p["ci_contains_zero"],
+    }
+
+
+def arms_report(paths: list[Path], gold: list[dict]) -> dict:
+    arms: dict[str, dict] = {}
+    items_by_arm: dict[str, list[dict]] = {}
+    for path in paths:
+        rows = load_rows(path)
+        name = arm_name(rows, path)
+        if name in arms:
+            raise Refused(f"arm {name} is given twice")
+        items = join(rows, gold)
+        by_id = {item["id"]: item for item in gold}
+        mismatched = [row.get("id") for row in rows if row.get("id") in by_id and row.get("gold") != by_id[row["id"]]["gold"]]
+        if mismatched:
+            raise Refused(f"{path}: {len(mismatched)} rows carry a gold label that differs from the gold file")
+        items_by_arm[name] = items
+        arms[name] = {"run": str(path), "runSha256": sha256_file(path), **arm_block(items)}
+    report: dict = {"goldSha256": GOLD_SHA256, "seed": SEED, "resamples": RESAMPLES, "arms": arms}
+    baseline = items_by_arm.get("google")
+    for name, items in items_by_arm.items():
+        if name.startswith("parallel") and baseline is not None:
+            report.setdefault("ba_difference", {})[f"{name} - google"] = paired_difference(items, baseline)
+    return report
+
+
+def arms_readout(report: dict) -> str:
+    lines = ["GROUNDING ARMS (not the pre-registered run; section 5 validity not applied):"]
+    for name, arm in report["arms"].items():
+        ba = arm["balanced_accuracy"]
+        ba_text = "n/a" if ba is None else _fmt(ba)
+        cost = arm["mean_cost_usd_per_claim"]
+        lines.append(
+            f"  {name:<14} n={arm['n']} binary={arm['binary_n']}  BA {ba_text}  unverified {arm['unverified_rate']:.4f}  "
+            f"mean cost ${(cost or 0):.5f}/claim  Google grounded calls {arm['google_grounded_calls']}"
+        )
+    for label, diff in report.get("ba_difference", {}).items():
+        if diff["value"] is None:
+            lines.append(f"  BA {label}: undefined (n={diff['n']}; both gold classes are needed)")
+        else:
+            lo, hi = diff["ci95"]
+            lines.append(f"  BA {label}: {diff['value']:+.4f}  95% CI [{lo:+.4f}, {hi:+.4f}]  (paired bootstrap, {RESAMPLES} resamples, seed {SEED}, n={diff['n']})")
+    return "\n".join(lines)
+
+
 # ── Readout ──────────────────────────────────────────────────────────────────
 
 def _fmt(metric: dict) -> str:
@@ -426,13 +527,30 @@ def paired_readout(p: dict, other_name: str) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("run", type=Path)
+    parser.add_argument("run", type=Path, nargs="?")
+    parser.add_argument("--arms", type=Path, nargs="+")
     parser.add_argument("--set", choices=("full", "verify-subsample"))
     parser.add_argument("--json", type=Path, dest="json_out")
     parser.add_argument("--paired", type=Path)
     parser.add_argument("--gold", type=Path, default=GOLD_PATH)
     parser.add_argument("--subsample", type=Path, default=SUBSAMPLE_PATH)
     args = parser.parse_args(argv)
+    if args.arms:
+        if args.run is not None or args.paired is not None:
+            print("REFUSED: --arms takes the arm files only", file=sys.stderr)
+            return EXIT_REFUSED
+        try:
+            report = arms_report(args.arms, load_gold(args.gold))
+        except Refused as error:
+            print(f"REFUSED: {error}", file=sys.stderr)
+            return EXIT_REFUSED
+        print(arms_readout(report))
+        if args.json_out:
+            args.json_out.parent.mkdir(parents=True, exist_ok=True)
+            args.json_out.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        return EXIT_OK
+    if args.run is None:
+        parser.error("a RUN.jsonl or --arms is required")
     try:
         gold = load_gold(args.gold)
         report = evaluate(args.run, gold, args.set, args.subsample)

@@ -91,3 +91,38 @@ describe('buildManagedCostEvent', () => {
     expect(ev.modelId).toBe('gpt-4o');
   });
 });
+
+describe('buildManagedCostEvent: fallback estimate priced by the stage providers', () => {
+  // The estimate prices extraction tokens at the extraction provider and the per-claim
+  // grounding charge at each verifying provider, never at the outer label.
+  const staged = { ...opts, provider: 'mock' };
+  const tokensIn = Math.ceil(400 / 4);
+  const tokensOut = Math.ceil(tokensIn * 0.3);
+
+  it('an outer mock label with gemini stages is priced at gemini, not $0', () => {
+    const ev = buildManagedCostEvent([], { ...staged, stageProviders: { extraction: 'gemini', verification: ['gemini'] } });
+    const expected = computeScanCost(tokensIn, tokensOut, 0, 'gemini') + computeScanCost(0, 0, 5, 'gemini');
+    expect(expected).toBeGreaterThan(0);
+    expect(ev.costUsd).toBeCloseTo(expected, 10);
+    expect(ev.modelId).toBe('gemini-2.5-flash');
+  });
+
+  it('matches the single-provider estimate when every stage runs on the outer provider', () => {
+    const single = buildManagedCostEvent([], opts);
+    const stagedSame = buildManagedCostEvent([], { ...opts, stageProviders: { extraction: 'openai', verification: ['openai'] } });
+    expect(stagedSame.costUsd).toBeCloseTo(single.costUsd, 12);
+  });
+
+  it('charges grounding once per verifying provider', () => {
+    const ev = buildManagedCostEvent([], { ...staged, stageProviders: { extraction: 'openai', verification: ['gemini', 'gemini'] } });
+    const expected = computeScanCost(tokensIn, tokensOut, 0, 'openai') + 2 * computeScanCost(0, 0, 5, 'gemini');
+    expect(ev.costUsd).toBeCloseTo(expected, 10);
+  });
+
+  it('a captured Perplexity leg is priced at its own model rate', () => {
+    const legs: UsageLeg[] = [{ provider: 'perplexity', model: 'sonar-pro', inputTokens: 1200, outputTokens: 300, isGrounding: true }];
+    const ev = buildManagedCostEvent(legs, staged);
+    expect(ev.costUsd).toBeCloseTo(0.0141, 10); // 1200 × $3/M + 300 × $15/M + $0.006 request fee
+    expect(ev.modelId).toBe('sonar-pro');
+  });
+});

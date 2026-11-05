@@ -11,7 +11,7 @@ interface CostsQuery {
 
 interface PercentilesQuery {
   days?: string;
-  tier?: 'enterprise' | 'pro' | 'personal' | 'free' | 'anon' | 'userkey';
+  tier?: 'enterprise' | 'pro' | 'personal' | 'free' | 'anon' | 'userkey' | 'measurement';
 }
 
 export async function costsRoutes(fastify: FastifyInstance): Promise<void> {
@@ -65,7 +65,7 @@ export async function costsRoutes(fastify: FastifyInstance): Promise<void> {
           type: 'object',
           properties: {
             days: { type: 'string' },
-            tier: { type: 'string', enum: ['enterprise', 'pro', 'personal', 'free', 'anon', 'userkey'] },
+            tier: { type: 'string', enum: ['enterprise', 'pro', 'personal', 'free', 'anon', 'userkey', 'measurement'] },
           },
           additionalProperties: false,
         },

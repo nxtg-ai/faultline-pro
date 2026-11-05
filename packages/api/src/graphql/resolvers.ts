@@ -1,10 +1,14 @@
 import { scan } from '@nxtg/faultline/cli/scan.js';
-import { getKeyStore } from '../store/keys.js';
+import { scanInRequestMode } from '../lib/grounding.js';
+import { scanWithSpend } from '../lib/scan-spend.js';
+import { PROVIDER_BUDGET_EXHAUSTED, providerBudgetRefuses } from '../plugins/provider-spend-cap.js';
+import type { ManagedScanCostEvent } from '../store/costs.js';
+import { getKeyStore, KeyFieldError } from '../store/keys.js';
 import { getUsageMeter } from '../store/usage.js';
 import { getAuditLogger } from '../store/audit.js';
 import { getScanStore } from '../store/scans.js';
 import { isAdminKeyId } from '../plugins/auth.js';
-import { mayIssueKey, CUSTOMER_KEYS_CLOSED } from '../lib/key-issuance.js';
+import { mayIssueKey, CUSTOMER_KEYS_CLOSED, issuedKeyBilling } from '../lib/key-issuance.js';
 import { GraphQLError } from 'graphql';
 
 /**
@@ -37,6 +41,17 @@ type Provider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
 
 interface GqlContext {
   keyId: string;
+  /** The spend-gate tier from the request (server.ts). */
+  spendCapTier?: ManagedScanCostEvent['tier'];
+}
+
+/** The same budget check the REST scan routes run, before any provider call. */
+function requireProviderBudget(ctx: GqlContext): void {
+  if (providerBudgetRefuses(ctx.spendCapTier)) {
+    throw new GraphQLError('Monthly provider budget exhausted. Scanning is paused until the budget resets.', {
+      extensions: { code: 'SERVICE_UNAVAILABLE', reason: PROVIDER_BUDGET_EXHAUSTED },
+    });
+  }
 }
 
 function toScanResult(id: string, result: Record<string, unknown>, scannedAt: string) {
@@ -62,8 +77,9 @@ export const resolvers = {
   Query: {
     scan: async (_: unknown, args: { text: string; provider?: string }, ctx: GqlContext) => {
       requireAdmin(ctx);
+      requireProviderBudget(ctx);
       const provider = (args.provider ?? 'mock') as Provider;
-      const result = await scan(args.text, provider);
+      const result = await scanWithSpend({ text: args.text, provider, keyId: ctx.keyId }, () => scanInRequestMode(args.text, provider));
       const stored = getScanStore().record(ctx.keyId, args.text, result as unknown as Record<string, unknown>);
       return toScanResult(stored.id, result as unknown as Record<string, unknown>, stored.scannedAt);
     },
@@ -110,7 +126,14 @@ export const resolvers = {
       requireAdmin(ctx);
       const permissions = (args.permissions ?? ['scan']) as import('../store/keys.js').Permission[];
       if (!mayIssueKey(permissions)) throw new GraphQLError(CUSTOMER_KEYS_CLOSED.message, { extensions: { code: 'FORBIDDEN' } });
-      const key = getKeyStore().create(args.name, permissions);
+      // A non-admin key is metered at the default cap, like every issued key.
+      let key;
+      try {
+        key = getKeyStore().create(args.name, permissions, undefined, issuedKeyBilling(permissions));
+      } catch (e) {
+        if (e instanceof KeyFieldError) throw new GraphQLError('A permission is not one of scan, report, upload, admin, pro.', { extensions: { code: 'BAD_USER_INPUT' } });
+        throw e;
+      }
       return { id: key.id, name: key.name, permissions: key.permissions, createdAt: key.createdAt };
     },
 
@@ -121,11 +144,12 @@ export const resolvers = {
 
     scanBatch: async (_: unknown, args: { texts: string[]; provider?: string }, ctx: GqlContext) => {
       requireAdmin(ctx);
+      requireProviderBudget(ctx);
       const provider = (args.provider ?? 'mock') as Provider;
       const texts = args.texts.slice(0, 20);
       const results = await Promise.all(
         texts.map(async (text) => {
-          const result = await scan(text, provider);
+          const result = await scanWithSpend({ text, provider, keyId: ctx.keyId }, () => scanInRequestMode(text, provider));
           const stored = getScanStore().record(ctx.keyId, text, result as unknown as Record<string, unknown>);
           return toScanResult(stored.id, result as unknown as Record<string, unknown>, stored.scannedAt);
         }),

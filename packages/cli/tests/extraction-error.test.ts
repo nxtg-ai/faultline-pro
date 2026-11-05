@@ -28,6 +28,7 @@ import {
   isExtractionError,
   parseExtractedClaims,
 } from '../providers/extraction-error.js';
+import { MAX_CLAIM_ID_LENGTH } from '../lib/verdict-guard.js';
 import { classifyApiError as verifyRunnerClassify } from '../cli/verify-runner.js';
 import { extractClaims } from '../services/geminiService.js';
 import { createGeminiProvider } from '../providers/gemini_provider.js';
@@ -143,6 +144,55 @@ describe('parseExtractedClaims', () => {
     expect(claims).toHaveLength(2);
     expect(claims[0]).toEqual({ ...claim, id: '7' });
     expect(claims[1]).toMatchObject({ id: 'c2', type: 'opinion', importance: 1 });
+  });
+
+  it('accepts an id of exactly MAX_CLAIM_ID_LENGTH (58) characters', () => {
+    expect(MAX_CLAIM_ID_LENGTH).toBe(58);
+    const id = 'a'.repeat(MAX_CLAIM_ID_LENGTH);
+    const claims = parseExtractedClaims(JSON.stringify([{ ...claim, id }]));
+    expect(claims).toHaveLength(1);
+    expect(claims[0].id).toBe(id);
+  });
+
+  it('rejects an id longer than MAX_CLAIM_ID_LENGTH: invalid_output, cause names index and field, no claim text', () => {
+    const raw = JSON.stringify([claim, { ...claim, id: 'b'.repeat(MAX_CLAIM_ID_LENGTH + 1), text: 'SENTINEL claim text' }]);
+    let err: unknown;
+    try { parseExtractedClaims(raw); } catch (e) { err = e; }
+    expect(err).toBeInstanceOf(ExtractionError);
+    expect((err as ExtractionError).reason).toBe('invalid_output');
+    expect(((err as ExtractionError).cause as Error).message).toBe('claim 1: invalid or missing id');
+    expect(((err as ExtractionError).cause as Error).message).not.toContain('SENTINEL');
+  });
+
+  it('rejects two claims sharing an id, naming the second index; a numeric id and its string form are the same id', () => {
+    const cases: Array<[unknown[], string]> = [
+      [[claim, { ...claim, id: 'c2' }, { ...claim, id: 'c1', text: 'SENTINEL claim text' }], 'claim 2: duplicate id'],
+      [[{ ...claim, id: 7 }, { ...claim, id: '7', text: 'SENTINEL claim text' }], 'claim 1: duplicate id'],
+    ];
+    for (const [items, cause] of cases) {
+      let err: unknown;
+      try { parseExtractedClaims(JSON.stringify(items)); } catch (e) { err = e; }
+      expect(err).toBeInstanceOf(ExtractionError);
+      expect((err as ExtractionError).reason).toBe('invalid_output');
+      expect(((err as ExtractionError).cause as Error).message).toBe(cause);
+      expect(((err as ExtractionError).cause as Error).message).not.toContain('SENTINEL');
+    }
+  });
+
+  it('rejects the id __proto__ (it would set a plain object\'s prototype, not add an entry); constructor is an ordinary id', () => {
+    let err: unknown;
+    try { parseExtractedClaims(JSON.stringify([claim, { ...claim, id: '__proto__', text: 'SENTINEL claim text' }])); } catch (e) { err = e; }
+    expect(err).toBeInstanceOf(ExtractionError);
+    expect((err as ExtractionError).reason).toBe('invalid_output');
+    expect(((err as ExtractionError).cause as Error).message).toBe('claim 1: invalid or missing id');
+    expect(((err as ExtractionError).cause as Error).message).not.toContain('SENTINEL');
+    const claims = parseExtractedClaims(JSON.stringify([claim, { ...claim, id: 'constructor' }]));
+    expect(claims.map((c) => c.id)).toEqual(['c1', 'constructor']);
+  });
+
+  it('distinct ids that differ only in case are kept', () => {
+    const claims = parseExtractedClaims(JSON.stringify([claim, { ...claim, id: 'C1' }]));
+    expect(claims.map((c) => c.id)).toEqual(['c1', 'C1']);
   });
 
   it('throws invalid_output for JSON that holds no array', () => {

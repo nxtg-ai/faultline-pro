@@ -10,6 +10,7 @@ import {
   type FailOn,
 } from '../cli/guard';
 import type { ScanResult } from '../cli/scan';
+import { toClaimVerdict, isProviderUnchecked } from '../cli/verdict';
 import type { VerificationResult } from '../types';
 
 function verification(over: Partial<VerificationResult> & { claimId: string }): VerificationResult {
@@ -255,6 +256,35 @@ describe('formatGuardJson', () => {
     expect(parsed.claims[0].real_verdict).toBe(false);
     expect(parsed.claims[0].unchecked_reason).toBe('provider_error');
     expect(parsed.fail_on).toBeNull();
+  });
+});
+
+describe('an empty provider account is its own unchecked reason', () => {
+  const outOfCredits = (): VerificationResult => verification({
+    claimId: 'c1', status: 'unverified', apiError: true, apiErrorReason: 'provider_out_of_credits',
+  });
+
+  it('toClaimVerdict passes provider_out_of_credits through, not provider_error', () => {
+    const entry = toClaimVerdict('Paris is in France.', outOfCredits());
+    expect(entry.verdict).toBe('UNCHECKED');
+    expect(entry.unchecked_reason).toBe('provider_out_of_credits');
+  });
+
+  it('still degrades the scan, and the JSON and text reports say out of credits', () => {
+    expect(isProviderUnchecked('provider_out_of_credits')).toBe(true);
+    const report = evaluateGuard(scanResult({ c1: outOfCredits() }));
+    expect(report.degraded).toBe(true);
+    const parsed = JSON.parse(formatGuardJson(report, undefined));
+    expect(parsed.claims).toHaveLength(1);
+    expect(parsed.claims[0].unchecked_reason).toBe('provider_out_of_credits');
+    const text = formatGuardReport(report, undefined);
+    expect(text).toMatch(/out of credits/);
+    expect(text).not.toMatch(/the provider errored/);
+  });
+
+  it('a plain provider failure with no carried reason stays provider_error', () => {
+    const entry = toClaimVerdict('Paris is in France.', verification({ claimId: 'c1', status: 'unverified', apiError: true }));
+    expect(entry.unchecked_reason).toBe('provider_error');
   });
 });
 

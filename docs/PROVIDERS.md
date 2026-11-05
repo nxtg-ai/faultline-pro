@@ -22,7 +22,7 @@ Faultline supports 5 LLM providers via a clean `LLMProvider` interface. Switch p
 - **Env Var**: `GEMINI_API_KEY`
 - **Default Model**: `gemini-2.5-flash`
 - **Model Override**: `FAULTLINE_GEMINI_MODEL` env var
-- **Search**: Google Search grounding built-in — verifies claims against live web data
+- **Search**: Google Search grounding built-in — verifies claims against live web data. With `FAULTLINE_GROUNDING=parallel` (and `PARALLEL_API_KEY`), the verify instead retrieves sources from Parallel's Search API (`providers/parallel_search_retriever.ts`, mode `FAULTLINE_PARALLEL_MODE`, default `advanced`) and Gemini judges them with no search tool. See `docs/grounding-providers.md`.
 - **Special Behavior**: Thin adapter over `geminiService.ts`; all extraction, verification, and critique logic lives in that service module. The Gemini provider is the default when no `--provider` flag or `FAULTLINE_PROVIDER` env var is set.
 
 ```bash

@@ -16,7 +16,7 @@ import type { IndependentEvidence, VerificationResult } from '../types.js';
 import { fetchSourceEvidence, type EvidenceFetch } from './passage.js';
 
 export interface IndependentEvidenceOptions {
-  /** Must report how its search ended: [] from retrieve() cannot tell a failure from an empty search. */
+  /** Must report how its search ended: retrieve() only resolves or rejects, with no typed status. */
   retriever: StatusRetriever & { readonly model?: string };
   /** The guarded fetch used for the retriever's result pages. */
   fetch: EvidenceFetch;
@@ -60,9 +60,9 @@ export async function attachIndependentEvidence(
 
 /**
  * The retriever's own status. A retriever without retrieveWithStatus (only
- * reachable from untyped code) is provider_error, never zero: its retrieve()
- * returns [] for a failure as well as for an empty search. A throw is
- * provider_error.
+ * reachable from untyped code) is provider_error, never zero, and its
+ * retrieve() is not called: an older retriever's [] can mean a failure as well
+ * as an empty search. A throw is provider_error.
  */
 async function searchWithStatus(retriever: StatusRetriever, claimText: string): Promise<RetrievalOutcome> {
   if (typeof retriever.retrieveWithStatus !== 'function') {

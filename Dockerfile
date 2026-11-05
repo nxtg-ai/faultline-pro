@@ -11,6 +11,7 @@ WORKDIR /build
 COPY package.json package-lock.json ./
 COPY packages/api/package.json ./packages/api/
 COPY packages/cli/package.json ./packages/cli/
+COPY packages/mcp/package.json ./packages/mcp/
 
 # Install all workspace deps (including devDeps for tsx)
 RUN npm ci --ignore-scripts
@@ -41,6 +42,9 @@ RUN addgroup -S faultline && adduser -S faultline -G faultline
 COPY package.json package-lock.json ./
 COPY packages/api/package.json ./packages/api/
 COPY packages/cli/package.json ./packages/cli/
+# POST /mcp builds its tool from packages/mcp: its manifest makes npm link the
+# workspace and install its dependencies (the MCP SDK, zod).
+COPY packages/mcp/package.json ./packages/mcp/
 
 RUN npm ci --omit=dev --ignore-scripts && \
     # Re-install tsx (devDep, needed at runtime since we run TS source directly)

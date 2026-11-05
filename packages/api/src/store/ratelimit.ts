@@ -1,9 +1,11 @@
-export type Tier = 'admin' | 'pro' | 'free';
+export type Tier = 'admin' | 'pro' | 'free' | 'measurement';
 
 const TIER_LIMITS: Record<Tier, number> = {
   admin: 10000,
   pro: 100,
   free: 10,
+  // Internal measurement runs: room for back-to-back single-claim requests.
+  measurement: 600,
 };
 
 export interface RateLimitInfo {

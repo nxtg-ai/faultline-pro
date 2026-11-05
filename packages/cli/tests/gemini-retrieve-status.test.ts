@@ -3,8 +3,9 @@
  * retrieveSourcesWithStatus reports how a Gemini grounded search ended. A
  * missing key, an upstream error, a cut-off reply, a safety stop or a reply
  * that is not a candidate list is never zero; zero is a completed search that
- * returned no grounding chunks. retrieveSources keeps returning [] for every
- * failure, for its consensus callers. Only the SDK call is stubbed.
+ * returned no grounding chunks. retrieveSources, for its consensus callers,
+ * rejects every failure with a RetrievalError instead (#81) and resolves []
+ * only for a search that found nothing. Only the SDK call is stubbed.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -56,7 +57,7 @@ describe('retrieveSourcesWithStatus', () => {
     sdk.error = new Error('must not be called');
     expect(await retrieveSourcesWithStatus(CLAIM, '')).toEqual({ status: 'provider_error', sources: [], detail: 'missing api key' });
     expect(await new GeminiGroundingRetriever('').retrieveWithStatus(CLAIM)).toEqual({ status: 'provider_error', sources: [], detail: 'missing api key' });
-    await expect(new GeminiGroundingRetriever('').retrieve(CLAIM)).resolves.toEqual([]);
+    await expect(new GeminiGroundingRetriever('').retrieve(CLAIM)).rejects.toMatchObject({ name: 'RetrievalError', reason: 'provider_error' });
   });
 
   it('provider_error: an upstream error, with its status code as the only detail and nothing of its body logged', async () => {
@@ -64,7 +65,7 @@ describe('retrieveSourcesWithStatus', () => {
     const out = await retrieveSourcesWithStatus(CLAIM, 'k');
     expect(out).toEqual({ status: 'provider_error', sources: [], detail: 'http 503' });
     expect(await new GeminiGroundingRetriever('k').retrieveWithStatus(CLAIM)).toEqual(out);
-    await expect(retrieveSources(CLAIM, 'k')).resolves.toEqual([]);
+    await expect(retrieveSources(CLAIM, 'k')).rejects.toMatchObject({ name: 'RetrievalError', reason: 'provider_error' });
     const logged = errorLog.mock.calls.flat().map(String).join(' ');
     expect(logged).not.toContain('sk-secret');
     expect(logged).not.toContain(CLAIM);
@@ -80,7 +81,7 @@ describe('retrieveSourcesWithStatus', () => {
   it('provider_error: a reply cut off at its ceiling, even with chunks', async () => {
     sdk.reply = grounded('MAX_TOKENS', [chunk('https://example.org/a')]);
     expect(await retrieveSourcesWithStatus(CLAIM, 'k')).toEqual({ status: 'provider_error', sources: [], detail: 'output truncated' });
-    await expect(retrieveSources(CLAIM, 'k')).resolves.toEqual([]);
+    await expect(retrieveSources(CLAIM, 'k')).rejects.toMatchObject({ name: 'RetrievalError', reason: 'output_truncated' });
   });
 
   it('policy_block: a safety stop or a blocked prompt, even with chunks', async () => {
@@ -101,6 +102,6 @@ describe('retrieveSourcesWithStatus', () => {
       expect(await retrieveSourcesWithStatus(CLAIM, 'k')).toEqual({ status: 'parse_error', sources: [], detail: 'unexpected shape' });
     }
     sdk.reply = null;
-    await expect(retrieveSources(CLAIM, 'k')).resolves.toEqual([]);
+    await expect(retrieveSources(CLAIM, 'k')).rejects.toMatchObject({ name: 'RetrievalError', reason: 'provider_error' });
   });
 });
