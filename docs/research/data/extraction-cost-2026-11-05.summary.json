@@ -1,0 +1,22 @@
+{
+  "single": {
+    "n": 200,
+    "errors": 0,
+    "meanUsd": 0.001389041,
+    "medianUsd": 0.000987,
+    "totalUsd": 0.2778082,
+    "meanInputTokens": 191.47,
+    "meanOutputTokens": 532.64,
+    "unratedCalls": 0
+  },
+  "doc10": {
+    "n": 66,
+    "errors": 0,
+    "meanUsd": 0.004457084848484849,
+    "medianUsd": 0.0043924,
+    "totalUsd": 0.29416760000000003,
+    "meanInputTokens": 328.6666666666667,
+    "meanOutputTokens": 1743.3939393939395,
+    "unratedCalls": 0
+  }
+}
