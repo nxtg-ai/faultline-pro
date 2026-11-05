@@ -7,7 +7,7 @@ Measures the extraction leg on its own: the single Gemini call that splits submi
 - **Inputs:** the Factcheck-Bench G0 claims (`factcheck-bench-subtask4-claim-factuality.jsonl`).
   - `single`: the 200 claims of the per-claim run, one claim per call.
   - `doc10`: 66 documents, each 10 consecutive claims from the gold file joined into one text (claims 0 to 659). Consecutive claims come from the same benchmark response, so a document reads like a short AI answer.
-- **Script:** `scripts/measure-extraction-cost.mts`. **Rows:** `data/extraction-cost-2026-11-05.jsonl`, one per call: set, ref, characters, claims in and out, tokens, cost. They hold no model output.
+- **Script:** `scripts/measure-extraction-cost.mts`. **Rows:** `data/extraction-cost-2026-11-05.jsonl` (summary beside it, recomputed from the rows), one per call: set, ref, characters, claims in and out, tokens, cost. They hold no model output.
 
 | Set | Calls | Errors | Mean cost | Median | p90 | Mean input tokens | Mean output tokens | Mean claims out | Mean characters |
 |---|---|---|---|---|---|---|---|---|---|

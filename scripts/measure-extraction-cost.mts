@@ -1,5 +1,6 @@
 // Measures the extraction leg alone on the G0 inputs (docs/research/2026-11-05-extraction-cost.md).
 // Run from the repo root: GEMINI_API_KEY=... npx tsx scripts/measure-extraction-cost.mts <out.jsonl>
+// Writes one row per call to <out.jsonl> and the per-set means to <out>.summary.json.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { captureUsage } from '../packages/cli/lib/usage-sink.ts';
 import { extractForFullScan } from '../packages/cli/cli/scan.ts';
@@ -31,10 +32,19 @@ async function worker() {
 }
 await Promise.all([1, 2, 3, 4].map(worker));
 writeFileSync(out, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+const summary: Record<string, unknown> = {};
 for (const set of ['single', 'doc10']) {
   const ok = rows.filter((r) => r.set === set && r.error === null);
   const c = ok.map((r) => r.costUsd).sort((a, b) => a - b);
-  const mean = c.reduce((s, x) => s + x, 0) / c.length;
-  console.log(set, { n: ok.length, errors: rows.filter((r) => r.set === set && r.error).length, meanUsd: mean, medianUsd: c[Math.floor(c.length / 2)], totalUsd: c.reduce((s, x) => s + x, 0),
-    meanIn: ok.reduce((s, r) => s + r.inputTokens, 0) / ok.length, meanOut: ok.reduce((s, r) => s + r.outputTokens, 0) / ok.length, unrated: ok.reduce((s, r) => s + r.unratedCalls, 0) });
+  summary[set] = {
+    n: ok.length,
+    errors: rows.filter((r) => r.set === set && r.error).length,
+    meanUsd: c.reduce((s, x) => s + x, 0) / c.length,
+    medianUsd: c[Math.floor(c.length / 2)],
+    totalUsd: c.reduce((s, x) => s + x, 0),
+    meanInputTokens: ok.reduce((s, r) => s + r.inputTokens, 0) / ok.length,
+    meanOutputTokens: ok.reduce((s, r) => s + r.outputTokens, 0) / ok.length,
+    unratedCalls: ok.reduce((s, r) => s + r.unratedCalls, 0),
+  };
 }
+writeFileSync(out.replace(/\.jsonl$/, '') + '.summary.json', JSON.stringify(summary, null, 2) + '\n');
