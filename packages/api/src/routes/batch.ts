@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scanInRequestMode } from '../lib/grounding.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 import { isExtractionError } from '@nxtg/faultline/providers/extraction-error.js';
 import { getAnalyticsStore } from '../store/analytics.js';
@@ -62,7 +63,7 @@ async function scanWithFailover(
   let lastError: unknown;
   for (const p of chain) {
     try {
-      const result = await scanWithSpend({ text, provider: p, keyId }, () => scan(text, p));
+      const result = await scanWithSpend({ text, provider: p, keyId }, () => scanInRequestMode(text, p));
       cb.recordSuccess(p);
       return result;
     } catch (err) {

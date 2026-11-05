@@ -2,11 +2,13 @@
  * Every model call carries its output ceiling, and Gemini its thinking budget,
  * from the one table in providers/call-ceilings.ts (GoPMO 1.18.11.7.18).
  *
- * Behavioural: each of the 10 call sites is driven through its public entry
- * point with the SDK and fetch mocked at the boundary, and the request it sent
- * is read back. Static: the number of call sites in services/ and providers/
- * must equal the number this file drives, so an 11th call without a ceiling
- * fails here until it is added to the table and to CASES.
+ * Behavioural: each of the 10 model call sites is driven through its public
+ * entry point with the SDK and fetch mocked at the boundary, and the request it
+ * sent is read back; so is the one search-service call site (Parallel), whose
+ * row bounds results and excerpt text instead of output tokens. Static: the
+ * number of call sites in services/ and providers/ must equal the number this
+ * file drives, so a 12th call without a ceiling fails here until it is added
+ * to the table and to CASES or SEARCH_CASES.
  */
 // Validates: N-234 (cost ceilings, GoPMO 1.18.11.7.18)
 import ts from 'typescript';
@@ -37,6 +39,7 @@ import { createOpenAIProvider } from '../providers/openai_provider';
 import { createClaudeProvider } from '../providers/claude_provider';
 import { createPerplexityProvider } from '../providers/perplexity_provider';
 import { OpenAIWebSearchRetriever } from '../providers/openai_web_search_retriever';
+import { ParallelSearchRetriever } from '../providers/parallel_search_retriever';
 
 const CLAIM: Claim = { id: 'c1', text: 'The Eiffel Tower is in Paris.', type: 'fact', importance: 3 };
 const SOURCES = [{ title: 's', uri: 'https://example.org/a' }];
@@ -64,7 +67,7 @@ const lastGemini = (): Sent => {
 const lastBody = (): Record<string, any> => JSON.parse(mockFetch.mock.calls.at(-1)![1].body);
 
 type Table = typeof CALL_CEILINGS;
-type Wire = keyof Table;
+type Wire = Exclude<keyof Table, 'parallelSearch'>;
 
 interface CeilingCase {
   /** `<file under packages/cli>#<call site>`: one entry per distinct call site, several purposes may share one. */
@@ -128,6 +131,26 @@ const CASES: CeilingCase[] = [
   fetchCase('perplexity', PPLX_CITE, 'verify', () => chat(VERDICT), () => createPerplexityProvider('k').verifyClaim(CLAIM), 'max_tokens'),
 ];
 
+/** A search-service call: its row bounds results and excerpt text, read back from the request body. */
+interface SearchCase {
+  site: string;
+  wire: 'parallelSearch';
+  purpose: 'retrieve';
+  run: () => Promise<unknown>;
+}
+
+const SEARCH_CASES: SearchCase[] = [
+  {
+    site: 'providers/parallel_search_retriever.ts#callAPI',
+    wire: 'parallelSearch',
+    purpose: 'retrieve',
+    run: async () => {
+      mockFetch.mockResolvedValueOnce(ok({ search_id: 's', results: [{ url: 'https://example.org/a', title: 't', excerpts: ['x'] }] }));
+      return new ParallelSearchRetriever('k').retrieve(CLAIM.text);
+    },
+  },
+];
+
 function expected(c: CeilingCase): Sent {
   const row = (CALL_CEILINGS[c.wire] as Record<string, { maxOutputTokens: number; thinkingBudget?: number }>)[c.purpose];
   return c.wire === 'gemini'
@@ -165,6 +188,7 @@ describe('the ceiling table', () => {
         verifyGrounded: { maxOutputTokens: 1024 }, critique: { maxOutputTokens: 2048 },
       },
       openaiResponses: { retrieve: { maxOutputTokens: 2048 } },
+      parallelSearch: { retrieve: { maxResults: 8, maxCharsPerResult: 1500, maxCharsTotal: 12000 } },
       claude: {
         extract: { maxOutputTokens: 16384 }, verify: { maxOutputTokens: 1024 },
         verifyGrounded: { maxOutputTokens: 1024 }, critique: { maxOutputTokens: 2048 },
@@ -186,7 +210,7 @@ describe('the ceiling table', () => {
 
   it('every row is driven by a case below, and every case names a row', () => {
     const rows = Object.entries(CALL_CEILINGS).flatMap(([wire, r]) => Object.keys(r).map((p) => `${wire}.${p}`)).sort();
-    expect(CASES.map((c) => `${c.wire}.${c.purpose}`).sort()).toEqual(rows);
+    expect([...CASES, ...SEARCH_CASES].map((c) => `${c.wire}.${c.purpose}`).sort()).toEqual(rows);
   });
 });
 
@@ -196,6 +220,17 @@ describe('each request carries its row of the table', () => {
     const sent = c.sent();
     expect(sent.maxOutputTokens).toEqual(expect.any(Number));
     expect(sent).toEqual(expected(c));
+  });
+});
+
+describe('the search request carries its row of the table', () => {
+  it.each(SEARCH_CASES.map((c) => [c.site, c] as const))('%s', async (_label, c) => {
+    await c.run();
+    const body = lastBody();
+    const row = CALL_CEILINGS[c.wire][c.purpose];
+    expect(body.advanced_settings.max_results).toBe(row.maxResults);
+    expect(body.advanced_settings.excerpt_settings.max_chars_per_result).toBe(row.maxCharsPerResult);
+    expect(body.max_chars_total).toBe(row.maxCharsTotal);
   });
 });
 
@@ -308,12 +343,12 @@ describe('static guard: no model call outside the table', () => {
       if (n > 0) found[rel] = n;
     }
     const driven: Record<string, number> = {};
-    for (const site of new Set(CASES.map((c) => c.site))) {
+    for (const site of new Set([...CASES, ...SEARCH_CASES].map((c) => c.site))) {
       const file = site.split('#')[0];
       driven[file] = (driven[file] ?? 0) + 1;
     }
     expect(found).toEqual(driven);
-    expect(Object.values(found).reduce((a, b) => a + b, 0)).toBe(10);
+    expect(Object.values(found).reduce((a, b) => a + b, 0)).toBe(11);
   });
 
   it.each([

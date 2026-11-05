@@ -6,6 +6,7 @@ import { enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { meterScan } from '../lib/scan-quota.js';
 import { esc } from '../lib/html.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scanInRequestMode } from '../lib/grounding.js';
 import { commitClaims, engineVerifyCap, reserveClaims } from '../plugins/claim-meter.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 import { getScanStore } from '../store/scans.js';
@@ -221,7 +222,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
       const { text, provider, projectName, threshold, strict } = request.body;
       const keyId = request.keyId ?? 'unknown';
 
-      const result = await scanWithSpend({ text, provider, keyId }, () => scan(text, provider));
+      const result = await scanWithSpend({ text, provider, keyId }, () => scanInRequestMode(text, provider));
       const stored = getScanStore().record(keyId, text, result as unknown as Record<string, unknown>);
       commitClaims(request, stored.id, result, provider ?? 'gemini');
       const report = buildEuComplianceReport(result, { projectName });

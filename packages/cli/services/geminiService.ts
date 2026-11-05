@@ -345,6 +345,21 @@ export const retrieveSources = async (claimText: string, apiKey: string): Promis
 };
 
 /**
+ * One source line of the shared-source prompt: `[n] title — uri`, plus the
+ * source's excerpt text on the next line when `withExcerpts` is set and the
+ * source has one (the parallel grounding mode; the judge cannot open links).
+ */
+export const groundedSourceLine = (
+  s: { title: string; uri: string; snippet?: string },
+  i: number,
+  withExcerpts: boolean,
+): string => {
+  const line = `[${i + 1}] ${s.title} — ${s.uri}`;
+  const excerpt = withExcerpts && typeof s.snippet === 'string' ? s.snippet.trim() : '';
+  return excerpt ? `${line}\n    Excerpt: ${excerpt}` : line;
+};
+
+/**
  * Verify a claim AGAINST a shared, pre-retrieved set of sources.
  * Unlike `verifyClaim` (which runs its own googleSearch), this judges using
  * ONLY the supplied sources, so it can participate in a consensus fan-out where
@@ -352,13 +367,14 @@ export const retrieveSources = async (claimText: string, apiKey: string): Promis
  */
 export const verifyClaimGrounded = async (
   claim: Claim,
-  sources: Array<{ title: string; uri: string }>,
+  sources: Array<{ title: string; uri: string; snippet?: string }>,
   apiKey: string,
+  opts: { withExcerpts?: boolean } = {},
 ): Promise<VerificationResult> => {
   if (!apiKey) throw new Error('API Key required');
 
   const sourceBlock = sources.length > 0
-    ? sources.map((s, i) => `[${i + 1}] ${s.title} — ${s.uri}`).join('\n')
+    ? sources.map((s, i) => groundedSourceLine(s, i, opts.withExcerpts === true)).join('\n')
     : '(no sources retrieved)';
 
   const prompt = `

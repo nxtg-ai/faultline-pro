@@ -6,12 +6,16 @@
  * One implementation so the two scan modes cannot drift on provider choice,
  * concurrency or apiError semantics.
  */
-import type { Claim, VerificationResult } from '../types.js';
+import type { Claim, Source, VerificationResult } from '../types.js';
 import type { LLMProvider, Retriever } from '../providers/base_provider.js';
 import { getProvider, builtInProviderIdOf } from '../providers/registry.js';
 import { DEFAULT_SCAN_PROVIDER, resolveApiKey } from './provider-keys.js';
 import { GeminiGroundingRetriever } from '../providers/gemini_provider.js';
 import { OpenAIWebSearchRetriever } from '../providers/openai_web_search_retriever.js';
+import { ParallelSearchRetriever } from '../providers/parallel_search_retriever.js';
+import { RetrievalError } from '../providers/retrieval-error.js';
+import { sanitizeVerifyError } from '../services/verify-error.js';
+import type { GroundingMode } from './grounding.js';
 import { consensusVerify, type NamedProvider } from '../consensus/consensus_engine.js';
 import { classifyApiError } from '../providers/extraction-error.js';
 import { OUT_OF_CREDITS_VERIFY_MESSAGE } from '../services/verify-error.js';
@@ -197,10 +201,31 @@ export interface ConsensusRig {
   namedProviders: NamedProvider[];
 }
 
-/** Everything the verify stage needs: the single provider, or a consensus rig. */
+/**
+ * The parallel grounding mode's retrieve-then-judge: a search service finds the
+ * sources, then the verify provider judges the claim against them with no
+ * search tool of its own (cli/grounding.ts).
+ */
+export interface GroundedRig {
+  retriever: Retriever;
+}
+
+/** Per-call options for resolving a verifier. */
+export interface VerifierOptions {
+  /** The grounding mode, decided by the caller per request. Absent means google (today's behaviour). */
+  grounding?: GroundingMode;
+}
+
+/** Everything the verify stage needs: the single provider, a retrieve-then-judge rig, or a consensus rig. */
 export interface Verifier {
   provider: LLMProvider;
   consensusRig: ConsensusRig | null;
+  /**
+   * Set only in the parallel grounding mode, for a non-consensus verify on
+   * gemini: each claim is retrieved with this rig's retriever, then judged by
+   * `provider.verifyClaimGrounded`. Never set beside consensusRig.
+   */
+  groundedRig?: GroundedRig | null;
   /** The provider id the verify stage resolved to (e.g. 'gemini'); names the verdict's provenance and selects its retriever. */
   providerName: string;
 }
@@ -267,26 +292,33 @@ export function resolveStageProviders(providerName?: string, pipelineConfig?: Pi
  * @throws ConsensusUnavailableError when no voter is left, before any provider
  * call, so a consensus scan never runs with nobody to vote.
  */
-function buildConsensusRig(names: ProviderName[], offline: boolean): ConsensusRig {
+function buildConsensusRig(names: ProviderName[], offline: boolean, grounding: GroundingMode): ConsensusRig {
   // Missing key → not a participant. Not fatal: consensus still runs with
   // whatever providers ARE configured.
   const namedProviders: NamedProvider[] = participatingConsensusVoters(names)
     .map((name) => ({ name, provider: getProvider(resolveApiKey(name), name) }));
   if (namedProviders.length === 0) throw new ConsensusUnavailableError();
-  return { retriever: offline ? OFFLINE_RETRIEVER : buildRetriever(), namedProviders };
+  return { retriever: offline ? OFFLINE_RETRIEVER : buildRetriever(grounding), namedProviders };
 }
 
 /** Retrieves nothing, so a fully offline run makes no web-search call. */
 const OFFLINE_RETRIEVER: Retriever = { name: 'offline', retrieve: async () => [] };
+
+/** The Parallel Search key, '' when unset. Read when a rig is built, never written. */
+function parallelApiKey(): string {
+  return (process.env.PARALLEL_API_KEY ?? '').trim();
+}
 
 /**
  * Select the consensus retriever behind the provider-agnostic Retriever seam.
  * OpenAI web search is primary (funded key, not throttled like the free-tier
  * gemini native googleSearch); gemini grounding is the alternate fallback. If
  * neither key exists, the Gemini retriever rejects with RetrievalError, so each
- * claim reads as not checked and no provider is asked.
+ * claim reads as not checked and no provider is asked. In the parallel
+ * grounding mode the fallback is Parallel's search instead, so no Google
+ * search runs; with no Parallel key it rejects the same way.
  */
-function buildRetriever(): Retriever {
+function buildRetriever(grounding: GroundingMode = 'google'): Retriever {
   let openaiKey = '';
   try {
     openaiKey = resolveApiKey('openai');
@@ -294,6 +326,7 @@ function buildRetriever(): Retriever {
     openaiKey = '';
   }
   if (openaiKey) return new OpenAIWebSearchRetriever(openaiKey);
+  if (grounding === 'parallel') return new ParallelSearchRetriever(parallelApiKey());
 
   let geminiKey = '';
   try {
@@ -309,12 +342,30 @@ function buildRetriever(): Retriever {
  * consensusVoterRefusal), before any provider is built, so a caller that skips
  * the API's check is refused too.
  */
-function buildConsensusRigIfEnabled(names: StageNames, pipelineConfig?: PipelineConfig): ConsensusRig | null {
+function buildConsensusRigIfEnabled(names: StageNames, pipelineConfig?: PipelineConfig, grounding: GroundingMode = 'google'): ConsensusRig | null {
   if (!names.consensusEnabled) return null;
   const voters = pipelineConfig?.consensusProviders ?? DEFAULT_CONSENSUS_PROVIDERS;
   const refusal = voterRefusalForStages(names, voters);
   if (refusal) throw new InvalidConsensusVotersError(refusal);
-  return buildConsensusRig(voters, isOfflineRun(names, voters));
+  return buildConsensusRig(voters, isOfflineRun(names, voters), grounding);
+}
+
+/**
+ * The retrieve-then-judge rig, or null. Only in the parallel grounding mode,
+ * only without consensus, and only when the verify stage is gemini: that is
+ * the one verify that runs a Google search (verifyClaim's googleSearch tool).
+ * The other providers verify without a Google search, so the mode leaves them
+ * as they are. The Parallel key is read here; with none, every claim's search
+ * fails as not checked (ParallelSearchRetriever), never a Google search.
+ */
+function buildGroundedRigIfEnabled(names: StageNames, grounding: GroundingMode = 'google'): GroundedRig | null {
+  if (grounding !== 'parallel' || names.consensusEnabled || names.verificationName !== 'gemini') return null;
+  return { retriever: new ParallelSearchRetriever(parallelApiKey()) };
+}
+
+/** True when the verify stage these options resolve to runs the parallel retrieve-then-judge. */
+export function usesParallelGrounding(providerName?: string, pipelineConfig?: PipelineConfig, opts: VerifierOptions = {}): boolean {
+  return buildGroundedRigIfEnabled(resolveStageNames(providerName, pipelineConfig), opts.grounding) !== null;
 }
 
 /**
@@ -327,6 +378,7 @@ function buildConsensusRigIfEnabled(names: StageNames, pipelineConfig?: Pipeline
 export function resolveScanProviders(
   providerName?: string,
   pipelineConfig?: PipelineConfig,
+  opts: VerifierOptions = {},
 ): { extractionProvider: LLMProvider; verifier: Verifier } {
   const names = resolveStageNames(providerName, pipelineConfig);
   const extractionApiKey = resolveApiKey(names.extractionName);
@@ -337,7 +389,12 @@ export function resolveScanProviders(
     : getProvider(verificationApiKey, names.verificationName);
   return {
     extractionProvider,
-    verifier: { provider, consensusRig: buildConsensusRigIfEnabled(names, pipelineConfig), providerName: names.verificationName },
+    verifier: {
+      provider,
+      consensusRig: buildConsensusRigIfEnabled(names, pipelineConfig, opts.grounding),
+      groundedRig: buildGroundedRigIfEnabled(names, opts.grounding),
+      providerName: names.verificationName,
+    },
   };
 }
 
@@ -360,10 +417,15 @@ export function resolveExtractionProvider(
  *
  * @throws when the verification API key is missing.
  */
-export function resolveVerifier(providerName?: string, pipelineConfig?: PipelineConfig): Verifier {
+export function resolveVerifier(providerName?: string, pipelineConfig?: PipelineConfig, opts: VerifierOptions = {}): Verifier {
   const names = resolveStageNames(providerName, pipelineConfig);
   const provider = getProvider(resolveApiKey(names.verificationName), names.verificationName);
-  return { provider, consensusRig: buildConsensusRigIfEnabled(names, pipelineConfig), providerName: names.verificationName };
+  return {
+    provider,
+    consensusRig: buildConsensusRigIfEnabled(names, pipelineConfig, opts.grounding),
+    groundedRig: buildGroundedRigIfEnabled(names, opts.grounding),
+    providerName: names.verificationName,
+  };
 }
 
 /** Options for one verify-stage run. */
@@ -472,6 +534,71 @@ export function bindEngineProvenance(
   };
 }
 
+/** A claim whose search or judge did not run: not checked, never billed or cached. */
+function notCheckedResult(claim: Claim, explanation: string, reason: VerificationResult['apiErrorReason']): VerificationResult {
+  return { claimId: claim.id, status: 'unverified', explanation, sources: [], apiError: true, apiErrorReason: reason };
+}
+
+/**
+ * Retrieve, then judge: the parallel grounding mode for one claim, one call
+ * each, no retry. The retriever finds the sources; the provider judges the
+ * claim against exactly those (verifyClaimGrounded, excerpts in the prompt),
+ * with no search of its own. The verdict's sources are the retrieved set.
+ *
+ * A failed search (RetrievalError or any rejection) makes the claim not
+ * checked with the classified reason; nothing else is searched instead. A
+ * judge that throws makes it not checked too. Provenance is bound here:
+ * provider and model of the judge, `retriever` the retriever's name (never
+ * gemini-grounding), `retrieverModel` its mode label, and both timestamps.
+ */
+export async function retrieveThenVerify(
+  claim: Claim,
+  provider: LLMProvider,
+  providerName: string,
+  retriever: Retriever,
+): Promise<VerificationResult> {
+  let sources: Source[];
+  try {
+    sources = await retriever.retrieve(claim.text);
+  } catch (err) {
+    const failure = RetrievalError.fromError(err);
+    return notCheckedResult(claim, failure.message, failure.reason);
+  }
+  const retrievedAt = new Date().toISOString();
+  if (!Array.isArray(sources) || sources.length === 0) {
+    const failure = new RetrievalError('provider_error', new Error(`${retriever.name} resolved no source`));
+    return notCheckedResult(claim, failure.message, failure.reason);
+  }
+  if (typeof provider.verifyClaimGrounded !== 'function') {
+    return notCheckedResult(claim, 'The verify provider cannot judge a claim against supplied sources, so this claim was not checked.', 'provider_error');
+  }
+  let judged: VerificationResult;
+  try {
+    judged = await provider.verifyClaimGrounded(claim, sources, { withExcerpts: true });
+  } catch (err) {
+    return notCheckedResult(claim, sanitizeVerifyError(err), classifyApiError(err));
+  }
+  if (!judged || typeof judged !== 'object') return notCheckedResult(claim, 'Verify failed.', 'provider_error');
+  // A judge that reported its own failure (a 429, an unreadable reply) is not checked; it keeps its reason.
+  if (judged.apiError === true) return { ...judged, claimId: claim.id, provenance: undefined };
+  const own = judged.provenance;
+  const retrieverModel = (retriever as { model?: unknown }).model;
+  return {
+    ...judged,
+    claimId: claim.id,
+    // The retrieved set, whatever the judge echoed back.
+    sources,
+    provenance: {
+      provider: providerName,
+      model: typeof own?.model === 'string' && own.model.length > 0 ? own.model : provider.modelId,
+      verifiedAt: new Date().toISOString(),
+      retriever: retriever.name,
+      retrievedAt,
+      ...(typeof retrieverModel === 'string' && retrieverModel.length > 0 ? { retrieverModel } : {}),
+    },
+  };
+}
+
 function withProvenance(result: VerificationResult, verifier: Verifier, returnedAt: string): VerificationResult {
   return bindEngineProvenance(result, verifier.providerName, verifier.provider, returnedAt);
 }
@@ -483,6 +610,11 @@ function withProvenance(result: VerificationResult, verifier: Verifier, returned
 async function verifyOneClaim(claim: Claim, verifier: Verifier, flagExhaustedRetries: boolean): Promise<VerificationResult> {
   if (verifier.consensusRig) {
     return consensusVerify(claim, verifier.consensusRig.retriever, verifier.consensusRig.namedProviders);
+  }
+  // Resilient by construction (every failure is a not-checked result), so no
+  // retry ladder: a retried search would spend a second request per claim.
+  if (verifier.groundedRig) {
+    return retrieveThenVerify(claim, verifier.provider, verifier.providerName, verifier.groundedRig.retriever);
   }
   let delay = 1000;
   for (let attempt = 0; ; attempt++) {

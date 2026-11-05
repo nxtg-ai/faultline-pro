@@ -24,6 +24,7 @@ How to run and score the pre-registered verdict-accuracy baseline. The spec is `
 
 - 1 to 25 claims, each `id` 1 to 128 characters and unique within the request, each `text` 1 to 2,000 characters. Anything else is a 400. Unknown fields are dropped (Fastify `removeAdditional`, the same as `/scan`), so `pipelineConfig` cannot switch consensus on.
 - `provider` is optional. The default is the one a production non-consensus scan uses, `gemini` (`DEFAULT_SCAN_PROVIDER` in `packages/cli/cli/provider-keys.ts`, shared with `scan()`). A provider with no key on the server answers `503 provider_not_configured` before any call.
+- `grounding` (`google` or `parallel`) and `parallelMode` (`advanced`, `basic`, `fast`, `turbo`) are optional and pick the grounding arm (`docs/grounding-providers.md`). When `grounding` is absent the server's `FAULTLINE_GROUNDING` applies. `parallel` on gemini runs one Parallel search, then one Gemini judge call with no Google search. The response adds `grounding` (the arm that ran), per claim `sourcesCount` (a count), and `usage.googleGroundingCalls` (Gemini calls with `googleSearch` only; `usage.groundingCalls` counts every search). An engine older than this field drops it (`removeAdditional`) and answers `grounding` absent, which the runner reads as google, so a parallel arm against such an engine stops.
 - Each claim becomes `{id, text, type: 'fact', importance: 3}` and goes to `verificationProvider.verifyClaim`, the call `scan()` makes, with at most 4 in flight. One call per claim and no retry: retries belong to the runner, which checks the allowance first.
 - Response: `{ "provider": "gemini", "results": [{ "id", "status", "apiError", "parseFallback", "model" }] }`, in request order. A response schema drops any other field, so no explanation, source or grounded text can leave the route (Google grounding terms).
 - `apiError: true` means the call did not produce a verdict (the provider failed). `parseFallback: true` means the model's reply carried no readable verdict. Up to 2026-10-16 (engine before the provider_unparseable change, including the G0 run on 47b72f0) the engine returned `mixed` for it (prereg §3); since then the claim is `apiError: true` with `parseFallback: true`, so a re-run scores it as a failure. `model` is the model string the engine recorded for the call, `null` when the call failed.
@@ -53,6 +54,12 @@ node scripts/accuracy-g0.mjs --set verify-subsample
 
 # Continue a stopped run from the next unanswered id
 node scripts/accuracy-g0.mjs --set full --out docs/research/data/accuracy-g0-full-<runid>.jsonl --resume
+```
+
+Grounding arms: `--arm google|parallel|parallel-fast|both` (default `google`) and `--sample N --seed S` (a seeded subsample of N items of the set, the same items for every arm and every run with that seed). With `both`, each arm writes `<base>.google.jsonl` and `<base>.parallel.jsonl` with its own attempt ledger. Each row adds `arm`, `verdict`, `sourcesCount`, `costUsd` (summed over the item's calls, retries included) and `googleGroundingCalls`. Every run ends with `<base>.summary.json` from `python3 scripts/accuracy-g0-score.py --arms ...`: balanced accuracy per arm with its 95% CI, the paired bootstrap 95% CI of BA(parallel) minus BA(google) (2,000 resamples, seed 20260929), the unverified rate, the mean cost per claim and the Google grounded calls. If python3 or numpy is missing, the runner prints that command instead. A sampled run is an arm comparison, not the pre-registered run.
+
+```bash
+node scripts/accuracy-g0.mjs --set full --arm both --sample 200 --seed 20261105 --out docs/research/data/grounding-arms.jsonl
 ```
 
 Options: `--api <url>` (default `https://faultline-api.fly.dev`), `--out <path>` (default `docs/research/data/accuracy-g0-<set>-<UTC timestamp>.jsonl`), `--resume`, `--engine-sha <sha>` (only used when `/health` reports no commit), `--allowance-api <url>` (a second engine whose grounded-prompt count joins the daily guard; see branch mode below).

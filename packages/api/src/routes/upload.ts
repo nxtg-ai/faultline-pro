@@ -4,7 +4,7 @@ import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { recordDeliveredScan } from '../lib/scan-quota.js';
-import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scanInRequestMode } from '../lib/grounding.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 import { extractTextFromBuffer } from '@nxtg/faultline/cli/extract.js';
 import { commitClaims, engineVerifyCap, reserveClaims } from '../plugins/claim-meter.js';
@@ -81,7 +81,7 @@ export async function uploadRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       try {
-        const result = await scanWithSpend({ text, provider, keyId: request.keyId ?? 'unknown' }, () => scan(text, provider));
+        const result = await scanWithSpend({ text, provider, keyId: request.keyId ?? 'unknown' }, () => scanInRequestMode(text, provider));
         getAnalyticsStore().record(request.keyId ?? 'unknown', result.overallRisk as RiskLevel);
         const delivered = issueScanId(result, request.keyId);
         commitClaims(request, delivered.scanId, result, provider ?? 'gemini');

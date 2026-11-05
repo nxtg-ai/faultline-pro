@@ -11,7 +11,7 @@ import {
 } from '../plugins/provider-spend-cap.js';
 import { ownsOrAdmin } from '../lib/ownership.js';
 import { getBulkJobStore } from '../store/bulk-jobs.js';
-import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scanInRequestMode } from '../lib/grounding.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 import type { Provider } from '../store/jobs.js';
 import { ENGINE_VERIFY_CAP, meteredScan } from '../lib/claim-meter.js';
@@ -62,7 +62,7 @@ async function processBulkJob(
     try {
       const text = entry.getData().toString('utf8');
       // Each file is metered on its own; once the key's cap is reached the rest fail unscanned.
-      const result = await meteredScan(keyId, ENGINE_VERIFY_CAP, randomUUID(), provider, () => scanWithSpend({ text, provider, keyId }, () => scan(text, provider)));
+      const result = await meteredScan(keyId, ENGINE_VERIFY_CAP, randomUUID(), provider, () => scanWithSpend({ text, provider, keyId }, () => scanInRequestMode(text, provider)));
       store.recordFileResult(jobId, {
         filename,
         status: 'done',

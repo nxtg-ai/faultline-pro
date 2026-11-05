@@ -324,8 +324,10 @@ const CASES: SpendCase[] = [
   },
 ];
 
-/** Engine-calling files no case above drives, each with the reason. Empty today. */
-const ALLOWLIST: Record<string, string> = {};
+/** Engine-calling files no case above drives, each with the reason. */
+const ALLOWLIST: Record<string, string> = {
+  'lib/grounding.ts': 'scanInRequestMode wraps scan() in the grounding mode of the request; every file that calls it is driven by a case above',
+};
 
 const SRC_DIR = fileURLToPath(new URL('../src/', import.meta.url));
 
@@ -345,11 +347,16 @@ function sourceFiles(dir: string): string[] {
 function engineCallingFiles(): string[] {
   const engineImport = /^import\s+\{([^}]*)\}\s+from\s+'@nxtg\/faultline\/(cli\/scan|providers\/registry)\.js'/gm;
   const entryPoints = new Set(['scan', 'extractForFullScan', 'verifyFullScan', 'getProvider']);
+  const groundingWrapperImport = /^import\s+\{([^}]*)\}\s+from\s+'(?:\.\.\/)+lib\/grounding\.js'/gm;
   return sourceFiles(SRC_DIR).filter((path) => {
     const source = readFileSync(path, 'utf8');
     for (const match of source.matchAll(engineImport)) {
       const names = match[1].split(',').map((n) => n.trim()).filter((n) => !n.startsWith('type '));
       if (names.some((n) => entryPoints.has(n.split(/\s+as\s+/)[0]))) return true;
+    }
+    // scan() through the grounding-mode wrapper (lib/grounding.ts) is an engine call too.
+    for (const match of source.matchAll(groundingWrapperImport)) {
+      if (match[1].split(',').some((n) => n.trim().split(/\s+as\s+/)[0] === 'scanInRequestMode')) return true;
     }
     return false;
   }).map((path) => relative(SRC_DIR, path).split('\\').join('/')).sort();

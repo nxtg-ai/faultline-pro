@@ -1,10 +1,11 @@
+import { groundingOption } from '../lib/grounding.js';
 import { apiEvidenceOptions, apiIndependentEvidenceOptions } from '../lib/evidence.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { extractForFullScan, verifyFullScan, type FullScanResult } from '@nxtg/faultline/cli/scan.js';
 import { billableVerdictCount } from '@nxtg/faultline/lib/verdict-guard.js';
 import { partitionForFullScan } from '@nxtg/faultline/cli/full-scan.js';
 import type { UsageLeg } from '@nxtg/faultline/lib/usage-sink.js';
-import { captureOutcome } from '../lib/scan-spend.js';
+import { captureOutcome, withSearchLabel } from '../lib/scan-spend.js';
 import { classifyKeyId, requireApiKey } from '../plugins/auth.js';
 import { isExtractionError } from '@nxtg/faultline/providers/extraction-error.js';
 import { sendExtractionFailed } from '../lib/extraction-failure.js';
@@ -179,7 +180,7 @@ interface FullScanCostInput {
  */
 function logFullScanCost(legs: UsageLeg[], input: FullScanCostInput): void {
   const { keyId, stage, ...cost } = input;
-  const event = buildManagedCostEvent(legs, { ...cost, kind: 'full-scan' });
+  const event = buildManagedCostEvent(legs, { ...cost, provider: withSearchLabel(cost.provider, legs), kind: 'full-scan' });
   getCostStore().recordManaged(event);
   emitScanCostEvent(event);
   appendScanCostLog(event);
@@ -223,6 +224,8 @@ async function runFullScanJob(store: FullScanJobStore, job: FullScanJob): Promis
     signal: job.controller.signal,
     evidence: apiEvidenceOptions(),
     independentEvidence: apiIndependentEvidenceOptions(),
+    // Read when the job runs: the mode is passed to the engine, never set in process.env.
+    ...groundingOption(),
     onClaim: (_claim, verdict, index) => store.recordVerdict(job, index, verdict),
   }));
   logFullScanCost(legs, {

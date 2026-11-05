@@ -12,6 +12,17 @@ export interface CritiqueResult {
   improvedPrompt: string;
 }
 
+/** Options for verifyClaimGrounded. A provider that does not read an option ignores it. */
+export interface GroundedVerifyOptions {
+  /**
+   * Put each source's snippet (the retriever's excerpt text) in the prompt
+   * beside its title and link. Set by the parallel grounding mode, whose judge
+   * has no search tool and no other way to read the pages. Off by default, so
+   * the consensus prompts are unchanged.
+   */
+  withExcerpts?: boolean;
+}
+
 /**
  * Common interface all LLM providers must implement.
  */
@@ -35,7 +46,7 @@ export interface LLMProvider {
    * This is an ADDITIVE entry point: it never replaces `verifyClaim`, leaving
    * the single-provider hot path byte-for-byte unchanged.
    */
-  verifyClaimGrounded?(claim: Claim, sources: Source[]): Promise<VerificationResult>;
+  verifyClaimGrounded?(claim: Claim, sources: Source[], opts?: GroundedVerifyOptions): Promise<VerificationResult>;
   /** Generate a critique of failed claims and a reinforced prompt. */
   generateCritiqueAndPrompt(originalText: string, failedClaims: Claim[]): Promise<CritiqueResult>;
 }

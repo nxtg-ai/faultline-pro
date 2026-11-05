@@ -10,6 +10,23 @@
  *
  *   node scripts/accuracy-g0.mjs --set full|verify-subsample
  *        [--api <url>] [--out <path>] [--resume] [--engine-sha <sha>] [--allowance-api <url>]
+ *        [--arm google|parallel|parallel-fast|both] [--sample <N> --seed <S>]
+ *
+ * --arm picks the grounding arm (docs/grounding-providers.md), sent to the route as
+ * `grounding` (and `parallelMode`): google (arm A, the default) is Gemini with Google
+ * Search; parallel (arm P) is Parallel's Search API in advanced mode, then Gemini with
+ * no search tool; parallel-fast is arm P on Parallel's fast mode (optional extra);
+ * both runs google then parallel on the same items. Each arm writes its own out file
+ * and attempt ledger (`<base>.<arm>.jsonl` unless one arm and --out are given), and
+ * every run ends with `<base>.summary.json` from the scorer's --arms mode: balanced
+ * accuracy per arm, the paired bootstrap 95% CI of BA(P) - BA(A) (2,000 resamples,
+ * the scorer's fixed seed), unverified rate, mean cost per claim and Google grounded
+ * calls per arm.
+ *
+ * --sample N --seed S keeps a seeded random subsample of N items of the set (the same
+ * N items for every arm and every run with that seed). A sampled run is an arm
+ * comparison, not the pre-registered G0 run: the scorer's prereg validity rules (the
+ * full id set) are not applied to it.
  *
  * --allowance-api adds a second engine whose grounded-prompt count joins the daily guard. A branch
  * run (engine started on the runner) shares the Google key with production, so the guard must
@@ -44,6 +61,7 @@ import {
   appendFileSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, writeSync,
 } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -101,14 +119,27 @@ class RunStop extends Error {
 
 // ── Arguments ────────────────────────────────────────────────────────────────
 
+/** The arms --arm takes, and what each sends to POST /admin/verify-claims. */
+export const ARMS = Object.freeze({
+  google: { grounding: 'google' },
+  parallel: { grounding: 'parallel', parallelMode: 'advanced' },
+  'parallel-fast': { grounding: 'parallel', parallelMode: 'fast' },
+});
+
+/** The arms one --arm value runs, in order. */
+export function armsOf(arm) {
+  return arm === 'both' ? ['google', 'parallel'] : [arm];
+}
+
 export function parseArgs(argv) {
   const options = {
     set: undefined, api: DEFAULT_API, out: undefined, resume: false, engineSha: undefined, allowanceApi: undefined,
-    gold: GOLD_PATH, subsample: SUBSAMPLE_PATH, retryBaseMs: 2000,
+    gold: GOLD_PATH, subsample: SUBSAMPLE_PATH, retryBaseMs: 2000, arm: 'google', sample: undefined, seed: undefined,
   };
   const valueFlags = {
     '--set': 'set', '--api': 'api', '--out': 'out', '--engine-sha': 'engineSha',
     '--gold': 'gold', '--subsample': 'subsample', '--retry-base-ms': 'retryBaseMs', '--allowance-api': 'allowanceApi',
+    '--arm': 'arm', '--sample': 'sample', '--seed': 'seed',
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -124,6 +155,14 @@ export function parseArgs(argv) {
     throw new Error('--set must be full or verify-subsample');
   }
   if (options.resume && !options.out) throw new Error('--resume needs --out <the file to resume>');
+  if (options.arm !== 'both' && !Object.hasOwn(ARMS, options.arm)) throw new Error('--arm must be google, parallel, parallel-fast or both');
+  if ((options.sample === undefined) !== (options.seed === undefined)) throw new Error('--sample and --seed go together');
+  if (options.sample !== undefined) {
+    if (!/^[1-9]\d*$/.test(options.sample)) throw new Error('--sample must be a whole number >= 1');
+    if (!/^\d+$/.test(options.seed)) throw new Error('--seed must be a whole number >= 0');
+    options.sample = Number(options.sample);
+    options.seed = Number(options.seed);
+  }
   options.retryBaseMs = Number(options.retryBaseMs);
   if (!Number.isFinite(options.retryBaseMs) || options.retryBaseMs < 0) throw new Error('--retry-base-ms must be >= 0');
   options.api = options.api.replace(/\/+$/, '');
@@ -131,6 +170,43 @@ export function parseArgs(argv) {
   if (options.engineSha !== undefined) options.engineSha = normalizeSha(options.engineSha);
   options.out ??= path.join(REPO_ROOT, 'docs/research/data', `accuracy-g0-${defaultRunId(options.set)}.jsonl`);
   return options;
+}
+
+/** The base path every arm's file and the summary hang off: the out path without `.jsonl`. */
+export function outBase(out) {
+  return out.endsWith('.jsonl') ? out.slice(0, -'.jsonl'.length) : out;
+}
+
+/** The out file one arm writes: --out itself for a single arm, else `<base>.<arm>.jsonl`. */
+export function armOut(options, arm) {
+  return armsOf(options.arm ?? 'google').length === 1 ? options.out : `${outBase(options.out)}.${arm}.jsonl`;
+}
+
+/** The summary file a run ends with. */
+export function summaryPath(options) {
+  return `${outBase(options.out)}.summary.json`;
+}
+
+/**
+ * A seeded subsample of `items`: a Fisher-Yates shuffle driven by mulberry32(seed),
+ * the first n kept, returned ascending by id. Same items, seed and n give the same
+ * subsample on every machine.
+ */
+export function seededSample(items, n, seed) {
+  let a = seed >>> 0;
+  const next = () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const pool = [...items];
+  for (let i = pool.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(next() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, Math.min(n, pool.length)).sort((x, y) => x.id - y.id);
 }
 
 function normalizeSha(value) {
@@ -389,11 +465,12 @@ function sleep(ms) {
 }
 
 /** POST one batch. Returns results by id, or null when the whole call failed. */
-async function postBatch(request, batch, stopOnNoAnswer = false) {
+async function postBatch(request, batch, stopOnNoAnswer = false, arm = 'google') {
   let response;
   try {
     response = await request('POST', '/admin/verify-claims', {
       claims: batch.map((item) => ({ id: String(item.id), text: item.claim })),
+      ...ARMS[arm],
     });
   } catch {
     // Branch mode (--allowance-api): a batch that did not answer may still be spending on the
@@ -413,6 +490,11 @@ async function postBatch(request, batch, stopOnNoAnswer = false) {
     throw new RunStop(EXIT.ERROR, `the API rejected the batch (${status} ${json?.error ?? ''})`);
   }
   if (status !== 200 || !Array.isArray(json?.results)) return null;
+  // The engine names the arm it ran. A parallel arm the engine did not run is not that arm.
+  const ran = json.grounding ?? 'google';
+  if (ran !== ARMS[arm].grounding) {
+    throw new RunStop(EXIT.ERROR, `STOP: asked for the ${arm} arm, the engine ran ${ran} grounding`);
+  }
   const byId = new Map(json.results.map((result) => [Number(result.id), result]));
   if (byId.size !== batch.length || batch.some((item) => !byId.has(item.id))) {
     throw new RunStop(EXIT.ERROR, 'protocol error: the response ids do not match the batch');
@@ -420,11 +502,23 @@ async function postBatch(request, batch, stopOnNoAnswer = false) {
   return byId;
 }
 
-function buildRow(item, result, attempts, engineSha) {
+/** A finite non-negative number from a response field, else 0. */
+function count(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+function buildRow(item, result, attempts, engineSha, arm = 'google', spent = { costUsd: 0, googleGroundingCalls: 0 }) {
   return {
     id: item.id,
+    arm,
     gold: item.gold,
     status: result ? result.status : 'unverified',
+    // The verdict label (the same value as status), named for the arm comparison.
+    verdict: result ? result.status : 'unverified',
+    sourcesCount: result ? count(result.sourcesCount) : 0,
+    // Summed over every call made for this item, retries included: what the item cost.
+    costUsd: spent.costUsd,
+    googleGroundingCalls: spent.googleGroundingCalls,
     apiError: result ? result.apiError === true : true,
     parseFallback: result ? result.parseFallback === true : false,
     noSourceAbstain: result ? result.noSourceAbstain === true : false,
@@ -452,7 +546,7 @@ function appendRows(file, rows) {
  */
 function closeExhausted(pending, attempts, options, engine, log) {
   const exhausted = pending.filter((item) => (attempts.get(item.id) ?? 0) >= MAX_CALLS);
-  appendRows(options.out, exhausted.map((item) => buildRow(item, null, MAX_CALLS, engine.engineSha)));
+  appendRows(options.out, exhausted.map((item) => buildRow(item, null, MAX_CALLS, engine.engineSha, options.runArm)));
   if (exhausted.length > 0) log(`${exhausted.length} item(s) already had ${MAX_CALLS} calls in the ledger: written as failures, not called again`);
   return pending.filter((item) => (attempts.get(item.id) ?? 0) < MAX_CALLS);
 }
@@ -462,6 +556,8 @@ async function runBatches({ request, allowance, options, pending, engine, done, 
   const queue = closeExhausted(pending, attempts, options, engine, log);
   const ledger = ledgerPath(options.out);
   let retryRound = 0;
+  const arm = options.runArm ?? 'google';
+  const spent = new Map();
   while (queue.length > 0) {
     const batch = queue.splice(0, BATCH_SIZE);
     await guardAllowance(allowance, batch.length, log);
@@ -469,15 +565,19 @@ async function runBatches({ request, allowance, options, pending, engine, done, 
     const calls = batch.map((item) => ({ id: item.id, attempt: (attempts.get(item.id) ?? 0) + 1 }));
     recordCalls(ledger, calls);
     for (const { id, attempt } of calls) attempts.set(id, attempt);
-    const results = await postBatch(request, batch, allowance.length > 1);
+    const results = await postBatch(request, batch, allowance.length > 1, arm);
     const rows = [];
     const retry = [];
     for (const item of batch) {
       const result = results?.get(item.id) ?? null;
       const tries = attempts.get(item.id);
+      const so = spent.get(item.id) ?? { costUsd: 0, googleGroundingCalls: 0 };
+      so.costUsd += count(result?.usage?.costUsd);
+      so.googleGroundingCalls += count(result?.usage?.googleGroundingCalls);
+      spent.set(item.id, so);
       const failed = !result || result.apiError === true;
       if (failed && tries < MAX_CALLS) retry.push(item);
-      else rows.push(buildRow(item, result, tries, engine.engineSha));
+      else rows.push(buildRow(item, result, tries, engine.engineSha, arm, so));
     }
     appendRows(options.out, rows);
     log(`batch ${batch[0].id}..${batch[batch.length - 1].id}: ${rows.length} written, ${retry.length} to retry`);
@@ -510,10 +610,52 @@ function summarize(file, expected, log) {
 }
 
 /**
- * The whole run. `deps.log` receives progress lines; nothing it receives ever
- * contains the key, because the key only ever goes into a request header.
+ * Every arm --arm names, in turn, on the same items, then the summary. Each arm
+ * is one runArm call with its own out file and attempt ledger; a stop in any arm
+ * ends the run with that arm's exit code (resumable with --resume, which resumes
+ * every arm's file). The summary is written by the scorer's --arms mode.
  */
 export async function runAccuracy(options, deps = {}) {
+  const log = deps.log ?? ((line) => writeLine(process.stdout, line));
+  const arms = armsOf(options.arm ?? 'google');
+  const outs = [];
+  for (const arm of arms) {
+    const out = armOut(options, arm);
+    log(`arm ${arm}: out ${out}`);
+    const code = await runArm({ ...options, out, runArm: arm }, { ...deps, log });
+    if (code !== EXIT.OK) return code;
+    outs.push(out);
+  }
+  return writeSummary(options, outs, deps.summarize ?? runScorerArms, log);
+}
+
+/** The scorer's --arms mode over the arm files; writes `<base>.summary.json`. */
+function runScorerArms(outs, summary) {
+  const scorer = path.join(REPO_ROOT, 'scripts/accuracy-g0-score.py');
+  const result = spawnSync('python3', [scorer, '--arms', ...outs, '--json', summary], { encoding: 'utf8' });
+  return { status: result.status, output: `${result.stdout ?? ''}${result.stderr ?? ''}` };
+}
+
+function writeSummary(options, outs, summarizeArms, log) {
+  const summary = summaryPath(options);
+  const { status, output } = summarizeArms(outs, summary);
+  for (const line of String(output).split('\n')) if (line.trim()) log(line);
+  // The arm files are the run's result; the summary is derived from them at $0 and can be
+  // written again, so a scorer that cannot run (no python3 or numpy) does not fail the run.
+  if (status !== 0) {
+    log(`WARNING: the arm summary was not written (scorer exit ${status}). Write it with: `
+      + `python3 scripts/accuracy-g0-score.py --arms ${outs.join(' ')} --json ${summary}`);
+    return EXIT.OK;
+  }
+  log(`summary ${summary}`);
+  return EXIT.OK;
+}
+
+/**
+ * One arm. `deps.log` receives progress lines; nothing it receives ever
+ * contains the key, because the key only ever goes into a request header.
+ */
+async function runArm(options, deps = {}) {
   const log = deps.log ?? ((line) => writeLine(process.stdout, line));
   const picked = deps.key !== undefined ? { key: deps.key, labelled: true } : readRunKey(deps.env ?? process.env);
   const key = picked.key;
@@ -527,7 +669,9 @@ export async function runAccuracy(options, deps = {}) {
         + 'unlabelled fallback: FAULTLINE_ADMIN_KEY or ~/.config/faultline/hosted-api-key.env)');
     }
     if (!picked.labelled) log(UNLABELLED_WARNING);
-    const items = selectItems(options.set, loadGold(options.gold), options.subsample);
+    const selected = selectItems(options.set, loadGold(options.gold), options.subsample);
+    const items = options.sample !== undefined ? seededSample(selected, options.sample, options.seed) : selected;
+    if (options.sample !== undefined) log(`sample ${items.length} of ${selected.length} items, seed ${options.seed}`);
     const ledger = ledgerPath(options.out);
     if (!options.resume && (existsSync(options.out) || existsSync(ledger))) {
       throw new RunStop(EXIT.REFUSED, `REFUSED: ${options.out} or its attempt ledger exists; pass --resume to continue it`);

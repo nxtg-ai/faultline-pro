@@ -97,11 +97,11 @@ const GEMINI_LEG = {
   inputTokens: 100, outputTokens: 20, isGrounding: true,
 };
 const GEMINI_USAGE = {
-  inputTokens: 100, outputTokens: 20, groundingCalls: 1,
+  inputTokens: 100, outputTokens: 20, groundingCalls: 1, googleGroundingCalls: 1,
   costUsd: buildManagedCostEvent([GEMINI_LEG], { text: 'unused', provider: 'gemini', claimCount: 1, tier: 'enterprise', latencyMs: 0, claims: { extracted: 1, verified: 1 } }).costUsd,
   priced: true,
 };
-const UNPRICED_USAGE = { inputTokens: 0, outputTokens: 0, groundingCalls: 0, costUsd: 0, priced: false };
+const UNPRICED_USAGE = { inputTokens: 0, outputTokens: 0, groundingCalls: 0, googleGroundingCalls: 0, costUsd: 0, priced: false };
 
 function claims(n: number, text = 'The Eiffel Tower is in Paris.'): ClaimInput[] {
   return Array.from({ length: n }, (_, i) => ({ id: String(i), text }));
@@ -271,8 +271,8 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
     const body = res.json();
     expect(body.provider).toBe('gemini');
     expect(body.results).toEqual([
-      { id: '10', status: 'contradicted', apiError: false, parseFallback: false, noSourceAbstain: false, apiErrorReason: null, model: 'gemini-2.5-flash', usage: GEMINI_USAGE },
-      { id: '11', status: 'supported', apiError: false, parseFallback: false, noSourceAbstain: false, apiErrorReason: null, model: 'gemini-2.5-flash', usage: GEMINI_USAGE },
+      { id: '10', status: 'contradicted', apiError: false, parseFallback: false, noSourceAbstain: false, apiErrorReason: null, model: 'gemini-2.5-flash', sourcesCount: 1, usage: GEMINI_USAGE },
+      { id: '11', status: 'supported', apiError: false, parseFallback: false, noSourceAbstain: false, apiErrorReason: null, model: 'gemini-2.5-flash', sourcesCount: 1, usage: GEMINI_USAGE },
     ]);
     expect(sdk.calls).toBe(2);
   });
@@ -281,7 +281,7 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
   it('reports a non-JSON model reply as apiError with parseFallback, never as mixed', async () => {
     const res = await post({ claims: [{ id: '3', text: 'NOT-JSON reply please.' }] });
     expect(res.json().results[0]).toEqual({
-      id: '3', status: 'unverified', apiError: true, parseFallback: true, noSourceAbstain: false, apiErrorReason: 'provider_unparseable', model: null,
+      id: '3', status: 'unverified', apiError: true, parseFallback: true, noSourceAbstain: false, apiErrorReason: 'provider_unparseable', model: null, sourcesCount: 0,
       // The unreadable reply still spent tokens, so it is priced.
       usage: GEMINI_USAGE,
     });
@@ -290,7 +290,7 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
   it('labels a reply cut off at the output ceiling output_truncated, never a verdict (GoPMO 1.18.11.7.18)', async () => {
     const res = await post({ claims: [{ id: '6', text: 'CUT-OFF reply.' }] });
     expect(res.json().results[0]).toEqual({
-      id: '6', status: 'unverified', apiError: true, parseFallback: false, noSourceAbstain: false, apiErrorReason: 'output_truncated', model: null,
+      id: '6', status: 'unverified', apiError: true, parseFallback: false, noSourceAbstain: false, apiErrorReason: 'output_truncated', model: null, sourcesCount: 0,
       usage: GEMINI_USAGE,
     });
   });
@@ -322,9 +322,9 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
     expect(resultKeys.has('claimId')).toBe(false);
     expect(res.json().billing.unbilled.map((u: { claimId: string }) => u.claimId).every((id: string) => id === '1' || id === '2')).toBe(true);
     expect([...keys].sort()).toEqual([
-      'apiError', 'apiErrorReason', 'billedClaims', 'billing', 'claimId', 'costUsd', 'groundingCalls', 'id', 'inputTokens', 'model',
-      'noSourceAbstain', 'outputTokens', 'parseFallback', 'priced', 'provider', 'reason', 'results', 'status', 'unbilled',
-      'unbilledClaims', 'usage',
+      'apiError', 'apiErrorReason', 'billedClaims', 'billing', 'claimId', 'costUsd', 'googleGroundingCalls', 'grounding',
+      'groundingCalls', 'id', 'inputTokens', 'model', 'noSourceAbstain', 'outputTokens', 'parseFallback', 'priced', 'provider',
+      'reason', 'results', 'sourcesCount', 'status', 'unbilled', 'unbilledClaims', 'usage',
     ]);
   });
 

@@ -5,7 +5,7 @@ import { requireApiKey } from '../plugins/auth.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { meterScan } from '../lib/scan-quota.js';
 import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
-import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scanInRequestMode } from '../lib/grounding.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 import type { ScanResult } from '@nxtg/faultline/cli/scan.js';
 import { commitClaims, engineVerifyCap, reserveClaims } from '../plugins/claim-meter.js';
@@ -291,7 +291,7 @@ export async function euReportRoutes(fastify: FastifyInstance): Promise<void> {
       const { text, provider, projectName } = request.body;
       const scanDate = new Date().toISOString().split('T')[0];
       try {
-        const result = await scanWithSpend({ text, provider, keyId: request.keyId ?? 'unknown' }, () => scan(text, provider));
+        const result = await scanWithSpend({ text, provider, keyId: request.keyId ?? 'unknown' }, () => scanInRequestMode(text, provider));
         const pdf = await buildEuPdf(result, projectName ?? 'EU AI Act Assessment', scanDate);
         commitClaims(request, randomUUID(), result, provider ?? 'gemini');
         // Counted once, like /scan, when the report it serves holds a billable verdict.

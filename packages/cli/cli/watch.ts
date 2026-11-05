@@ -1,6 +1,7 @@
 import { watch, readFileSync, existsSync, statSync, type FSWatcher } from 'node:fs';
 import { resolve, relative, extname } from 'node:path';
-import { scan, type ScanResult } from './scan.js';
+import { type ScanResult } from './scan.js';
+import { scanLocal } from './local-scan.js';
 import { renderReportAs, type OutputFormat } from './report.js';
 
 const DEFAULT_DEBOUNCE_MS = 500;
@@ -202,7 +203,7 @@ export async function processFileChange(
   debouncer.record(filePath);
 
   try {
-    const result = await scan(text, options.provider, options.minConfidence, options.ruleNames);
+    const result = await scanLocal(text, options.provider, options.minConfidence, options.ruleNames);
     const format = options.outputFormat || 'json';
     const reportOutput = renderReportAs(result, format);
 

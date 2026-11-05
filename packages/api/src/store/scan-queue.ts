@@ -16,6 +16,7 @@
 import { randomUUID } from 'node:crypto';
 import { abstainScanWithoutSource } from '@nxtg/faultline/lib/verdict-guard.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scanInRequestMode } from '../lib/grounding.js';
 import { ENGINE_VERIFY_CAP, meteredScan } from '../lib/claim-meter.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 import { PROVIDER_BUDGET_EXHAUSTED, providerBudgetRefuses } from '../plugins/provider-spend-cap.js';
@@ -179,7 +180,7 @@ class ScanQueue {
       }
       // Metered when it runs, against the key that queued it.
       const result = await meteredScan(item.keyId, ENGINE_VERIFY_CAP, randomUUID(), item.provider,
-        () => scanWithSpend({ text: item.text, provider: item.provider, keyId: item.keyId }, () => scan(item.text, item.provider as Parameters<typeof scan>[1])));
+        () => scanWithSpend({ text: item.text, provider: item.provider, keyId: item.keyId }, () => scanInRequestMode(item.text, item.provider as Parameters<typeof scan>[1])));
       item.status = 'completed';
       item.result = result;
     } catch (err) {
