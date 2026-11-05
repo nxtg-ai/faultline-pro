@@ -1,9 +1,16 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import { buildServer } from '../src/server.js';
 import { getOrgStore, resetOrgStore } from '../src/store/orgs.js';
 import { resetKeyStore } from '../src/store/keys.js';
 import { resetUsageMeter, getUsageMeter } from '../src/store/usage.js';
 import type { FastifyInstance } from 'fastify';
+
+// These flows exercise customer (non-admin) keys, which the issuing routes
+// refuse unless FAULTLINE_CUSTOMER_KEYS=on (customer keys closed until tenancy
+// is fixed; the gate itself is tested in key-issuance-gate.test.ts).
+beforeAll(() => { process.env.FAULTLINE_CUSTOMER_KEYS = 'on'; });
+afterAll(() => { delete process.env.FAULTLINE_CUSTOMER_KEYS; });
+
 
 function setup() {
   resetOrgStore();

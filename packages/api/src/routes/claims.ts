@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { getClaimIndex, computeAttributionConfidence } from '../store/claims.js';
 import { escHtml } from '../lib/html.js';
+import { requireApiKey } from '../plugins/auth.js';
+import { cacheCaller } from '../lib/cache-caller.js';
 
 export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{
@@ -15,6 +17,9 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
   }>(
     '/claims',
     {
+      config: { access: 'owner' },
+      // Claim text and verdicts are caller data: a key is required (emma-soul al:6a0c831cb6ed0d62).
+      preHandler: requireApiKey,
       schema: {
         tags: ['Claims'],
         summary: 'Search claims by text, verdict, date, or source',
@@ -35,7 +40,7 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const { text, verdict, from, to, source, limit } = request.query;
       const limitNum = limit ? Math.min(parseInt(limit, 10) || 50, 200) : 50;
-      const results = getClaimIndex().search({ text, verdict, from, to, source, limit: limitNum });
+      const results = getClaimIndex().search(cacheCaller(request), { text, verdict, from, to, source, limit: limitNum });
       return reply.status(200).send({
         claims: results.map((r) => ({
           id: r.id,
@@ -53,11 +58,12 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
-  fastify.get('/claims/trending', { schema: { tags: ['Claims'], summary: 'Trending claims by frequency and emerging in last 24h' } }, async (_request, reply) => {
+  fastify.get('/claims/trending', { config: { access: 'owner' }, preHandler: requireApiKey, schema: { tags: ['Claims'], summary: 'Trending claims by frequency and emerging in last 24h' } }, async (request, reply) => {
     const index = getClaimIndex();
+    const caller = cacheCaller(request);
 
     return reply.status(200).send({
-      trending: index.getTrending(20).map((r) => ({
+      trending: index.getTrending(caller, 20).map((r) => ({
         text: r.originalText,
         normalizedText: r.normalizedText,
         frequency: r.frequency,
@@ -65,20 +71,22 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
         lastSeen: r.lastSeen,
         lastVerdict: r.lastVerdict,
       })),
-      emerging: index.getEmerging(10).map((r) => ({
+      emerging: index.getEmerging(caller, 10).map((r) => ({
         text: r.originalText,
         normalizedText: r.normalizedText,
         frequency: r.frequency,
         firstSeen: r.firstSeen,
         lastVerdict: r.lastVerdict,
       })),
-      verdictChanged: index.getVerdictChanges(10),
+      verdictChanged: index.getVerdictChanges(caller, 10),
     });
   });
 
   fastify.get<{ Params: { id: string } }>(
     '/claims/:id/attribution',
     {
+      config: { access: 'owner' },
+      preHandler: requireApiKey,
       schema: {
         tags: ['Claims'],
         summary: 'Provenance chain and attribution confidence for a claim',
@@ -90,7 +98,7 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
       },
     },
     async (request, reply) => {
-      const record = getClaimIndex().getById(request.params.id);
+      const record = getClaimIndex().getById(request.params.id, cacheCaller(request));
       if (!record) {
         return reply.status(404).send({ error: 'Claim not found.' });
       }
@@ -117,6 +125,8 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Params: { id: string } }>(
     '/claims/:id/explain',
     {
+      config: { access: 'owner' },
+      preHandler: requireApiKey,
       schema: {
         tags: ['Claims'],
         summary: 'Reasoning chain and improvement suggestions for a claim',
@@ -128,7 +138,7 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
       },
     },
     async (request, reply) => {
-      const explanation = getClaimIndex().explain(request.params.id);
+      const explanation = getClaimIndex().explain(request.params.id, cacheCaller(request));
       if (!explanation) {
         return reply.status(404).send({ error: 'Claim not found.' });
       }
@@ -142,9 +152,9 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
    */
   fastify.get(
     '/claims/stats',
-    { schema: { tags: ['Claims'], summary: 'Aggregate statistics across all verified claims' } },
-    async (_request, reply) => {
-      return reply.send(getClaimIndex().getStats());
+    { config: { access: 'owner' }, preHandler: requireApiKey, schema: { tags: ['Claims'], summary: 'Aggregate statistics across all verified claims' } },
+    async (request, reply) => {
+      return reply.send(getClaimIndex().getStats(cacheCaller(request)));
     },
   );
 
@@ -154,7 +164,7 @@ export async function claimsRoutes(fastify: FastifyInstance): Promise<void> {
    */
   fastify.get(
     '/claims/view',
-    { schema: { tags: ['Claims'], summary: 'Claim database search UI (HTML)' } },
+    { config: { access: 'public' }, schema: { tags: ['Claims'], summary: 'Claim database search UI (HTML)' } },
     async (_request, reply) => {
       reply.header('Content-Type', 'text/html; charset=utf-8');
       return reply.send(buildClaimsHtml());
@@ -257,6 +267,10 @@ function buildClaimsHtml(): string {
 <header>
   <div style="font-size:1.2rem;font-weight:700;letter-spacing:-.02em"><span style="color:#f85149">fault</span>line pro</div>
   <h1>Claim Database</h1>
+  <form id="key-form" style="margin-left:auto;display:flex;gap:6px" onsubmit="event.preventDefault();saveKey()">
+    <input id="api-key" type="password" placeholder="API key" autocomplete="off" aria-label="API key" style="padding:4px 8px">
+    <button type="submit">Use key</button>
+  </form>
 </header>
 
 <div class="container">
@@ -341,6 +355,18 @@ function buildClaimsHtml(): string {
 </div>
 
 <script>
+// The claim routes need an API key. It is kept for this tab only and sent as x-api-key.
+function apiKey() { try { return sessionStorage.getItem('faultline-api-key') || ''; } catch { return ''; } }
+function saveKey() {
+  try { sessionStorage.setItem('faultline-api-key', document.getElementById('api-key').value.trim()); } catch {}
+  loadStats(); loadSidebar(); runSearch(1);
+}
+async function api(path) {
+  const r = await fetch(path, { headers: { 'x-api-key': apiKey() } });
+  if (r.status === 401) throw new Error('Enter a valid API key to see your claims.');
+  if (!r.ok) throw new Error('Request failed (' + r.status + ')');
+  return r.json();
+}
 const PAGE_SIZE = 25;
 let allResults = [];
 let currentPage = 1;
@@ -363,7 +389,7 @@ function fmt(iso) {
 // ── Stats ──────────────────────────────────────────────────────────────────────
 async function loadStats() {
   try {
-    const d = await fetch('/claims/stats').then(r => r.json());
+    const d = await api('/claims/stats');
     document.getElementById('s-total').textContent = d.totalClaims.toLocaleString();
     document.getElementById('s-scans').textContent = d.totalScans.toLocaleString();
     const acc = (d.accuracyRate * 100).toFixed(1) + '%';
@@ -399,7 +425,7 @@ async function loadStats() {
 // ── Trending / Emerging ────────────────────────────────────────────────────────
 async function loadSidebar() {
   try {
-    const d = await fetch('/claims/trending').then(r => r.json());
+    const d = await api('/claims/trending');
 
     document.getElementById('trending-list').innerHTML = d.trending.length === 0
       ? '<p class="empty" style="padding:12px 0">No claims yet.</p>'
@@ -438,7 +464,7 @@ async function runSearch(page) {
   params.set('limit', '200');
 
   try {
-    const d = await fetch('/claims?' + params.toString()).then(r => r.json());
+    const d = await api('/claims?' + params.toString());
     allResults = d.claims || [];
     renderPage();
     loadStats();  // refresh stats after search

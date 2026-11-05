@@ -87,12 +87,12 @@ describe('Integration: Full Pipeline (Mocked)', () => {
     // c4 → contradicted
     mockGenerateContent.mockResolvedValueOnce({
       text: JSON.stringify({ status: 'contradicted', explanation: 'Actually 330m including antenna.' }),
-      candidates: [{ groundingMetadata: { groundingChunks: [] } }],
+      candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'Refuting source', uri: 'https://refute.example/a' } }] } }],
     });
     // c5 → supported
     mockGenerateContent.mockResolvedValueOnce({
       text: JSON.stringify({ status: 'supported', explanation: 'Confirmed by geography.' }),
-      candidates: [{ groundingMetadata: { groundingChunks: [] } }],
+      candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'Atlas', uri: 'https://atlas.example/fr' } }] } }],
     });
 
     const verifications: Record<string, VerificationResult> = {};
@@ -150,7 +150,7 @@ describe('Integration: Full Pipeline (Mocked)', () => {
     for (const claim of toVerify) {
       mockGenerateContent.mockResolvedValueOnce({
         text: JSON.stringify({ status: 'contradicted', explanation: 'Wrong.' }),
-        candidates: [{ groundingMetadata: { groundingChunks: [] } }],
+        candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'Refuting source', uri: 'https://refute.example/a' } }] } }],
       });
     }
 
@@ -162,13 +162,18 @@ describe('Integration: Full Pipeline (Mocked)', () => {
     expect(calculateRisk(verifications)).toBe('critical');
   });
 
-  it('should handle extraction failure gracefully in pipeline', async () => {
+  it('should stop the pipeline on extraction failure (no empty "low risk" result)', async () => {
     mockGenerateContent.mockRejectedValueOnce(new Error('API down'));
 
+    // A failed extraction is not "no claims": it throws, so nothing downstream
+    // can score an unchecked document as low risk.
+    await expect(extractClaims('Input', 'test-key'))
+      .rejects.toMatchObject({ name: 'ExtractionError', reason: 'provider_error' });
+
+    // A genuine zero-claim reply still flows through: no verifications → low risk
+    mockGenerateContent.mockResolvedValueOnce({ text: '[]' });
     const claims = await extractClaims('Input', 'test-key');
     expect(claims).toEqual([]);
-
-    // No claims → no verifications → low risk
     const toVerify = filterClaimsForVerification(claims);
     expect(toVerify).toHaveLength(0);
     expect(calculateRisk({})).toBe('low');
@@ -209,7 +214,7 @@ describe('Integration: Full Pipeline (Mocked)', () => {
     // Verify through provider
     mockGenerateContent.mockResolvedValueOnce({
       text: JSON.stringify({ status: 'supported', explanation: 'OK.' }),
-      candidates: [{ groundingMetadata: { groundingChunks: [] } }],
+      candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'S', uri: 'https://s.example/a' } }] } }],
     });
     const verification = await provider.verifyClaim(claims[0]);
     expect(verification.status).toBe('supported');

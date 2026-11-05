@@ -1,8 +1,13 @@
-import type { Claim, VerificationResult, ClaimStatus, Source } from '../types';
+import type { Claim, VerificationResult, Source } from '../types';
 import type { LLMProvider, ImageInput, CritiqueResult, ProviderFactory } from './base_provider';
 import { buildGroundedPrompt } from './grounded_prompt';
 import { sanitizeVerifyError } from '../services/verify-error';
+import { ExtractionError, classifyApiError, parseExtractedClaims } from './extraction-error';
+import { outOfCreditsTag, readErrorBody } from './out-of-credits';
 import { recordUsage } from '../lib/usage-sink';
+import { readVerdictReply, truncatedVerdict, unparseableVerdict } from './verdict-reply';
+import { CALL_CEILINGS, type ClaudePurpose } from './call-ceilings';
+import { isClaudeTruncated, isOutputTruncatedError, OutputTruncatedError } from './output-truncation';
 
 /**
  * Claude provider — implements the LLMProvider interface using Anthropic's API.
@@ -59,14 +64,15 @@ Return a JSON array where each object has:
 Return ONLY the JSON array, no other text.`,
     });
 
+    let response: string;
     try {
-      const response = await this.callAPI(content, 'user');
-      const parsed = JSON.parse(this.extractJson(response));
-      return Array.isArray(parsed) ? parsed : [];
+      response = await this.callAPI(content, 'user', 'extract');
     } catch (error) {
-      console.error('Error extracting claims (Claude):', error);
-      return [];
+      throw ExtractionError.fromProviderError(error);
     }
+    // An empty reply is a failed extraction, not "no claims" (extractJson would read it as []).
+    if (!response.trim()) throw new ExtractionError('invalid_output', new Error('empty extraction reply'));
+    return parseExtractedClaims(this.extractJson(response));
   }
 
   async verifyClaim(claim: Claim): Promise<VerificationResult> {
@@ -88,30 +94,44 @@ Return strictly a JSON object:
 }`;
 
     try {
-      const response = await this.callAPI([{ type: 'text', text: prompt }], 'user');
-      const resultJson = JSON.parse(this.extractJson(response));
+      const response = await this.callAPI([{ type: 'text', text: prompt }], 'user', 'verify');
+      const verdict = readVerdictReply(this.extractJson(response));
+      if (!verdict) return unparseableVerdict(claim.id);
 
       return {
         claimId: claim.id,
-        status: (resultJson.status || 'unverified') as ClaimStatus,
-        explanation: resultJson.explanation || 'No structural analysis provided.',
+        status: verdict.status,
+        explanation: verdict.explanation,
         sources: [],
       };
     } catch (error) {
+      if (isOutputTruncatedError(error)) return truncatedVerdict(claim.id);
       const msg = error instanceof Error ? error.message : String(error);
       if (msg.includes('429')) throw error;
       console.error(`Error verifying claim ${claim.id} (Claude):`, error);
-      return { claimId: claim.id, status: 'unverified', explanation: sanitizeVerifyError(error), sources: [], apiError: true };
+      return {
+        claimId: claim.id, status: 'unverified', explanation: sanitizeVerifyError(error), sources: [], apiError: true,
+        // An empty account keeps its reason, so the CLI does not ask for a re-run that cannot succeed.
+        ...(classifyApiError(error) === 'provider_out_of_credits' ? { apiErrorReason: 'provider_out_of_credits' as const } : {}),
+      };
     }
   }
 
   async verifyClaimGrounded(claim: Claim, sources: Source[]): Promise<VerificationResult> {
-    const response = await this.callAPI([{ type: 'text', text: buildGroundedPrompt(claim, sources) }], 'user');
-    const resultJson = JSON.parse(this.extractJson(response));
+    let response: string;
+    try {
+      response = await this.callAPI([{ type: 'text', text: buildGroundedPrompt(claim, sources) }], 'user', 'verifyGrounded');
+    } catch (error) {
+      // A cut-off vote keeps its reason; any other failure still throws to the consensus engine.
+      if (isOutputTruncatedError(error)) return { ...truncatedVerdict(claim.id), sources };
+      throw error;
+    }
+    const verdict = readVerdictReply(this.extractJson(response));
+    if (!verdict) return { ...unparseableVerdict(claim.id), sources };
     return {
       claimId: claim.id,
-      status: (resultJson.status || 'unverified') as ClaimStatus,
-      explanation: resultJson.explanation || 'No structural analysis provided.',
+      status: verdict.status,
+      explanation: verdict.explanation,
       // LOCK A: cite the SHARED retrieved set, not sources:[].
       sources,
     };
@@ -132,7 +152,7 @@ Original Text context: "${originalText.substring(0, 500)}..."
 Return JSON: { "critique": string, "improvedPrompt": string }`;
 
     try {
-      const response = await this.callAPI([{ type: 'text', text: prompt }], 'user');
+      const response = await this.callAPI([{ type: 'text', text: prompt }], 'user', 'critique');
       return JSON.parse(this.extractJson(response));
     } catch (error) {
       return {
@@ -143,10 +163,11 @@ Return JSON: { "critique": string, "improvedPrompt": string }`;
   }
 
   /**
-   * Call the Anthropic Messages API.
-   * Isolated for easy mocking in tests.
+   * Call the Anthropic Messages API, capped at the purpose's output ceiling
+   * (providers/call-ceilings.ts). Throws OutputTruncatedError when the reply
+   * stopped at that ceiling. Isolated for easy mocking in tests.
    */
-  async callAPI(content: any[], role: string): Promise<string> {
+  async callAPI(content: any[], role: string, purpose: ClaudePurpose): Promise<string> {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -156,13 +177,15 @@ Return JSON: { "critique": string, "improvedPrompt": string }`;
       },
       body: JSON.stringify({
         model: this.modelId,
-        max_tokens: 4096,
+        max_tokens: CALL_CEILINGS.claude[purpose].maxOutputTokens,
         messages: [{ role, content }],
       }),
     });
 
     if (!response.ok) {
-      throw new Error(`Anthropic API error: ${response.status} ${response.statusText}`);
+      // Only a fixed tag from the body is kept, so an empty account is not read as a rate limit.
+      const tag = outOfCreditsTag(response.status, await readErrorBody(response));
+      throw new Error(`Anthropic API error: ${response.status} ${response.statusText}${tag}`);
     }
 
     const data = await response.json() as any;
@@ -175,6 +198,7 @@ Return JSON: { "critique": string, "improvedPrompt": string }`;
       outputTokens: data.usage?.output_tokens ?? 0,
       isGrounding: false,
     });
+    if (isClaudeTruncated(data)) throw new OutputTruncatedError('claude', purpose);
     const textBlock = data.content?.find((b: any) => b.type === 'text');
     return textBlock?.text || '';
   }

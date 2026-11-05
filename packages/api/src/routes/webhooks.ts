@@ -1,7 +1,9 @@
 import type { FastifyInstance } from 'fastify';
-import { requireAdmin, requireApiKey, resolveRequestTenantId } from '../plugins/auth.js';
-import { getWebhookStore, getWebhookTestHistory, getWebhookDeliveryLog, sendTestWebhook, SAMPLE_PAYLOADS } from '../store/webhooks.js';
+import { requireAdmin, requireApiKey, resolveRequestTenantId, isAdminKeyId } from '../plugins/auth.js';
+import { getWebhookStore, getWebhookTestHistory, getWebhookDeliveryLog, sendTestWebhook, SAMPLE_PAYLOADS, webhookMayReceive } from '../store/webhooks.js';
 import type { WebhookEvent } from '../store/webhooks.js';
+import { outboundUrlRefusal } from '../lib/outbound-url.js';
+import { requestOwner } from '../lib/cache-caller.js';
 
 const VALID_EVENTS: WebhookEvent[] = ['scan.complete', 'scan.failed', 'claim.verdict_changed', 'compliance.deadline_approaching'];
 
@@ -33,18 +35,21 @@ interface CreateWebhookBody {
 export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: CreateWebhookBody }>(
     '/webhooks',
-    { preHandler: requireAdmin, schema: { tags: ['Webhooks'], summary: 'Register a new webhook endpoint and event subscription', body: CREATE_BODY_SCHEMA } },
+    { config: { access: 'admin' }, preHandler: requireAdmin, schema: { tags: ['Webhooks'], summary: 'Register a new webhook endpoint and event subscription', body: CREATE_BODY_SCHEMA } },
     async (request, reply) => {
       const { url, events, secret, maxAttempts, retryDelayMs } = request.body;
+      const refusal = await outboundUrlRefusal(url);
+      if (refusal) return reply.status(400).send({ error: refusal });
       const tenantId = resolveRequestTenantId(request.keyId);
-      const entry = getWebhookStore().create(url, events, secret, tenantId, maxAttempts, retryDelayMs);
-      return reply.status(201).send(entry);
+      const entry = getWebhookStore().create(url, events, secret, tenantId, maxAttempts, retryDelayMs, requestOwner(request));
+      const { ownerCaller: _caller, ownerKeyId: _key, ...shown } = entry;
+      return reply.status(201).send(shown);
     },
   );
 
   fastify.get<{ Querystring: { tenantId?: string } }>(
     '/webhooks',
-    { preHandler: requireAdmin, schema: { tags: ['Webhooks'], summary: 'List all registered webhook subscriptions' } },
+    { config: { access: 'admin' }, preHandler: requireAdmin, schema: { tags: ['Webhooks'], summary: 'List all registered webhook subscriptions' } },
     async (request, reply) => {
       return reply.status(200).send(getWebhookStore().list(request.query.tenantId));
     },
@@ -52,7 +57,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
 
   fastify.delete<{ Params: { id: string } }>(
     '/webhooks/:id',
-    { preHandler: requireAdmin, schema: { tags: ['Webhooks'], summary: 'Delete a webhook subscription by ID' } },
+    { config: { access: 'admin' }, preHandler: requireAdmin, schema: { tags: ['Webhooks'], summary: 'Delete a webhook subscription by ID' } },
     async (request, reply) => {
       const deleted = getWebhookStore().delete(request.params.id);
       if (!deleted) {
@@ -67,7 +72,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /webhooks/test — HTML tester page (public)
   fastify.get(
     '/webhooks/test',
-    { preHandler: [requireAdmin], schema: { tags: ['Webhooks'], summary: 'Webhook test tool (HTML)' } },
+    { config: { access: 'admin' }, preHandler: [requireAdmin], schema: { tags: ['Webhooks'], summary: 'Webhook test tool (HTML)' } },
     async (_request, reply) => {
       const registeredHooks = getWebhookStore().list();
       reply.header('Content-Type', 'text/html; charset=utf-8');
@@ -79,6 +84,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: { url: string; event?: string; secret?: string } }>(
     '/webhooks/test',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Webhooks'],
@@ -99,6 +105,8 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const { url, event = 'scan.complete', secret = null } = request.body;
       try { new URL(url); } catch { return reply.status(400).send({ error: 'url must be a valid URL.' }); }
+      const refusal = await outboundUrlRefusal(url);
+      if (refusal) return reply.status(400).send({ error: refusal });
       const result = await sendTestWebhook(url, event, secret ?? null);
       return reply.status(200).send(result);
     },
@@ -108,6 +116,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Params: { id: string }; Body: { event?: string } }>(
     '/webhooks/test/:id',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Webhooks'],
@@ -127,7 +136,12 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request, reply) => {
       const webhook = getWebhookStore().getById(request.params.id);
-      if (!webhook) return reply.status(404).send({ error: 'Webhook not found.' });
+      // Only the webhook's owner (or an admin key) may make it send a payload
+      // signed with its secret; anyone else would forge signed events (Opus seat,
+      // 859a348, pre-existing). Not found and not yours read the same.
+      if (!webhook || !(isAdminKeyId(request.keyId) || webhookMayReceive(webhook, requestOwner(request)))) {
+        return reply.status(404).send({ error: 'Webhook not found.' });
+      }
       const event = request.body?.event ?? webhook.events[0] ?? 'scan.complete';
       const result = await sendTestWebhook(webhook.url, event, webhook.secret, webhook.id);
       return reply.status(200).send(result);
@@ -138,7 +152,9 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: { webhookId?: string } }>(
     '/webhooks/test/history',
     {
-      preHandler: [requireApiKey],
+      config: { access: 'admin' },
+      // Lists every webhook's URL and test results, so admin only, like /webhooks/deliveries.
+      preHandler: [requireApiKey, requireAdmin],
       schema: {
         tags: ['Webhooks'],
         summary: 'Webhook test delivery history',
@@ -159,6 +175,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: { limit?: string } }>(
     '/webhooks/deliveries',
     {
+      config: { access: 'admin' },
       preHandler: requireAdmin,
       schema: {
         tags: ['Webhooks'],
@@ -181,6 +198,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: { limit?: string } }>(
     '/webhooks/deliveries/view',
     {
+      config: { access: 'admin' },
       preHandler: requireAdmin,
       schema: { tags: ['Webhooks'], summary: 'Webhook delivery log dashboard (HTML)' },
     },
@@ -199,6 +217,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Params: { id: string }; Querystring: { limit?: string } }>(
     '/webhooks/:id/deliveries',
     {
+      config: { access: 'admin' },
       preHandler: requireAdmin,
       schema: {
         tags: ['Webhooks'],
@@ -423,18 +442,11 @@ function renderResult(containerId, data) {
     '<span class="latency">' + data.latencyMs + 'ms</span>' +
     '</div>' +
     (errMsg ? '<div class="note" style="color:#f85149;margin-bottom:8px">' + escHtml(errMsg) + '</div>' : '') +
+    '<div class="note">The target\\'s response body and headers are not returned; only the status code.</div>' +
     '<div class="tabs">' +
-    '<div class="tab active" onclick="switchTab(this, \\'body-' + containerId + '\\')">Response Body</div>' +
-    '<div class="tab" onclick="switchTab(this, \\'headers-' + containerId + '\\')">Response Headers</div>' +
-    '<div class="tab" onclick="switchTab(this, \\'sent-' + containerId + '\\')">Sent Payload</div>' +
+    '<div class="tab active" onclick="switchTab(this, \\'sent-' + containerId + '\\')">Sent Payload</div>' +
     '</div>' +
-    '<div class="tab-content active" id="body-' + containerId + '">' +
-    '<pre>' + escHtml(data.responseBody ?? '(no response body)') + '</pre>' +
-    '</div>' +
-    '<div class="tab-content" id="headers-' + containerId + '">' +
-    '<pre>' + escHtml(JSON.stringify(data.responseHeaders, null, 2)) + '</pre>' +
-    '</div>' +
-    '<div class="tab-content" id="sent-' + containerId + '">' +
+    '<div class="tab-content active" id="sent-' + containerId + '">' +
     '<pre>' + escHtml(JSON.stringify({ url: data.url, event: data.event, signature: data.signatureHeader }, null, 2)) + '</pre>' +
     '</div>';
   el.classList.add('visible');

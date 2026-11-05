@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { writeFileSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, existsSync } from 'node:fs';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { writeFileSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -52,6 +52,10 @@ describe('History: saveHistoryEntry()', () => {
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'faultline-history-'));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it('should create history directory if it does not exist', () => {
@@ -147,6 +151,10 @@ describe('History: listHistory()', () => {
     tmpDir = mkdtempSync(join(tmpdir(), 'faultline-list-'));
   });
 
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
   it('should return empty array for nonexistent directory', () => {
     const entries = listHistory(join(tmpDir, 'nonexistent'));
     expect(entries).toEqual([]);
@@ -236,6 +244,10 @@ describe('History: analyzeTrend()', () => {
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'faultline-trend-'));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it('should return insufficient-data for empty history', () => {
@@ -599,6 +611,10 @@ describe('CLI: history command', () => {
     tmpDir = mkdtempSync(join(tmpdir(), 'faultline-cli-hist-'));
   });
 
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
   it('should show empty message for no history', async () => {
     const historyDir = join(tmpDir, 'empty-hist');
     const { exitCode, output } = await main(['history', '--history-dir', historyDir]);
@@ -618,7 +634,8 @@ describe('CLI: history command', () => {
     const { exitCode, output } = await main(['history', '--history-dir', historyDir]);
     expect(exitCode).toBe(0);
     expect(output).toContain('1 entries');
-    expect(output).toContain('LOW');
+    // The mock's verdicts are unverified (no source), which is never read as low risk.
+    expect(output).toContain('HIGH');
   });
 
   it('should show limited entries by default', async () => {
@@ -682,6 +699,10 @@ describe('CLI: trend command', () => {
     tmpDir = mkdtempSync(join(tmpdir(), 'faultline-cli-trend-'));
   });
 
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
   it('should require --file flag', async () => {
     const { exitCode, output } = await main(['trend']);
     expect(exitCode).toBe(1);
@@ -731,6 +752,10 @@ describe('History: integration with scan command', () => {
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'faultline-int-'));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it('scan should save to history dir when --history-dir is provided', async () => {

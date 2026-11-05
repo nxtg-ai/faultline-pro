@@ -197,7 +197,9 @@ describe('saveSnapshot', () => {
     expect(pkgSnaps.length).toBe(52);
     // Oldest should be dropped (period 01, downloads=1 should not exist)
     expect(pkgSnaps[0]!.downloads).toBeGreaterThan(1);
-  });
+    // 53 synchronous file rewrites: under the full suite with coverage this
+    // passed alone but hit the 5s default twice on 2026-10-02.
+  }, 20_000);
 });
 
 // ── computeTrend ──────────────────────────────────────────────────────────────

@@ -232,6 +232,7 @@ describe('Scheduler', () => {
       text: 'AI claim',
       schedule: '*/5 * * * *',
       webhookUrl: 'https://example.com/job-hook',
+      owner: { keyId: 'admin', caller: null },
     });
     await getJobScheduler().triggerJob(job.id);
     expect(mockFetch).toHaveBeenCalledWith(

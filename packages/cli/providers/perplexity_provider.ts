@@ -1,6 +1,12 @@
-import type { Claim, VerificationResult, ClaimStatus } from '../types';
+import type { Claim, VerificationResult } from '../types';
 import type { LLMProvider, ImageInput, CritiqueResult, ProviderFactory } from './base_provider';
 import { sanitizeVerifyError } from '../services/verify-error';
+import { ExtractionError, classifyApiError, parseExtractedClaims } from './extraction-error';
+import { outOfCreditsTag, readErrorBody } from './out-of-credits';
+import { readVerdictReply, truncatedVerdict, unparseableVerdict } from './verdict-reply';
+import { CALL_CEILINGS, type PerplexityPurpose } from './call-ceilings';
+import { isChatCompletionTruncated, isOutputTruncatedError, OutputTruncatedError } from './output-truncation';
+import { recordUsage } from '../lib/usage-sink';
 
 /**
  * Perplexity provider — implements the LLMProvider interface using Perplexity's API.
@@ -42,15 +48,13 @@ Return a JSON object with a "claims" key containing an array where each object h
 - importance: integer 1-5 (5 being critical to the argument's integrity)`,
     });
 
+    let response: string;
     try {
-      const response = await this.callAPI(content, 'user');
-      const parsed = JSON.parse(response);
-      const claims = parsed.claims || parsed;
-      return Array.isArray(claims) ? claims : [];
+      response = await this.callAPI(content, 'user', 'extract');
     } catch (error) {
-      console.error('Error extracting claims (Perplexity):', error);
-      return [];
+      throw ExtractionError.fromProviderError(error);
     }
+    return parseExtractedClaims(response, true);
   }
 
   async verifyClaim(claim: Claim): Promise<VerificationResult> {
@@ -71,20 +75,26 @@ Return a JSON object:
     }];
 
     try {
-      const result = await this.callAPIWithCitations(content, 'user');
-      const resultJson = JSON.parse(result.content);
+      const result = await this.callAPIWithCitations(content, 'user', 'verify');
+      const verdict = readVerdictReply(result.content);
+      if (!verdict) return unparseableVerdict(claim.id);
 
       return {
         claimId: claim.id,
-        status: (resultJson.status || 'unverified') as ClaimStatus,
-        explanation: resultJson.explanation || 'No structural analysis provided.',
+        status: verdict.status,
+        explanation: verdict.explanation,
         sources: result.citations.map(url => ({ title: url, uri: url })),
       };
     } catch (error) {
+      if (isOutputTruncatedError(error)) return truncatedVerdict(claim.id);
       const msg = error instanceof Error ? error.message : String(error);
       if (msg.includes('429')) throw error;
       console.error(`Error verifying claim ${claim.id} (Perplexity):`, error);
-      return { claimId: claim.id, status: 'unverified', explanation: sanitizeVerifyError(error), sources: [], apiError: true };
+      return {
+        claimId: claim.id, status: 'unverified', explanation: sanitizeVerifyError(error), sources: [], apiError: true,
+        // An empty account keeps its reason, so the CLI does not ask for a re-run that cannot succeed.
+        ...(classifyApiError(error) === 'provider_out_of_credits' ? { apiErrorReason: 'provider_out_of_credits' as const } : {}),
+      };
     }
   }
 
@@ -106,7 +116,7 @@ Return a JSON object: { "critique": string, "improvedPrompt": string }`,
     }];
 
     try {
-      const response = await this.callAPI(content, 'user');
+      const response = await this.callAPI(content, 'user', 'critique');
       return JSON.parse(response);
     } catch (error) {
       return {
@@ -117,10 +127,12 @@ Return a JSON object: { "critique": string, "improvedPrompt": string }`,
   }
 
   /**
-   * Call the Perplexity Chat Completions API with JSON mode.
+   * Call the Perplexity Chat Completions API with JSON mode, capped at the
+   * purpose's output ceiling (providers/call-ceilings.ts). Throws
+   * OutputTruncatedError when the reply stopped at that ceiling.
    * Returns message content only. Isolated for easy mocking in tests.
    */
-  async callAPI(content: any[], role: string): Promise<string> {
+  async callAPI(content: any[], role: string, purpose: PerplexityPurpose): Promise<string> {
     const response = await fetch('https://api.perplexity.ai/chat/completions', {
       method: 'POST',
       headers: {
@@ -130,15 +142,20 @@ Return a JSON object: { "critique": string, "improvedPrompt": string }`,
       body: JSON.stringify({
         model: this.modelId,
         response_format: { type: 'json_object' },
+        max_tokens: CALL_CEILINGS.perplexity[purpose].maxOutputTokens,
         messages: [{ role, content }],
       }),
     });
 
     if (!response.ok) {
-      throw new Error(`Perplexity API error: ${response.status} ${response.statusText}`);
+      // Only a fixed tag from the body is kept, so an empty account is not read as a rate limit.
+      const tag = outOfCreditsTag(response.status, await readErrorBody(response));
+      throw new Error(`Perplexity API error: ${response.status} ${response.statusText}${tag}`);
     }
 
     const data = await response.json() as any;
+    this.recordReplyUsage(data);
+    if (isChatCompletionTruncated(data)) throw new OutputTruncatedError('perplexity', purpose);
     return data.choices?.[0]?.message?.content || '';
   }
 
@@ -146,7 +163,11 @@ Return a JSON object: { "critique": string, "improvedPrompt": string }`,
    * Call the Perplexity Chat Completions API and return both message content
    * and citations from the top-level response. Used exclusively by verifyClaim().
    */
-  async callAPIWithCitations(content: any[], role: string): Promise<{ content: string; citations: string[] }> {
+  async callAPIWithCitations(
+    content: any[],
+    role: string,
+    purpose: PerplexityPurpose,
+  ): Promise<{ content: string; citations: string[] }> {
     const response = await fetch('https://api.perplexity.ai/chat/completions', {
       method: 'POST',
       headers: {
@@ -156,19 +177,41 @@ Return a JSON object: { "critique": string, "improvedPrompt": string }`,
       body: JSON.stringify({
         model: this.modelId,
         response_format: { type: 'json_object' },
+        max_tokens: CALL_CEILINGS.perplexity[purpose].maxOutputTokens,
         messages: [{ role, content }],
       }),
     });
 
     if (!response.ok) {
-      throw new Error(`Perplexity API error: ${response.status} ${response.statusText}`);
+      // Only a fixed tag from the body is kept, so an empty account is not read as a rate limit.
+      const tag = outOfCreditsTag(response.status, await readErrorBody(response));
+      throw new Error(`Perplexity API error: ${response.status} ${response.statusText}${tag}`);
     }
 
     const data = await response.json() as any;
+    this.recordReplyUsage(data);
+    if (isChatCompletionTruncated(data)) throw new OutputTruncatedError('perplexity', purpose);
     return {
       content: data.choices?.[0]?.message?.content || '',
       citations: Array.isArray(data.citations) ? data.citations : [],
     };
+  }
+
+  /**
+   * Record the usage a reply reports, as soon as the reply is read: before the
+   * truncation check and before any caller parses the content, so a billed call
+   * is metered even when its output turns out to be unusable. Every Sonar request
+   * runs a web search and bills a per-request fee on top of tokens, so each call
+   * is a grounding call. No-op outside a usage capture scope.
+   */
+  private recordReplyUsage(data: any): void {
+    recordUsage({
+      provider: 'perplexity',
+      model: this.modelId,
+      inputTokens: data?.usage?.prompt_tokens ?? 0,
+      outputTokens: data?.usage?.completion_tokens ?? 0,
+      isGrounding: true,
+    });
   }
 }
 

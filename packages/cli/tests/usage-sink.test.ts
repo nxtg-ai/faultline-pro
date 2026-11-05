@@ -7,7 +7,7 @@
  * the concurrent-Fastify cross-attribution bug the ALS design exists to prevent.
  */
 import { describe, it, expect } from 'vitest';
-import { captureUsage, recordUsage, isCapturing, type UsageLeg } from '../lib/usage-sink.js';
+import { captureUsage, recordUsage, isCapturing, subscribeUsage, type UsageLeg } from '../lib/usage-sink.js';
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 const leg = (provider: string, inputTokens: number): UsageLeg => ({
@@ -63,5 +63,34 @@ describe('usage-sink', () => {
     expect(first.legs).toHaveLength(1);
     expect(second.legs).toHaveLength(1);
     expect(second.legs[0].provider).toBe('gemini');
+  });
+
+  // N-230: the process-wide observer the API's grounding-allowance meter uses.
+  it('US-05: an observer sees legs recorded inside AND outside a capture scope', async () => {
+    const seen: number[] = [];
+    const unsubscribe = subscribeUsage((l) => seen.push(l.inputTokens));
+    try {
+      recordUsage(leg('gemini', 1)); // uncaptured path (batch/bulk/schedules in the API)
+      const { legs } = await captureUsage(async () => { recordUsage(leg('gemini', 2)); return 0; });
+      expect(legs.map((l) => l.inputTokens)).toEqual([2]); // the scope is unaffected
+      expect(seen).toEqual([1, 2]);
+    } finally {
+      unsubscribe();
+    }
+    recordUsage(leg('gemini', 3));
+    expect(seen).toEqual([1, 2]); // unsubscribed observers stop receiving
+  });
+
+  it('US-06: a throwing observer never breaks recordUsage or later observers', () => {
+    const seen: number[] = [];
+    const offBad = subscribeUsage(() => { throw new Error('meter down'); });
+    const offGood = subscribeUsage((l) => seen.push(l.inputTokens));
+    try {
+      expect(() => recordUsage(leg('gemini', 7))).not.toThrow();
+      expect(seen).toEqual([7]);
+    } finally {
+      offBad();
+      offGood();
+    }
   });
 });

@@ -1,8 +1,15 @@
+import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import PDFDocument from 'pdfkit';
 import { requireApiKey } from '../plugins/auth.js';
-import { scan } from '@nxtg/faultline/cli/scan.js';
+import { enforceMonthlyCap } from '../plugins/usage-cap.js';
+import { meterScan } from '../lib/scan-quota.js';
+import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
+import { scanInRequestMode } from '../lib/grounding.js';
+import { scanWithSpend } from '../lib/scan-spend.js';
 import type { ScanResult } from '@nxtg/faultline/cli/scan.js';
+import { commitClaims, engineVerifyCap, reserveClaims } from '../plugins/claim-meter.js';
+import { evidenceLine, type PdfSourceEvidence } from '../store/pdf-report.js';
 
 const BODY_SCHEMA = {
   type: 'object',
@@ -190,6 +197,25 @@ function buildPdf(result: ScanResult, projectName: string, scanDate: string): Pr
 
         rowY += 18;
       }
+
+      // Per-source URL and evidence, the same lines the full PDF report prints (GoPMO 1.18.11.5.6, recert P7).
+      const cited = claims.filter((c) => (result.verifications[c.id]?.sources ?? []).length > 0);
+      if (cited.length > 0) {
+        doc.x = 50;
+        doc.y = rowY + 12;
+        doc.font('Helvetica-Bold').fontSize(11).fillColor(DARK).text('Sources and evidence', 50);
+        for (const claim of cited) {
+          doc.moveDown(0.4);
+          doc.font('Helvetica-Bold').fontSize(8.5).fillColor(DARK)
+            .text(claim.text.length > 120 ? claim.text.substring(0, 117) + '...' : claim.text, 50, undefined, { width: doc.page.width - 100 });
+          for (const src of result.verifications[claim.id]?.sources ?? []) {
+            doc.font('Helvetica').fontSize(8).fillColor(GRAY)
+              .text(`${src.title ?? 'Source'}: ${src.uri}`, 60, undefined, { width: doc.page.width - 110 });
+            const quoted = evidenceLine((src as { evidence?: PdfSourceEvidence }).evidence);
+            if (quoted) doc.text(quoted, 70, undefined, { width: doc.page.width - 120 });
+          }
+        }
+      }
     }
 
     // Footer on last page
@@ -205,7 +231,8 @@ export async function reportRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: ReportBody }>(
     '/scan/report',
     {
-      preHandler: requireApiKey,
+      config: { access: 'key' },
+      preHandler: [requireApiKey, enforceMonthlyCap, enforceProviderSpendCap, reserveClaims(engineVerifyCap())],
       schema: { tags: ['Reports'], summary: 'Generate PDF compliance report from scan result', body: BODY_SCHEMA },
     },
     async (request, reply) => {
@@ -213,8 +240,11 @@ export async function reportRoutes(fastify: FastifyInstance): Promise<void> {
       const scanDate = new Date().toISOString().split('T')[0];
 
       try {
-        const result = await scan(text, provider);
+        const result = await scanWithSpend({ text, provider, keyId: request.keyId ?? 'unknown' }, () => scanInRequestMode(text, provider));
         const pdf = await buildPdf(result, projectName ?? 'Faultline Scan', scanDate);
+        commitClaims(request, randomUUID(), result, provider ?? 'gemini');
+        // Counted once, like /scan, when the report it serves holds a billable verdict.
+        meterScan(request.keyId ?? 'unknown', result.verifications);
 
         return reply
           .status(200)

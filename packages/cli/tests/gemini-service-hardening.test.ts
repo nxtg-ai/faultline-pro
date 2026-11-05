@@ -56,7 +56,7 @@ describe('geminiService.ts — cleanJson branches + verifyClaim fallbacks', () =
   it('GS1: cleanJson extracts JSON from ```json code block (line 18)', async () => {
     mockGenerateContent.mockResolvedValue({
       text: '```json\n{"status":"contradicted","explanation":"The Earth is spherical."}\n```',
-      candidates: [],
+      candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'Refuting source', uri: 'https://refute.example/a' } }] } }],
     });
 
     const result = await verifyClaim(CLAIM, 'test-key');
@@ -75,9 +75,10 @@ describe('geminiService.ts — cleanJson branches + verifyClaim fallbacks', () =
 
     const result = await verifyClaim(CLAIM, 'test-key');
 
-    // JSON parse fails → fallback: status = 'mixed', explanation = text substring
-    expect(result.status).toBe('mixed');
-    expect(result.explanation).toContain('plain prose');
+    // JSON parse fails → unchecked, not a verdict (al:5b18840b0116047a item c)
+    expect(result.status).toBe('unverified');
+    expect(result.apiErrorReason).toBe('provider_unparseable');
+    expect(result.explanation).not.toContain('plain prose');
   });
 
   it('GS3: broken JSON triggers catch → response.text becomes explanation (lines 155-159)', async () => {
@@ -88,9 +89,9 @@ describe('geminiService.ts — cleanJson branches + verifyClaim fallbacks', () =
 
     const result = await verifyClaim(CLAIM, 'test-key');
 
-    expect(result.status).toBe('mixed');
-    // explanation is response.text.substring(0, 150) + '...'
-    expect(result.explanation).toMatch(/contradicted/);
+    expect(result.status).toBe('unverified');
+    expect(result.apiError).toBe(true);
+    expect(result.apiErrorReason).toBe('provider_unparseable');
   });
 
   it('GS4: grounding chunks → sources array populated (line 167)', async () => {
@@ -112,6 +113,71 @@ describe('geminiService.ts — cleanJson branches + verifyClaim fallbacks', () =
     expect(result.sources).toHaveLength(2);
     expect(result.sources![0]!.title).toBe('NASA');
     expect(result.sources![1]!.title).toBe('NOAA');
+  });
+
+  // Google's grounding terms require Search Suggestions to be shown unaltered
+  // with a grounded result (fw al:da4e96a09515f831, GoPMO 1.18.11.3).
+  const CHIP = '<style>.container{display:flex}</style><div class="container"><a class="chip" href="https://www.google.com/search?q=earth+shape">earth shape</a></div>';
+
+  it('GS4b: Search Suggestions pass through byte-for-byte with the verdict', async () => {
+    mockGenerateContent.mockResolvedValue({
+      text: '{"status":"contradicted","explanation":"The Earth is an oblate spheroid."}',
+      candidates: [{
+        groundingMetadata: {
+          groundingChunks: [{ web: { title: 'NASA', uri: 'https://nasa.gov/earth' } }],
+          searchEntryPoint: { renderedContent: CHIP, sdkBlob: 'ignored' },
+          webSearchQueries: ['earth shape', 'is the earth flat'],
+        },
+      }],
+    });
+
+    const result = await verifyClaim(CLAIM, 'test-key');
+
+    expect(result.status).toBe('contradicted');
+    expect(result.searchEntryPoint).toEqual({ renderedContent: CHIP });
+    expect(result.searchEntryPoint!.renderedContent).toBe(CHIP);
+    expect(result.webSearchQueries).toEqual(['earth shape', 'is the earth flat']);
+  });
+
+  // No grounded explanation or source is shown for an unreadable reply, so there is
+  // nothing the Search Suggestions would have to accompany.
+  it('GS4c: an unreadable reply carries no sources and no Search Suggestions', async () => {
+    mockGenerateContent.mockResolvedValue({
+      text: 'plain prose verdict',
+      candidates: [{ groundingMetadata: { searchEntryPoint: { renderedContent: CHIP }, webSearchQueries: ['q'] } }],
+    });
+
+    const result = await verifyClaim(CLAIM, 'test-key');
+
+    expect(result.parseFallback).toBe(true);
+    expect(result.apiErrorReason).toBe('provider_unparseable');
+    expect('searchEntryPoint' in result).toBe(false);
+    expect('webSearchQueries' in result).toBe(false);
+  });
+
+  it('GS4d: no suggestions in the response means no fields on the verdict', async () => {
+    mockGenerateContent.mockResolvedValue({
+      text: '{"status":"supported","explanation":"ok"}',
+      // One web source, so the supported verdict stands and only the empty suggestion fields are under test.
+      candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'S', uri: 'https://s.example/a' } }], webSearchQueries: [], searchEntryPoint: { renderedContent: '' } } }],
+    });
+
+    const result = await verifyClaim(CLAIM, 'test-key');
+
+    expect(result.status).toBe('supported');
+    expect('searchEntryPoint' in result).toBe(false);
+    expect('webSearchQueries' in result).toBe(false);
+  });
+
+  it('GS4e: an API error carries no suggestions', async () => {
+    mockGenerateContent.mockRejectedValue(new Error('503 model overloaded'));
+
+    const result = await verifyClaim(CLAIM, 'test-key');
+
+    expect(result.apiError).toBe(true);
+    expect('searchEntryPoint' in result).toBe(false);
+    // A check that never ran names no provider or time (GoPMO 1.18.11.3 P1a).
+    expect(result.provenance).toBeUndefined();
   });
 
   it('GS5: extractClaims returns [] when both text and image are falsy (line 53)', async () => {
@@ -239,7 +305,8 @@ describe('verifyClaim — N-215 calibration prompt hardening (CAL-1–CAL-5)', (
   it('CAL-4: mock returns "mixed" for conflicting evidence → status "mixed" preserved', async () => {
     mockGenerateContent.mockResolvedValue({
       text: '{"status":"mixed","explanation":"Some studies support, others refute — contested scientific consensus."}',
-      candidates: [],
+      // One web source: a sourceless mixed verdict is reported as unverified.
+      candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'S', uri: 'https://s.example/a' } }] } }],
     });
 
     const result = await verifyClaim(
@@ -254,7 +321,7 @@ describe('verifyClaim — N-215 calibration prompt hardening (CAL-1–CAL-5)', (
   it('CAL-5: mock returns "contradicted" for unambiguous denial → status "contradicted" preserved', async () => {
     mockGenerateContent.mockResolvedValue({
       text: '{"status":"contradicted","explanation":"Overwhelming, uncontested evidence shows the Earth is spherical."}',
-      candidates: [],
+      candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'Refuting source', uri: 'https://refute.example/a' } }] } }],
     });
 
     const result = await verifyClaim(

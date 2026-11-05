@@ -5,6 +5,8 @@
  * Tracks per-provider latency and health for D-125 auto-rotation.
  */
 
+import { fetchOutbound } from '../lib/outbound-url.js';
+
 /** Auto-disable: if error rate in the last N calls exceeds this, provider is disabled. */
 export const AUTO_DISABLE_THRESHOLD = 0.8;   // 80% errors
 export const AUTO_DISABLE_WINDOW    = 10;    // over last 10 calls
@@ -89,7 +91,8 @@ class ProviderRegistry {
       verify: async (claim: string): Promise<VerificationResult> => {
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
         if (plugin.authHeader) headers['Authorization'] = plugin.authHeader;
-        const res = await fetch(plugin.endpoint, {
+        // Guarded on every call (DNS can change after registration); redirects are not followed.
+        const res = await fetchOutbound(plugin.endpoint, {
           method: 'POST',
           headers,
           body: JSON.stringify({ claim }),

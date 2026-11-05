@@ -1,13 +1,15 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { ownedOnly } from '../lib/ownership.js';
 import { requireApiKey } from '../plugins/auth.js';
 import { getRateLimiter } from '../store/ratelimit.js';
 import { getRateLimitAlertStore, ALERT_THRESHOLD_PCT } from '../store/rate-alerts.js';
 
 // ── JSON payload type ──────────────────────────────────────────────────────────
 
-function buildPayload() {
-  const stats  = getRateLimiter().getAllStats();
-  const alerts = getRateLimitAlertStore().getAlerts();
+/** Rate-limit stats a key may see: every key's for an admin key, otherwise only its own row and alerts. */
+function buildPayload(request: FastifyRequest) {
+  const stats  = ownedOnly(request, getRateLimiter().getAllStats(), (s) => s.keyId);
+  const alerts = ownedOnly(request, getRateLimitAlertStore().getAlerts(), (a) => a.keyId);
   const now    = new Date().toISOString();
 
   const throttledKeys = stats.filter(s => s.throttleCount > 0).length;
@@ -233,6 +235,7 @@ export async function rateLimitRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/rate-limits',
     {
+      config: { access: 'public' },
       schema: {
         tags: ['Analytics'],
         summary: 'Rate limit dashboard (HTML)',
@@ -249,6 +252,7 @@ export async function rateLimitRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/rate-limits.json',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Analytics'],
@@ -256,8 +260,8 @@ export async function rateLimitRoutes(fastify: FastifyInstance): Promise<void> {
         security: [{ apiKey: [] }],
       },
     },
-    async (_request, reply) => {
-      return reply.status(200).send(buildPayload());
+    async (request, reply) => {
+      return reply.status(200).send(buildPayload(request));
     },
   );
 }

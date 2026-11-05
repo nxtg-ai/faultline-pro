@@ -13,6 +13,10 @@
 
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
+import { engineVerifyCap, requireClaimHeadroom } from '../plugins/claim-meter.js';
+import { enforceMonthlyCap } from '../plugins/usage-cap.js';
+import { enforceProviderSpendCap, resolveSpendCapTier } from '../plugins/provider-spend-cap.js';
+import { outboundUrlRefusal } from '../lib/outbound-url.js';
 import {
   getScheduleStore,
   getScheduleRunner,
@@ -65,7 +69,8 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: CreateScheduleInput }>(
     '/schedules',
     {
-      preHandler: [requireApiKey],
+      config: { access: 'owner' },
+      preHandler: [requireApiKey, enforceProviderSpendCap, requireClaimHeadroom(engineVerifyCap())],
       schema: {
         tags: ['Schedules'],
         summary: 'Create a recurring scan schedule',
@@ -74,8 +79,15 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request, reply) => {
       const keyId = request.keyId ?? 'unknown';
+      for (const field of ['url', 'webhookUrl'] as const) {
+        const value = request.body[field];
+        if (!value) continue;
+        const refusal = await outboundUrlRefusal(value);
+        if (refusal) return reply.status(400).send({ error: `${field}: ${refusal}` });
+      }
       try {
-        const schedule = getScheduleStore().create(request.body, keyId);
+        const tier = resolveSpendCapTier(request.keyId, request.headers['x-user-tier']);
+        const schedule = getScheduleStore().create(request.body, keyId, tier);
         return reply.status(201).send(schedule);
       } catch (err) {
         return reply.status(400).send({ error: (err as Error).message });
@@ -89,6 +101,7 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/schedules',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: { tags: ['Schedules'], summary: 'List recurring scan schedules' },
     },
@@ -105,6 +118,7 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/schedules/view',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: { tags: ['Schedules'], summary: 'Recurring scan schedule dashboard (HTML)' },
     },
@@ -120,6 +134,7 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Params: { id: string } }>(
     '/schedules/:id',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Schedules'],
@@ -143,6 +158,7 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.patch<{ Params: { id: string }; Body: Partial<typeof PATCH_SCHEMA['properties']> }>(
     '/schedules/:id',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Schedules'],
@@ -156,6 +172,11 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
       if (!schedule) return reply.status(404).send({ error: 'Schedule not found.' });
       if (schedule.keyId !== (request.keyId ?? 'unknown')) {
         return reply.status(403).send({ error: 'Forbidden.' });
+      }
+      const patchedWebhook = (request.body as { webhookUrl?: unknown }).webhookUrl;
+      if (typeof patchedWebhook === 'string' && patchedWebhook) {
+        const refusal = await outboundUrlRefusal(patchedWebhook);
+        if (refusal) return reply.status(400).send({ error: `webhookUrl: ${refusal}` });
       }
       try {
         const updated = getScheduleStore().update(request.params.id, request.body as unknown as Parameters<ReturnType<typeof getScheduleStore>['update']>[1]);
@@ -172,6 +193,7 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.delete<{ Params: { id: string } }>(
     '/schedules/:id',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Schedules'],
@@ -196,7 +218,8 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Params: { id: string } }>(
     '/schedules/:id/trigger',
     {
-      preHandler: [requireApiKey],
+      config: { access: 'owner' },
+      preHandler: [requireApiKey, enforceMonthlyCap, enforceProviderSpendCap, requireClaimHeadroom(engineVerifyCap())],
       schema: {
         tags: ['Schedules'],
         summary: 'Manually trigger a schedule run immediately',
@@ -225,6 +248,7 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Params: { id: string }; Querystring: { limit?: string } }>(
     '/schedules/:id/history',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Schedules'],

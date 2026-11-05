@@ -8,9 +8,13 @@ import { resetUsageMeter } from '../src/store/usage.js';
 import { resetAnalytics } from '../src/store/analytics.js';
 import { resetCache } from '../src/store/cache.js';
 import { resetApprovalStore, getApprovalStore } from '../src/store/approvals.js';
+import { getScanStore, resetScanStore } from '../src/store/scans.js';
 import type { FastifyInstance } from 'fastify';
 
-const SCAN_ID = 'scan-abc-123';
+// Approvals need a stored scan the caller owns (rule 2, M5): setup() stores
+// one for the admin key, and `other` for the second-scan cases.
+let SCAN_ID = '';
+let OTHER_SCAN_ID = '';
 
 function setup() {
   process.env.FAULTLINE_API_KEY = 'admin-secret';
@@ -21,6 +25,9 @@ function setup() {
   resetAnalytics();
   resetCache();
   resetApprovalStore();
+  resetScanStore();
+  SCAN_ID = getScanStore().record('admin', 'approval scan', {}).id;
+  OTHER_SCAN_ID = getScanStore().record('admin', 'other scan', {}).id;
 }
 
 function approve(server: FastifyInstance, scanId: string, body: object = {}, key = 'admin-secret') {
@@ -59,7 +66,8 @@ describe('POST /scans/:id/approve — authentication', () => {
 
   it('AP3. scan-only key can approve (not admin-only)', async () => {
     const k = getKeyStore().create('Scan Key', ['scan']);
-    const res = await approve(server, SCAN_ID, {}, k.key);
+    const own = getScanStore().record(k.id, 'scan-key scan', {});
+    const res = await approve(server, own.id, {}, k.key);
     expect(res.statusCode).toBe(201);
   });
 });
@@ -145,7 +153,7 @@ describe('GET /scans/:id/approvals', () => {
 
   it('AP15. only returns approvals for the requested scanId', async () => {
     await approve(server, SCAN_ID);
-    await approve(server, 'other-scan-id');
+    await approve(server, OTHER_SCAN_ID);
     const body = JSON.parse((await getApprovals(server, SCAN_ID)).body);
     expect(body.approvals.length).toBe(1);
     expect(body.approvals[0].scanId).toBe(SCAN_ID);

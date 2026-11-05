@@ -5,7 +5,7 @@
  * KU5–KU14  HTTP: PATCH /keys/:id
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import { buildServer } from '../src/server.js';
 import { getKeyStore, resetKeyStore } from '../src/store/keys.js';
 import { resetAuditLogger } from '../src/store/audit.js';
@@ -20,6 +20,10 @@ const ADMIN_KEY = 'admin-key-update-test';
 function adminHeader(): Record<string, string> {
   return { 'x-api-key': ADMIN_KEY, 'content-type': 'application/json' };
 }
+
+// PATCH re-scoping to a customer key is gated like issuance (key-issuance-gate KG-6).
+beforeAll(() => { process.env.FAULTLINE_CUSTOMER_KEYS = 'on'; });
+afterAll(() => { delete process.env.FAULTLINE_CUSTOMER_KEYS; });
 
 // ── KeyStore.update unit tests ───────────────────────────────────────────────
 

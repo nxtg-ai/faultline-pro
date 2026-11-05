@@ -170,25 +170,26 @@ describe('Integration: Multi-Provider', () => {
     expect(openai.modelId).not.toBe(claude.modelId);
   });
 
-  it('all providers should handle extraction errors identically (empty array)', async () => {
+  it('all providers should handle extraction errors identically (ExtractionError, never [])', async () => {
     // Gemini error
     mockGenerateContent.mockRejectedValueOnce(new Error('Gemini down'));
     const gemini = createGeminiProvider('key');
-    const geminiResult = await gemini.extractClaims('Input');
+    const geminiResult = gemini.extractClaims('Input').catch((e: unknown) => e);
 
     // Claude error
     mockFetch.mockRejectedValueOnce(new Error('Claude down'));
     const claude = createClaudeProvider('key');
-    const claudeResult = await claude.extractClaims('Input');
+    const claudeResult = await claude.extractClaims('Input').catch((e: unknown) => e);
 
     // OpenAI error
     mockFetch.mockRejectedValueOnce(new Error('OpenAI down'));
     const openai = createOpenAIProvider('key');
-    const openaiResult = await openai.extractClaims('Input');
+    const openaiResult = await openai.extractClaims('Input').catch((e: unknown) => e);
 
-    expect(geminiResult).toEqual([]);
-    expect(claudeResult).toEqual([]);
-    expect(openaiResult).toEqual([]);
+    for (const result of [await geminiResult, claudeResult, openaiResult]) {
+      expect(result).toMatchObject({ name: 'ExtractionError', reason: 'provider_error' });
+      expect(Array.isArray(result)).toBe(false);
+    }
   });
 
   it('all providers should handle verification errors identically (unverified)', async () => {

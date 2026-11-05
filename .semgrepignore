@@ -1,0 +1,33 @@
+# Semgrep ignore list for the security gate (.github/workflows/security-scan.yml).
+# A .semgrepignore REPLACES semgrep's built-in defaults, so the defaults are
+# restated first. Code directories stay scanned; only non-code and generated
+# paths are excluded.
+
+# --- semgrep built-in defaults (restated) ---
+:include .gitignore
+node_modules/
+build/
+dist/
+vendor/
+.env/
+.venv/
+.tox/
+*.min.js
+.npm/
+.yarn/
+test/
+tests/
+*_test.go
+.semgrep
+.semgrep_logs/
+
+# --- generated / tooling output ---
+coverage/
+.stryker-tmp/
+reports/
+.claude/
+
+# --- governance and prose archives (markdown, not code) ---
+# .asif/NEXUS-archive-*.md tripped detect-insecure-websocket on a plain-text
+# websocket URL in prose (run 37062617182).
+.asif/

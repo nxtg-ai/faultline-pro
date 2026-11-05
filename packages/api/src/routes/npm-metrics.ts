@@ -17,6 +17,7 @@ export async function npmMetricsRoutes(fastify: FastifyInstance): Promise<void> 
   fastify.get(
     '/npm/downloads',
     {
+      config: { access: 'key' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Analytics'],
@@ -33,6 +34,7 @@ export async function npmMetricsRoutes(fastify: FastifyInstance): Promise<void> 
   fastify.get<{ Params: { package: string } }>(
     '/npm/downloads/:package',
     {
+      config: { access: 'key' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Analytics'],
@@ -60,6 +62,7 @@ export async function npmMetricsRoutes(fastify: FastifyInstance): Promise<void> 
   fastify.get<{ Params: { package: string }; Querystring: { weeks?: string } }>(
     '/npm/trend/:package',
     {
+      config: { access: 'key' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Analytics'],
@@ -91,6 +94,7 @@ export async function npmMetricsRoutes(fastify: FastifyInstance): Promise<void> 
   fastify.post(
     '/npm/poll',
     {
+      config: { access: 'admin' },
       preHandler: [requireAdmin],
       schema: {
         tags: ['Analytics'],

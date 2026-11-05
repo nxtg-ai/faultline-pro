@@ -91,11 +91,12 @@ describe('CircuitBreaker — unit', () => {
     expect(cb.isDown('openai')).toBe(false);
   });
 
-  it('getChain() without preferred returns full chain (5 providers)', () => {
+  it('getChain() without preferred returns the real providers, never the mock fallback (4 providers)', () => {
     const cb = getCircuitBreaker();
     const chain = cb.getChain();
-    expect(chain).toHaveLength(5);
-    expect(chain).toEqual(PROVIDER_CHAIN);
+    expect(chain).toHaveLength(4);
+    expect(chain).toEqual(PROVIDER_CHAIN.filter((p) => p !== 'mock'));
+    expect(chain).not.toContain('mock');
   });
 
   it('getChain() skips DOWN providers', () => {
@@ -105,13 +106,22 @@ describe('CircuitBreaker — unit', () => {
     }
     const chain = cb.getChain();
     expect(chain).not.toContain('gemini');
-    expect(chain).toHaveLength(4);
+    expect(chain).toHaveLength(3);
   });
 
   it('getChain() with preferred puts preferred first', () => {
     const cb = getCircuitBreaker();
     const chain = cb.getChain('claude');
     expect(chain[0]).toBe('claude');
+    expect(chain).toHaveLength(4);
+    expect(chain).not.toContain('mock');
+  });
+
+  it('getChain(\'mock\') tries mock only because it was asked for, first', () => {
+    const cb = getCircuitBreaker();
+    const chain = cb.getChain('mock');
+    expect(chain[0]).toBe('mock');
+    expect(chain.filter((p) => p === 'mock')).toHaveLength(1);
     expect(chain).toHaveLength(5);
   });
 
@@ -224,8 +234,8 @@ describe('Failover — integration', () => {
 
     expect(res.statusCode).toBe(200);
     // Verify gemini was not called (first call should be openai)
-    expect(mockScan).toHaveBeenCalledWith('test', 'openai');
-    expect(mockScan).not.toHaveBeenCalledWith('test', 'gemini');
+    expect(mockScan).toHaveBeenCalledWith('test', 'openai', undefined, undefined, undefined, undefined, undefined, { verifyCap: 8 });
+    expect(mockScan).not.toHaveBeenCalledWith('test', 'gemini', undefined, undefined, undefined, undefined, undefined, { verifyCap: 8 });
   });
 
   it('Circuit breaker: after 5 failures, provider marked down', async () => {
@@ -256,7 +266,7 @@ describe('Failover — integration', () => {
 
     expect(res.statusCode).toBe(200);
     // Should have been called with claude (first non-down provider after gemini+openai)
-    expect(mockScan).toHaveBeenCalledWith('test', 'claude');
+    expect(mockScan).toHaveBeenCalledWith('test', 'claude', undefined, undefined, undefined, undefined, undefined, { verifyCap: 8 });
   });
 
   it('POST /scan/batch with working scan → 200', async () => {

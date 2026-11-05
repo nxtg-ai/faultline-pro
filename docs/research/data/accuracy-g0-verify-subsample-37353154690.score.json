@@ -1,0 +1,211 @@
+{
+  "run": "out/accuracy-g0-verify-subsample-37353154690.jsonl",
+  "runSha256": "aabb4d28a51ee7b9637a6ad9993090c45f27e3b2f1e1f6329ac5acfa618e6634",
+  "set": "verify-subsample",
+  "goldSha256": "b87f971ce324c87e0427f100fe24b50594b9d44e3a764490b1bef188917dbae1",
+  "seed": 20260929,
+  "resamples": 2000,
+  "valid": true,
+  "invalidReasons": [],
+  "models": [
+    "gemini-2.5-flash"
+  ],
+  "engineSha": [
+    "47b72f099eda5c75dd2f7a7019ec8dde007b50ac"
+  ],
+  "failures": 0,
+  "metrics": {
+    "binary": {
+      "n": 100,
+      "balanced_accuracy": {
+        "value": 0.7986738999397227,
+        "ci95": [
+          0.6924559222423147,
+          0.8906160525919228
+        ],
+        "undefinedResamples": 0
+      },
+      "accuracy": {
+        "value": 0.82,
+        "ci95": [
+          0.74,
+          0.89
+        ],
+        "undefinedResamples": 0
+      },
+      "recall_false": {
+        "value": 0.7619047619047619,
+        "ci95": [
+          0.5555555555555556,
+          0.9375
+        ],
+        "undefinedResamples": 0
+      },
+      "recall_true": {
+        "value": 0.8354430379746836,
+        "ci95": [
+          0.7530864197530864,
+          0.9125
+        ],
+        "undefinedResamples": 0
+      },
+      "false_flag_rate": {
+        "value": 0.8571428571428571,
+        "ci95": [
+          0.6842105263157895,
+          1.0
+        ],
+        "undefinedResamples": 0
+      },
+      "coverage": {
+        "value": 0.86,
+        "ci95": [
+          0.79,
+          0.93
+        ],
+        "undefinedResamples": 0
+      },
+      "selective_accuracy": {
+        "value": 0.9534883720930233,
+        "ci95": [
+          0.9058823529411765,
+          0.9891333567087424
+        ],
+        "undefinedResamples": 0
+      }
+    },
+    "confusion": {
+      "true": {
+        "supported": 66,
+        "contradicted": 1,
+        "mixed": 11,
+        "unverified": 1,
+        "failure": 0
+      },
+      "false": {
+        "supported": 3,
+        "contradicted": 16,
+        "mixed": 2,
+        "unverified": 0,
+        "failure": 0
+      },
+      "not_enough_evidence": {
+        "supported": 0,
+        "contradicted": 0,
+        "mixed": 0,
+        "unverified": 0,
+        "failure": 0
+      }
+    },
+    "nee": {
+      "n": 0
+    },
+    "time_sensitive": {
+      "inside": {
+        "n": 4,
+        "balanced_accuracy": {
+          "value": 1.0,
+          "ci95": [
+            1.0,
+            1.0
+          ],
+          "undefinedResamples": 657
+        },
+        "accuracy": {
+          "value": 1.0,
+          "ci95": [
+            1.0,
+            1.0
+          ],
+          "undefinedResamples": 0
+        },
+        "recall_false": {
+          "value": 1.0,
+          "ci95": [
+            1.0,
+            1.0
+          ],
+          "undefinedResamples": 5
+        },
+        "recall_true": {
+          "value": 1.0,
+          "ci95": [
+            1.0,
+            1.0
+          ],
+          "undefinedResamples": 652
+        }
+      },
+      "outside": {
+        "n": 96,
+        "balanced_accuracy": {
+          "value": 0.7777777777777778,
+          "ci95": [
+            0.6524555539230091,
+            0.8888888888888888
+          ],
+          "undefinedResamples": 0
+        },
+        "accuracy": {
+          "value": 0.8125,
+          "ci95": [
+            0.7291666666666666,
+            0.8854166666666666
+          ],
+          "undefinedResamples": 0
+        },
+        "recall_false": {
+          "value": 0.7222222222222222,
+          "ci95": [
+            0.5,
+            0.9285714285714286
+          ],
+          "undefinedResamples": 0
+        },
+        "recall_true": {
+          "value": 0.8333333333333334,
+          "ci95": [
+            0.7468354430379747,
+            0.9102848101265821
+          ],
+          "undefinedResamples": 0
+        }
+      }
+    },
+    "parse_fallback_split": {
+      "true": {
+        "mixed_parse_fallback": 0,
+        "mixed_inconclusive": 11
+      },
+      "false": {
+        "mixed_parse_fallback": 0,
+        "mixed_inconclusive": 2
+      },
+      "not_enough_evidence": {
+        "mixed_parse_fallback": 0,
+        "mixed_inconclusive": 0
+      }
+    },
+    "unknown_status_count": 0
+  },
+  "paired": {
+    "other": "docs/research/data/accuracy-g0-full-20261005T174223Z.jsonl",
+    "n": 100,
+    "status_agreement_rate": 0.92,
+    "ba_difference": {
+      "value": -0.03013863773357439,
+      "ci95": [
+        -0.09333333333333327,
+        0.012658227848101222
+      ],
+      "undefinedResamples": 0
+    },
+    "ci_contains_zero": true,
+    "status_agreement_floor": 0.85,
+    "status_agreement_met": true,
+    "equivalence_margin": 0.1,
+    "ci_within_margin": true,
+    "agreement": true,
+    "verdict": "AGREEMENT"
+  }
+}

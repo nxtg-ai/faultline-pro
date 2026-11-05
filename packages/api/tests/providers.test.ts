@@ -5,7 +5,7 @@
  * ProviderRegistry, Wikipedia provider mock, circuit-breaker health scoring.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, beforeAll, afterAll } from 'vitest';
 import { buildServer } from '../src/server.js';
 import { resetKeyStore } from '../src/store/keys.js';
 import { resetRateLimiter } from '../src/store/ratelimit.js';
@@ -17,6 +17,13 @@ import { resetCache } from '../src/store/cache.js';
 import { resetProviderRegistry, getProviderRegistry } from '../src/store/providers.js';
 import { resetCircuitBreaker, getCircuitBreaker } from '../src/store/circuit-breaker.js';
 import type { FastifyInstance } from 'fastify';
+
+// These flows exercise customer (non-admin) keys, which the issuing routes
+// refuse unless FAULTLINE_CUSTOMER_KEYS=on (customer keys closed until tenancy
+// is fixed; the gate itself is tested in key-issuance-gate.test.ts).
+beforeAll(() => { process.env.FAULTLINE_CUSTOMER_KEYS = 'on'; });
+afterAll(() => { delete process.env.FAULTLINE_CUSTOMER_KEYS; });
+
 
 vi.mock('@nxtg/faultline/cli/scan.js', () => ({
   scan: vi.fn().mockResolvedValue({

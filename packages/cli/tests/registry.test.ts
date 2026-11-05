@@ -45,6 +45,18 @@ describe('Provider Registry', () => {
       expect(() => getProvider('test-key', 'gpt-5')).toThrow('Unknown provider "gpt-5"');
     });
 
+    // CodeQL #2: prototype members must not resolve as providers.
+    it.each([['constructor'], ['__proto__'], ['toString'], ['hasOwnProperty'], ['valueOf']])(
+      'should throw the unknown-provider error for %s',
+      (name) => {
+        expect(() => getProvider('test-key', name)).toThrow(`Unknown provider "${name}". Available:`);
+      },
+    );
+
+    it('should still throw the unknown-provider error behind the function guard', () => {
+      expect(() => getProvider('test-key', 'not-registered')).toThrow('Unknown provider "not-registered". Available:');
+    });
+
     it('should include available providers in error message', () => {
       expect(() => getProvider('test-key', 'nonexistent')).toThrow(/Available:.*gemini.*claude/);
     });
@@ -75,6 +87,11 @@ describe('Provider Registry', () => {
       registerProvider('custom', mockFactory);
       const provider = getProvider('test-key', 'custom');
       expect(provider.name).toBe('Custom Provider');
+    });
+
+    it('should refuse a factory that is not a function', () => {
+      expect(() => registerProvider('x', 42 as any)).toThrow('Provider "x" factory must be a function, got number.');
+      expect(listProviders()).not.toContain('x');
     });
   });
 

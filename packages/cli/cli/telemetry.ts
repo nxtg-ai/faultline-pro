@@ -13,6 +13,8 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { isExtractionError, type ExtractionErrorReason } from '../providers/extraction-error.js';
+import { isOutOfCreditsError } from '../providers/out-of-credits.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -113,12 +115,27 @@ export function sendTelemetry(
  * Classify a caught error into an enumerated error code.
  * Never touches error.message content.
  */
+const EXTRACTION_ERROR_CODES: Record<ExtractionErrorReason, ErrorCode> = {
+  rate_limited: 'RATE_LIMIT',
+  // No new code: the telemetry schema is fixed; an empty provider account is a provider error, not a rate limit.
+  provider_out_of_credits: 'API_ERROR',
+  timeout: 'TIMEOUT',
+  provider_unavailable: 'PROVIDER_UNAVAILABLE',
+  invalid_output: 'PARSE_ERROR',
+  // No new code: the telemetry schema is fixed; a cut-off claim list is an unusable reply.
+  output_truncated: 'PARSE_ERROR',
+  provider_error: 'API_ERROR',
+};
+
 export function classifyError(err: unknown): ErrorCode {
+  // The ExtractionError message is customer text; its reason is the classification.
+  if (isExtractionError(err)) return EXTRACTION_ERROR_CODES[err.reason];
   if (err instanceof Error) {
     const name = err.name;
     if (name === 'AbortError') return 'TIMEOUT';
     if (err.message.includes('ENOTFOUND') || err.message.includes('ECONNREFUSED')) return 'NETWORK_ERROR';
     if (err.message.includes('API key') || err.message.includes('api key')) return 'API_KEY_MISSING';
+    if (isOutOfCreditsError(err)) return 'API_ERROR';
     if (err.message.includes('rate limit') || err.message.includes('429')) return 'RATE_LIMIT';
     if (err.message.toLowerCase().includes('parse') || err.message.includes('JSON')) return 'PARSE_ERROR';
   }

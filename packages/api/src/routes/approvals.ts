@@ -8,11 +8,11 @@
  *
  * POST /scans/:id/approve
  *   Body: { decision?: "approved"|"rejected", note?: string }
- *   Auth: any valid API key (approver identity = requesting key)
+ *   Auth: the key that ran the scan, or an admin key (approver identity = requesting key)
  *   Returns: ApprovalEntry
  *
  * GET /scans/:id/approvals
- *   Auth: any valid API key
+ *   Auth: the key that ran the scan, or an admin key
  *   Returns: { scanId, approvals: ApprovalEntry[] }
  */
 
@@ -20,6 +20,7 @@ import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { getApprovalStore, type ApprovalDecision } from '../store/approvals.js';
 import { getTenantStore } from '../store/tenants.js';
+import { ownsScanId } from '../lib/scan-access.js';
 
 const VALID_DECISIONS: ApprovalDecision[] = ['approved', 'rejected'];
 
@@ -31,9 +32,11 @@ export async function approvalsRoutes(fastify: FastifyInstance): Promise<void> {
    */
   fastify.post(
     '/scans/:id/approve',
-    { preHandler: requireApiKey },
+    { config: { access: 'owner' }, preHandler: requireApiKey },
     async (request, reply) => {
       const { id: scanId } = request.params as { id: string };
+      // Only a scan the caller owns, stored or returned by a REST scan route (admin: any); unknown and not-yours read alike.
+      if (!ownsScanId(scanId, request.keyId)) return reply.status(404).send({ error: 'Scan not found.' });
       const body = (request.body ?? {}) as Record<string, unknown>;
       const keyId = request.keyId ?? 'unknown';
 
@@ -64,9 +67,11 @@ export async function approvalsRoutes(fastify: FastifyInstance): Promise<void> {
    */
   fastify.get(
     '/scans/:id/approvals',
-    { preHandler: requireApiKey },
+    { config: { access: 'owner' }, preHandler: requireApiKey },
     async (request, reply) => {
       const { id: scanId } = request.params as { id: string };
+      // Only a scan the caller owns, stored or returned by a REST scan route (admin: any); unknown and not-yours read alike.
+      if (!ownsScanId(scanId, request.keyId)) return reply.status(404).send({ error: 'Scan not found.' });
       const approvals = getApprovalStore().getByScanId(scanId);
       return reply.send({ scanId, approvals, total: approvals.length });
     },

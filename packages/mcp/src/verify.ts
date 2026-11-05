@@ -17,7 +17,7 @@ import {
   type Transport,
 } from '@nxtg/faultline/cli/transport.js';
 import { toClaimVerdict, toRiskScore, isRealVerdict, type ClaimVerdict } from './verdict.js';
-import { writeAuditRecord } from './audit.js';
+import { writeAuditRecord, type AuditWriteResult } from './audit.js';
 
 export { isGrounded, resolveTransport };
 
@@ -37,6 +37,23 @@ export function autoDetectProvider(env: NodeJS.ProcessEnv = process.env): string
   if (env.ANTHROPIC_API_KEY) return 'claude';
   if (env.PERPLEXITY_API_KEY) return 'perplexity';
   return 'mock';
+}
+
+/**
+ * What a local call gets when neither FAULTLINE_API_KEY nor a provider key is
+ * set and the caller names no provider. The fallback would be 'mock', which
+ * checks nothing, so the call is refused rather than answered with made-up
+ * verdicts. The server turns it into an isError tool result.
+ */
+export const NO_KEY_MESSAGE =
+  'no key: nothing was verified. Set FAULTLINE_API_KEY to a Faultline API key ' +
+  '(https://faultline.nxtg.ai/account/api-key) to verify on the hosted API, or a provider key ' +
+  'such as GEMINI_API_KEY to verify locally. For a SYNTHETIC demo that checks nothing, name ' +
+  'provider "mock" or set FAULTLINE_PROVIDER=mock.';
+
+/** True when no key is set and no provider is configured, so auto-detection would pick 'mock'. */
+export function hasNoKey(env: NodeJS.ProcessEnv = process.env): boolean {
+  return !env.FAULTLINE_PROVIDER && autoDetectProvider(env) === 'mock';
 }
 
 export interface VerifyClaimsInput {
@@ -78,6 +95,12 @@ export interface VerifyClaimsOutput {
   degraded: boolean;
   /** Count of claims whose verification failed to run. */
   unchecked_count: number;
+  /**
+   * How many claims were billed and why each unbilled one was not. Present when
+   * the scan ran on the hosted API, which reports it on every result; absent on
+   * a local scan, which bills nothing.
+   */
+  billing?: unknown;
   /** Pointer to the persisted audit record. Absent when none was written. */
   audit_ref?: string;
   audit_path?: string;
@@ -92,7 +115,7 @@ function byImportanceDesc(a: Claim, b: Claim): number {
   return (b.importance ?? 0) - (a.importance ?? 0);
 }
 
-function buildSummary(o: Omit<VerifyClaimsOutput, 'summary'>): string {
+function buildSummary(o: Omit<VerifyClaimsOutput, 'summary'>, synthetic = false): string {
   const counts = o.claims.reduce<Record<string, number>>((acc, c) => {
     acc[c.verdict] = (acc[c.verdict] ?? 0) + 1;
     return acc;
@@ -106,7 +129,11 @@ function buildSummary(o: Omit<VerifyClaimsOutput, 'summary'>): string {
       ` · DEGRADED: ${o.unchecked_count} claim(s) could not be checked (provider error)` +
       ' — this result is not a clean bill of health.';
   }
-  if (!o.grounded) {
+  if (synthetic) {
+    out =
+      'SYNTHETIC: the "mock" provider checked nothing, so these verdicts are made up for testing. ' +
+      out;
+  } else if (!o.grounded) {
     out +=
       ` · NOT GROUNDED: provider "${o.provider}" judged from model knowledge without retrieving` +
       ' sources, so these verdicts carry no evidence. Set GEMINI_API_KEY for source-backed verification.';
@@ -129,7 +156,17 @@ export interface VerifyDeps {
   fetchImpl?: typeof fetch;
   /** Transport override. Production resolves from the environment. */
   transport?: Transport;
+  /**
+   * Write the local audit record (default true). The hosted endpoint sets this
+   * to false: a server must not write each caller's text to its own disk, and
+   * the API keeps its own scan history for every POST /scan.
+   */
+  audit?: boolean;
 }
+
+/** Why no audit record exists when the caller switched audit writing off. */
+export const AUDIT_OFF_REASON =
+  'audit records are not written by this server; the hosted API keeps its own scan history';
 
 export async function verifyClaims(
   input: VerifyClaimsInput,
@@ -159,6 +196,10 @@ export async function verifyClaims(
   const provider =
     transport.mode === 'hosted' ? input.provider : input.provider || autoDetectProvider();
 
+  if (transport.mode === 'local' && !input.provider && hasNoKey()) {
+    throw new Error(NO_KEY_MESSAGE);
+  }
+
   const result: ScanResult = await runScan(text, provider, transport, {
     scanFn: deps.scanFn,
     fetchImpl: deps.fetchImpl,
@@ -180,11 +221,15 @@ export async function verifyClaims(
     return !v || v.apiError === true;
   }).length;
 
-  const audit = writeAuditRecord(text, result.provider ?? provider, result);
+  const audit: AuditWriteResult =
+    deps.audit === false
+      ? { skipped: AUDIT_OFF_REASON }
+      : writeAuditRecord(text, result.provider ?? provider, result);
+  const billing = (result as { billing?: unknown }).billing;
 
-  // A risk band computed over zero real verdicts is not a risk reading. The
-  // engine defaults such a scan to "low" because nothing was contradicted —
-  // reporting that number would say "safe" on the basis of nothing checked.
+  // A risk band computed over zero real verdicts is not a risk reading, so no
+  // score is given for it. (The engine's band for such a scan is never "low":
+  // an unverified claim raises it to at least medium, half or more to high.)
   const realVerdictCount = allClaims.filter((c) => {
     const v = result.verifications?.[c.id];
     return v && v.apiError !== true && v.status !== 'skipped' && v.status !== 'loading';
@@ -206,11 +251,12 @@ export async function verifyClaims(
     truncated: selected.length < allClaims.length,
     degraded: result.degraded === true || uncheckedAll > 0,
     unchecked_count: uncheckedAll,
+    ...(billing !== undefined ? { billing } : {}),
     ...(audit.ref ? { audit_ref: audit.ref, audit_path: audit.path } : {}),
     ...(audit.skipped ? { audit_skipped: audit.skipped } : {}),
   };
 
-  return { ...partial, summary: buildSummary(partial) };
+  return { ...partial, summary: buildSummary(partial, provider === 'mock') };
 }
 
 /** Re-exported so the guard subcommand and tests share one definition. */

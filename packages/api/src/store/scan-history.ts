@@ -42,8 +42,23 @@ export interface TimelineEntry extends ScanEntry {
 
 const MAX_HISTORY = 1000;
 
+/**
+ * Read scope for scan history.
+ *
+ * Every read method takes an optional trailing `keyId`. When it is a string,
+ * only entries recorded by that API key are visible; when it is `undefined`,
+ * the read is fleet-wide. Routes derive it from the caller with
+ * `scanHistoryKeyScope()` (plugins/auth.ts), which returns `undefined` only for
+ * admin callers. A tenantId filter is applied on top of the key scope, so it can
+ * only narrow what a caller sees, never widen it.
+ */
 class ScanHistoryStore {
   private entries: ScanEntry[] = [];
+
+  /** Entries visible to `keyId` (all entries when keyId is undefined), newest first. */
+  private scoped(keyId?: string): ScanEntry[] {
+    return keyId === undefined ? this.entries : this.entries.filter((e) => e.keyId === keyId);
+  }
 
   record(entry: Omit<ScanEntry, 'id'>): ScanEntry {
     const stored: ScanEntry = { id: randomUUID(), ...entry };
@@ -52,8 +67,8 @@ class ScanHistoryStore {
     return stored;
   }
 
-  getRecent(limit = 10): ScanEntry[] {
-    return this.entries.slice(0, limit);
+  getRecent(limit = 10, keyId?: string): ScanEntry[] {
+    return this.scoped(keyId).slice(0, limit);
   }
 
   search(params: {
@@ -65,9 +80,12 @@ class ScanHistoryStore {
     cursor?: string;
     limit?: number;
     tenantId?: string;
+    /** Restrict to entries recorded by this API key (undefined = fleet-wide, admin only). */
+    keyId?: string;
   }): { entries: ScanEntry[]; nextCursor: string | null } {
     const limit = Math.min(params.limit ?? 20, 100);
-    let results = this.entries; // already newest-first
+    // Key scope first, so a cursor id from another key cannot position the page.
+    let results = this.scoped(params.keyId); // already newest-first
 
     // Apply cursor (skip entries up to and including the cursor id)
     if (params.cursor) {
@@ -94,8 +112,8 @@ class ScanHistoryStore {
    * Return all scans for a given textHash, oldest first (for timeline rendering).
    * Computes per-scan deltas: trustScore delta, new/resolved claims, risk changes.
    */
-  getTimeline(textHash: string, limit = 50): TimelineEntry[] {
-    const scans = this.entries
+  getTimeline(textHash: string, limit = 50, keyId?: string): TimelineEntry[] {
+    const scans = this.scoped(keyId)
       .filter(e => e.textHash === textHash)
       .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
       .slice(0, limit);
@@ -117,15 +135,17 @@ class ScanHistoryStore {
   /**
    * Returns per-textHash usage statistics with derived hygiene flags.
    * When tenantId is provided, only entries belonging to that tenant are included.
+   * When keyId is provided, only entries recorded by that API key are included.
    */
-  getScanUsageStats(staleDays = 30, tenantId?: string): ScanUsageStat[] {
+  getScanUsageStats(staleDays = 30, tenantId?: string, keyId?: string): ScanUsageStat[] {
     const now = Date.now();
     const msPerDay = 86_400_000;
     const staleCutoff = new Date(now - staleDays * msPerDay);
 
     // Group entries by textHash (filter by tenantId when specified)
     const groups = new Map<string, ScanEntry[]>();
-    const source = tenantId ? this.entries.filter((e) => e.tenantId === tenantId) : this.entries;
+    const keyScoped = this.scoped(keyId);
+    const source = tenantId ? keyScoped.filter((e) => e.tenantId === tenantId) : keyScoped;
     for (const entry of source) {
       const g = groups.get(entry.textHash) ?? [];
       g.push(entry);
@@ -171,11 +191,6 @@ class ScanHistoryStore {
     );
   }
 
-  /**
-   * Deletes all scan entries belonging to stale textHash groups.
-   * A group is stale when its most-recent scan is older than `days` days.
-   * Returns the counts of deleted groups and individual entries.
-   */
   /** Deletes all scan entries belonging to a specific tenant. Returns count of deleted entries. */
   deleteTenantEntries(tenantId: string): number {
     const before = this.entries.length;
@@ -183,13 +198,22 @@ class ScanHistoryStore {
     return before - this.entries.length;
   }
 
-  pruneStaleGroups(days: number): { deletedGroups: number; deletedEntries: number } {
-    const stale = this.getStaleScanGroups(days);
+  /**
+   * Deletes all scan entries belonging to stale textHash groups.
+   * A group is stale when its most-recent scan is older than `days` days.
+   * When keyId is provided, staleness is judged on that key's entries only and
+   * only that key's entries are deleted: two keys can scan the same text, and one
+   * key's prune must never remove the other key's history for the shared hash.
+   * Returns the counts of deleted groups and individual entries.
+   */
+  pruneStaleGroups(days: number, keyId?: string): { deletedGroups: number; deletedEntries: number } {
+    const stale = this.getStaleScanGroups(days, undefined, keyId);
     if (stale.length === 0) return { deletedGroups: 0, deletedEntries: 0 };
 
     const staleHashes = new Set(stale.map((e) => e.textHash));
+    const inScope = (e: ScanEntry): boolean => keyId === undefined || e.keyId === keyId;
     const before = this.entries.length;
-    this.entries = this.entries.filter((e) => !staleHashes.has(e.textHash));
+    this.entries = this.entries.filter((e) => !(inScope(e) && staleHashes.has(e.textHash)));
     return { deletedGroups: staleHashes.size, deletedEntries: before - this.entries.length };
   }
 
@@ -199,12 +223,14 @@ class ScanHistoryStore {
    * These are "stale" documents — texts that haven't been re-verified recently.
    * Results are sorted oldest-first.
    * When tenantId is provided, only entries belonging to that tenant are considered.
+   * When keyId is provided, only entries recorded by that API key are considered.
    */
-  getStaleScanGroups(days: number, tenantId?: string): ScanEntry[] {
+  getStaleScanGroups(days: number, tenantId?: string, keyId?: string): ScanEntry[] {
     const cutoff = new Date(Date.now() - days * 86_400_000);
 
     // Most recent entry per textHash (scoped to tenant when specified)
-    const source = tenantId ? this.entries.filter((e) => e.tenantId === tenantId) : this.entries;
+    const keyScoped = this.scoped(keyId);
+    const source = tenantId ? keyScoped.filter((e) => e.tenantId === tenantId) : keyScoped;
     const mostRecent = new Map<string, ScanEntry>();
     for (const entry of source) {
       const existing = mostRecent.get(entry.textHash);

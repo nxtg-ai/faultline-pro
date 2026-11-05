@@ -12,7 +12,8 @@ import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { scan, batchScan } from './scan.js';
+import { batchScan } from './scan.js';
+import { scanLocal } from './local-scan.js';
 import { renderReport, renderReportAs, type OutputFormat, type SarifOptions } from './report.js';
 import { listRules, getRule } from '../rules/index.js';
 import { loadConfig, mergeFlags, generateSampleConfig, getLocalTemplate, addPluginToConfig, removePluginFromConfig } from './config.js';
@@ -39,9 +40,11 @@ import { buildEuComplianceReport, renderComplianceReportJson, renderComplianceRe
 import { statsCommand } from './stats.js';
 import { sendTelemetry, classifyError } from './telemetry.js';
 import { printConversionNudge } from './nudge.js';
+import { RELEASE_STAGE } from './release-stage.js';
 import { governCommand } from './govern.js';
 import { evaluateGuard, formatGuardReport, formatGuardJson, readStdin, isFailOn, FAIL_ON_VALUES } from './guard.js';
 import { resolveTransport, runScan, isGrounded } from './transport.js';
+import { isExtractionError } from '../providers/extraction-error.js';
 
 /**
  * Read from package.json rather than hardcoded.
@@ -110,6 +113,15 @@ function isImplicitMock(explicitProvider: string | undefined, resolved: string):
 /**
  * What to say instead of a fabricated verdict. Actionable, not just a refusal.
  */
+/**
+ * A failed claim extraction is not a result: the scan stops, says nothing was
+ * verified, and exits non-zero (never a report built on synthetic claims).
+ */
+function extractionFailureOutput(err: unknown): { exitCode: number; output: string } | null {
+  if (!isExtractionError(err)) return null;
+  return { exitCode: 1, output: `Error: ${err.message} (reason: ${err.reason})` };
+}
+
 function noProviderKeyOutput(command: string): { exitCode: number; output: string } {
   return {
     exitCode: 0,
@@ -149,23 +161,31 @@ function checkApiKey(providerName: string | undefined): { exitCode: number; outp
  *
  * The diagnostic goes to STDERR so machine-readable stdout (the `--output-format
  * json` consumed by CI gates) stays parseable. Returns a non-zero result for the
- * caller to short-circuit on, or `null` when the scan was not degraded.
+ * caller to short-circuit on, or `null` when the scan was not degraded. When
+ * every unchecked claim failed because the provider account is out of credits,
+ * the diagnostic says so instead of asking for a re-run that cannot succeed.
  */
 function degradedGateFailure(
-  isDegraded: boolean,
+  results: ReadonlyArray<import('./scan.js').ScanResult>,
   output: string,
 ): { exitCode: number; output: string } | null {
-  if (!isDegraded) return null;
-  process.stderr.write(
-    '✗ Faultline gate FAILED: verification was degraded — transient provider errors ' +
-    'left claims unverified, so the result cannot be trusted. Re-run when the provider ' +
-    'is healthy. (--fail-on fails closed on degraded scans.)\n',
+  const degraded = results.filter((r) => r.degraded === true);
+  if (degraded.length === 0) return null;
+  const unchecked = degraded.flatMap((r) => Object.values(r.verifications ?? {}).filter((v) => v.apiError === true));
+  const outOfCredits = unchecked.length > 0 && unchecked.every((v) => v.apiErrorReason === 'provider_out_of_credits');
+  process.stderr.write(outOfCredits
+    ? '✗ Faultline gate FAILED: verification was degraded — the verification provider account is out of ' +
+      'credits, so claims were not checked and the result cannot be trusted. Re-running will not help until ' +
+      'the provider account has credits again. (--fail-on fails closed on degraded scans.)\n'
+    : '✗ Faultline gate FAILED: verification was degraded — transient provider errors ' +
+      'left claims unverified, so the result cannot be trusted. Re-run when the provider ' +
+      'is healthy. (--fail-on fails closed on degraded scans.)\n',
   );
   return { exitCode: 1, output };
 }
 
 function usage(): string {
-  return `Faultline CLI v${VERSION} — AI Claim Forensics
+  return `Faultline CLI v${VERSION} — We check the receipts on AI output.
 
 Quick start (free Gemini key: https://aistudio.google.com/apikey):
   export GEMINI_API_KEY="your-key"
@@ -270,7 +290,7 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
     case 'version':
     case '--version':
     case '-v':
-      return { exitCode: 0, output: `Faultline v${VERSION}` };
+      return { exitCode: 0, output: `Faultline v${VERSION} (${RELEASE_STAGE})` };
 
     case 'stats': {
       // N-214: npm download metrics — fetch last-week counts, persist snapshot, show trend
@@ -579,7 +599,7 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
       const weakConfig = loadConfig();
       const { provider: weakProvider, minConfidence: weakMinConf } = mergeFlags(weakConfig, flags);
 
-      const weakResult = await scan(weakText, weakProvider, weakMinConf);
+      const weakResult = await scanLocal(weakText, weakProvider, weakMinConf);
       const topN = flags['top'] ? parseInt(flags['top'], 10) : 5;
       const weakAnalysis = analyzeWeakestLinks(weakResult.claims, weakResult.verifications, weakResult.complianceReport);
 
@@ -610,7 +630,7 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
       const graphConfig = loadConfig();
       const { provider: graphProvider, minConfidence: graphMinConf } = mergeFlags(graphConfig, flags);
 
-      const graphResult = await scan(graphText, graphProvider, graphMinConf);
+      const graphResult = await scanLocal(graphText, graphProvider, graphMinConf);
       const claimGraph = buildClaimGraph(graphResult.claims, graphResult.verifications, graphResult.complianceReport);
 
       const graphOutput = graphFormat === 'dot' ? renderDot(claimGraph) : renderMermaid(claimGraph);
@@ -733,7 +753,7 @@ export async function main(args: string[]): Promise<{ exitCode: number; output: 
         }
       }
 
-      const critScanResult = await scan(critText, resolvedCritProvider, critMinConf);
+      const critScanResult = await scanLocal(critText, resolvedCritProvider, critMinConf);
 
       const { getProvider: getCritProvider } = await import('../providers/registry.js');
       const critProvider = getCritProvider(critApiKey, resolvedCritProvider);
@@ -890,7 +910,7 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
         for (const tmpl of templates) {
           const tmplNoKey = noKeyGuard();
           if (tmplNoKey) return tmplNoKey;
-          const result = await scan(tmpl.prompt_text, providerName, minConfidence, ruleNames);
+          const result = await scanLocal(tmpl.prompt_text, providerName, minConfidence, ruleNames);
           templateResults.push({
             templateId: tmpl.id,
             category: tmpl.category,
@@ -908,10 +928,7 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
         }, null, 2);
 
         if (effectiveFailOn) {
-          const degradedFail = degradedGateFailure(
-            templateResults.some(tr => tr.result.degraded === true),
-            templateOutput,
-          );
+          const degradedFail = degradedGateFailure(templateResults.map(tr => tr.result), templateOutput);
           if (degradedFail) return degradedFail;
           // Aggregate counts across all template results
           const totalCounts = { findings: 0, critical: 0, high: 0, medium: 0, low: 0 };
@@ -952,6 +969,15 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
         if (batchNoKey) return batchNoKey;
         const batchResult = await batchScan(resolvedDir, providerName, minConfidence, globPattern);
 
+        // A file whose extraction failed was not checked: never a pass, gate or no gate.
+        if (batchResult.extractionFailures.length > 0) {
+          const failed = batchResult.extractionFailures.map((f) => `  ${f.file} (${f.reason})`).join('\n');
+          process.stderr.write(
+            `✗ Claim extraction failed for ${batchResult.extractionFailures.length} file(s); nothing in them was verified:\n${failed}\n`,
+          );
+          return { exitCode: 1, output: JSON.stringify(batchResult, null, 2) };
+        }
+
         if (batchResult.filesScanned === 0) {
           return { exitCode: 1, output: `Error: No files found in ${resolvedDir}${globPattern ? ` matching "${globPattern}"` : ''}.` };
         }
@@ -961,10 +987,7 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
         printConversionNudge(batchResult.summary.highestRisk, flags['no-nudge'] === 'true');
 
         if (effectiveFailOn) {
-          const degradedFail = degradedGateFailure(
-            batchResult.results.some(fr => fr.result.degraded === true),
-            batchOutput,
-          );
+          const degradedFail = degradedGateFailure(batchResult.results.map(fr => fr.result), batchOutput);
           if (degradedFail) return degradedFail;
           const totalCounts = { findings: 0, critical: 0, high: 0, medium: 0, low: 0 };
           for (const fr of batchResult.results) {
@@ -1010,10 +1033,12 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
         try {
           const fileNoKey = noKeyGuard();
           if (fileNoKey) return fileNoKey;
-          fileResult = await scan(extractedText, providerName, minConfidence, ruleNames, fileSpinner.onProgress);
+          fileResult = await scanLocal(extractedText, providerName, minConfidence, ruleNames, fileSpinner.onProgress);
           fileSpinner.succeed('Scan complete');
         } catch (err) {
           fileSpinner.fail('Scan failed');
+          const extractionFailure = extractionFailureOutput(err);
+          if (extractionFailure) return extractionFailure;
           throw err;
         }
 
@@ -1021,7 +1046,7 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
         const fileOutput = renderReportAs(fileResult, outputFormat, fileSarifOptions);
 
         if (effectiveFailOn) {
-          const degradedFail = degradedGateFailure(fileResult.degraded === true, fileOutput);
+          const degradedFail = degradedGateFailure([fileResult], fileOutput);
           if (degradedFail) return degradedFail;
           const counts = countFromScanResult(fileResult as unknown as Record<string, unknown>);
           const passed = checkThreshold(effectiveFailOn, counts);
@@ -1050,12 +1075,14 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
       try {
         const inputNoKey = noKeyGuard();
         if (inputNoKey) return inputNoKey;
-        result = await scan(text, providerName, minConfidence, ruleNames, spinner.onProgress);
+        result = await scanLocal(text, providerName, minConfidence, ruleNames, spinner.onProgress);
         spinner.succeed('Scan complete');
         sendTelemetry({ version: VERSION, provider: result.provider, exit_status: 0, eval_count: result.claims.length });
       } catch (err) {
         spinner.fail('Scan failed');
         sendTelemetry({ version: VERSION, provider: providerName ?? 'unknown', exit_status: 1, eval_count: 0, error_code: classifyError(err) });
+        const extractionFailure = extractionFailureOutput(err);
+        if (extractionFailure) return extractionFailure;
         throw err;
       }
 
@@ -1074,7 +1101,7 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
       printConversionNudge(result.overallRisk, flags['no-nudge'] === 'true');
 
       if (effectiveFailOn) {
-        const degradedFail = degradedGateFailure(result.degraded === true, scanOutput);
+        const degradedFail = degradedGateFailure([result], scanOutput);
         if (degradedFail) return degradedFail;
         const counts = countFromScanResult(result as unknown as Record<string, unknown>);
         const passed = checkThreshold(effectiveFailOn, counts);
@@ -1117,8 +1144,8 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
 
       // Run both scans
       const [scanBefore, scanAfter] = await Promise.all([
-        scan(textBefore, compareProvider),
-        scan(textAfter, compareProvider),
+        scanLocal(textBefore, compareProvider),
+        scanLocal(textAfter, compareProvider),
       ]);
 
       const compareResult = compareScanResults(scanBefore, scanAfter);
@@ -1351,7 +1378,7 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
         const crProvider = flags['provider'] || autoDetectProvider();
         const keyError = checkApiKey(crProvider);
         if (keyError) return keyError;
-        crScanResult = await scan(flags['text'], crProvider);
+        crScanResult = await scanLocal(flags['text'], crProvider);
       } else {
         return {
           exitCode: 1,
@@ -1444,5 +1471,12 @@ if (isDirectRun) {
   main(process.argv.slice(2)).then(({ exitCode, output }) => {
     console.log(output);
     process.exit(exitCode);
+  }, (err: unknown) => {
+    // Commands that call scan() without their own catch: an extraction failure
+    // gets its safe message, never a stack trace or a fake result.
+    const extractionFailure = extractionFailureOutput(err);
+    if (!extractionFailure) throw err;
+    console.error(extractionFailure.output);
+    process.exit(extractionFailure.exitCode);
   });
 }

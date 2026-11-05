@@ -25,6 +25,13 @@ import { resetProviderRegistry } from '../src/store/providers.js';
 import { resetCircuitBreaker } from '../src/store/circuit-breaker.js';
 import type { FastifyInstance } from 'fastify';
 
+// These flows exercise customer (non-admin) keys, which the issuing routes
+// refuse unless FAULTLINE_CUSTOMER_KEYS=on (customer keys closed until tenancy
+// is fixed; the gate itself is tested in key-issuance-gate.test.ts).
+beforeAll(() => { process.env.FAULTLINE_CUSTOMER_KEYS = 'on'; });
+afterAll(() => { delete process.env.FAULTLINE_CUSTOMER_KEYS; });
+
+
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 // MOCK JUSTIFIED: @nxtg/faultline/cli/scan.js calls external LLM providers.
 // This file smoke-tests the full API surface (key CRUD, batch, upload, PDF,
@@ -37,7 +44,12 @@ vi.mock('@nxtg/faultline/cli/scan.js', () => ({
     provider: 'mock',
     claims: [{ id: 'c1', text: 'AI generated the universe in 2023.', type: 'fact', importance: 4 }],
     verifications: {
-      c1: { claimId: 'c1', status: 'supported', explanation: 'Confirmed.', sources: [{ title: 'Source A', url: 'https://example.com' }] },
+      // The verdict a consensus scan gives, carrying the consensus engine's
+      // retriever, so a scan with it is billable and counts toward usage (S8).
+      c1: {
+        claimId: 'c1', status: 'supported', explanation: 'Confirmed.', sources: [{ title: 'Source A', uri: 'https://example.com' }],
+        provenance: { provider: 'consensus', model: 'openai:gpt-4o-mini+claude:claude-test', verifiedAt: '2026-10-01T00:00:00.000Z', retriever: 'openai-web-search', retrievedAt: '2026-10-01T00:00:00.000Z' },
+      },
     },
     overallRisk: 'low',
     complianceReport: { riskTier: 'minimal', findings: [], claimMappings: [], euRiskSummary: { totalClaims: 1, highestTier: 'minimal', unacceptable: 0, high: 0, limited: 0, minimal: 1 } },
@@ -85,7 +97,7 @@ const ADMIN = 'admin-secret';
 const JSON_HDR = { 'content-type': 'application/json' };
 
 function adminHeaders() {
-  return { 'x-api-key': ADMIN, ...JSON_HDR };
+  return { 'x-api-key': ADMIN, ...JSON_HDR, 'x-faultline-user-ref': 'user_testref1' };
 }
 
 function scanHeaders() {
@@ -253,9 +265,19 @@ describe('E2E smoke — full API surface', () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal('fetch', mockFetch);
 
+    // A scan by another key is not the webhook owner's: nothing is sent.
     await server.inject({
       method: 'POST', url: '/scan',
       headers: scanHeaders(),
+      body: JSON.stringify({ text: 'Webhook trigger scan, other key.', provider: 'mock' }),
+    });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(mockFetch).not.toHaveBeenCalled();
+
+    // The owner's scan (the key and user that registered it) is delivered.
+    await server.inject({
+      method: 'POST', url: '/scan',
+      headers: adminHeaders(),
       body: JSON.stringify({ text: 'Webhook trigger scan.', provider: 'mock' }),
     });
 
@@ -352,9 +374,23 @@ describe('E2E smoke — full API surface', () => {
       body: JSON.stringify({ name: 'template-scan-key', permissions: ['scan'] }),
     });
     const { key } = JSON.parse(keyRes.body);
+    // A template is used only by the key that created it (rule 2, M1).
+    const own = await server.inject({
+      method: 'POST', url: '/templates',
+      headers: { 'x-api-key': key, ...JSON_HDR },
+      body: JSON.stringify({ name: 'e2e-scan-key-template', provider: 'mock', failOn: 'high' }),
+    });
+    expect(own.statusCode).toBe(201);
+    const ownTemplateId = JSON.parse(own.body).id;
+    const foreign = await server.inject({
+      method: 'POST', url: `/scan/template/${templateId}`,
+      headers: { 'x-api-key': key, ...JSON_HDR },
+      body: JSON.stringify({ text: 'AI generated the universe in 2023.' }),
+    });
+    expect(foreign.statusCode).toBe(404);
 
     const res = await server.inject({
-      method: 'POST', url: `/scan/template/${templateId}`,
+      method: 'POST', url: `/scan/template/${ownTemplateId}`,
       headers: { 'x-api-key': key, ...JSON_HDR },
       body: JSON.stringify({ text: 'AI generated the universe in 2023.' }),
     });

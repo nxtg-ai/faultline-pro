@@ -1,8 +1,14 @@
+import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { getComplianceTemplateStore } from '../store/compliance-templates.js';
 import { requireApiKey, requireAdmin } from '../plugins/auth.js';
+import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
-import { scan } from '@nxtg/faultline/cli/scan.js';
+import { enforceMonthlyCap } from '../plugins/usage-cap.js';
+import { meterScan } from '../lib/scan-quota.js';
+import { scanInRequestMode } from '../lib/grounding.js';
+import { commitClaims, engineVerifyCap, reserveClaims } from '../plugins/claim-meter.js';
+import { scanWithSpend } from '../lib/scan-spend.js';
 
 type Provider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
 
@@ -93,7 +99,7 @@ interface CustomTemplateBody {
 
 export async function complianceRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /templates/compliance — list all compliance templates (no auth)
-  fastify.get('/templates/compliance', { schema: { tags: ['Compliance'], summary: 'List industry compliance templates (HIPAA, SOX, FERPA, Gov)' } }, async (_request, reply) => {
+  fastify.get('/templates/compliance', { config: { access: 'public' }, schema: { tags: ['Compliance'], summary: 'List industry compliance templates (HIPAA, SOX, FERPA, Gov)' } }, async (_request, reply) => {
     return reply.status(200).send(getComplianceTemplateStore().list());
   });
 
@@ -101,6 +107,7 @@ export async function complianceRoutes(fastify: FastifyInstance): Promise<void> 
   fastify.post<{ Body: CustomTemplateBody }>(
     '/templates/compliance',
     {
+      config: { access: 'admin' },
       preHandler: requireAdmin,
       schema: { tags: ['Compliance'], summary: 'Upload a custom compliance template (admin)', body: CUSTOM_TEMPLATE_BODY_SCHEMA },
     },
@@ -121,6 +128,7 @@ export async function complianceRoutes(fastify: FastifyInstance): Promise<void> 
   fastify.delete<{ Params: { id: string } }>(
     '/templates/compliance/:id',
     {
+      config: { access: 'admin' },
       preHandler: requireAdmin,
       schema: {
         tags: ['Compliance'],
@@ -153,7 +161,8 @@ export async function complianceRoutes(fastify: FastifyInstance): Promise<void> 
   fastify.post<{ Params: ScanComplianceParams; Body: ScanComplianceBody }>(
     '/scan/compliance/:template',
     {
-      preHandler: [requireApiKey, rateLimitScan],
+      config: { access: 'key' },
+      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap, reserveClaims(engineVerifyCap())],
       schema: {
         tags: ['Compliance'],
         summary: 'Scan text and apply industry compliance template',
@@ -172,12 +181,15 @@ export async function complianceRoutes(fastify: FastifyInstance): Promise<void> 
       const { text, provider } = request.body;
 
       try {
-        const scanResult = await scan(text, provider);
+        const scanResult = await scanWithSpend({ text, provider, keyId: request.keyId ?? 'unknown' }, () => scanInRequestMode(text, provider));
+        commitClaims(request, randomUUID(), scanResult, provider ?? 'gemini');
         const complianceAnalysis = store.applyTemplate(
           template,
           scanResult.claims,
           scanResult.verifications,
         );
+        // Counted once, like /scan, when the result it serves holds a billable verdict.
+        meterScan(request.keyId ?? 'unknown', scanResult.verifications);
         return reply.status(200).send({ ...scanResult, complianceAnalysis });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

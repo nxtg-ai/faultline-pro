@@ -1,4 +1,7 @@
+import { abstainScanWithoutSource, assertValidScanResult } from '@nxtg/faultline/lib/verdict-guard.js';
 import { createHash } from 'node:crypto';
+import { isGroundingRedirect } from '@nxtg/faultline/evidence/grounding.js';
+import { DEFAULT_VERIFY_CAP, resolveVerifyCap } from '@nxtg/faultline/cli/verify-cap.js';
 
 type ScanResult = Record<string, unknown>; // opaque — cache stores whatever scan() returns
 
@@ -10,8 +13,69 @@ interface CacheEntry {
 
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-function cacheKey(text: string, provider: string): string {
-  return createHash('sha256').update(`${text}\0${provider}`).digest('hex');
+/**
+ * The caller is part of the key: a result is served back only to the caller
+ * that paid for it, never to another key or another user behind faultline-web's
+ * server key (EP4 Amendment 2 item 7, emma-soul al:193832a732e0b82e).
+ * The verify cap is part of the key: a result verified under one plan's cap
+ * must never be served to a plan with a different cap. The cap is normalised
+ * the way the engine normalises it, so 8 and an invalid value share an entry.
+ */
+function cacheKey(caller: string, text: string, provider: string, verifyCap: number): string {
+  return createHash('sha256')
+    .update(`${caller}\0${text}\0${provider}\0cap=${resolveVerifyCap(verifyCap)}`)
+    .digest('hex');
+}
+
+/**
+ * True when a result holds Gemini Grounded Results: a verdict whose retriever
+ * is gemini-grounding, or a source that is a Google grounding Link. Google's
+ * terms say "will not ... cache ... Grounded Results" and show them only "to
+ * the end user who submitted the prompt", so such a result is never cached,
+ * not even for its own caller.
+ */
+export function holdsGroundedResults(result: ScanResult): boolean {
+  const verifications = (result as { verifications?: Record<string, unknown> }).verifications;
+  if (!verifications || typeof verifications !== 'object') return false;
+  return Object.values(verifications).some(isGroundedVerification);
+}
+
+/**
+ * True when one verdict is a Gemini Grounded Result: its provenance names
+ * gemini or gemini-grounding, it carries Google Search Suggestions, or any
+ * source is a Google grounding Link (a consensus verdict can be grounded
+ * under another provider's name).
+ */
+export function isGroundedVerification(v: unknown): boolean {
+  if (!v || typeof v !== 'object') return false;
+  const prov = (v as { provenance?: { retriever?: unknown; provider?: unknown; model?: unknown } }).provenance;
+  const names = (x: unknown) => typeof x === 'string' && /gemini/i.test(x);
+  // Any spelling: provider, retriever or a (consensus) model string naming Gemini.
+  if (names(prov?.retriever) || names(prov?.provider) || names(prov?.model)) return true;
+  const g = v as { searchEntryPoint?: unknown; webSearchQueries?: unknown };
+  if (g.searchEntryPoint !== undefined || g.webSearchQueries !== undefined) return true;
+  const sources = (v as { sources?: Array<{ uri?: unknown }> }).sources;
+  return Array.isArray(sources) && sources.some((s) => typeof s?.uri === 'string' && isGroundingRedirect(s.uri));
+}
+
+/**
+ * True when a scan result is, or holds, Gemini Grounded Results: any verdict
+ * grounded, or the result names a Gemini provider (the engine writes
+ * "Google Gemini"; requests say "gemini").
+ */
+export function isGroundedScanResult(result: ScanResult): boolean {
+  return (typeof result.provider === 'string' && /gemini/i.test(result.provider)) || holdsGroundedResults(result);
+}
+
+/**
+ * A cache hit: the result as it was stored with abstainScanWithoutSource
+ * applied (a definite verdict cached without an openable source is served as
+ * unverified), and when it was checked.
+ */
+export interface CacheHit {
+  result: ScanResult;
+  /** When the cached scan ran (ISO). Shown in the response so a hit never reads as fresh. */
+  checkedAt: string;
 }
 
 /**
@@ -46,8 +110,9 @@ class ScanCache {
     this.ttlMs = ttlMs;
   }
 
-  get(text: string, provider: string): ScanResult | null {
-    const key = cacheKey(text, provider);
+  /** `verifyCap` defaults to the engine default, the cap a scan() without options runs at. */
+  get(caller: string, text: string, provider: string, verifyCap: number = DEFAULT_VERIFY_CAP): CacheHit | null {
+    const key = cacheKey(caller, text, provider, verifyCap);
     const entry = this.store.get(key);
     if (!entry) { this._misses++; return null; }
     if (Date.now() > entry.expiresAt) {
@@ -56,19 +121,24 @@ class ScanCache {
       return null;
     }
     this._hits++;
-    return entry.result;
+    // Guarded on read, for /scan and /scan/deep alike: the stored entry is not rewritten.
+    return { result: abstainScanWithoutSource(entry.result), checkedAt: new Date(entry.cachedAt).toISOString() };
   }
 
-  set(text: string, provider: string, result: ScanResult): void {
+  /** Store a result for `caller`. Returns false when the result may not be cached. */
+  set(caller: string, text: string, provider: string, result: ScanResult, verifyCap: number = DEFAULT_VERIFY_CAP): boolean {
     // Never cache a scan whose verification did not run (provider quota/auth/5xx).
     // A cached error report is a served defect that survives the key/config fix —
     // it re-serves the raw failure for the full TTL. Origin: 2026-07-13 prod
     // free-tier-gemini 429 report cached + re-served. `apiError:true` is the
     // deterministic "not checked" flag every provider sets on verify failure.
-    if (hasUncheckedClaim(result)) return;
-    const key = cacheKey(text, provider);
+    if (hasUncheckedClaim(result)) return false;
+    assertValidScanResult(result);
+    if (holdsGroundedResults(result)) return false;
+    const key = cacheKey(caller, text, provider, verifyCap);
     const now = Date.now();
     this.store.set(key, { result, cachedAt: now, expiresAt: now + this.ttlMs });
+    return true;
   }
 
   flush(): void {

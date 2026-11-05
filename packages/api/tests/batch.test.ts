@@ -268,9 +268,14 @@ describe('POST /scan/batch — Analytics + webhooks', () => {
 
   it('A1. POST /scan/batch fires webhooks — fetch called for each succeeded scan', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
-    getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret');
+    getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret', undefined, 3, 500,
+      { keyId: 'admin', caller: 'admin\u0000fptestuser0001' });
 
-    const res = await batchPost(server, { texts: ['text one', 'text two'] });
+    const res = await server.inject({
+      method: 'POST', url: '/scan/batch',
+      headers: { 'x-api-key': 'admin-secret', 'content-type': 'application/json', 'x-faultline-user-ref': 'fptestuser0001' },
+      body: JSON.stringify({ texts: ['text one', 'text two'] }),
+    });
     expect(res.statusCode).toBe(200);
 
     // Allow microtask queue / async dispatch to flush
@@ -281,6 +286,18 @@ describe('POST /scan/batch — Analytics + webhooks', () => {
   });
 
   it('A2. GET /usage after batch with 2 successes shows count >= 2', async () => {
+    // Only a result with a billable verdict (supported, with a source and an
+    // engine-set retriever) counts: here the verdict a consensus scan gives.
+    const billable = {
+      input: 'claim text', provider: 'mock',
+      claims: [{ id: 'c1', text: 'claim', type: 'fact', importance: 3 }],
+      verifications: { c1: {
+        claimId: 'c1', status: 'supported', explanation: 'Found.', sources: [{ title: 'Source', uri: 'https://publisher.example/a' }],
+        provenance: { provider: 'consensus', model: 'openai:gpt-4o-mini+claude:claude-test', verifiedAt: '2026-10-01T00:00:00.000Z', retriever: 'openai-web-search', retrievedAt: '2026-10-01T00:00:00.000Z' },
+      } },
+      overallRisk: 'low', complianceReport: { riskTier: 'minimal', findings: [] }, ruleFindings: [],
+    };
+    vi.mocked(scan).mockResolvedValueOnce(billable as never).mockResolvedValueOnce(billable as never);
     const batchRes = await batchPost(server, { texts: ['text one', 'text two'] });
     expect(batchRes.statusCode).toBe(200);
 

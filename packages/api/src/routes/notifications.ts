@@ -1,5 +1,7 @@
 import type { FastifyInstance } from 'fastify';
-import { requireApiKey } from '../plugins/auth.js';
+import type { FastifyReply, FastifyRequest } from 'fastify';
+import { requireApiKey, isAdminKeyId, scanHistoryKeyScope, isAdminRequest } from '../plugins/auth.js';
+import { ownedOnly, ownsOrAdmin } from '../lib/ownership.js';
 import {
   getNotificationStore,
   ALL_EVENT_TYPES,
@@ -7,6 +9,21 @@ import {
 } from '../store/notifications.js';
 import type { NotificationEventType } from '../store/notifications.js';
 import { getAnalyticsStore } from '../store/analytics.js';
+import { outboundUrlRefusal } from '../lib/outbound-url.js';
+
+// ── Authorization ─────────────────────────────────────────────────────────────
+
+/**
+ * A key reads and writes only its own notification settings and history; an
+ * admin key (the server key, or a key with the admin permission) any key's.
+ * Before this, any valid key could point another key's scan notifications at
+ * its own URL (Opus and codex seats on 859a348, pre-existing).
+ */
+async function requireOwnKeyOrAdmin(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const target = (request.params as { keyId?: string }).keyId;
+  if (target === undefined || ownsOrAdmin(request, target)) return;
+  reply.status(403).send({ error: 'forbidden', message: "A key can only read or change its own notification settings." });
+}
 
 // ── Validation ────────────────────────────────────────────────────────────────
 
@@ -51,6 +68,7 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
   fastify.get(
     '/notifications/prefs',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Monitoring'],
@@ -58,8 +76,10 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
         security: [{ apiKey: [] }],
       },
     },
-    async (_request, reply) => {
-      return reply.send({ prefs: getNotificationStore().listPrefs(), eventTypes: ALL_EVENT_TYPES });
+    async (request, reply) => {
+      const all = getNotificationStore().listPrefs();
+      const prefs = ownedOnly(request, all, (p) => p.keyId);
+      return reply.send({ prefs, eventTypes: ALL_EVENT_TYPES });
     },
   );
 
@@ -67,7 +87,8 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
   fastify.get<{ Params: { keyId: string } }>(
     '/notifications/prefs/:keyId',
     {
-      preHandler: [requireApiKey],
+      config: { access: 'owner' },
+      preHandler: [requireApiKey, requireOwnKeyOrAdmin],
       schema: {
         tags: ['Monitoring'],
         summary: 'Get notification preferences for an API key',
@@ -95,7 +116,8 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
   fastify.put<{ Params: { keyId: string }; Body: PrefsBody }>(
     '/notifications/prefs/:keyId',
     {
-      preHandler: [requireApiKey],
+      config: { access: 'owner' },
+      preHandler: [requireApiKey, requireOwnKeyOrAdmin],
       schema: {
         tags: ['Monitoring'],
         summary: 'Set notification preferences for an API key',
@@ -126,6 +148,8 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
         } catch {
           return reply.status(400).send({ error: 'webhookUrl must be a valid http/https URL.' });
         }
+        const refusal = await outboundUrlRefusal(webhookUrl);
+        if (refusal) return reply.status(400).send({ error: refusal });
       }
 
       const existing = getNotificationStore().getPrefs(keyId);
@@ -138,7 +162,8 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
   fastify.delete<{ Params: { keyId: string } }>(
     '/notifications/prefs/:keyId',
     {
-      preHandler: [requireApiKey],
+      config: { access: 'owner' },
+      preHandler: [requireApiKey, requireOwnKeyOrAdmin],
       schema: {
         tags: ['Monitoring'],
         summary: 'Delete notification preferences for an API key',
@@ -161,6 +186,7 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
   fastify.get<{ Querystring: { keyId?: string; limit?: string; tenantId?: string } }>(
     '/notifications/history',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Monitoring'],
@@ -178,7 +204,16 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
     },
     async (request, reply) => {
       const limit = Math.min(500, Number(request.query.limit ?? 100));
-      const records = getNotificationStore().getHistory(request.query.keyId, limit, request.query.tenantId);
+      // A non-admin key sees only its own history; asking for another key's, or
+      // filtering by tenant, is refused (the filters are admin-only).
+      let keyId = request.query.keyId;
+      if (!isAdminKeyId(request.keyId)) {
+        if ((keyId !== undefined && keyId !== request.keyId) || request.query.tenantId !== undefined) {
+          return reply.status(403).send({ error: 'forbidden', message: "A key can only read its own notification history." });
+        }
+        keyId = scanHistoryKeyScope(request);
+      }
+      const records = getNotificationStore().getHistory(keyId, limit, request.query.tenantId);
       return reply.send({ total: records.length, records });
     },
   );
@@ -187,7 +222,8 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
   fastify.post<{ Params: { keyId: string } }>(
     '/notifications/test/:keyId',
     {
-      preHandler: [requireApiKey],
+      config: { access: 'owner' },
+      preHandler: [requireApiKey, requireOwnKeyOrAdmin],
       schema: {
         tags: ['Monitoring'],
         summary: 'Send a test notification to verify webhook delivery',
@@ -223,6 +259,7 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
   fastify.get(
     '/notifications/events',
     {
+      config: { access: 'public' },
       schema: {
         tags: ['Monitoring'],
         summary: 'List available notification event types (public)',
@@ -242,17 +279,20 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
   fastify.get(
     '/notifications',
     {
+      config: { access: 'public' },
       schema: {
         tags: ['Monitoring'],
         summary: 'Notification system overview (HTML)',
         security: [],
       },
     },
-    async (_request, reply) => {
+    async (request, reply) => {
       const evtTypes = ALL_EVENT_TYPES;
-      const prefsCount = getNotificationStore().listPrefs().length;
-      const recentHistory = getNotificationStore().getHistory(undefined, 10);
-      const deliveredCount = recentHistory.filter(r => r.delivered).length;
+      // Subscriber and delivery counts are fleet counters: admin only (emma-soul ruling Dx3 e2909e46, item 4).
+      const admin = isAdminRequest(request);
+      const prefsCount = admin ? String(getNotificationStore().listPrefs().length) : '\u2014';
+      const recentHistory = admin ? getNotificationStore().getHistory(undefined, 10) : [];
+      const deliveredCount = admin ? String(recentHistory.filter(r => r.delivered).length) : '\u2014';
 
       reply.header('Content-Type', 'text/html; charset=utf-8');
       return reply.send(`<!DOCTYPE html>

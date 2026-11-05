@@ -26,7 +26,63 @@ export interface PdfVerification {
   claimId:     string;
   status:      string;
   explanation: string;
-  sources:     Array<{ title: string; uri: string }>;
+  sources:     Array<{ title: string; uri: string; evidence?: PdfSourceEvidence }>;
+  /** Who produced the verdict and when (engine VerdictProvenance). */
+  provenance?: { provider: string; model: string; verifiedAt: string; retriever?: string; retrievedAt?: string };
+  /** Passages a second retriever found, kept apart from `sources` (engine IndependentEvidence). */
+  independentEvidence?: {
+    retriever: string;
+    model?: string;
+    retrievedAt: string;
+    sources: Array<{ title: string; uri: string; evidence?: PdfSourceEvidence }>;
+  };
+}
+
+/** The heading line for a second retriever's passages, or null when there are none. */
+export function independentHeading(ie: PdfVerification['independentEvidence']): string | null {
+  if (!ie || typeof ie.retriever !== 'string' || typeof ie.retrievedAt !== 'string') return null;
+  const by = typeof ie.model === 'string' ? `${ie.retriever} / ${ie.model}` : ie.retriever;
+  return `Independent passages (${by}, searched ${ie.retrievedAt}):`;
+}
+
+/** What fetching a cited source found (engine SourceEvidence). */
+export interface PdfSourceEvidence {
+  status: string;
+  passage: string | null;
+  fetchedAt?: string;
+  reason?: string;
+}
+
+const EVIDENCE_STATUS_TEXT: Record<string, string> = {
+  no_match: 'page read, no sentence matched the claim',
+  http_error: 'page returned an error',
+  unsupported_type: 'not an HTML or text page',
+  blocked: 'address refused',
+  fetch_failed: 'page could not be fetched',
+};
+
+/** The quoted passage with its fetch time, or why none was quoted; null when the source carries no evidence. */
+export function evidenceLine(e: PdfSourceEvidence | undefined): string | null {
+  if (!e || typeof e.status !== 'string') return null;
+  // A Gemini-grounded link is never fetched (Google's grounding terms), nor a page the site's robots.txt refuses: say so, never "nothing found".
+  if (e.status === 'not_fetched') {
+    if (e.reason === 'provider_terms') return 'Passage not retrieved (provider terms)';
+    if (e.reason === 'robots') return "Passage not retrieved (site's robots.txt)";
+    return 'Passage not retrieved';
+  }
+  if (typeof e.fetchedAt !== 'string') return null;
+  if (e.status === 'ok' && typeof e.passage === 'string') return `"${e.passage}" (page read ${e.fetchedAt})`;
+  return `No passage quoted: ${EVIDENCE_STATUS_TEXT[e.status] ?? e.status} (${e.fetchedAt})`;
+}
+
+/** One line naming who checked a claim and when, or null when the verdict carries no provenance. */
+export function provenanceLine(p: PdfVerification['provenance']): string | null {
+  if (!p || typeof p.provider !== 'string' || typeof p.model !== 'string' || typeof p.verifiedAt !== 'string') return null;
+  const by = typeof p.retriever === 'string' ? ` by ${p.retriever}` : '';
+  const retrieved = typeof p.retrievedAt === 'string' && p.retrievedAt !== p.verifiedAt
+    ? `; evidence retrieved${by} at ${p.retrievedAt}`
+    : typeof p.retrievedAt === 'string' ? ` (evidence retrieved${by} in the same request)` : '';
+  return `Checked by ${p.provider} / ${p.model} at ${p.verifiedAt}${retrieved}`;
 }
 
 export interface PdfScanResult {
@@ -80,8 +136,22 @@ function statusLabel(status: string): string {
   return (status ?? 'unverified').toUpperCase();
 }
 
-function importanceStars(n: number): string {
-  return '★'.repeat(Math.min(5, Math.max(1, n))) + '☆'.repeat(5 - Math.min(5, n));
+/**
+ * Clamp a claim's importance to an integer 1..5. Importance comes from scan
+ * data the caller submits, so it can be negative, huge, fractional or NaN;
+ * unclamped, `'☆'.repeat(5 - n)` allocates without bound or throws RangeError
+ * (CodeQL js/resource-exhaustion).
+ */
+export function clampImportance(n: unknown): number {
+  const value = typeof n === 'number' ? n : Number(n);
+  if (!Number.isFinite(value)) return 1;
+  return Math.min(5, Math.max(1, Math.trunc(value)));
+}
+
+/** Five-character star rating, e.g. `★★★☆☆` for importance 3. */
+export function importanceStars(n: unknown): string {
+  const filled = clampImportance(n);
+  return '★'.repeat(filled) + '☆'.repeat(5 - filled);
 }
 
 // ── Main entry point ──────────────────────────────────────────────────────────
@@ -428,7 +498,7 @@ function drawClaimAnalysis(
       .text(`Claim ${i + 1} · ${statusLabel(status)}`, COLORS.pageGutter + 6, barY + 6, { continued: true })
       .font('Helvetica')
       .fillColor(COLORS.muted)
-      .text(`  ${claim.type.toUpperCase()}  ${importanceStars(claim.importance)}`, { continued: false })
+      .text(`  ${String(claim.type ?? 'claim').toUpperCase()}  ${importanceStars(claim.importance)}`, { continued: false })
       .restore();
     doc.y = barY + 26;
 
@@ -454,6 +524,18 @@ function drawClaimAnalysis(
         .restore();
       doc.moveDown(0.3);
 
+      // Provenance (Honor System #2, GoPMO 1.18.11.3 P1a)
+      const checkedBy = provenanceLine(v.provenance);
+      if (checkedBy) {
+        doc.save()
+          .fontSize(8)
+          .font('Helvetica')
+          .fillColor(COLORS.muted)
+          .text(checkedBy, COLORS.pageGutter + 10, doc.y, { width: COLORS.pageWidth - 20 })
+          .restore();
+        doc.moveDown(0.3);
+      }
+
       // Sources
       if (v.sources?.length > 0) {
         doc.save()
@@ -467,11 +549,45 @@ function drawClaimAnalysis(
             .fontSize(8)
             .font('Helvetica')
             .fillColor(COLORS.blue)
-            .text(`• ${src.title ?? src.uri}`, COLORS.pageGutter + 20, doc.y, {
+            .text(src.title && src.title !== src.uri ? `• ${src.title} (${src.uri})` : `• ${src.uri}`, COLORS.pageGutter + 20, doc.y, {
               width: COLORS.pageWidth - 30,
               ellipsis: true,
             })
             .restore();
+          doc.moveDown(0.15);
+          // Evidence passage from the fetched page (Honor System #3, GoPMO 1.18.11.3 P1b)
+          const quoted = evidenceLine(src.evidence);
+          if (quoted) {
+            doc.save()
+              .fontSize(8)
+              .font('Helvetica-Oblique')
+              .fillColor(COLORS.text)
+              .text(quoted, COLORS.pageGutter + 28, doc.y, { width: COLORS.pageWidth - 38 })
+              .restore();
+            doc.moveDown(0.15);
+          }
+        });
+      }
+
+      // Independent passages from a second retriever, apart from the verdict's sources
+      const heading = independentHeading(v.independentEvidence);
+      if (heading) {
+        doc.save().fontSize(8).font('Helvetica-Bold').fillColor(COLORS.muted)
+          .text(heading, COLORS.pageGutter + 10, doc.y, { width: COLORS.pageWidth - 20 }).restore();
+        const found = v.independentEvidence!.sources ?? [];
+        if (found.length === 0) {
+          doc.save().fontSize(8).font('Helvetica').fillColor(COLORS.muted)
+            .text('No result pages found.', COLORS.pageGutter + 20, doc.y).restore();
+        }
+        found.slice(0, 3).forEach(src => {
+          doc.save().fontSize(8).font('Helvetica').fillColor(COLORS.blue)
+            .text(src.title && src.title !== src.uri ? `• ${src.title} (${src.uri})` : `• ${src.uri}`, COLORS.pageGutter + 20, doc.y, { width: COLORS.pageWidth - 30, ellipsis: true })
+            .restore();
+          const quoted = evidenceLine(src.evidence);
+          if (quoted) {
+            doc.save().fontSize(8).font('Helvetica-Oblique').fillColor(COLORS.text)
+              .text(quoted, COLORS.pageGutter + 28, doc.y, { width: COLORS.pageWidth - 38 }).restore();
+          }
           doc.moveDown(0.15);
         });
       }

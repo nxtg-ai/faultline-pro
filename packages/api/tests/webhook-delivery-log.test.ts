@@ -122,7 +122,7 @@ describe('dispatchWebhook — delivery log integration', () => {
   it('WDL9: successful dispatch logs one record with delivered:true', async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 } as Response);
     const wh = makeWebhook();
-    await dispatchWebhook(wh, 'scan.complete', { test: true });
+    await dispatchWebhook(wh, 'scan.complete', { test: true }, 'public');
     const records = getWebhookDeliveryLog().list('wh-test-id');
     expect(records).toHaveLength(1);
     expect(records[0].delivered).toBe(true);
@@ -133,7 +133,7 @@ describe('dispatchWebhook — delivery log integration', () => {
   it('WDL10: failed dispatch (non-ok status) logs record with delivered:false', async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 503 } as Response);
     const wh = makeWebhook();
-    await dispatchWebhook(wh, 'scan.complete', { test: true });
+    await dispatchWebhook(wh, 'scan.complete', { test: true }, 'public');
     const records = getWebhookDeliveryLog().list('wh-test-id');
     expect(records.some((r) => !r.delivered)).toBe(true);
   });
@@ -141,7 +141,7 @@ describe('dispatchWebhook — delivery log integration', () => {
   it('WDL11: all 3 retry attempts logged when all fail', async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response);
     const wh = makeWebhook();
-    await dispatchWebhook(wh, 'scan.complete', { test: true });
+    await dispatchWebhook(wh, 'scan.complete', { test: true }, 'public');
     const records = getWebhookDeliveryLog().list('wh-test-id');
     expect(records).toHaveLength(3);
     const attempts = records.map((r) => r.attempt).sort();
@@ -151,7 +151,7 @@ describe('dispatchWebhook — delivery log integration', () => {
   it('WDL12: network error logged with error string and null statusCode', async () => {
     global.fetch = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'));
     const wh = makeWebhook();
-    await dispatchWebhook(wh, 'scan.complete', { test: true });
+    await dispatchWebhook(wh, 'scan.complete', { test: true }, 'public');
     const records = getWebhookDeliveryLog().list('wh-test-id');
     expect(records.some((r) => r.error === 'ECONNREFUSED')).toBe(true);
     expect(records.some((r) => r.statusCode === null)).toBe(true);

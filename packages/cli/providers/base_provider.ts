@@ -1,4 +1,4 @@
-import type { Claim, VerificationResult, Source } from '../types';
+import type { Claim, VerificationResult, Source, RetrievalStatus } from '../types';
 
 export interface ImageInput {
   /** Base64-encoded image data. */
@@ -10,6 +10,17 @@ export interface ImageInput {
 export interface CritiqueResult {
   critique: string;
   improvedPrompt: string;
+}
+
+/** Options for verifyClaimGrounded. A provider that does not read an option ignores it. */
+export interface GroundedVerifyOptions {
+  /**
+   * Put each source's snippet (the retriever's excerpt text) in the prompt
+   * beside its title and link. Set by the parallel grounding mode, whose judge
+   * has no search tool and no other way to read the pages. Off by default, so
+   * the consensus prompts are unchanged.
+   */
+  withExcerpts?: boolean;
 }
 
 /**
@@ -35,7 +46,7 @@ export interface LLMProvider {
    * This is an ADDITIVE entry point: it never replaces `verifyClaim`, leaving
    * the single-provider hot path byte-for-byte unchanged.
    */
-  verifyClaimGrounded?(claim: Claim, sources: Source[]): Promise<VerificationResult>;
+  verifyClaimGrounded?(claim: Claim, sources: Source[], opts?: GroundedVerifyOptions): Promise<VerificationResult>;
   /** Generate a critique of failed claims and a reinforced prompt. */
   generateCritiqueAndPrompt(originalText: string, failedClaims: Claim[]): Promise<CritiqueResult>;
 }
@@ -53,8 +64,35 @@ export interface LLMProvider {
 export interface Retriever {
   /** Human-readable name (e.g. 'gemini-grounding', 'tavily'). */
   readonly name: string;
-  /** Fetch grounding sources for a claim's text. Returns [] when none found. */
+  /**
+   * Fetch grounding sources for a claim's text. Resolves [] only when the
+   * search ran and found nothing. When the search could not run, it rejects,
+   * preferably with a RetrievalError (providers/retrieval-error.ts) naming the
+   * reason; the consensus engine then reports the claim as not checked.
+   */
   retrieve(claimText: string): Promise<Source[]>;
+  /**
+   * The same search, with how it ended: a failed search is told apart from one
+   * that found nothing. Never throws. Every built-in retriever has it; the
+   * independent evidence leg takes only a StatusRetriever.
+   */
+  retrieveWithStatus?(claimText: string): Promise<RetrievalOutcome>;
+}
+
+/**
+ * A retriever that reports how its search ended. Required wherever a search's
+ * outcome is shown to a reader: retrieve() resolves sources or rejects, and a
+ * rejection carries no typed status (timeout, parse_error, policy_block).
+ */
+export interface StatusRetriever extends Retriever {
+  retrieveWithStatus(claimText: string): Promise<RetrievalOutcome>;
+}
+
+/** What retrieveWithStatus returns. `sources` is [] for every status but hits. */
+export interface RetrievalOutcome {
+  status: RetrievalStatus;
+  sources: Source[];
+  detail?: string;
 }
 
 /** Factory function type for creating provider instances. */

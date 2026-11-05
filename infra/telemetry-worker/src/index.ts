@@ -14,6 +14,18 @@ export interface Env {
 
 // Whitelisted fields only — anything else is dropped
 const ALLOWED_PROVIDERS = new Set(['gemini', 'openai', 'claude', 'perplexity', 'mock']);
+
+/**
+ * A scan-cost row names every provider the scan ran on, joined with '+'
+ * (extraction first, then the verifiers, e.g. 'openai+gemini+claude'). Accept
+ * one known name or a '+'-joined list of distinct known names; anything else is
+ * refused, so no free text reaches the table.
+ */
+export function isAllowedProviderLabel(label: unknown): label is string {
+  if (typeof label !== 'string' || label.length === 0) return false;
+  const parts = label.split('+');
+  return parts.every((part) => ALLOWED_PROVIDERS.has(part)) && new Set(parts).size === parts.length;
+}
 const ALLOWED_PLATFORMS = new Set(['linux', 'darwin', 'win32', 'freebsd', 'openbsd', 'sunos', 'aix']);
 const ALLOWED_ERROR_CODES = new Set([
   'API_KEY_MISSING', 'API_ERROR', 'RATE_LIMIT', 'NETWORK_ERROR',
@@ -178,7 +190,7 @@ async function handleScanCostIngest(request: Request, env: Env): Promise<Respons
   const ts        = typeof e.ts === 'string' ? e.ts.slice(0, 30) : null;
   const tier      = typeof e.tier === 'string' && ALLOWED_TIERS.has(e.tier) ? e.tier : null;
   const key_mode  = e.key_mode === 'managed' ? 'managed' : null;
-  const provider  = typeof e.provider === 'string' && ALLOWED_PROVIDERS.has(e.provider) ? e.provider : null;
+  const provider  = isAllowedProviderLabel(e.provider) ? e.provider : null;
   const input_tokens    = typeof e.input_tokens === 'number' && e.input_tokens >= 0 ? Math.round(e.input_tokens) : null;
   const output_tokens   = typeof e.output_tokens === 'number' && e.output_tokens >= 0 ? Math.round(e.output_tokens) : null;
   const grounding_calls = typeof e.grounding_calls === 'number' && e.grounding_calls >= 0 ? Math.round(e.grounding_calls) : null;

@@ -12,6 +12,10 @@ import { resetCache } from '../src/store/cache.js';
 import { resetClaimIndex, getClaimIndex } from '../src/store/claims.js';
 import type { FastifyInstance } from 'fastify';
 
+/** The caller every claim here belongs to: the server key plus a faultline-web user (the claim index is per caller). */
+const TEST_CLAIM_CALLER = 'admin\u0000claimtestuser01';
+
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function setup() {
@@ -47,7 +51,7 @@ describe('GET /analytics/overview', () => {
   afterEach(async () => { await server.close(); delete process.env.FAULTLINE_API_KEY; });
 
   it('returns 200 with correct top-level shape', async () => {
-    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' } });
+    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(Array.isArray(body.scanVolume)).toBe(true);
@@ -61,14 +65,14 @@ describe('GET /analytics/overview', () => {
   });
 
   it('scanVolume has 30 entries', async () => {
-    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' } });
+    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
     expect(body.scanVolume).toHaveLength(30);
   });
 
   it('scanVolume entries have date and count fields', async () => {
     seedHistory();
-    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' } });
+    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
     const entry = body.scanVolume[0];
     expect(typeof entry.date).toBe('string');
@@ -79,7 +83,7 @@ describe('GET /analytics/overview', () => {
   it('today bucket contains seeded entries', async () => {
     seedHistory();
     const today = new Date().toISOString().slice(0, 10);
-    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' } });
+    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
     const todayBucket = body.scanVolume.find((d: { date: string }) => d.date === today);
     expect(todayBucket).toBeTruthy();
@@ -88,7 +92,7 @@ describe('GET /analytics/overview', () => {
 
   it('providerDistribution reflects seeded data', async () => {
     seedHistory(); // 3 gemini, 1 openai, 1 claude
-    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' } });
+    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
     const gemini = body.providerDistribution.find((p: { provider: string }) => p.provider === 'gemini');
     expect(gemini?.count).toBe(3);
@@ -97,7 +101,7 @@ describe('GET /analytics/overview', () => {
   });
 
   it('riskTrend has 30 entries with risk keys', async () => {
-    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' } });
+    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
     expect(body.riskTrend).toHaveLength(30);
     const entry = body.riskTrend[0];
@@ -109,7 +113,7 @@ describe('GET /analytics/overview', () => {
 
   it('trustTrend entries have date and avgTrustScore', async () => {
     seedHistory();
-    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' } });
+    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
     const today = new Date().toISOString().slice(0, 10);
     const todayEntry = body.trustTrend.find((t: { date: string }) => t.date === today);
@@ -119,14 +123,14 @@ describe('GET /analytics/overview', () => {
   });
 
   it('trustTrend is null for days with no data', async () => {
-    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' } });
+    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
     // All days should have null avgTrustScore when no history
     expect(body.trustTrend.every((t: { avgTrustScore: null }) => t.avgTrustScore === null)).toBe(true);
   });
 
   it('latencyTrend has 30 entries', async () => {
-    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' } });
+    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
     expect(body.latencyTrend).toHaveLength(30);
   });
@@ -134,14 +138,14 @@ describe('GET /analytics/overview', () => {
   it('latencyTrend avgMs computes correctly for seeded data', async () => {
     seedHistory(); // latencyMs: 500,600,700,800,900 → avg = 700
     const today = new Date().toISOString().slice(0, 10);
-    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' } });
+    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
     const todayEntry = body.latencyTrend.find((t: { date: string }) => t.date === today);
     expect(todayEntry?.avgMs).toBe(700);
   });
 
   it('cacheStats has required fields', async () => {
-    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' } });
+    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
     expect(typeof body.cacheStats.size).toBe('number');
     expect(typeof body.cacheStats.hits).toBe('number');
@@ -150,7 +154,7 @@ describe('GET /analytics/overview', () => {
   });
 
   it('cacheStats hitRate is 0 when no cache activity', async () => {
-    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' } });
+    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
     expect(body.cacheStats.hitRate).toBe(0);
   });
@@ -159,16 +163,15 @@ describe('GET /analytics/overview', () => {
     getClaimIndex().ingest(
       [{ id: 'c1', text: 'A fact.', type: 'fact' }, { id: 'c2', text: 'An opinion.', type: 'opinion' }],
       { c1: { status: 'supported', sources: [] }, c2: { status: 'unverified', sources: [] } },
-      'scan-1',
-    );
-    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' } });
+      'scan-1', TEST_CLAIM_CALLER);
+    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
     expect(body.claimCategories.find((c: { type: string }) => c.type === 'fact')?.count).toBe(1);
     expect(body.claimCategories.find((c: { type: string }) => c.type === 'opinion')?.count).toBe(1);
   });
 
   it('summary has all required keys', async () => {
-    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' } });
+    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
     const s = body.summary;
     expect(typeof s.totalScans).toBe('number');
@@ -181,14 +184,14 @@ describe('GET /analytics/overview', () => {
 
   it('summary totalScans matches seeded count', async () => {
     seedHistory();
-    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' } });
+    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
     expect(body.summary.totalScans).toBe(5);
   });
 
   it('summary mostUsedProvider is gemini after seed', async () => {
     seedHistory();
-    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' } });
+    const res = await server.inject({ method: 'GET', url: '/analytics/overview', headers: { 'x-api-key': 'test-key' , 'x-faultline-user-ref': 'claimtestuser01'} });
     const body = JSON.parse(res.body);
     expect(body.summary.mostUsedProvider).toBe('gemini');
   });
@@ -207,48 +210,48 @@ describe('GET /analytics', () => {
   afterEach(async () => { await server.close(); delete process.env.FAULTLINE_API_KEY; });
 
   it('returns 200 with text/html', async () => {
-    const res = await server.inject({ method: 'GET', url: '/analytics', headers: { 'x-api-key': 'test-key' } });
+    const res = await server.inject({ method: 'GET', url: '/analytics', headers: { 'x-api-key': 'test-key' , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toContain('text/html');
   });
 
   it('HTML contains Analytics heading', async () => {
-    const res = await server.inject({ method: 'GET', url: '/analytics', headers: { 'x-api-key': 'test-key' } });
+    const res = await server.inject({ method: 'GET', url: '/analytics', headers: { 'x-api-key': 'test-key' , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.body).toContain('Analytics');
   });
 
   it('HTML contains Chart.js CDN reference', async () => {
-    const res = await server.inject({ method: 'GET', url: '/analytics', headers: { 'x-api-key': 'test-key' } });
+    const res = await server.inject({ method: 'GET', url: '/analytics', headers: { 'x-api-key': 'test-key' , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.body).toContain('chart.js');
   });
 
   it('HTML contains scan volume chart canvas', async () => {
-    const res = await server.inject({ method: 'GET', url: '/analytics', headers: { 'x-api-key': 'test-key' } });
+    const res = await server.inject({ method: 'GET', url: '/analytics', headers: { 'x-api-key': 'test-key' , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.body).toContain('chart-volume');
   });
 
   it('HTML contains trust score chart canvas', async () => {
-    const res = await server.inject({ method: 'GET', url: '/analytics', headers: { 'x-api-key': 'test-key' } });
+    const res = await server.inject({ method: 'GET', url: '/analytics', headers: { 'x-api-key': 'test-key' , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.body).toContain('chart-trust');
   });
 
   it('HTML contains provider chart canvas', async () => {
-    const res = await server.inject({ method: 'GET', url: '/analytics', headers: { 'x-api-key': 'test-key' } });
+    const res = await server.inject({ method: 'GET', url: '/analytics', headers: { 'x-api-key': 'test-key' , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.body).toContain('chart-provider');
   });
 
   it('HTML contains cache performance chart', async () => {
-    const res = await server.inject({ method: 'GET', url: '/analytics', headers: { 'x-api-key': 'test-key' } });
+    const res = await server.inject({ method: 'GET', url: '/analytics', headers: { 'x-api-key': 'test-key' , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.body).toContain('chart-cache');
   });
 
   it('HTML contains JS fetch to /analytics/overview', async () => {
-    const res = await server.inject({ method: 'GET', url: '/analytics', headers: { 'x-api-key': 'test-key' } });
+    const res = await server.inject({ method: 'GET', url: '/analytics', headers: { 'x-api-key': 'test-key' , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.body).toContain('/analytics/overview');
   });
 
   it('HTML contains summary stat cards', async () => {
-    const res = await server.inject({ method: 'GET', url: '/analytics', headers: { 'x-api-key': 'test-key' } });
+    const res = await server.inject({ method: 'GET', url: '/analytics', headers: { 'x-api-key': 'test-key' , 'x-faultline-user-ref': 'claimtestuser01'} });
     expect(res.body).toContain('Total Scans');
     expect(res.body).toContain('Cache Hit Rate');
     expect(res.body).toContain('Accuracy Rate');

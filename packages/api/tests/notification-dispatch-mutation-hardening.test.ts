@@ -28,6 +28,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// Notifications go only to a live key; 'admin' (the server key) is live while FAULTLINE_API_KEY is set.
+process.env.FAULTLINE_API_KEY ??= 'nd-test-key';
 import {
   getNotificationStore,
   resetNotificationStore,
@@ -60,8 +63,8 @@ describe('NotificationStore._deliver() — HTTP response handling', () => {
   it('ND1: fetch 200 → delivered=true, error=null in delivery record', async () => {
     stubFetch({ ok: true, status: 200 });
     const store = getNotificationStore();
-    store.setPrefs('key-ok', ['scan.failed'], 'http://wh.example.com/ok', null);
-    await store.dispatch('scan.failed', { msg: 'test' }, 'key-ok');
+    store.setPrefs('admin', ['scan.failed'], 'http://wh.example.com/ok', null);
+    await store.dispatch('scan.failed', { msg: 'test' }, 'admin');
 
     const [rec] = store.getHistory();
     expect(rec.delivered).toBe(true);
@@ -74,8 +77,8 @@ describe('NotificationStore._deliver() — HTTP response handling', () => {
   it('ND2: fetch 503 → delivered=false, error="HTTP 503" in delivery record', async () => {
     stubFetch({ ok: false, status: 503 });
     const store = getNotificationStore();
-    store.setPrefs('key-err', ['scan.failed'], 'http://wh.example.com/fail', null);
-    await store.dispatch('scan.failed', { msg: 'error' }, 'key-err');
+    store.setPrefs('admin', ['scan.failed'], 'http://wh.example.com/fail', null);
+    await store.dispatch('scan.failed', { msg: 'error' }, 'admin');
 
     const [rec] = store.getHistory();
     expect(rec.delivered).toBe(false);
@@ -87,8 +90,8 @@ describe('NotificationStore._deliver() — HTTP response handling', () => {
   it('ND3: fetch throws → error captured from thrown exception', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')));
     const store = getNotificationStore();
-    store.setPrefs('key-throw', ['scan.failed'], 'http://unreachable.example.com', null);
-    await store.dispatch('scan.failed', { msg: 'throw' }, 'key-throw');
+    store.setPrefs('admin', ['scan.failed'], 'http://unreachable.example.com', null);
+    await store.dispatch('scan.failed', { msg: 'throw' }, 'admin');
 
     const [rec] = store.getHistory();
     expect(rec.delivered).toBe(false);
@@ -115,8 +118,8 @@ describe('NotificationStore._deliver() — fetch call arguments', () => {
   it('ND4: fetch is called with method="POST" and Content-Type: application/json', async () => {
     stubFetch({ ok: true, status: 200 });
     const store = getNotificationStore();
-    store.setPrefs('key-args', ['scan.failed'], 'http://args.example.com', null);
-    await store.dispatch('scan.failed', { claimId: 'c1' }, 'key-args');
+    store.setPrefs('admin', ['scan.failed'], 'http://args.example.com', null);
+    await store.dispatch('scan.failed', { claimId: 'c1' }, 'admin');
 
     const mockFetch = vi.mocked(fetch);
     expect(mockFetch).toHaveBeenCalledOnce();
@@ -132,14 +135,14 @@ describe('NotificationStore._deliver() — fetch call arguments', () => {
   it('ND5: fetch body contains event, keyId, and payload fields', async () => {
     stubFetch({ ok: true, status: 200 });
     const store = getNotificationStore();
-    store.setPrefs('key-body', ['scan.failed'], 'http://body.example.com', null);
-    await store.dispatch('scan.failed', { errorDetails: 'timeout' }, 'key-body');
+    store.setPrefs('admin', ['scan.failed'], 'http://body.example.com', null);
+    await store.dispatch('scan.failed', { errorDetails: 'timeout' }, 'admin');
 
     const mockFetch = vi.mocked(fetch);
     const [_url, options] = mockFetch.mock.calls[0];
     const body = JSON.parse((options as RequestInit).body as string);
     expect(body.event).toBe('scan.failed');
-    expect(body.keyId).toBe('key-body');
+    expect(body.keyId).toBe('admin');
     expect(body.errorDetails).toBe('timeout'); // payload field spread into body
   });
 

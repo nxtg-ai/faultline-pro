@@ -61,7 +61,7 @@ describe('Tenant-scoped cost tracking (TC1–TC15)', () => {
     resetUsageMeter();
     resetCostStore();
 
-    const key = getKeyStore().create('cost-key', ['scan'], 'cost-key');
+    const key = getKeyStore().create('cost-key', ['scan']);
     keyId = key.id;
     const tenant = getTenantStore().create('Cost Test Corp', [keyId]);
     tenantId = tenant.id;
@@ -123,7 +123,7 @@ describe('Tenant-scoped cost tracking (TC1–TC15)', () => {
   // ── TC7: deleteTenantCosts() isolation — other tenant untouched ───────────
 
   it('TC7: deleteTenantCosts does not affect entries from other tenants', () => {
-    const key2 = getKeyStore().create('other-k', ['scan'], 'other-k');
+    const key2 = getKeyStore().create('other-k', ['scan']);
     const tenant2 = getTenantStore().create('Other Corp', [key2.id]);
     getCostStore().record(key2.id, 'mock', 'other text', tenant2.id);
 
@@ -195,7 +195,7 @@ describe('Tenant-scoped cost tracking (TC1–TC15)', () => {
   // ── TC15: erasure cost isolation — other tenant costs untouched ───────────
 
   it('TC15: erasing tenant A does not delete tenant B cost records', async () => {
-    const key2 = getKeyStore().create('b-key', ['scan'], 'b-key');
+    const key2 = getKeyStore().create('b-key', ['scan']);
     const tenant2 = getTenantStore().create('Tenant B', [key2.id]);
     getCostStore().record(key2.id, 'mock', 'b text', tenant2.id);
 

@@ -1,6 +1,6 @@
 {
   "name": "@nxtg/faultline-mcp",
-  "version": "0.1.0",
+  "version": "0.12.1",
   "description": "MCP server for Faultline claim verification. Your AI says 'done' — Faultline checks what it told you. Verifies factual claims in agent output against live sources, inside Claude Code, Cursor, and any MCP client.",
   "type": "module",
   "bin": {
@@ -45,14 +45,14 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0",
-    "@nxtg/faultline": "^0.10.1",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@nxtg/faultline": "^0.12.0",
     "tsx": "^4.21.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
     "typescript": "~5.8.2",
-    "vitest": "^4.0.18"
+    "vitest": "^4.1.11"
   }
 }

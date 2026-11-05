@@ -7,6 +7,7 @@ const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
 import { createPerplexityProvider } from '../providers/perplexity_provider';
+import { ExtractionError } from '../providers/extraction-error';
 
 function mockPerplexityResponse(content: string, citations: string[] = [], status = 200) {
   return {
@@ -120,22 +121,60 @@ describe('PerplexityProvider', () => {
       expect(contentTypes).not.toContain('image_url');
     });
 
-    it('should return empty array on API error', async () => {
-      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+    // A failed extraction must throw, not return []: scan() would otherwise fill one
+    // synthetic claim per sentence and verify or price those as if extracted.
+    it('throws ExtractionError(provider_error) on a network error, keeping the cause', async () => {
+      const networkError = new Error('Network error');
+      mockFetch.mockRejectedValueOnce(networkError);
 
       const provider = createPerplexityProvider('test-key');
-      const result = await provider.extractClaims('Some text');
-      expect(result).toEqual([]);
+      const err = await provider.extractClaims('Some text').catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ExtractionError);
+      expect((err as ExtractionError).reason).toBe('provider_error');
+      expect((err as ExtractionError).cause).toBe(networkError);
+      expect((err as ExtractionError).message).not.toContain('Network error');
     });
 
-    it('should return empty array for non-array response', async () => {
+    it('throws ExtractionError(rate_limited) on HTTP 429', async () => {
+      mockFetch.mockResolvedValueOnce(mockPerplexityResponse('', [], 429));
+
+      const provider = createPerplexityProvider('test-key');
+      await expect(provider.extractClaims('Some text')).rejects.toMatchObject({ name: 'ExtractionError', reason: 'rate_limited' });
+    });
+
+    it('throws ExtractionError(provider_unavailable) on HTTP 503', async () => {
+      mockFetch.mockResolvedValueOnce(mockPerplexityResponse('', [], 503));
+
+      const provider = createPerplexityProvider('test-key');
+      await expect(provider.extractClaims('Some text')).rejects.toMatchObject({ name: 'ExtractionError', reason: 'provider_unavailable' });
+    });
+
+    it('throws ExtractionError(invalid_output) on JSON cut off mid-output', async () => {
+      mockFetch.mockResolvedValueOnce(
+        mockPerplexityResponse('{"claims": [{"id": "c1", "text": "The Eiffel Tower is in Par'),
+      );
+
+      const provider = createPerplexityProvider('test-key');
+      const err = await provider.extractClaims('Some text').catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ExtractionError);
+      expect((err as ExtractionError).reason).toBe('invalid_output');
+      expect((err as ExtractionError).cause).toBeInstanceOf(SyntaxError);
+    });
+
+    it('throws ExtractionError(invalid_output) for a non-array response', async () => {
       mockFetch.mockResolvedValueOnce(
         mockPerplexityResponse(JSON.stringify({ not: 'an array' })),
       );
 
       const provider = createPerplexityProvider('test-key');
-      const result = await provider.extractClaims('Some text');
-      expect(result).toEqual([]);
+      await expect(provider.extractClaims('Some text')).rejects.toMatchObject({ name: 'ExtractionError', reason: 'invalid_output' });
+    });
+
+    it('returns [] for a valid empty claims array (zero claims is not an error)', async () => {
+      mockFetch.mockResolvedValueOnce(mockPerplexityResponse(JSON.stringify({ claims: [] })));
+
+      const provider = createPerplexityProvider('test-key');
+      await expect(provider.extractClaims('Some text')).resolves.toEqual([]);
     });
 
     it('should send correct headers with API key', async () => {
@@ -165,7 +204,7 @@ describe('PerplexityProvider', () => {
       expect(body.model).toBe('sonar-pro');
     });
 
-    it('should handle empty choices array', async () => {
+    it('throws ExtractionError(invalid_output) for an empty choices array', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -174,8 +213,7 @@ describe('PerplexityProvider', () => {
       });
 
       const provider = createPerplexityProvider('test-key');
-      const result = await provider.extractClaims('Some text');
-      expect(result).toEqual([]);
+      await expect(provider.extractClaims('Some text')).rejects.toMatchObject({ name: 'ExtractionError', reason: 'invalid_output' });
     });
   });
 
@@ -475,5 +513,67 @@ describe('PerplexityProvider', () => {
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
       expect(body.model).toBe('sonar-pro');
     });
+  });
+});
+
+describe('PerplexityProvider usage reporting', () => {
+  const usageReply = (content: string) => ({
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    json: async () => ({
+      choices: [{ message: { content }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 1200, completion_tokens: 300 },
+      citations: ['https://example.org/source'],
+    }),
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    delete process.env.FAULTLINE_PERPLEXITY_MODEL;
+  });
+
+  it('reports the usage of an extraction call to the scan in flight', async () => {
+    mockFetch.mockResolvedValueOnce(usageReply('{"claims":[{"id":"c1","text":"Paris is in France","type":"fact","importance":5}]}'));
+    const { captureUsage } = await import('../lib/usage-sink');
+    const { result, legs } = await captureUsage(() => createPerplexityProvider('test-key').extractClaims('Paris is in France.'));
+    expect(result).toHaveLength(1);
+    expect(legs).toEqual([{ provider: 'perplexity', model: 'sonar-pro', inputTokens: 1200, outputTokens: 300, isGrounding: true }]);
+  });
+
+  it('reports the usage of a billed extraction whose output cannot be read, then fails it', async () => {
+    mockFetch.mockResolvedValueOnce(usageReply('not json at all'));
+    const { captureUsage } = await import('../lib/usage-sink');
+    const { result, legs } = await captureUsage(async () => {
+      try {
+        await createPerplexityProvider('test-key').extractClaims('Paris is in France.');
+        return null;
+      } catch (err) {
+        return err;
+      }
+    });
+    expect(result).toBeInstanceOf(ExtractionError);
+    expect(legs).toHaveLength(1);
+    expect(legs[0]).toMatchObject({ provider: 'perplexity', model: 'sonar-pro', inputTokens: 1200, outputTokens: 300 });
+  });
+
+  it('reports the usage of a verify call, under the configured model', async () => {
+    process.env.FAULTLINE_PERPLEXITY_MODEL = 'sonar';
+    mockFetch.mockResolvedValueOnce(usageReply('{"status":"supported","explanation":"ok"}'));
+    const { captureUsage } = await import('../lib/usage-sink');
+    const claim: Claim = { id: 'c1', text: 'Paris is in France', type: 'fact', importance: 5 };
+    const { result, legs } = await captureUsage(() => createPerplexityProvider('test-key').verifyClaim(claim));
+    expect(result.status).toBe('supported');
+    expect(legs).toEqual([{ provider: 'perplexity', model: 'sonar', inputTokens: 1200, outputTokens: 300, isGrounding: true }]);
+    delete process.env.FAULTLINE_PERPLEXITY_MODEL;
+  });
+
+  it('reports nothing for a call that got no HTTP response body (non-2xx)', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 503, statusText: 'Service Unavailable', json: async () => ({}) });
+    const { captureUsage } = await import('../lib/usage-sink');
+    const { legs } = await captureUsage(async () => {
+      await createPerplexityProvider('test-key').extractClaims('Paris is in France.').catch(() => undefined);
+    });
+    expect(legs).toHaveLength(0);
   });
 });

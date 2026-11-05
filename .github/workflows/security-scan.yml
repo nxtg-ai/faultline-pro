@@ -1,10 +1,17 @@
 name: Security Scan (SAST + Secrets)
 
+# A ratchet, not a report. Findings that existed when the gate was installed are
+# baselined with a reason (security/baseline.json, .gitleaksignore,
+# security/accepted-advisories.json); any NEW blocking finding fails the run.
+# A scanner that crashes also fails the run: a check that passes when it cannot
+# run is not evidence. Docs: docs/security/2026-10-02-security-evidence-v0.11.1.md §8.
+
 on:
   push:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -17,133 +24,143 @@ jobs:
       image: semgrep/semgrep
     steps:
       - uses: actions/checkout@v4
+      # Without --error, semgrep exits 0 when it only has findings and non-zero
+      # when it fails, so a crash fails this step. Findings are judged by the gate job.
       - name: Run Semgrep
-        run: semgrep scan --config auto --sarif --output semgrep.sarif || true
-      - name: Findings summary
-        if: always()
-        shell: bash
-        run: |
-          if [ -f semgrep.sarif ]; then
-            count=$(python3 -c "import json;d=json.load(open('semgrep.sarif'));print(sum(len(r.get('results',[])) for r in d.get('runs',[])))" 2>/dev/null || echo "0")
-            echo "### Semgrep SAST: $count findings" >> $GITHUB_STEP_SUMMARY
-            if [ "$count" != "0" ]; then
-              python3 -c "import json;d=json.load(open('semgrep.sarif'));print('| File | Severity | Rule | Message |');print('|------|----------|------|---------|');[print('| \`{}:{}\` | {} | {} | {} |'.format(r.get('locations',[{}])[0].get('physicalLocation',{}).get('artifactLocation',{}).get('uri','?'),r.get('locations',[{}])[0].get('physicalLocation',{}).get('region',{}).get('startLine','?'),r.get('level','?'),r.get('ruleId','?').split('.')[-1][:30],r.get('message',{}).get('text','?')[:60])) for run in d.get('runs',[]) for r in run.get('results',[]) if r.get('locations')]" 2>/dev/null | head -25 >> $GITHUB_STEP_SUMMARY || true
-            else
-              echo "No security findings." >> $GITHUB_STEP_SUMMARY
-            fi
-          fi
+        run: semgrep scan --config auto --sarif --output semgrep.sarif
       - name: Upload SARIF artifact
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: semgrep-sarif
           path: semgrep.sarif
+          if-no-files-found: error
           retention-days: 30
-        continue-on-error: true
-
-  bandit:
-    name: Bandit (Python SAST)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Check for Python files
-        id: check
-        run: |
-          if find . -name "*.py" -not -path "*/node_modules/*" -not -path "*/.venv/*" | head -1 | grep -q .; then
-            echo "has_python=true" >> $GITHUB_OUTPUT
-          else
-            echo "has_python=false" >> $GITHUB_OUTPUT
-          fi
-      - name: Install Bandit
-        if: steps.check.outputs.has_python == 'true'
-        run: pip install bandit[sarif]
-      - name: Run Bandit
-        if: steps.check.outputs.has_python == 'true'
-        run: bandit -r . -f sarif -o bandit.sarif --exit-zero --exclude ./.venv,./node_modules,./.claude 2>/dev/null || true
-      - name: Findings summary
-        if: always() && steps.check.outputs.has_python == 'true'
-        run: |
-          if [ -f bandit.sarif ]; then
-            count=$(python3 -c "import json;d=json.load(open('bandit.sarif'));print(sum(len(r.get('results',[])) for r in d.get('runs',[])))" 2>/dev/null || echo "0")
-            echo "### Bandit (Python): $count findings" >> $GITHUB_STEP_SUMMARY
-            if [ "$count" != "0" ]; then
-              python3 -c "import json;d=json.load(open('bandit.sarif'));print('| File | Severity | Rule | Message |');print('|------|----------|------|---------|');[print('| \`{}:{}\` | {} | {} | {} |'.format(r.get('locations',[{}])[0].get('physicalLocation',{}).get('artifactLocation',{}).get('uri','?'),r.get('locations',[{}])[0].get('physicalLocation',{}).get('region',{}).get('startLine','?'),r.get('level','?'),r.get('ruleId','?')[:25],r.get('message',{}).get('text','?')[:60])) for run in d.get('runs',[]) for r in run.get('results',[]) if r.get('locations')]" 2>/dev/null | head -25 >> $GITHUB_STEP_SUMMARY || true
-            else
-              echo "No Python security findings." >> $GITHUB_STEP_SUMMARY
-            fi
-          fi
-      - name: Skip notice
-        if: steps.check.outputs.has_python == 'false'
-        run: |
-          echo "### Bandit: skipped (no Python files)" >> $GITHUB_STEP_SUMMARY
-      - name: Upload SARIF artifact
-        if: always() && steps.check.outputs.has_python == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: bandit-sarif
-          path: bandit.sarif
-          retention-days: 30
-        continue-on-error: true
 
   bearer:
     name: Bearer (Data Privacy)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # exit-code 0 applies only to "findings reported"; a Bearer error still
+      # exits non-zero (Bearer pkg/commands/artifact/run.go). The version is
+      # pinned so the rule set cannot drift under the baseline.
       - name: Run Bearer
         uses: bearer/bearer-action@v2
         with:
+          version: 2.1.1
           format: sarif
           output: bearer.sarif
           diff: false
-        continue-on-error: true
-      - name: Findings summary
-        if: always()
-        run: |
-          if [ -f bearer.sarif ]; then
-            count=$(python3 -c "import json;d=json.load(open('bearer.sarif'));print(sum(len(r.get('results',[])) for r in d.get('runs',[])))" 2>/dev/null || echo "0")
-            echo "### Bearer (Data Privacy): $count findings" >> $GITHUB_STEP_SUMMARY
-            if [ "$count" != "0" ]; then
-              echo "Warning: Potential PII/sensitive data exposure detected. Download bearer-sarif artifact for details." >> $GITHUB_STEP_SUMMARY
-            else
-              echo "No data privacy findings." >> $GITHUB_STEP_SUMMARY
-            fi
-          else
-            echo "### Bearer: scan completed (no SARIF generated)" >> $GITHUB_STEP_SUMMARY
-          fi
+          exit-code: 0
       - name: Upload SARIF artifact
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: bearer-sarif
           path: bearer.sarif
+          if-no-files-found: error
           retention-days: 30
-        continue-on-error: true
+
+  gate:
+    name: Security gate (semgrep + bearer ratchet)
+    needs: [semgrep, bearer]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/download-artifact@v4
+        with:
+          name: semgrep-sarif
+          path: sarif/semgrep
+      - uses: actions/download-artifact@v4
+        with:
+          name: bearer-sarif
+          path: sarif/bearer
+      # Exit 1: a blocking finding not in security/baseline.json.
+      # Exit 2: a SARIF file is missing, unparseable, or reports a failed scan.
+      - name: Compare blocking findings with the baseline
+        run: >-
+          node scripts/security-gate.mjs
+          --sarif semgrep=sarif/semgrep/semgrep.sarif
+          --sarif bearer=sarif/bearer/bearer.sarif
+          --baseline security/baseline.json
+
+  npm-audit:
+    name: npm audit gate (production deps)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # npm audit exits 1 both for "advisories found" and for errors, so its exit
+      # code is recorded, not trusted: the gate validates the report's shape and
+      # exits 2 on an error report.
+      - name: Run npm audit
+        run: |
+          set +e
+          npm audit --omit=dev --json --package-lock-only > npm-audit.json
+          rc=$?
+          set -e
+          echo "npm audit exit code: $rc (the gate step decides pass or fail)"
+          if [ "$rc" -gt 1 ]; then exit "$rc"; fi
+      - name: Compare high/critical advisories with accepted-advisories.json
+        run: node scripts/security-gate.mjs --npm npm-audit.json --accepted security/accepted-advisories.json
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-json
+          path: npm-audit.json
+          retention-days: 30
+
+  bandit:
+    name: Bandit (Python SAST)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Bandit
+        run: pip install "bandit[sarif]==1.9.4"
+      # Blocks on HIGH severity AND HIGH confidence only (-lll -iii); there are
+      # none today, so no baseline. Bandit exits 1 on such a finding and on a crash.
+      - name: Run Bandit (high severity, high confidence)
+        run: bandit -r . -lll -iii -f sarif -o bandit.sarif --exclude ./.venv,./node_modules,./.claude
+      - name: Upload SARIF artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-sarif
+          path: bandit.sarif
+          retention-days: 30
 
   gitleaks:
     name: Secret Scanning
     runs-on: ubuntu-latest
+    env:
+      GITLEAKS_VERSION: 8.30.1
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      # Pinned release URL plus checksum. The old "latest/download" URL with a
+      # fixed file name broke the day a newer release shipped.
       - name: Install Gitleaks
         run: |
-          curl -sSfL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_8.30.1_linux_x64.tar.gz | tar xz -C /usr/local/bin
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          tarball="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL -o "$tarball" "$base/$tarball"
+          curl -fsSL -o checksums.txt "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          grep " ${tarball}\$" checksums.txt | sha256sum --check --strict
+          tar xzf "$tarball" -C /usr/local/bin gitleaks
+          gitleaks version
+      # .gitleaksignore (repo root) lists the reviewed placeholder and fixture
+      # fingerprints. Anything else fails: exit 1 on a leak and on an error.
       - name: Scan for secrets
-        run: gitleaks detect --source . --verbose --report-format sarif --report-path gitleaks.sarif --exit-code 0
-      - name: Findings summary
-        if: always()
-        run: |
-          if [ -f gitleaks.sarif ]; then
-            count=$(python3 -c "import json;d=json.load(open('gitleaks.sarif'));print(sum(len(r.get('results',[])) for r in d.get('runs',[])))" 2>/dev/null || echo "0")
-            echo "### Gitleaks: $count potential secrets" >> $GITHUB_STEP_SUMMARY
-            if [ "$count" != "0" ]; then
-              echo "Warning: Review the workflow logs or download the SARIF artifact for details." >> $GITHUB_STEP_SUMMARY
-            else
-              echo "No secrets detected." >> $GITHUB_STEP_SUMMARY
-            fi
-          fi
+        run: gitleaks detect --source . --redact --verbose --report-format sarif --report-path gitleaks.sarif --exit-code 1
       - name: Upload SARIF artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -151,4 +168,3 @@ jobs:
           name: gitleaks-sarif
           path: gitleaks.sarif
           retention-days: 30
-        continue-on-error: true

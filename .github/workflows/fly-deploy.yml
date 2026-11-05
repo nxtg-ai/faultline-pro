@@ -21,6 +21,12 @@ on:
     branches: [main]
     paths:
       - 'packages/api/**'
+      # The API image builds the scan engine from packages/cli (Dockerfile COPY packages/),
+      # so an engine fix only reaches production through this deploy.
+      - 'packages/cli/**'
+      # POST /mcp builds its tool from packages/mcp, so a tool change deploys too.
+      - 'packages/mcp/**'
+      - 'package-lock.json'
       - 'Dockerfile'
       - 'packages/api/fly.toml'
       - '.github/workflows/fly-deploy.yml'
@@ -44,14 +50,20 @@ jobs:
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
       - name: Deploy to Fly
-        run: flyctl deploy --config packages/api/fly.toml --remote-only
+        # FAULTLINE_GIT_SHA: GET /health reports it as `commit`, the engine
+        # identity the verdict-accuracy runner checks (prereg G0 §5).
+        run: flyctl deploy --config packages/api/fly.toml --remote-only --build-arg FAULTLINE_GIT_SHA=${{ github.sha }}
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
       - name: Verify release
         run: |
           sleep 10
-          VERSION=$(curl -s https://faultline-api.fly.dev/health | python3 -c "import sys,json; print(json.load(sys.stdin).get('version','unknown'))")
+          # Download to a file, then parse it: never pipe a download into an interpreter.
+          VERSION=unknown
+          if curl -fsS -o health.json https://faultline-api.fly.dev/health; then
+            VERSION=$(python3 -c "import json; print(json.load(open('health.json')).get('version','unknown'))")
+          fi
           echo "Production version after deploy: $VERSION"
           LOCAL_VERSION=$(python3 -c "import json; print(json.load(open('packages/api/package.json'))['version'])")
           echo "Local package version: $LOCAL_VERSION"

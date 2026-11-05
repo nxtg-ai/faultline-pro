@@ -1,0 +1,198 @@
+{
+  "run": "docs/research/data/accuracy-g0-full-20261005T174223Z.jsonl",
+  "runSha256": "c095336503040507eff01de8e20f6a57f955a4c8b96e8820b498f1c47d33d35a",
+  "set": "full",
+  "goldSha256": "b87f971ce324c87e0427f100fe24b50594b9d44e3a764490b1bef188917dbae1",
+  "seed": 20260929,
+  "resamples": 2000,
+  "valid": true,
+  "invalidReasons": [],
+  "models": [
+    "gemini-2.5-flash"
+  ],
+  "engineSha": [
+    "47b72f099eda5c75dd2f7a7019ec8dde007b50ac"
+  ],
+  "failures": 0,
+  "metrics": {
+    "binary": {
+      "n": 631,
+      "balanced_accuracy": {
+        "value": 0.7632848310414668,
+        "ci95": [
+          0.7223426712335229,
+          0.8020483202628342
+        ],
+        "undefinedResamples": 0
+      },
+      "accuracy": {
+        "value": 0.7987321711568938,
+        "ci95": [
+          0.7670364500792393,
+          0.8288431061806656
+        ],
+        "undefinedResamples": 0
+      },
+      "recall_false": {
+        "value": 0.6918238993710691,
+        "ci95": [
+          0.6178297115024354,
+          0.7597467532467532
+        ],
+        "undefinedResamples": 0
+      },
+      "recall_true": {
+        "value": 0.8347457627118644,
+        "ci95": [
+          0.8008113255569168,
+          0.8694736842105263
+        ],
+        "undefinedResamples": 0
+      },
+      "false_flag_rate": {
+        "value": 0.8050314465408805,
+        "ci95": [
+          0.7407348804500703,
+          0.8625034340659341
+        ],
+        "undefinedResamples": 0
+      },
+      "coverage": {
+        "value": 0.9033280507131537,
+        "ci95": [
+          0.8811410459587956,
+          0.9270998415213946
+        ],
+        "undefinedResamples": 0
+      },
+      "selective_accuracy": {
+        "value": 0.8842105263157894,
+        "ci95": [
+          0.8576268923857111,
+          0.9098786828422877
+        ],
+        "undefinedResamples": 0
+      }
+    },
+    "confusion": {
+      "true": {
+        "supported": 394,
+        "contradicted": 36,
+        "mixed": 42,
+        "unverified": 0,
+        "failure": 0
+      },
+      "false": {
+        "supported": 30,
+        "contradicted": 110,
+        "mixed": 18,
+        "unverified": 1,
+        "failure": 0
+      },
+      "not_enough_evidence": {
+        "supported": 13,
+        "contradicted": 13,
+        "mixed": 4,
+        "unverified": 0,
+        "failure": 0
+      }
+    },
+    "nee": {
+      "n": 30,
+      "unverified_or_mixed_share": {
+        "value": 0.13333333333333333,
+        "ci95": [
+          0.03333333333333333,
+          0.26666666666666666
+        ]
+      }
+    },
+    "time_sensitive": {
+      "inside": {
+        "n": 20,
+        "balanced_accuracy": {
+          "value": 1.0,
+          "ci95": [
+            1.0,
+            1.0
+          ],
+          "undefinedResamples": 0
+        },
+        "accuracy": {
+          "value": 1.0,
+          "ci95": [
+            1.0,
+            1.0
+          ],
+          "undefinedResamples": 0
+        },
+        "recall_false": {
+          "value": 1.0,
+          "ci95": [
+            1.0,
+            1.0
+          ],
+          "undefinedResamples": 0
+        },
+        "recall_true": {
+          "value": 1.0,
+          "ci95": [
+            1.0,
+            1.0
+          ],
+          "undefinedResamples": 0
+        }
+      },
+      "outside": {
+        "n": 611,
+        "balanced_accuracy": {
+          "value": 0.7483208130799823,
+          "ci95": [
+            0.7059125011273449,
+            0.7904494698845722
+          ],
+          "undefinedResamples": 0
+        },
+        "accuracy": {
+          "value": 0.7921440261865794,
+          "ci95": [
+            0.7594108019639935,
+            0.823240589198036
+          ],
+          "undefinedResamples": 0
+        },
+        "recall_false": {
+          "value": 0.6643835616438356,
+          "ci95": [
+            0.5855263157894737,
+            0.7405121894045944
+          ],
+          "undefinedResamples": 0
+        },
+        "recall_true": {
+          "value": 0.832258064516129,
+          "ci95": [
+            0.796974573159975,
+            0.865674146048282
+          ],
+          "undefinedResamples": 0
+        }
+      }
+    },
+    "parse_fallback_split": {
+      "true": {
+        "mixed_parse_fallback": 2,
+        "mixed_inconclusive": 40
+      },
+      "false": {
+        "mixed_parse_fallback": 0,
+        "mixed_inconclusive": 18
+      },
+      "not_enough_evidence": {
+        "mixed_parse_fallback": 1,
+        "mixed_inconclusive": 3
+      }
+    },
+    "unknown_status_count": 0
+  }
+}

@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync } from 
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import type { ScanResult } from '../cli/scan.js';
+import { assertValidScanResult } from '../lib/verdict-guard.js';
 
 export interface HistoryEntry {
   timestamp: string;
@@ -35,6 +36,8 @@ export function saveHistoryEntry(
   file: string,
   historyDir?: string,
 ): HistoryEntry {
+  // Refuse a verdict outside the allowlist before anything reaches disk (GoPMO 1.18.11.3 P2).
+  assertValidScanResult(scanResult);
   const dir = historyDir || DEFAULT_HISTORY_DIR;
   ensureDir(dir);
 

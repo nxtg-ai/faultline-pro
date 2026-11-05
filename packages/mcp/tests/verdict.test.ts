@@ -7,6 +7,7 @@ import {
   type Verdict,
 } from '../src/verdict.js';
 import type { VerificationResult } from '@nxtg/faultline/types.js';
+import { abstainWithoutSource, NO_SOURCE_EXPLANATION } from '@nxtg/faultline/lib/verdict-guard.js';
 
 describe('toVerdict — engine ClaimStatus mapping', () => {
   it('maps supported to VERIFIED', () => {
@@ -98,6 +99,15 @@ describe('toClaimVerdict', () => {
     expect(result.unchecked_reason).toBe('provider_error');
   });
 
+  it('labels a reply cut off at its output ceiling as output_truncated (GoPMO 1.18.11.7.18)', () => {
+    const result = toClaimVerdict(
+      'X',
+      verification({ status: 'unverified', apiError: true, apiErrorReason: 'output_truncated', sources: [] }),
+    );
+    expect(result.verdict).toBe('UNCHECKED');
+    expect(result.unchecked_reason).toBe('output_truncated');
+  });
+
   it('labels a skipped claim as not_verifiable', () => {
     const result = toClaimVerdict('I think blue is nice.', verification({ status: 'skipped' }));
     expect(result.verdict).toBe('UNCHECKED');
@@ -129,5 +139,29 @@ describe('toRiskScore', () => {
 
   it('falls back to a mid score on an unknown band rather than claiming safety', () => {
     expect(toRiskScore('nonsense')).toBe(50);
+  });
+});
+
+// Validates: GoPMO 1.18.11.7.22 grounding terms, no modify
+describe('an abstained grounded verdict over MCP', () => {
+  it('carries Faultline\'s note only: no Google explanation, link, chip or query', () => {
+    const grounded = {
+      claimId: 'c1',
+      status: 'supported',
+      explanation: 'Google grounded wording.',
+      sources: [{ title: 'No link', uri: '/relative' }],
+      searchEntryPoint: { renderedContent: '<div>chip</div>' },
+      webSearchQueries: ['eiffel tower'],
+      provenance: { provider: 'gemini', model: 'm', verifiedAt: 'T', retriever: 'gemini-grounding', retrievedAt: 'T' },
+    } as VerificationResult;
+    const entry = toClaimVerdict('The Eiffel Tower is in Paris.', abstainWithoutSource(grounded));
+    expect(Object.keys(entry).length).toBeGreaterThan(0);
+    expect(entry.verdict).toBe('UNSUPPORTED');
+    expect(entry.note).toBe(NO_SOURCE_EXPLANATION);
+    expect(entry.evidence_urls).toEqual([]);
+    const json = JSON.stringify(entry);
+    expect(json).not.toContain('chip');
+    expect(json).not.toContain('eiffel tower');
+    expect(json).not.toContain('Google grounded wording');
   });
 });

@@ -1,11 +1,16 @@
-# Faultline Pro — AI Claim Forensics
+# Faultline Pro — We check the receipts on AI output.
 
+[![Release stage: alpha](https://img.shields.io/badge/stage-alpha-orange.svg)](https://github.com/nxtg-ai/faultline-pro/blob/main/CHANGELOG.md)
 [![npm version](https://img.shields.io/npm/v/@nxtg/faultline.svg)](https://www.npmjs.com/package/@nxtg/faultline)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 [![CI](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/nxtg-ai/faultline-pro/actions/workflows/ci.yml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 
 Forensic verification of AI-generated claims. Extract atomic facts, verify against live web data, risk-score your AI outputs.
+
+> **Release stage: alpha.** Usable today, with sharp edges. Verdict accuracy has not yet been measured on a labelled test set, and anything may change before 1.0.
+
+Version in this repo: 0.12.1. The `faultline-mcp` bin first shipped in 0.12.0; 0.12.1 makes it refuse to answer without a key. Check what npm serves with `npm view @nxtg/faultline version`.
 
 ---
 
@@ -16,6 +21,16 @@ npm install -g @nxtg/faultline
 export GEMINI_API_KEY=your-key
 faultline scan --input report.txt
 ```
+
+With no provider key and no `FAULTLINE_API_KEY`, `scan` and `guard` say that nothing was checked and exit. They do not invent a verdict. `--provider mock` is the explicit, labelled-synthetic option for CI wiring.
+
+Check piped agent output and gate on the verdict:
+
+```bash
+claude -p "..." | faultline guard --fail-on refuted
+```
+
+Set `FAULTLINE_API_KEY` to run `guard` on the hosted API (`https://faultline-api.fly.dev`) with server-side provider keys.
 
 ---
 
@@ -73,6 +88,7 @@ Faultline decomposes AI-generated text into atomic claims, then runs a four-phas
 ### CLI
 
 - `scan` — scan a file, text, PDF, or image
+- `guard`: verify piped text, gate on the verdict
 - `report` — generate PDF compliance report
 - `watch` — continuous monitoring
 - `critique` — generate improved prompts
@@ -82,7 +98,9 @@ Faultline decomposes AI-generated text into atomic claims, then runs a four-phas
 
 ### API
 
-- REST API (Fastify v5) — 35+ endpoints
+- REST API (Fastify v5): about 190 routes (188 method+path pairs in `packages/api/src`, counted 2026-10-01)
+- Multi-model consensus (`POST /scan/stream`, `pipelineConfig.consensus`): Enterprise plan only; the server returns `403 consensus_not_in_plan` below Enterprise
+- `POST /critique`: needs an API key, rate limited, covered by the provider-spend cap and ledger
 - GraphQL API (`POST /graphql`)
 - Batch scanning (`POST /scan/batch`)
 - Webhooks with HMAC-SHA256 signing
@@ -94,7 +112,8 @@ Faultline decomposes AI-generated text into atomic claims, then runs a four-phas
 ### Enterprise
 
 - API key management with tiers (free / pro / admin)
-- Rate limiting (10/min free, 100/min pro)
+- Rate limiting (10/min free, 100/min pro, 10,000/min admin)
+- Provider-spend cap ($100/month, ledgered; enforcement ships dormant) and per-key monthly scan quota (dormant)
 - Audit trail (SHA-256 input hashing, append-only log)
 - Usage metering with dashboard
 - Prometheus metrics (`GET /metrics`)
@@ -126,15 +145,57 @@ The EU AI Act's high-risk AI system requirements take effect when the regulation
 
 ## GitHub Action
 
+The action lives in its own repo (`nxtg-ai/faultline-action`, tag `v1` exists):
+
 ```yaml
-- uses: nxtg-ai/faultline-pro@v0.2.0
+- uses: nxtg-ai/faultline-action@v1
   with:
-    api-key: ${{ secrets.GEMINI_API_KEY }}
+    input: docs/release-notes.md
     fail-on: high
-    path: ./reports/
+  env:
+    GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 ```
 
 See [`examples/ci-integration.yml`](https://github.com/nxtg-ai/faultline-pro/blob/main/examples/ci-integration.yml) for a full workflow with SARIF upload to GitHub Code Scanning.
+
+---
+
+## MCP Server (`verify_claims`)
+
+This package also ships the `faultline-mcp` bin: an MCP stdio server with one tool, `verify_claims`, for Claude Code, Cursor and any MCP client. It is the server from `packages/mcp`, with the same tool contract as the hosted MCP endpoint at `POST https://faultline-api.fly.dev/mcp` (Streamable HTTP, `x-api-key` header). On a hosted scan the result also carries `billing`. The bin ships from `@nxtg/faultline@0.12.0`; the current release, `@nxtg/faultline@0.12.1`, also refuses a call made without a key. 0.11.1 and earlier do not have the bin.
+
+**Run it with a key.** One command, nothing to install first. The MCP client starts the server over stdio and passes the key in its environment:
+
+```bash
+FAULTLINE_API_KEY=your-key npx -y -p @nxtg/faultline faultline-mcp
+```
+
+It lists one tool, `verify_claims`, with the same name, input schema and output as the hosted `/mcp`. Without a key the tool refuses every call with "no key: nothing was verified" (an MCP tool error, not a verdict). For a demo that checks nothing, name `provider: "mock"` or set `FAULTLINE_PROVIDER=mock`; the result then says `SYNTHETIC`. A client that can speak Streamable HTTP can skip the install and call `https://faultline-api.fly.dev/mcp` with the `x-api-key` header instead.
+
+```bash
+# Claude Code
+claude mcp add faultline -e FAULTLINE_API_KEY=your-key -- npx -y -p @nxtg/faultline faultline-mcp
+```
+
+```json
+{
+  "mcpServers": {
+    "faultline": {
+      "command": "npx",
+      "args": ["-y", "-p", "@nxtg/faultline", "faultline-mcp"],
+      "env": { "FAULTLINE_API_KEY": "your-key" }
+    }
+  }
+}
+```
+
+The key picks where the check runs:
+
+- `FAULTLINE_API_KEY` set: the scan runs on the hosted API (`https://faultline-api.fly.dev`, override with `FAULTLINE_API_URL`) on Faultline's server-side provider keys, grounded by default.
+- Otherwise it runs in-process on your own provider key. Precedence: `FAULTLINE_PROVIDER`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `PERPLEXITY_API_KEY`. Only Gemini retrieves live sources; the response says `grounded: false` for the others.
+- With neither, and no provider named, `verify_claims` refuses: it returns an MCP tool error, "no key: nothing was verified", and checks nothing. Name `provider: "mock"` or set `FAULTLINE_PROVIDER=mock` for a demo; the `mock` result says `SYNTHETIC` and verifies nothing.
+
+Input: `text` (required), `max_claims`, `provider` (`gemini`, `openai`, `claude`, `perplexity`, `mock`). Each claim comes back `VERIFIED`, `REFUTED`, `UNSUPPORTED`, `MIXED` or `UNCHECKED`. `UNCHECKED` is not a verdict. `degraded: true` means some claims could not be checked. Audit records go to `.faultline/history` (`FAULTLINE_HISTORY_DIR` to move them, `FAULTLINE_MCP_NO_HISTORY=1` to switch them off).
 
 ---
 
@@ -170,7 +231,7 @@ faultline scan --input doc.txt --template strict-compliance
 
 # Product stats
 faultline stats --no-save
-faultline stats --costs --api-url http://localhost:3000 --api-key <key>
+faultline stats --costs --api-url http://localhost:3010 --api-key <key>
 ```
 
 ---
@@ -182,13 +243,13 @@ faultline stats --costs --api-url http://localhost:3000 --api-key <key>
 npx tsx packages/api/src/index.ts
 
 # Scan
-curl -X POST http://localhost:3000/scan \
+curl -X POST http://localhost:3010/scan \
   -H "x-api-key: $FAULTLINE_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"text": "Your AI-generated text here", "provider": "gemini"}'
 ```
 
-See the full [OpenAPI 3.1 spec](https://github.com/nxtg-ai/faultline-pro/blob/main/packages/api/docs/openapi.yaml) for all 35+ endpoints.
+See [`packages/api/README.md`](https://github.com/nxtg-ai/faultline-pro/blob/main/packages/api/README.md) for the route groups. The [OpenAPI spec](https://github.com/nxtg-ai/faultline-pro/blob/main/packages/api/docs/openapi.yaml) declares version 0.7.0 and covers only part of the current routes.
 
 ---
 
@@ -207,18 +268,19 @@ The [`examples/`](https://github.com/nxtg-ai/faultline-pro/tree/main/examples) d
 
 ## Pricing
 
-| | Personal | Pro | Enterprise |
-|---|---|---|---|
-| **Price** | **$19/mo** | **$49/mo** | **$99/seat/mo** |
-| Scans | 100/mo | 500/mo | Unlimited |
-| CLI + API | Yes | Yes | Yes |
-| All providers | Yes | Yes | Yes |
-| SARIF output | Yes | Yes | Yes |
-| Team workspaces | -- | Yes | Yes |
-| Priority support | -- | Yes | Yes |
-| SSO | -- | -- | Yes |
-| Audit-ready compliance reports | -- | -- | Yes |
-| SLA | -- | -- | Yes |
+Read from https://faultline.nxtg.ai/pricing on 2026-10-01. That page is the source of truth, and the web app (a separate repo) enforces these limits.
+
+| | Free | Personal | Pro | Enterprise |
+|---|---|---|---|---|
+| **Price** | $0 | **$19/mo** | **$49/mo** | Custom |
+| Scans per month | 5 | 100 | 500 | Set in your contract |
+| Export | JSON and SARIF | Markdown and all export formats | PDF export | PDF export |
+| Providers | Default provider | Default provider | All providers | All providers |
+| Batch scan, team workspaces, notifications, API access | -- | -- | Yes | Yes |
+| SSO, audit trails, custom frameworks, dedicated support | -- | -- | -- | Yes |
+| Multi-model consensus | -- | -- | -- | Yes (server-enforced) |
+
+The CLI is Apache-2.0. With no `FAULTLINE_API_KEY` set it runs in-process on your own provider key. The plan limits above apply to hosted scans, which run on Faultline's managed provider keys.
 
 **→ Subscribe self-serve at [faultline.nxtg.ai/pricing](https://faultline.nxtg.ai/pricing)**
 

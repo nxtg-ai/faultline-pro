@@ -485,6 +485,7 @@ export async function playgroundRoutes(fastify: FastifyInstance): Promise<void> 
   fastify.get(
     '/playground',
     {
+      config: { access: 'key' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Developer-X'],

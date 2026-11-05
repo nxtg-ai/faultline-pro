@@ -14,10 +14,13 @@
  *
  * Resolution is by credential, not by flag, so the common case needs no
  * configuration: set an API key and you are hosted, set a provider key and you
- * are local, set neither and you get `mock` with a warning.
+ * are local. Set neither and nothing is checked: the CLI says so and refuses to
+ * invent verdicts (see noProviderKeyOutput in index.ts). Synthetic results come
+ * only from an explicit `--provider mock`, and they are labelled SYNTHETIC.
  */
 
 import { scan, type ScanResult } from './scan.js';
+import { scanLocal } from './local-scan.js';
 
 /** Hosted API used when FAULTLINE_API_URL is not set explicitly. */
 export const DEFAULT_API_URL = 'https://faultline-api.fly.dev';
@@ -66,11 +69,17 @@ export class HostedScanError extends Error {
 function explainStatus(status: number, body: string): string {
   switch (status) {
     case 401:
-      return 'the API rejected the key (401). Check FAULTLINE_API_KEY.';
+      return `the API rejected the key (401): ${body}. Check FAULTLINE_API_KEY. Nothing was verified. This is NOT a verdict on your claims.`;
+    case 402:
+      return `the key has no quota left for this scan (402): ${body}. Nothing was verified. This is NOT a verdict on your claims.`;
     case 403:
-      return 'the key lacks permission for this operation (403).';
+      return `the key lacks permission for this operation (403): ${body}. Nothing was verified. This is NOT a verdict on your claims.`;
     case 429:
-      return 'rate limit or monthly cap reached (429). This is NOT a verdict on your claims.';
+      return `rate limit or monthly cap reached (429): ${body}. Nothing was verified. This is NOT a verdict on your claims.`;
+    case 502:
+      return /"reason"\s*:\s*"provider_out_of_credits"/.test(body)
+        ? `the API could not extract claims from the text (502): ${body}. Nothing was verified. The provider account is out of credits; retrying will not help until it has credits again.`
+        : `the API could not extract claims from the text (502): ${body}. Nothing was verified.`;
     case 503:
       return `the API is not ready to scan (503): ${body}`;
     default:
@@ -133,7 +142,8 @@ export async function runScan(
   if (transport.mode === 'hosted') {
     return hostedScan(text, provider, transport, deps.fetchImpl ?? fetch);
   }
-  return (deps.scanFn ?? scan)(text, provider);
+  // Local: the user's own FAULTLINE_GROUNDING applies (scanLocal); unset, it is exactly scan().
+  return (deps.scanFn ?? scanLocal)(text, provider);
 }
 
 /**

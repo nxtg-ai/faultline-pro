@@ -193,6 +193,9 @@ describe('Webhook CRUD routes', () => {
 // ─── Dispatch Tests ────────────────────────────────────────────────────────
 
 describe('Webhook dispatch', () => {
+  // The server key plus a faultline-web user: the owner every webhook here is registered under.
+  const USER_REF = 'fptestuser0001';
+  const OWNER = { keyId: 'admin', caller: `admin\u0000${USER_REF}` };
   let server: FastifyInstance;
 
   beforeEach(async () => {
@@ -210,23 +213,23 @@ describe('Webhook dispatch', () => {
   });
 
   it('D1. fireWebhookEvent calls fetch for matching webhook', async () => {
-    getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret');
-    fireWebhookEvent('scan.complete', {});
+    getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret', undefined, 3, 500, OWNER);
+    fireWebhookEvent('scan.complete', {}, OWNER);
     // allow microtask queue to flush
     await new Promise((r) => setTimeout(r, 10));
     expect(vi.mocked(fetch).mock.calls.length).toBeGreaterThan(0);
   });
 
   it('D2. fireWebhookEvent does NOT call fetch for non-matching event', async () => {
-    getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret');
-    fireWebhookEvent('scan.failed', {});
+    getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret', undefined, 3, 500, OWNER);
+    fireWebhookEvent('scan.failed', {}, OWNER);
     await new Promise((r) => setTimeout(r, 10));
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
   });
 
   it('D3. fetch called with POST method and Content-Type application/json', async () => {
-    getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret');
-    fireWebhookEvent('scan.complete', {});
+    getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret', undefined, 3, 500, OWNER);
+    fireWebhookEvent('scan.complete', {}, OWNER);
     await new Promise((r) => setTimeout(r, 10));
     const [_url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
     expect(init.method).toBe('POST');
@@ -234,8 +237,8 @@ describe('Webhook dispatch', () => {
   });
 
   it('D4. X-Faultline-Signature header present and starts with sha256=', async () => {
-    getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret');
-    fireWebhookEvent('scan.complete', {});
+    getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret', undefined, 3, 500, OWNER);
+    fireWebhookEvent('scan.complete', {}, OWNER);
     await new Promise((r) => setTimeout(r, 10));
     const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
     const sig = (init.headers as Record<string, string>)['X-Faultline-Signature'];
@@ -247,7 +250,7 @@ describe('Webhook dispatch', () => {
     const webhook = getWebhookStore().create('https://example.com/hook', ['scan.complete'], secret);
     const data = { test: 'value' };
     const timestamp = '2026-03-18T00:00:00.000Z';
-    await dispatchWebhook(webhook, 'scan.complete', data, timestamp);
+    await dispatchWebhook(webhook, 'scan.complete', data, 'public', timestamp);
     const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
     const payload = JSON.parse(init.body as string);
     const expected = 'sha256=' + createHmac('sha256', secret).update(JSON.stringify(payload)).digest('hex');
@@ -256,10 +259,10 @@ describe('Webhook dispatch', () => {
   });
 
   it('D6. POST /scan 200 triggers scan.complete event to registered webhook', async () => {
-    getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret');
+    getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret', undefined, 3, 500, OWNER);
     await server.inject({
       method: 'POST', url: '/scan',
-      headers: { 'x-api-key': 'admin-secret', 'content-type': 'application/json' },
+      headers: { 'x-api-key': 'admin-secret', 'content-type': 'application/json', 'x-faultline-user-ref': USER_REF },
       body: JSON.stringify({ text: 'Some claim text.' }),
     });
     await new Promise((r) => setTimeout(r, 20));
@@ -271,17 +274,16 @@ describe('Webhook dispatch', () => {
 
   it('D7. POST /scan 500 (scan throws) triggers scan.failed event', async () => {
     const { scan } = await import('@nxtg/faultline/cli/scan.js');
-    // With failover, all 5 providers must fail to trigger scan.failed.
+    // With failover, all 4 real providers must fail to trigger scan.failed (mock is never a fallback).
     vi.mocked(scan)
       .mockRejectedValueOnce(new Error('Provider failure'))
       .mockRejectedValueOnce(new Error('Provider failure'))
       .mockRejectedValueOnce(new Error('Provider failure'))
-      .mockRejectedValueOnce(new Error('Provider failure'))
       .mockRejectedValueOnce(new Error('Provider failure'));
-    getWebhookStore().create('https://example.com/hook', ['scan.failed'], 'secret');
+    getWebhookStore().create('https://example.com/hook', ['scan.failed'], 'secret', undefined, 3, 500, OWNER);
     await server.inject({
       method: 'POST', url: '/scan',
-      headers: { 'x-api-key': 'admin-secret', 'content-type': 'application/json' },
+      headers: { 'x-api-key': 'admin-secret', 'content-type': 'application/json', 'x-faultline-user-ref': USER_REF },
       body: JSON.stringify({ text: 'Some claim text.' }),
     });
     await new Promise((r) => setTimeout(r, 20));
@@ -293,10 +295,10 @@ describe('Webhook dispatch', () => {
   it('D8. dispatch is fire-and-forget — /scan response does not wait for fetch', async () => {
     // fetch returns a never-resolving promise
     vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(() => {})));
-    getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret');
+    getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret', undefined, 3, 500, OWNER);
     const res = await server.inject({
       method: 'POST', url: '/scan',
-      headers: { 'x-api-key': 'admin-secret', 'content-type': 'application/json' },
+      headers: { 'x-api-key': 'admin-secret', 'content-type': 'application/json', 'x-faultline-user-ref': USER_REF },
       body: JSON.stringify({ text: 'Some claim text.' }),
     });
     // Response arrived even though fetch never resolves
@@ -304,15 +306,15 @@ describe('Webhook dispatch', () => {
   });
 
   it('D9. two webhooks subscribed to same event both receive dispatch', async () => {
-    getWebhookStore().create('https://example.com/hook1', ['scan.complete'], 'secret1');
-    getWebhookStore().create('https://example.com/hook2', ['scan.complete'], 'secret2');
-    fireWebhookEvent('scan.complete', {});
+    getWebhookStore().create('https://example.com/hook1', ['scan.complete'], 'secret1', undefined, 3, 500, OWNER);
+    getWebhookStore().create('https://example.com/hook2', ['scan.complete'], 'secret2', undefined, 3, 500, OWNER);
+    fireWebhookEvent('scan.complete', {}, OWNER);
     await new Promise((r) => setTimeout(r, 20));
     expect(vi.mocked(fetch).mock.calls.length).toBe(2);
   });
 
   it('D10. empty webhook store — fireWebhookEvent fires nothing', async () => {
-    fireWebhookEvent('scan.complete', {});
+    fireWebhookEvent('scan.complete', {}, OWNER);
     await new Promise((r) => setTimeout(r, 10));
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
   });
@@ -336,7 +338,7 @@ describe('Webhook retry logic', () => {
 
   it('R1. succeeds on first attempt — fetch called exactly once', async () => {
     const wh = getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret');
-    await dispatchWebhook(wh, 'scan.complete', {});
+    await dispatchWebhook(wh, 'scan.complete', {}, 'public');
     expect(vi.mocked(fetch).mock.calls.length).toBe(1);
   });
 
@@ -346,26 +348,26 @@ describe('Webhook retry logic', () => {
       .mockResolvedValueOnce({ ok: true }),
     );
     const wh = getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret');
-    await dispatchWebhook(wh, 'scan.complete', {});
+    await dispatchWebhook(wh, 'scan.complete', {}, 'public');
     expect(vi.mocked(fetch).mock.calls.length).toBe(2);
   });
 
   it('R3. retries to max 3 attempts when all fail', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
     const wh = getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret');
-    await dispatchWebhook(wh, 'scan.complete', {});
+    await dispatchWebhook(wh, 'scan.complete', {}, 'public');
     expect(vi.mocked(fetch).mock.calls.length).toBe(3);
   });
 
   it('R4. all 3 failures silently swallowed — no throw', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Network error')));
     const wh = getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret');
-    await expect(dispatchWebhook(wh, 'scan.complete', {})).resolves.toBeUndefined();
+    await expect(dispatchWebhook(wh, 'scan.complete', {}, 'public')).resolves.toBeUndefined();
   });
 
   it('R5. sleep called with 0ms before attempt 0', async () => {
     const wh = getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret');
-    await dispatchWebhook(wh, 'scan.complete', {});
+    await dispatchWebhook(wh, 'scan.complete', {}, 'public');
     expect(sleepFn.mock.calls[0][0]).toBe(0);
   });
 
@@ -375,14 +377,14 @@ describe('Webhook retry logic', () => {
       .mockResolvedValueOnce({ ok: true }),
     );
     const wh = getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret');
-    await dispatchWebhook(wh, 'scan.complete', {});
+    await dispatchWebhook(wh, 'scan.complete', {}, 'public');
     expect(sleepFn.mock.calls[1][0]).toBe(500);
   });
 
   it('R7. sleep called with retryDelayMs (500ms default) before attempt 2', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
     const wh = getWebhookStore().create('https://example.com/hook', ['scan.complete'], 'secret');
-    await dispatchWebhook(wh, 'scan.complete', {});
+    await dispatchWebhook(wh, 'scan.complete', {}, 'public');
     expect(sleepFn.mock.calls[2][0]).toBe(500);
   });
 });

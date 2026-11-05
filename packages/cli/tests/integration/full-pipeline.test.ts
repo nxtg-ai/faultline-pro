@@ -18,19 +18,9 @@ vi.mock('@google/genai', () => ({
 import { createGeminiProvider } from '../../providers/gemini_provider';
 import { mapClaimToRiskCategory } from '../../compliance/eu_ai_act';
 import { generateComplianceReport } from '../../compliance/report_generator';
+import { calculateRisk } from '../../lib/overall-risk';
 import type { Claim, VerificationResult, AnalysisState } from '../../types';
 
-function calculateRisk(
-  verifications: Record<string, VerificationResult>,
-): AnalysisState['overallRisk'] {
-  const values = Object.values(verifications);
-  const contradicted = values.filter((v) => v.status === 'contradicted').length;
-  const mixed = values.filter((v) => v.status === 'mixed').length;
-  if (contradicted > 2) return 'critical';
-  if (contradicted > 0 || mixed > 2) return 'high';
-  if (mixed > 0) return 'medium';
-  return 'low';
-}
 
 function filterClaimsForVerification(claims: Claim[]): Claim[] {
   return claims
@@ -70,7 +60,7 @@ describe('Integration: Full Pipeline — Extract → Score → Map → Report', 
     // c2 → contradicted (hiring claim is wrong)
     mockGenerateContent.mockResolvedValueOnce({
       text: JSON.stringify({ status: 'contradicted', explanation: 'Audit found bias.' }),
-      candidates: [{ groundingMetadata: { groundingChunks: [] } }],
+      candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'Refuting source', uri: 'https://refute.example/a' } }] } }],
     });
 
     const verifications: Record<string, VerificationResult> = {};
@@ -120,7 +110,8 @@ describe('Integration: Full Pipeline — Extract → Score → Map → Report', 
     for (const claim of toVerify) {
       mockGenerateContent.mockResolvedValueOnce({
         text: JSON.stringify({ status: 'supported', explanation: 'Confirmed.' }),
-        candidates: [{ groundingMetadata: { groundingChunks: [] } }],
+        // A cited source keeps the verdict supported; with none it would read unverified.
+        candidates: [{ groundingMetadata: { groundingChunks: [{ web: { uri: 'https://example.org/science', title: 'example.org' } }] } }],
       });
     }
 
@@ -152,7 +143,7 @@ describe('Integration: Full Pipeline — Extract → Score → Map → Report', 
     for (const claim of toVerify) {
       mockGenerateContent.mockResolvedValueOnce({
         text: JSON.stringify({ status: 'contradicted', explanation: 'Completely wrong.' }),
-        candidates: [{ groundingMetadata: { groundingChunks: [] } }],
+        candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'Refuting source', uri: 'https://refute.example/a' } }] } }],
       });
     }
 
@@ -198,9 +189,15 @@ describe('Integration: Full Pipeline — Extract → Score → Map → Report', 
     expect(report.triggeredArticles.some((a) => a.article.includes('Article 5'))).toBe(true);
   });
 
-  it('extraction failure → empty report with no-claims mitigation', async () => {
+  it('extraction failure → ExtractionError, no report; zero claims → no-claims mitigation', async () => {
     mockGenerateContent.mockRejectedValueOnce(new Error('API down'));
 
+    // A failed extraction must not become an empty report.
+    await expect(provider.extractClaims('Some input'))
+      .rejects.toMatchObject({ name: 'ExtractionError', reason: 'provider_error' });
+
+    // A valid empty reply is zero claims, which the report states.
+    mockGenerateContent.mockResolvedValueOnce({ text: '[]' });
     const claims = await provider.extractClaims('Some input');
     expect(claims).toEqual([]);
 
@@ -228,7 +225,7 @@ describe('Integration: Full Pipeline — Extract → Score → Map → Report', 
     // c2 → contradicted (generic)
     mockGenerateContent.mockResolvedValueOnce({
       text: JSON.stringify({ status: 'contradicted', explanation: 'Population is 2.1M.' }),
-      candidates: [{ groundingMetadata: { groundingChunks: [] } }],
+      candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'Refuting source', uri: 'https://refute.example/a' } }] } }],
     });
     // c3 → supported (generic)
     mockGenerateContent.mockResolvedValueOnce({

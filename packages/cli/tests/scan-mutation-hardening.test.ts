@@ -31,14 +31,16 @@ vi.mock('../providers/registry.js', () => ({
     verifyClaim:               mockVerifyClaim,
     generateCritiqueAndPrompt: vi.fn().mockResolvedValue({ critique: '', improvedPrompt: '' }),
   })),
+  builtInProviderIdOf: vi.fn(() => undefined),
 }));
 
 import { scan, batchScan } from '../cli/scan.js';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
+// One source per verdict: the scan reports a sourceless definite verdict as unverified.
 function vr(status: VerificationResult['status'], claimId: string): VerificationResult {
-  return { claimId, status, explanation: `test:${status}`, sources: [] };
+  return { claimId, status, explanation: `test:${status}`, sources: [{ title: 'S', uri: `https://s.example/${claimId}` }] };
 }
 
 function makeClaims(n: number, importance = 3) {

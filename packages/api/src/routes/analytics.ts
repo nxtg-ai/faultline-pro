@@ -5,11 +5,12 @@
  * GET /analytics/overview — aggregate JSON for all chart panels (public)
  */
 
+import { cacheCaller } from '../lib/cache-caller.js';
 import type { FastifyInstance } from 'fastify';
 import { getScanHistory } from '../store/scan-history.js';
 import { getScanCache } from '../store/cache.js';
 import { getClaimIndex } from '../store/claims.js';
-import { requireApiKey } from '../plugins/auth.js';
+import { requireApiKey, scanHistoryKeyScope } from '../plugins/auth.js';
 
 // ── Aggregation helpers ───────────────────────────────────────────────────────
 
@@ -34,12 +35,15 @@ function lastNDays(n: number): string[] {
 
 // ── Overview computation ──────────────────────────────────────────────────────
 
-function computeOverview() {
+/**
+ * @param keyId scan-history key scope: the caller's keyId, or undefined for admin (fleet-wide).
+ */
+function computeOverview(keyId: string | undefined, claimCaller: string | null) {
   const DAYS = 30;
   const window = lastNDays(DAYS);
   const windowSet = new Set(window);
 
-  const entries = getScanHistory().getRecent(1000);
+  const entries = getScanHistory().getRecent(1000, keyId);
   const inWindow = entries.filter(e => windowSet.has(toDay(e.timestamp)));
 
   // Scan volume per day
@@ -90,11 +94,12 @@ function computeOverview() {
     return { date, avgMs: ms.length > 0 ? Math.round(ms.reduce((s, v) => s + v, 0) / ms.length) : null };
   });
 
-  // Cache stats
-  const cacheStats = getScanCache().stats();
+  // Cache stats are fleet-wide (one cache across keys), so only admin sees them
+  // (emma-soul seat on 914d85d, F2).
+  const cacheStats = keyId === undefined ? getScanCache().stats() : undefined;
 
   // Claim categories from ClaimIndex
-  const claimStats = getClaimIndex().getStats();
+  const claimStats = getClaimIndex().getStats(claimCaller);
   const claimCategories = Object.entries(claimStats.claimTypes)
     .sort((a, b) => b[1] - a[1])
     .map(([type, count]) => ({ type, count }));
@@ -112,19 +117,21 @@ function computeOverview() {
     riskTrend,
     trustTrend,
     latencyTrend,
-    cacheStats: {
-      size:    cacheStats.size,
-      hits:    cacheStats.hits,
-      misses:  cacheStats.misses,
-      hitRate: Math.round(cacheStats.hitRate * 100),
-    },
+    ...(cacheStats ? {
+      cacheStats: {
+        size:    cacheStats.size,
+        hits:    cacheStats.hits,
+        misses:  cacheStats.misses,
+        hitRate: Math.round(cacheStats.hitRate * 100),
+      },
+    } : {}),
     claimCategories,
     summary: {
       totalScans,
       totalClaims:      claimStats.totalClaims,
       avgClaimsPerScan: avgClaims,
       mostUsedProvider: mostUsed,
-      cacheHitRate:     Math.round(cacheStats.hitRate * 100),
+      ...(cacheStats ? { cacheHitRate: Math.round(cacheStats.hitRate * 100) } : {}),
       accuracyRate:     Math.round(claimStats.accuracyRate * 100),
     },
   };
@@ -278,7 +285,7 @@ async function load(){
   document.getElementById('s-scans').textContent    = fmt(data.summary.totalScans);
   document.getElementById('s-claims').textContent   = fmt(data.summary.totalClaims);
   document.getElementById('s-avg').textContent      = fmt(data.summary.avgClaimsPerScan);
-  document.getElementById('s-cache').innerHTML      = data.summary.cacheHitRate+'<span style="font-size:16px">%</span>';
+  document.getElementById('s-cache').innerHTML      = data.summary.cacheHitRate === undefined ? '\u2014' : data.summary.cacheHitRate+'<span style="font-size:16px">%</span>';
   document.getElementById('s-accuracy').innerHTML   = data.summary.accuracyRate+'<span style="font-size:16px">%</span>';
   document.getElementById('s-provider').textContent = data.summary.mostUsedProvider || '—';
   document.getElementById('ts').textContent         = 'Last updated ' + new Date().toLocaleTimeString();
@@ -391,7 +398,10 @@ async function load(){
     },
   });
 
-  // Cache doughnut ring
+  // Cache doughnut ring (admin only: the scan cache is fleet-wide)
+  if (!data.cacheStats) {
+    ['cache-pct','c-size','c-hits','c-misses','c-rate'].forEach(function(id){ document.getElementById(id).textContent = '\u2014'; });
+  } else {
   const hr = data.cacheStats.hitRate;
   new Chart(document.getElementById('chart-cache'),{
     type:'doughnut',
@@ -414,6 +424,7 @@ async function load(){
   document.getElementById('c-hits').textContent    = fmt(data.cacheStats.hits);
   document.getElementById('c-misses').textContent  = fmt(data.cacheStats.misses);
   document.getElementById('c-rate').textContent    = hr+'%';
+  }
 
   document.getElementById('loading').classList.add('gone');
 }
@@ -437,14 +448,15 @@ export async function analyticsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/analytics/overview',
     {
+      config: { access: 'key' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Analytics'],
         summary: 'Aggregate analytics data for dashboard charts',
       },
     },
-    async (_request, reply) => {
-      return reply.send(computeOverview());
+    async (request, reply) => {
+      return reply.send(computeOverview(scanHistoryKeyScope(request), cacheCaller(request)));
     },
   );
 
@@ -454,6 +466,7 @@ export async function analyticsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/analytics',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Analytics'],

@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { verifyClaims, autoDetectProvider, isGrounded } from '../src/verify.js';
+import { verifyClaims, autoDetectProvider, isGrounded, AUDIT_OFF_REASON, NO_KEY_MESSAGE, hasNoKey } from '../src/verify.js';
 import type { ScanResult } from '@nxtg/faultline/cli/scan.js';
+import { ExtractionError } from '@nxtg/faultline/providers/extraction-error.js';
 
 /** Build a ScanResult the way the engine does, for mapping tests. */
 function scanResult(over: Partial<ScanResult> = {}): ScanResult {
@@ -29,16 +30,28 @@ function scanResult(over: Partial<ScanResult> = {}): ScanResult {
 
 let auditRoot: string;
 
+// These tests inject a scan and often name no provider. With no key and no
+// provider a local call is refused (see 'no key' below), so they opt into the
+// mock provider explicitly, the way a user asking for a demo would.
+const KEY_VARS = ['FAULTLINE_PROVIDER', 'GEMINI_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'PERPLEXITY_API_KEY'];
+const savedKeys: Record<string, string | undefined> = {};
+
 beforeEach(() => {
   auditRoot = mkdtempSync(join(tmpdir(), 'fl-mcp-'));
   process.env.FAULTLINE_HISTORY_DIR = auditRoot;
   delete process.env.FAULTLINE_MCP_NO_HISTORY;
+  for (const k of KEY_VARS) savedKeys[k] = process.env[k];
+  process.env.FAULTLINE_PROVIDER = 'mock';
 });
 
 afterEach(() => {
   rmSync(auditRoot, { recursive: true, force: true });
   delete process.env.FAULTLINE_HISTORY_DIR;
   delete process.env.FAULTLINE_MCP_NO_HISTORY;
+  for (const k of KEY_VARS) {
+    if (savedKeys[k] === undefined) delete process.env[k];
+    else process.env[k] = savedKeys[k];
+  }
 });
 
 describe('verifyClaims — input handling', () => {
@@ -46,6 +59,21 @@ describe('verifyClaims — input handling', () => {
     await expect(verifyClaims({ text: '   ' }, { scanFn: async () => scanResult() })).rejects.toThrow(
       /non-empty/i,
     );
+  });
+});
+
+describe('verifyClaims — failed extraction', () => {
+  it('rejects with the ExtractionError (no verdicts, no audit record) so the tool reports a failure', async () => {
+    const failure = new ExtractionError('invalid_output', new SyntaxError('Unterminated string in JSON'));
+    const err = await verifyClaims(
+      { text: 'The Eiffel Tower is in Paris. It opened in 1889.', provider: 'mock' },
+      { scanFn: async () => { throw failure; }, transport: { mode: 'local' } },
+    ).catch((e: unknown) => e);
+
+    expect(err).toBe(failure);
+    expect((err as ExtractionError).message).toMatch(/^Claim extraction failed/);
+    expect((err as ExtractionError).message).not.toContain('Unterminated');
+    expect(readdirSync(auditRoot, { recursive: true })).toEqual([]);
   });
 });
 
@@ -370,5 +398,107 @@ describe('autoDetectProvider', () => {
 
   it('falls back to mock when no key is present', () => {
     expect(autoDetectProvider({})).toBe('mock');
+  });
+});
+
+describe('verifyClaims — an unverified claim is never read as low risk', () => {
+  // Validates: the engine's overall risk rule through the MCP verify_claims path.
+  it('runs the real engine on the mock provider (every verdict unverified) and reports high', async () => {
+    const { scan } = await import('@nxtg/faultline/cli/scan.js');
+    const out = await verifyClaims(
+      { text: 'The Eiffel Tower is in Paris. Water boils at 100 degrees Celsius at sea level.', provider: 'mock' },
+      { scanFn: scan, transport: { mode: 'local' } },
+    );
+    expect(out.claims.length).toBeGreaterThan(0);
+    expect(out.claims.every((c) => c.verdict === 'UNSUPPORTED')).toBe(true);
+    expect(out.overall_risk).toBe('high');
+  });
+});
+
+describe('hosted results: billing and audit', () => {
+  const billing = { billedClaims: 1, unbilled: [{ claimId: 'c2', reason: 'no_source' }] };
+  function hostedFetch(result: object) {
+    return (async () => ({ ok: true, status: 200, json: async () => result, text: async () => '' })) as unknown as typeof fetch;
+  }
+  const hosted = { mode: 'hosted' as const, apiUrl: 'https://x.test', apiKey: 'k' };
+
+  it('passes the API billing field through unchanged', async () => {
+    const out = await verifyClaims({ text: 'check this' }, { fetchImpl: hostedFetch({ ...scanResult(), billing }), transport: hosted });
+    expect(out.billing).toEqual(billing);
+    expect(out.overall_risk).toBe('medium');
+  });
+
+  it('has no billing field when the scan result carries none (a local scan)', async () => {
+    const out = await verifyClaims({ text: 'x', provider: 'mock' }, { scanFn: async () => scanResult(), transport: { mode: 'local' } });
+    expect('billing' in out).toBe(false);
+  });
+
+  it('audit: false writes no record and says why', async () => {
+    const out = await verifyClaims(
+      { text: 'check this' },
+      { fetchImpl: hostedFetch(scanResult()), transport: hosted, audit: false },
+    );
+    expect(out.audit_ref).toBeUndefined();
+    expect(out.audit_path).toBeUndefined();
+    expect(out.audit_skipped).toBe(AUDIT_OFF_REASON);
+    expect(readdirSync(auditRoot)).toEqual([]);
+  });
+
+  it('writes the audit record by default', async () => {
+    const out = await verifyClaims({ text: 'check this' }, { fetchImpl: hostedFetch(scanResult()), transport: hosted });
+    expect(out.audit_ref).toMatch(/^fl_/);
+    expect(existsSync(out.audit_path!)).toBe(true);
+  });
+});
+
+describe('verifyClaims — no key', () => {
+  function clearKeys(): void {
+    for (const k of KEY_VARS) delete process.env[k];
+  }
+
+  it('refuses a local call with no key and no provider, and never scans', async () => {
+    clearKeys();
+    let scanned = false;
+    const call = verifyClaims(
+      { text: 'The Eiffel Tower in Paris was completed in 1889.' },
+      { scanFn: async () => { scanned = true; return scanResult(); }, transport: { mode: 'local' } },
+    );
+    await expect(call).rejects.toThrow(NO_KEY_MESSAGE);
+    expect(scanned).toBe(false);
+  });
+
+  it('names FAULTLINE_API_KEY first, then a provider key, and the mock opt-in', () => {
+    expect(NO_KEY_MESSAGE).toMatch(/^no key: nothing was verified\./);
+    const hosted = NO_KEY_MESSAGE.indexOf('FAULTLINE_API_KEY');
+    const local = NO_KEY_MESSAGE.indexOf('GEMINI_API_KEY');
+    expect(hosted).toBeGreaterThanOrEqual(0);
+    expect(local).toBeGreaterThan(hosted);
+    expect(NO_KEY_MESSAGE).toMatch(/SYNTHETIC/);
+  });
+
+  it('hasNoKey is true only when no provider key and no FAULTLINE_PROVIDER are set', () => {
+    expect(hasNoKey({})).toBe(true);
+    expect(hasNoKey({ GEMINI_API_KEY: 'g' })).toBe(false);
+    expect(hasNoKey({ OPENAI_API_KEY: 'o' })).toBe(false);
+    expect(hasNoKey({ FAULTLINE_PROVIDER: 'mock' })).toBe(false);
+  });
+
+  it('runs mock when the caller names it, and says SYNTHETIC in the result itself', async () => {
+    clearKeys();
+    const out = await verifyClaims(
+      { text: 'x', provider: 'mock' },
+      { scanFn: async () => scanResult(), transport: { mode: 'local' } },
+    );
+    expect(out.claims.length).toBeGreaterThan(0);
+    expect(out.summary).toMatch(/^SYNTHETIC: the "mock" provider checked nothing/);
+    expect(out.summary).not.toMatch(/model knowledge/);
+  });
+
+  it('a real provider never gets the SYNTHETIC label', async () => {
+    const out = await verifyClaims(
+      { text: 'x', provider: 'gemini' },
+      { scanFn: async () => scanResult({ provider: 'Google Gemini' }), transport: { mode: 'local' } },
+    );
+    expect(out.summary).not.toMatch(/SYNTHETIC/);
   });
 });

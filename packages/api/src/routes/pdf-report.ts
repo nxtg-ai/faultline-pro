@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { generatePdfReport } from '../store/pdf-report.js';
-import { getScanStore } from '../store/scans.js';
+import { ownedScan } from '../lib/scan-access.js';
 import type { PdfScanResult } from '../store/pdf-report.js';
 
 export async function pdfReportRoutes(fastify: FastifyInstance): Promise<void> {
@@ -10,6 +10,7 @@ export async function pdfReportRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: PdfScanResult }>(
     '/scan/report/pdf',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Reports'],
@@ -40,7 +41,7 @@ export async function pdfReportRoutes(fastify: FastifyInstance): Promise<void> {
 
       // If scanId is provided, load from the scan store
       if (body.scanId) {
-        const stored = getScanStore().getById(body.scanId as string);
+        const stored = ownedScan(body.scanId as string, request.keyId);
         if (!stored) {
           return reply.status(404).send({ error: 'Scan not found.' });
         }
@@ -84,6 +85,7 @@ export async function pdfReportRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Params: { id: string } }>(
     '/scan/report/pdf/:id',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Reports'],
@@ -97,7 +99,7 @@ export async function pdfReportRoutes(fastify: FastifyInstance): Promise<void> {
       },
     },
     async (request, reply) => {
-      const stored = getScanStore().getById(request.params.id);
+      const stored = ownedScan(request.params.id, request.keyId);
       if (!stored) {
         return reply.status(404).send({ error: 'Scan not found.' });
       }

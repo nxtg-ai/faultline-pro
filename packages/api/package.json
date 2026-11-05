@@ -1,7 +1,7 @@
 {
   "name": "@nxtg/faultline-api",
-  "version": "0.10.1",
-  "description": "Faultline Cloud Platform API — hosted POST /scan endpoint.",
+  "version": "0.12.1",
+  "description": "Faultline Cloud Platform API \u2014 hosted POST /scan endpoint.",
   "private": true,
   "type": "module",
   "main": "./src/index.ts",
@@ -15,13 +15,16 @@
     "@fastify/cors": "^11.2.0",
     "@fastify/multipart": "^9.0.0",
     "@fastify/swagger": "^9.7.0",
-    "@fastify/swagger-ui": "^5.2.5",
+    "@fastify/swagger-ui": "^6.1.1",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "@nxtg/faultline": "*",
-    "adm-zip": "^0.5.16",
-    "fastify": "^5.8.2",
+    "@nxtg/faultline-mcp": "*",
+    "adm-zip": "^0.6.1",
+    "fastify": "^5.12.6",
     "graphql": "^16.9.0",
     "mercurius": "^16.0.0",
-    "pdfkit": "^0.18.0"
+    "pdfkit": "^0.18.0",
+    "undici": "^7.30.0"
   },
   "devDependencies": {
     "@stryker-mutator/core": "^9.6.0",
@@ -32,7 +35,7 @@
     "fast-check": "^4.6.0",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
-    "vitest": "^4.0.18"
+    "vitest": "^4.1.11"
   },
   "engines": {
     "node": ">=20"

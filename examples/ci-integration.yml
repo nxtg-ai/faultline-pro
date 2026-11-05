@@ -14,7 +14,7 @@ on:
 
 jobs:
   faultline-scan:
-    name: Faultline AI Claim Forensics
+    name: Faultline claim check
     runs-on: ubuntu-latest
     permissions:
       security-events: write  # for SARIF upload to Code Scanning

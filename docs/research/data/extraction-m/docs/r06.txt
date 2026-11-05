@@ -1,0 +1,75 @@
+## Summary of the EU AI Act for Leadership Team
+
+**Overview:**
+The EU AI Act is landmark legislation, marking the world's first comprehensive legal framework for Artificial Intelligence. Its primary goal is to foster trustworthy, human-centric AI while ensuring a high level of protection for health, safety, fundamental rights, and the environment. It adopts a **risk-based approach**, imposing stricter rules on AI systems deemed to pose higher risks.
+
+**Key Principles & Risk Categorization:**
+
+The Act categorizes AI systems based on their potential risk, with corresponding obligations:
+
+1.  **Unacceptable Risk (Banned AI):**
+    *   Systems posing a clear threat to fundamental rights are prohibited.
+    *   **Examples:** Real-time biometric identification in public spaces by law enforcement (with limited exceptions), social scoring by governments, AI that manipulates human behavior to cause harm, or exploits vulnerabilities of specific groups.
+    *   **Implication:** Companies must ensure they are not developing or deploying such systems.
+
+2.  **High-Risk AI:**
+    *   These systems pose significant harm to health, safety, or fundamental rights. They are subject to stringent requirements *before* being placed on the market or put into service.
+    *   **Examples:** AI used in critical infrastructure (transport, energy), medical devices, employment and HR management (recruitment, performance evaluation), law enforcement (risk assessment), border control, justice administration, and systems managing democratic processes.
+    *   **Obligations for Providers (developers) & Deployers (users):**
+        *   **Robust Risk Management System:** Continuous identification and mitigation of risks.
+        *   **Data Governance & Quality:** Use of high-quality training, validation, and testing data.
+        *   **Technical Documentation & Record-keeping:** Detailed records for compliance and transparency.
+        *   **Transparency & User Information:** Clear information for users about the system's capabilities and limitations.
+        *   **Human Oversight:** Mechanisms to ensure human control and intervention.
+        *   **Accuracy, Robustness & Cybersecurity:** High standards to prevent errors, failures, and cyberattacks.
+        *   **Conformity Assessment:** High-risk systems must undergo a conformity assessment (often involving a third-party audit) before deployment and bear a **CE marking**.
+
+3.  **Limited Risk AI:**
+    *   Systems that pose specific transparency risks.
+    *   **Examples:** Chatbots, deepfakes, emotion recognition systems.
+    *   **Obligations:** Users must be informed that they are interacting with an AI system (e.g., a chatbot must disclose it's not human) or when content is AI-generated/manipulated.
+
+4.  **Minimal or No Risk AI:**
+    *   The vast majority of AI systems fall into this category.
+    *   **Examples:** Spam filters, AI-powered games, recommender systems not falling into other categories.
+    *   **Obligations:** Largely unregulated, though providers are encouraged to adhere to voluntary codes of conduct.
+
+**Special Provisions for General Purpose AI (GPAI) / Generative AI:**
+
+*   **Foundation Models (e.g., GPT-4, Llama):** Providers of GPAI models must ensure certain transparency requirements (e.g., technical documentation, instructions for deployers, data sourcing, compliance with EU copyright law).
+*   **GPAI with Systemic Risk:** If a foundation model poses systemic risks (e.g., due to its scale or impact), additional obligations apply, including performing model evaluations, assessing and mitigating systemic risks, and reporting serious incidents.
+
+**Scope:**
+
+The Act has an extraterritorial reach. It applies to:
+
+*   Providers placing AI systems on the EU market or putting them into service, regardless of where the provider is established.
+*   Deployers (users) of AI systems located within the EU.
+*   Providers and deployers of AI systems located outside the EU, where the output produced by the system is used in the EU.
+
+**Enforcement & Penalties:**
+
+*   National supervisory authorities will monitor compliance.
+*   **Significant fines** for non-compliance:
+    *   Up to **€35 million or 7% of global annual turnover** (whichever is higher) for banned AI practices.
+    *   Up to **€15 million or 3% of global annual turnover** for non-compliance with high-risk AI requirements.
+    *   Up to **€7.5 million or 1.5% of global annual turnover** for providing incorrect information.
+
+**Implementation Timeline (Phased Rollout):**
+
+*   **6 months:** Prohibitions on unacceptable risk AI systems take effect.
+*   **12 months:** Rules for General Purpose AI (GPAI) models take effect.
+*   **24 months:** Rules for high-risk AI systems (the majority of obligations) take effect.
+*   **36 months:** Obligations concerning AI systems that are safety components of products subject to existing EU legislation take effect.
+
+**Key Implications for Our Company:**
+
+*   **Inventory & Assessment:** We must identify all AI systems currently in use or under development, classify them according to the risk categories, and assess their compliance against the Act's requirements.
+*   **Gap Analysis & Remediation:** For high-risk systems, we will need to establish robust internal processes for risk management, data governance, human oversight, cybersecurity, and conformity assessment.
+*   **Transparency:** For limited-risk systems (e.g., chatbots), ensure appropriate disclosure to users.
+*   **Resource Allocation:** Compliance will require dedicated resources – legal, technical, and operational.
+*   **Cross-Functional Collaboration:** This is not solely a legal or IT issue; it requires collaboration across product development, engineering, legal, compliance, and even HR.
+*   **Proactive Stance:** The EU AI Act will set a global benchmark. Proactive compliance will not only mitigate legal and reputational risks but also position us as a trustworthy and responsible AI actor.
+
+**Next Steps:**
+We recommend establishing an internal working group to conduct a comprehensive audit of our AI landscape and develop a phased compliance roadmap.

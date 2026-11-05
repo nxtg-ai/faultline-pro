@@ -1,16 +1,18 @@
 import { appendFile } from 'node:fs/promises';
+import { existsSync, readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { getKeyStore } from '../store/keys.js';
+import { MEASUREMENT_KEY_ID } from '../plugins/auth.js';
 import { summarizeScanUsage, type UsageLeg } from './consensus-cost.js';
 
 const TELEMETRY_WORKER = 'https://faultline-telemetry.nxtg-ai.workers.dev';
 
 /** Default model ID per provider family (auditable — rates tied to these models). */
 export const PROVIDER_MODEL_IDS: Record<string, string> = {
-  gemini:     'gemini-2.0-flash',
+  gemini:     'gemini-2.5-flash',
   claude:     'claude-haiku-4-5-20251001',
   openai:     'gpt-4o-mini',
-  perplexity: 'llama-3.1-sonar-small-128k-online',
+  perplexity: 'sonar-pro',
   mock:       'mock',
 };
 
@@ -33,10 +35,15 @@ const PROVIDER_RATES: Record<string, { inputPer1k: number; outputPer1k: number }
 
 // ── Managed-key scan cost telemetry ──────────────────────────────────────────
 // Rates per 1M tokens (directive-specified). Provider family → model assumed:
-//   gemini   → Gemini Flash   ($0.15 input / $0.60 output)
+//   gemini   → Gemini 2.5 Flash ($0.30 input / $2.50 output incl. thinking; paid tier,
+//              https://ai.google.dev/gemini-api/docs/pricing, re-read 2026-09-30; was
+//              $0.15/$0.60, the 2.0 Flash rate, flagged by product-oracle 2026-10-11)
 //   claude   → Claude Haiku   ($0.80 input / $4.00 output)
 //   openai   → GPT-4o mini    ($0.15 input / $0.60 output)
-//   perplexity → Perplexity sonar ($1.00 input / $1.00 output, no grounding surcharge)
+//   perplexity → Perplexity sonar ($1.00 input / $1.00 output). Perplexity also bills a
+//              per-request search fee; this text-length fallback leaves it out. A
+//              Perplexity call reports its usage, which is priced with the fee in
+//              consensus-cost.ts, so this row prices only a call with no usage.
 //   mock     → $0 (test/demo)
 // Grounding (web search per claim): $0.035/call (Gemini; $0 for others — no grounding API).
 const MANAGED_PROVIDER_RATES: Record<string, {
@@ -44,7 +51,7 @@ const MANAGED_PROVIDER_RATES: Record<string, {
   outputPerM: number;
   groundingPerCall: number;
 }> = {
-  gemini:     { inputPerM: 0.15,  outputPerM: 0.60,  groundingPerCall: 0.035 },
+  gemini:     { inputPerM: 0.30,  outputPerM: 2.50,  groundingPerCall: 0.035 },
   claude:     { inputPerM: 0.80,  outputPerM: 4.00,  groundingPerCall: 0 },
   openai:     { inputPerM: 0.15,  outputPerM: 0.60,  groundingPerCall: 0 },
   perplexity: { inputPerM: 1.00,  outputPerM: 1.00,  groundingPerCall: 0 },
@@ -78,17 +85,41 @@ export function computeScanCost(
  * to the legacy text-length estimate ONLY when nothing was captured (mock /
  * offline / cache / an all-error scan) so a real scan never silently emits $0.
  */
+export interface ManagedCostOptions {
+  text: string;
+  provider: string;
+  claimCount: number;
+  tier: ManagedScanCostEvent['tier'];
+  latencyMs: number;
+  cacheHit?: boolean;
+  kind?: ManagedScanCostEvent['kind'];
+  /**
+   * Claims this call handled and how many got a billable verdict, so cost per claim
+   * can be read from the scan-cost log and the provider-spend ledger. Required: a call
+   * that handles no claims (critique) passes `{ extracted: 0, verified: 0 }`.
+   */
+  claims: { extracted: number; verified: number };
+  /**
+   * The providers that ran each stage, when they differ from `provider`. Prices the
+   * fallback estimate: extraction tokens at the extraction provider's rate and the
+   * per-claim grounding charge at each verifying provider's rate.
+   */
+  stageProviders?: { extraction: string; verification: string[] };
+}
+
+// Compile-time guard: fails to type-check if `claims` is ever made optional again.
+// (The package does not turn on strict null checks, so an optional `claims` would
+// otherwise still compile at every call site that leaves it out.)
+const CLAIMS_ARE_REQUIRED: {} extends Pick<ManagedCostOptions, 'claims'> ? never : true = true;
+void CLAIMS_ARE_REQUIRED;
+
+/** A cost event built for a call this process ran: it always carries both claim counts. */
+export type CountedScanCostEvent = ManagedScanCostEvent & { claimsExtracted: number; claimsVerified: number };
+
 export function buildManagedCostEvent(
   legs: UsageLeg[],
-  opts: {
-    text: string;
-    provider: string;
-    claimCount: number;
-    tier: ManagedScanCostEvent['tier'];
-    latencyMs: number;
-    cacheHit?: boolean;
-  },
-): ManagedScanCostEvent {
+  opts: ManagedCostOptions,
+): CountedScanCostEvent {
   const usage = summarizeScanUsage(legs);
   // Gate on real COMPOSED COST, not leg presence (Wolf BLG-005 Phase-2 fold 1).
   // Legs whose provider omitted usage (?? 0 → 0-token) still count as legs but
@@ -101,12 +132,16 @@ export function buildManagedCostEvent(
   const inputTokens = hasRealUsage ? usage.inputTokens : estInput;
   const outputTokens = hasRealUsage ? usage.outputTokens : Math.ceil(estInput * 0.3);
   const groundingCalls = hasRealUsage ? usage.groundingCalls : opts.claimCount;
-  const costUsd = hasRealUsage
-    ? usage.costUsd
-    : computeScanCost(inputTokens, outputTokens, groundingCalls, opts.provider);
+  const stages = opts.stageProviders;
+  const estimateCost = (): number => (stages
+    ? computeScanCost(inputTokens, outputTokens, 0, stages.extraction)
+      + stages.verification.reduce((sum, p) => sum + computeScanCost(0, 0, groundingCalls, p), 0)
+    : computeScanCost(inputTokens, outputTokens, groundingCalls, opts.provider));
+  const costUsd = hasRealUsage ? usage.costUsd : estimateCost();
+  const estimateModelProvider = stages ? stages.extraction : opts.provider;
   const modelId = (hasRealUsage && usage.primaryModel)
     ? usage.primaryModel
-    : (PROVIDER_MODEL_IDS[opts.provider] ?? opts.provider);
+    : (PROVIDER_MODEL_IDS[estimateModelProvider] ?? estimateModelProvider);
   return {
     scanId: randomUUID(),
     ts: new Date().toISOString(),
@@ -120,6 +155,9 @@ export function buildManagedCostEvent(
     costUsd,
     latencyMs: opts.latencyMs,
     cacheHit: opts.cacheHit ?? false,
+    ...(opts.kind ? { kind: opts.kind } : {}),
+    claimsExtracted: opts.claims.extracted,
+    claimsVerified: opts.claims.verified,
   };
 }
 
@@ -127,7 +165,8 @@ export function buildManagedCostEvent(
 export interface ManagedScanCostEvent {
   scanId: string;
   ts: string;              // ISO-8601
-  tier: 'enterprise' | 'pro' | 'personal' | 'free' | 'anon' | 'userkey';
+  /** 'measurement': an internal measurement run (FAULTLINE_MEASUREMENT_KEY), never web traffic. */
+  tier: 'enterprise' | 'pro' | 'personal' | 'free' | 'anon' | 'userkey' | 'measurement';
   keyMode: 'managed';      // always 'managed' for API-path scans
   provider: string;
   modelId?: string;        // actual model used (PROVIDER_MODEL_IDS lookup)
@@ -137,12 +176,38 @@ export interface ManagedScanCostEvent {
   costUsd: number;
   latencyMs: number;
   cacheHit?: boolean;      // true when result served from cache (cost = 0 effective)
+  /**
+   * What produced the cost: a customer scan, an admin benchmark batch of up to 25
+   * claims, or one full-scan step (an estimate's extraction or a job's verify run,
+   * which can be 200+ claims). Absent = 'scan'. Per-scan percentiles count 'scan' only.
+   */
+  kind?: 'scan' | 'admin-verify' | 'full-scan';
+  /**
+   * Claims extracted (or submitted) in this call. Always set by buildManagedCostEvent;
+   * optional here only because events read back from log rows written before counts
+   * existed have none.
+   */
+  claimsExtracted?: number;
+  /** Claims with a billable verdict (isBillableVerdict: supported, contradicted or mixed, with a source, no apiError). Absent only on old events. */
+  claimsVerified?: number;
+  /**
+   * The API key that ran the scan, kept in memory only (not in the scan-cost log), so
+   * /costs/percentiles can show a key its own scans. Events without it (hydrated from
+   * the log, or written before owners were recorded) count for admin only.
+   */
+  ownerKeyId?: string;
 }
 
 const VALID_TIERS = new Set<ManagedScanCostEvent['tier']>(['enterprise', 'pro', 'personal', 'free', 'anon', 'userkey']);
+/**
+ * Tiers a persisted scan-cost row may carry: every forwardable tier plus 'measurement', which
+ * only the server assigns (from the measurement key) and so never appears in VALID_TIERS.
+ */
+const PERSISTED_TIERS = new Set<ManagedScanCostEvent['tier']>([...VALID_TIERS, 'measurement']);
 
 /** Derive subscription tier from keyId. No PII — permission metadata only. */
 export function resolveTier(keyId: string): ManagedScanCostEvent['tier'] {
+  if (keyId === MEASUREMENT_KEY_ID) return 'measurement';
   if (keyId === 'admin') return 'enterprise';
   const key = getKeyStore().validateById(keyId);
   if (key?.permissions.includes('pro')) return 'pro';
@@ -153,8 +218,11 @@ export function resolveTier(keyId: string): ManagedScanCostEvent['tier'] {
  * Resolve tier from x-user-tier header (FW authoritative source) with fallback to keyId inference.
  * FW forwards x-user-tier (Clerk-authenticated, server-side) on every /scan/stream call.
  * Direct service-to-service calls (no header) fall back to resolveTier(keyId).
+ * The measurement key is always labelled 'measurement'; its header is ignored.
+ * 'measurement' is not in VALID_TIERS, so no caller can forward it.
  */
 export function resolveTierFromRequest(keyId: string, headerTier?: string | string[]): ManagedScanCostEvent['tier'] {
+  if (keyId === MEASUREMENT_KEY_ID) return 'measurement';
   const raw = Array.isArray(headerTier) ? headerTier[0] : headerTier;
   if (raw && VALID_TIERS.has(raw as ManagedScanCostEvent['tier'])) {
     return raw as ManagedScanCostEvent['tier'];
@@ -184,6 +252,7 @@ export function emitScanCostEvent(event: ManagedScanCostEvent): void {
     cost_usd:       event.costUsd,
     latency_ms:     event.latencyMs,
     cache_hit:      event.cacheHit ?? false,
+    kind:           event.kind ?? 'scan',
   };
   fetch(`${TELEMETRY_WORKER}/scan-costs`, {
     method: 'POST',
@@ -198,9 +267,11 @@ export function emitScanCostEvent(event: ManagedScanCostEvent): void {
  * Fire-and-forget: a failed write MUST NOT fail the scan.
  * Suppressed in test environments.
  */
-export function appendScanCostLog(event: ManagedScanCostEvent, logPath = '/var/log/faultline/scan-cost.jsonl'): void {
-  if (process.env.VITEST || process.env.NODE_ENV === 'test') return;
-  const row = JSON.stringify({
+export const SCAN_COST_LOG_PATH = '/var/log/faultline/scan-cost.jsonl';
+
+/** One scan-cost log row (snake_case, as the log has always been written). */
+export function scanCostLogRow(event: ManagedScanCostEvent): string {
+  return JSON.stringify({
     ts:             event.ts,
     scan_id:        event.scanId,
     user_tier:      event.tier,
@@ -213,7 +284,16 @@ export function appendScanCostLog(event: ManagedScanCostEvent, logPath = '/var/l
     wall_ms:        event.latencyMs,
     usd_estimate:   event.costUsd,
     cache_hit:      event.cacheHit ?? false,
+    kind:           event.kind ?? 'scan',
+    // null only for an event read back from a row written before counts existed.
+    claim_count:    event.claimsExtracted ?? null,
+    verified_count: event.claimsVerified ?? null,
   });
+}
+
+export function appendScanCostLog(event: ManagedScanCostEvent, logPath = SCAN_COST_LOG_PATH): void {
+  if (process.env.VITEST || process.env.NODE_ENV === 'test') return;
+  const row = scanCostLogRow(event);
   appendFile(logPath, row + '\n').catch(() => { /* fire-and-forget */ });
 }
 
@@ -222,6 +302,10 @@ export interface CostPercentiles {
   p90: number;
   p99: number;
   count: number;
+  /** Wall-clock scan latency over the same events, in ms. */
+  latencyMs: { p50: number; p90: number; p99: number };
+  /** Set when the result is filtered to one tier. */
+  tier?: ManagedScanCostEvent['tier'];
   windowDays: number;
 }
 
@@ -310,8 +394,8 @@ class CostStore {
     return { totalTokens, totalCostUsd, byProvider, byDate };
   }
 
-  recordManaged(event: ManagedScanCostEvent): void {
-    this.managedData.push(event);
+  recordManaged(event: ManagedScanCostEvent, ownerKeyId?: string): void {
+    this.managedData.push(ownerKeyId ? { ...event, ownerKeyId } : event);
   }
 
   getManagedEvents(days = 30): ManagedScanCostEvent[] {
@@ -319,16 +403,31 @@ class CostStore {
     return this.managedData.filter((e) => e.ts >= cutoff);
   }
 
-  getPercentiles(days = 30): CostPercentiles {
-    const events = this.getManagedEvents(days);
+  /** `keyId` undefined = every key's scans (admin); a string = only that key's scans. */
+  getPercentiles(days = 30, tier?: ManagedScanCostEvent['tier'], keyId?: string): CostPercentiles {
+    // Per-scan percentiles describe scans only: an admin-verify batch is up to 25 claims, not one scan.
+    // Legacy admin batches logged before `kind` existed carry no kind, still read as scans here,
+    // and age out of the 30-day window.
+    const events = this.getManagedEvents(days)
+      .filter((e) => (e.kind ?? 'scan') === 'scan')
+      .filter((e) => !tier || e.tier === tier)
+      .filter((e) => keyId === undefined || e.ownerKeyId === keyId);
     const costs = events.map((e) => e.costUsd).sort((a, b) => a - b);
+    const walls = events.map((e) => e.latencyMs).sort((a, b) => a - b);
     return {
       p50: percentile(costs, 50),
       p90: percentile(costs, 90),
       p99: percentile(costs, 99),
       count: costs.length,
+      latencyMs: { p50: percentile(walls, 50), p90: percentile(walls, 90), p99: percentile(walls, 99) },
+      ...(tier ? { tier } : {}),
       windowDays: days,
     };
+  }
+
+  /** Load events written by appendScanCostLog before this process started. */
+  hydrate(events: ManagedScanCostEvent[]): void {
+    this.managedData.unshift(...events);
   }
 
   reset(): void {
@@ -339,11 +438,63 @@ class CostStore {
 
 let instance: CostStore | null = null;
 
+/**
+ * Read the scan-cost NDJSON log back into events. The in-memory store starts empty
+ * on every process start, so without this /costs/percentiles forgot every scan at
+ * each Fly deploy (product-oracle read the 2026-10-02..10 history off the volume by
+ * hand instead). Malformed rows are skipped; a missing or unreadable file gives [].
+ */
+export function loadScanCostLog(logPath = SCAN_COST_LOG_PATH): ManagedScanCostEvent[] {
+  let raw: string;
+  try {
+    if (!existsSync(logPath)) return [];
+    raw = readFileSync(logPath, 'utf8');
+  } catch {
+    return [];
+  }
+  const events: ManagedScanCostEvent[] = [];
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      const r = JSON.parse(line) as Record<string, unknown>;
+      const tier = r.user_tier as ManagedScanCostEvent['tier'];
+      if (typeof r.ts !== 'string' || !PERSISTED_TIERS.has(tier)) continue;
+      const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+      events.push({
+        scanId: String(r.scan_id ?? ''),
+        ts: r.ts,
+        tier,
+        keyMode: 'managed',
+        provider: String(r.provider ?? ''),
+        modelId: typeof r.model_id === 'string' ? r.model_id : undefined,
+        inputTokens: num(r.input_tokens),
+        outputTokens: num(r.output_tokens),
+        groundingCalls: num(r.tool_call_count),
+        costUsd: num(r.usd_estimate),
+        latencyMs: num(r.wall_ms),
+        cacheHit: r.cache_hit === true,
+        kind: r.kind === 'admin-verify' || r.kind === 'full-scan' ? r.kind : 'scan',
+        ...(typeof r.claim_count === 'number' ? { claimsExtracted: r.claim_count } : {}),
+        ...(typeof r.verified_count === 'number' ? { claimsVerified: r.verified_count } : {}),
+      });
+    } catch {
+      /* skip a malformed row */
+    }
+  }
+  return events;
+}
+
 export function getCostStore(): CostStore {
-  if (!instance) instance = new CostStore();
+  if (!instance) {
+    instance = new CostStore();
+    // Same guard as appendScanCostLog: tests never read the production log.
+    if (!process.env.VITEST && process.env.NODE_ENV !== 'test') {
+      instance.hydrate(loadScanCostLog(process.env.FAULTLINE_SCAN_COST_LOG ?? SCAN_COST_LOG_PATH));
+    }
+  }
   return instance;
 }
 
 export function resetCostStore(): void {
-  instance = new CostStore();
+  instance = null; // the next getCostStore() builds a fresh store (and hydrates, outside tests)
 }

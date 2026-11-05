@@ -1,7 +1,11 @@
 import type { FastifyInstance } from 'fastify';
-import { requireApiKey } from '../plugins/auth.js';
+import { requireApiKey, isAdminRequest } from '../plugins/auth.js';
+import { engineVerifyCap, requireClaimHeadroom } from '../plugins/claim-meter.js';
+import { enforceProviderSpendCap, resolveSpendCapTier } from '../plugins/provider-spend-cap.js';
 import { getScanQueue, tierToPriority } from '../store/scan-queue.js';
+import { enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { getKeyStore } from '../store/keys.js';
+import { ownsOrAdmin } from '../lib/ownership.js';
 import type { QueuePriority } from '../store/scan-queue.js';
 
 type ScanProvider = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
@@ -36,7 +40,8 @@ export async function queueRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: EnqueueBody }>(
     '/queue/scans',
     {
-      preHandler: [requireApiKey],
+      config: { access: 'owner' },
+      preHandler: [requireApiKey, enforceMonthlyCap, enforceProviderSpendCap, requireClaimHeadroom(engineVerifyCap())],
       schema: {
         tags: ['Jobs'],
         summary: 'Enqueue a scan for async processing',
@@ -52,7 +57,8 @@ export async function queueRoutes(fastify: FastifyInstance): Promise<void> {
 
       let item;
       try {
-        item = getScanQueue().enqueue(keyId, priority, text, provider);
+        const tier = resolveSpendCapTier(request.keyId, request.headers['x-user-tier']);
+        item = getScanQueue().enqueue(keyId, priority, text, provider, tier);
       } catch (err) {
         return reply.status(503).send({ error: err instanceof Error ? err.message : String(err) });
       }
@@ -73,6 +79,7 @@ export async function queueRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Params: { id: string } }>(
     '/queue/scans/:id',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Jobs'],
@@ -87,7 +94,7 @@ export async function queueRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request, reply) => {
       const item = getScanQueue().get(request.params.id);
-      if (!item) return reply.status(404).send({ error: 'Queue item not found.' });
+      if (!item || !ownsOrAdmin(request, item.keyId)) return reply.status(404).send({ error: 'Queue item not found.' });
 
       const position = item.status === 'pending' ? getScanQueue().getPosition(item.id) : null;
       return reply.send({ ...item, position });
@@ -98,6 +105,7 @@ export async function queueRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: { limit?: string } }>(
     '/queue/scans',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Jobs'],
@@ -121,6 +129,7 @@ export async function queueRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.delete<{ Params: { id: string } }>(
     '/queue/scans/:id',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Jobs'],
@@ -134,8 +143,9 @@ export async function queueRoutes(fastify: FastifyInstance): Promise<void> {
       },
     },
     async (request, reply) => {
+      // Ownership before status: another key's item reads as not found, not 409.
       const item = getScanQueue().get(request.params.id);
-      if (!item) return reply.status(404).send({ error: 'Queue item not found.' });
+      if (!item || !ownsOrAdmin(request, item.keyId)) return reply.status(404).send({ error: 'Queue item not found.' });
       if (item.status !== 'pending') {
         return reply.status(409).send({ error: `Cannot cancel item with status '${item.status}'.` });
       }
@@ -148,17 +158,19 @@ export async function queueRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/queue/status',
     {
+      config: { access: 'public' },
       schema: {
         tags: ['Jobs'],
         summary: 'Scan queue aggregate status (public)',
         security: [],
       },
     },
-    async (_request, reply) => {
+    async (request, reply) => {
       const stats = getScanQueue().getStats();
       const concurrency = Math.max(1, Number(process.env.FAULTLINE_QUEUE_CONCURRENCY ?? 3));
       return reply.send({
-        ...stats,
+        // Queue sizes are fleet counters: admin only (emma-soul ruling Dx3 e2909e46, item 4).
+        ...(isAdminRequest(request) ? stats : {}),
         maxConcurrency: concurrency,
         priorityLevels: [
           { priority: 0, tier: 'admin',   description: 'Highest priority — processed first' },
@@ -173,6 +185,7 @@ export async function queueRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/queue',
     {
+      config: { access: 'public' },
       schema: {
         tags: ['Jobs'],
         summary: 'Scan queue dashboard (HTML, public)',

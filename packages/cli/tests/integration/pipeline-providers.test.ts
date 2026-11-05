@@ -19,23 +19,13 @@ vi.stubGlobal('fetch', mockFetch);
 import { getProvider, registerProvider, listProviders } from '../../providers/registry';
 import { createOpenAIProvider } from '../../providers/openai_provider';
 import { generateComplianceReport } from '../../compliance/report_generator';
+import { calculateRisk } from '../../lib/overall-risk';
 import { mapClaimToRiskCategory } from '../../compliance/eu_ai_act';
 import type { Claim, VerificationResult, AnalysisState } from '../../types';
 import type { LLMProvider, CritiqueResult } from '../../providers/base_provider';
 
 // --- Shared helpers ---
 
-function calculateRisk(
-  verifications: Record<string, VerificationResult>,
-): AnalysisState['overallRisk'] {
-  const values = Object.values(verifications);
-  const contradicted = values.filter((v) => v.status === 'contradicted').length;
-  const mixed = values.filter((v) => v.status === 'mixed').length;
-  if (contradicted > 2) return 'critical';
-  if (contradicted > 0 || mixed > 2) return 'high';
-  if (mixed > 0) return 'medium';
-  return 'low';
-}
 
 function filterClaimsForVerification(claims: Claim[]): Claim[] {
   return claims
@@ -113,12 +103,12 @@ describe('Integration: Multi-Provider Pipeline', () => {
       // c1 → supported
       mockGenerateContent.mockResolvedValueOnce({
         text: JSON.stringify({ status: 'supported', explanation: 'Confirmed.' }),
-        candidates: [{ groundingMetadata: { groundingChunks: [] } }],
+        candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'Source', uri: 'https://source.example/a' } }] } }],
       });
       // c2 → contradicted
       mockGenerateContent.mockResolvedValueOnce({
         text: JSON.stringify({ status: 'contradicted', explanation: 'Actually 99.97C.' }),
-        candidates: [{ groundingMetadata: { groundingChunks: [] } }],
+        candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'Refuting source', uri: 'https://refute.example/a' } }] } }],
       });
 
       const provider = getProvider('gemini-key', 'gemini');
@@ -277,29 +267,25 @@ describe('Integration: Multi-Provider Pipeline', () => {
   // --- 3. Error propagation ---
 
   describe('error propagation through pipeline', () => {
-    it('Gemini extraction failure → empty report with mitigation', async () => {
+    it('Gemini extraction failure → pipeline stops with ExtractionError, no report', async () => {
       mockGenerateContent.mockRejectedValueOnce(new Error('Gemini 500'));
 
       const provider = getProvider('key', 'gemini');
-      const { claims, report } = await runFullPipeline(provider);
-
-      expect(claims).toEqual([]);
-      expect(report.euRiskSummary.totalClaims).toBe(0);
-      expect(report.mitigations.some((m) => m.includes('No verified claims'))).toBe(true);
+      // A failed extraction must not produce an empty "no verified claims" report.
+      await expect(runFullPipeline(provider))
+        .rejects.toMatchObject({ name: 'ExtractionError', reason: 'provider_error' });
     });
 
-    it('Claude extraction failure → empty report with mitigation', async () => {
+    it('Claude extraction failure → pipeline stops with ExtractionError, no report', async () => {
       mockFetch.mockRejectedValueOnce(new Error('Claude 429'));
 
       const provider = getProvider('key', 'claude');
-      const { claims, report } = await runFullPipeline(provider);
-
-      expect(claims).toEqual([]);
-      expect(report.euRiskSummary.totalClaims).toBe(0);
-      expect(report.mitigations.some((m) => m.includes('No verified claims'))).toBe(true);
+      // A failed extraction must not produce an empty "no verified claims" report.
+      await expect(runFullPipeline(provider))
+        .rejects.toMatchObject({ name: 'ExtractionError', reason: 'rate_limited' });
     });
 
-    it('Gemini verification failure mid-pipeline → unverified + low risk report', async () => {
+    it('Gemini verification failure mid-pipeline → unverified + high risk report', async () => {
       mockGenerateContent.mockResolvedValueOnce({ text: JSON.stringify(SAMPLE_CLAIMS) });
       // Both verifications fail
       mockGenerateContent.mockRejectedValueOnce(new Error('Rate limited'));
@@ -310,13 +296,14 @@ describe('Integration: Multi-Provider Pipeline', () => {
 
       expect(verifications['c1'].status).toBe('unverified');
       expect(verifications['c2'].status).toBe('unverified');
-      expect(risk).toBe('low');
+      // Nothing was checked, so the risk is not known: never low.
+      expect(risk).toBe('high');
       // c1 "hiring" still matches Annex III domain even when unverified
       expect(report.euRiskSummary.high).toBe(1);
       expect(report.euRiskSummary.minimal).toBe(1);
     });
 
-    it('Claude verification failure mid-pipeline → unverified + low risk report', async () => {
+    it('Claude verification failure mid-pipeline → unverified + high risk report', async () => {
       mockFetch.mockResolvedValueOnce(mockAnthropicResponse(JSON.stringify(SAMPLE_CLAIMS)));
       mockFetch.mockRejectedValueOnce(new Error('Timeout'));
       mockFetch.mockRejectedValueOnce(new Error('Timeout'));
@@ -326,7 +313,8 @@ describe('Integration: Multi-Provider Pipeline', () => {
 
       expect(verifications['c1'].status).toBe('unverified');
       expect(verifications['c2'].status).toBe('unverified');
-      expect(risk).toBe('low');
+      // Nothing was checked, so the risk is not known: never low.
+      expect(risk).toBe('high');
       // Same domain matching behavior as Gemini
       expect(report.euRiskSummary.high).toBe(1);
       expect(report.euRiskSummary.minimal).toBe(1);
@@ -337,7 +325,7 @@ describe('Integration: Multi-Provider Pipeline', () => {
       // c1 succeeds
       mockGenerateContent.mockResolvedValueOnce({
         text: JSON.stringify({ status: 'contradicted', explanation: 'Wrong.' }),
-        candidates: [{ groundingMetadata: { groundingChunks: [] } }],
+        candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'Refuting source', uri: 'https://refute.example/a' } }] } }],
       });
       // c2 fails
       mockGenerateContent.mockRejectedValueOnce(new Error('Timeout'));

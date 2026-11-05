@@ -40,7 +40,10 @@ export interface PluginContext {
    * Register a custom LLM provider.
    *
    * @param name    Provider name used in --provider flags and .faultlinerc.json.
-   *                Must be lowercase with no spaces (e.g. "my-llm").
+   *                Must be lowercase with no spaces (e.g. "my-llm"). A built-in
+   *                provider id (gemini, claude, openai, perplexity, mock), in any
+   *                case and with surrounding spaces, is refused with an error:
+   *                a plugin cannot replace a built-in provider.
    * @param factory Factory function that creates the provider given an API key.
    *
    * @example

@@ -25,6 +25,79 @@ export interface Source {
    * Consumed by the inc-2 NLI gate; safe to omit elsewhere.
    */
   snippet?: string;
+  /**
+   * The search service's own excerpts from the page, as it returned them
+   * (the parallel grounding mode; `snippet` is these joined for the judge).
+   */
+  excerpts?: string[];
+  /** The page's publication date as the search service reported it (Parallel `publish_date`), when it did. */
+  publishDate?: string;
+  /**
+   * The passage of the fetched page that best matches the claim, with the fetch
+   * time (evidence/passage.ts). Taken from the page's own bytes, never from the
+   * model's reply; `snippet` above is model-derived and is not evidence.
+   */
+  evidence?: SourceEvidence;
+}
+
+/**
+ * How a secondary search ended, so "it ran and found nothing" never reads like
+ * "it failed". hits: at least one source came back. zero: the call succeeded
+ * and returned no sources. timeout: the call was stopped by its deadline.
+ * provider_error: an HTTP error, a network error, a missing API key, or any
+ * other thrown error. parse_error: a 2xx reply that could not be read as
+ * sources (bad JSON or an unexpected shape). policy_block: the provider, or our
+ * own guard, refused the request on content or safety policy.
+ */
+export type RetrievalStatus = 'hits' | 'zero' | 'timeout' | 'provider_error' | 'parse_error' | 'policy_block';
+
+/** Passages from a second retriever, kept apart from the verdict's own sources. */
+export interface IndependentEvidence {
+  /** How the search ended. An empty `sources` list means nothing was found only when this is `zero`. */
+  status: RetrievalStatus;
+  /** A short reason for a status other than hits, e.g. 'http 500'. Never a response body, a secret or claim text. */
+  detail?: string;
+  /** The retriever's name, e.g. 'openai-web-search'. */
+  retriever: string;
+  /** The model that ran the search, when the retriever reports one. */
+  model?: string;
+  /** When the search returned (ISO 8601). */
+  retrievedAt: string;
+  /** The retriever's result pages, each with what fetching it found. No model-written snippet. */
+  sources: Source[];
+}
+
+/** What fetching one cited source found (Honor System #3, GoPMO 1.18.11.3 P1b). */
+export interface SourceEvidence {
+  /**
+   * ok: a passage matched. no_match: the page was read and no sentence matched
+   * the claim. http_error: the page answered non-2xx. unsupported_type: not
+   * HTML or plain text (a PDF, an image). blocked: the URL or a redirect target
+   * was refused (private address, not http/https). fetch_failed: network error
+   * or timeout, or the site's robots.txt could not be read (RFC 9309: then
+   * nothing there is fetched). not_fetched: deliberately not requested (see `reason`).
+   */
+  status: 'ok' | 'no_match' | 'http_error' | 'unsupported_type' | 'blocked' | 'fetch_failed' | 'not_fetched';
+  /**
+   * Why a source was not fetched. provider_terms: the link came from Gemini
+   * Grounding with Google Search, whose terms forbid "using Links to identify
+   * destination pages for crawling or scraping" (emma-soul ruling
+   * al:07b45f0562efbbf0, 2026-10-14). robots: that site's robots.txt
+   * disallows FaultlineEvidence for the page or a redirect hop (emma-soul
+   * al:15b443bc1ccf7a4e). Present only with status not_fetched.
+   */
+  reason?: 'provider_terms' | 'robots';
+  /** The matched passage, at most 300 Unicode code points, ellipsis included; null unless status is ok. */
+  passage: string | null;
+  /** When the fetch finished or failed (ISO 8601). Absent when nothing was fetched. */
+  fetchedAt?: string;
+  /** The URL the page was finally read from, when redirects changed it. */
+  finalUri?: string;
+  httpStatus?: number;
+  /** SHA-256 (hex) of the bytes read, so the page can be re-checked later. */
+  contentSha256?: string;
+  /** True when the page was longer than the read cap and only its start was read. */
+  truncated?: boolean;
 }
 
 /**
@@ -59,8 +132,55 @@ export interface ProviderVote {
   status: ClaimStatus;
   sources: Source[];
   explanation?: string;
-  /** True when this provider's grounded verify never ran (quota/auth/5xx). */
+  /** True when this provider's grounded verify never ran (quota/auth/5xx) or its reply was unreadable. */
   apiError?: boolean;
+  /** The provider's own reason, when it reported one (e.g. 'provider_unparseable'). */
+  apiErrorReason?: ApiErrorReason;
+  /** True when this vote said supported, contradicted or mixed with no source a reader can open, so it is reported as unverified (abstainWithoutSource). */
+  noSourceAbstain?: boolean;
+}
+
+/**
+ * What a provider failure was, after the engine's retries: 429, 503, a timeout, or anything else.
+ * 'provider_out_of_credits' is a provider account with no credits left (often also a 429), which a
+ * retry cannot fix, unlike 'rate_limited' (providers/out-of-credits.ts).
+ * Two are about the reply rather than the call: 'provider_unparseable' (no readable verdict) and
+ * 'output_truncated' (the reply stopped at its output-token ceiling, providers/call-ceilings.ts).
+ */
+export type ApiErrorReason =
+  | 'rate_limited' | 'provider_out_of_credits' | 'provider_unavailable' | 'timeout' | 'provider_error' | 'provider_unparseable' | 'output_truncated';
+
+/**
+ * Who produced a verdict and when, bound at the provider call itself (Honor
+ * System point #2, GoPMO 1.18.11.3 P1a). Absent on a verdict whose check never
+ * ran (`apiError`).
+ */
+export interface VerdictProvenance {
+  /** Provider id: 'gemini', 'openai', 'claude', 'perplexity', 'mock', a registered name, or 'consensus'. */
+  provider: string;
+  /** Model id. Gemini reports the model that served the request (`modelVersion`); otherwise the configured model. Consensus lists `name:model` per voter, joined by '+'. */
+  model: string;
+  /** When the provider call that produced this verdict returned (ISO 8601). */
+  verifiedAt: string;
+  /**
+   * What retrieved the evidence: 'gemini-grounding' for a Gemini grounded call
+   * (Google Search runs inside the same request), 'parallel-search' for the
+   * parallel grounding mode (retrieve, then judge), or the consensus rig's
+   * retriever name. Absent when no retrieval ran.
+   */
+  retriever?: string;
+  /**
+   * When the evidence was retrieved (ISO 8601). A Gemini grounded call searches
+   * and judges in one request, so it equals `verifiedAt`; consensus records when
+   * its shared retrieval returned. Absent when no retrieval ran.
+   */
+  retrievedAt?: string;
+  /**
+   * The retriever's own model or mode label, when the retriever is a separate
+   * search service (the parallel grounding mode records 'parallel-search-default').
+   * Absent for a Gemini grounded call and for consensus.
+   */
+  retrieverModel?: string;
 }
 
 export interface VerificationResult {
@@ -77,6 +197,56 @@ export interface VerificationResult {
    * claim is the failure mode this flag exists to prevent.
    */
   apiError?: boolean;
+  /**
+   * Why a claim got no verdict: set only together with `apiError: true`, by the
+   * engine's retry ladder after its final attempt. A full scan reports it per
+   * unserved claim so a refund can say what was lost (emma-soul refund ruling,
+   * GoPMO 1.18.11.3.12). A provider also sets it on a reply it could not use
+   * ('provider_unparseable', 'output_truncated'). Absent on a real verdict; on a
+   * consensus result only when every failed vote carried the same reply reason.
+   */
+  apiErrorReason?: ApiErrorReason;
+  /**
+   * True when the provider's reply carried no readable verdict (not JSON, or no
+   * status from the prompt's list). Since 2026-10-16 such a claim is unchecked:
+   * status 'unverified', `apiError: true`, `apiErrorReason: 'provider_unparseable'`
+   * (providers/verdict-reply.ts). Before that Gemini reported it as 'mixed' and
+   * this flag was the only marker (verdict-accuracy prereg G0 §3). Absent otherwise.
+   */
+  parseFallback?: boolean;
+  /**
+   * True when a provider returned 'supported', 'contradicted' or 'mixed' with no
+   * source and the engine reported 'unverified' instead (abstainWithoutSource in
+   * lib/verdict-guard.ts): a definite verdict needs a source the reader can open.
+   * Absent otherwise. It lets the accuracy run count how often this fires and
+   * against which gold labels.
+   */
+  noSourceAbstain?: boolean;
+  /**
+   * Google Search Suggestions for the grounded prompt behind this verdict,
+   * passed through unaltered from `candidates[0].groundingMetadata`. Google's
+   * grounding terms require them to be shown, unaltered, wherever this
+   * verdict's explanation or sources are shown to the end user. Present only
+   * on a Gemini Grounding with Google Search verdict that returned them;
+   * absent on every other path, and removed when the engine abstains
+   * (abstainWithoutSource: a verdict Faultline rewrote is not Google's
+   * grounded result, so it does not carry Google's Search Suggestions).
+   * The hosted API and the scan cache never write it to disk. The stdio MCP
+   * server's local history (.faultline/history, on the user's own machine,
+   * under the user's own key) stores the full scan result, including it.
+   */
+  searchEntryPoint?: { renderedContent: string };
+  /** Who produced this verdict and when (see VerdictProvenance). */
+  provenance?: VerdictProvenance;
+  /**
+   * Passages found by a second, independent retriever whose terms allow
+   * fetching its result pages, run beside the verdict (GoPMO 1.18.11.3;
+   * emma-soul authorization al:e615798a8e8109c0). Never merged into
+   * `sources`: those are what the verdict was grounded on.
+   */
+  independentEvidence?: IndependentEvidence;
+  /** The Google Search queries the grounded prompt ran (same source, same rule, also removed on abstain). */
+  webSearchQueries?: string[];
   /**
    * Consensus metadata — present only on fused multi-provider verdicts emitted
    * by the consensus engine. Absent on the single-provider path (additive,

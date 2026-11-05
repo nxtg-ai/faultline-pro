@@ -69,7 +69,7 @@ export async function auditLogRoutes(fastify: FastifyInstance): Promise<void> {
    */
   fastify.get(
     '/audit/log',
-    { preHandler: requireAdmin },
+    { config: { access: 'admin' }, preHandler: requireAdmin },
     async (request, reply) => {
       const q = request.query as Record<string, string>;
       const limit = Math.min(Math.max(parseInt(q.limit ?? '100', 10) || 100, 1), 1000);
@@ -90,7 +90,7 @@ export async function auditLogRoutes(fastify: FastifyInstance): Promise<void> {
    */
   fastify.get(
     '/audit/log/stats',
-    { preHandler: requireAdmin },
+    { config: { access: 'admin' }, preHandler: requireAdmin },
     async (_request, reply) => {
       const entries = getAuditLogger().getEntries();
       const total = entries.length;
@@ -127,7 +127,7 @@ export async function auditLogRoutes(fastify: FastifyInstance): Promise<void> {
    */
   fastify.get(
     '/audit/log/export',
-    { preHandler: requireAdmin },
+    { config: { access: 'admin' }, preHandler: requireAdmin },
     async (request, reply) => {
       const q = request.query as Record<string, string>;
       const all = getAuditLogger().getEntries().reverse();
@@ -156,7 +156,7 @@ export async function auditLogRoutes(fastify: FastifyInstance): Promise<void> {
    */
   fastify.get(
     '/audit/log/manifest',
-    { preHandler: requireAdmin },
+    { config: { access: 'admin' }, preHandler: requireAdmin },
     async (_request, reply) => {
       const entries = getAuditLogger().getEntries(); // chronological order
 

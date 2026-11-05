@@ -1,47 +1,88 @@
+import type { EvidenceOptions } from '../evidence/passage.js';
+import type { IndependentEvidenceOptions } from '../evidence/independent.js';
+import { groundingFromEnv, type GroundingMode } from './grounding.js';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import type { Claim, VerificationResult, AnalysisState } from '../types.js';
-import type { LLMProvider, Retriever } from '../providers/base_provider.js';
-import { getProvider } from '../providers/registry.js';
-import { GeminiGroundingRetriever } from '../providers/gemini_provider.js';
-import { OpenAIWebSearchRetriever } from '../providers/openai_web_search_retriever.js';
-import { consensusVerify, type NamedProvider } from '../consensus/consensus_engine.js';
+import type { Claim, VerificationResult, AnalysisState, RetrievalStatus } from '../types.js';
 import { generateComplianceReport, type ComplianceReport } from '../compliance/report_generator.js';
+import { calculateRisk } from '../lib/overall-risk.js';
 import { runAllRules, runRules, type Finding } from '../rules/index.js';
+import { isExtractionError, type ExtractionErrorReason } from '../providers/extraction-error.js';
+import {
+  DEFAULT_VERIFY_CAP,
+  resolveVerifyCap,
+  rankEligibleClaims,
+  buildVerificationSummary,
+  type VerificationSummary,
+} from './verify-cap.js';
+import {
+  resolveScanProviders,
+  resolveExtractionProvider,
+  resolveVerifier,
+  runVerification,
+  type PipelineConfig,
+  type ScanProgressCallback,
+  type ScanClaimCallback,
+  type Verifier,
+} from './verify-runner.js';
+import {
+  partitionForFullScan,
+  unitsForFullScan,
+  buildFullVerificationSummary,
+  type FullVerificationSummary,
+  type ScanMode,
+} from './full-scan.js';
 
-const VERIFY_CONCURRENCY = 8;
-
-// ── FR-3: Per-stage model routing ─────────────────────────────────────────────
-
-/** Provider names supported by the Faultline provider registry. */
-export type ProviderName = 'gemini' | 'openai' | 'claude' | 'perplexity' | 'mock';
+export { DEFAULT_VERIFY_CAP, resolveVerifyCap, type VerificationSummary };
+export {
+  VERIFY_CONCURRENCY,
+  resolveVerifyConcurrency,
+  type ProviderName,
+  type PipelineConfig,
+  type ScanProgressCallback,
+  type ScanClaimCallback,
+} from './verify-runner.js';
+export {
+  CLAIMS_PER_UNIT,
+  unitsForFullScan,
+  unitAccounting,
+  partitionForFullScan,
+  type FullVerificationSummary,
+  type ScanMode,
+  type UnitAccounting,
+} from './full-scan.js';
 
 /**
- * Optional per-stage provider overrides.
- * Each field defaults to the top-level `provider` if absent.
- *
- * Note: `synthesisProvider` is accepted for forward compatibility but is a
- * no-op in the current API pipeline (complianceReport is a pure function).
- * It will be wired up when `generateCritiqueAndPrompt` migrates to the API
- * (requires FR-1 POST /scan/stream).
+ * Server-side scan options. Deliberately separate from PipelineConfig, which
+ * the API accepts from the request body: nothing here may come from a caller.
  */
-export interface PipelineConfig {
-  extractionProvider?: ProviderName;    // provider for extractClaims()
-  verificationProvider?: ProviderName;  // provider for verifyClaim()
-  synthesisProvider?: ProviderName;     // reserved — no-op in current API pipeline
+export interface ScanOptions {
   /**
-   * Opt-in grounded multi-model consensus for the VERIFY stage (additive).
-   * When true, each claim is verified by fanning out to multiple providers in
-   * parallel, all judging the SAME retrieved sources, then fusing the verdicts
-   * (see consensus_engine.ts). Extraction stays single-provider.
-   * When absent/false, the existing single-provider verify path runs UNCHANGED.
+   * Maximum claims sent to verification (default DEFAULT_VERIFY_CAP = 8).
+   * Normalised by resolveVerifyCap, so an invalid value falls back to 8.
+   * Ignored in `full` mode.
    */
-  consensus?: boolean;
+  verifyCap?: number;
   /**
-   * Provider names participating in consensus verify (default: gemini, openai,
-   * claude). Only used when `consensus` is true.
+   * `quick` (default): verify the top `verifyCap` facts of importance >= 2.
+   * `full`: verify every fact claim, any importance, in extraction order, and
+   * report opinions and interpretations as not checkable. Any value other than
+   * 'full' runs quick, so a bad value can never lift the cost bound.
    */
-  consensusProviders?: ProviderName[];
+  mode?: ScanMode;
+  /**
+   * Fetch each cited source and attach the best-matching passage from the page
+   * (evidence/passage.ts). Off unless set; the API passes its guarded fetch.
+   */
+  evidence?: EvidenceOptions;
+  /** Attach a second retriever's passages as independentEvidence (off unless set). */
+  independentEvidence?: IndependentEvidenceOptions;
+  /**
+   * Which search grounds a non-consensus gemini verify (cli/grounding.ts).
+   * Absent means google, today's behaviour. The engine never reads
+   * FAULTLINE_GROUNDING itself: the caller decides per request and passes it.
+   */
+  grounding?: GroundingMode;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -68,29 +109,148 @@ export interface ScanResult {
    * and must not bill or consume quota for a fully-degraded scan.
    */
   degraded?: boolean;
+  /**
+   * What the verify stage did to this scan. Quick mode: what the cap left
+   * unchecked (VerificationSummary, no `mode` field). Full mode: the
+   * FullVerificationSummary (`mode: 'full'`). scan() always sets it; it is
+   * optional because results read back from history files or an older hosted
+   * API do not carry it.
+   */
+  verification?: VerificationSummary | FullVerificationSummary;
+  /**
+   * How the independent search went across the scan, so a report can say once
+   * that corroboration is incomplete. Present only when at least one verdict
+   * carries `independentEvidence`.
+   */
+  evidenceCoverage?: EvidenceCoverage;
 }
 
-function calculateRisk(
-  verifications: Record<string, VerificationResult>,
-): AnalysisState['overallRisk'] {
-  const values = Object.values(verifications);
-  const contradicted = values.filter((v) => v.status === 'contradicted').length;
-  const mixed = values.filter((v) => v.status === 'mixed').length;
-  if (contradicted > 2) return 'critical';
-  if (contradicted > 0 || mixed > 2) return 'high';
-  if (mixed > 0) return 'medium';
-  return 'low';
+/** The scan-level summary of every verdict's independentEvidence status. */
+export interface EvidenceCoverage {
+  /** partial when fewer claims were corroborated than were checked. */
+  state: 'complete' | 'partial';
+  /** Verdicts that carry independentEvidence. */
+  checked: number;
+  /** Of those, the ones whose search returned sources (status hits). */
+  corroborated: number;
+  /** Count of each status seen. */
+  byStatus: Partial<Record<RetrievalStatus, number>>;
+}
+
+/** The evidence coverage of a scan, or undefined when the independent search never ran. */
+export function buildEvidenceCoverage(verifications: Record<string, VerificationResult>): EvidenceCoverage | undefined {
+  const byStatus: Partial<Record<RetrievalStatus, number>> = {};
+  let checked = 0;
+  for (const v of Object.values(verifications)) {
+    const ie = v?.independentEvidence;
+    if (!ie) continue;
+    checked++;
+    // A result read back from before statuses existed counts by what it holds.
+    const status: RetrievalStatus = ie.status ?? (ie.sources?.length > 0 ? 'hits' : 'zero');
+    byStatus[status] = (byStatus[status] ?? 0) + 1;
+  }
+  if (checked === 0) return undefined;
+  const corroborated = byStatus.hits ?? 0;
+  return { state: corroborated < checked ? 'partial' : 'complete', checked, corroborated, byStatus };
+}
+
+/** The result of a full scan run: a ScanResult with the full-mode summary. */
+export interface FullScanResult extends ScanResult {
+  verification: FullVerificationSummary;
+  /** Fact claims never started because the run was stopped (same as verification.uncheckedClaimIds). */
+  notAttemptedClaimIds: string[];
+}
+
+/** The estimate of a full scan: extraction only, no verification. */
+export interface FullScanEstimate {
+  /** The claims a full scan of this text checks, after the per-sentence guarantee. */
+  claims: Claim[];
+  /** Claims of type `fact`: the ones that will be verified. */
+  factClaims: number;
+  /** Opinions and interpretations: reported as not checkable. */
+  notCheckable: number;
+  /** Units charged: ceil(factClaims / CLAIMS_PER_UNIT), 0 when there are no facts. */
+  units: number;
+}
+
+/** Options for verifyFullScan. */
+export interface VerifyFullScanOptions {
+  providerName?: string;
+  pipelineConfig?: PipelineConfig;
+  /** Fired once per verified fact claim, with its index among the facts and the fact total. */
+  onClaim?: ScanClaimCallback;
+  onProgress?: ScanProgressCallback;
+  /** Stops starting new claims; claims never started are reported as not attempted. */
+  signal?: AbortSignal;
+  /** Fact claims verified at the same time (default VERIFY_CONCURRENCY, 8). The API's full scan uses 4. */
+  concurrency?: number;
+  /** The scanned text, when available: sets `input` and runs the local rules (no provider call). */
+  text?: string;
+  minConfidence?: number;
+  ruleNames?: string[];
+  /** Attach evidence passages from each cited source (see ScanOptions.evidence). */
+  evidence?: EvidenceOptions;
+  independentEvidence?: IndependentEvidenceOptions;
+  /** See ScanOptions.grounding. */
+  grounding?: GroundingMode;
 }
 
 // ── Sentence-level claim coverage guarantee ───────────────────────────────────
 
 /**
+ * Words that end in a period without ending a sentence: case captions ("Park v. Kim"),
+ * reporters and courts ("F. Supp.", "9th Cir."), company suffixes, titles, months.
+ * Splitting at them cut "...in Delmont v. Arcadia Freight Systems, Inc., 947 F.3d 1182
+ * (9th Cir. 2020), holding..." into fragments, and the fragment naming only "Delmont v."
+ * was then verified on its own and came back SUPPORTED against an unrelated case
+ * (ce proof run, al:4e0038613d2563e1, 2026-10-12).
+ */
+const NON_TERMINAL_ABBREVIATIONS = new Set([
+  'v', 'vs', 'inc', 'corp', 'co', 'ltd', 'llc', 'llp', 'plc', 'cir', 'fed', 'supp', 'app', 'cal', 'ct',
+  'no', 'nos', 'cf', 'al', 'mr', 'mrs', 'ms', 'dr', 'prof', 'st', 'jr', 'sr', 'gen', 'gov', 'sen', 'rep',
+  'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'oct', 'nov', 'dec',
+  'dept', 'univ', 'vol', 'pp', 'para', 'art', 'sec', 'ch', 'fig', 'approx',
+]);
+
+/** True when the text ending in `lastWord` + punctuation really ends a sentence before `next`. */
+function isSentenceBoundary(lastWord: string, punct: string, next: string): boolean {
+  // A sentence starts with a capital letter (or a quote/bracket before one). A lower-case
+  // word or a digit after the period continues the sentence ("Cir. 2020)").
+  if (!/^[A-Z]/.test(next)) return false;
+  if (!punct.startsWith('.')) return true;
+  const word = lastWord.replace(/^[("'\[\u201c\u2018]+/, '');
+  if (/^[A-Z]$/.test(word)) return false;                    // an initial: "John F. Kennedy"
+  if (/^(?:[A-Za-z]\.)+[A-Za-z]$/.test(word)) return false;  // "U.S", "e.g", "i.e"
+  return !NON_TERMINAL_ABBREVIATIONS.has(word.toLowerCase());
+}
+
+/**
  * Split text into independently verifiable sentence candidates.
  * Filters out fragments shorter than 3 words (not verifiable on their own).
  */
-function splitSentences(text: string): string[] {
-  return text
-    .split(/(?<=[.!?])\s+|(?<=[.!?])$/)
+export function splitSentences(text: string): string[] {
+  const sentences: string[] = [];
+  const boundary = /(?<![.!?])([.!?]+)(["'\)\]\u201d\u2019]*)\s+(["'\(\[\u201c\u2018]*)(\S?)/g;
+  let start = 0;
+  let m: RegExpExecArray | null;
+  while ((m = boundary.exec(text)) !== null) {
+    const head = text.slice(start, m.index);
+    // Walk back from the end of head over non-whitespace (same set as \s). Linear, unlike
+    // head.search(/\S+$/), which is quadratic on a long run of non-space characters.
+    let wordStart = head.length;
+    while (wordStart > 0 && !/\s/.test(head[wordStart - 1]!)) wordStart--;
+    const lastWord = head.slice(wordStart);
+    if (!isSentenceBoundary(lastWord, m[1]!, m[4] ?? '')) {
+      boundary.lastIndex = m.index + m[1]!.length; // keep scanning past this period
+      continue;
+    }
+    const end = m.index + m[1]!.length + m[2]!.length;
+    sentences.push(text.slice(start, end));
+    start = end;
+    boundary.lastIndex = end;
+  }
+  sentences.push(text.slice(start));
+  return sentences
     .map(s => s.trim())
     .filter(s => s.length > 0 && /[a-zA-Z]/.test(s) && s.split(/\s+/).length >= 3);
 }
@@ -105,7 +265,8 @@ function normalizeSentence(s: string): string {
  *
  * If an LLM merges or drops sentences, this function adds a synthetic `fact`
  * claim for each unrepresented sentence. Synthetic IDs use an 's' prefix to
- * distinguish them from LLM-extracted claims (e.g. "s1", "s2").
+ * distinguish them from LLM-extracted claims (e.g. "s1", "s2"), skip any id
+ * already in the scan, and stay far inside MAX_CLAIM_ID_LENGTH.
  *
  * This is the primary defence against claim-merging behaviour and works
  * identically across all providers.
@@ -115,7 +276,16 @@ export function guaranteeClaimPerSentence(text: string, claims: Claim[]): Claim[
   if (sentences.length < 2) return claims;
 
   const result = [...claims];
+  // A synthetic id never reuses one already in the scan (a model may itself
+  // return "s3"): ids key the verifications and the claim meter's rows.
+  const taken = new Set(result.map(c => c.id));
   let idx = result.length + 1;
+  const nextSyntheticId = (): string => {
+    while (taken.has(`s${idx}`)) idx++;
+    const id = `s${idx++}`;
+    taken.add(id);
+    return id;
+  };
 
   for (const sentence of sentences) {
     const normSentence = normalizeSentence(sentence);
@@ -129,7 +299,7 @@ export function guaranteeClaimPerSentence(text: string, claims: Claim[]): Claim[
     });
 
     if (!covered) {
-      result.push({ id: `s${idx++}`, text: sentence, type: 'fact', importance: 3 });
+      result.push({ id: nextSyntheticId(), text: sentence, type: 'fact', importance: 3 });
     }
   }
 
@@ -138,104 +308,28 @@ export function guaranteeClaimPerSentence(text: string, claims: Claim[]): Claim[
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function filterClaimsForVerification(claims: Claim[]): Claim[] {
-  return claims
-    .filter((c) => c.type === 'fact' && c.importance >= 2)
-    .sort((a, b) => b.importance - a.importance)
-    .slice(0, 8);
+/**
+ * Pick the claims to verify: facts of importance >= 2, most important first,
+ * at most `cap` of them. An invalid cap falls back to DEFAULT_VERIFY_CAP.
+ */
+export function filterClaimsForVerification(claims: Claim[], cap: number = DEFAULT_VERIFY_CAP): Claim[] {
+  return rankEligibleClaims(claims).slice(0, resolveVerifyCap(cap));
 }
 
-/** Callback for reporting scan progress to the caller (e.g., a CLI spinner). */
-export type ScanProgressCallback = (message: string) => void;
-
-/** Fired after each claim is verified, enabling progressive streaming. */
-export type ScanClaimCallback = (
-  claim: Claim,
-  verdict: VerificationResult,
-  index: number,
-  total: number,
-) => void;
-
-/**
- * Resolve the API key for a given provider name.
- * Returns '' for 'mock' (no key required).
- * Throws if the required env var is missing.
- */
-function resolveApiKey(name: string): string {
-  if (name === 'mock') return '';
-  const keyMap: Record<string, string> = {
-    claude: 'ANTHROPIC_API_KEY',
-    openai: 'OPENAI_API_KEY',
-    gemini: 'GEMINI_API_KEY',
-    perplexity: 'PERPLEXITY_API_KEY',
-  };
-  const envVar = keyMap[name] || 'GEMINI_API_KEY';
-  const key = process.env[envVar] || '';
-  if (!key) {
-    const hint = name === 'gemini'
-      ? `Get a free key at https://aistudio.google.com/apikey → export GEMINI_API_KEY=your-key`
-      : `Set ${envVar} in your environment`;
-    throw new Error(`No API key found for "${name}". ${hint}`);
-  }
-  return key;
+/** Rule findings for the scanned text (local pattern rules, no provider call). */
+function findRules(text: string, ruleNames?: string[]): Finding[] {
+  return ruleNames ? runRules(text, ruleNames) : runAllRules(text);
 }
 
-// openai FIRST: it's the funded, non-throttled provider + the retriever, so it is
-// the reliable always-present voter. gemini (free-tier) + claude (credits) are bonus
-// voters when available. Order matters: a degraded bonus provider must never be the
-// sole/first dependency of a grounded scan.
-const DEFAULT_CONSENSUS_PROVIDERS: ProviderName[] = ['openai', 'gemini', 'claude'];
-
-/**
- * Build the consensus rig: a provider-agnostic Retriever plus the named
- * providers to fan out to. A provider whose API key is missing is SKIPPED here
- * rather than throwing — a missing key must not abort a consensus scan (it
- * simply means one fewer voter). The Retriever defaults to gemini grounding but
- * is selected behind the Retriever interface so a different backend can be
- * swapped in by config.
- */
-function buildConsensusRig(names: ProviderName[]): {
-  retriever: Retriever;
-  namedProviders: NamedProvider[];
-} {
-  const namedProviders: NamedProvider[] = [];
-  for (const name of names) {
-    try {
-      const apiKey = resolveApiKey(name);
-      namedProviders.push({ name, provider: getProvider(apiKey, name) });
-    } catch {
-      // Missing key → not a participant. Not fatal: consensus still runs with
-      // whatever providers ARE configured.
-    }
-  }
-  // PRIMARY retriever: OpenAI Responses API web_search (funded key, not throttled
-  // like the free-tier gemini native googleSearch). When the OpenAI key is absent
-  // we fall back to GeminiGroundingRetriever (alternate). If neither key exists,
-  // retrieval yields [] and providers judge from parametric knowledge.
-  const retriever = buildRetriever();
-  return { retriever, namedProviders };
+/** `{ evidenceCoverage }` when the independent search ran, else nothing (the field stays absent). */
+function withEvidenceCoverage(verifications: Record<string, VerificationResult>): { evidenceCoverage?: EvidenceCoverage } {
+  const evidenceCoverage = buildEvidenceCoverage(verifications);
+  return evidenceCoverage ? { evidenceCoverage } : {};
 }
 
-/**
- * Select the consensus retriever behind the provider-agnostic Retriever seam.
- * OpenAI web search is primary; gemini grounding is the alternate fallback.
- */
-function buildRetriever(): Retriever {
-  let openaiKey = '';
-  try {
-    openaiKey = resolveApiKey('openai');
-  } catch {
-    openaiKey = '';
-  }
-  if (openaiKey) return new OpenAIWebSearchRetriever(openaiKey);
-
-  let geminiKey = '';
-  try {
-    geminiKey = resolveApiKey('gemini');
-  } catch {
-    geminiKey = '';
-  }
-  return new GeminiGroundingRetriever(geminiKey);
+/** Count of verifications that ran into a provider/API error instead of a verdict. */
+function countVerificationErrors(verifications: Record<string, VerificationResult>): number {
+  return Object.values(verifications).filter((v) => v.apiError).length;
 }
 
 export async function scan(
@@ -246,96 +340,31 @@ export async function scan(
   onProgress?: ScanProgressCallback,
   onClaimVerified?: ScanClaimCallback,
   pipelineConfig?: PipelineConfig,
+  options?: ScanOptions,
 ): Promise<ScanResult> {
-  const resolvedProvider = providerName || 'gemini';
-
-  // Consensus mode defaults EVERY stage to the funded openai path so a grounded
-  // scan never depends on the free-tier gemini SPOF (extraction + verify + the
-  // web-search retriever all run on the funded OpenAI key; gemini is a bonus
-  // consensus voter when not throttled). Explicit pipelineConfig overrides win.
-  // EXCEPTION: `mock` is the offline/keyless sentinel — it must never be
-  // force-upgraded to a real API call. An explicit `provider: 'mock'` is honored
-  // across stages even under consensus (the openai-default is for real-provider
-  // resolution, not for overriding an explicit offline request).
-  const consensusEnabled = pipelineConfig?.consensus === true;
-  const stageDefault =
-    consensusEnabled && resolvedProvider !== 'mock' ? 'openai' : resolvedProvider;
-
-  // FR-3: per-stage provider names (fall back to the stage default if not specified)
-  const extractionName = pipelineConfig?.extractionProvider ?? stageDefault;
-  const verificationName = pipelineConfig?.verificationProvider ?? stageDefault;
-
-  const extractionApiKey = resolveApiKey(extractionName);
-  const verificationApiKey = resolveApiKey(verificationName);
-
-  const extractionProvider: LLMProvider = getProvider(extractionApiKey, extractionName);
-  // Reuse the same instance when both stages use the same provider
-  const verificationProvider: LLMProvider = extractionName === verificationName
-    ? extractionProvider
-    : getProvider(verificationApiKey, verificationName);
-
-  // Consensus mode (opt-in, additive). When off, the rig is never built and the
-  // single-provider verify path below runs unchanged. (consensusEnabled computed above.)
-  const consensusRig = consensusEnabled
-    ? buildConsensusRig(pipelineConfig?.consensusProviders ?? DEFAULT_CONSENSUS_PROVIDERS)
-    : null;
+  const { extractionProvider, verifier } = resolveScanProviders(providerName, pipelineConfig, { grounding: options?.grounding });
 
   onProgress?.('Extracting claims...');
   const rawClaims = await extractionProvider.extractClaims(text);
   const claims = guaranteeClaimPerSentence(text, rawClaims);
-  const toVerify = filterClaimsForVerification(claims);
 
-  const verifications: Record<string, VerificationResult> = {};
-  let completedCount = 0;
-  let cursor = 0;
-  const runSlot = async (): Promise<void> => {
-    while (cursor < toVerify.length) {
-      const i = cursor++;
-      onProgress?.(`Verifying claim ${i + 1}/${toVerify.length}...`);
-      let result: VerificationResult;
+  if (options?.mode === 'full') {
+    return runFullVerification(claims, verifier, {
+      provider: extractionProvider.name, text, minConfidence, ruleNames, onProgress, onClaim: onClaimVerified,
+      evidence: options?.evidence,
+      independentEvidence: options?.independentEvidence,
+    });
+  }
 
-      // Consensus branch: fan out to N providers over shared retrieved sources.
-      // consensusVerify is internally resilient (never throws), so it bypasses
-      // the single-provider retry ladder.
-      if (consensusRig) {
-        result = await consensusVerify(toVerify[i], consensusRig.retriever, consensusRig.namedProviders);
-        verifications[toVerify[i].id] = result;
-        completedCount++;
-        onClaimVerified?.(toVerify[i], result, i, toVerify.length);
-        continue;
-      }
-
-      let delay = 1000;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          result = await verificationProvider.verifyClaim(toVerify[i]);
-          break;
-        } catch (err) {
-          if (attempt < 2) {
-            await new Promise(r => setTimeout(r, delay + Math.floor(Math.random() * 500)));
-            delay *= 2;
-          } else {
-            const isRateLimit = err instanceof Error && (err.message.includes('429') || err.message.toLowerCase().includes('rate limit'));
-            result = { claimId: toVerify[i].id, status: 'unverified', explanation: isRateLimit ? 'Rate limit reached. Upgrade for higher limits: https://faultline.nxtg.ai/pricing' : 'Verify failed after retries.', sources: [] };
-          }
-        }
-      }
-      verifications[toVerify[i].id] = result!;
-      completedCount++;
-      onClaimVerified?.(toVerify[i], result!, i, toVerify.length);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(VERIFY_CONCURRENCY, toVerify.length) }, runSlot));
+  const verifyCap = resolveVerifyCap(options?.verifyCap);
+  const rankedEligible = rankEligibleClaims(claims);
+  const toVerify = rankedEligible.slice(0, verifyCap);
+  const { verifications } = await runVerification(toVerify, verifier, { onProgress, onClaimVerified, evidence: options?.evidence, independentEvidence: options?.independentEvidence });
 
   onProgress?.('Generating report...');
   const overallRisk = calculateRisk(verifications);
   const complianceReport = generateComplianceReport(toVerify, verifications, overallRisk, minConfidence);
-
-  const ruleFindings = ruleNames
-    ? runRules(text, ruleNames)
-    : runAllRules(text);
-
-  const verificationErrors = Object.values(verifications).filter((v) => v.apiError).length;
+  const verificationErrors = countVerificationErrors(verifications);
 
   return {
     input: text.substring(0, 200),
@@ -344,9 +373,104 @@ export async function scan(
     verifications,
     overallRisk,
     complianceReport,
-    ruleFindings,
+    ruleFindings: findRules(text, ruleNames),
     verificationErrors,
     degraded: verificationErrors > 0,
+    verification: buildVerificationSummary(rankedEligible, toVerify, verifyCap),
+    ...withEvidenceCoverage(verifications),
+  };
+}
+
+// --- Full scan ---
+
+/**
+ * Extract the claims a full scan would check and price it, without verifying.
+ * Makes one extraction call and no verify or grounding call.
+ *
+ * @example
+ *   const est = await extractForFullScan(text, 'gemini');
+ *   // est.units === Math.ceil(est.factClaims / 8)
+ */
+export async function extractForFullScan(
+  text: string,
+  providerName?: string,
+  pipelineConfig?: PipelineConfig,
+): Promise<FullScanEstimate> {
+  const extractionProvider = resolveExtractionProvider(providerName, pipelineConfig);
+  const claims = guaranteeClaimPerSentence(text, await extractionProvider.extractClaims(text));
+  const { facts, notCheckable } = partitionForFullScan(claims);
+  return {
+    claims,
+    factClaims: facts.length,
+    notCheckable: notCheckable.length,
+    units: unitsForFullScan(facts.length),
+  };
+}
+
+/**
+ * Verify every fact claim in `claims` (typically from extractForFullScan), with
+ * no second extraction, so the run checks exactly the claims the estimate priced.
+ * Opinions and interpretations are reported as not checkable, never verified.
+ */
+export async function verifyFullScan(
+  claims: Claim[],
+  opts: VerifyFullScanOptions = {},
+): Promise<FullScanResult> {
+  const verifier = resolveVerifier(opts.providerName, opts.pipelineConfig, { grounding: opts.grounding });
+  return runFullVerification(claims, verifier, { ...opts, provider: verifier.provider.name });
+}
+
+interface FullVerificationContext {
+  provider: string;
+  text?: string;
+  minConfidence?: number;
+  ruleNames?: string[];
+  onProgress?: ScanProgressCallback;
+  onClaim?: ScanClaimCallback;
+  signal?: AbortSignal;
+  concurrency?: number;
+  evidence?: EvidenceOptions;
+  independentEvidence?: IndependentEvidenceOptions;
+}
+
+/** The full-scan core shared by scan(mode 'full') and verifyFullScan. */
+async function runFullVerification(
+  claims: Claim[],
+  verifier: Verifier,
+  context: FullVerificationContext,
+): Promise<FullScanResult> {
+  const partition = partitionForFullScan(claims);
+  const run = await runVerification(partition.facts, verifier, {
+    onProgress: context.onProgress,
+    onClaimVerified: context.onClaim,
+    signal: context.signal,
+    concurrency: context.concurrency,
+    flagExhaustedRetries: true,
+    evidence: context.evidence,
+    independentEvidence: context.independentEvidence,
+  });
+
+  context.onProgress?.('Generating report...');
+  const overallRisk = calculateRisk(run.verifications);
+  const complianceReport = generateComplianceReport(run.attempted, run.verifications, overallRisk, context.minConfidence);
+  const verification = buildFullVerificationSummary(partition, run.results);
+  // Positional, like the summary: an id-keyed count would lose a failure behind a duplicate id.
+  // Only provider errors count; an unserved claim without one (unverified, no source) was checked.
+  const verificationErrors = run.results.filter((r) => r?.apiError === true).length;
+
+  return {
+    input: context.text?.substring(0, 200) ?? '',
+    provider: context.provider,
+    claims,
+    verifications: run.verifications,
+    overallRisk,
+    complianceReport,
+    ruleFindings: context.text !== undefined ? findRules(context.text, context.ruleNames) : [],
+    verificationErrors,
+    degraded: verificationErrors > 0,
+    verification,
+    notAttemptedClaimIds: verification.uncheckedClaimIds,
+    ...withEvidenceCoverage(run.verifications),
   };
 }
 
@@ -357,6 +481,8 @@ export interface BatchScanResult {
   glob: string | null;
   filesScanned: number;
   filesSkipped: number;
+  /** Files counted in filesSkipped because claim extraction failed: nothing in them was checked. */
+  extractionFailures: Array<{ file: string; reason: ExtractionErrorReason }>;
   results: Array<{ file: string; result: ScanResult }>;
   summary: BatchSummary;
 }
@@ -422,6 +548,7 @@ export async function batchScan(
 ): Promise<BatchScanResult> {
   const files = collectFiles(dir, globPattern || null);
   const results: Array<{ file: string; result: ScanResult }> = [];
+  const extractionFailures: BatchScanResult['extractionFailures'] = [];
   let filesSkipped = 0;
 
   for (const file of files) {
@@ -431,10 +558,14 @@ export async function batchScan(
         filesSkipped++;
         continue;
       }
-      const result = await scan(text, providerName, minConfidence);
+      // A local batch: the user's own FAULTLINE_GROUNDING, else exactly the call it was before.
+      const result = groundingFromEnv() === 'parallel'
+        ? await scan(text, providerName, minConfidence, undefined, undefined, undefined, undefined, { grounding: 'parallel' })
+        : await scan(text, providerName, minConfidence);
       results.push({ file: relative(dir, file), result });
-    } catch {
+    } catch (err) {
       filesSkipped++;
+      if (isExtractionError(err)) extractionFailures.push({ file: relative(dir, file), reason: err.reason });
     }
   }
 
@@ -445,6 +576,7 @@ export async function batchScan(
     glob: globPattern || null,
     filesScanned: results.length,
     filesSkipped,
+    extractionFailures,
     results,
     summary,
   };

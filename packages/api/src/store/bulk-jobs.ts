@@ -48,8 +48,10 @@ const RISK_SEVERITY_ORDER: Record<string, number> = {
 
 class BulkJobStore {
   private jobs = new Map<string, BulkJob>();
+  /** The API key that created each job, kept off the job so responses never show it. */
+  private owners = new Map<string, string>();
 
-  create(totalFiles: number): BulkJob {
+  create(totalFiles: number, ownerKeyId?: string): BulkJob {
     const job: BulkJob = {
       id: randomUUID(),
       status: 'pending',
@@ -60,7 +62,13 @@ class BulkJobStore {
       createdAt: new Date().toISOString(),
     };
     this.jobs.set(job.id, job);
+    if (ownerKeyId !== undefined) this.owners.set(job.id, ownerKeyId);
     return job;
+  }
+
+  /** The key that created the job, or undefined when none was recorded. */
+  ownerOf(id: string): string | undefined {
+    return this.owners.get(id);
   }
 
   get(id: string): BulkJob | undefined {

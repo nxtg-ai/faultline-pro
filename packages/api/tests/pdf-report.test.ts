@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { buildServer } from '../src/server.js';
-import { generatePdfReport } from '../src/store/pdf-report.js';
+import { clampImportance, generatePdfReport, importanceStars } from '../src/store/pdf-report.js';
 import { getScanStore, resetScanStore } from '../src/store/scans.js';
 import type { FastifyInstance } from 'fastify';
 
@@ -52,6 +52,12 @@ const FULL_SCAN = {
 // ── generatePdfReport (unit) ──────────────────────────────────────────────────
 
 describe('generatePdfReport', () => {
+  it('a claim with no type still renders (was a 500 from type.toUpperCase)', async () => {
+    const scan = { ...MINIMAL_SCAN, claims: [{ id: 'c1', text: 'Revenue grew 40% in Q3.', importance: 4 }] } as unknown as typeof MINIMAL_SCAN;
+    const buf = await generatePdfReport(scan);
+    expect(buf.length).toBeGreaterThan(0);
+  });
+
   it('returns a Buffer', async () => {
     const buf = await generatePdfReport(MINIMAL_SCAN);
     expect(buf).toBeInstanceOf(Buffer);
@@ -94,6 +100,38 @@ describe('generatePdfReport', () => {
     const longInput = 'Word '.repeat(500);
     const buf = await generatePdfReport({ ...MINIMAL_SCAN, input: longInput });
     expect(buf).toBeInstanceOf(Buffer);
+  });
+});
+
+// ── Caller-supplied importance (CodeQL #8 js/resource-exhaustion) ─────────────
+
+describe('importance clamping', () => {
+  it.each([
+    [-1e9, 1], [1e9, 5], [NaN, 1], [Infinity, 1], [-Infinity, 1],
+    [0, 1], [3, 3], [3.9, 3], [5, 5], [6, 5], ['4', 4], [undefined, 1],
+  ])('clampImportance(%s) = %s', (input, expected) => {
+    expect(clampImportance(input)).toBe(expected);
+  });
+
+  it.each([[-1e9], [1e9], [NaN], [-Infinity], [Infinity]])('importanceStars(%s) is exactly five stars', (n) => {
+    const stars = importanceStars(n);
+    expect(stars).toHaveLength(5);
+    expect(stars).toMatch(/^★+☆*$/);
+  });
+
+  it('importanceStars(3) is three filled, two empty', () => {
+    expect(importanceStars(3)).toBe('★★★☆☆');
+  });
+
+  it('generates a report without throwing for importance -1e9, 1e9 and NaN', async () => {
+    const claims = [
+      { id: 'c1', text: 'Negative importance.', type: 'fact', importance: -1e9 },
+      { id: 'c2', text: 'Huge importance.', type: 'fact', importance: 1e9 },
+      { id: 'c3', text: 'NaN importance.', type: 'fact', importance: NaN },
+    ];
+    const buf = await generatePdfReport({ ...MINIMAL_SCAN, claims, verifications: {} });
+    expect(buf.length).toBeGreaterThan(0);
+    expect(buf.subarray(0, 5).toString()).toBe('%PDF-');
   });
 });
 

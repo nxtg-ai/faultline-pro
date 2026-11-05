@@ -1,0 +1,317 @@
+// Validates: N-234 (verdict states enforced at runtime, GoPMO 1.18.11.3 P2; EP4 recert 02-codex-evidence.md row 1)
+/**
+ * A verdict status is checked at runtime, not only typed. The examiner's probe
+ * (P1) registered a provider that returned the status ROYALLY_CERTIFIED and saw
+ * it survive scan() and disk history. These tests replay that probe through
+ * the real engine path and through the CLI history writer.
+ */
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import {
+  VERDICT_STATUSES,
+  isVerdictStatus,
+  verdictProblem,
+  guardVerdict,
+  assertValidScanResult,
+  storedVerdictProblem,
+  STORED_STATUSES,
+  isInvalidVerdictError,
+} from '../lib/verdict-guard.js';
+import { scan } from '../cli/scan.js';
+import { registerProvider, getProvider } from '../providers/registry.js';
+import { saveHistoryEntry } from '../history/store.js';
+import type { Claim, VerificationResult } from '../types.js';
+
+const PROBE = 'ROYALLY_CERTIFIED';
+const valid = (claimId = 'c1'): VerificationResult => ({ claimId, status: 'supported', explanation: 'ok', sources: [{ title: 't', uri: 'https://example.org' }] });
+
+function registerFixture(name: string, verify: (c: Claim) => unknown): void {
+  registerProvider(name, () => ({
+    name: 'Examiner fixture',
+    modelId: 'fixture-v1',
+    extractClaims: async () => [{ id: 'c1', text: 'The examiner fixture contains a factual claim.', type: 'fact', importance: 5 }],
+    verifyClaim: async (c: Claim) => verify(c) as VerificationResult,
+    generateCritiqueAndPrompt: async () => ({ critique: '', improvedPrompt: '' }),
+  }) as never);
+}
+
+describe('allowlist', () => {
+  it('is exactly the four verdict statuses', () => {
+    expect([...VERDICT_STATUSES]).toEqual(['supported', 'contradicted', 'mixed', 'unverified']);
+    for (const s of VERDICT_STATUSES) expect(isVerdictStatus(s)).toBe(true);
+    for (const s of [PROBE, 'loading', 'skipped', 'Supported', ' supported', '', null, undefined, 1, {}]) {
+      expect(isVerdictStatus(s)).toBe(false);
+    }
+  });
+
+  it('names each shape problem without echoing the value', () => {
+    expect(verdictProblem(valid())).toBeNull();
+    expect(verdictProblem(null)).toBe('not an object');
+    expect(verdictProblem([])).toBe('not an object');
+    expect(verdictProblem({ ...valid(), status: PROBE })).toBe('status is not an allowed verdict');
+    expect(verdictProblem({ ...valid(), explanation: 5 })).toBe('explanation is not a string');
+    expect(verdictProblem({ ...valid(), sources: 'x' })).toBe('sources is not an array');
+    expect(verdictProblem({ ...valid(), sources: [{ title: 't' }] })).toBe('a source has no string uri');
+  });
+
+  it('stores accept the verdicts plus skipped, never loading or an unknown value, and check source shape', () => {
+    expect([...STORED_STATUSES]).toEqual(['supported', 'contradicted', 'mixed', 'unverified', 'skipped']);
+    expect(storedVerdictProblem({ status: 'skipped', explanation: 'opinion' })).toBeNull();
+    expect(storedVerdictProblem({ status: 'supported' })).toBeNull();
+    expect(storedVerdictProblem({ status: 'loading' })).toBe('status is not an allowed verdict');
+    expect(storedVerdictProblem({ status: PROBE })).toBe('status is not an allowed verdict');
+    expect(storedVerdictProblem({ status: 'mixed', sources: [{ title: 'no uri' }] })).toBe('a source has no string uri');
+    expect(() => assertValidScanResult({ verifications: { c1: { status: 'skipped' } } })).not.toThrow();
+  });
+
+  it('guardVerdict returns a valid verdict unchanged and replaces an invalid one', () => {
+    const v = valid();
+    expect(guardVerdict(v, 'c1')).toBe(v);
+    const g = guardVerdict({ ...v, status: PROBE }, 'c1');
+    expect(g).toEqual({
+      claimId: 'c1',
+      status: 'unverified',
+      explanation: 'The verifier returned a malformed verdict, so this claim was not checked.',
+      sources: [],
+      apiError: true,
+      apiErrorReason: 'provider_error',
+    });
+    expect(JSON.stringify(g)).not.toContain(PROBE);
+  });
+
+  it('assertValidScanResult refuses a bad status and a bad overallRisk, and passes a good result', () => {
+    expect(() => assertValidScanResult({ verifications: { c1: valid() }, overallRisk: 'low' })).not.toThrow();
+    let caught: unknown;
+    try { assertValidScanResult({ verifications: { c1: { ...valid(), status: PROBE } } }); } catch (e) { caught = e; }
+    expect(isInvalidVerdictError(caught)).toBe(true);
+    expect((caught as { statusCode: number }).statusCode).toBe(502);
+    expect(String((caught as Error).message)).not.toContain(PROBE);
+    expect(() => assertValidScanResult({ verifications: {}, overallRisk: 'edited' })).toThrow(/overallRisk/);
+  });
+});
+
+describe('engine path: the examiner probe through scan()', () => {
+  // A registered custom provider resolves its key from GEMINI_API_KEY; the fixture never uses it.
+  let savedKey: string | undefined;
+  beforeAll(() => { savedKey = process.env.GEMINI_API_KEY; process.env.GEMINI_API_KEY = 'fixture-unused'; });
+  afterAll(() => { if (savedKey === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = savedKey; });
+
+  it('a provider status outside the allowlist never leaves scan()', async () => {
+    registerFixture('examiner-p1', (c) => ({ claimId: c.id, status: PROBE, explanation: 'fixture', sources: [] }));
+    const result = await scan('The examiner fixture contains a factual claim.', 'examiner-p1');
+    const v = result.verifications.c1;
+    expect(v).toBeDefined();
+    expect(v.status).toBe('unverified');
+    expect(v.apiError).toBe(true);
+    expect(v.apiErrorReason).toBe('provider_error');
+    expect(JSON.stringify(result)).not.toContain(PROBE);
+  });
+
+  it('a malformed verdict shape is replaced the same way', async () => {
+    registerFixture('examiner-shape', (c) => ({ claimId: c.id, status: 'supported', explanation: 'x', sources: [{ title: 'no uri' }] }));
+    const result = await scan('The examiner fixture contains a factual claim.', 'examiner-shape');
+    expect(result.verifications.c1.status).toBe('unverified');
+    expect(result.verifications.c1.apiError).toBe(true);
+  });
+
+  it('a non-string explanation is replaced the same way', async () => {
+    registerFixture('examiner-explanation', (c) => ({ claimId: c.id, status: 'supported', explanation: 42, sources: [{ title: 'S', uri: 'https://s.example/a' }] }));
+    const result = await scan('The examiner fixture contains a factual claim.', 'examiner-explanation');
+    expect(result.verifications.c1.status).toBe('unverified');
+    expect(result.verifications.c1.apiError).toBe(true);
+  });
+
+  it('a fresh scan builds its compliance projection from the guarded verdicts', async () => {
+    const claims: Claim[] = [
+      { id: 'c1', text: 'The first fixture claim is about a bridge.', type: 'fact', importance: 3 },
+      { id: 'c2', text: 'The second fixture claim is about a river.', type: 'fact', importance: 3 },
+      { id: 'c3', text: 'The third fixture claim is about a tower.', type: 'fact', importance: 3 },
+    ];
+    const raw: Record<string, unknown> = {
+      // Malformed (a source with no uri beside a valid one): provider error.
+      c1: { claimId: 'c1', status: 'supported', explanation: 'x', sources: [{}, { title: 'S', uri: 'https://e.example/fact' }] },
+      // Well-formed but nothing openable: abstains.
+      c2: { claimId: 'c2', status: 'contradicted', explanation: 'x', sources: [{ title: 'S', uri: 'javascript:alert(1)' }] },
+      // Valid and openable: kept.
+      c3: { claimId: 'c3', status: 'mixed', explanation: 'x', sources: [{ title: 'S', uri: 'https://e.example/tower' }] },
+    };
+    registerProvider('examiner-compliance', () => ({
+      name: 'Examiner fixture',
+      modelId: 'fixture-v1',
+      extractClaims: async () => claims,
+      verifyClaim: async (c: Claim) => structuredClone(raw[c.id]) as VerificationResult,
+      generateCritiqueAndPrompt: async () => ({ critique: '', improvedPrompt: '' }),
+    }) as never);
+    const result = await scan(claims.map((c) => c.text).join(' '), 'examiner-compliance');
+    expect(result.verifications.c1).toMatchObject({ status: 'unverified', apiError: true, apiErrorReason: 'provider_error' });
+    expect(result.verifications.c2).toMatchObject({ status: 'unverified', noSourceAbstain: true });
+    expect(result.verifications.c3.status).toBe('mixed');
+    const mappings = result.complianceReport.claimMappings;
+    expect(mappings.length).toBeGreaterThan(0);
+    for (const m of mappings) {
+      expect(result.verifications[m.claimId]).toBeDefined();
+      expect(m.verificationStatus).toBe(result.verifications[m.claimId].status);
+    }
+  });
+
+  it('a valid verdict passes through unchanged', async () => {
+    registerFixture('examiner-ok', (c) => ({ claimId: c.id, status: 'contradicted', explanation: 'refuted', sources: [{ title: 'S', uri: 'https://s.example/a' }] }));
+    const result = await scan('The examiner fixture contains a factual claim.', 'examiner-ok');
+    expect(result.verifications.c1).toMatchObject({ status: 'contradicted', explanation: 'refuted' });
+    expect(result.verifications.c1.apiError).toBeUndefined();
+  });
+});
+
+describe('CLI disk history', () => {
+  it('refuses to write a scan carrying an invalid verdict, and writes nothing', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fl-verdict-history-'));
+    try {
+      const bad = { claims: [], verifications: { c1: { ...valid(), status: PROBE } }, overallRisk: 'low', provider: 'mock', ruleFindings: [] } as never;
+      expect(() => saveHistoryEntry(bad, 'doc.txt', dir)).toThrow(/invalid verdict/);
+      expect(readdirSync(dir)).toHaveLength(0);
+      const good = { claims: [], verifications: { c1: valid() }, overallRisk: 'low', provider: 'mock', ruleFindings: [] } as never;
+      saveHistoryEntry(good, 'doc.txt', dir);
+      expect(readdirSync(dir)).toHaveLength(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('billable verdicts (cost log verified_count, GoPMO 1.18.11.7.3)', () => {
+  // Provenance as the engine binds it; without a retriever nothing is billable.
+  const p = { provenance: { provider: 'gemini', model: 'm', verifiedAt: '2026-10-01T00:00:00.000Z', retriever: 'gemini-grounding', retrievedAt: '2026-10-01T00:00:00.000Z' } };
+  it('counts sourced definite verdicts only; not unverified, zero-source verdicts, provider errors, UI states or junk', async () => {
+    const { isBillableVerdict, billableVerdictCount } = await import('../lib/verdict-guard.js');
+    const src = [{ title: 'S', uri: 'https://example.org/s' }];
+    expect(isBillableVerdict({ ...p, status: 'supported', sources: src })).toBe(true);
+    expect(isBillableVerdict({ ...p, status: 'supported' })).toBe(false);
+    expect(isBillableVerdict({ ...p, status: 'unverified', sources: src })).toBe(false);
+    expect(isBillableVerdict({ ...p, status: 'unverified', apiError: true })).toBe(false);
+    expect(isBillableVerdict({ ...p, status: 'skipped', sources: src })).toBe(false);
+    expect(isBillableVerdict({ ...p, status: 'loading', sources: src })).toBe(false);
+    expect(isBillableVerdict({ ...p, status: 'ROYALLY_CERTIFIED', sources: src })).toBe(false);
+    expect(isBillableVerdict(null)).toBe(false);
+    const v = {
+      a: { ...p, status: 'supported', sources: src }, b: { ...p, status: 'unverified', sources: src },
+      c: { ...p, status: 'unverified', apiError: true }, d: { ...p, status: 'skipped' }, e: { ...p, status: 'contradicted', sources: src },
+    };
+    expect(billableVerdictCount(v)).toBe(2);
+    expect(billableVerdictCount(Object.values(v))).toBe(2);
+    expect(billableVerdictCount([undefined, { ...p, status: 'mixed', sources: src }, { ...p, status: 'mixed', sources: [] }])).toBe(1);
+    expect(billableVerdictCount(undefined)).toBe(0);
+  });
+});
+
+describe('billable only on sources the engine retrieved: each condition alone', () => {
+  const src = [{ title: 'S', uri: 'https://example.org/s' }];
+  const billable = () => ({
+    status: 'supported',
+    sources: src,
+    provenance: { provider: 'gemini', model: 'm', verifiedAt: '2026-10-01T00:00:00.000Z', retriever: 'gemini-grounding', retrievedAt: '2026-10-01T00:00:00.000Z' },
+  });
+
+  it('the base fixture is billable, with each of the three definite statuses', async () => {
+    const { isBillableVerdict } = await import('../lib/verdict-guard.js');
+    for (const status of ['supported', 'contradicted', 'mixed']) {
+      expect(isBillableVerdict({ ...billable(), status })).toBe(true);
+    }
+  });
+
+  it('1. a status other than supported, contradicted or mixed is not billable', async () => {
+    const { isBillableVerdict } = await import('../lib/verdict-guard.js');
+    for (const status of ['unverified', 'skipped', 'loading', PROBE, undefined]) {
+      expect(isBillableVerdict({ ...billable(), status })).toBe(false);
+    }
+  });
+
+  it('2. sources missing, empty or not an array is not billable', async () => {
+    const { isBillableVerdict } = await import('../lib/verdict-guard.js');
+    for (const sources of [undefined, [], 'https://example.org/s', { 0: src[0] }]) {
+      expect(isBillableVerdict({ ...billable(), sources })).toBe(false);
+    }
+  });
+
+  it('3. no engine retriever (missing, empty or not a string) is not billable', async () => {
+    const { isBillableVerdict } = await import('../lib/verdict-guard.js');
+    const base = billable();
+    const { retriever: _dropped, retrievedAt: _at, ...noRetriever } = base.provenance;
+    expect(isBillableVerdict({ ...base, provenance: noRetriever })).toBe(false);
+    expect(isBillableVerdict({ ...base, provenance: undefined })).toBe(false);
+    expect(isBillableVerdict({ ...base, provenance: null })).toBe(false);
+    expect(isBillableVerdict({ ...base, provenance: 'gemini-grounding' })).toBe(false);
+    for (const retriever of ['', 1, true, null, ['gemini-grounding'], {}]) {
+      expect(isBillableVerdict({ ...base, provenance: { ...base.provenance, retriever } })).toBe(false);
+    }
+  });
+
+  it('4. an API error is not billable', async () => {
+    const { isBillableVerdict } = await import('../lib/verdict-guard.js');
+    expect(isBillableVerdict({ ...billable(), apiError: true })).toBe(false);
+    // Only `true` marks an API error.
+    expect(isBillableVerdict({ ...billable(), apiError: false })).toBe(true);
+  });
+});
+
+describe('a provider cannot bind its own retriever (real runner)', () => {
+  // A registered custom provider resolves its key from GEMINI_API_KEY; the fixture never uses it.
+  let savedKey: string | undefined;
+  beforeAll(() => { savedKey = process.env.GEMINI_API_KEY; process.env.GEMINI_API_KEY = 'fixture-unused'; });
+  afterAll(() => { if (savedKey === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = savedKey; });
+  const src = [{ title: 'S', uri: 'https://example.org/s' }];
+  // A provider-shaped verdict that cites a source and labels its own retriever.
+  const selfLabelled = (c: Claim): VerificationResult => ({
+    claimId: c.id,
+    status: 'supported',
+    explanation: 'ok',
+    sources: src,
+    provenance: { provider: 'gemini', model: 'self-v1', verifiedAt: '2020-01-01T00:00:00.000Z', retriever: 'gemini-grounding', retrievedAt: '2020-01-01T00:00:00.000Z' },
+  });
+
+  it('scan() drops a self-set retriever, so the verdict is not billable', async () => {
+    const { isBillableVerdict, billableVerdictCount } = await import('../lib/verdict-guard.js');
+    registerFixture('self-retriever', selfLabelled);
+    const r = await scan('The examiner fixture contains a factual claim.', 'self-retriever');
+    const v = r.verifications.c1;
+    expect(v).toBeDefined();
+    // Verdict and sources pass through unchanged; only provenance is the engine's.
+    expect(v.status).toBe('supported');
+    expect(v.sources).toEqual(src);
+    expect(v.provenance?.provider).toBe('self-retriever');
+    expect(v.provenance?.retriever).toBeUndefined();
+    expect(v.provenance?.retrievedAt).toBeUndefined();
+    expect(isBillableVerdict(v)).toBe(false);
+    expect(billableVerdictCount(r.verifications)).toBe(0);
+  });
+
+  it('the same provider resolved as gemini is not the built-in, so it gets no retriever', async () => {
+    const { isBillableVerdict } = await import('../lib/verdict-guard.js');
+    const { runVerification } = await import('../cli/verify-runner.js');
+    const claim: Claim = { id: 'c1', text: 'A factual claim.', type: 'fact', importance: 5 };
+    const provider = { name: 'fixture', modelId: 'fixture-v1', verifyClaim: async (c: Claim) => selfLabelled(c) } as never;
+    const asOther = await runVerification([claim], { provider, consensusRig: null, providerName: 'self-retriever' });
+    const asGemini = await runVerification([claim], { provider, consensusRig: null, providerName: 'gemini' });
+    expect(asOther.verifications.c1.provenance?.retriever).toBeUndefined();
+    expect(isBillableVerdict(asOther.verifications.c1)).toBe(false);
+    expect(asGemini.verifications.c1.provenance?.provider).toBe('gemini');
+    expect(asGemini.verifications.c1.provenance?.retriever).toBeUndefined();
+    expect(asGemini.verifications.c1.provenance?.retrievedAt).toBeUndefined();
+    expect(isBillableVerdict(asGemini.verifications.c1)).toBe(false);
+  });
+
+  it('the built-in gemini instance gets the engine retriever at its own time and is billable', async () => {
+    const { isBillableVerdict } = await import('../lib/verdict-guard.js');
+    const { runVerification } = await import('../cli/verify-runner.js');
+    const claim: Claim = { id: 'c1', text: 'A factual claim.', type: 'fact', importance: 5 };
+    const provider = getProvider('fixture-unused', 'gemini');
+    vi.spyOn(provider, 'verifyClaim').mockImplementation(async (c: Claim) => selfLabelled(c));
+    const asGemini = await runVerification([claim], { provider, consensusRig: null, providerName: 'gemini' });
+    expect(asGemini.verifications.c1.provenance?.retriever).toBe('gemini-grounding');
+    // The engine's own time, not the provider's 2020 stamp.
+    expect(asGemini.verifications.c1.provenance?.retrievedAt).not.toBe('2020-01-01T00:00:00.000Z');
+    expect(isBillableVerdict(asGemini.verifications.c1)).toBe(true);
+  });
+
+});

@@ -55,6 +55,7 @@ describe('CW1: compliance gate failure fires webhook event', () => {
       expect(vi.mocked(fireWebhookEvent)).toHaveBeenCalledWith(
         'compliance.gate_failed',
         expect.objectContaining({ scanId: expect.any(String) }),
+        expect.objectContaining({ keyId: 'admin' }),
       );
     }
   });
@@ -77,6 +78,7 @@ describe('CW2: compliance gate pass does NOT fire webhook', () => {
     if (body.gate.pass) {
       expect(vi.mocked(fireWebhookEvent)).not.toHaveBeenCalledWith(
         'compliance.gate_failed',
+        expect.anything(),
         expect.anything(),
       );
     }
@@ -108,9 +110,10 @@ describe('CW3: webhook payload includes required fields', () => {
           nonCompliantCount: expect.any(Number),
           failedArticles: expect.any(Array),
         }),
+        expect.objectContaining({ keyId: 'admin' }),
       );
 
-      const [, payload] = vi.mocked(fireWebhookEvent).mock.calls[0] as [string, Record<string, unknown>];
+      const [, payload] = vi.mocked(fireWebhookEvent).mock.calls[0] as unknown as [string, Record<string, unknown>];
       expect(Array.isArray(payload.failedArticles)).toBe(true);
     }
   });

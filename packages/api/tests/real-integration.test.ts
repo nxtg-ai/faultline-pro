@@ -39,7 +39,7 @@ function makePayload(text: string, extra: Record<string, unknown> = {}): string 
 }
 
 function authHeaders(key = API_KEY): Record<string, string> {
-  return { 'x-api-key': key, 'content-type': 'application/json' };
+  return { 'x-api-key': key, 'content-type': 'application/json', 'x-faultline-user-ref': 'user_testref1' };
 }
 
 describe('Real Integration Oracle — end-to-end pipeline (no scan mock)', () => {

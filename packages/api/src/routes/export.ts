@@ -8,7 +8,7 @@
  */
 
 import type { FastifyInstance } from 'fastify';
-import { requireApiKey } from '../plugins/auth.js';
+import { requireApiKey, scanHistoryKeyScope } from '../plugins/auth.js';
 import { getScanHistory } from '../store/scan-history.js';
 import type { ScanEntry } from '../store/scan-history.js';
 
@@ -120,6 +120,7 @@ export async function exportRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: ExportBody }>(
     '/export',
     {
+      config: { access: 'key' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Scans'],
@@ -148,6 +149,7 @@ export async function exportRoutes(fastify: FastifyInstance): Promise<void> {
         provider,
         risk,
         limit: 1000,
+        keyId: scanHistoryKeyScope(request),
       });
 
       if (entries.length === 0) {

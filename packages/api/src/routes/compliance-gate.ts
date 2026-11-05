@@ -1,11 +1,20 @@
 import type { FastifyInstance } from 'fastify';
-import { requireApiKey } from '../plugins/auth.js';
+import { requireApiKey, scanHistoryKeyScope } from '../plugins/auth.js';
+import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
+import { enforceMonthlyCap } from '../plugins/usage-cap.js';
+import { meterScan } from '../lib/scan-quota.js';
 import { esc } from '../lib/html.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scanInRequestMode } from '../lib/grounding.js';
+import { commitClaims, engineVerifyCap, reserveClaims } from '../plugins/claim-meter.js';
+import { scanWithSpend } from '../lib/scan-spend.js';
 import { getScanStore } from '../store/scans.js';
+import { ownedScan } from '../lib/scan-access.js';
 import { getComplianceHistoryStore } from '../store/compliance-history.js';
 import { fireWebhookEvent } from '../store/webhooks.js';
+import { requestOwner } from '../lib/cache-caller.js';
+import { isGroundedScanResult } from '../store/cache.js';
 import {
   buildEuComplianceReport,
   evaluateComplianceGate,
@@ -198,7 +207,8 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
   fastify.post<{ Body: ComplianceGateBody }>(
     '/scan/compliance-gate',
     {
-      preHandler: [requireApiKey, rateLimitScan],
+      config: { access: 'owner' },
+      preHandler: [requireApiKey, rateLimitScan, enforceMonthlyCap, enforceProviderSpendCap, reserveClaims(engineVerifyCap())],
       schema: {
         tags: ['Compliance'],
         summary: 'Scan text and evaluate EU AI Act compliance gate (pass/fail)',
@@ -212,8 +222,9 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
       const { text, provider, projectName, threshold, strict } = request.body;
       const keyId = request.keyId ?? 'unknown';
 
-      const result = await scan(text, provider);
+      const result = await scanWithSpend({ text, provider, keyId }, () => scanInRequestMode(text, provider));
       const stored = getScanStore().record(keyId, text, result as unknown as Record<string, unknown>);
+      commitClaims(request, stored.id, result, provider ?? 'gemini');
       const report = buildEuComplianceReport(result, { projectName });
       const gate = evaluateComplianceGate(report, { threshold, strict });
 
@@ -227,6 +238,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
         nonCompliantCount: gate.nonCompliantCount,
         totalArticles: gate.totalArticles,
         threshold: gate.threshold,
+        keyId,
       });
 
       // Fire webhook alert on compliance gate failure
@@ -234,17 +246,24 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
         const failedArticles = gate.articles
           .filter(a => a.status !== 'compliant' && a.status !== 'not-applicable')
           .map(a => a.article);
-        fireWebhookEvent('compliance.gate_failed', {
-          scanId: stored.id,
-          projectName: report.projectName,
-          complianceScore: report.complianceScore,
-          overallRisk: report.overallRisk,
-          nonCompliantCount: gate.nonCompliantCount,
-          failedArticles,
-        });
+        // A gate run on Gemini-grounded verdicts sends only that it failed:
+        // score, risk and articles are derived from the grounded results.
+        fireWebhookEvent('compliance.gate_failed', isGroundedScanResult(result as unknown as Record<string, unknown>)
+          ? { scanId: stored.id, projectName: report.projectName, status: 'failed', grounded: true }
+          : {
+              scanId: stored.id,
+              projectName: report.projectName,
+              complianceScore: report.complianceScore,
+              overallRisk: report.overallRisk,
+              nonCompliantCount: gate.nonCompliantCount,
+              failedArticles,
+            }, requestOwner(request));
       }
 
       const response: ComplianceGateResponse = { gate, report, scanId: stored.id };
+      // Counted once, like /scan, when the scan it serves holds a billable verdict. A
+      // failed gate (422) still served the scan, so it counts the same way.
+      meterScan(keyId, result.verifications);
       return reply.status(gate.pass ? 200 : 422).send(response);
     },
   );
@@ -253,6 +272,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
   fastify.get<{ Params: { id: string }; Querystring: { projectName?: string; threshold?: string; strict?: string } }>(
     '/scan/:id/compliance',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Compliance'],
@@ -273,7 +293,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
       },
     },
     async (request, reply) => {
-      const stored = getScanStore().getById(request.params.id);
+      const stored = ownedScan(request.params.id, request.keyId);
       if (!stored) {
         return reply.status(404).send({ error: 'Scan not found.' });
       }
@@ -292,6 +312,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
   fastify.post<{ Body: { beforeId: string; afterId: string; projectName?: string } }>(
     '/scan/compliance-diff',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Compliance'],
@@ -310,9 +331,9 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
     },
     async (request, reply) => {
       const { beforeId, afterId, projectName } = request.body;
-      const beforeScan = getScanStore().getById(beforeId);
+      const beforeScan = ownedScan(beforeId, request.keyId);
       if (!beforeScan) return reply.status(404).send({ error: `Scan not found: ${beforeId}` });
-      const afterScan = getScanStore().getById(afterId);
+      const afterScan = ownedScan(afterId, request.keyId);
       if (!afterScan) return reply.status(404).send({ error: `Scan not found: ${afterId}` });
 
       const beforeResult = beforeScan.result as unknown as Parameters<typeof buildEuComplianceReport>[0];
@@ -329,6 +350,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
   fastify.get<{ Params: { id: string }; Querystring: { label?: string; projectName?: string } }>(
     '/scan/:id/compliance/badge',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Compliance'],
@@ -348,7 +370,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
       },
     },
     async (request, reply) => {
-      const stored = getScanStore().getById(request.params.id);
+      const stored = ownedScan(request.params.id, request.keyId);
       if (!stored) {
         return reply.status(404).send({ error: 'Scan not found.' });
       }
@@ -371,6 +393,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
   fastify.get<{ Querystring: { projectName?: string; limit?: string; since?: string } }>(
     '/compliance/history',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Compliance'],
@@ -389,6 +412,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
       const limit = request.query.limit ? parseInt(request.query.limit, 10) : undefined;
       const entries = getComplianceHistoryStore().query({
         projectName: request.query.projectName,
+        keyId: scanHistoryKeyScope(request),
         limit,
         since: request.query.since,
       });
@@ -400,6 +424,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
   fastify.get<{ Querystring: { projectName: string } }>(
     '/compliance/trend',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Compliance'],
@@ -414,7 +439,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
       },
     },
     async (request, reply) => {
-      const trend = getComplianceHistoryStore().trend(request.query.projectName);
+      const trend = getComplianceHistoryStore().trend(request.query.projectName, scanHistoryKeyScope(request));
       return reply.send(trend);
     },
   );
@@ -423,6 +448,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
   fastify.get<{ Querystring: { format?: string; projectName?: string; since?: string } }>(
     '/compliance/export',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Compliance'],
@@ -440,6 +466,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
     async (request, reply) => {
       const entries = getComplianceHistoryStore().query({
         projectName: request.query.projectName,
+        keyId: scanHistoryKeyScope(request),
         since: request.query.since,
         limit: 5000,  // Export up to full store capacity
       });
@@ -467,17 +494,19 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
   fastify.get(
     '/compliance/dashboard',
     {
+      config: { access: 'owner' },
       preHandler: [requireApiKey],
       schema: {
         tags: ['Compliance'],
         summary: 'EU AI Act compliance dashboard (HTML)',
       },
     },
-    async (_request, reply) => {
+    async (request, reply) => {
       const store = getComplianceHistoryStore();
-      const history = store.query({ limit: 20 });
+      const scope = scanHistoryKeyScope(request);
+      const history = store.query({ limit: 20, keyId: scope });
       const latest = history.length > 0 ? history[history.length - 1] : null;
-      const all = store.query({});
+      const all = store.query({ keyId: scope });
       const total = all.length;
       const passCount = all.filter(e => e.pass).length;
 
@@ -506,7 +535,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
       // Fetch per-article breakdown from the latest scan (if available)
       let articleStatuses: Array<{ article: string; status: string; score: number }> = [];
       if (latest) {
-        const scan = getScanStore().getById(latest.scanId);
+        const scan = ownedScan(latest.scanId, request.keyId);
         if (scan) {
           const result = scan.result as unknown as Parameters<typeof buildEuComplianceReport>[0];
           const report = buildEuComplianceReport(result, { projectName: latest.projectName });

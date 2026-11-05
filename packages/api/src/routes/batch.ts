@@ -1,15 +1,24 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
+import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scanInRequestMode } from '../lib/grounding.js';
+import { scanWithSpend } from '../lib/scan-spend.js';
+import { isExtractionError } from '@nxtg/faultline/providers/extraction-error.js';
 import { getAnalyticsStore } from '../store/analytics.js';
 import type { RiskLevel } from '../store/analytics.js';
 import { fireWebhookEvent } from '../store/webhooks.js';
+import { issueScanId } from '../lib/scan-access.js';
+import { requestOwner } from '../lib/cache-caller.js';
 import { getRateLimiter } from '../store/ratelimit.js';
 import { getKeyStore } from '../store/keys.js';
-import { getUsageMeter } from '../store/usage.js';
+import { meterScan } from '../lib/scan-quota.js';
+import { admitMonthlyScans } from '../plugins/usage-cap.js';
 import type { Tier } from '../store/ratelimit.js';
 import { getCircuitBreaker } from '../store/circuit-breaker.js';
 import type { Provider } from '../store/circuit-breaker.js';
+import { commitClaims, reserveClaims, type MaxClaims } from '../plugins/claim-meter.js';
+import { ENGINE_VERIFY_CAP } from '../lib/claim-meter.js';
 
 const BODY_SCHEMA = {
   type: 'object',
@@ -43,6 +52,7 @@ function resolveTier(keyId: string): Tier {
 }
 
 async function scanWithFailover(
+  keyId: string,
   text: string,
   preferred: Provider | undefined,
 ): Promise<Awaited<ReturnType<typeof scan>>> {
@@ -50,25 +60,41 @@ async function scanWithFailover(
   const chain = cb.getChain(preferred);
   if (chain.length === 0) throw new Error('All providers circuit-broken.');
 
-  let lastError = '';
+  let lastError: unknown;
   for (const p of chain) {
     try {
-      const result = await scan(text, p);
+      const result = await scanWithSpend({ text, provider: p, keyId }, () => scanInRequestMode(text, p));
       cb.recordSuccess(p);
       return result;
     } catch (err) {
       cb.recordFailure(p);
-      lastError = err instanceof Error ? err.message : String(err);
+      lastError = err;
     }
   }
-  throw new Error(lastError || 'All providers failed.');
+  // Keep an ExtractionError whole so its reason reaches the response.
+  if (isExtractionError(lastError)) throw lastError;
+  const message = lastError instanceof Error ? lastError.message : String(lastError ?? '');
+  throw new Error(message || 'All providers failed.');
+}
+
+/** Every text in the batch may verify up to the engine's cap. */
+const batchMaxClaims: MaxClaims = (request) => ((request.body as BatchScanBody | undefined)?.texts?.length ?? 1) * ENGINE_VERIFY_CAP;
+/**
+ * Monthly-cap admission for a batch: every text is a scan, so the whole batch is
+ * refused with 402 when used + texts > cap. A batch is never part-served.
+ * Admission is not reserved, so two requests admitted at the same time can both be
+ * served past the cap; the reservation build fixes that.
+ */
+export async function enforceMonthlyCapForBatch(request: FastifyRequest<{ Body: BatchScanBody }>, reply: FastifyReply): Promise<void> {
+  admitMonthlyScans(request, reply, request.body.texts.length);
 }
 
 export async function batchRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: BatchScanBody }>(
     '/scan/batch',
     {
-      preHandler: [requireApiKey],
+      config: { access: 'key' },
+      preHandler: [requireApiKey, enforceMonthlyCapForBatch, enforceProviderSpendCap, reserveClaims(batchMaxClaims)],
       schema: { tags: ['Scan'], summary: 'Batch scan multiple texts (1–10)', body: BODY_SCHEMA },
     },
     async (request, reply) => {
@@ -111,29 +137,33 @@ export async function batchRoutes(fastify: FastifyInstance): Promise<void> {
 
       // Process all texts concurrently with failover
       const settled = await Promise.allSettled(
-        texts.map((text) => scanWithFailover(text, provider as Provider | undefined)),
+        texts.map((text) => scanWithFailover(keyId, text, provider as Provider | undefined)),
       );
 
       type ScanResult = Awaited<ReturnType<typeof scan>>;
       const results: Array<ScanResult | null> = [];
-      const errors: Array<{ index: number; error: string }> = [];
+      const errors: Array<{ index: number; error: string; reason?: string }> = [];
 
       for (let i = 0; i < settled.length; i++) {
         const outcome = settled[i];
         if (outcome.status === 'fulfilled') {
-          const result = outcome.value;
+          const result = issueScanId(outcome.value, request.keyId);
+          commitClaims(request, result.scanId, outcome.value, provider ?? 'gemini');
           results.push(result);
           getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
-          getUsageMeter().increment(keyId);
-          fireWebhookEvent('scan.complete', result);
+          meterScan(keyId, result.verifications);
+          fireWebhookEvent('scan.complete', result, requestOwner(request));
         } else {
           results.push(null);
           const message =
             outcome.reason instanceof Error
               ? outcome.reason.message
               : String(outcome.reason);
-          errors.push({ index: i, error: message });
-          fireWebhookEvent('scan.failed', { index: i, error: message });
+          // An extraction failure names itself; ExtractionError.message is customer-safe.
+          errors.push(isExtractionError(outcome.reason)
+            ? { index: i, error: message, reason: outcome.reason.reason }
+            : { index: i, error: message });
+          fireWebhookEvent('scan.failed', { index: i, error: message }, requestOwner(request));
         }
       }
 

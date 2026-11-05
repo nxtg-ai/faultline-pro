@@ -1,0 +1,98 @@
+# Accuracy G0 results: verdict accuracy on Factcheck-Bench
+
+**Status (2026-10-05): MEASURED AND VERIFIED.** The run followed `docs/research/2026-10-02-prereg-verdict-accuracy-g0-v1.md` with amendments A1, A2 and A3. dx3-pm, a lane that did not gather the evidence, ran both §8 steps: the re-score from a fresh clone matched exactly (`al:18e45226b21349e3`), and the 100-id re-run returned **AGREEMENT** under A3 (`al:47f52b16caf64382`, Actions run 37353154690). Beta criterion (a), GoPMO 1.18.7.3.1, is met on both steps.
+
+## Headline
+
+> **2026-10-16: measured on engine 47b72f0 (2026-10-05); re-measured 2026-10-16 on 3565df7 at 0.691 [0.648, 0.734]; the live engine 6af8cef measured 0.706 [0.665, 0.750] on 2026-10-17 (`2026-10-17-accuracy-g0-6af8cef.md`).** The production engine changed the verify prompts and added a no-source backstop (absence of evidence is `unverified`, never `contradicted`; ruling Dx3 d8f5c369). Every number on this page describes engine `47b72f0`. The re-run on `3565df7` is `2026-10-16-accuracy-g0-rerun-3565df7.md`.
+
+**Balanced accuracy 0.763 (engine 47b72f0; the live engine 6af8cef measured 0.706 on 2026-10-17), 95% CI [0.722, 0.802]**, on the 631 binary claims. An abstention (`mixed` or `unverified`) is counted as wrong. Bootstrap: seed 20260929, 2,000 resamples.
+
+This measures whether the verify phase gives the right verdict for a claim it is handed. It does not measure claim extraction or the risk score.
+
+## Run identity
+
+| Item | Value |
+|---|---|
+| Gold set | Factcheck-Bench subtask 4, 661 claims, sha256 `b87f971c…917dbae1` (§2) |
+| Path | Hosted API `POST /admin/verify-claims`, production engine |
+| Engine | `/health` commit `47b72f099eda5c75dd2f7a7019ec8dde007b50ac`, version 0.11.1 |
+| Model | `gemini-2.5-flash` on every item, grounded with Google Search |
+| Run | 2026-10-05, 17:42Z to about 18:00Z |
+| Outputs | `data/accuracy-g0-full-20261005T174223Z.jsonl` (sha256 `c0953365…7d33d35a`), its attempt ledger, and `…score.json` |
+| Failures | 0 of 661; every item answered on its first call (661 ledger lines) |
+| Validity | §5 VALID: one model, one engine, no missing or repeated id, gold labels match |
+| Independent review | codex PASS on the design and harness, `al:6794f91790683de4` |
+
+Re-score at $0: `python3 scripts/accuracy-g0-score.py docs/research/data/accuracy-g0-full-20261005T174223Z.jsonl`
+
+## All metrics (95% bootstrap CIs)
+
+| Metric | Value | CI |
+|---|---|---|
+| Balanced accuracy, abstention wrong (headline) | 0.7633 | [0.7223, 0.8020] |
+| Accuracy | 0.7987 | [0.7670, 0.8288] |
+| Recall on false claims | 0.6918 | [0.6178, 0.7597] |
+| Recall on true claims | 0.8347 | [0.8008, 0.8695] |
+| False-claim flag rate | 0.8050 | [0.7407, 0.8625] |
+| Coverage (binary items given a verdict) | 0.9033 | [0.8811, 0.9271] |
+| Selective accuracy (on items given a verdict) | 0.8842 | [0.8576, 0.9099] |
+| NEE items: share left unverified or mixed (n=30) | 0.1333 | [0.0333, 0.2667] |
+| Time-sensitive claims, BA (n=20) | 1.0000 | [1.0000, 1.0000] |
+| Other claims, BA (n=611) | 0.7483 | [0.7059, 0.7904] |
+
+## Confusion matrix
+
+| Gold \ verdict | supported | contradicted | mixed | unverified |
+|---|---|---|---|---|
+| true (472) | 394 | 36 | 42 | 0 |
+| false (159) | 30 | 110 | 18 | 1 |
+| not enough evidence (30) | 13 | 13 | 4 | 0 |
+
+`mixed` breakdown: 3 came from an unparseable model reply (`parseFallback`, 2 true and 1 NEE); the other 61 were the model's own inconclusive verdict.
+
+## What the numbers say
+
+- When the engine gives a verdict, it is right 88% of the time. It gives one on 90% of binary claims.
+- The weaker side is false claims: 69% of them are marked contradicted, 19% (30 of 159) are passed as supported, and the rest go to `mixed`.
+- On the 30 claims that the gold set says cannot be settled, the engine took a side 26 times, and only 4 were left `mixed`. Abstention is not yet calibrated. That is the lever 2 question in `2026-10-01-cache-and-jev-brief.md`.
+- The time-sensitive subgroup has only 20 items. Its perfect score says little.
+
+## Verification (prereg §8)
+
+| Step | Who | Result |
+|---|---|---|
+| 1. Re-score the committed outputs | dx3-pm, fresh clone at `53a28ef` | Every metric and the confusion row match this page exactly |
+| 2. Re-run the seeded 100-id subsample | dx3-pm, `accuracy-g0.yml` `set: verify-subsample`, run 37353154690 on `53a28ef` | 100/100 items, 0 failures. Re-run BA 0.7987 [0.6925, 0.8906] |
+| A3 (i) per-item status agreement | | 0.9200, floor 0.85: met |
+| A3 (ii) BA difference (re-run − original), paired bootstrap | | −0.0301 [−0.0933, 0.0127], inside [−0.10, +0.10]: met |
+| **Verdict** | | **AGREEMENT** |
+
+The re-run output is committed beside the full run: `data/accuracy-g0-verify-subsample-37353154690.jsonl` (sha256 `aabb4d28…618e6634`), with its attempt ledger, score JSON and readout. Reproduce the paired readout at $0:
+
+`python3 scripts/accuracy-g0-score.py docs/research/data/accuracy-g0-verify-subsample-37353154690.jsonl --paired docs/research/data/accuracy-g0-full-20261005T174223Z.jsonl`
+
+## Spend (logged per the dx3-pm request, al:1c79898f4d631cd1)
+
+Read from admin `GET /usage`:
+
+| | Before (≈17:40Z) | After (18:01:53Z) | Change |
+|---|---|---|---|
+| Grounded prompts, Pacific day 2026-10-05 | 0 | 661 | +661 |
+| Provider-spend ledger, 2026-10 | $0.1424277 | $23.5320876 | +$23.39 |
+| Ledger write failures | 0 | 0 | |
+
+After the verifier re-run (18:09:03Z): 761 grounded prompts, ledger $27.0708421, so the re-run added 100 prompts and $3.54.
+
+The full run's $23.39 is under the prereg §7 ceiling of $25, which §7 sizes for the main run's 661 prompts plus retries. Counting the verifier re-run too, the two runs total $26.93 at list price, over $25 if the ceiling is read as covering both. The monthly $100 cap was not crossed. The ledger prices every grounded call at $0.035 (`packages/api/src/store/costs.ts:47`), including calls inside the free 1,500 a day. So $23.39 is the list-price bound. The day's 761 prompts were all inside the free allowance, where Google charges only tokens, so the true charge for both runs should be about $0.30. That is a lead: the Google bill was not read.
+
+## Limits
+
+- One model, one day, one dataset. Factcheck-Bench claims date from 2023, and live search answers them with 2026 evidence.
+- 159 false items, so recall on false claims carries a CI about 14 points wide.
+- No grounded text was stored. Each row holds only `id`, `gold`, `status`, `apiError`, `parseFallback`, `attempts`, `model`, `engineSha` and `ts` (Google grounding terms).
+
+## Next
+
+1. dx3-pm closes 1.18.7.3.1 on the board.
+2. The stage line "Verdict accuracy has not yet been measured on a labelled test set" changes on every surface, through CE copy review (prereg §11).

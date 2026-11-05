@@ -132,7 +132,7 @@ describe('dispatchWebhook() — retry config integration', () => {
   it('RC9: maxAttempts=1 stops after single failure — exactly 1 delivery record', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 503 }));
     const wh = getWebhookStore().create('https://example.com/hook', ['scan.complete'], undefined, undefined, 1);
-    await dispatchWebhook(wh, 'scan.complete', {});
+    await dispatchWebhook(wh, 'scan.complete', {}, 'public');
     const records = getWebhookDeliveryLog().list(wh.id);
     expect(records).toHaveLength(1);
     expect(records[0].delivered).toBe(false);
@@ -141,7 +141,7 @@ describe('dispatchWebhook() — retry config integration', () => {
   it('RC10: maxAttempts=2 produces exactly 2 records when all fail', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 }));
     const wh = getWebhookStore().create('https://example.com/hook', ['scan.complete'], undefined, undefined, 2);
-    await dispatchWebhook(wh, 'scan.complete', {});
+    await dispatchWebhook(wh, 'scan.complete', {}, 'public');
     const records = getWebhookDeliveryLog().list(wh.id);
     expect(records).toHaveLength(2);
     expect(records.every(r => !r.delivered)).toBe(true);
@@ -150,7 +150,7 @@ describe('dispatchWebhook() — retry config integration', () => {
   it('RC11: maxAttempts=5 stops on first success — exactly 1 delivered record', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
     const wh = getWebhookStore().create('https://example.com/hook', ['scan.complete'], undefined, undefined, 5);
-    await dispatchWebhook(wh, 'scan.complete', {});
+    await dispatchWebhook(wh, 'scan.complete', {}, 'public');
     const records = getWebhookDeliveryLog().list(wh.id);
     expect(records).toHaveLength(1);
     expect(records[0].delivered).toBe(true);
@@ -162,7 +162,7 @@ describe('dispatchWebhook() — retry config integration', () => {
     _setSleepFn(async (ms) => { sleepCalls.push(ms); });
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 503 }));
     const wh = getWebhookStore().create('https://example.com/hook', ['scan.complete'], undefined, undefined, 3, 1234);
-    await dispatchWebhook(wh, 'scan.complete', {});
+    await dispatchWebhook(wh, 'scan.complete', {}, 'public');
     // Attempt 0: sleep(0), attempts 1+: sleep(1234)
     expect(sleepCalls[0]).toBe(0);
     expect(sleepCalls[1]).toBe(1234);
@@ -176,7 +176,7 @@ describe('dispatchWebhook() — retry config edge cases', () => {
   it('RC13: maxAttempts=1 with success logs exactly 1 delivered record', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
     const wh = getWebhookStore().create('https://example.com/hook', ['scan.complete'], undefined, undefined, 1);
-    await dispatchWebhook(wh, 'scan.complete', {});
+    await dispatchWebhook(wh, 'scan.complete', {}, 'public');
     const records = getWebhookDeliveryLog().list(wh.id);
     expect(records).toHaveLength(1);
     expect(records[0].delivered).toBe(true);
@@ -201,8 +201,8 @@ describe('dispatchWebhook() — retry config edge cases', () => {
     const whA = getWebhookStore().create('https://a.example.com/hook', ['scan.complete'], undefined, undefined, 1, 0);
     const whB = getWebhookStore().create('https://b.example.com/hook', ['scan.complete'], undefined, undefined, 2, 9999);
 
-    await dispatchWebhook(whA, 'scan.complete', {});
-    await dispatchWebhook(whB, 'scan.complete', {});
+    await dispatchWebhook(whA, 'scan.complete', {}, 'public');
+    await dispatchWebhook(whB, 'scan.complete', {}, 'public');
 
     const aRecords = getWebhookDeliveryLog().list(whA.id);
     const bRecords = getWebhookDeliveryLog().list(whB.id);

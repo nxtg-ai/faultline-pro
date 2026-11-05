@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import { buildServer } from '../src/server.js';
 import { resetCache } from '../src/store/cache.js';
 import { resetScanStore } from '../src/store/scans.js';
@@ -7,13 +7,20 @@ import { resetAuditLogger } from '../src/store/audit.js';
 import { resetUsageMeter } from '../src/store/usage.js';
 import type { FastifyInstance } from 'fastify';
 
+// These flows exercise customer (non-admin) keys, which the issuing routes
+// refuse unless FAULTLINE_CUSTOMER_KEYS=on (customer keys closed until tenancy
+// is fixed; the gate itself is tested in key-issuance-gate.test.ts).
+beforeAll(() => { process.env.FAULTLINE_CUSTOMER_KEYS = 'on'; });
+afterAll(() => { delete process.env.FAULTLINE_CUSTOMER_KEYS; });
+
+
 vi.mock('@nxtg/faultline/cli/scan.js', () => ({
   scan: vi.fn().mockResolvedValue({
     input: 'The sky is blue.',
     provider: 'mock',
     claims: [{ id: 'c1', text: 'The sky is blue.', type: 'fact', importance: 3 }],
     verifications: {
-      c1: { claimId: 'c1', status: 'verified', explanation: 'Observable.', sources: [] },
+      c1: { claimId: 'c1', status: 'supported', explanation: 'Observable.', sources: [] },
     },
     overallRisk: 'low',
     complianceReport: { riskTier: 'minimal', findings: [] },
@@ -30,6 +37,7 @@ describe('GraphQL API', () => {
 
   beforeEach(() => {
     process.env.FAULTLINE_API_KEY = 'test-key';
+    process.env.FAULTLINE_GRAPHQL = 'on'; // GraphQL is off unless opted in
     resetCache();
     resetScanStore();
     resetKeyStore();
@@ -40,6 +48,7 @@ describe('GraphQL API', () => {
 
   afterEach(async () => {
     await server.close();
+    delete process.env.FAULTLINE_GRAPHQL;
     delete process.env.FAULTLINE_API_KEY;
   });
 

@@ -6,9 +6,13 @@ Zero external dependencies. Requires Python 3.10+.
 
 ## Installation
 
+Install from a checkout of the repo:
+
 ```bash
-pip install faultline-sdk
+pip install ./sdks/python
 ```
+
+Do not run `pip install faultline-sdk`. On 2026-10-01 that name on PyPI (version 0.24.0) is an unrelated project (ML training checkpoints for "Faultline Cloud"), not this SDK.
 
 ## Quick start
 

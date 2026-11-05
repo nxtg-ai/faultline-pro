@@ -1,0 +1,286 @@
+# Fly operations for faultline-api that need FLY_API_TOKEN but not a deploy.
+# The token lives only in this repo's secrets, so these run here instead of
+# from a workstation. Fixed actions only: no free-form command input.
+#
+#   inspect                 machines, volumes and status (read-only)
+#   secrets-list            secret NAMES and digests only (flyctl never shows values)
+#   scale-to-one            run exactly one machine: the ledgers are append-only
+#                           files, so a second machine would keep a second,
+#                           diverging copy of the spend and grounding totals
+#   create-ledger-volume    one 1 GB volume `faultline_ledgers` in lax, only if
+#                           none exists (idempotent)
+#   measurement-key-set     copy the repo secret FAULTLINE_MEASUREMENT_KEY to the
+#                           app; measurement-key-unset removes it
+#   parallel-key-set        copy the repo secret PARALLEL_API_KEY to the app
+#   grounding-parallel-on   FAULTLINE_GROUNDING=parallel: every hosted verify on
+#                           gemini searches Parallel, then judges with no Google
+#                           search; grounding-parallel-off unsets it (Google)
+#   keystore-audit          read-only check of the keystore file on the volume:
+#                           its mode, field names, and for each key only the first
+#                           12 characters of the stored SHA-256, never a value that
+#                           could be a key (a caller compares them with the hash of
+#                           a test key to show the file holds hashes, not keys)
+#
+# Why the ledger volume: /var/log/faultline holds the append-only provider-spend,
+# grounding-allowance and scan-cost ledgers. Without a volume every deploy
+# starts them at zero (GoPMO 1.18.7.3.2, docs/ledger-volume.md).
+name: Fly ops
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'What to run'
+        required: true
+        type: choice
+        options:
+          - inspect
+          - secrets-list
+          - scale-to-one
+          - create-ledger-volume
+          - releases
+          - logs
+          - customer-keys-on
+          - customer-keys-off
+          - parallel-key-set
+          - grounding-parallel-on
+          - grounding-parallel-off
+          - spend-cap-on
+          - spend-cap-off
+          - claim-meter-on
+          - claim-meter-off
+          - measurement-key-set
+          - measurement-key-unset
+          - keystore-audit
+      spend_cap_usd:
+        description: 'Monthly ceiling in USD for spend-cap-on, a whole number from 1 to 1000'
+        required: false
+        type: string
+        default: '100'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fly-ops
+  cancel-in-progress: false
+
+jobs:
+  ops:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      APP: faultline-api
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Inspect
+        run: |
+          flyctl status -a "$APP"
+          echo "--- machines"
+          flyctl machines list -a "$APP"
+          echo "--- volumes"
+          flyctl volumes list -a "$APP"
+
+      - name: Secrets (names only)
+        if: inputs.action == 'secrets-list'
+        run: flyctl secrets list -a "$APP"
+
+      # Customer API keys (FAULTLINE_CUSTOMER_KEYS). "on" only under emma-soul's
+      # reopen ruling (Dx3 e2909e46); "off" is the kill switch if the production
+      # two-key canary shows any cross-key result. Setting it restarts the machine,
+      # which empties the in-memory keystore.
+      - name: Customer keys on
+        if: inputs.action == 'customer-keys-on'
+        run: flyctl secrets set FAULTLINE_CUSTOMER_KEYS=on -a "$APP"
+
+      - name: Customer keys off
+        if: inputs.action == 'customer-keys-off'
+        run: flyctl secrets unset FAULTLINE_CUSTOMER_KEYS -a "$APP"
+
+      # Parallel Search key (docs/grounding-providers.md). Copies the repo secret
+      # PARALLEL_API_KEY to the app secret of the same name. The value only passes
+      # through env and is never echoed. Setting it restarts the machine.
+      - name: Parallel key set
+        if: inputs.action == 'parallel-key-set'
+        env:
+          PARALLEL_KEY: ${{ secrets.PARALLEL_API_KEY }}
+        run: |
+          if [ -z "$PARALLEL_KEY" ]; then
+            echo "::error::Repo secret PARALLEL_API_KEY is empty or not set. Nothing was changed."
+            exit 1
+          fi
+          flyctl secrets set PARALLEL_API_KEY="$PARALLEL_KEY" -a "$APP"
+
+      # Grounding provider (FAULTLINE_GROUNDING, docs/grounding-providers.md). "on"
+      # moves every hosted verify on gemini, every key and every scan path plus
+      # /mcp, to Parallel's search then Gemini with no googleSearch tool; set the
+      # Parallel key first, or every claim reads as not checked. "off" unsets it,
+      # back to Google grounding. Each restarts the machine.
+      - name: Grounding parallel on
+        if: inputs.action == 'grounding-parallel-on'
+        run: flyctl secrets set FAULTLINE_GROUNDING=parallel -a "$APP"
+
+      - name: Grounding parallel off
+        if: inputs.action == 'grounding-parallel-off'
+        run: flyctl secrets unset FAULTLINE_GROUNDING -a "$APP"
+
+      # Fleet provider spend cap (docs/provider-spend-cap.md). "on" sets the gate
+      # and the monthly ceiling in one secrets call, so it is one release; once the
+      # month's budget is spent it refuses free and anonymous traffic only. "off"
+      # unsets both, back to the dormant ledger-only default ($100 ceiling).
+      - name: Spend cap on
+        if: inputs.action == 'spend-cap-on'
+        env:
+          SPEND_CAP_USD: ${{ inputs.spend_cap_usd }}
+        run: |
+          if ! [[ "$SPEND_CAP_USD" =~ ^[1-9][0-9]{0,3}$ ]] || [ "$SPEND_CAP_USD" -gt 1000 ]; then
+            echo "::error::spend_cap_usd must be a whole number from 1 to 1000 (digits only, no leading zero). Nothing was changed."
+            exit 1
+          fi
+          flyctl secrets set FAULTLINE_PROVIDER_SPEND_CAP=on FAULTLINE_PROVIDER_SPEND_CAP_USD="$SPEND_CAP_USD" -a "$APP"
+
+      - name: Spend cap off
+        if: inputs.action == 'spend-cap-off'
+        run: flyctl secrets unset FAULTLINE_PROVIDER_SPEND_CAP FAULTLINE_PROVIDER_SPEND_CAP_USD -a "$APP"
+
+      # Per-key claim meter (FAULTLINE_CLAIM_METER). "on" meters only keys marked
+      # metered; admin keys, the server key and the measurement key never are.
+      # Setting or unsetting the secret restarts the machine, which empties the
+      # in-memory keystore. "off" is the rollback.
+      - name: Claim meter on
+        if: inputs.action == 'claim-meter-on'
+        run: flyctl secrets set FAULTLINE_CLAIM_METER=1 -a "$APP"
+
+      - name: Claim meter off
+        if: inputs.action == 'claim-meter-off'
+        run: flyctl secrets unset FAULTLINE_CLAIM_METER -a "$APP"
+
+      # Measurement key (docs/provider-spend-cap.md, "The measurement key"). "set"
+      # copies the repo secret FAULTLINE_MEASUREMENT_KEY to the app, so measurement
+      # runs are labelled apart from web traffic; the API ignores it if it equals
+      # FAULTLINE_API_KEY. "unset" removes it. Each restarts the machine. The value
+      # only passes through env and is never echoed.
+      - name: Measurement key set
+        if: inputs.action == 'measurement-key-set'
+        env:
+          MEASUREMENT_KEY: ${{ secrets.FAULTLINE_MEASUREMENT_KEY }}
+        run: |
+          if [ -z "$MEASUREMENT_KEY" ]; then
+            echo "::error::Repo secret FAULTLINE_MEASUREMENT_KEY is empty or not set. Nothing was changed."
+            exit 1
+          fi
+          flyctl secrets set FAULTLINE_MEASUREMENT_KEY="$MEASUREMENT_KEY" -a "$APP"
+
+      - name: Measurement key unset
+        if: inputs.action == 'measurement-key-unset'
+        run: flyctl secrets unset FAULTLINE_MEASUREMENT_KEY -a "$APP"
+
+      - name: Scale to one machine
+        if: inputs.action == 'scale-to-one'
+        run: |
+          flyctl scale count 1 -a "$APP" --yes
+          flyctl machines list -a "$APP"
+
+      - name: Create ledger volume
+        if: inputs.action == 'create-ledger-volume'
+        run: |
+          machines=$(flyctl machines list -a "$APP" --json | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
+          volumes=$(flyctl volumes list -a "$APP" --json | python3 -c "import sys,json; print(len([v for v in json.load(sys.stdin) if v.get('name')=='faultline_ledgers']))")
+          echo "machines=$machines faultline_ledgers volumes=$volumes"
+          if [ "$volumes" -ge 1 ]; then
+            echo "Ledger volume already exists; nothing to create."
+          else
+            flyctl volumes create faultline_ledgers -a "$APP" --region lax --size 1 --yes
+          fi
+          flyctl volumes list -a "$APP"
+
+      # Read-only, for incident forensics (GoPMO 1.18.11.3): deploy history
+      # with times, and whatever recent log buffer Fly still holds.
+      - name: Releases (deploy history)
+        if: inputs.action == 'releases'
+        run: |
+          flyctl releases -a "$APP" --json > releases.json
+          python3 -c "import json;d=json.load(open('releases.json'));print('count',len(d));print('keys',sorted(d[0].keys()) if d else []);[print(json.dumps({k:v for k,v in r.items() if k.lower() in ('version','createdat','created_at','status','description','reason','imageref','user')}, default=str)) for r in d]"
+
+      - name: Release history (all pages, Fly GraphQL API)
+        if: inputs.action == 'releases'
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          tok = os.environ["FLY_API_TOKEN"].strip()
+          auth = tok if tok.startswith("FlyV1 ") else "Bearer " + tok
+          q = 'query($after:String){ app(name:"faultline-api"){ releases(first:100, after:$after){ nodes{ version createdAt status } pageInfo{ hasNextPage endCursor } } } }'
+          after, rows = None, []
+          while True:
+              req = urllib.request.Request("https://api.fly.io/graphql", data=json.dumps({"query": q, "variables": {"after": after}}).encode(),
+                                           headers={"Authorization": auth, "Content-Type": "application/json"})
+              d = json.load(urllib.request.urlopen(req, timeout=30))
+              if d.get("errors"): print("errors", d["errors"]); break
+              r = d["data"]["app"]["releases"]; rows += r["nodes"]
+              if not r["pageInfo"]["hasNextPage"]: break
+              after = r["pageInfo"]["endCursor"]
+          print("all releases", len(rows))
+          for n in sorted(rows, key=lambda x: x["version"]): print("REL", n["version"], n["createdAt"], n["status"])
+          PY
+
+      - name: Keystore audit (read-only; no key values printed)
+        if: inputs.action == 'keystore-audit'
+        run: |
+          cat > keystore-audit.js <<'JS'
+          // Prints only fixed labels, counts, lengths, booleans, a UUID-shaped id and the
+          // first 12 characters of a well-formed keyHash. Anything else is counted, never shown.
+          const fs = require('fs');
+          const p = '/var/log/faultline/keystore.json';
+          // Returns the one result object; it is written once below and Node exits on its own,
+          // so a large result is never cut off in a pipe.
+          const audit = () => {
+            if (!fs.existsSync(p)) return { file: 'absent' };
+            const stored = ['id', 'keyHash', 'previousKeyHash', 'keyPrefix', 'name', 'permissions', 'createdAt', 'disabled',
+              'previousKeyExpiresAt', 'lastRotatedAt', 'lastUsedAt', 'expiresAt', 'claimCap', 'stripeCustomerId', 'metered', 'scopes'];
+            const HEX64 = /^[0-9a-f]{64}$/i;
+            const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+            let doc;
+            try { doc = JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return { file: 'present', parse: 'failed' }; }
+            const keys = doc && typeof doc === 'object' && Array.isArray(doc.keys) ? doc.keys : null;
+            if (!keys || !keys.every((k) => k && typeof k === 'object' && !Array.isArray(k))) return { file: 'present', shape: 'unexpected' };
+            // Every string anywhere (values and property names, nested, root included) that looks
+            // like a key, outside the two top-level hash fields of a record.
+            let hex64Elsewhere = 0;
+            const walk = (v) => {
+              if (typeof v === 'string') { if (HEX64.test(v)) hex64Elsewhere += 1; return; }
+              if (v && typeof v === 'object') for (const [f, x] of Object.entries(v)) { if (HEX64.test(f)) hex64Elsewhere += 1; walk(x); }
+            };
+            for (const [f, v] of Object.entries(doc)) { if (HEX64.test(f)) hex64Elsewhere += 1; if (f !== 'keys') walk(v); }
+            for (const k of keys) for (const [f, v] of Object.entries(k)) { if ((f === 'keyHash' || f === 'previousKeyHash') && typeof v === 'string') continue; if (HEX64.test(f)) hex64Elsewhere += 1; walk(v); }
+            const names = new Set(keys.flatMap((k) => Object.keys(k)));
+            return {
+              mode: (fs.statSync(p).mode & 0o777).toString(8),
+              version: Number.isFinite(doc.version) ? doc.version : 'not-a-number',
+              keys: keys.length,
+              fields: stored.filter((f) => names.has(f)),
+              unknownFieldCount: [...names].filter((f) => !stored.includes(f)).length,
+              hex64OutsideHashFields: hex64Elsewhere,
+              perKey: keys.map((k) => {
+                const h = typeof k.keyHash === 'string' && /^[0-9a-f]{64}$/.test(k.keyHash) ? k.keyHash : null;
+                return {
+                  id: typeof k.id === 'string' && UUID.test(k.id) ? k.id : 'not-a-uuid',
+                  keyHashHead: h ? h.slice(0, 12) : 'malformed',
+                  hasPreviousKeyHash: k.previousKeyHash !== undefined,
+                  keyPrefixLength: typeof k.keyPrefix === 'string' ? k.keyPrefix.length : -1,
+                };
+              }),
+            };
+          };
+          let result;
+          try { result = audit(); } catch { result = { audit: 'failed' }; }
+          process.stdout.write(JSON.stringify(result) + '\n');
+          JS
+          b64=$(base64 -w0 keystore-audit.js)
+          flyctl ssh console -a "$APP" -C "sh -c 'f=\$(mktemp) && echo $b64 | base64 -d > \"\$f\" && node \"\$f\"; rc=\$?; rm -f \"\$f\"; exit \$rc'"
+
+      - name: Recent logs (buffer only, request lines)
+        if: inputs.action == 'logs'
+        run: flyctl logs -a "$APP" --no-tail | grep -E 'GET|POST|graphql|claims' | tail -n 2000 || true
+

@@ -73,11 +73,17 @@ class CircuitBreaker {
     return (1 - errorRate) * (1000 / (avgLatencyMs + 1));
   }
 
-  /** Returns ordered list of providers to try, skipping DOWN ones */
+  /**
+   * Returns ordered list of providers to try, skipping DOWN ones.
+   *
+   * `mock` is a test double (one claim per sentence, every verdict "supported"),
+   * so it is tried only when the caller asked for it, never as a fallback: a scan
+   * whose real providers all failed (e.g. an extraction 429 or truncated reply)
+   * must report a failure, not return mock verdicts as a 200.
+   */
   getChain(preferred?: Provider): Provider[] {
-    const ordered = preferred
-      ? [preferred, ...PROVIDER_CHAIN.filter(p => p !== preferred)]
-      : [...PROVIDER_CHAIN];
+    const fallbacks = PROVIDER_CHAIN.filter(p => p !== preferred && p !== 'mock');
+    const ordered = preferred ? [preferred, ...fallbacks] : fallbacks;
     return ordered.filter(p => !this.isDown(p));
   }
 

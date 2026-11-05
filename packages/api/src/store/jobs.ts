@@ -1,7 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { scan } from '@nxtg/faultline/cli/scan.js';
-import { fireWebhookEvent } from './webhooks.js';
+import { scanInRequestMode } from '../lib/grounding.js';
+import { scanWithSpend } from '../lib/scan-spend.js';
+import { fireWebhookEvent, webhookSafeData, keyIsLive, sanitizeErrorText } from './webhooks.js';
+import type { WebhookEventOwner } from './webhooks.js';
 import { getAuditLogger } from './audit.js';
+import { fetchOutbound } from '../lib/outbound-url.js';
+import { ENGINE_VERIFY_CAP, meteredScan } from '../lib/claim-meter.js';
+import { PROVIDER_BUDGET_EXHAUSTED, providerBudgetRefuses } from '../plugins/provider-spend-cap.js';
+import type { ManagedScanCostEvent } from './costs.js';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -20,7 +26,11 @@ export interface Job {
   nextRunAt: string;
   status: JobStatus;
   runCount: number;
+  /** Set when the last run was skipped or failed before it finished. */
+  lastError?: string;
 }
+
+type SpendCapTier = ManagedScanCostEvent['tier'];
 
 // ─── Schedule parsing ──────────────────────────────────────────────────────
 
@@ -35,14 +45,23 @@ export function parseIntervalMs(schedule: string): number {
 
 class JobStore {
   private jobs = new Map<string, Job>();
+  /** Who created each job, kept off the Job so listings never show it. */
+  private owners = new Map<string, { keyId: string; caller: string | null }>();
+  /**
+   * The spend-gate tier each job was created with, kept off the Job like its
+   * owner. A job with none (created before tiers were stored) counts as capped.
+   */
+  private tiers = new Map<string, SpendCapTier>();
 
   create(options: {
     text: string;
     provider?: Provider;
     schedule: string;
     webhookUrl?: string;
+    owner?: { keyId: string; caller: string | null };
+    spendCapTier?: SpendCapTier;
   }): Job {
-    const { text, provider, schedule, webhookUrl } = options;
+    const { text, provider, schedule, webhookUrl, owner, spendCapTier } = options;
     const intervalMs = parseIntervalMs(schedule);
     const now = new Date().toISOString();
     const job: Job = {
@@ -59,18 +78,37 @@ class JobStore {
       runCount: 0,
     };
     this.jobs.set(job.id, job);
+    if (owner) this.owners.set(job.id, owner);
+    if (spendCapTier) this.tiers.set(job.id, spendCapTier);
     return job;
+  }
+
+  /** The spend-gate tier stored at creation, or undefined for a job created before tiers were stored. */
+  spendCapTierOf(id: string): SpendCapTier | undefined {
+    return this.tiers.get(id);
   }
 
   list(): Job[] {
     return Array.from(this.jobs.values());
   }
 
+  /** The jobs created by `keyId`. */
+  listOwnedBy(keyId: string): Job[] {
+    return this.list().filter((j) => this.owners.get(j.id)?.keyId === keyId);
+  }
+
   get(id: string): Job | null {
     return this.jobs.get(id) ?? null;
   }
 
+  /** The job's owner for webhook delivery; null (delivered to no one) when unknown. */
+  ownerOf(id: string): WebhookEventOwner {
+    return this.owners.get(id) ?? null;
+  }
+
   delete(id: string): boolean {
+    this.owners.delete(id);
+    this.tiers.delete(id);
     return this.jobs.delete(id);
   }
 
@@ -134,22 +172,42 @@ class JobScheduler {
 
   private async runJob(job: Job): Promise<void> {
     const now = new Date().toISOString();
+    // No request at run time: the tier stored at creation decides. A refused
+    // run is skipped and reported as failed, with no provider call.
+    if (providerBudgetRefuses(getJobStore().spendCapTierOf(job.id))) {
+      const nextRunAt = new Date(Date.now() + job.intervalMs).toISOString();
+      getJobStore().update(job.id, { lastRunAt: now, nextRunAt, lastError: PROVIDER_BUDGET_EXHAUSTED });
+      fireWebhookEvent('job.failed', { jobId: job.id, error: PROVIDER_BUDGET_EXHAUSTED }, getJobStore().ownerOf(job.id));
+      return;
+    }
     try {
-      const result = await scan(job.text, job.provider);
+      const owner = getJobStore().ownerOf(job.id);
+      // The tier label comes from the creator's key; a job with no recorded owner is labelled as unknown.
+      const ownerKeyId = owner !== null && owner !== 'public' ? owner.keyId : 'unknown';
+      // Each run is metered against the creator's key; over its cap the run fails unscanned.
+      const meterKeyId = owner !== null && owner !== 'public' ? owner.keyId : undefined;
+      const result = await meteredScan(meterKeyId, ENGINE_VERIFY_CAP, randomUUID(), job.provider,
+        () => scanWithSpend({ text: job.text, provider: job.provider, keyId: ownerKeyId }, () => scanInRequestMode(job.text, job.provider)));
       const nextRunAt = new Date(Date.now() + job.intervalMs).toISOString();
       getJobStore().update(job.id, {
         lastRunAt: now,
         nextRunAt,
         runCount: job.runCount + 1,
+        lastError: undefined,
       });
       if (job.webhookUrl) {
-        void fetch(job.webhookUrl, {
+        // Sent only while the creator's key is live, checked after the scan ran
+        // (codex seat, 84cf8c8). A job with no recorded owner sends nothing.
+        const ownerLive = owner !== null && owner !== 'public' && keyIsLive(owner.keyId);
+        // Guarded at send time too: the host's DNS may have changed since the job was created.
+        if (ownerLive) void fetchOutbound(job.webhookUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ event: 'job.complete', jobId: job.id, result }),
-        }).catch(() => { /* non-fatal */ });
+          // A grounded result reaches no webhook, this one included (Google's terms).
+          body: JSON.stringify({ event: 'job.complete', ...(webhookSafeData('job.complete', { jobId: job.id, result }) as object) }),
+        }).catch(() => { /* non-fatal, including a blocked target */ });
       } else {
-        fireWebhookEvent('job.complete', { jobId: job.id, result });
+        fireWebhookEvent('job.complete', { jobId: job.id, result }, getJobStore().ownerOf(job.id));
       }
       getAuditLogger().log({
         timestamp: now,
@@ -161,11 +219,13 @@ class JobScheduler {
       });
     } catch (err) {
       const nextRunAt = new Date(Date.now() + job.intervalMs).toISOString();
-      getJobStore().update(job.id, { lastRunAt: now, nextRunAt, runCount: job.runCount + 1 });
+      // GET /jobs returns lastError, so a raw provider message (URLs, keys) never lands there.
+      const lastError = sanitizeErrorText(err instanceof Error ? err.message : String(err));
+      getJobStore().update(job.id, { lastRunAt: now, nextRunAt, runCount: job.runCount + 1, lastError });
       fireWebhookEvent('job.failed', {
         jobId: job.id,
         error: err instanceof Error ? err.message : String(err),
-      });
+      }, getJobStore().ownerOf(job.id));
     }
   }
 }

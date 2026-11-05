@@ -1,0 +1,12 @@
+{"id":"p10-Brown_v_Board_of_Education","bucket":"p10","chars":29859,"raw":339,"claims":375,"facts":369,"legs":1,"inputTokens":6076,"outputTokens":18940,"usd":0.0491728,"ms":136992}
+{"id":"p10-Apollo_11","bucket":"p10","chars":29953,"raw":499,"claims":587,"facts":578,"legs":1,"inputTokens":6799,"outputTokens":26088,"usd":0.06725969999999999,"ms":193110}
+{"id":"p10-Great_Barrier_Reef","bucket":"p10","chars":29772,"raw":494,"claims":556,"facts":542,"legs":1,"inputTokens":6605,"outputTokens":26651,"usd":0.068609,"ms":220326}
+{"id":"p10-Photosynthesis","bucket":"p10","chars":29843,"raw":0,"claims":174,"facts":174,"legs":1,"inputTokens":6099,"outputTokens":20205,"usd":0.0523422,"ms":250886}
+{"id":"short-Apollo_11","bucket":"short","chars":2984,"raw":53,"claims":57,"facts":57,"legs":1,"inputTokens":826,"outputTokens":2824,"usd":0.007307800000000001,"ms":24740}
+{"id":"short-Brown_v_Board_of_Education","bucket":"short","chars":2796,"raw":32,"claims":38,"facts":38,"legs":1,"inputTokens":757,"outputTokens":1193,"usd":0.0032096,"ms":25845}
+{"id":"p50-Apollo_Photo_Reef","bucket":"p50","chars":149822,"raw":0,"claims":945,"facts":945,"legs":1,"inputTokens":32480,"outputTokens":2607,"usd":0.0162615,"ms":263616}
+{"id":"short-History_of_the_United_States","bucket":"short","chars":2940,"raw":0,"claims":18,"facts":18,"legs":0,"inputTokens":0,"outputTokens":0,"usd":0,"ms":855}
+{"id":"short-Photosynthesis","bucket":"short","chars":2869,"raw":0,"claims":15,"facts":15,"legs":0,"inputTokens":0,"outputTokens":0,"usd":0,"ms":865}
+{"id":"p50-US_history_WWII","bucket":"p50","chars":149952,"raw":0,"claims":1049,"facts":1049,"legs":0,"inputTokens":0,"outputTokens":0,"usd":0,"ms":239396}
+{"id":"short-Great_Barrier_Reef","bucket":"short","chars":2850,"raw":54,"claims":61,"facts":61,"legs":1,"inputTokens":836,"outputTokens":2929,"usd":0.0075733,"ms":45055}
+{"id":"short-World_War_II","bucket":"short","chars":2846,"raw":68,"claims":76,"facts":76,"legs":1,"inputTokens":805,"outputTokens":3491,"usd":0.008969,"ms":26190}

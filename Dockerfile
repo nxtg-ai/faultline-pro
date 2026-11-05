@@ -11,6 +11,7 @@ WORKDIR /build
 COPY package.json package-lock.json ./
 COPY packages/api/package.json ./packages/api/
 COPY packages/cli/package.json ./packages/cli/
+COPY packages/mcp/package.json ./packages/mcp/
 
 # Install all workspace deps (including devDeps for tsx)
 RUN npm ci --ignore-scripts
@@ -41,6 +42,9 @@ RUN addgroup -S faultline && adduser -S faultline -G faultline
 COPY package.json package-lock.json ./
 COPY packages/api/package.json ./packages/api/
 COPY packages/cli/package.json ./packages/cli/
+# POST /mcp builds its tool from packages/mcp: its manifest makes npm link the
+# workspace and install its dependencies (the MCP SDK, zod).
+COPY packages/mcp/package.json ./packages/mcp/
 
 RUN npm ci --omit=dev --ignore-scripts && \
     # Re-install tsx (devDep, needed at runtime since we run TS source directly)
@@ -53,8 +57,23 @@ COPY --from=builder /build/packages ./packages
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -qO- http://localhost:${PORT:-3001}/health || exit 1
 
-# Drop to non-root
-USER faultline
+# Ledger directory for the append-only provider-spend, grounding-prompt and
+# scan-cost logs. /var/log is root-owned, so without this the non-root process
+# cannot create it and every ledger write fails (N-230 instrument:
+# GET /usage -> ledgerWriteFailures).
+# On Fly this path is the `faultline_ledgers` volume (packages/api/fly.toml), which
+# mounts root-owned over this chown; docker-entrypoint.sh fixes the owner at start.
+RUN apk add --no-cache su-exec && \
+    mkdir -p /var/log/faultline && chown faultline:faultline /var/log/faultline
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+
+# No USER line: the entrypoint starts as root, chowns the ledger directory, then
+# drops to the faultline user with su-exec before the app starts.
+
+# The commit this image was built from, echoed by GET /health as `commit`
+# (fly-deploy.yml passes --build-arg FAULTLINE_GIT_SHA=<sha>). Empty means unknown.
+ARG FAULTLINE_GIT_SHA=""
+ENV FAULTLINE_GIT_SHA=${FAULTLINE_GIT_SHA}
 
 # Expose default port (override with PORT env var)
 EXPOSE 3001
@@ -66,4 +85,7 @@ ENV NODE_ENV=production \
     FAULTLINE_PROVIDER=mock
 
 # Entry point — run the TypeScript source directly via tsx
-ENTRYPOINT ["node_modules/.bin/tsx", "packages/api/src/index.ts"]
+# Semgrep wants a USER line; by design there is none (see above): the entrypoint
+# chowns the Fly volume as root, then execs the app as faultline via su-exec.
+# nosemgrep: dockerfile.security.missing-user-entrypoint.missing-user-entrypoint
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh", "node_modules/.bin/tsx", "packages/api/src/index.ts"]

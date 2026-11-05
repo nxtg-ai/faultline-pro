@@ -34,15 +34,35 @@ export interface Rate {
  * calls (NOT provider families — that conflation is what let defect 3 hide).
  * Values pinned 2026-07-03 (see rates.ts provenance citations, mirrored here):
  *   gemini-2.5-flash  $0.30/$2.50  + $0.035/grounded-prompt
- *   gpt-4o-mini       $0.15/$0.60  (legacy grandfathered 4o-mini)
+ *   gpt-4o-mini       $0.15/$0.60 + $0.010/web_search call (the fee applies only to
+ *                     isGrounding legs; the 8,000-token search block is in input_tokens,
+ *                     measured 2026-10-14; developers.openai.com/api/docs/pricing)
  *   claude-opus-4-8   $5.00/$25.00 (LIVE Anthropic models page)
  *   gpt-4o            $2.50/$10.00 + $0.010/web_search call (legacy 4o)
+ *   sonar-pro         $3.00/$15.00 + $0.006/request (Perplexity, low search context)
+ *   sonar             $1.00/$1.00  + $0.005/request (Perplexity, low search context)
+ * The two Perplexity rows: Perplexity bills tokens plus a per-request fee that
+ * depends on search context size; every Sonar call is a grounding leg, so the
+ * fee sits in groundingPerCall. Perplexity's own pricing page no longer lists
+ * the Sonar models (checked 2026-10-28), so these are the last published Sonar
+ * rates as carried by third-party pricing summaries. Re-pin them from an
+ * invoice or the official page before relying on exact numbers.
  */
 export const CONSENSUS_MODEL_RATES: Record<string, Rate> = {
   'gemini-2.5-flash': { inputPerM: 0.30, outputPerM: 2.50, groundingPerCall: 0.035 },
-  'gpt-4o-mini':      { inputPerM: 0.15, outputPerM: 0.60, groundingPerCall: 0 },
+  'gpt-4o-mini':      { inputPerM: 0.15, outputPerM: 0.60, groundingPerCall: 0.010 },
   'claude-opus-4-8':  { inputPerM: 5.00, outputPerM: 25.00, groundingPerCall: 0 },
   'gpt-4o':           { inputPerM: 2.50, outputPerM: 10.00, groundingPerCall: 0.010 },
+  'sonar-pro':        { inputPerM: 3.00, outputPerM: 15.00, groundingPerCall: 0.006 },
+  'sonar':            { inputPerM: 1.00, outputPerM: 1.00, groundingPerCall: 0.005 },
+  // Parallel Search API (the parallel grounding mode's retriever): one billed request per
+  // search, no tokens. Advanced (the default mode) and Basic 5 USD per 1,000 requests, Fast
+  // and Turbo 1 USD per 1,000 (https://parallel.ai/pricing, read 2026-11-05). Keyed by the
+  // retriever's mode label (packages/cli/providers/parallel_search_retriever.ts).
+  'parallel-search-advanced': { inputPerM: 0, outputPerM: 0, groundingPerCall: 0.005 },
+  'parallel-search-basic':    { inputPerM: 0, outputPerM: 0, groundingPerCall: 0.005 },
+  'parallel-search-fast':     { inputPerM: 0, outputPerM: 0, groundingPerCall: 0.001 },
+  'parallel-search-turbo':    { inputPerM: 0, outputPerM: 0, groundingPerCall: 0.001 },
 };
 
 /**
@@ -58,6 +78,8 @@ export const CALLTYPE_DEFAULT_MODEL: Record<string, string> = {
   'grounded-verify:claude': 'claude-opus-4-8',
   'grounded-verify:gemini': 'gemini-2.5-flash',
   'web_search':             'gpt-4o',
+  // A Parallel leg always carries its mode label; this is the default mode, for a leg that lost it.
+  'parallel-search':        'parallel-search-advanced',
 };
 
 /** One LLM/retrieval call in a scan's fan-out, with real provider-reported usage. */

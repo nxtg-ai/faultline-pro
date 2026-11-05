@@ -12,8 +12,15 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scanInRequestMode } from '../lib/grounding.js';
+import { scanWithSpend } from '../lib/scan-spend.js';
 import { getNotificationStore, type NotificationEventType } from './notifications.js';
+import { fetchOutbound, fetchOutboundFollow } from '../lib/outbound-url.js';
+import { keyIsLive, sanitizeErrorText } from './webhooks.js';
+import { isGroundedScanResult } from './cache.js';
+import { ENGINE_VERIFY_CAP, meteredScan } from '../lib/claim-meter.js';
+import { PROVIDER_BUDGET_EXHAUSTED, providerBudgetRefuses } from '../plugins/provider-spend-cap.js';
+import type { ManagedScanCostEvent } from './costs.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -170,8 +177,13 @@ export function nextCronTime(cron: string, after: Date = new Date()): Date | nul
 
 class ScheduleStore {
   private schedules: Map<string, Schedule> = new Map();
+  /**
+   * The spend-gate tier each schedule was created with, kept off the Schedule so
+   * no response shows it. A schedule with none counts as capped.
+   */
+  private tiers: Map<string, ManagedScanCostEvent['tier']> = new Map();
 
-  create(input: CreateScheduleInput, keyId: string): Schedule {
+  create(input: CreateScheduleInput, keyId: string, spendCapTier?: ManagedScanCostEvent['tier']): Schedule {
     if (this.schedules.size >= MAX_SCHEDULES) {
       throw new Error(`Schedule limit reached (max ${MAX_SCHEDULES}).`);
     }
@@ -202,7 +214,13 @@ class ScheduleStore {
       history:      [],
     };
     this.schedules.set(schedule.id, schedule);
+    if (spendCapTier) this.tiers.set(schedule.id, spendCapTier);
     return schedule;
+  }
+
+  /** The spend-gate tier stored at creation, or undefined when none was stored. */
+  spendCapTierOf(id: string): ManagedScanCostEvent['tier'] | undefined {
+    return this.tiers.get(id);
   }
 
   get(id: string): Schedule | undefined {
@@ -235,6 +253,7 @@ class ScheduleStore {
   }
 
   delete(id: string): boolean {
+    this.tiers.delete(id);
     return this.schedules.delete(id);
   }
 
@@ -245,6 +264,7 @@ class ScheduleStore {
     for (const [id, s] of this.schedules) {
       if (keySet.has(s.keyId)) {
         this.schedules.delete(id);
+        this.tiers.delete(id);
         count++;
       }
     }
@@ -257,8 +277,11 @@ class ScheduleStore {
     return Array.from(this.schedules.values()).filter(s => keySet.has(s.keyId));
   }
 
-  /** Record a completed run, update nextRunAt, and check maxRuns. */
-  recordRun(id: string, result: Omit<ScheduleRunResult, 'runId'>): void {
+  /**
+   * Record a run, update nextRunAt, and check maxRuns. A skipped run (refused
+   * before it started) is recorded but does not count toward maxRuns.
+   */
+  recordRun(id: string, result: Omit<ScheduleRunResult, 'runId'>, options: { skipped?: boolean } = {}): void {
     const s = this.schedules.get(id);
     if (!s) return;
     const run: ScheduleRunResult = { runId: randomUUID(), ...result };
@@ -266,7 +289,7 @@ class ScheduleStore {
     if (s.history.length > MAX_HISTORY) s.history.length = MAX_HISTORY;
     s.lastResult  = run;
     s.lastRunAt   = run.ranAt;
-    s.runCount++;
+    if (!options.skipped) s.runCount++;
     s.nextRunAt   = nextCronTime(s.cron)?.toISOString() ?? null;
     s.updatedAt   = new Date().toISOString();
     if (s.maxRuns > 0 && s.runCount >= s.maxRuns) {
@@ -276,6 +299,7 @@ class ScheduleStore {
 
   reset(): void {
     this.schedules = new Map();
+    this.tiers = new Map();
   }
 }
 
@@ -319,10 +343,26 @@ class ScheduleRunner {
     let inputSource: 'text' | 'url' = 'text';
     let inputSize = 0;
 
+    // No request at run time: the tier stored at creation decides. A refused run
+    // is recorded as failed before the URL fetch and with no provider call.
+    if (providerBudgetRefuses(getScheduleStore().spendCapTierOf(schedule.id))) {
+      const runResult: Omit<ScheduleRunResult, 'runId'> = {
+        ranAt, durationMs: 0, overallRisk: 'unknown', claimCount: 0,
+        provider: schedule.provider, error: PROVIDER_BUDGET_EXHAUSTED,
+        inputSource: schedule.url ? 'url' : 'text', inputSize: 0,
+      };
+      getScheduleStore().recordRun(schedule.id, runResult, { skipped: true });
+      await dispatchScheduleNotification(schedule, runResult, null);
+      return;
+    }
+
     try {
       // Fetch URL content if url-based schedule
       if (schedule.url) {
-        const res = await fetch(schedule.url, {
+        // Guarded on every run, every redirect hop included: the fetched body
+        // feeds the scan, so an unguarded fetch would read internal URLs back
+        // to the caller (SSRF, same class as CodeQL #5).
+        const res = await fetchOutboundFollow(schedule.url, {
           signal: AbortSignal.timeout(30_000),
           headers: { 'User-Agent': 'Faultline-Pro/2.0 scan-scheduler' },
         });
@@ -336,7 +376,9 @@ class ScheduleRunner {
       }
       inputSize = inputText.length;
 
-      const result = await scan(inputText, schedule.provider);
+      // Each run is metered against the schedule's key; over its cap the run fails unscanned.
+      const result = await meteredScan(schedule.keyId, ENGINE_VERIFY_CAP, randomUUID(), schedule.provider,
+        () => scanWithSpend({ text: inputText, provider: schedule.provider, keyId: schedule.keyId }, () => scanInRequestMode(inputText, schedule.provider)));
       const durationMs = Date.now() - start;
       const runResult: Omit<ScheduleRunResult, 'runId'> = {
         ranAt,
@@ -374,12 +416,15 @@ async function dispatchScheduleNotification(
 ): Promise<void> {
   try {
     const eventType: NotificationEventType = runResult.error ? 'scan.failed' : 'scan.completed';
+    const grounded = _scanResult !== null && typeof _scanResult === 'object'
+      && isGroundedScanResult(_scanResult as Record<string, unknown>);
     const payload: Record<string, unknown> = {
       scheduleId:   schedule.id,
       scheduleName: schedule.name,
       ranAt:        runResult.ranAt,
       durationMs:   runResult.durationMs,
-      overallRisk:  runResult.overallRisk,
+      // Derived from the verdicts: left out when they are Gemini Grounded Results.
+      ...(grounded ? { grounded: true } : { overallRisk: runResult.overallRisk }),
       claimCount:   runResult.claimCount,
       provider:     runResult.provider,
       source:       schedule.url ?? 'direct text',
@@ -388,6 +433,25 @@ async function dispatchScheduleNotification(
     };
     if (runResult.error) payload['error'] = runResult.error;
     await getNotificationStore().dispatch(eventType, payload, schedule.keyId);
+
+    // The schedule's own webhookUrl: stored and SSRF-checked at create and
+    // patch, and now sent to (seat B on 43264e7: it was never used). Same
+    // rules as every caller URL: only while the owner key is live, grounded
+    // results reduced to counts, error text sanitized, guarded at send time.
+    if (schedule.webhookUrl && keyIsLive(schedule.keyId)) {
+      const { notifyEmail: _email, ...forWebhook } = payload;
+      const body = {
+        event: eventType,
+        ...forWebhook,
+        ...(typeof forWebhook.error === 'string' ? { error: sanitizeErrorText(forWebhook.error) } : {}),
+      };
+      await fetchOutbound(schedule.webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(10_000), // a slow receiver cannot hold the run (as webhook dispatch)
+      }).then((r) => r.body?.cancel()).catch(() => { /* non-fatal, including a blocked target */ });
+    }
   } catch { /* non-fatal */ }
 }
 
