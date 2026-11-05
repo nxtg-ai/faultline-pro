@@ -729,7 +729,7 @@ describe('accuracy-g0 runner: grounding arms and a seeded subsample (GoPMO 1.18.
     expect(ids).toHaveLength(2);
     // A second, failing-then-stopped run on a fresh file: one spent failure, then the allowance stop.
     const out2 = join(dir, 'g2.jsonl');
-    state.failFirst.set(ids[0], 1);
+    state.failFirst.set(ids[0] as number, 1);
     state.failUsage = { costUsd: 0.0351, googleGroundingCalls: 1 };
     state.attemptsById.clear();
     state.capAfterCallsThisRun = 1;
