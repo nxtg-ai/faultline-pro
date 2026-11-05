@@ -45,6 +45,8 @@ const KEY = ['runner', 'ADMINKEY', 'must-never-print', '4242'].join('-');
 
 interface FakeState {
   usageExtra?: Record<string, unknown>;
+  /** When set, an apiError answer still reports this usage (a call that failed after spending). */
+  failUsage?: { costUsd: number; googleGroundingCalls: number };
   dropVerifyOnce?: boolean;
   groundedPrompts: number;
   commit: string | null;
@@ -91,6 +93,7 @@ function freshState(): FakeState {
     verifyStatus: 200,
     runStartCalls: 0,
     usageExtra: undefined,
+    failUsage: undefined,
   };
 }
 
@@ -133,7 +136,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       const fail = attempt <= (state.failFirst.get(n) ?? 0);
       if (!fail) state.groundedPrompts += 1;
       return fail
-        ? { id, status: 'unverified', apiError: true, apiErrorReason: n % 2 === 0 ? 'output_truncated' : 'not a label!', parseFallback: false, model: null }
+        ? { id, status: 'unverified', apiError: true, apiErrorReason: n % 2 === 0 ? 'output_truncated' : 'not a label!', parseFallback: false, model: null, ...(state.failUsage ? { usage: state.failUsage } : {}) }
         : {
           id, status: n % 3 === 0 ? 'contradicted' : 'supported', apiError: false, parseFallback: n % 7 === 0, model: state.model(state.verifyCalls),
           sourcesCount: parallelArm ? 5 : 2,
@@ -715,6 +718,43 @@ describe('accuracy-g0 runner: grounding arms and a seeded subsample (GoPMO 1.18.
     expect(ids('b.jsonl')).toEqual(ids('a.jsonl'));
     expect(ids('c.jsonl')).not.toEqual(ids('a.jsonl'));
     expect(state.arms!.every((arm) => arm.grounding === 'parallel' && arm.parallelMode === 'fast')).toBe(true);
+  });
+
+  it('--resume keeps the cost and Google calls of attempts made before the stop', async () => {
+    // Codex review of the grounding PR, finding 1: the spend map reset on every process.
+    const out = join(dir, 'g.jsonl');
+    const first = await run(['--set', 'full', '--arm', 'google', '--sample', '2', '--seed', '7', '--out', out]);
+    expect(first.code).toBe(0);
+    const ids = rows(out).map((row) => row.id);
+    expect(ids).toHaveLength(2);
+    // A second, failing-then-stopped run on a fresh file: one spent failure, then the allowance stop.
+    const out2 = join(dir, 'g2.jsonl');
+    state.failFirst.set(ids[0], 1);
+    state.failUsage = { costUsd: 0.0351, googleGroundingCalls: 1 };
+    state.attemptsById.clear();
+    state.capAfterCallsThisRun = 1;
+    const stopped = await run(['--set', 'full', '--arm', 'google', '--sample', '2', '--seed', '7', '--out', out2]);
+    expect(stopped.code).toBe(3);
+    state.capAfterCallsThisRun = undefined;
+    state.groundedPrompts = 0;
+    const resumed = await run(['--set', 'full', '--arm', 'google', '--sample', '2', '--seed', '7', '--out', out2, '--resume']);
+    expect(resumed.code).toBe(0);
+    const row = rows(out2).find((r) => r.id === ids[0])!;
+    expect(row).toMatchObject({ apiError: false, attempts: 2, googleGroundingCalls: 2 });
+    expect(row.costUsd).toBeCloseTo(0.0351 + 0.03508, 6);
+  }, 30_000);
+
+  it('--resume refuses an out file written by another arm (exit 2, no verify call)', async () => {
+    // Codex review of the grounding PR, finding 2: google rows satisfied a parallel resume.
+    const out = join(dir, 'mixed.jsonl');
+    const first = await run(['--set', 'full', '--arm', 'google', '--sample', '2', '--seed', '7', '--out', out]);
+    expect(first.code).toBe(0);
+    expect(rows(out)).toHaveLength(2);
+    const before = state.verifyCalls;
+    const r = await run(['--set', 'full', '--arm', 'parallel', '--sample', '2', '--seed', '7', '--out', out, '--resume']);
+    expect(r.code).toBe(2);
+    expect(r.out).toMatch(/holds rows from arm google, not parallel/);
+    expect(state.verifyCalls).toBe(before);
   });
 
   it('stops when the engine ran another grounding than the arm asked for', async () => {

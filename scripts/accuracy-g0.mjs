@@ -507,6 +507,43 @@ function count(value) {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
 }
 
+/**
+ * The spend ledger sits beside the out file too. One line per provider result,
+ * `{id, arm, attempt, costUsd, googleGroundingCalls}`, appended and fsynced as each
+ * result arrives, so --resume restores what earlier attempts cost and how many
+ * Google grounded calls they made, not only how many attempts there were.
+ */
+export function spendPath(out) {
+  return `${out}.spend.jsonl`;
+}
+
+/** Cost and Google grounded calls per id over every recorded attempt. Refuses a row from another arm. */
+export function readSpend(file, arm) {
+  const spent = new Map();
+  if (!existsSync(file)) return spent;
+  for (const line of readFileSync(file, 'utf8').split('\n')) {
+    if (line.trim() === '') continue;
+    const row = JSON.parse(line);
+    if (row.arm !== arm) throw new RunStop(EXIT.REFUSED, `REFUSED: spend ledger ${file} holds arm ${row.arm}, not ${arm}`);
+    const so = spent.get(row.id) ?? { costUsd: 0, googleGroundingCalls: 0 };
+    so.costUsd += count(row.costUsd);
+    so.googleGroundingCalls += count(row.googleGroundingCalls);
+    spent.set(row.id, so);
+  }
+  return spent;
+}
+
+function recordSpend(file, entries) {
+  if (entries.length === 0) return;
+  const fd = openSync(file, 'a');
+  try {
+    writeSync(fd, entries.map((entry) => JSON.stringify(entry)).join('\n') + '\n');
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+}
+
 function buildRow(item, result, attempts, engineSha, arm = 'google', spent = { costUsd: 0, googleGroundingCalls: 0 }) {
   return {
     id: item.id,
@@ -557,7 +594,8 @@ async function runBatches({ request, allowance, options, pending, engine, done, 
   const ledger = ledgerPath(options.out);
   let retryRound = 0;
   const arm = options.runArm ?? 'google';
-  const spent = new Map();
+  const spendFile = spendPath(options.out);
+  const spent = readSpend(spendFile, arm);
   while (queue.length > 0) {
     const batch = queue.splice(0, BATCH_SIZE);
     await guardAllowance(allowance, batch.length, log);
@@ -568,6 +606,11 @@ async function runBatches({ request, allowance, options, pending, engine, done, 
     const results = await postBatch(request, batch, allowance.length > 1, arm);
     const rows = [];
     const retry = [];
+    const spendRows = batch.map((item) => {
+      const result = results?.get(item.id) ?? null;
+      return { id: item.id, arm, attempt: attempts.get(item.id), costUsd: count(result?.usage?.costUsd), googleGroundingCalls: count(result?.usage?.googleGroundingCalls) };
+    });
+    recordSpend(spendFile, spendRows);
     for (const item of batch) {
       const result = results?.get(item.id) ?? null;
       const tries = attempts.get(item.id);
@@ -679,6 +722,11 @@ async function runArm(options, deps = {}) {
     mkdirSync(path.dirname(options.out), { recursive: true });
     const done = readDone(options.out);
     const allowed = new Set(items.map((item) => item.id));
+    const runArmName = options.runArm ?? 'google';
+    const otherArm = [...done.values()].find((row) => (row.arm ?? 'google') !== runArmName);
+    if (otherArm) {
+      throw new RunStop(EXIT.REFUSED, `REFUSED: ${options.out} holds rows from arm ${otherArm.arm ?? 'google'}, not ${runArmName}`);
+    }
     if ([...done.keys()].some((id) => !allowed.has(id))) {
       throw new RunStop(EXIT.REFUSED, `REFUSED: ${options.out} holds ids outside the ${options.set} set`);
     }
