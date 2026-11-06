@@ -137,8 +137,9 @@ describe('every provider verifyClaim call site applies the rule', () => {
    * nearest enclosing named function). Adding a call site means adding an entry
    * here and a behavioural test that its result passes through
    * abstainWithoutSource.
-   * - verify-runner.ts#verifyOneClaim: the runner applies abstainWithoutSource to
-   *   every result (the test just below, and every runner test in this file).
+   * - verify-runner.ts#verifyOneClaimByMode: called only by verifyOneClaim, whose
+   *   result the runner passes through abstainWithoutSource (the test just below,
+   *   and every runner test in this file).
    * - admin-verify.ts#verifyOne: packages/api/tests/admin-verify-claims.test.ts,
    *   "counts only the sourced supported verdict as verified: not a zero-source
    *   supported, an unverified or an API error" (the zero-source supported
@@ -146,7 +147,7 @@ describe('every provider verifyClaim call site applies the rule', () => {
    */
   const CALL_SITES = [
     'packages/api/src/routes/admin-verify.ts#verifyOne',
-    'packages/cli/cli/verify-runner.ts#verifyOneClaim',
+    'packages/cli/cli/verify-runner.ts#verifyOneClaimByMode',
   ];
 
   it('each verifyClaim call site is pinned, one entry per call', () => {

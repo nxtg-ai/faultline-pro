@@ -19,7 +19,7 @@ import type { GroundingMode } from './grounding.js';
 import { consensusVerify, type NamedProvider } from '../consensus/consensus_engine.js';
 import { classifyApiError } from '../providers/extraction-error.js';
 import { OUT_OF_CREDITS_VERIFY_MESSAGE } from '../services/verify-error.js';
-import { abstainWithoutSource, guardVerdict, isNotCheckable } from '../lib/verdict-guard.js';
+import { abstainWithoutSource, guardVerdict, isNotCheckable, referenceNotFoundVerdict } from '../lib/verdict-guard.js';
 import { attachEvidence, type EvidenceOptions } from '../evidence/passage.js';
 import { attachIndependentEvidence, type IndependentEvidenceOptions } from '../evidence/independent.js';
 import { checkCitationDoi, DOI_RETRIEVER, resolveDoiCheck, type DoiCheckOptions } from '../evidence/doi.js';
@@ -621,6 +621,19 @@ function withProvenance(result: VerificationResult, verifier: Verifier, returned
  * bypasses the single-provider retry ladder (3 attempts, jittered backoff).
  */
 async function verifyOneClaim(
+  claim: Claim,
+  verifier: Verifier,
+  flagExhaustedRetries: boolean,
+  doi: DoiCheckOptions | null,
+): Promise<VerificationResult> {
+  const result = await verifyOneClaimByMode(claim, verifier, flagExhaustedRetries, doi);
+  // A citation claim whose sources do not address the work: the search found no
+  // record of it. That is the finding for an existence claim, so it carries risk
+  // (referenceNotFoundVerdict) instead of reading not checkable.
+  return claim.citation && isNotCheckable(result) ? referenceNotFoundVerdict(result) : result;
+}
+
+async function verifyOneClaimByMode(
   claim: Claim,
   verifier: Verifier,
   flagExhaustedRetries: boolean,

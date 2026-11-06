@@ -497,6 +497,9 @@ interface VerificationResult {
   // true when the judge said the sources found do not address the claim at all; the claim
   // reads unverified, adds no risk and is not billed (see "Not checkable")
   notCheckable?: boolean;
+  // true on a citation claim whose search found no record of the cited work; the claim
+  // reads unverified, counts toward the risk and is not billed (see "Not checkable")
+  referenceNotFound?: boolean;
   // Who produced the verdict and when; absent when the check never ran (apiError)
   provenance?: {
     provider: string;     // 'gemini', 'openai', 'claude', 'perplexity', 'mock' or 'consensus'
@@ -551,7 +554,7 @@ An empty `sources` list means the second retriever found nothing. OpenAI's terms
 | `mixed` | Sources conflict or evidence is ambiguous |
 | `unverified` | Insufficient evidence to determine either way |
 
-**No definite verdict without a source.** `supported`, `contradicted` and `mixed` always come with at least one source the reader can open. When a provider returns one of them with no source (on Gemini: the search ran but returned no grounding chunk with a web uri), the verdict is returned as `unverified` with `noSourceAbstain: true` and the explanation "The search returned no source this claim can be checked against, so it is not marked supported, contradicted or mixed." `provenance`, `webSearchQueries` and `searchEntryPoint` are kept as they were. A source counts only when its `uri` is an absolute `http` or `https` URL; any other source (empty, relative, `javascript:`, `ftp:`, missing) is dropped from the verdict. This holds on every provider and every path, including scans served from the cache or read back from storage. OpenAI and Claude single-provider verify cite no source, so their verdicts always read `unverified`; consensus already gives no vote without a retrieved source. Such a claim is not billable and is not counted toward the scan quota or the claim meter.
+**No definite verdict without a source.** `supported`, `contradicted` and `mixed` always come with at least one source the reader can open. When a provider returns one of them with no source (on Gemini: the search ran but returned no grounding chunk with a web uri), the verdict is returned as `unverified` with `noSourceAbstain: true` and the explanation "The search returned no source this claim can be checked against, so it is not marked supported, contradicted or mixed." `provenance` is kept; `webSearchQueries`, `searchEntryPoint` and any raw grounding metadata are removed, because the result is no longer Google's grounded result. A source counts only when its `uri` is an absolute `http` or `https` URL; any other source (empty, relative, `javascript:`, `ftp:`, missing) is dropped from the verdict. This holds on every provider and every path, including scans served from the cache or read back from storage. OpenAI and Claude single-provider verify cite no source, so their verdicts always read `unverified`; consensus already gives no vote without a retrieved source. Such a claim is not billable and is not counted toward the scan quota or the claim meter.
 
 **Not checkable.** Some claims are about the scanned text itself ("This report covers three models."), so the sources the search finds are about other things. The judge's reply says whether the sources address the claim at all (`sourcesAddressClaim`). When it says they do not, the claim is returned as `unverified` with `notCheckable: true`, `sources: []` and the explanation "The sources found do not address this claim, so it could not be checked against them. It adds no risk." whatever status the judge gave. `provenance` is kept; `webSearchQueries` and `searchEntryPoint` are removed. Such a claim:
 
@@ -560,7 +563,7 @@ An empty `sources` list means the second retriever found nothing. OpenAI's terms
 - reads `UNCHECKED` with `unchecked_reason: "not_verifiable"` on `faultline guard` and the MCP `verify_claims` tool, which is not a degraded scan and does not trip `--fail-on`. It is not a verdict for the MCP tool's `risk_score`: a scan whose only claims are not checkable gets `risk_score: null` and "risk UNKNOWN";
 - is left out of the critique's failed claims and the weakest-link ranking.
 
-This applies to a Gemini verify in both grounding modes (`google` and `parallel`). It also applies to a world claim whose sources do not address it. A claim the sources do address keeps its verdict. Consensus votes are unchanged. Only a JSON `true` or `false` is read; a reply without the key keeps its verdict.
+This applies to a Gemini verify in both grounding modes (`google` and `parallel`). It also applies to a world claim whose sources do not address it. It does not apply to a citation claim (one with a `citation` object): for a claim that a work exists, a search that finds nothing about the work is the finding. Such a claim is returned as `unverified` with `referenceNotFound: true`, `sources: []` and the explanation "No record of this reference was found in the sources searched, so it may not exist as cited. Check it before relying on it." It counts toward `overallRisk` like any unverified claim, reads `UNSUPPORTED` on `faultline guard` and the MCP tool, and is not billed. It is not `contradicted`, because a real but little-indexed work can also go unfound. A claim the sources do address keeps its verdict. Consensus votes are unchanged. Only a JSON `true` or `false` is read; a reply without the key keeps its verdict.
 
 ### ScanResult
 
