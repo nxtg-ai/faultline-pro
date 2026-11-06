@@ -266,10 +266,24 @@ async function lookUpCrossrefTitles(doi: string, opts: DoiCheckOptions): Promise
   return [...titles, ...withSubtitle];
 }
 
+/**
+ * Registry titles can carry markup such as <i> or <sub>. Keep only the text
+ * outside angle brackets, tracking nesting so "<<b>b>" leaves nothing behind,
+ * and drop every stray bracket: a quoted title is plain text, never HTML.
+ */
+function stripMarkup(text: string): string {
+  let out = '';
+  let depth = 0;
+  for (const ch of text) {
+    if (ch === '<') { depth += 1; continue; }
+    if (ch === '>') { if (depth > 0) depth -= 1; continue; }
+    if (depth === 0) out += ch;
+  }
+  return out;
+}
+
 function quote(title: string): string {
-  // Strip markup, then drop any angle bracket left over ("<<b>b>" would otherwise
-  // leave a tag behind): a quoted title is plain text, never HTML.
-  const flat = title.replace(/<[^>]*>/g, '').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim();
+  const flat = stripMarkup(title).replace(/\s+/g, ' ').trim();
   return flat.length > MAX_QUOTED_TITLE_CHARS ? `${flat.slice(0, MAX_QUOTED_TITLE_CHARS - 1)}…` : flat;
 }
 

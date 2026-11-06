@@ -167,6 +167,8 @@ describe('checkCitationDoi', () => {
     expect(settled?.status).toBe('contradicted');
     expect(settled?.explanation).toContain('Deep learning for image recognition');
     expect(settled?.explanation).not.toMatch(/[<>]/);
+    // Text inside tags goes too, not just the brackets.
+    expect(settled?.explanation).not.toContain('script');
   });
 
   it('a non-200 doi.org answer is not acted on, whatever the body says', async () => {
