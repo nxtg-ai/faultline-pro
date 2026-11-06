@@ -1,0 +1,13 @@
+{
+ "n": 193,
+ "value": -0.03573573573573574,
+ "ci95": [
+  -0.09519891289849272,
+  0.023132140999210054
+ ],
+ "undefinedResamples": 0,
+ "resamples": 2000,
+ "seed": 20260929,
+ "status_agreement_rate": 0.8601036269430051,
+ "ci_contains_zero": true
+}

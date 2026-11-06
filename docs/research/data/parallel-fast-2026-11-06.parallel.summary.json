@@ -1,0 +1,28 @@
+{
+  "goldSha256": "b87f971ce324c87e0427f100fe24b50594b9d44e3a764490b1bef188917dbae1",
+  "seed": 20260929,
+  "resamples": 2000,
+  "arms": {
+    "parallel": {
+      "run": "docs/research/data/parallel-fast-2026-11-06.parallel.jsonl",
+      "runSha256": "109a084e6f92247bb8bee6f4284a5a7cb6af35f59410a29344f4ee7285481e93",
+      "n": 200,
+      "binary_n": 193,
+      "balanced_accuracy": {
+        "value": 0.7546546546546546,
+        "ci95": [
+          0.6778109736738769,
+          0.8294247419247419
+        ],
+        "undefinedResamples": 0
+      },
+      "unverified_rate": 0.01,
+      "failure_rate": 0.0,
+      "not_checkable_rate": 0.005,
+      "mean_cost_usd_per_claim": 0.0098818815,
+      "total_cost_usd": 1.9763763,
+      "google_grounded_calls": 0,
+      "mean_sources_per_claim": 7.96
+    }
+  }
+}
