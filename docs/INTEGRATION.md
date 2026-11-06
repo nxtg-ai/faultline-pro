@@ -467,7 +467,7 @@ interface Claim {
 }
 ```
 
-**Citation claims.** A bibliography entry or an inline citation is extracted as ONE `fact` claim with a `citation` object, never as one claim per field (title, year, pages, venue, DOI). Its text is built from the fields: `The work "<title>" by <authors> (<year>), <venue>, DOI <doi> exists as cited.` (an inline citation with no reference entry reads `A work by Smith et al. (2021) exists as cited.`). Citation claims are verified first: they rank ahead of every other fact, are eligible at any importance, and count toward the verify cap like any other claim, so a reference list is checked one reference per claim before plain facts fill the cap.
+**Citation claims.** A bibliography entry or an inline citation is extracted as ONE `fact` claim with a `citation` object, never as one claim per field (title, year, pages, venue, DOI). Its text is built from the fields: `The work "<title>" by <authors> (<year>), DOI <doi> exists as cited.` The venue is kept in the `citation` object but left out of the text, because volume and conference numbering often differ for a correct citation (an inline citation with no reference entry reads `A work by Smith et al. (2021) exists as cited.`). Citation claims are verified first: they rank ahead of every other fact, are eligible at any importance, and count toward the verify cap like any other claim, so a reference list is checked one reference per claim before plain facts fill the cap.
 
 A citation claim with a DOI is checked against the DOI registries before any search, with no model call:
 
