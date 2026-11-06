@@ -1,11 +1,11 @@
 import { groundingOption } from '../lib/grounding.js';
-import { apiEvidenceOptions, apiIndependentEvidenceOptions } from '../lib/evidence.js';
+import { API_DOI_CHECK, apiEvidenceOptions, apiIndependentEvidenceOptions } from '../lib/evidence.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { extractForFullScan, verifyFullScan, type FullScanResult } from '@nxtg/faultline/cli/scan.js';
 import { billableVerdictCount } from '@nxtg/faultline/lib/verdict-guard.js';
 import { partitionForFullScan } from '@nxtg/faultline/cli/full-scan.js';
 import type { UsageLeg } from '@nxtg/faultline/lib/usage-sink.js';
-import { captureOutcome, withSearchLabel } from '../lib/scan-spend.js';
+import { captureOutcome, searchedVerdictCount, withSearchLabel } from '../lib/scan-spend.js';
 import { classifyKeyId, requireApiKey } from '../plugins/auth.js';
 import { isExtractionError } from '@nxtg/faultline/providers/extraction-error.js';
 import { sendExtractionFailed } from '../lib/extraction-failure.js';
@@ -223,15 +223,20 @@ async function runFullScanJob(store: FullScanJobStore, job: FullScanJob): Promis
     concurrency: FULL_SCAN_CONCURRENCY,
     signal: job.controller.signal,
     evidence: apiEvidenceOptions(),
+    doi: API_DOI_CHECK,
     independentEvidence: apiIndependentEvidenceOptions(),
     // Read when the job runs: the mode is passed to the engine, never set in process.env.
     ...groundingOption(),
     onClaim: (_claim, verdict, index) => store.recordVerdict(job, index, verdict),
   }));
+  // A DOI-settled verdict made no model or search call (N-237): it is left out of
+  // the grounding-call count, and with no searched verdict and no usage there is
+  // no call to estimate tokens for, so the estimate gets no text. Matches scanWithSpend.
+  const searched = searchedVerdictCount(job.verdicts);
   logFullScanCost(legs, {
-    text,
+    text: searched > 0 || legs.length > 0 ? text : '',
     provider: job.provider,
-    claimCount: outcome.ok ? outcome.value.verification.verifiedClaims : job.verdicts.filter(Boolean).length,
+    claimCount: searched,
     tier: job.tier,
     keyId: job.keyId,
     latencyMs: Date.now() - startedAt,

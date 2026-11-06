@@ -455,8 +455,28 @@ interface Claim {
   text: string;           // the atomic claim as a standalone sentence
   type: 'fact' | 'opinion' | 'interpretation';
   importance: number;     // 1–5 (5 = critical to argument integrity)
+  // Present when the claim is a reference-list entry or an inline citation (see "Citation claims")
+  citation?: {
+    title?: string;
+    authors?: string;
+    year?: string;
+    venue?: string;
+    doi?: string;         // normalized: lowercase, no https://doi.org/ or doi: prefix
+    raw?: string;         // the reference as it appears in the scanned text
+  };
 }
 ```
+
+**Citation claims.** A bibliography entry or an inline citation is extracted as ONE `fact` claim with a `citation` object, never as one claim per field (title, year, pages, venue, DOI). Its text is built from the fields: `The work "<title>" by <authors> (<year>), <venue>, DOI <doi> exists as cited.` (an inline citation with no reference entry reads `A work by Smith et al. (2021) exists as cited.`). Citation claims are verified first: they rank ahead of every other fact, are eligible at any importance, and count toward the verify cap like any other claim, so a reference list is checked one reference per claim before plain facts fill the cap.
+
+A citation claim with a DOI is checked against the DOI registries before any search, with no model call:
+
+0. The DOI is normalized first: resolver prefix removed, cut at the first character outside `-._;()/:` and ASCII letters and digits, lowercased, at most 200 characters, and refused when any `/` segment is empty, `.` or `..`. A refused DOI is not looked up; the claim goes to the normal verify.
+1. `GET https://doi.org/api/handles/<doi>`. HTTP 404 with `responseCode: 100` (the DOI does not exist; this is the status doi.org answers it with) → `contradicted`, source `https://doi.org/api/handles/<doi>`. Any other status (429, 500, 503...) is not acted on, whatever the body says.
+2. HTTP 200 with `responseCode: 1` → `GET https://api.crossref.org/works/<doi>` (acted on only with HTTP 200), and the registered title is compared with the cited title on our side. Both are lowercased, stripped of accents and markup, and have punctuation and hyphens deleted inside words (`COVID-19 SARS-CoV-2 co-infection` equals `COVID19 SARSCoV2 coinfection`). `supported` when the titles are then equal, or (both 4 words or more) one word apart with no negation word (not, no, never, without, non, lack, fail, fails) on one side only. `contradicted` ("This DOI belongs to a different work: <registered title>") when their word overlap is under 0.3 and the shorter title has at least 3 words. A title inside a longer one is not a match.
+3. Anything else falls through to the normal search-based verify: a DOI Crossref does not hold (another registration agency, such as DataCite), a title pair in between, no cited title, any other registry answer or status, a redirect, a network error or a 5-second timeout. A failed lookup never produces a verdict.
+
+The only scan data either request sends is the normalized DOI, in the URL path: no title, author, claim text, query parameter, user or key id, and the only header set is `User-Agent: Faultline (+https://faultline.nxtg.ai)`. Crossref is asked only after doi.org answered `responseCode: 1`. On the API both requests go through the same SSRF-guarded fetch as evidence passages. A DOI verdict carries `provenance: { provider: 'doi-resolver', model: 'doi.org+crossref', retriever: 'doi-resolver' }`; it is billable like any definite verdict with a source, and its registry links are not fetched again as evidence pages. `FAULTLINE_DOI_CHECK=off` turns the lookup off (CLI and API); every citation claim then goes to the normal verify. A citation claim with no DOI always goes to the normal verify, which judges whether the work exists as cited.
 
 ### VerificationResult
 
@@ -482,7 +502,7 @@ interface VerificationResult {
     provider: string;     // 'gemini', 'openai', 'claude', 'perplexity', 'mock' or 'consensus'
     model: string;        // Gemini: the model Google reports it served; consensus: 'name:model+name:model'
     verifiedAt: string;   // ISO 8601, when the provider call returned
-    retriever?: string;   // what retrieved the evidence: 'gemini-grounding' or the consensus retriever's name
+    retriever?: string;   // what retrieved the evidence: 'gemini-grounding', 'doi-resolver' (a citation settled by its DOI) or the consensus retriever's name
     retrievedAt?: string; // ISO 8601, when the evidence was retrieved (Gemini: same request as verifiedAt)
   };
 }

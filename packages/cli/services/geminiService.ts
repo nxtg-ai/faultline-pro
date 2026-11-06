@@ -1,5 +1,6 @@
 
 import { GoogleGenAI } from "@google/genai";
+import { CITATION_EXTRACTION_RULE, GEMINI_CITATION_SCHEMA } from '../lib/citation';
 import type { Claim, VerificationResult } from '../types';
 import { sanitizeVerifyError } from './verify-error';
 import { recordUsage } from '../lib/usage-sink';
@@ -94,6 +95,8 @@ export const extractClaims = async (text: string, apiKey: string, image?: { data
 
     CRITICAL RULE: Each sentence that contains an independently verifiable assertion must be extracted as its own separate claim. Do not merge claims from different sentences. If the text contains N distinct factual sentences, return at least N claims.
 
+    ${CITATION_EXTRACTION_RULE}
+
     ${text ? `Text: "${text}"` : ''}
 
     Return a JSON array where each object has:
@@ -101,6 +104,7 @@ export const extractClaims = async (text: string, apiKey: string, image?: { data
     - text: the specific claim as a standalone sentence
     - type: one of "fact" (verifiable), "opinion" (subjective), "interpretation" (inference)
     - importance: integer 1-5 (5 being critical to the argument's integrity)
+    - citation: only for a cited work, the citation object described in the CITATIONS RULE
   `;
 
   const parts: any[] = [{ text: prompt }];
@@ -126,6 +130,7 @@ export const extractClaims = async (text: string, apiKey: string, image?: { data
               text: { type: 'STRING' },
               type: { type: 'STRING' },
               importance: { type: 'INTEGER' },
+              citation: GEMINI_CITATION_SCHEMA,
             },
             required: ["id", "text", "type", "importance"]
           }

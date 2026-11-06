@@ -1,4 +1,4 @@
-import { apiEvidenceOptions, apiIndependentEvidenceOptions } from '../lib/evidence.js';
+import { API_DOI_CHECK, apiEvidenceOptions, apiIndependentEvidenceOptions } from '../lib/evidence.js';
 import { groundingOption } from '../lib/grounding.js';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
@@ -199,7 +199,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
             commitStreamedClaim(request, meterScanId, claim.id, verdict, effectiveProvider);
           },
           /* pipelineConfig */ undefined,
-          { verifyCap: verifyPolicy.cap, evidence: apiEvidenceOptions(), independentEvidence: apiIndependentEvidenceOptions(), ...groundingOption() },
+          { verifyCap: verifyPolicy.cap, evidence: apiEvidenceOptions(), doi: API_DOI_CHECK, independentEvidence: apiIndependentEvidenceOptions(), ...groundingOption() },
         ));
 
         const claimCount = Array.isArray(result.claims) ? result.claims.length : 0;
@@ -313,7 +313,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
             commitStreamedClaim(request, meterScanId, claim.id, verdict, effectiveProvider);
           },
           pipelineConfig,
-          { verifyCap: verifyPolicy.cap, evidence: apiEvidenceOptions(), independentEvidence: apiIndependentEvidenceOptions(), ...groundingOption() },
+          { verifyCap: verifyPolicy.cap, evidence: apiEvidenceOptions(), doi: API_DOI_CHECK, independentEvidence: apiIndependentEvidenceOptions(), ...groundingOption() },
         ));
 
         const claimCount = Array.isArray(result.claims) ? result.claims.length : 0;

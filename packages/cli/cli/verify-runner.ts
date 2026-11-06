@@ -22,6 +22,7 @@ import { OUT_OF_CREDITS_VERIFY_MESSAGE } from '../services/verify-error.js';
 import { abstainWithoutSource, guardVerdict, isNotCheckable } from '../lib/verdict-guard.js';
 import { attachEvidence, type EvidenceOptions } from '../evidence/passage.js';
 import { attachIndependentEvidence, type IndependentEvidenceOptions } from '../evidence/independent.js';
+import { checkCitationDoi, DOI_RETRIEVER, resolveDoiCheck, type DoiCheckOptions } from '../evidence/doi.js';
 
 /** Claims verified at the same time within one scan. */
 export const VERIFY_CONCURRENCY = 8;
@@ -448,6 +449,12 @@ export interface RunVerificationOptions {
   evidence?: EvidenceOptions;
   /** When set, a second retriever's passages are attached as independentEvidence before the verdict is reported. */
   independentEvidence?: IndependentEvidenceOptions;
+  /**
+   * The DOI lookup for citation claims (evidence/doi.ts, N-237). Omitted: the
+   * engine default (global fetch in the CLI; the API sets its guarded fetch at
+   * boot). `false`: no DOI check. FAULTLINE_DOI_CHECK=off turns it off either way.
+   */
+  doi?: DoiCheckOptions | false;
 }
 
 /** What one verify-stage run produced. */
@@ -607,10 +614,23 @@ function withProvenance(result: VerificationResult, verifier: Verifier, returned
 }
 
 /**
- * Verify one claim. Consensus is internally resilient (never throws), so it
+ * Verify one claim. A citation claim with a DOI is first settled by the
+ * deterministic DOI check when it can be (evidence/doi.ts), before any mode
+ * below runs; when the check cannot settle it, the claim goes on to the
+ * normal verify. Consensus is internally resilient (never throws), so it
  * bypasses the single-provider retry ladder (3 attempts, jittered backoff).
  */
-async function verifyOneClaim(claim: Claim, verifier: Verifier, flagExhaustedRetries: boolean): Promise<VerificationResult> {
+async function verifyOneClaim(
+  claim: Claim,
+  verifier: Verifier,
+  flagExhaustedRetries: boolean,
+  doi: DoiCheckOptions | null,
+): Promise<VerificationResult> {
+  if (doi && claim.citation?.doi) {
+    // Privacy rule: the DOI lookup sends only the normalized DOI, in the URL path (evidence/doi.ts).
+    const settled = await checkCitationDoi(claim, doi);
+    if (settled) return settled;
+  }
   if (verifier.consensusRig) {
     return consensusVerify(claim, verifier.consensusRig.retriever, verifier.consensusRig.namedProviders);
   }
@@ -645,6 +665,7 @@ export async function runVerification(
 ): Promise<VerificationRun> {
   const { onProgress, onClaimVerified, signal, flagExhaustedRetries = true } = options;
   const concurrency = resolveVerifyConcurrency(options.concurrency ?? VERIFY_CONCURRENCY);
+  const doi = resolveDoiCheck(options.doi);
   const verifications: Record<string, VerificationResult> = {};
   const results: Array<VerificationResult | undefined> = new Array(claims.length).fill(undefined);
   let cursor = 0;
@@ -656,9 +677,11 @@ export async function runVerification(
       // entry makes the whole result a provider error. Only a well-formed verdict then has
       // its unopenable sources dropped, and is reported as unverified when none remain
       // (abstainWithoutSource), before anything reads or bills it.
-      const checked = abstainWithoutSource(guardVerdict(await verifyOneClaim(claims[i], verifier, flagExhaustedRetries), claims[i].id));
-      const withSources = options.evidence ? await attachEvidence(checked, claims[i].text, options.evidence) : checked;
-      const result = options.independentEvidence
+      const checked = abstainWithoutSource(guardVerdict(await verifyOneClaim(claims[i], verifier, flagExhaustedRetries, doi), claims[i].id));
+      // A DOI verdict's sources are registry records, not pages: no passage fetch and no second search runs on it.
+      const fromDoi = checked.provenance?.retriever === DOI_RETRIEVER;
+      const withSources = options.evidence && !fromDoi ? await attachEvidence(checked, claims[i].text, options.evidence) : checked;
+      const result = options.independentEvidence && !fromDoi
         ? await attachIndependentEvidence(withSources, claims[i].text, options.independentEvidence)
         : withSources;
       verifications[claims[i].id] = result;

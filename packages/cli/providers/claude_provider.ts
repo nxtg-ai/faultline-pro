@@ -1,3 +1,4 @@
+import { CITATION_EXTRACTION_RULE } from '../lib/citation';
 import type { Claim, VerificationResult, Source } from '../types';
 import type { LLMProvider, ImageInput, CritiqueResult, ProviderFactory } from './base_provider';
 import { buildGroundedPrompt } from './grounded_prompt';
@@ -53,6 +54,8 @@ Focus on extracting assertions that bear the weight of the argument.
 
 CRITICAL RULE: Each sentence that contains an independently verifiable assertion must be extracted as its own separate claim. Do not merge claims from different sentences. If the text contains N distinct factual sentences, return at least N claims.
 
+${CITATION_EXTRACTION_RULE}
+
 ${text ? `Text: "${text}"` : ''}
 
 Return a JSON array where each object has:
@@ -60,6 +63,7 @@ Return a JSON array where each object has:
 - text: the specific claim as a standalone sentence
 - type: one of "fact" (verifiable), "opinion" (subjective), "interpretation" (inference)
 - importance: integer 1-5 (5 being critical to the argument's integrity)
+- citation: only for a cited work, the citation object described in the CITATIONS RULE
 
 Return ONLY the JSON array, no other text.`,
     });

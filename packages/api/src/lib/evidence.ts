@@ -11,6 +11,7 @@ import { isGeminiGroundingSource, type EvidenceOptions } from '@nxtg/faultline/e
 import type { IndependentEvidenceOptions } from '@nxtg/faultline/evidence/independent.js';
 import { OpenAIWebSearchRetriever } from '@nxtg/faultline/providers/openai_web_search_retriever.js';
 import { fetchOutbound } from './outbound-url.js';
+import { setDefaultDoiCheck, type DoiCheckOptions } from '@nxtg/faultline/evidence/doi.js';
 
 export function apiEvidenceOptions(): EvidenceOptions | undefined {
   if ((process.env.FAULTLINE_EVIDENCE_FETCH ?? '').toLowerCase() === 'off') return undefined;
@@ -54,4 +55,24 @@ export function apiIndependentEvidenceOptions(): IndependentEvidenceOptions | un
     appliesTo: (result) => result.provenance?.retriever === 'gemini-grounding'
       || (Array.isArray(result.sources) && result.sources.some((s) => isGeminiGroundingSource(result, s))),
   };
+}
+
+/**
+ * The DOI lookup for citation claims (N-237): doi.org and api.crossref.org,
+ * one hop each, through the guarded fetchOutbound. Only the normalized DOI, in
+ * the URL path, leaves in these requests (evidence/doi.ts).
+ * FAULTLINE_DOI_CHECK=off turns it off.
+ */
+export const API_DOI_CHECK: DoiCheckOptions = Object.freeze({
+  fetch: (url: string, init: RequestInit) => fetchOutbound(url, init),
+});
+
+/**
+ * Make API_DOI_CHECK the engine's default, so every route that runs a scan
+ * (scan, stream, batch, deep, full scan, queue, GraphQL...) looks DOIs up
+ * through the guarded fetch and none reaches global fetch. Called once by
+ * buildServer.
+ */
+export function installDoiCheck(): void {
+  setDefaultDoiCheck(API_DOI_CHECK);
 }

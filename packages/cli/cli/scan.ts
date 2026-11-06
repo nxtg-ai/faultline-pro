@@ -1,11 +1,13 @@
 import type { EvidenceOptions } from '../evidence/passage.js';
 import type { IndependentEvidenceOptions } from '../evidence/independent.js';
+import type { DoiCheckOptions } from '../evidence/doi.js';
 import { groundingFromEnv, type GroundingMode } from './grounding.js';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import type { Claim, VerificationResult, AnalysisState, RetrievalStatus } from '../types.js';
 import { generateComplianceReport, type ComplianceReport } from '../compliance/report_generator.js';
 import { calculateRisk } from '../lib/overall-risk.js';
+import { citationSpans, isInsideReferences } from '../lib/citation.js';
 import { runAllRules, runRules, type Finding } from '../rules/index.js';
 import { isExtractionError, type ExtractionErrorReason } from '../providers/extraction-error.js';
 import {
@@ -77,6 +79,11 @@ export interface ScanOptions {
   evidence?: EvidenceOptions;
   /** Attach a second retriever's passages as independentEvidence (off unless set). */
   independentEvidence?: IndependentEvidenceOptions;
+  /**
+   * The DOI lookup for citation claims (evidence/doi.ts). Omitted: the engine
+   * default; `false`: off. See RunVerificationOptions.doi.
+   */
+  doi?: DoiCheckOptions | false;
   /**
    * Which search grounds a non-consensus gemini verify (cli/grounding.ts).
    * Absent means google, today's behaviour. The engine never reads
@@ -191,6 +198,8 @@ export interface VerifyFullScanOptions {
   /** Attach evidence passages from each cited source (see ScanOptions.evidence). */
   evidence?: EvidenceOptions;
   independentEvidence?: IndependentEvidenceOptions;
+  /** See ScanOptions.doi. */
+  doi?: DoiCheckOptions | false;
   /** See ScanOptions.grounding. */
   grounding?: GroundingMode;
 }
@@ -270,6 +279,11 @@ function normalizeSentence(s: string): string {
  *
  * This is the primary defence against claim-merging behaviour and works
  * identically across all providers.
+ *
+ * A sentence inside a reference a citation claim accounts for (citationSpans)
+ * is covered: the sentence splitter cuts a reference at every period, and
+ * each fragment ("Nature, 521(7553), 436-444.") is a field of that one
+ * citation, not a separate assertion (N-237).
  */
 export function guaranteeClaimPerSentence(text: string, claims: Claim[]): Claim[] {
   const sentences = splitSentences(text);
@@ -287,12 +301,15 @@ export function guaranteeClaimPerSentence(text: string, claims: Claim[]): Claim[
     return id;
   };
 
+  const references = citationSpans(text, claims);
+
   for (const sentence of sentences) {
     const normSentence = normalizeSentence(sentence);
     if (!normSentence) continue;
 
     // Use the first 40 normalised chars as a fingerprint to detect coverage.
     const fingerprint = normSentence.slice(0, 40);
+    if (isInsideReferences(sentence, references)) continue;
     const covered = result.some(c => {
       const nc = normalizeSentence(c.text);
       return nc.includes(fingerprint) || normSentence.includes(nc.slice(0, 40));
@@ -309,8 +326,8 @@ export function guaranteeClaimPerSentence(text: string, claims: Claim[]): Claim[
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Pick the claims to verify: facts of importance >= 2, most important first,
- * at most `cap` of them. An invalid cap falls back to DEFAULT_VERIFY_CAP.
+ * Pick the claims to verify: citation claims first, then facts of importance
+ * >= 2, most important first, at most `cap` of them (rankEligibleClaims). An invalid cap falls back to DEFAULT_VERIFY_CAP.
  */
 export function filterClaimsForVerification(claims: Claim[], cap: number = DEFAULT_VERIFY_CAP): Claim[] {
   return rankEligibleClaims(claims).slice(0, resolveVerifyCap(cap));
@@ -353,13 +370,14 @@ export async function scan(
       provider: extractionProvider.name, text, minConfidence, ruleNames, onProgress, onClaim: onClaimVerified,
       evidence: options?.evidence,
       independentEvidence: options?.independentEvidence,
+      doi: options?.doi,
     });
   }
 
   const verifyCap = resolveVerifyCap(options?.verifyCap);
   const rankedEligible = rankEligibleClaims(claims);
   const toVerify = rankedEligible.slice(0, verifyCap);
-  const { verifications } = await runVerification(toVerify, verifier, { onProgress, onClaimVerified, evidence: options?.evidence, independentEvidence: options?.independentEvidence });
+  const { verifications } = await runVerification(toVerify, verifier, { onProgress, onClaimVerified, evidence: options?.evidence, independentEvidence: options?.independentEvidence, doi: options?.doi });
 
   onProgress?.('Generating report...');
   const overallRisk = calculateRisk(verifications);
@@ -431,6 +449,7 @@ interface FullVerificationContext {
   concurrency?: number;
   evidence?: EvidenceOptions;
   independentEvidence?: IndependentEvidenceOptions;
+  doi?: DoiCheckOptions | false;
 }
 
 /** The full-scan core shared by scan(mode 'full') and verifyFullScan. */
@@ -448,6 +467,7 @@ async function runFullVerification(
     flagExhaustedRetries: true,
     evidence: context.evidence,
     independentEvidence: context.independentEvidence,
+    doi: context.doi,
   });
 
   context.onProgress?.('Generating report...');
