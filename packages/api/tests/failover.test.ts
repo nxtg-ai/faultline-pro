@@ -9,6 +9,7 @@ import { resetWebhookStore } from '../src/store/webhooks.js';
 import { resetCircuitBreaker, getCircuitBreaker, PROVIDER_CHAIN } from '../src/store/circuit-breaker.js';
 import type { Provider } from '../src/store/circuit-breaker.js';
 import { resetCache } from '../src/store/cache.js';
+import { API_DOI_CHECK } from '../src/lib/evidence.js';
 import type { FastifyInstance } from 'fastify';
 
 const { mockScan } = vi.hoisted(() => ({ mockScan: vi.fn() }));
@@ -234,8 +235,8 @@ describe('Failover — integration', () => {
 
     expect(res.statusCode).toBe(200);
     // Verify gemini was not called (first call should be openai)
-    expect(mockScan).toHaveBeenCalledWith('test', 'openai', undefined, undefined, undefined, undefined, undefined, { verifyCap: 8 });
-    expect(mockScan).not.toHaveBeenCalledWith('test', 'gemini', undefined, undefined, undefined, undefined, undefined, { verifyCap: 8 });
+    expect(mockScan).toHaveBeenCalledWith('test', 'openai', undefined, undefined, undefined, undefined, undefined, { verifyCap: 8, doi: API_DOI_CHECK });
+    expect(mockScan).not.toHaveBeenCalledWith('test', 'gemini', undefined, undefined, undefined, undefined, undefined, { verifyCap: 8, doi: API_DOI_CHECK });
   });
 
   it('Circuit breaker: after 5 failures, provider marked down', async () => {
@@ -266,7 +267,7 @@ describe('Failover — integration', () => {
 
     expect(res.statusCode).toBe(200);
     // Should have been called with claude (first non-down provider after gemini+openai)
-    expect(mockScan).toHaveBeenCalledWith('test', 'claude', undefined, undefined, undefined, undefined, undefined, { verifyCap: 8 });
+    expect(mockScan).toHaveBeenCalledWith('test', 'claude', undefined, undefined, undefined, undefined, undefined, { verifyCap: 8, doi: API_DOI_CHECK });
   });
 
   it('POST /scan/batch with working scan → 200', async () => {

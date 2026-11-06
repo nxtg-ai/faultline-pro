@@ -2,6 +2,7 @@ import type { ApiErrorReason, Claim } from '../types';
 import { isOutputTruncatedError } from './output-truncation';
 import { isOutOfCreditsError } from './out-of-credits';
 import { MAX_CLAIM_ID_LENGTH } from '../lib/verdict-guard';
+import { applyCitation } from '../lib/citation';
 
 /**
  * Why a claim extraction did not produce claims.
@@ -125,6 +126,7 @@ const CLAIM_TYPES: ReadonlySet<string> = new Set(['fact', 'opinion', 'interpreta
  * claim id, where that key sets the object's prototype instead of adding an entry,
  * so the meter would commit a claim the billing summary never sees.
  * The cause names the item index and field, never claim text.
+ * An optional `citation` object is sanitized by applyCitation (N-237).
  */
 function validateClaim(item: unknown, index: number): Claim {
   const fail = (field: string): never => {
@@ -139,5 +141,7 @@ function validateClaim(item: unknown, index: number): Claim {
   if (typeof importance !== 'number' || !Number.isInteger(importance) || importance < 1 || importance > 5) {
     return fail('importance');
   }
-  return { ...(item as object), id: claimId, text, type: type as Claim['type'], importance } as Claim;
+  // A `citation` object makes the claim one citation claim with canonical text;
+  // a malformed one is dropped rather than carried (lib/citation.ts, N-237).
+  return applyCitation({ ...(item as object), id: claimId, text, type: type as Claim['type'], importance } as Claim);
 }

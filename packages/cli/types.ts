@@ -8,11 +8,36 @@ export interface Claim {
   text: string;
   type: ClaimType;
   importance: number; // 1 to 5
+  /**
+   * Set when the claim is a bibliography entry or an inline citation (N-237).
+   * The claim is then a `fact` whose text says the cited work exists as cited,
+   * one claim per reference, never one per field. See lib/citation.ts.
+   */
+  citation?: CitationRef;
   // P-08b NOTE (TQ-003): Add `dependencies?: string[]` — array of claim IDs that this
   // claim logically depends on being true. Required for true weakest-chain traversal and
   // full claim-graph visualization. Deferred from Kaggle branch to avoid complicating
   // the stash/merge decision. Extraction prompts for all three providers will need updating
   // to identify logical dependencies when this is added.
+}
+
+/**
+ * The parsed fields of one cited work (N-237). Every field is optional except
+ * that a citation names at least a title, or authors and a year.
+ */
+export interface CitationRef {
+  /** The cited title, as the text gives it. */
+  title?: string;
+  /** The authors as the text gives them, e.g. "LeCun, Y., Bengio, Y. & Hinton, G." or "Smith et al.". */
+  authors?: string;
+  /** The publication year as cited. */
+  year?: string;
+  /** Journal, conference, publisher or other venue. */
+  venue?: string;
+  /** The cited DOI, normalized (lowercase, no resolver prefix), when the citation carries one. */
+  doi?: string;
+  /** The reference as it appears in the scanned text, verbatim, so the per-sentence guarantee sees it as covered. */
+  raw?: string;
 }
 
 export interface Source {

@@ -1,9 +1,19 @@
 export const schema = `
+  type Citation {
+    title: String
+    authors: String
+    year: String
+    venue: String
+    doi: String
+    raw: String
+  }
+
   type Claim {
     id: String!
     text: String!
     type: String!
     importance: Int!
+    citation: Citation
   }
 
   type VerificationResult {

@@ -1,5 +1,5 @@
 import { groundingOption } from '../lib/grounding.js';
-import { apiEvidenceOptions, apiIndependentEvidenceOptions } from '../lib/evidence.js';
+import { API_DOI_CHECK, apiEvidenceOptions, apiIndependentEvidenceOptions } from '../lib/evidence.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { extractForFullScan, verifyFullScan, type FullScanResult } from '@nxtg/faultline/cli/scan.js';
 import { billableVerdictCount } from '@nxtg/faultline/lib/verdict-guard.js';
@@ -223,6 +223,7 @@ async function runFullScanJob(store: FullScanJobStore, job: FullScanJob): Promis
     concurrency: FULL_SCAN_CONCURRENCY,
     signal: job.controller.signal,
     evidence: apiEvidenceOptions(),
+    doi: API_DOI_CHECK,
     independentEvidence: apiIndependentEvidenceOptions(),
     // Read when the job runs: the mode is passed to the engine, never set in process.env.
     ...groundingOption(),

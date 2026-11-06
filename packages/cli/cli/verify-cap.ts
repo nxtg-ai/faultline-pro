@@ -1,4 +1,5 @@
 import type { Claim } from '../types.js';
+import { isCitationClaim } from '../lib/citation.js';
 
 /**
  * How many claims one scan sends to the verify stage. Every verified claim is a
@@ -24,16 +25,26 @@ export function resolveVerifyCap(cap: unknown): number {
   return cap;
 }
 
-/** A claim is worth verifying when it is a fact of importance 2 or higher. */
+/**
+ * A claim is worth verifying when it is a fact of importance 2 or higher, or
+ * a citation claim (a fact naming a cited work) of any importance: whether a
+ * cited work exists is always checkable (N-237).
+ */
 export function isEligibleForVerification(claim: Claim): boolean {
-  return claim.type === 'fact' && claim.importance >= 2;
+  return claim.type === 'fact' && (claim.importance >= 2 || isCitationClaim(claim));
 }
 
-/** Eligible claims, most important first (stable sort keeps extraction order on ties). */
+/**
+ * Eligible claims in verification order: citation claims first, then by
+ * importance, most important first (stable sort keeps extraction order on
+ * ties). Citations lead so that a reference list is checked one claim per
+ * reference before ordinary facts fill the cap; they still count toward it.
+ */
 export function rankEligibleClaims(claims: Claim[]): Claim[] {
+  const citationRank = (c: Claim): number => (isCitationClaim(c) ? 1 : 0);
   return claims
     .filter(isEligibleForVerification)
-    .sort((a, b) => b.importance - a.importance);
+    .sort((a, b) => citationRank(b) - citationRank(a) || b.importance - a.importance);
 }
 
 /**
@@ -44,7 +55,7 @@ export function rankEligibleClaims(claims: Claim[]): Claim[] {
 export interface VerificationSummary {
   /** The cap applied to this scan, after normalisation. */
   cap: number;
-  /** Claims that met the bar for verification (fact, importance >= 2). */
+  /** Claims that met the bar for verification (fact of importance >= 2, or a citation claim). */
   eligibleClaims: number;
   /** Eligible claims sent to verification (min(cap, eligibleClaims)). */
   verifiedClaims: number;

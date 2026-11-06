@@ -61,8 +61,11 @@ npx @nxtg/faultline scan \
   --output-format json \
   --fail-on high  > result.json
 # Exit code != 0 = "this deliverable would FAIL the gate."
-# In result.json: each citation = a claim; verifications[id].status === 'unverified'
-# with empty sources[] is a fabricated citation the engine could not ground.
+# In result.json: each citation = one claim with a `citation` object (N-237).
+# A cited DOI that does not exist reads 'contradicted' with the doi.org lookup as
+# its source; a DOI registered to a different work reads 'contradicted' naming
+# that work. A citation with no DOI is searched: 'unverified' with empty sources[]
+# is a citation the engine could not ground. See docs/INTEGRATION.md "Citation claims".
 ```
 
 ### 3b. Prospect demo (the real test)
