@@ -155,7 +155,7 @@ export function sanitizeCitation(value: unknown): CitationRef | undefined {
  *
  * @example
  *   citationClaimText({ title: 'Deep learning', authors: 'LeCun, Y.', year: '2015', venue: 'Nature', doi: '10.1038/nature14539' })
- *   // 'The work "Deep learning" by LeCun, Y. (2015), Nature, DOI 10.1038/nature14539 exists as cited.'
+ *   // 'The work "Deep learning" by LeCun, Y. (2015), DOI 10.1038/nature14539 exists as cited.'
  *   citationClaimText({ authors: 'Smith et al.', year: '2021' })
  *   // 'A work by Smith et al. (2021) exists as cited.'
  */
@@ -163,9 +163,12 @@ export function citationClaimText(c: CitationRef): string {
   const head = c.title ? `The work "${c.title}"` : 'A work';
   const by = c.authors ? ` by ${c.authors}` : '';
   const year = c.year ? ` (${c.year})` : '';
-  const venue = c.venue ? `, ${c.venue}` : '';
+  // The venue stays on the claim's citation fields but out of the text the
+  // verifier judges: volume, issue and conference numbering often differ for a
+  // correct citation (NeurIPS 2017 is the 31st conference, proceedings volume
+  // 30), and a judge asked about them contradicted a real paper.
   const doi = c.doi ? `, DOI ${c.doi}` : '';
-  return `${head}${by}${year}${venue}${doi} exists as cited.`;
+  return `${head}${by}${year}${doi} exists as cited.`;
 }
 
 /** True for a claim extraction marked as a citation. */

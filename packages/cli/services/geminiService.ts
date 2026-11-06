@@ -505,7 +505,11 @@ ${sourcesRule ? `
     const response = await ai.models.generateContent({
       model: GEMINI_MODEL,
       contents: prompt,
-      config: geminiCeilingConfig('verifyGrounded'),
+      // JSON mode: this call has no search tool, so Gemini can be held to valid
+      // JSON. Without it the judge sometimes quoted a source inside the
+      // explanation without escaping the quotes, and the reply could not be read
+      // (1 in 40 in a local reproduction, 2026-11-06).
+      config: { ...geminiCeilingConfig('verifyGrounded'), responseMimeType: 'application/json' },
     });
 
     recordGeminiUsage(response, false, 'grounded-verify:gemini');

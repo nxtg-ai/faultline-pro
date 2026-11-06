@@ -52,7 +52,7 @@ describe('extraction: one claim per citation', () => {
     expect(citations).toHaveLength(3);
     expect(citations[0]).toMatchObject({
       type: 'fact',
-      text: 'The work "Deep learning" by LeCun, Y., Bengio, Y., & Hinton, G. (2015), Nature, DOI 10.1038/nature14539 exists as cited.',
+      text: 'The work "Deep learning" by LeCun, Y., Bengio, Y., & Hinton, G. (2015), DOI 10.1038/nature14539 exists as cited.',
       citation: { title: 'Deep learning', year: '2015', doi: '10.1038/nature14539' },
     });
     expect(citations[1]!.citation!.authors).toBe('Vaswani, A., Shazeer, N., Parmar, N.');
@@ -130,6 +130,11 @@ describe('extraction: one claim per citation', () => {
     expect(c!.title!.startsWith('A title with breaks')).toBe(true);
     expect(c!.title!.length).toBe(500);
     expect(citationClaimText({ title: 'T' })).toBe('The work "T" exists as cited.');
+    // Venue numbering is not judged: a real NeurIPS 2017 paper (31st conference,
+    // proceedings volume 30) was contradicted when the venue was in the text.
+    const neurips = citationClaimText({ title: 'Attention is all you need', authors: 'Vaswani, A., et al.', year: '2017', venue: 'Advances in Neural Information Processing Systems, 30' });
+    expect(neurips).toBe('The work "Attention is all you need" by Vaswani, A., et al. (2017) exists as cited.');
+    expect(neurips).not.toContain('Neural Information Processing');
   });
 
   it('every model provider prompt carries the citation rule; Gemini declares the citation property in its schema', () => {
