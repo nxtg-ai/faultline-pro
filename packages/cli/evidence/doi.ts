@@ -87,8 +87,9 @@ export function isSafeLookupUrl(url: string, origin: string, prefix: string): bo
     && parsed.pathname.startsWith(`${prefix}10.`)
     && !rawSegments.some((seg) => seg === '.' || seg === '..' || seg === '%2e' || seg === '%2e%2e')
     && !parsed.pathname.includes('..')
-    && parsed.search === ''
-    && parsed.hash === '';
+    // No query string and no fragment anywhere in the URL.
+    && !parsed.href.includes('?')
+    && !parsed.href.includes('#');
 }
 
 /** The doi.org handle-registry lookup URL for a normalized DOI. */
@@ -266,7 +267,9 @@ async function lookUpCrossrefTitles(doi: string, opts: DoiCheckOptions): Promise
 }
 
 function quote(title: string): string {
-  const flat = title.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+  // Strip markup, then drop any angle bracket left over ("<<b>b>" would otherwise
+  // leave a tag behind): a quoted title is plain text, never HTML.
+  const flat = title.replace(/<[^>]*>/g, '').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim();
   return flat.length > MAX_QUOTED_TITLE_CHARS ? `${flat.slice(0, MAX_QUOTED_TITLE_CHARS - 1)}…` : flat;
 }
 

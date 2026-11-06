@@ -157,6 +157,18 @@ describe('checkCitationDoi', () => {
     expect(isBillableVerdict(settled)).toBe(true);
   });
 
+  it('a registry title carrying nested markup is quoted as plain text, with no angle bracket left', async () => {
+    const { opts } = fakeFetch({
+      [doiHandleUrl(REAL_DOI)]: handleFound(REAL_DOI),
+      [crossrefWorkUrl(REAL_DOI)]: crossrefWork(['<<script>script>alert(1)<</script>/script> Deep learning for image recognition']),
+    });
+    const settled = await checkCitationDoi(
+      citationClaim({ ...realCitation, title: 'Quantum annealing for portfolio optimisation in emerging markets' }), opts);
+    expect(settled?.status).toBe('contradicted');
+    expect(settled?.explanation).toContain('Deep learning for image recognition');
+    expect(settled?.explanation).not.toMatch(/[<>]/);
+  });
+
   it('a non-200 doi.org answer is not acted on, whatever the body says', async () => {
     for (const status of [503, 429, 500]) {
       const { opts, calls } = fakeFetch({ [doiHandleUrl(FAKE_DOI)]: () => json(status, { responseCode: 100 }) });
