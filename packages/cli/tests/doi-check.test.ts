@@ -10,10 +10,10 @@
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import {
-  checkCitationDoi, titleSimilarity, doiHandleUrl, crossrefWorkUrl, DOI_RETRIEVER, DOI_USER_AGENT,
+  checkCitationDoi, titleSimilarity, compareTitles, doiHandleUrl, crossrefWorkUrl, isSafeLookupUrl, DOI_RETRIEVER, DOI_USER_AGENT,
   resolveDoiCheck, setDefaultDoiCheck, resetDefaultDoiCheck, type DoiCheckOptions,
 } from '../evidence/doi.js';
-import { normalizeDoi } from '../lib/citation.js';
+import { normalizeDoi, findDoiInText } from '../lib/citation.js';
 import { isBillableVerdict, abstainWithoutSource } from '../lib/verdict-guard.js';
 import type { Claim } from '../types.js';
 
@@ -67,13 +67,23 @@ describe('normalizeDoi', () => {
     ['10.1038/nature14539);', REAL_DOI],
     ['https://doi.org/10.1002/%28SICI%291097-4636', '10.1002/(sici)1097-4636'],
     ['10.1016/0002-9149(83)90321-6', '10.1016/0002-9149(83)90321-6'],
+    // Cut at the first character outside the DOI set: the rest of the reference never rides along.
+    ['10.1038/nature14539 /Confidential-Merger-Project-Zephyr', REAL_DOI],
+    ['10.1038/nature14539,/Confidential-Merger-Project-Zephyr', REAL_DOI],
+    ['10.1038/nature14539?query=1', REAL_DOI],
+    ['10.1038/nature14539#frag', REAL_DOI],
+    ['10.1038/nature14539"/Confidential', REAL_DOI],
   ])('%s -> %s', (raw, expected) => {
     expect(normalizeDoi(raw)).toBe(expected);
   });
 
   it.each([
-    ['not a doi'], [''], ['11.1038/nature14539'], ['10.12/short-registrant'],
-    ['10.1038/has space'], ['10.1038/x?query=1'], ['10.1038/x#frag'], ['10.1038/'],
+    ['not a doi'], [''], ['11.1038/nature14539'], ['10.12/short-registrant'], ['10.1038/'],
+    // Path traversal and empty segments (independent review, P1).
+    ['10.1038/../../Confidential-Merger-Project-Zephyr'],
+    ['10.1038/./x'], ['10.1038/x/..'], ['10.1038//x'], ['10.1038/x/'],
+    ['https://doi.org/10.1038/%2e%2e/%2e%2e/Confidential'],
+    [`10.1038/${'a'.repeat(200)}`],
   ])('rejects %j', (raw) => {
     expect(normalizeDoi(raw)).toBeNull();
   });
@@ -91,8 +101,8 @@ describe('titleSimilarity', () => {
     expect(titleSimilarity('Café culture', 'Cafe culture')).toBe(1);
   });
 
-  it('scores a cited title missing its subtitle as a match when it has 3+ words', () => {
-    expect(titleSimilarity('Attention is all you need', 'Attention is all you need: a retrospective')).toBe(1);
+  it('containment is not identity: a title inside a longer one scores its shared words only', () => {
+    expect(titleSimilarity('Attention is all you need', 'Attention is all you need: a retrospective')).toBeLessThan(1);
   });
 
   it('scores unrelated titles low', () => {
@@ -134,9 +144,40 @@ describe('checkCitationDoi', () => {
     });
     const result = await checkCitationDoi(
       citationClaim({ ...realCitation, title: 'Quantum annealing for portfolio optimisation in emerging markets' }), opts);
-    expect(result?.status).toBe('contradicted');
-    expect(result?.explanation).toContain('This DOI belongs to a different work: "Deep learning"');
-    expect(isBillableVerdict(result)).toBe(true);
+    // The registered title has only 2 words: too little to call a mismatch.
+    expect(result).toBeNull();
+    const { opts: longer } = fakeFetch({
+      [doiHandleUrl(REAL_DOI)]: handleFound(REAL_DOI),
+      [crossrefWorkUrl(REAL_DOI)]: crossrefWork(['Deep learning for image recognition']),
+    });
+    const settled = await checkCitationDoi(
+      citationClaim({ ...realCitation, title: 'Quantum annealing for portfolio optimisation in emerging markets' }), longer);
+    expect(settled?.status).toBe('contradicted');
+    expect(settled?.explanation).toContain('This DOI belongs to a different work: "Deep learning for image recognition"');
+    expect(isBillableVerdict(settled)).toBe(true);
+  });
+
+  it('a non-200 doi.org answer is not acted on, whatever the body says', async () => {
+    for (const status of [503, 429, 500]) {
+      const { opts, calls } = fakeFetch({ [doiHandleUrl(FAKE_DOI)]: () => json(status, { responseCode: 100 }) });
+      expect(await checkCitationDoi(citationClaim({ title: 'Invented results here', doi: FAKE_DOI }), opts)).toBeNull();
+      expect(calls).toHaveLength(1);
+    }
+    for (const status of [503, 429, 500, 404]) {
+      const { opts, calls } = fakeFetch({ [doiHandleUrl(REAL_DOI)]: () => json(status, { responseCode: 1 }) });
+      expect(await checkCitationDoi(citationClaim(realCitation), opts)).toBeNull();
+      expect(calls).toHaveLength(1);
+    }
+  });
+
+  it('a non-200 Crossref answer is not acted on, whatever the body says', async () => {
+    for (const status of [503, 429, 500]) {
+      const { opts } = fakeFetch({
+        [doiHandleUrl(REAL_DOI)]: handleFound(REAL_DOI),
+        [crossrefWorkUrl(REAL_DOI)]: () => json(status, { message: { title: ['Deep learning'] } }),
+      });
+      expect(await checkCitationDoi(citationClaim(realCitation), opts)).toBeNull();
+    }
   });
 
   it('not found (responseCode 100 on HTTP 404): contradicted, with the handle URL as source, Crossref never called', async () => {
@@ -229,6 +270,82 @@ describe('checkCitationDoi', () => {
     expect(await checkCitationDoi(citationClaim({ title: REAL_TITLE, doi: 'see paper' }), opts)).toBeNull();
     expect(await checkCitationDoi({ id: 'f', text: 'A plain fact.', type: 'fact', importance: 3 }, opts)).toBeNull();
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe('title comparison (independent review, P1)', () => {
+  it('a one-word negation difference is never a match: "never improves" falls back', async () => {
+    expect(compareTitles('Exercise improves memory in older adults', 'Exercise never improves memory in older adults')).toBe('unsure');
+    const { opts } = fakeFetch({
+      [doiHandleUrl(REAL_DOI)]: handleFound(REAL_DOI),
+      [crossrefWorkUrl(REAL_DOI)]: crossrefWork(['Exercise never improves memory in older adults']),
+    });
+    const result = await checkCitationDoi(citationClaim({ title: 'Exercise improves memory in older adults', doi: REAL_DOI }), opts);
+    expect(result).toBeNull();
+  });
+
+  it('"Attention is all you need" against a longer registered title falls back, never supported', async () => {
+    expect(compareTitles('Attention is all you need', 'Attention is all you need: a retrospective on transformers')).toBe('unsure');
+    const { opts } = fakeFetch({
+      [doiHandleUrl(REAL_DOI)]: handleFound(REAL_DOI),
+      [crossrefWorkUrl(REAL_DOI)]: crossrefWork(['Attention is all you need: a retrospective on transformers']),
+    });
+    expect(await checkCitationDoi(citationClaim({ title: 'Attention is all you need', doi: REAL_DOI }), opts)).toBeNull();
+  });
+
+  it('punctuation and hyphens are deleted without a space: the COVID pair is supported', async () => {
+    expect(compareTitles('COVID-19 SARS-CoV-2 co-infection', 'COVID19 SARSCoV2 coinfection')).toBe('match');
+    const { opts } = fakeFetch({
+      [doiHandleUrl(REAL_DOI)]: handleFound(REAL_DOI),
+      [crossrefWorkUrl(REAL_DOI)]: crossrefWork(['COVID19 SARSCoV2 coinfection']),
+    });
+    const result = await checkCitationDoi(citationClaim({ title: 'COVID-19 SARS-CoV-2 co-infection', doi: REAL_DOI }), opts);
+    expect(result?.status).toBe('supported');
+  });
+
+  it('one word apart with no negation, both 4+ words: a match; under 4 words: not', () => {
+    expect(compareTitles('A survey of graph neural networks', 'A survey on graph neural networks')).toBe('match');
+    expect(compareTitles('Deep learning', 'Deep')).toBe('unsure');
+  });
+
+  it('a mismatch needs similarity under 0.3 and a shorter title of 3+ words', () => {
+    expect(compareTitles('Quantum annealing for portfolio optimisation', 'Deep learning for image recognition')).toBe('mismatch');
+    expect(compareTitles('Quantum annealing for portfolio optimisation', 'Deep learning')).toBe('unsure');
+  });
+});
+
+describe('path traversal (independent review, P1)', () => {
+  it('a traversal DOI never reaches a lookup: no request, normal verify', async () => {
+    const { opts, calls } = fakeFetch({});
+    for (const doi of ['10.1038/../../Confidential-Merger-Project-Zephyr', '10.1038/./x', '10.1038//x']) {
+      expect(await checkCitationDoi(citationClaim({ title: 'A title of four words', doi }), opts)).toBeNull();
+    }
+    expect(calls).toHaveLength(0);
+  });
+
+  it('a DOI found in reference text is cut before the rest of the reference', () => {
+    expect(findDoiInText('Roe (2021). https://doi.org/10.1038/nature14539/../../Confidential-Merger')).toBeNull();
+    expect(findDoiInText('Roe (2021). doi:10.1038/nature14539, Confidential merger memo')).toBe(REAL_DOI);
+  });
+
+  it('every lookup URL built from a normalized DOI keeps its path under the registry prefix', () => {
+    for (const raw of ['10.1038/nature14539', '10.1002/(SICI)1097-4636;2-X', '10.1000/a:b.c-d_e(f)']) {
+      const doi = normalizeDoi(raw)!;
+      expect(doi).not.toBeNull();
+      const handle = new URL(doiHandleUrl(doi)).pathname;
+      const works = new URL(crossrefWorkUrl(doi)).pathname;
+      expect(handle.startsWith('/api/handles/10.')).toBe(true);
+      expect(works.startsWith('/works/10.')).toBe(true);
+      expect(handle).not.toContain('..');
+      expect(works).not.toContain('..');
+    }
+  });
+
+  it('the URL guard refuses a path that escapes the prefix, a query or a fragment', () => {
+    expect(isSafeLookupUrl('https://doi.org/api/handles/10.1038/../../x', 'https://doi.org', '/api/handles/')).toBe(false);
+    expect(isSafeLookupUrl('https://doi.org/api/handles/10.1038/%2e%2e/x', 'https://doi.org', '/api/handles/')).toBe(false);
+    expect(isSafeLookupUrl('https://doi.org/api/handles/10.1038/x?q=1', 'https://doi.org', '/api/handles/')).toBe(false);
+    expect(isSafeLookupUrl('https://doi.org/api/handles/10.1038/x', 'https://doi.org', '/api/handles/')).toBe(true);
   });
 });
 

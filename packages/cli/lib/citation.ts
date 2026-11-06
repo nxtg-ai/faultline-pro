@@ -35,10 +35,15 @@ export const GEMINI_CITATION_SCHEMA = {
   },
 } as const;
 
-const DOI_SHAPE = /^10\.\d{4,9}\/[^\s?#]+$/;
-const DOI_IN_TEXT = /\b10\.\d{4,9}\/[^\s"'<>]+/i;
+/** Longest DOI accepted; real DOIs are far shorter. */
+export const MAX_DOI_CHARS = 200;
+/** The characters a DOI may contain here: a strict subset of the DOI syntax, nothing that changes a URL. */
+const DOI_SHAPE = /^10\.\d{4,9}\/[-._;()/:a-z0-9]+$/;
+/** A DOI at the start of a string, cut at the first character outside the allowed set. */
+const DOI_HEAD = /^10\.\d{4,9}\/[-._;()/:A-Za-z0-9]+/;
+const DOI_IN_TEXT = /\b10\.\d{4,9}\/[-._;()/:A-Za-z0-9]+/;
 const DOI_PREFIX = /^(?:https?:\/\/)?(?:dx\.)?(?:doi\.org\/)|^doi:\s*|^doi\s+/i;
-const TRAILING_PUNCTUATION = /[.,;:'"\]}>]+$/;
+const TRAILING_PUNCTUATION = /[.,;:]+$/;
 
 /** Drop a trailing ")" only when it closes nothing inside the DOI (DOIs may contain balanced parentheses). */
 function stripUnbalancedParen(doi: string): string {
@@ -60,26 +65,38 @@ function decodePercent(value: string): string {
   }
 }
 
+/** True when every `/`-separated segment is non-empty and none is `.` or `..` (no path traversal). */
+function hasSafeSegments(doi: string): boolean {
+  return doi.split('/').every((segment) => segment.length > 0 && segment !== '.' && segment !== '..');
+}
+
 /**
  * A cited DOI in canonical form, or null when `raw` is not a DOI. Strips a
- * resolver prefix (`https://doi.org/`, `dx.doi.org/`, `doi:`), trailing
- * punctuation and an unbalanced closing parenthesis, lowercases (DOIs are
- * case-insensitive) and then ALLOWLISTS the shape `10.<registrant>/<suffix>`
- * with no whitespace, `?` or `#`. Only a string that passes reaches a DOI
- * lookup URL, so nothing but a DOI can leave in that request.
+ * resolver prefix (`https://doi.org/`, `dx.doi.org/`, `doi:`) and decodes
+ * percent-escapes, then keeps `10.<registrant>/<suffix>` only up to the first
+ * character outside `-._;()/:` and ASCII letters and digits (so the rest of a
+ * reference is never swallowed), drops trailing punctuation and an unbalanced
+ * closing parenthesis, and lowercases (DOIs are case-insensitive). It is then
+ * ALLOWLISTED: the strict shape, at most MAX_DOI_CHARS characters, and no
+ * empty, `.` or `..` path segment. Only a string that passes reaches a DOI
+ * lookup URL, so nothing but a DOI can leave in that request, and it cannot
+ * walk the URL path (N-237).
  *
  * @example
  *   normalizeDoi('https://doi.org/10.1038/NATURE14539.') // '10.1038/nature14539'
  *   normalizeDoi('doi: 10.1038/nature14539')            // '10.1038/nature14539'
+ *   normalizeDoi('10.1038/../../secret')                // null
  *   normalizeDoi('not a doi')                           // null
  */
 export function normalizeDoi(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
   let doi = raw.trim();
   for (let i = 0; i < 3 && DOI_PREFIX.test(doi); i++) doi = doi.replace(DOI_PREFIX, '').trim();
-  doi = decodePercent(doi).replace(TRAILING_PUNCTUATION, '');
-  doi = stripUnbalancedParen(doi).toLowerCase();
-  return DOI_SHAPE.test(doi) && doi.length <= MAX_FIELD_CHARS ? doi : null;
+  const head = DOI_HEAD.exec(decodePercent(doi));
+  if (!head) return null;
+  doi = stripUnbalancedParen(head[0].replace(TRAILING_PUNCTUATION, '')).toLowerCase();
+  if (doi.length > MAX_DOI_CHARS || !DOI_SHAPE.test(doi) || !hasSafeSegments(doi)) return null;
+  return doi;
 }
 
 /** The first DOI written anywhere in `text`, normalized, or null. */
@@ -176,13 +193,39 @@ function normalizeForCoverage(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
 }
 
+const NOT_SURNAMES = new Set(['et', 'al', 'and', 'eds', 'ed']);
+
+/** Author surnames (words of 2+ letters, lowercased) from an authors string; initials and "et al." left out. */
+export function authorSurnames(authors: string | undefined): string[] {
+  if (!authors) return [];
+  return (authors.match(/\p{L}[\p{L}'\u2019-]+/gu) ?? [])
+    .map((w) => w.toLowerCase())
+    .filter((w) => !NOT_SURNAMES.has(w));
+}
+
+/**
+ * True when `line` is itself the reference entry for `c`: it names the work
+ * (its DOI, or its title of at least 3 words) AND carries the citation's year
+ * AND at least one author surname. A body sentence that only mentions the
+ * title is not a reference entry.
+ */
+function isReferenceLine(line: string, c: CitationRef): boolean {
+  const lower = line.toLowerCase();
+  const title = c.title && c.title.split(/\s+/).length >= 3 ? c.title.toLowerCase() : undefined;
+  const namesWork = (c.doi !== undefined && lower.includes(c.doi)) || (title !== undefined && lower.includes(title));
+  if (!namesWork || !c.year || !lower.includes(c.year.toLowerCase())) return false;
+  const words = new Set(lower.match(/\p{L}[\p{L}'\u2019-]+/gu) ?? []);
+  return authorSurnames(c.authors).some((surname) => words.has(surname));
+}
+
 /**
  * The stretches of `text` the citation claims account for, normalized like
  * the per-sentence guarantee normalizes sentences: each citation's `raw`, or,
- * only when the model gave none, every line of `text` holding its DOI or its
- * title (a title of at least 3 words). A sentence inside one of these is a
- * fragment of a reference, not a separate assertion. With `raw` given, a body
- * sentence that merely quotes the title keeps its own claim.
+ * only when the model gave none, each line of `text` that is itself the
+ * reference entry (isReferenceLine: the work, its year and an author surname
+ * on one line). A sentence inside one of these is a fragment of a reference,
+ * not a separate assertion. A body sentence that merely contains a cited
+ * title is never suppressed (N-237).
  */
 export function citationSpans(text: string, claims: Claim[]): string[] {
   const lines = text.split(/\r?\n/);
@@ -194,10 +237,8 @@ export function citationSpans(text: string, claims: Claim[]): string[] {
       spans.push(normalizeForCoverage(c.raw));
       continue;
     }
-    const title = c.title && c.title.split(/\s+/).length >= 3 ? c.title.toLowerCase() : undefined;
     for (const line of lines) {
-      const lower = line.toLowerCase();
-      if ((c.doi && lower.includes(c.doi)) || (title && lower.includes(title))) spans.push(normalizeForCoverage(line));
+      if (isReferenceLine(line, c)) spans.push(normalizeForCoverage(line));
     }
   }
   return spans.filter((s) => s.length > 0);

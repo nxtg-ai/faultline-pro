@@ -82,14 +82,27 @@ describe('extraction: one claim per citation', () => {
     expect(claims.some((c) => c.id.startsWith('s') && c.text.startsWith('The study Attention'))).toBe(true);
   });
 
-  it('with no raw text, the reference line is found by DOI or title', () => {
+  it('with no raw text, only a line that is the reference entry (work, year and a surname) is a span', () => {
     const spans = citationSpans(BIBLIOGRAPHY_TEXT, [
-      { id: 'a', text: 'x', type: 'fact', importance: 3, citation: { title: 'Deep learning', doi: '10.1038/nature14539' } },
-      { id: 'b', text: 'x', type: 'fact', importance: 3, citation: { title: 'Attention is all you need' } },
+      { id: 'a', text: 'x', type: 'fact', importance: 3, citation: { title: 'Deep learning', authors: 'LeCun, Y.', year: '2015', doi: '10.1038/nature14539' } },
+      { id: 'b', text: 'x', type: 'fact', importance: 3, citation: { title: 'Attention is all you need', authors: 'Vaswani, A.', year: '2017' } },
+      // No year or author: nothing to tell an entry from a mention, so no span.
+      { id: 'c', text: 'x', type: 'fact', importance: 3, citation: { title: 'Attention is all you need' } },
     ]);
     expect(spans).toHaveLength(2);
     expect(spans[0]).toContain('lecun');
     expect(spans[1]).toContain('vaswani');
+  });
+
+  it('a body sentence containing a cited title keeps its claim when the citation has no raw text (independent review, P2)', () => {
+    const body = 'The study Attention is all you need improved accuracy by 90 percent.';
+    const text = `${body}\n${REFS[1]}`;
+    const claims = guaranteeClaimPerSentence(text, [
+      { id: 'c1', text: 'x', type: 'fact', importance: 3, citation: { title: 'Attention is all you need', authors: 'Vaswani, A., Shazeer, N., Parmar, N.', year: '2017' } },
+    ]);
+    expect(claims.some((c) => c.text === body)).toBe(true);
+    // The bibliography entry itself is still covered by the citation: no field claims for it.
+    expect(claims.filter((c) => c.id.startsWith('s') && c.text !== body)).toHaveLength(0);
   });
 
   it('an inline "(Smith et al., 2021)" citation is one claim with authors and year, beside the sentence it supports', () => {

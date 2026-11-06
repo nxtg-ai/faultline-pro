@@ -86,15 +86,13 @@ export async function scanWithSpend<T extends ScanLike>(ctx: ScanSpendContext, r
  * Verdicts that ran a search: every verdict except one the DOI registry
  * settled (provenance.retriever 'doi-resolver', N-237), which made no model or
  * search call. Prices the scan only when no provider reported usage; such a
- * verdict still counts as delivered in `verified` when it is billable.
+ * verdict still counts as delivered in `verified` when it is billable. Accepts
+ * verdicts keyed by claim id or a positional list; an empty slot (a claim never
+ * started) counts as nothing.
  */
-export function searchedVerdictCount(verifications: Record<string, unknown>): number {
-  return Object.values(verifications).filter((v) => {
-    const retriever = v && typeof v === 'object'
-      ? (v as { provenance?: { retriever?: unknown } }).provenance?.retriever
-      : undefined;
-    return retriever !== DOI_RETRIEVER;
-  }).length;
+export function searchedVerdictCount(verifications: Record<string, unknown> | ReadonlyArray<unknown>): number {
+  return Object.values(verifications).filter((v) => v !== null && typeof v === 'object'
+    && (v as { provenance?: { retriever?: unknown } }).provenance?.retriever !== DOI_RETRIEVER).length;
 }
 
 /** The search service name a leg of this provider family is labelled with in a spend row. */

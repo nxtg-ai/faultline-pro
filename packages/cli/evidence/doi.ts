@@ -35,14 +35,21 @@ export const DOI_TIMEOUT_MS = 5000;
 /** Largest reply read from either registry; a Crossref work record with its reference list is well under this. */
 const MAX_REPLY_CHARS = 2_000_000;
 
-/** Title similarity at or above this is the same work. */
-export const TITLE_MATCH_THRESHOLD = 0.85;
+/** Word-set similarity below this is a different work, when the shorter title has MIN_TITLE_WORDS_FOR_MISMATCH words. */
+export const TITLE_MISMATCH_THRESHOLD = 0.3;
 
-/** Title similarity below this, with no containment, is a different work. Between the two: not settled here. */
-export const TITLE_MISMATCH_THRESHOLD = 0.4;
-
-/** A cited title shorter than this (in words) is never called a mismatch: too little to compare. */
+/** A title pair whose shorter title is under this many words is never called a mismatch: too little to compare. */
 const MIN_TITLE_WORDS_FOR_MISMATCH = 3;
+
+/** A one-word difference is tolerated only when both titles have at least this many words. */
+const MIN_TITLE_WORDS_FOR_ONE_WORD_SLACK = 4;
+
+/**
+ * Words that flip a title's meaning. Two titles one word apart are never a
+ * match when one of these is on one side only ("X improves Y" against
+ * "X never improves Y").
+ */
+const NEGATION_WORDS: ReadonlySet<string> = new Set(['not', 'no', 'never', 'without', 'non', 'lack', 'fails', 'fail']);
 
 /** Longest registered title quoted back in an explanation or a source title. */
 const MAX_QUOTED_TITLE_CHARS = 300;
@@ -62,6 +69,28 @@ export function doiPath(doi: string): string {
   return doi.split('/').map(encodeURIComponent).join('/');
 }
 
+/**
+ * True when `url` is a lookup URL of the expected shape after URL parsing:
+ * origin and path prefix as given, the DOI starting `10.`, no `.` or `..`
+ * segment, no query and no fragment. The last guard against a DOI walking
+ * the path; normalizeDoi already refuses such a DOI.
+ */
+export function isSafeLookupUrl(url: string, origin: string, prefix: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  const rawSegments = url.slice(origin.length).split('/').map((seg) => seg.toLowerCase());
+  return parsed.origin === origin
+    && parsed.pathname.startsWith(`${prefix}10.`)
+    && !rawSegments.some((seg) => seg === '.' || seg === '..' || seg === '%2e' || seg === '%2e%2e')
+    && !parsed.pathname.includes('..')
+    && parsed.search === ''
+    && parsed.hash === '';
+}
+
 /** The doi.org handle-registry lookup URL for a normalized DOI. */
 export function doiHandleUrl(doi: string): string {
   return `https://doi.org/api/handles/${doiPath(doi)}`;
@@ -77,24 +106,77 @@ export function doiResolverUrl(doi: string): string {
   return `https://doi.org/${doiPath(doi)}`;
 }
 
-/** Lowercase words of a title, diacritics, markup and punctuation removed. */
+/**
+ * Lowercase words of a title: markup removed, NFKD with diacritics dropped,
+ * split on whitespace, then punctuation and hyphens deleted inside each word
+ * WITHOUT inserting a space, so "COVID-19 SARS-CoV-2 co-infection" and
+ * "COVID19 SARSCoV2 coinfection" give the same words.
+ */
 export function titleWords(title: string): string[] {
   return title
     .replace(/<[^>]*>/g, ' ')
     .normalize('NFKD')
     .replace(/\p{M}+/gu, '')
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
-    .trim()
-    .split(' ')
+    .split(/\s+/)
+    .map((w) => w.replace(/[^\p{L}\p{N}]+/gu, ''))
     .filter((w) => w.length > 0);
 }
 
+/** Word-level edit distance (insert, delete, substitute), stopping early once it exceeds `limit`. */
+function wordEditDistance(a: string[], b: string[], limit: number): number {
+  if (Math.abs(a.length - b.length) > limit) return limit + 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) {
+      row[j] = Math.min(prev[j]! + 1, row[j - 1]! + 1, prev[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    if (Math.min(...row) > limit) return limit + 1;
+    prev = row;
+  }
+  return prev[b.length]!;
+}
+
+/** True when a negation word is in one title's words and not the other's. */
+function negationDiffers(a: string[], b: string[]): boolean {
+  const sa = new Set(a);
+  const sb = new Set(b);
+  for (const w of NEGATION_WORDS) if (sa.has(w) !== sb.has(w)) return true;
+  return false;
+}
+
+/** How a cited title compares with a registered one. */
+export type TitleComparison = 'match' | 'mismatch' | 'unsure';
+
 /**
- * How alike two titles are, 0 to 1. Identical word sequences, or one title's
- * whole word sequence inside the other (a cited title missing its subtitle, or
- * carrying one the registry stores separately), score 1 when the shorter has
- * at least 3 words. Otherwise the Dice coefficient of their word sets.
+ * Compare a cited title with a registered title (titleWords on both).
+ * - `match`: the same words, or (both at least 4 words) one word apart with
+ *   no negation word on one side only.
+ * - `mismatch`: word-set similarity under TITLE_MISMATCH_THRESHOLD and the
+ *   shorter title at least 3 words.
+ * - `unsure` otherwise, including a cited title that only contains the
+ *   registered one or the reverse: containment is not identity.
+ *
+ * @example
+ *   compareTitles('COVID-19 SARS-CoV-2 co-infection', 'COVID19 SARSCoV2 coinfection') // 'match'
+ *   compareTitles('Attention is all you need', 'Attention is all you need: a retrospective') // 'unsure'
+ */
+export function compareTitles(cited: string, registered: string): TitleComparison {
+  const a = titleWords(cited);
+  const b = titleWords(registered);
+  if (a.length === 0 || b.length === 0) return 'unsure';
+  if (a.join(' ') === b.join(' ')) return 'match';
+  if (Math.min(a.length, b.length) >= MIN_TITLE_WORDS_FOR_ONE_WORD_SLACK
+    && wordEditDistance(a, b, 1) <= 1 && !negationDiffers(a, b)) return 'match';
+  if (titleSimilarity(cited, registered) < TITLE_MISMATCH_THRESHOLD
+    && Math.min(a.length, b.length) >= MIN_TITLE_WORDS_FOR_MISMATCH) return 'mismatch';
+  return 'unsure';
+}
+
+/**
+ * How alike two titles are, 0 to 1: the Dice coefficient of their word sets
+ * (titleWords). Containment scores no higher than its shared words.
  *
  * @example
  *   titleSimilarity('Deep learning', 'Deep Learning.') // 1
@@ -104,11 +186,6 @@ export function titleSimilarity(a: string, b: string): number {
   const wa = titleWords(a);
   const wb = titleWords(b);
   if (wa.length === 0 || wb.length === 0) return 0;
-  const ja = wa.join(' ');
-  const jb = wb.join(' ');
-  if (ja === jb) return 1;
-  const [shorter, longer] = wa.length <= wb.length ? [ja, jb] : [jb, ja];
-  if (Math.min(wa.length, wb.length) >= 3 && ` ${longer} `.includes(` ${shorter} `)) return 1;
   const sa = new Set(wa);
   const sb = new Set(wb);
   let shared = 0;
@@ -151,20 +228,31 @@ async function lookup(url: string, opts: DoiCheckOptions): Promise<Lookup> {
 /** What doi.org said about a DOI. */
 type HandleAnswer = 'found' | 'not_found' | 'unknown';
 
+/**
+ * doi.org's answer, read only with the HTTP status the Handle API documents
+ * for it: `responseCode: 1` with 200 (found) and `responseCode: 100` with 404
+ * (handle not found; measured 2026-11-05: an unknown DOI answers HTTP 404
+ * with that body). Any other status (429, 500, 503...) is unknown, whatever
+ * the body says.
+ */
 async function lookUpHandle(doi: string, opts: DoiCheckOptions): Promise<HandleAnswer> {
+  const url = doiHandleUrl(doi);
+  if (!isSafeLookupUrl(url, 'https://doi.org', '/api/handles/')) return 'unknown';
   // Privacy rule: only the normalized DOI, in the path; no query, no scan data.
-  const reply = await lookup(doiHandleUrl(doi), opts);
+  const reply = await lookup(url, opts);
   if (!reply.ok || !reply.body || typeof reply.body !== 'object') return 'unknown';
   const code = (reply.body as { responseCode?: unknown }).responseCode;
   if (code === 1 && reply.status === 200) return 'found';
-  if (code === 100) return 'not_found';
+  if (code === 100 && reply.status === 404) return 'not_found';
   return 'unknown';
 }
 
 /** The registered title (and title with subtitle) Crossref holds, or null when it holds none we can read. */
 async function lookUpCrossrefTitles(doi: string, opts: DoiCheckOptions): Promise<string[] | null> {
+  const url = crossrefWorkUrl(doi);
+  if (!isSafeLookupUrl(url, 'https://api.crossref.org', '/works/')) return null;
   // Privacy rule: only the normalized DOI, in the path; no mailto, no query, no scan data.
-  const reply = await lookup(crossrefWorkUrl(doi), opts);
+  const reply = await lookup(url, opts);
   if (!reply.ok || reply.status !== 200 || !reply.body || typeof reply.body !== 'object') return null;
   const message = (reply.body as { message?: unknown }).message;
   if (!message || typeof message !== 'object') return null;
@@ -197,7 +285,7 @@ function verdict(claim: Claim, status: 'supported' | 'contradicted', explanation
  * normal verify. Null for: a claim with no citation DOI (or one that fails
  * normalizeDoi), a doi.org answer other than 1 or 100, any lookup failure, a
  * DOI Crossref does not hold (another registration agency), a cited citation
- * with no title, and a title similarity between the two thresholds.
+ * with no title, and a title compareTitles calls `unsure`.
  */
 export async function checkCitationDoi(claim: Claim, opts: DoiCheckOptions): Promise<VerificationResult | null> {
   const doi = normalizeDoi(claim.citation?.doi);
@@ -217,20 +305,21 @@ export async function checkCitationDoi(claim: Claim, opts: DoiCheckOptions): Pro
   const registered = await lookUpCrossrefTitles(doi, opts);
   if (!registered) return null;
 
-  const best = registered
-    .map((title) => ({ title, score: titleSimilarity(cited, title) }))
-    .reduce((a, b) => (b.score > a.score ? b : a));
+  // A match on any registered form (title, or title with subtitle) is a match;
+  // a mismatch needs every form to mismatch; anything else is not settled here.
+  const comparisons = registered.map((title) => ({ title, result: compareTitles(cited, title) }));
+  const matched = comparisons.find((c) => c.result === 'match');
   const at = new Date().toISOString();
   const sources: Source[] = [
     { title: quote(registered[0]!), uri: doiResolverUrl(doi) },
     { title: `Crossref record for ${doi}`, uri: crossrefWorkUrl(doi) },
   ];
-  if (best.score >= TITLE_MATCH_THRESHOLD) {
+  if (matched) {
     return verdict(claim, 'supported',
-      `The DOI ${doi} resolves, and the title registered for it ("${quote(best.title)}") matches the cited title.`,
+      `The DOI ${doi} resolves, and the title registered for it ("${quote(matched.title)}") matches the cited title.`,
       sources, at);
   }
-  if (best.score < TITLE_MISMATCH_THRESHOLD && titleWords(cited).length >= MIN_TITLE_WORDS_FOR_MISMATCH) {
+  if (comparisons.every((c) => c.result === 'mismatch')) {
     return verdict(claim, 'contradicted',
       `This DOI belongs to a different work: "${quote(registered[0]!)}". The cited title does not match the record registered for ${doi}.`,
       sources, at);
