@@ -397,6 +397,28 @@ export function notCheckableVerdict<T extends VerificationResult>(result: T): T 
   return out;
 }
 
+/** The explanation a citation claim carries when the search found no record of the work. */
+export const REFERENCE_NOT_FOUND_EXPLANATION =
+  'No record of this reference was found in the sources searched, so it may not exist as cited. Check it before relying on it.';
+
+/**
+ * `result` for a citation claim (N-237) that the judge said the sources do not
+ * address: status `unverified`, REFERENCE_NOT_FOUND_EXPLANATION, `sources: []`
+ * and `referenceNotFound: true`, with no `notCheckable` and no
+ * `noSourceAbstain`. For a claim that a cited work exists, a search that finds
+ * nothing about the work is the finding, so unlike a not-checkable claim this
+ * one counts as unverified and raises the scan's risk (calculateRisk). It is
+ * not `contradicted`: a real but little-indexed work can also go unfound.
+ * Provenance and every other field are kept; the grounded response fields are
+ * removed as in notCheckableVerdict. Never billed (not a definite verdict).
+ */
+export function referenceNotFoundVerdict<T extends VerificationResult>(result: T): T {
+  const out: T = { ...withoutGroundedResponse(result), status: 'unverified', explanation: REFERENCE_NOT_FOUND_EXPLANATION, sources: [], referenceNotFound: true };
+  delete (out as { notCheckable?: boolean }).notCheckable;
+  delete (out as { noSourceAbstain?: boolean }).noSourceAbstain;
+  return out;
+}
+
 /** One vote under the rule above; the same object when nothing changed. */
 function abstainVoteWithoutSource(vote: ProviderVote): ProviderVote {
   if (!vote || typeof vote !== 'object') return vote;

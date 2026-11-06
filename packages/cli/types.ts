@@ -260,6 +260,14 @@ export interface VerificationResult {
    */
   notCheckable?: boolean;
   /**
+   * True on a citation claim (N-237) whose search found no record of the cited
+   * work: the judge said the sources do not address it. It reads `unverified`
+   * with REFERENCE_NOT_FOUND_EXPLANATION and no sources, and unlike
+   * `notCheckable` it counts toward the scan's risk (lib/verdict-guard.ts,
+   * referenceNotFoundVerdict). Never billed. Absent on every other result.
+   */
+  referenceNotFound?: boolean;
+  /**
    * Google Search Suggestions for the grounded prompt behind this verdict,
    * passed through unaltered from `candidates[0].groundingMetadata`. Google's
    * grounding terms require them to be shown, unaltered, wherever this

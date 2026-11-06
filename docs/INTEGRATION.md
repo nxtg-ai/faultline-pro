@@ -497,6 +497,9 @@ interface VerificationResult {
   // true when the judge said the sources found do not address the claim at all; the claim
   // reads unverified, adds no risk and is not billed (see "Not checkable")
   notCheckable?: boolean;
+  // true on a citation claim whose search found no record of the cited work; the claim
+  // reads unverified, counts toward the risk and is not billed (see "Not checkable")
+  referenceNotFound?: boolean;
   // Who produced the verdict and when; absent when the check never ran (apiError)
   provenance?: {
     provider: string;     // 'gemini', 'openai', 'claude', 'perplexity', 'mock' or 'consensus'
@@ -560,7 +563,7 @@ An empty `sources` list means the second retriever found nothing. OpenAI's terms
 - reads `UNCHECKED` with `unchecked_reason: "not_verifiable"` on `faultline guard` and the MCP `verify_claims` tool, which is not a degraded scan and does not trip `--fail-on`. It is not a verdict for the MCP tool's `risk_score`: a scan whose only claims are not checkable gets `risk_score: null` and "risk UNKNOWN";
 - is left out of the critique's failed claims and the weakest-link ranking.
 
-This applies to a Gemini verify in both grounding modes (`google` and `parallel`). It also applies to a world claim whose sources do not address it. A claim the sources do address keeps its verdict. Consensus votes are unchanged. Only a JSON `true` or `false` is read; a reply without the key keeps its verdict.
+This applies to a Gemini verify in both grounding modes (`google` and `parallel`). It also applies to a world claim whose sources do not address it. It does not apply to a citation claim (one with a `citation` object): for a claim that a work exists, a search that finds nothing about the work is the finding. Such a claim is returned as `unverified` with `referenceNotFound: true`, `sources: []` and the explanation "No record of this reference was found in the sources searched, so it may not exist as cited. Check it before relying on it." It counts toward `overallRisk` like any unverified claim, reads `UNSUPPORTED` on `faultline guard` and the MCP tool, and is not billed. It is not `contradicted`, because a real but little-indexed work can also go unfound. A claim the sources do address keeps its verdict. Consensus votes are unchanged. Only a JSON `true` or `false` is read; a reply without the key keeps its verdict.
 
 ### ScanResult
 
