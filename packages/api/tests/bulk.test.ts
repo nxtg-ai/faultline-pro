@@ -269,6 +269,19 @@ describe('GET /jobs/:id/progress', () => {
     expect(job.status).toBe('done');
   });
 
+  it('BK5b: with no provider named, every document scans on Gemini, never OpenAI', async () => {
+    const zipBuffer = makeZipBuffer([
+      { name: 'doc1.txt', content: 'The moon landing happened in 1969.' },
+      { name: 'doc2.txt', content: 'Chocolate improves cognition.' },
+    ]);
+    await server.inject({ method: 'POST', url: '/scan/bulk', headers: authHeaders(), payload: makeMultipartBody(BOUNDARY, zipBuffer) });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const providers = vi.mocked(scan).mock.calls.map(c => c[1]);
+    expect(providers.length).toBe(2);
+    expect(providers).toEqual(['gemini', 'gemini']);
+  });
+
   it('BK6: results array has one entry per file in ZIP', async () => {
     const zipBuffer = makeZipBuffer([
       { name: 'a.txt', content: 'Claim A.' },

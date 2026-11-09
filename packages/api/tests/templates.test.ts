@@ -260,6 +260,27 @@ describe('POST /scan/template/:id', () => {
     expect(body.claims.length).toBeGreaterThan(0); // Gate 2
   });
 
+  it('with no provider on the body or the template, the scan runs on Gemini, never OpenAI', async () => {
+    const { scan } = await import('@nxtg/faultline/cli/scan.js');
+    const mockScan = vi.mocked(scan);
+    const create = await server.inject({
+      method: 'POST', url: '/templates',
+      headers: authHeaders(),
+      body: JSON.stringify({ name: 'no-provider-tmpl' }),
+    });
+    const { id } = JSON.parse(create.body);
+    mockScan.mockClear();
+
+    const res = await server.inject({
+      method: 'POST', url: `/scan/template/${id}`,
+      headers: authHeaders(),
+      body: JSON.stringify({ text: 'Test claim.' }),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(mockScan.mock.calls.length).toBeGreaterThan(0);
+    expect(mockScan.mock.calls.map(c => c[1])).toEqual(['gemini']);
+  });
+
   it('body provider overrides template provider', async () => {
     const { scan } = await import('@nxtg/faultline/cli/scan.js');
     const mockScan = vi.mocked(scan);

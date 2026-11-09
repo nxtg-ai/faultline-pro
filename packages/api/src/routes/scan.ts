@@ -355,7 +355,8 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       const { text, provider } = request.body;
-      const effectiveProvider = (provider ?? template.provider ?? 'openai') as ScanProvider;
+      // Gemini by default, as on every hosted scan route: the privacy page names it.
+      const effectiveProvider = (provider ?? template.provider ?? 'gemini') as ScanProvider;
 
       const keyId = request.keyId ?? 'unknown';
       const verifyPolicy = resolveVerifyPolicy(keyId, request.headers['x-user-tier']);

@@ -115,7 +115,7 @@ Switch providers with `--provider <name>`. No code changes required. With no pro
 - **Scan comparison** — `POST /scan/compare`: diff two scan results (new/removed claims, verdict changes, trust score delta)
 - **Caching** — SHA-256 content-hash cache; 24h TTL (env `FAULTLINE_CACHE_TTL_MS`); `X-Cache: HIT/MISS` header; `GET /cache/stats`, `DELETE /cache`
 - **Scheduled jobs** — `POST /jobs`: recurring scans on a `*/N * * * *` cron schedule; results dispatched to `webhookUrl`
-- **One provider per scan** — a hosted scan runs the provider you name, Gemini by default. If that provider fails, the scan fails; it is never retried on another provider, so your text goes only where you sent it. A circuit breaker trips after 5 failures and returns `503` for 5 minutes
+- **One provider per scan** — a hosted scan runs the provider you name, Gemini by default. If that provider fails, the scan fails; it is never retried on another provider. A circuit breaker trips after 5 failures and returns `503` for 5 minutes (a `pipelineConfig` scan names its providers and skips the breaker)
 - **Scan history** — private per API key (the admin key sees all); `GET /scans/search?q=` full-text; stale scan detection (`GET /scans/stale`); usage analytics (`GET /scans/usage`); bulk pruning (`DELETE /scans/stale`); hygiene dashboard; `faultline scans` CLI
 - **Rule templates (HIPAA, SOX, FERPA, Gov)** — HIPAA / SOX+FINRA / FERPA / Government; `POST /scan/compliance/:template`; custom template upload
 - **Bulk import** — `POST /scan/bulk` (ZIP of documents → async job); `GET /jobs/:id/progress` (percentage + per-file status + summary)

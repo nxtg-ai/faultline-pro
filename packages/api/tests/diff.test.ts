@@ -78,6 +78,23 @@ describe('POST /scan/diff', () => {
     expect(body.after).toHaveProperty('claims');
   });
 
+  it('DF1b: with no provider named, both sides scan on Gemini, never OpenAI', async () => {
+    const c1 = makeClaim('c1', 'Claim one');
+    const r = makeScanResult([c1], { c1: makeVerification('c1', 'supported') }, 'low');
+    mockScan.mockResolvedValueOnce(r).mockResolvedValueOnce(r);
+
+    const res = await server.inject({
+      method: 'POST',
+      url: '/scan/diff',
+      headers: { 'x-api-key': 'test-key', 'content-type': 'application/json' },
+      body: JSON.stringify({ before: 'text version one', after: 'text version two' }),
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mockScan.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(mockScan.mock.calls.map(c => c[1])).toEqual(['gemini', 'gemini']);
+  });
+
   it('DF2: response has newClaims, removedClaims, changedVerdicts, trustScoreDelta, summary, inlineDiff', async () => {
     const c1 = makeClaim('c1', 'Claim one');
     const resultA = makeScanResult([c1], { c1: makeVerification('c1', 'supported') }, 'low');

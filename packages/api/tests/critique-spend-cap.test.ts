@@ -92,7 +92,7 @@ function ledgerRows(): Array<Record<string, unknown>> {
     .map((line) => JSON.parse(line) as Record<string, unknown>);
 }
 
-function postCritique(apiKey: string, failed: boolean) {
+function postCritique(apiKey: string, failed: boolean, provider: string | null = 'openai') {
   const claims = [makeClaim('c1'), makeClaim('c2')];
   const verifications: Record<string, VerificationResult> = {
     c1: makeVerification('c1', 'supported'),
@@ -102,7 +102,7 @@ function postCritique(apiKey: string, failed: boolean) {
     method: 'POST',
     url: '/critique',
     headers: { 'x-api-key': apiKey, 'content-type': 'application/json' },
-    payload: { claims, verifications, text: 'Some AI-generated text.', provider: 'openai' },
+    payload: { claims, verifications, text: 'Some AI-generated text.', ...(provider ? { provider } : {}) },
   });
 }
 
@@ -170,6 +170,18 @@ describe('POST /critique — provider-spend cap (N-230)', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ provider: 'openai', modelId: 'gpt-4o-mini', tier: 'pro' });
     expect(rows[0].costUsd as number).toBeCloseTo(EXPECTED_COST_USD, 10);
+  });
+
+  it('with no provider named (as faultline-web sends it), the critique runs on Gemini, never OpenAI', async () => {
+    const { getProvider } = await import('@nxtg/faultline/providers/registry.js');
+    vi.mocked(getProvider).mockClear();
+    const key = getKeyStore().create('Pro Key', ['pro', 'scan']);
+    const res = await postCritique(key.key, true, null);
+
+    expect(res.statusCode).toBe(200);
+    expect(vi.mocked(getProvider)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(getProvider).mock.calls[0][1]).toBe('gemini');
+    expect(ledgerRows().map(r => r.provider)).toEqual(['gemini']);
   });
 
   it('ledgers critique spend while the gate is DORMANT (ledger is always on)', async () => {
