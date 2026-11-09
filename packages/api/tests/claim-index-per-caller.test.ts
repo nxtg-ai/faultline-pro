@@ -139,11 +139,15 @@ describe('claim index is per caller and never holds Grounded Results', () => {
     expect(forA).toEqual([]);
   });
 
-  it('CI-8. a scan that fails over to Gemini stores nothing, even when its verdicts carry no provenance', async () => {
+  it('CI-8. a named provider that fails is not retried on Gemini, and nothing is stored', async () => {
     const a = getKeyStore().create('A', ['scan']);
-    // openai first, then the chain falls back to gemini (PROVIDER_CHAIN order)
+    // A hosted scan runs the caller's one provider. Were the route to fall back,
+    // the second (Gemini) result would be the one delivered.
     mockScan.mockRejectedValueOnce(new Error('openai down')).mockResolvedValueOnce(result(GROUNDED, {}, 'Google Gemini'));
-    await scanAs(a.key, 'failover input', 'openai');
+    const res = await server.inject({ method: 'POST', url: '/scan', headers: { 'x-api-key': a.key, 'content-type': 'application/json' }, body: JSON.stringify({ text: 'failover input', provider: 'openai' }) });
+    expect(res.statusCode).toBe(500);
+    expect(mockScan).toHaveBeenCalledTimes(1);
+    expect(mockScan.mock.calls[0][1]).toBe('openai');
     expect(getClaimIndex().getStats(`${a.id}\u0000${a.id}`).totalClaims).toBe(0);
   });
 

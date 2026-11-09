@@ -21,7 +21,6 @@ import { issueScanId } from '../lib/scan-access.js';
 import { withBilling } from '../lib/billing.js';
 import { getCircuitBreaker } from '../store/circuit-breaker.js';
 import type { Provider } from '../store/circuit-breaker.js';
-import { getAuditLogger } from '../store/audit.js';
 import { getScanCache } from '../store/cache.js';
 import { cacheCaller, requestOwner } from '../lib/cache-caller.js';
 import { ownsOrAdmin } from '../lib/ownership.js';
@@ -221,11 +220,11 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
       reply.header('X-Cache', 'MISS');
 
       const cb = getCircuitBreaker();
-      const chain = cb.getChain(provider as Provider | undefined);
+      const chain = cb.getScanRoute(provider as Provider | undefined);
 
       if (chain.length === 0) {
         fireWebhookEvent('scan.failed', { error: 'All providers circuit-broken.' }, requestOwner(request));
-        return reply.status(503).send({ error: 'All providers are currently unavailable. Please retry later.' });
+        return reply.status(503).send({ error: 'The scan provider is currently unavailable. Please retry later.' });
       }
 
       let lastError: string = '';
@@ -263,18 +262,6 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
             tenantId: resolveRequestTenantId(keyId),
           });
 
-          if (attempted.length > 0) {
-            // Failover occurred — emit audit entry
-            getAuditLogger().log({
-              timestamp: new Date().toISOString(),
-              keyId,
-              endpoint: '/scan/failover',
-              method: 'POST',
-              statusCode: 200,
-              latencyMs: 0,
-              note: `Failover: ${attempted.join('->')} -> ${p}`,
-            });
-          }
 
           if (caller !== null) getScanCache().set(caller, text, effectiveProvider, result as unknown as Record<string, unknown>, verifyPolicy.cap);
           const scanId = `scan-${randomUUID()}`;
