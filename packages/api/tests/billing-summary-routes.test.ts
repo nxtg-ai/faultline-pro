@@ -35,6 +35,14 @@ import { resetCircuitBreaker } from '../src/store/circuit-breaker.js';
 import { getFullScanJobStore, resetFullScanJobStore } from '../src/store/full-scan-jobs.js';
 import { resetFullScanEstimateLimiter } from '../src/routes/full-scan.js';
 import { resetUrlFetcher, setUrlFetcher } from '../src/lib/url-validator.js';
+// These tests cover the cache, billing and ledger on a named non-Gemini provider,
+// which only an Enterprise plan may name. Provider entitlement is tested in
+// provider-entitlement.test.ts, so it is a pass-through here.
+vi.mock('../src/plugins/provider-entitlement.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/plugins/provider-entitlement.js')>()),
+  enforceProviderEntitlement: async () => {},
+  entitledProvider: (_request: unknown, named: string | undefined) => named,
+}));
 
 const VERDICTS: Record<string, Partial<VerificationResult>> = {
   c2: { status: 'unverified' },

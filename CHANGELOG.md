@@ -44,6 +44,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **Provider choice is Enterprise only on the API.** Below Enterprise, a provider a caller names (`openai`, `claude`, `perplexity`, on the body, the query string, an upload form field, a saved template or the per-stage `pipelineConfig` fields) is replaced by Gemini before the scan runs; `mock` stays allowed. The privacy page names OpenAI and Anthropic only for Enterprise multi-model consensus scans. The plan comes from the key, and `x-user-tier` is honoured only from the server key. Docs: `docs/INTEGRATION.md`, `README.md`.
+
 - **A hosted scan no longer falls back to another provider.** `POST /scan`, `POST /scan/deep` and `POST /scan/batch`, and through them the hosted MCP route, used to try OpenAI, then Claude, then Perplexity whenever Gemini failed. That sent the scan's text to a provider the privacy page does not name for that plan. It also left the claims judged with no Parallel sources, because only a Gemini verify uses them. Now a scan runs only the provider the caller names, or Gemini by default. If that provider fails, the scan fails, and if it is circuit-broken the answer is `503` "The scan provider is currently unavailable." The web app's scan routes (`/scan/stream`, `/scan/upload`, `/scan/full`) already ran one provider, and Enterprise consensus scans are unchanged. Docs: `README.md`, `docs/INTEGRATION.md`.
 - **`POST /critique`, `/scan/bulk`, `/scan/diff` and `/scan/template/:id` default to Gemini, not OpenAI.** With no provider named they ran on OpenAI. faultline-web sends `/critique` no provider, so a web user's text and failed claims went to OpenAI, which the privacy page does not name for that use. A named provider is still honoured.
 

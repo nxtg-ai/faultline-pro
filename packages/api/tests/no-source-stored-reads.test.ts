@@ -86,6 +86,14 @@ import { describeJob, type FullScanJob } from '../src/store/full-scan-jobs.js';
 import { resetProviderSpendLedger } from '../src/store/provider-spend.js';
 import { resetCostStore } from '../src/store/costs.js';
 import { resetGroundingAllowanceLedger } from '../src/store/grounding-allowance.js';
+// These tests cover the cache, billing and ledger on a named non-Gemini provider,
+// which only an Enterprise plan may name. Provider entitlement is tested in
+// provider-entitlement.test.ts, so it is a pass-through here.
+vi.mock('../src/plugins/provider-entitlement.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/plugins/provider-entitlement.js')>()),
+  enforceProviderEntitlement: async () => {},
+  entitledProvider: (_request: unknown, named: string | undefined) => named,
+}));
 
 const DEFINITE = ['supported', 'contradicted', 'mixed'] as const;
 /** The parts of a real engine result (mock provider) that a legacy result keeps as is. */

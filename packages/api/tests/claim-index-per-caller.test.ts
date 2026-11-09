@@ -143,11 +143,12 @@ describe('claim index is per caller and never holds Grounded Results', () => {
     const a = getKeyStore().create('A', ['scan']);
     // A hosted scan runs the caller's one provider. Were the route to fall back,
     // the second (Gemini) result would be the one delivered.
-    mockScan.mockRejectedValueOnce(new Error('openai down')).mockResolvedValueOnce(result(GROUNDED, {}, 'Google Gemini'));
-    const res = await server.inject({ method: 'POST', url: '/scan', headers: { 'x-api-key': a.key, 'content-type': 'application/json' }, body: JSON.stringify({ text: 'failover input', provider: 'openai' }) });
+    // (A keystore key may name only gemini or mock: provider-entitlement.ts.)
+    mockScan.mockRejectedValueOnce(new Error('mock down')).mockResolvedValueOnce(result(GROUNDED, {}, 'Google Gemini'));
+    const res = await server.inject({ method: 'POST', url: '/scan', headers: { 'x-api-key': a.key, 'content-type': 'application/json' }, body: JSON.stringify({ text: 'failover input', provider: 'mock' }) });
     expect(res.statusCode).toBe(500);
     expect(mockScan).toHaveBeenCalledTimes(1);
-    expect(mockScan.mock.calls[0][1]).toBe('openai');
+    expect(mockScan.mock.calls[0][1]).toBe('mock');
     expect(getClaimIndex().getStats(`${a.id}\u0000${a.id}`).totalClaims).toBe(0);
   });
 

@@ -23,6 +23,7 @@
  * request gets 403 before the key check or any MCP processing. This is the DNS
  * rebinding defence the MCP transport spec asks for.
  */
+import { isServerKeyId } from '../plugins/consensus-entitlement.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest, onSendHookHandler } from 'fastify';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { buildServer as buildMcpServer } from '@nxtg/faultline-mcp/src/server.js';
@@ -90,12 +91,20 @@ const jsonRpcErrorBody: onSendHookHandler = async (_request, reply, payload) => 
   return jsonRpcError(reply.statusCode === 401 ? JSONRPC_UNAUTHORIZED : JSONRPC_SERVER_ERROR, message);
 };
 
+/** The x-user-tier the server key forwarded, if any; no other key's header is passed on. */
+function forwardedTier(request: FastifyRequest): string | undefined {
+  if (!isServerKeyId(request.keyId ?? '')) return undefined;
+  const raw = request.headers['x-user-tier'];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return typeof value === 'string' && value !== '' ? value : undefined;
+}
+
 /**
  * A fetch that runs this server's own POST /scan in-process. Only POST /scan
  * is reachable, and the only headers sent are the content type and the
  * caller's key, so the inner request is exactly a customer's POST /scan.
  */
-export function inProcessScanFetch(fastify: FastifyInstance, apiKey: string): typeof fetch {
+export function inProcessScanFetch(fastify: FastifyInstance, apiKey: string, userTier?: string): typeof fetch {
   return (async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
     if (url.origin !== IN_PROCESS_API_URL || url.pathname !== '/scan' || (init?.method ?? 'GET') !== 'POST') {
@@ -104,7 +113,9 @@ export function inProcessScanFetch(fastify: FastifyInstance, apiKey: string): ty
     const res = await fastify.inject({
       method: 'POST',
       url: '/scan',
-      headers: { 'content-type': 'application/json', 'x-api-key': apiKey },
+      // The server key's forwarded plan goes with it, so the inner scan is held to
+      // that plan (provider choice, consensus) and not read as Enterprise.
+      headers: { 'content-type': 'application/json', 'x-api-key': apiKey, ...(userTier !== undefined ? { 'x-user-tier': userTier } : {}) },
       payload: typeof init?.body === 'string' ? init.body : '',
     });
     return new Response(res.body, {
@@ -165,7 +176,7 @@ export async function mcpRoutes(fastify: FastifyInstance): Promise<void> {
       const transportConfig: Transport = { mode: 'hosted', apiUrl: IN_PROCESS_API_URL, apiKey };
       const server = buildMcpServer({
         transport: transportConfig,
-        fetchImpl: inProcessScanFetch(fastify, apiKey),
+        fetchImpl: inProcessScanFetch(fastify, apiKey, forwardedTier(request)),
         audit: false,
       });
       const transport = new WebStandardStreamableHTTPServerTransport({
