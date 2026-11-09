@@ -1,10 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { buildServer } from '../src/server.js';
 import { resetCache } from '../src/store/cache.js';
+import { resetCircuitBreaker } from '../src/store/circuit-breaker.js';
 import type { FastifyInstance } from 'fastify';
 
-// Reset cache before every test so cached results from prior tests don't interfere
-beforeEach(() => { resetCache(); });
+// Reset cache and the circuit breaker before every test so cached results and a
+// provider tripped DOWN by an earlier test don't interfere (a hosted scan runs one
+// provider, with no failover, so a DOWN Gemini is a 503).
+beforeEach(() => { resetCache(); resetCircuitBreaker(); });
 
 vi.mock('@nxtg/faultline/cli/scan.js', () => ({
   scan: vi.fn().mockResolvedValue({
@@ -163,11 +166,8 @@ describe('POST /scan', () => {
 
   it('returns 500 when scan throws an error', async () => {
     const { scan } = await import('@nxtg/faultline/cli/scan.js');
-    // With failover, all 4 real providers must fail to produce a 500 (mock is never a fallback).
+    // A hosted scan runs one provider, with no failover, so one failure is a 500.
     vi.mocked(scan)
-      .mockRejectedValueOnce(new Error('Provider API key missing'))
-      .mockRejectedValueOnce(new Error('Provider API key missing'))
-      .mockRejectedValueOnce(new Error('Provider API key missing'))
       .mockRejectedValueOnce(new Error('Provider API key missing'));
 
     const res = await server.inject({
@@ -386,12 +386,8 @@ describe('POST /scan — additional coverage', () => {
 
   it('returns 500 with error message when scan throws a non-Error object', async () => {
     const { scan } = await import('@nxtg/faultline/cli/scan.js');
-    // With failover, all 5 providers must fail to produce a 500.
+    // A hosted scan runs one provider, with no failover, so one failure is a 500.
     vi.mocked(scan)
-      .mockRejectedValueOnce('plain string error')
-      .mockRejectedValueOnce('plain string error')
-      .mockRejectedValueOnce('plain string error')
-      .mockRejectedValueOnce('plain string error')
       .mockRejectedValueOnce('plain string error');
 
     const res = await server.inject({

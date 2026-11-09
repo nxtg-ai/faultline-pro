@@ -126,6 +126,23 @@ describe('CircuitBreaker — unit', () => {
     expect(chain).toHaveLength(5);
   });
 
+  it('getScanRoute() is Gemini alone when no provider is named', () => {
+    expect(getCircuitBreaker().getScanRoute()).toEqual(['gemini']);
+  });
+
+  it('getScanRoute() is the named provider alone, never a fallback list', () => {
+    expect(getCircuitBreaker().getScanRoute('claude')).toEqual(['claude']);
+    expect(getCircuitBreaker().getScanRoute('mock')).toEqual(['mock']);
+  });
+
+  it('getScanRoute() is empty when that provider is DOWN, even with others up', () => {
+    const cb = getCircuitBreaker();
+    for (let i = 0; i < 5; i++) cb.recordFailure('gemini');
+    expect(cb.getScanRoute()).toEqual([]);
+    expect(cb.getScanRoute('gemini')).toEqual([]);
+    expect(cb.getScanRoute('openai')).toEqual(['openai']);
+  });
+
   it('getStatus() returns all 5 providers with their state', () => {
     const cb = getCircuitBreaker();
     cb.recordFailure('perplexity');
@@ -159,7 +176,7 @@ describe('Failover — integration', () => {
     expect(body.overallRisk).toBe('low');
   });
 
-  it('POST /scan where mockScan rejects once then resolves → 200 (failover to next provider)', async () => {
+  it('POST /scan where the provider rejects once → 500, and no other provider is tried', async () => {
     let callCount = 0;
     mockScan.mockImplementation(() => {
       callCount++;
@@ -174,30 +191,28 @@ describe('Failover — integration', () => {
       body: JSON.stringify({ text: 'test', provider: 'gemini' }),
     });
 
-    expect(res.statusCode).toBe(200);
-    const body = JSON.parse(res.body);
-    expect(body.overallRisk).toBe('low');
+    expect(res.statusCode).toBe(500);
+    expect(callCount).toBe(1);
+    expect(mockScan.mock.calls.map(c => c[1])).toEqual(['gemini']);
   });
 
-  it('Failover creates audit log entry with endpoint /scan/failover', async () => {
-    let callCount = 0;
-    mockScan.mockImplementation(() => {
-      callCount++;
-      if (callCount === 1) return Promise.reject(new Error('gemini unavailable'));
-      return Promise.resolve(GOOD_RESULT);
-    });
+  it('a failed scan writes no /scan/failover audit entry and never reaches OpenAI or Claude', async () => {
+    mockScan.mockRejectedValueOnce(new Error('gemini unavailable')).mockResolvedValue(GOOD_RESULT);
 
     await server.inject({
       method: 'POST',
       url: '/scan',
       headers: adminHeaders(),
-      body: JSON.stringify({ text: 'test', provider: 'gemini' }),
+      body: JSON.stringify({ text: 'test' }),
     });
 
     const entries = getAuditLogger().getEntries();
-    const failoverEntry = entries.find(e => e.endpoint === '/scan/failover');
-    expect(failoverEntry).toBeDefined();
-    expect(failoverEntry!.note).toContain('gemini');
+    expect(entries.length).toBeGreaterThan(0);
+    expect(entries.find(e => e.endpoint === '/scan/failover')).toBeUndefined();
+    const providers = mockScan.mock.calls.map(c => c[1]);
+    expect(providers).toEqual(['gemini']);
+    expect(providers).not.toContain('openai');
+    expect(providers).not.toContain('claude');
   });
 
   it('POST /scan where all providers fail → 500', async () => {
@@ -215,15 +230,12 @@ describe('Failover — integration', () => {
     expect(typeof body.error).toBe('string');
   });
 
-  it('POST /scan where circuit-broken provider is skipped automatically', async () => {
+  it('POST /scan with Gemini circuit-broken → 503, and the text goes to no other provider', async () => {
     const cb = getCircuitBreaker();
-    // Trip gemini's breaker
     for (let i = 0; i < 5; i++) {
       cb.recordFailure('gemini');
     }
     expect(cb.isDown('gemini')).toBe(true);
-
-    // Only non-gemini providers should be tried
     mockScan.mockResolvedValue(GOOD_RESULT);
 
     const res = await server.inject({
@@ -233,10 +245,9 @@ describe('Failover — integration', () => {
       body: JSON.stringify({ text: 'test', provider: 'gemini' }),
     });
 
-    expect(res.statusCode).toBe(200);
-    // Verify gemini was not called (first call should be openai)
-    expect(mockScan).toHaveBeenCalledWith('test', 'openai', undefined, undefined, undefined, undefined, undefined, { verifyCap: 8, doi: API_DOI_CHECK });
-    expect(mockScan).not.toHaveBeenCalledWith('test', 'gemini', undefined, undefined, undefined, undefined, undefined, { verifyCap: 8, doi: API_DOI_CHECK });
+    expect(res.statusCode).toBe(503);
+    expect(JSON.parse(res.body).error).toBe('The scan provider is currently unavailable. Please retry later.');
+    expect(mockScan).not.toHaveBeenCalled();
   });
 
   it('Circuit breaker: after 5 failures, provider marked down', async () => {
@@ -248,25 +259,22 @@ describe('Failover — integration', () => {
     expect(cb.getStatus()['openai'].down).toBe(true);
   });
 
-  it('After circuit-broken, scan still succeeds using fallback provider', async () => {
+  it('a caller who names a provider gets that provider while Gemini is circuit-broken', async () => {
     const cb = getCircuitBreaker();
-    // Trip gemini and openai
     for (let i = 0; i < 5; i++) {
       cb.recordFailure('gemini');
-      cb.recordFailure('openai');
     }
-
     mockScan.mockResolvedValue(GOOD_RESULT);
 
     const res = await server.inject({
       method: 'POST',
       url: '/scan',
       headers: adminHeaders(),
-      body: JSON.stringify({ text: 'test', provider: 'gemini' }),
+      body: JSON.stringify({ text: 'test', provider: 'claude' }),
     });
 
     expect(res.statusCode).toBe(200);
-    // Should have been called with claude (first non-down provider after gemini+openai)
+    expect(mockScan).toHaveBeenCalledTimes(1);
     expect(mockScan).toHaveBeenCalledWith('test', 'claude', undefined, undefined, undefined, undefined, undefined, { verifyCap: 8, doi: API_DOI_CHECK });
   });
 
@@ -306,6 +314,27 @@ describe('Failover — integration', () => {
     expect(body.errors).toBeInstanceOf(Array);
     expect(body.errors.length).toBeGreaterThan(0);
     expect(body.succeeded).toBe(1);
+  });
+
+  it('POST /scan/batch: a text whose provider fails is not retried on another provider', async () => {
+    mockScan.mockImplementation((text: string, provider: string) => {
+      if (text === 'gemini-fails' && provider === 'gemini') return Promise.reject(new Error('gemini error'));
+      return Promise.resolve(GOOD_RESULT);
+    });
+
+    const res = await server.inject({
+      method: 'POST',
+      url: '/scan/batch',
+      headers: adminHeaders(),
+      body: JSON.stringify({ texts: ['gemini-fails', 'text2'] }),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.succeeded).toBe(1);
+    expect(body.failed).toBe(1);
+    const failedCalls = mockScan.mock.calls.filter(c => c[0] === 'gemini-fails').map(c => c[1]);
+    expect(failedCalls).toEqual(['gemini']);
   });
 
   it('getStatus() reflects correct down state after failures', async () => {

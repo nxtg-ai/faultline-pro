@@ -98,10 +98,10 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-const scan = () => server.inject({
+const scan = (provider = 'gemini') => server.inject({
   method: 'POST', url: '/scan',
   headers: { 'x-api-key': SERVER_KEY, 'content-type': 'application/json' },
-  payload: JSON.stringify({ text: 'The Eiffel Tower is in Paris. It opened in 1889.', provider: 'gemini' }),
+  payload: JSON.stringify({ text: 'The Eiffel Tower is in Paris. It opened in 1889.', provider }),
 });
 
 describe('POST /scan with a reply cut off at its output ceiling', () => {
@@ -135,9 +135,27 @@ describe('POST /scan with a reply cut off at its output ceiling', () => {
     expect(sdk.groundedCalls).toBe(4);
   });
 
-  it('a cut-off extraction on every provider in the chain is 502 extraction_failed with reason output_truncated', async () => {
-    // The route falls back gemini → openai → claude → perplexity; each wire reports the cut-off its own way.
+  it('a cut-off Gemini extraction is 502 output_truncated, and no other provider is called', async () => {
+    // A hosted scan runs one provider, with no failover, so the text reaches no other wire.
     sdk.extractCut = true;
+    process.env.OPENAI_API_KEY = 'fixture-openai';
+    process.env.ANTHROPIC_API_KEY = 'fixture-anthropic';
+    process.env.PERPLEXITY_API_KEY = 'fixture-perplexity';
+    const fetchSpy = vi.fn(async () => ({ ok: true, status: 200, statusText: 'OK', json: async () => ({}), text: async () => '{}' }));
+    vi.stubGlobal('fetch', fetchSpy);
+    try {
+      const res = await scan();
+      expect(res.statusCode).toBe(502);
+      expect(res.json()).toEqual({ error: 'extraction_failed', reason: 'output_truncated' });
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(sdk.groundedCalls).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each(['openai', 'claude', 'perplexity'])('a cut-off extraction on a named %s provider is 502 extraction_failed with reason output_truncated', async (provider) => {
+    // Each wire reports the cut-off its own way.
     process.env.OPENAI_API_KEY = 'fixture-openai';
     process.env.ANTHROPIC_API_KEY = 'fixture-anthropic';
     process.env.PERPLEXITY_API_KEY = 'fixture-perplexity';
@@ -157,10 +175,10 @@ describe('POST /scan with a reply cut off at its output ceiling', () => {
       return json({});
     }));
     try {
-      const res = await scan();
+      const res = await scan(provider);
       expect(res.statusCode).toBe(502);
       expect(res.json()).toEqual({ error: 'extraction_failed', reason: 'output_truncated' });
-      expect(wireCalls).toEqual(expect.arrayContaining(['openai', 'claude', 'perplexity']));
+      expect(wireCalls).toEqual([provider]);
       expect(sdk.groundedCalls).toBe(0);
     } finally {
       vi.unstubAllGlobals();

@@ -51,13 +51,13 @@ function resolveTier(keyId: string): Tier {
   return 'free';
 }
 
-async function scanWithFailover(
+async function scanWithProvider(
   keyId: string,
   text: string,
   preferred: Provider | undefined,
 ): Promise<Awaited<ReturnType<typeof scan>>> {
   const cb = getCircuitBreaker();
-  const chain = cb.getChain(preferred);
+  const chain = cb.getScanRoute(preferred);
   if (chain.length === 0) throw new Error('All providers circuit-broken.');
 
   let lastError: unknown;
@@ -137,7 +137,7 @@ export async function batchRoutes(fastify: FastifyInstance): Promise<void> {
 
       // Process all texts concurrently with failover
       const settled = await Promise.allSettled(
-        texts.map((text) => scanWithFailover(keyId, text, provider as Provider | undefined)),
+        texts.map((text) => scanWithProvider(keyId, text, provider as Provider | undefined)),
       );
 
       type ScanResult = Awaited<ReturnType<typeof scan>>;

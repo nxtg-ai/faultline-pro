@@ -139,22 +139,22 @@ afterEach(async () => {
 });
 
 describe('POST /scan', () => {
-  it('provider failover: every provider fails extraction → 502 extraction_failed with reason, nothing verified', async () => {
+  it('no failover: the one provider fails extraction → 502 extraction_failed with reason, nothing verified', async () => {
     const extract = truncatedExtraction();
     const res = await post('/scan', { text: TEXT, provider: 'gemini' });
 
-    expect(extract).toHaveBeenCalledTimes(4); // every real provider was tried; mock is never a fallback
+    expect(extract).toHaveBeenCalledTimes(1); // the caller's provider only; no other provider sees the text
     expect(res.statusCode).toBe(502);
     expect(JSON.parse(res.body)).toEqual({ error: 'extraction_failed', reason: 'invalid_output' });
     expect(verifyClaim).not.toHaveBeenCalled();
   });
 
-  it('never fails over into the mock provider (whose verdicts are all "supported")', async () => {
+  it('never fails over to another provider, the mock (whose verdicts are all "supported") included', async () => {
     rateLimitedExtraction();
     const res = await post('/scan', { text: TEXT, provider: 'gemini' });
 
     expect(res.statusCode).toBe(502);
-    expect(control.providersTried).toEqual(['gemini', 'openai', 'claude', 'perplexity']);
+    expect(control.providersTried).toEqual(['gemini']);
     expect(control.providersTried).not.toContain('mock');
     expect(JSON.parse(res.body).provider).toBeUndefined();
   });

@@ -74,7 +74,8 @@ export async function diffRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request, reply) => {
       const { before, after, provider } = request.body;
-      const effectiveProvider: Provider = provider ?? 'openai';
+      // Gemini by default, as on every hosted scan route: the privacy page names it.
+      const effectiveProvider: Provider = provider ?? 'gemini';
 
       const keyId = request.keyId ?? 'unknown';
       const [scanBefore, scanAfter] = await Promise.all([

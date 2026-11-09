@@ -68,11 +68,11 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
       reply.header('X-Cache', 'MISS');
 
       const cb = getCircuitBreaker();
-      const chain = cb.getChain(provider);
+      const chain = cb.getScanRoute(provider);
 
       if (chain.length === 0) {
         fireWebhookEvent('scan.failed', { error: 'All providers circuit-broken.' }, requestOwner(request));
-        return reply.status(503).send({ error: 'All providers are currently unavailable.' });
+        return reply.status(503).send({ error: 'The scan provider is currently unavailable.' });
       }
 
       let lastError = '';

@@ -731,7 +731,13 @@ GET /health
 }
 ```
 
-**Failover**: If the requested provider fails (or is circuit-broken), the server automatically falls back through the provider chain: `gemini → openai → claude → perplexity → mock`. A circuit breaker trips after 5 consecutive failures; it reopens after 5 minutes.
+**No failover**: a scan runs on the provider you name, or `gemini` when you name none, and is never retried on another provider. The same default applies on `POST /scan/bulk`, `POST /scan/diff`, `POST /scan/template/:id` (after the template's own provider) and `POST /critique`. A circuit breaker trips after 5 consecutive failures of a provider and holds it for 5 minutes. When the provider fails or is held:
+
+- `POST /scan` (and the hosted MCP route, which calls it): `503` while held, `502 extraction_failed` with a reason when extraction fails, otherwise `500`.
+- `POST /scan/deep`: `503` while held, otherwise `500` with the error message.
+- `POST /scan/batch`: `200`, with the failure in that text's entry of the `errors` array.
+
+A `pipelineConfig` scan names its providers and does not use the breaker.
 
 **For testing/development**: Always pass `"provider": "mock"`. It returns a valid scan result instantly without consuming quota or making external calls.
 

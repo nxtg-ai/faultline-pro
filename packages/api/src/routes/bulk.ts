@@ -121,7 +121,8 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.status(400).send({ error: 'Invalid or unreadable ZIP archive.' });
       }
 
-      const provider = ((request.query as { provider?: string }).provider ?? 'openai') as Provider;
+      // Gemini by default, as on every hosted scan route: the privacy page names it.
+      const provider = ((request.query as { provider?: string }).provider ?? 'gemini') as Provider;
       const job = getBulkJobStore().create(entryCount, request.keyId);
 
       if (entryCount === 0) {

@@ -87,6 +87,23 @@ class CircuitBreaker {
     return ordered.filter(p => !this.isDown(p));
   }
 
+  /**
+   * The one provider a hosted scan may use: the caller's named provider, else
+   * Gemini. Empty when that provider is DOWN, so the route answers 503.
+   *
+   * There is no cross-provider fallback. The privacy page names the providers a
+   * scan's text goes to (Gemini; OpenAI and Anthropic only on an Enterprise
+   * consensus scan), and in the parallel grounding mode only a Gemini verify
+   * judges against Parallel sources. Falling over to OpenAI or Claude on a
+   * Gemini error would send the text to a provider the caller was not told
+   * about and judge it without those sources (Show HN review, blocker 4).
+   * getChain stays for the status surfaces.
+   */
+  getScanRoute(preferred?: Provider): Provider[] {
+    const p = preferred ?? 'gemini';
+    return this.isDown(p) ? [] : [p];
+  }
+
   getStatus(): Record<Provider, { down: boolean; consecutiveFailures: number; healthScore: number }> {
     const result = {} as Record<Provider, { down: boolean; consecutiveFailures: number; healthScore: number }>;
     for (const p of PROVIDER_CHAIN) {

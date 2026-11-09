@@ -82,7 +82,7 @@ Faultline decomposes AI-generated text into atomic claims, then runs a four-phas
 - **Claude** (Anthropic) — nuanced analysis
 - **Perplexity** — search-native, real-time grounding
 - **Mock** — testing and CI, zero latency
-- Provider auto-failover with circuit breaker (5-failure threshold, 5-min cooldown)
+- Provider circuit breaker on the hosted API (5-failure threshold, 5-min cooldown); a hosted scan never falls back to another provider
 - Custom provider plugin interface
 
 ### CLI

@@ -79,7 +79,7 @@ describe('POST /scan/deep — uncovered branches', () => {
     delete process.env.FAULTLINE_API_KEY;
   });
 
-  it('RH1: all providers circuit-broken → 503 "All providers are currently unavailable."', async () => {
+  it('RH1: the named provider circuit-broken → 503 "The scan provider is currently unavailable."', async () => {
     tripAllProviders();
 
     const res = await server.inject({
@@ -91,7 +91,7 @@ describe('POST /scan/deep — uncovered branches', () => {
 
     expect(res.statusCode).toBe(503);
     const body = JSON.parse(res.body);
-    expect(body.error).toBe('All providers are currently unavailable.');
+    expect(body.error).toBe('The scan provider is currently unavailable.');
   });
 
   it('RH2: circuit-broken with no preferred provider → 503', async () => {
@@ -138,8 +138,8 @@ describe('POST /scan/deep — uncovered branches', () => {
     expect(body.error).toBe('Provider timeout');
   });
 
-  it('RH5: multiple scan() failures accumulate lastError from final provider', async () => {
-    // Each call throws a distinct message — the route should surface the last one
+  it('RH5: a scan() failure is not retried on another provider, and its error is surfaced', async () => {
+    // A hosted scan runs one provider, with no failover.
     let callCount = 0;
     mockScan.mockImplementation(() => {
       callCount++;
@@ -155,9 +155,8 @@ describe('POST /scan/deep — uncovered branches', () => {
 
     expect(res.statusCode).toBe(500);
     const body = JSON.parse(res.body);
-    // Error from the last provider in the chain should appear
-    expect(body.error).toMatch(/^Failure \d+$/);
-    expect(callCount).toBeGreaterThan(1); // tried multiple providers
+    expect(body.error).toBe('Failure 1');
+    expect(callCount).toBe(1); // the named provider only
   });
 });
 

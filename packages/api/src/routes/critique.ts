@@ -133,7 +133,9 @@ export async function critiqueRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request, reply) => {
       const { claims, verifications, text } = request.body;
-      const providerName = request.body.provider ?? 'openai';
+      // Gemini by default: faultline-web sends no provider, and the privacy page
+      // names Gemini, not OpenAI, for a non-Enterprise user's text.
+      const providerName = request.body.provider ?? 'gemini';
       const envKey = KEY_ENV_MAP[providerName] ?? '';
       const apiKey = envKey ? (process.env[envKey] ?? '') : '';
       const provider = getProvider(apiKey, providerName);
