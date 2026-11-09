@@ -8,6 +8,8 @@ import { resetRateLimiter } from '../src/store/ratelimit.js';
 import { resetCircuitBreaker } from '../src/store/circuit-breaker.js';
 import { resetCache } from '../src/store/cache.js';
 import { getTemplateStore } from '../src/store/templates.js';
+import { getScheduleStore, getScheduleRunner, resetScheduleStore } from '../src/store/schedules.js';
+import { getCostStore } from '../src/store/costs.js';
 import type { FastifyInstance } from 'fastify';
 
 const { mockScan } = vi.hoisted(() => ({ mockScan: vi.fn() }));
@@ -37,6 +39,7 @@ beforeEach(async () => {
   resetRateLimiter();
   resetCircuitBreaker();
   resetCache();
+  resetScheduleStore();
   mockScan.mockReset().mockResolvedValue(GOOD_RESULT);
   server = buildServer();
   await server.ready();
@@ -132,4 +135,63 @@ describe('provider entitlement: below Enterprise a named provider becomes Gemini
     expect(res.statusCode).toBe(200);
     expect(providersCalled()).toEqual(['gemini']);
   });
+
+  it('server key with no x-user-tier is internal (Enterprise) and keeps the named provider', async () => {
+    await server.inject({ method: 'POST', url: '/scan', headers: json(SERVER_KEY), body: JSON.stringify({ text: 'test', provider: 'claude' }) });
+    expect(providersCalled()).toEqual(['claude']);
+  });
 });
+
+const mcpCall = (key: string, provider: string, extra: Record<string, string> = {}) => server.inject({
+  method: 'POST', url: '/mcp',
+  headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18', 'x-api-key': key, ...extra },
+  payload: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'verify_claims', arguments: { text: 'The Eiffel Tower is in Paris.', provider } } }),
+});
+
+describe('provider entitlement on the hosted MCP route', () => {
+  it('a Pro key naming openai in verify_claims arguments is scanned on Gemini', async () => {
+    const res = await mcpCall(proKey(), 'openai');
+    expect(res.statusCode).toBe(200);
+    expect(mockScan).toHaveBeenCalled();
+    expect(new Set(providersCalled())).toEqual(new Set(['gemini']));
+  });
+
+  it('the server key forwarding a Pro user: the tier reaches the inner scan, so openai becomes Gemini', async () => {
+    const res = await mcpCall(SERVER_KEY, 'openai', { 'x-user-tier': 'pro' });
+    expect(res.statusCode).toBe(200);
+    expect(mockScan).toHaveBeenCalled();
+    expect(new Set(providersCalled())).toEqual(new Set(['gemini']));
+  });
+
+  it('the server key forwarding an Enterprise user keeps the named provider', async () => {
+    const res = await mcpCall(SERVER_KEY, 'claude', { 'x-user-tier': 'enterprise' });
+    expect(res.statusCode).toBe(200);
+    expect(new Set(providersCalled())).toEqual(new Set(['claude']));
+  });
+});
+
+describe('provider entitlement on saved schedules and on non-selector routes', () => {
+  it('triggering a saved schedule that names openai runs it on Gemini below Enterprise', async () => {
+    const key = getKeyStore().create('Pro', ['pro', 'scan']);
+    const schedule = getScheduleStore().create({ name: 's', cron: '0 * * * *', text: 'Scheduled text.', provider: 'openai' }, key.id);
+    const runSpy = vi.spyOn(getScheduleRunner(), 'runSchedule').mockResolvedValue(undefined as never);
+    const res = await server.inject({ method: 'POST', url: `/schedules/${schedule.id}/trigger`, headers: json(key.key), body: '{}' });
+    expect(res.statusCode).toBeLessThan(300);
+    expect(runSpy).toHaveBeenCalledTimes(1);
+    expect(runSpy.mock.calls[0][0].provider).toBe('gemini');
+    expect(getScheduleStore().get(schedule.id)?.provider).toBe('openai');
+    runSpy.mockRestore();
+  });
+
+  it('GET /costs?provider=openai is a filter, not a provider choice: it is left as sent', async () => {
+    const key = getKeyStore().create('Pro', ['pro', 'scan']);
+    getCostStore().record(key.id, 'openai', 'some text');
+    getCostStore().record(key.id, 'gemini', 'other text');
+    const res = await server.inject({ method: 'GET', url: '/costs?provider=openai', headers: { 'x-api-key': key.key } });
+    expect(res.statusCode).toBe(200);
+    const rows = res.json().costs as Array<{ provider: string }>;
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.provider === 'openai')).toBe(true);
+  });
+});
+

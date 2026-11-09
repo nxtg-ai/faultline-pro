@@ -11,6 +11,7 @@
  * GET    /schedules/view        — HTML monitoring dashboard
  */
 
+import { entitledProvider } from '../plugins/provider-entitlement.js';
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { engineVerifyCap, requireClaimHeadroom } from '../plugins/claim-meter.js';
@@ -233,7 +234,9 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.status(403).send({ error: 'Forbidden.' });
       }
       // Fire-and-forget; runner will record result
-      void getScheduleRunner().runSchedule(schedule).catch(() => undefined);
+      // A saved provider is held to the caller's plan, like a named one (provider-entitlement.ts).
+      const run = { ...schedule, provider: entitledProvider(request, schedule.provider) ?? schedule.provider };
+      void getScheduleRunner().runSchedule(run).catch(() => undefined);
       return reply.status(202).send({
         message: 'Run triggered.',
         scheduleId: schedule.id,

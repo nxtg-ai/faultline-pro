@@ -24,21 +24,36 @@ export const DEFAULT_SCAN_PROVIDER = 'gemini';
 const KEEPS_PROVIDER_CHOICE = new Set(['enterprise', 'measurement']);
 const ALWAYS_ALLOWED = new Set([DEFAULT_SCAN_PROVIDER, 'mock']);
 
+/** True when a caller with this key and forwarded tier may name a provider other than Gemini. */
+export function tierMayChooseProvider(keyId: string, headerTier?: string | string[]): boolean {
+  return KEEPS_PROVIDER_CHOICE.has(resolveEntitledTier(keyId, headerTier));
+}
+
 /** True when this request's plan may name a provider other than Gemini. */
 export function mayChooseProvider(request: FastifyRequest): boolean {
-  const tier = resolveEntitledTier(request.keyId ?? 'unknown', request.headers['x-user-tier']);
-  return KEEPS_PROVIDER_CHOICE.has(tier);
+  return tierMayChooseProvider(request.keyId ?? 'unknown', request.headers['x-user-tier']);
+}
+
+/** The provider a caller may use, given the one it named and whether its plan allows a choice. */
+export function providerForPlan<T extends string | undefined>(named: T, mayChoose: boolean): T | typeof DEFAULT_SCAN_PROVIDER {
+  if (named === undefined || ALWAYS_ALLOWED.has(named)) return named;
+  return mayChoose ? named : DEFAULT_SCAN_PROVIDER;
 }
 
 /**
- * The provider a request may use, given the one it named (or a template named).
- * Returns the name unchanged when the plan allows it, or when it is Gemini, mock
- * or absent; otherwise Gemini.
+ * The provider a request may use, given the one it named (or a template or a
+ * saved schedule named). Returns the name unchanged when the plan allows it, or
+ * when it is Gemini, mock or absent; otherwise Gemini.
  */
 export function entitledProvider<T extends string | undefined>(request: FastifyRequest, named: T): T | typeof DEFAULT_SCAN_PROVIDER {
-  if (named === undefined || ALWAYS_ALLOWED.has(named)) return named;
-  return mayChooseProvider(request) ? named : DEFAULT_SCAN_PROVIDER;
+  return providerForPlan(named, mayChooseProvider(request));
 }
+
+/**
+ * Routes whose `provider` field is not a scan provider: a filter over stored
+ * rows, or a label inside a result the caller hands back. The hook leaves them.
+ */
+export const NON_SELECTOR_ROUTES = new Set(['/costs', '/scans/search', '/scan/report/pdf']);
 
 function rewrite(holder: unknown, field: string, request: FastifyRequest): void {
   if (holder === null || typeof holder !== 'object') return;
@@ -54,6 +69,7 @@ function rewrite(holder: unknown, field: string, request: FastifyRequest): void 
  */
 export async function enforceProviderEntitlement(request: FastifyRequest): Promise<void> {
   if (!request.keyId) return;
+  if (NON_SELECTOR_ROUTES.has(request.routeOptions.url ?? '')) return;
   const body = request.body;
   rewrite(body, 'provider', request);
   if (body !== null && typeof body === 'object') {

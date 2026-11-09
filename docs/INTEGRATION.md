@@ -731,7 +731,7 @@ GET /health
 }
 ```
 
-**Provider choice is Enterprise only**: below Enterprise, a `provider` you name (on the body, the query string, a form field, a saved template, or `pipelineConfig.extractionProvider` / `verificationProvider`) is replaced by `gemini` before the scan runs. `mock` is always allowed. This keeps a scan's text with the providers the privacy page names for your plan.
+**Provider choice is Enterprise only**: below Enterprise, a `provider` you name (on the body, the query string, a form field, a saved template, or `pipelineConfig.extractionProvider` / `verificationProvider`) is replaced by `gemini` before the scan runs. `mock` is always allowed. The hosted MCP route and a triggered schedule follow the same rule, and a `provider` that filters stored rows (`GET /costs`, `GET /scans/search`) is left as sent. This keeps a scan's text with the providers the privacy page names for your plan.
 
 **No failover**: a scan runs on its provider, `gemini` unless an Enterprise caller names another, and is never retried on another provider. The same default applies on `POST /scan/bulk`, `POST /scan/diff`, `POST /scan/template/:id` (after the template's own provider) and `POST /critique`. A circuit breaker trips after 5 consecutive failures of a provider and holds it for 5 minutes. When the provider fails or is held:
 

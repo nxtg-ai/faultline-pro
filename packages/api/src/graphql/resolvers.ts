@@ -1,3 +1,4 @@
+import { providerForPlan } from '../plugins/provider-entitlement.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
 import { scanInRequestMode } from '../lib/grounding.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
@@ -43,6 +44,8 @@ interface GqlContext {
   keyId: string;
   /** The spend-gate tier from the request (server.ts). */
   spendCapTier?: ManagedScanCostEvent['tier'];
+  /** Whether the caller's plan may name a provider other than Gemini (provider-entitlement.ts). */
+  mayChooseProvider?: boolean;
 }
 
 /** The same budget check the REST scan routes run, before any provider call. */
@@ -78,7 +81,7 @@ export const resolvers = {
     scan: async (_: unknown, args: { text: string; provider?: string }, ctx: GqlContext) => {
       requireAdmin(ctx);
       requireProviderBudget(ctx);
-      const provider = (args.provider ?? 'mock') as Provider;
+      const provider = providerForPlan(args.provider ?? 'mock', ctx.mayChooseProvider === true) as Provider;
       const result = await scanWithSpend({ text: args.text, provider, keyId: ctx.keyId }, () => scanInRequestMode(args.text, provider));
       const stored = getScanStore().record(ctx.keyId, args.text, result as unknown as Record<string, unknown>);
       return toScanResult(stored.id, result as unknown as Record<string, unknown>, stored.scannedAt);
@@ -145,7 +148,7 @@ export const resolvers = {
     scanBatch: async (_: unknown, args: { texts: string[]; provider?: string }, ctx: GqlContext) => {
       requireAdmin(ctx);
       requireProviderBudget(ctx);
-      const provider = (args.provider ?? 'mock') as Provider;
+      const provider = providerForPlan(args.provider ?? 'mock', ctx.mayChooseProvider === true) as Provider;
       const texts = args.texts.slice(0, 20);
       const results = await Promise.all(
         texts.map(async (text) => {

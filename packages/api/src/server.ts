@@ -7,6 +7,7 @@ declare module 'mercurius' {
   interface MercuriusContext {
     keyId: string;
     spendCapTier: ManagedScanCostEvent['tier'];
+    mayChooseProvider: boolean;
   }
 }
 import type { ManagedScanCostEvent } from './store/costs.js';
@@ -56,7 +57,7 @@ import { changelogRoutes } from './routes/changelog.js';
 import { pluginMarketplaceRoutes } from './routes/plugins.js';
 import { telemetryRoutes } from './routes/telemetry.js';
 import { rateLimitRoutes } from './routes/rate-limits.js';
-import { enforceProviderEntitlement } from './plugins/provider-entitlement.js';
+import { enforceProviderEntitlement, tierMayChooseProvider } from './plugins/provider-entitlement.js';
 import { notificationRoutes } from './routes/notifications.js';
 import { queueRoutes } from './routes/queue.js';
 import { rulesRoutes } from './routes/rules.js';
@@ -268,7 +269,8 @@ export function buildServer() {
         const keyId = request.keyId ?? 'anonymous';
         // The spend-gate tier, read here because the resolvers see no request.
         const spendCapTier = resolveSpendCapTier(request.keyId, request.headers['x-user-tier']);
-        return { keyId, spendCapTier };
+        const mayChooseProvider = tierMayChooseProvider(keyId, request.headers['x-user-tier']);
+        return { keyId, spendCapTier, mayChooseProvider };
       },
     });
   }
