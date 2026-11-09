@@ -56,6 +56,7 @@ import { changelogRoutes } from './routes/changelog.js';
 import { pluginMarketplaceRoutes } from './routes/plugins.js';
 import { telemetryRoutes } from './routes/telemetry.js';
 import { rateLimitRoutes } from './routes/rate-limits.js';
+import { enforceProviderEntitlement } from './plugins/provider-entitlement.js';
 import { notificationRoutes } from './routes/notifications.js';
 import { queueRoutes } from './routes/queue.js';
 import { rulesRoutes } from './routes/rules.js';
@@ -113,6 +114,12 @@ export function buildServer() {
   // before schema validation (lib/route-access.ts). Added before any plugin
   // registers so it sees every route, the plugins' own included.
   fastify.addHook('onRoute', applyRouteAccess);
+
+  // Below Enterprise a caller-named provider becomes Gemini before any route
+  // reads it (plugins/provider-entitlement.ts; emma-soul ruling d41fa0c1).
+  // A root preHandler runs after the onRequest key check and before every
+  // route's own preHandlers, the plugins' routes included.
+  fastify.addHook('preHandler', enforceProviderEntitlement);
 
   // The measurement key may call only MEASUREMENT_ROUTES. This runs first on
   // every route, public ones and unmatched URLs included.

@@ -1,3 +1,4 @@
+import { entitledProvider } from '../plugins/provider-entitlement.js';
 import { randomUUID } from 'node:crypto';
 import { API_DOI_CHECK, apiEvidenceOptions, apiIndependentEvidenceOptions } from '../lib/evidence.js';
 import { groundingOption } from '../lib/grounding.js';
@@ -356,7 +357,8 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
 
       const { text, provider } = request.body;
       // Gemini by default, as on every hosted scan route: the privacy page names it.
-      const effectiveProvider = (provider ?? template.provider ?? 'gemini') as ScanProvider;
+      // The template's provider is subject to the plan like a named one (provider-entitlement.ts).
+      const effectiveProvider = (entitledProvider(request, provider ?? template.provider) ?? 'gemini') as ScanProvider;
 
       const keyId = request.keyId ?? 'unknown';
       const verifyPolicy = resolveVerifyPolicy(keyId, request.headers['x-user-tier']);

@@ -731,7 +731,9 @@ GET /health
 }
 ```
 
-**No failover**: a scan runs on the provider you name, or `gemini` when you name none, and is never retried on another provider. The same default applies on `POST /scan/bulk`, `POST /scan/diff`, `POST /scan/template/:id` (after the template's own provider) and `POST /critique`. A circuit breaker trips after 5 consecutive failures of a provider and holds it for 5 minutes. When the provider fails or is held:
+**Provider choice is Enterprise only**: below Enterprise, a `provider` you name (on the body, the query string, a form field, a saved template, or `pipelineConfig.extractionProvider` / `verificationProvider`) is replaced by `gemini` before the scan runs. `mock` is always allowed. This keeps a scan's text with the providers the privacy page names for your plan.
+
+**No failover**: a scan runs on its provider, `gemini` unless an Enterprise caller names another, and is never retried on another provider. The same default applies on `POST /scan/bulk`, `POST /scan/diff`, `POST /scan/template/:id` (after the template's own provider) and `POST /critique`. A circuit breaker trips after 5 consecutive failures of a provider and holds it for 5 minutes. When the provider fails or is held:
 
 - `POST /scan` (and the hosted MCP route, which calls it): `503` while held, `502 extraction_failed` with a reason when extraction fails, otherwise `500`.
 - `POST /scan/deep`: `503` while held, otherwise `500` with the error message.

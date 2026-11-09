@@ -47,7 +47,7 @@ The hosted API ships three governance records as code: a risk register export (`
 | Rules engine | YAML-defined rules; built-in PII, bias, toxicity rulesets |
 | CI gate | `--fail-on high` returns exit code 1; SARIF output for GitHub Code Scanning |
 | Enterprise API | REST API (about 190 routes) with key management, audit trail, rate limiting, webhooks, batch scanning, caching |
-| One provider per scan | A hosted scan runs the provider you name, Gemini by default, and never falls back to another provider; a circuit breaker returns `503` for 5 minutes after 5 failures |
+| One provider per scan | A hosted scan runs on Gemini (Enterprise may name another provider) and never falls back to another provider; a circuit breaker returns `503` for 5 minutes after 5 failures |
 | Monitoring | `GET /health/deep`, `GET /metrics` (Prometheus), `GET /status` (HTML dashboard) |
 | Scheduled jobs | `POST /jobs` — recurring scans on a cron schedule with webhook delivery |
 | Integrations | Python client source in `sdks/python`, MCP server `packages/mcp`, Terraform provider `packages/terraform-provider`, GitHub Action `nxtg-ai/faultline-action` (see [SDKs](#sdks-and-integrations)) |
@@ -115,7 +115,7 @@ Switch providers with `--provider <name>`. No code changes required. With no pro
 - **Scan comparison** — `POST /scan/compare`: diff two scan results (new/removed claims, verdict changes, trust score delta)
 - **Caching** — SHA-256 content-hash cache; 24h TTL (env `FAULTLINE_CACHE_TTL_MS`); `X-Cache: HIT/MISS` header; `GET /cache/stats`, `DELETE /cache`
 - **Scheduled jobs** — `POST /jobs`: recurring scans on a `*/N * * * *` cron schedule; results dispatched to `webhookUrl`
-- **One provider per scan** — a hosted scan runs the provider you name, Gemini by default. If that provider fails, the scan fails; it is never retried on another provider. A circuit breaker trips after 5 failures and returns `503` for 5 minutes (a `pipelineConfig` scan names its providers and skips the breaker)
+- **One provider per scan** — a hosted scan runs on Gemini. Only an Enterprise plan may name another provider (`openai`, `claude`, `perplexity`); below Enterprise a named provider is replaced by Gemini, and `mock` is always allowed. If the provider fails, the scan fails; it is never retried on another provider. A circuit breaker trips after 5 failures and returns `503` for 5 minutes (a `pipelineConfig` scan names its providers and skips the breaker)
 - **Scan history** — private per API key (the admin key sees all); `GET /scans/search?q=` full-text; stale scan detection (`GET /scans/stale`); usage analytics (`GET /scans/usage`); bulk pruning (`DELETE /scans/stale`); hygiene dashboard; `faultline scans` CLI
 - **Rule templates (HIPAA, SOX, FERPA, Gov)** — HIPAA / SOX+FINRA / FERPA / Government; `POST /scan/compliance/:template`; custom template upload
 - **Bulk import** — `POST /scan/bulk` (ZIP of documents → async job); `GET /jobs/:id/progress` (percentage + per-file status + summary)

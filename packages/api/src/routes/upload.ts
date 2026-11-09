@@ -1,3 +1,4 @@
+import { entitledProvider } from '../plugins/provider-entitlement.js';
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
@@ -45,7 +46,7 @@ export async function uploadRoutes(fastify: FastifyInstance): Promise<void> {
             }
           } else {
             if (part.fieldname === 'provider') {
-              provider = part.value as Provider;
+              provider = entitledProvider(request, part.value as Provider) as Provider;
             }
           }
         }

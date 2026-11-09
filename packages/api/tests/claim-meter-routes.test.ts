@@ -29,6 +29,14 @@ import { resetFullScanEstimateLimiter } from '../src/routes/full-scan.js';
 import { getJobScheduler, getJobStore, resetJobStore, resetJobScheduler } from '../src/store/jobs.js';
 import { getScanQueue, resetScanQueue } from '../src/store/scan-queue.js';
 import { getScheduleRunner, getScheduleStore, resetScheduleRunner, resetScheduleStore } from '../src/store/schedules.js';
+// These tests cover the cache, billing and ledger on a named non-Gemini provider,
+// which only an Enterprise plan may name. Provider entitlement is tested in
+// provider-entitlement.test.ts, so it is a pass-through here.
+vi.mock('../src/plugins/provider-entitlement.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/plugins/provider-entitlement.js')>()),
+  enforceProviderEntitlement: async () => {},
+  entitledProvider: (_request: unknown, named: string | undefined) => named,
+}));
 
 type Verdict = Partial<VerificationResult>;
 

@@ -25,6 +25,14 @@ import {
   recordProviderSpend,
   resetProviderSpendLedger,
 } from '../src/store/provider-spend.js';
+// These tests cover the cache, billing and ledger on a named non-Gemini provider,
+// which only an Enterprise plan may name. Provider entitlement is tested in
+// provider-entitlement.test.ts, so it is a pass-through here.
+vi.mock('../src/plugins/provider-entitlement.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/plugins/provider-entitlement.js')>()),
+  enforceProviderEntitlement: async () => {},
+  entitledProvider: (_request: unknown, named: string | undefined) => named,
+}));
 
 const providerSpy = vi.hoisted(() => ({
   generateCritiqueAndPrompt: vi.fn(),
