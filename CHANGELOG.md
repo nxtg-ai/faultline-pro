@@ -3,7 +3,7 @@
 All notable changes to Faultline Pro are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-> **Release stage: alpha.** Usable today, with sharp edges. Verdict accuracy has not yet been measured on a labelled test set, and anything may change before 1.0.
+> **Release stage: alpha.** Usable today, with sharp edges. Verdict accuracy was measured once on the production engine, not pre-registered: 0.755 balanced accuracy [0.678, 0.829] on 193 labelled Factcheck-Bench claims (commit `ba11345`, `docs/research/2026-11-06-parallel-fast-vs-advanced.md`); four runs on that sample read 0.755 to 0.802. Anything may change before 1.0.
 
 ## [Unreleased]
 

@@ -8,7 +8,7 @@
 
 Forensic verification of AI-generated claims. Extract atomic facts, verify against live web data, risk-score your AI outputs.
 
-> **Release stage: alpha.** Usable today, with sharp edges. Verdict accuracy has not yet been measured on a labelled test set, and anything may change before 1.0.
+> **Release stage: alpha.** Usable today, with sharp edges. Verdict accuracy was measured once on the hosted engine, not pre-registered: 0.755 balanced accuracy [0.678, 0.829] on 193 labelled Factcheck-Bench claims (commit `ba11345`); four runs on that sample read 0.755 to 0.802. The figure is for the hosted path (Parallel search, Gemini judge), not for a local run on your own provider key. Anything may change before 1.0.
 
 Version in this repo: 0.12.1. The `faultline-mcp` bin first shipped in 0.12.0; 0.12.1 makes it refuse to answer without a key. Check what npm serves with `npm view @nxtg/faultline version`.
 
