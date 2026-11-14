@@ -26,7 +26,8 @@ let dir: string;
 beforeAll(() => {
   dir = mkdtempSync(join(tmpdir(), 'fly-ops-gemini-'));
   // A stub flyctl that records its arguments, one per line.
-  writeFileSync(join(dir, 'flyctl'), `#!/usr/bin/env bash\nprintf '%s\\n' "$@" > "${dir}/flyctl-args"\n`);
+  // A stub flyctl that appends each call's arguments, one per line, then a separator line.
+  writeFileSync(join(dir, 'flyctl'), `#!/usr/bin/env bash\nprintf '%s\\n' "$@" >> "${dir}/flyctl-args"\nprintf -- '---\\n' >> "${dir}/flyctl-args"\n`);
   chmodSync(join(dir, 'flyctl'), 0o755);
 });
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -37,8 +38,11 @@ function runSet(judge: string, fallback: string, extraction: string) {
     env: { PATH: `${dir}:/usr/bin:/bin`, APP: 'faultline-api', JUDGE_MODEL: judge, FALLBACK_MODEL: fallback, EXTRACTION_MODEL: extraction },
     encoding: 'utf8',
   });
-  const args = existsSync(join(dir, 'flyctl-args')) ? readFileSync(join(dir, 'flyctl-args'), 'utf8').trim().split('\n') : null;
-  return { code: r.status, out: r.stdout + r.stderr, args };
+  // One array of arguments per flyctl call, in order; null when flyctl never ran.
+  const calls = existsSync(join(dir, 'flyctl-args'))
+    ? readFileSync(join(dir, 'flyctl-args'), 'utf8').split('---\n').filter((c) => c !== '').map((c) => c.trim().split('\n'))
+    : null;
+  return { code: r.status, out: r.stdout + r.stderr, calls };
 }
 
 describe('fly-ops.yml: gemini-models-set', () => {
@@ -69,7 +73,8 @@ describe('fly-ops.yml: gemini-models-set', () => {
   it('sets all three secrets in one flyctl call for the ruled models', () => {
     const r = runSet('gemini-3.1-pro-preview', 'gemini-4-argon', 'gemini-3.5-flash-lite');
     expect(r.code).toBe(0);
-    expect(r.args).toEqual([
+    expect(r.calls).toHaveLength(1);
+    expect(r.calls![0]).toEqual([
       'secrets', 'set',
       'FAULTLINE_GEMINI_MODEL=gemini-3.1-pro-preview',
       'FAULTLINE_GEMINI_FALLBACK_MODEL=gemini-4-argon',
@@ -83,11 +88,15 @@ describe('fly-ops.yml: gemini-models-set', () => {
     ['an empty fallback', 'gemini-3.1-pro-preview', '', 'gemini-3.5-flash-lite'],
     ['an injection attempt', 'gemini-3.1-pro-preview', 'gemini-4-argon; echo pwned', 'gemini-3.5-flash-lite'],
     ['a fallback equal to the judge', 'gemini-4-argon', 'gemini-4-argon', 'gemini-3.5-flash-lite'],
+    ['two priced models as one judge value', 'gemini-2.5-flash gemini-3.5-flash-lite', 'gemini-4-argon', 'gemini-3.5-flash-lite'],
+    ['two priced models as one fallback value', 'gemini-3.1-pro-preview', 'gemini-2.5-flash gemini-4-argon', 'gemini-3.5-flash-lite'],
+    ['two priced models as one extraction value', 'gemini-3.1-pro-preview', 'gemini-4-argon', 'gemini-3.5-flash-lite gemini-2.5-flash'],
+    ['a value with surrounding space', ' gemini-3.1-pro-preview', 'gemini-4-argon', 'gemini-3.5-flash-lite'],
   ])('refuses %s before flyctl runs', (_label, judge, fallback, extraction) => {
     const r = runSet(judge, fallback, extraction);
     expect(r.code).not.toBe(0);
     expect(r.out).toContain('Nothing was changed.');
-    expect(r.args).toBeNull();
+    expect(r.calls).toBeNull();
   });
 
   it('unset returns all three to the engine default', () => {

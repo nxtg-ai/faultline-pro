@@ -170,7 +170,9 @@ jobs:
           PRICED="gemini-2.5-flash gemini-3.5-flash-lite gemini-3.8-flash gemini-3.1-pro-preview gemini-4-argon"
           for pair in "judge_model=$JUDGE_MODEL" "fallback_model=$FALLBACK_MODEL" "extraction_model=$EXTRACTION_MODEL"; do
             name="${pair%%=*}"; value="${pair#*=}"
-            if ! [[ " $PRICED " == *" $value "* ]]; then
+            ok=0
+            for m in $PRICED; do [ "$value" = "$m" ] && ok=1; done
+            if [ "$ok" != 1 ]; then
               echo "::error::$name must be one of: $PRICED. Nothing was changed."
               exit 1
             fi
