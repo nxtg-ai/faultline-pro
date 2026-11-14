@@ -38,10 +38,12 @@ Pre-registration: amendment A1 in `2026-11-14-prereg-judge-model-ab-v1.md`, sect
    - `gemini-4-carbon`'s lower bound is -0.080.
    - `gemini-4-hydrogen` is worse: its whole CI lies below zero.
 2. **The pre-registered choice rule therefore gives the third case:** "If no GA arm is non-inferior, `gemini-3.1-pro-preview` stands as the choice." That rests on v1, where `gemini-3.1-pro-preview` was the only arm shown non-inferior: +0.031 [-0.011, +0.076].
-3. **The v2 anchor arm P' is invalid, for the same reason that bears on production.** `gemini-3.1-pro-preview` has a limit of 250 requests a day on our tier.
-   - 115 of its 200 claims needed retries, and the runner made 418 judge calls in all.
+3. **The v2 anchor arm P' is invalid because of a per-minute rate limit.** `gemini-3.1-pro-preview` allows 25 requests a minute and 250 a day on our tier (AI Studio rate-limit page).
+   - The runner sent its batches concurrently, up to 100 judge calls in one minute: 418 calls between 08:05Z and 08:16Z, with 115 of 200 claims needing retries.
    - 14 claims, all binary, still had no verdict after four calls: 9 provider errors and 5 unreadable replies.
+   - The daily limit was not used up. A call to the model at 08:42Z the same Pacific day returned 200, and the page's daily peak stayed at 226 of 250.
    - Its descriptive numbers count those 14 as wrong. They are shown, and not read.
+   - **Correction, 2026-11-14:** the first version of this file said the arm failed on the 250-a-day limit. That was wrong: it was the 25-a-minute limit.
 4. **Run-to-run spread.** v1 measured the same judge on the same sources moving +0.019 [-0.007, +0.053] between runs. A' on the new sources scored 0.786, against arm A's 0.751 in v1 on the v1 sources. Differences of a few points are within what the sources and the judge's own spread can move.
 
 ## Validity (section 7)
