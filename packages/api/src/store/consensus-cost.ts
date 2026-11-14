@@ -66,6 +66,10 @@ export const CONSENSUS_MODEL_RATES: Record<string, Rate> = {
   'gemini-3.5-flash-lite':  { inputPerM: 0.30, outputPerM: 2.50, groundingPerCall: 0, groundingPerQuery: 0.014 },
   'gemini-3.8-flash':       { inputPerM: 0.75, outputPerM: 3.75, groundingPerCall: 0, groundingPerQuery: 0.014 },
   'gemini-3.1-pro-preview': { inputPerM: 2.00, outputPerM: 12.00, groundingPerCall: 0, groundingPerQuery: 0.014 },
+  // gemini-4-argon, the judge's rate-limit fallback (ruling Dx3 15ff238e): priced at its list price from
+  // 2026-12-01, 4.00 / 20.00 (https://ai.google.dev/gemini-api/docs/pricing, read 2026-11-14). Through
+  // 2026-11-30 Google bills half that, so until then this row overstates its spend, never understates it.
+  'gemini-4-argon':         { inputPerM: 4.00, outputPerM: 20.00, groundingPerCall: 0, groundingPerQuery: 0.014 },
   'gpt-4o-mini':      { inputPerM: 0.15, outputPerM: 0.60, groundingPerCall: 0.010 },
   'claude-opus-4-8':  { inputPerM: 5.00, outputPerM: 25.00, groundingPerCall: 0 },
   'gpt-4o':           { inputPerM: 2.50, outputPerM: 10.00, groundingPerCall: 0.010 },

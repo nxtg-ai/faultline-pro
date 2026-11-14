@@ -52,11 +52,25 @@ on:
           - measurement-key-set
           - measurement-key-unset
           - keystore-audit
+          - gemini-models-set
+          - gemini-models-unset
       spend_cap_usd:
         description: 'Monthly ceiling in USD for spend-cap-on, a whole number from 1 to 1000'
         required: false
         type: string
         default: '100'
+      judge_model:
+        description: 'gemini-models-set: the judge model (FAULTLINE_GEMINI_MODEL)'
+        required: false
+        type: string
+      fallback_model:
+        description: 'gemini-models-set: the judge rate-limit fallback (FAULTLINE_GEMINI_FALLBACK_MODEL)'
+        required: false
+        type: string
+      extraction_model:
+        description: 'gemini-models-set: the extraction model (FAULTLINE_GEMINI_EXTRACTION_MODEL)'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -140,6 +154,38 @@ jobs:
             exit 1
           fi
           flyctl secrets set FAULTLINE_PROVIDER_SPEND_CAP=on FAULTLINE_PROVIDER_SPEND_CAP_USD="$SPEND_CAP_USD" -a "$APP"
+
+      # Gemini models (GoPMO 1.18.11.7.127). Sets the judge, its rate-limit fallback and the
+      # extraction model in one secrets call, so it is one release. Each must be a model the spend
+      # ledger prices at its own rate (CONSENSUS_MODEL_RATES), so no call is priced at another
+      # model's rate; the list below is pinned to that table by a test. "unset" returns all three
+      # to the engine default (gemini-2.5-flash, no fallback). GET /health shows the result as models.
+      - name: Gemini models set
+        if: inputs.action == 'gemini-models-set'
+        env:
+          JUDGE_MODEL: ${{ inputs.judge_model }}
+          FALLBACK_MODEL: ${{ inputs.fallback_model }}
+          EXTRACTION_MODEL: ${{ inputs.extraction_model }}
+        run: |
+          PRICED="gemini-2.5-flash gemini-3.5-flash-lite gemini-3.8-flash gemini-3.1-pro-preview gemini-4-argon"
+          for pair in "judge_model=$JUDGE_MODEL" "fallback_model=$FALLBACK_MODEL" "extraction_model=$EXTRACTION_MODEL"; do
+            name="${pair%%=*}"; value="${pair#*=}"
+            ok=0
+            for m in $PRICED; do [ "$value" = "$m" ] && ok=1; done
+            if [ "$ok" != 1 ]; then
+              echo "::error::$name must be one of: $PRICED. Nothing was changed."
+              exit 1
+            fi
+          done
+          if [ "$FALLBACK_MODEL" = "$JUDGE_MODEL" ]; then
+            echo "::error::fallback_model must differ from judge_model. Nothing was changed."
+            exit 1
+          fi
+          flyctl secrets set FAULTLINE_GEMINI_MODEL="$JUDGE_MODEL" FAULTLINE_GEMINI_FALLBACK_MODEL="$FALLBACK_MODEL" FAULTLINE_GEMINI_EXTRACTION_MODEL="$EXTRACTION_MODEL" -a "$APP"
+
+      - name: Gemini models unset
+        if: inputs.action == 'gemini-models-unset'
+        run: flyctl secrets unset FAULTLINE_GEMINI_MODEL FAULTLINE_GEMINI_FALLBACK_MODEL FAULTLINE_GEMINI_EXTRACTION_MODEL -a "$APP"
 
       - name: Spend cap off
         if: inputs.action == 'spend-cap-off'
