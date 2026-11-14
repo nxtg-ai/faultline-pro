@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import {
   CachedParallelSearchRetriever,
   RetrievalCacheMiss,
+  isCacheableReply,
   parallelRetrieverFromEnv,
   retrievalCacheFromEnv,
 } from '../providers/parallel_search_cache';
@@ -95,6 +96,32 @@ describe('CachedParallelSearchRetriever', () => {
     const fastReader = new CachedParallelSearchRetriever('k', { dir, mode: 'read' }, { mode: 'fast' });
     expect((await fastReader.retrieveWithStatus('Same claim.')).status).toBe('provider_error');
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('two requests for one uncached claim make one search and see the same reply', async () => {
+    const writer = new CachedParallelSearchRetriever('k', { dir, mode: 'write' });
+    const [a, b] = await Promise.all([writer.callAPI('Same time.'), writer.callAPI('Same time.')]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(b).toEqual(a);
+    expect(readdirSync(dir)).toHaveLength(1);
+  });
+
+  it('a 200 reply with no usable source is not cached, so a retry searches again', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ search_id: 'e', results: [] }), { status: 200 }));
+    const writer = new CachedParallelSearchRetriever('k', { dir, mode: 'write' });
+    await expect(writer.retrieve('Empty first.')).rejects.toThrow();
+    expect(readdirSync(dir)).toHaveLength(0);
+    expect((await writer.retrieve('Empty first.')).length).toBeGreaterThan(0);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('isCacheableReply accepts only a reply with a well-formed, usable result', () => {
+    expect(isCacheableReply(PAYLOAD)).toBe(true);
+    expect(isCacheableReply({})).toBe(false);
+    expect(isCacheableReply({ results: [] })).toBe(false);
+    expect(isCacheableReply({ results: [{ url: 'ftp://x.example/a' }] })).toBe(false);
+    expect(isCacheableReply({ results: [{ url: 'https://example.org/a' }, { url: 7 }] })).toBe(false);
+    expect(isCacheableReply(null)).toBe(false);
   });
 
   it('a failed search is not cached', async () => {

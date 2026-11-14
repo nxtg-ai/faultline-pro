@@ -643,12 +643,16 @@ async function runBatches({ request, allowance, options, pending, engine, done, 
   const spendFile = spendPath(options.out);
   // Restored before closeExhausted, so an item that used all its calls before a stop keeps what they cost.
   const spent = readSpend(spendFile, arm);
-  const queue = closeExhausted(pending, attempts, options, engine, log, spent);
   const total = done.size + pending.length;
+  // A resumed arm is held to the same judge model and cost cap before anything new is spent.
+  guardJudgeModel(options, [...done.values()]);
+  guardListPrice(options, spent, done, [], total, log);
+  const queue = closeExhausted(pending, attempts, options, engine, log, spent);
   const ledger = ledgerPath(options.out);
   let retryRound = 0;
   while (queue.length > 0) {
     const batch = queue.splice(0, BATCH_SIZE);
+    guardListPrice(options, spent, done, [], total, log);
     await guardAllowance(allowance, batch.length, log);
     await guardEngine(request, engine);
     const calls = batch.map((item) => ({ id: item.id, attempt: (attempts.get(item.id) ?? 0) + 1 }));
@@ -723,6 +727,15 @@ export function projectedArmUsd(spentByItem, written, total, priceIn, priceOut) 
   let usd = 0;
   for (const so of spentByItem.values()) usd += listPriceUsd(so, priceIn, priceOut);
   return (usd / written) * total;
+}
+
+/** Rows already written must name the arm's judge model too (a resume with another --judge-model). */
+function guardJudgeModel(options, rows) {
+  if (options.judgeModel === undefined) return;
+  const other = rows.find((row) => row.apiError !== true && row.judgeModel !== options.judgeModel);
+  if (other) {
+    throw new RunStop(EXIT.INVALID, `INVALID: item ${other.id} was judged by ${other.judgeModel ?? 'an unnamed model'}, not ${options.judgeModel}. Stop; do not score.`);
+  }
 }
 
 function guardListPrice(options, spent, done, rows, total, log) {

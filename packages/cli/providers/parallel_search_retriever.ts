@@ -229,7 +229,7 @@ export class ParallelSearchRetriever implements StatusRetriever {
 }
 
 /** A result entry is an object whose url is a string; title and excerpts, when present, are a string and a list. */
-function isWellFormedResult(r: unknown): boolean {
+export function isWellFormedResult(r: unknown): boolean {
   if (typeof r !== 'object' || r === null || Array.isArray(r)) return false;
   const e = r as ParallelResult;
   if (typeof e.url !== 'string') return false;

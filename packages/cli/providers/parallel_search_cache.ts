@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { ParallelSearchRetriever } from './parallel_search_retriever';
+import { ParallelSearchRetriever, isWellFormedResult, parseParallelResults } from './parallel_search_retriever';
 
 /**
  * A local, per-claim cache of Parallel search replies, for measurement runs only.
@@ -49,6 +49,32 @@ export class RetrievalCacheMiss extends Error {
   }
 }
 
+type ParallelReply = Awaited<ReturnType<ParallelSearchRetriever['callAPI']>>;
+
+/**
+ * Only a reply the retriever would accept as hits is stored: an object with a results
+ * list, every entry well formed, and at least one source a reader can open. Anything
+ * else is returned to the caller (which reports it as it always did) and searched
+ * again on a retry, never replayed from the cache.
+ */
+export function isCacheableReply(payload: unknown): boolean {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return false;
+  const results = (payload as { results?: unknown }).results;
+  if (!Array.isArray(results) || !results.every(isWellFormedResult)) return false;
+  return parseParallelResults(payload as ParallelReply).length > 0;
+}
+
+/** Searches in flight, by cache file, across every retriever in this process. */
+const inFlight = new Map<string, Promise<ParallelReply>>();
+
+function readCached(file: string): ParallelReply | null {
+  try {
+    return JSON.parse(readFileSync(file, 'utf8')) as ParallelReply;
+  } catch {
+    return null;
+  }
+}
+
 export class CachedParallelSearchRetriever extends ParallelSearchRetriever {
   readonly cache: RetrievalCacheConfig;
 
@@ -64,23 +90,35 @@ export class CachedParallelSearchRetriever extends ParallelSearchRetriever {
     return path.join(this.cache.dir, `${key}.json`);
   }
 
-  override async callAPI(claimText: string): ReturnType<ParallelSearchRetriever['callAPI']> {
+  override async callAPI(claimText: string): Promise<ParallelReply> {
     const file = this.cacheFile(claimText);
-    let cached: string | null = null;
-    try {
-      cached = readFileSync(file, 'utf8');
-    } catch {
-      cached = null;
-    }
     // A cached reply is not a new search: no usage is recorded, so nothing is billed.
-    if (cached !== null) return JSON.parse(cached) as Awaited<ReturnType<ParallelSearchRetriever['callAPI']>>;
+    const cached = readCached(file);
+    if (cached !== null) return cached;
     if (this.cache.mode === 'read') throw new RetrievalCacheMiss();
+    // A second request for the same claim waits for the first search instead of making its own,
+    // so both judge the reply that is stored.
+    const pending = inFlight.get(file);
+    if (pending) return pending;
+    const search = this.searchAndStore(claimText, file);
+    inFlight.set(file, search);
+    try {
+      return await search;
+    } finally {
+      inFlight.delete(file);
+    }
+  }
+
+  private async searchAndStore(claimText: string, file: string): Promise<ParallelReply> {
     const payload = await super.callAPI(claimText);
+    if (!isCacheableReply(payload)) return payload;
     try {
       writeFileSync(file, JSON.stringify(payload), { mode: 0o600, flag: 'wx' });
     } catch (err) {
-      // Another request for the same claim wrote it first; that reply stands.
       if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+      // Another process stored this claim first: that reply is the shared one, so use it.
+      const stored = readCached(file);
+      if (stored !== null) return stored;
     }
     return payload;
   }

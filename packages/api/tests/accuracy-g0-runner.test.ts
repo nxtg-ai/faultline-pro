@@ -931,6 +931,31 @@ describe('accuracy-g0 runner: judge model A/B options', () => {
     expect(r.out).toMatch(/list-price projection: 0\.1665 USD for 30 claims/);
   });
 
+  it('a resume with another --judge-model is invalid before any new call', async () => {
+    state.judgeModel = () => 'gemini-2.5-flash';
+    const out = join(dir, 'r.jsonl');
+    const base = ['--set', 'full', '--arm', 'parallel', '--sample', '30', '--seed', '7', '--out', out, '--label', 'judge-r'];
+    state.capAfterCallsThisRun = 1;
+    expect((await run([...base, '--judge-model', 'gemini-2.5-flash'])).code).toBe(3);
+    state.capAfterCallsThisRun = undefined;
+    const before = state.verifyCalls;
+    const resumed = await run([...base, '--judge-model', 'gemini-3.5-flash-lite', '--resume']);
+    expect(resumed.code).toBe(4);
+    expect(state.verifyCalls).toBe(before);
+  });
+
+  it('a resume after the cost guard stopped the arm stops again before any new call', async () => {
+    state.tokens = { inputTokens: 10_000, outputTokens: 10_000 };
+    const out = join(dir, 'c.jsonl');
+    const args = ['--set', 'full', '--arm', 'parallel', '--sample', '40', '--seed', '7', '--out', out,
+      '--price-in', '2', '--price-out', '12', '--cap-usd', '5'];
+    expect((await run(args)).code).toBe(5);
+    const before = state.verifyCalls;
+    const resumed = await run([...args, '--resume']);
+    expect(resumed.code).toBe(5);
+    expect(state.verifyCalls).toBe(before);
+  });
+
   it('refuses the price flags apart, and a label with --arm both', async () => {
     const a = await run(['--set', 'full', '--arm', 'parallel', '--price-in', '1']);
     expect(a.code).not.toBe(0);
