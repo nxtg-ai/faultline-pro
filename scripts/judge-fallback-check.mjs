@@ -96,7 +96,7 @@ export async function main({
   env = process.env,
   fetchImpl = fetch,
   now = new Date(),
-  log = (line) => console.log(line),
+  log = (line) => { process.stdout.write(`${line}\n`); },
   post = null,
   pane = null,
 } = {}) {
