@@ -21,7 +21,8 @@ Faultline supports 5 LLM providers via a clean `LLMProvider` interface. Switch p
 - **API Key**: [aistudio.google.com/apikey](https://aistudio.google.com/apikey) — free tier available, no credit card required
 - **Env Var**: `GEMINI_API_KEY`
 - **Default Model**: `gemini-2.5-flash`
-- **Model Override**: `FAULTLINE_GEMINI_MODEL` env var
+- **Model Override**: `FAULTLINE_GEMINI_MODEL` env var (the verdict judge, grounded retrieval and the critique; default `gemini-2.5-flash`)
+- **Extraction Model**: `FAULTLINE_GEMINI_EXTRACTION_MODEL` env var, claim extraction only; unset or blank, it follows `FAULTLINE_GEMINI_MODEL`. The hosted API's `GET /health` reports both as `models.judge` and `models.extraction`. Judge and extraction measurements per model: `docs/research/2026-11-14-judge-model-ab-results.md`
 - **Search**: Google Search grounding built-in — verifies claims against live web data. With `FAULTLINE_GROUNDING=parallel` (and `PARALLEL_API_KEY`), the verify instead retrieves sources from Parallel's Search API (`providers/parallel_search_retriever.ts`, mode `FAULTLINE_PARALLEL_MODE`, default `advanced`) and Gemini judges them with no search tool. See `docs/grounding-providers.md`.
 - **Special Behavior**: Thin adapter over `geminiService.ts`; all extraction, verification, and critique logic lives in that service module. The Gemini provider is the default when no `--provider` flag or `FAULTLINE_PROVIDER` env var is set.
 

@@ -28,6 +28,11 @@ export interface UsageLeg {
   outputTokens: number;
   /** True for the web_search / grounded-retrieval tool call (bills per call). */
   isGrounding: boolean;
+  /**
+   * Search queries a grounded call ran, when the reply lists them (Gemini's
+   * groundingMetadata.webSearchQueries). Gemini 3 bills Google Search grounding per query.
+   */
+  searchQueries?: number;
 }
 
 const storage = new AsyncLocalStorage<UsageLeg[]>();

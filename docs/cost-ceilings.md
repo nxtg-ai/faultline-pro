@@ -32,7 +32,7 @@ The numbers were sized from a sample run on 2026-10-21. The basis column is the 
 | Perplexity | verify | | 1024 | as above |
 | Perplexity | critique | | 2048 | as above |
 
-The OpenAI extract ceiling is gpt-4o-mini's maximum. A deployment that sets `FAULTLINE_OPENAI_MODEL` to a model with a lower output maximum would have its extraction requests refused by OpenAI; the same holds for a `FAULTLINE_GEMINI_MODEL` that does not accept a thinking budget.
+The OpenAI extract ceiling is gpt-4o-mini's maximum. A deployment that sets `FAULTLINE_OPENAI_MODEL` to a model with a lower output maximum would have its extraction requests refused by OpenAI; the same holds for a `FAULTLINE_GEMINI_MODEL` or `FAULTLINE_GEMINI_EXTRACTION_MODEL` that does not accept a thinking budget.
 
 ## `output_truncated`: a cut-off reply is never a verdict
 

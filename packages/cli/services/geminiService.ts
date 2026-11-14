@@ -19,17 +19,27 @@ export const GEMINI_MODEL: string =
   (typeof process !== 'undefined' ? process.env?.FAULTLINE_GEMINI_MODEL : undefined) || DEFAULT_GEMINI_MODEL;
 
 /**
+ * The model claim extraction runs on: FAULTLINE_GEMINI_EXTRACTION_MODEL, else GEMINI_MODEL.
+ * Every other Gemini call (the verdict judge, grounded retrieval, the critique) stays on
+ * GEMINI_MODEL. Unset, extraction runs exactly as before. The judge model A/B
+ * (docs/research/2026-11-14-judge-model-ab-results.md) measured extraction and the judge
+ * separately, so the two can be set apart (GoPMO 1.18.11.7.127).
+ */
+export const GEMINI_EXTRACTION_MODEL: string =
+  (typeof process !== 'undefined' ? process.env?.FAULTLINE_GEMINI_EXTRACTION_MODEL?.trim() : undefined) || GEMINI_MODEL;
+
+/**
  * BLG-005 defect-1: emit real Gemini SDK usage to the active scan's usage sink.
  * The SDK response carries usageMetadata (prompt, candidates, tool-use prompt and thoughts counts);
  * the engine previously discarded it. No-op outside a captureUsage() scope.
  * `isGrounding` = true only when this call used the googleSearch tool (bills the
  * per-grounded-prompt surcharge); false for extraction and shared-source verify.
  */
-function recordGeminiUsage(response: any, isGrounding: boolean, callType: string): void {
+function recordGeminiUsage(response: any, isGrounding: boolean, callType: string, model: string = GEMINI_MODEL): void {
   const u = response?.usageMetadata ?? {};
   recordUsage({
     provider: 'gemini',
-    model: GEMINI_MODEL,
+    model,
     callType,
     // Google bills tool-use prompt tokens as input and thinking tokens as output; neither is in
     // promptTokenCount or candidatesTokenCount. One grounded call on 2026-10-21 reported 25/79 there
@@ -37,7 +47,15 @@ function recordGeminiUsage(response: any, isGrounding: boolean, callType: string
     inputTokens: count(u.promptTokenCount) + count(u.toolUsePromptTokenCount),
     outputTokens: count(u.candidatesTokenCount) + count(u.thoughtsTokenCount),
     isGrounding,
+    // Gemini 3 bills Google Search grounding per query, so a grounded leg carries how many it ran.
+    ...(isGrounding ? { searchQueries: searchQueryCount(response) } : {}),
   });
+}
+
+/** The number of search queries a grounded reply lists, 0 when it lists none. */
+function searchQueryCount(response: any): number {
+  const queries = response?.candidates?.[0]?.groundingMetadata?.webSearchQueries;
+  return Array.isArray(queries) ? queries.length : 0;
 }
 
 const count = (n: unknown): number => (typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : 0);
@@ -86,7 +104,7 @@ const getClient = (apiKey: string) => {
 export const extractClaims = async (text: string, apiKey: string, image?: { data: string, mimeType: string }): Promise<Claim[]> => {
   if ((!text && !image) || !apiKey) return [];
 
-  const model = GEMINI_MODEL;
+  const model = GEMINI_EXTRACTION_MODEL;
 
   const prompt = `
     Analyze the following ${image ? 'image and text' : 'text'} and decompose it into "structural elements" (atomic claims).
@@ -141,7 +159,7 @@ export const extractClaims = async (text: string, apiKey: string, image?: { data
     throw ExtractionError.fromProviderError(error);
   }
 
-  recordGeminiUsage(response, false, 'extraction');
+  recordGeminiUsage(response, false, 'extraction', GEMINI_EXTRACTION_MODEL);
   // Checked before the empty-reply test: a reply cut at its ceiling is a truncated
   // extraction, never fewer claims and never "unreadable" (GoPMO 1.18.11.7.18).
   if (isGeminiTruncated(response)) throw new ExtractionError('output_truncated', new OutputTruncatedError('gemini', 'extract'));
