@@ -4,7 +4,7 @@ import { CITATION_EXTRACTION_RULE, GEMINI_CITATION_SCHEMA } from '../lib/citatio
 import type { Claim, VerificationResult } from '../types';
 import { sanitizeVerifyError } from './verify-error';
 import { recordUsage } from '../lib/usage-sink';
-import { ExtractionError, classifyApiError, parseExtractedClaims } from '../providers/extraction-error';
+import { ExtractionError, classifyApiError, isRateLimitError, parseExtractedClaims } from '../providers/extraction-error';
 import { readVerdictReply, truncatedVerdict, unparseableVerdict, SOURCES_ADDRESS_KEY, SOURCES_ADDRESS_RULE } from '../providers/verdict-reply';
 import { geminiCeilingConfig } from '../providers/call-ceilings';
 import { isGeminiTruncated, OutputTruncatedError } from '../providers/output-truncation';
@@ -27,6 +27,50 @@ export const GEMINI_MODEL: string =
  */
 export const GEMINI_EXTRACTION_MODEL: string =
   (typeof process !== 'undefined' ? process.env?.FAULTLINE_GEMINI_EXTRACTION_MODEL?.trim() : undefined) || GEMINI_MODEL;
+
+/**
+ * The model a verdict judge call is retried on, once, when Google rate-limits
+ * the call on GEMINI_MODEL: FAULTLINE_GEMINI_FALLBACK_MODEL. Null when unset,
+ * blank or the same as GEMINI_MODEL; the judge then runs exactly as before,
+ * with no second call. Only the judge falls back (verifyClaim, and
+ * verifyClaimGrounded when its caller asks); extraction, retrieval and the
+ * critique never do (GoPMO 1.18.11.7.127).
+ */
+export const GEMINI_FALLBACK_MODEL: string | null = (() => {
+  const raw = typeof process !== 'undefined' ? process.env?.FAULTLINE_GEMINI_FALLBACK_MODEL?.trim() : undefined;
+  return raw && raw !== GEMINI_MODEL ? raw : null;
+})();
+
+/** One judge reply and the model that produced it. */
+interface JudgeReply {
+  response: any;
+  /** The model the reply came from: GEMINI_MODEL, or GEMINI_FALLBACK_MODEL after a rate limit. */
+  model: string;
+  /** True when the primary was rate-limited and the fallback model answered. */
+  fallback: boolean;
+}
+
+/**
+ * Run one judge call on GEMINI_MODEL. When Google rejects it with a rate limit
+ * (isRateLimitError, which excludes an empty account) and a fallback model is
+ * set, run the same request once on GEMINI_FALLBACK_MODEL. Any other error,
+ * and any error from the fallback call, is thrown to the caller, which reports
+ * the claim as not checked. A rejected call returns no usage, so it records no
+ * usage leg; the caller records the leg of the call that answered.
+ */
+async function callJudge(
+  ai: ReturnType<typeof getClient>,
+  request: (model: string) => Parameters<ReturnType<typeof getClient>['models']['generateContent']>[0],
+  allowFallback: boolean,
+): Promise<JudgeReply> {
+  try {
+    return { response: await ai.models.generateContent(request(GEMINI_MODEL)), model: GEMINI_MODEL, fallback: false };
+  } catch (error) {
+    if (!allowFallback || GEMINI_FALLBACK_MODEL === null || !isRateLimitError(error)) throw error;
+    const model = GEMINI_FALLBACK_MODEL;
+    return { response: await ai.models.generateContent(request(model)), model, fallback: true };
+  }
+}
 
 /**
  * BLG-005 defect-1: emit real Gemini SDK usage to the active scan's usage sink.
@@ -171,8 +215,6 @@ export const extractClaims = async (text: string, apiKey: string, image?: { data
 export const verifyClaim = async (claim: Claim, apiKey: string): Promise<VerificationResult> => {
   if (!apiKey) throw new Error("API Key required");
 
-  const model = GEMINI_MODEL;
-
   const prompt = `
     You are a structural engineer for information integrity.
     Stress-test this claim using the provided Google Search tool.
@@ -206,17 +248,19 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
 
   try {
     const ai = getClient(apiKey);
-    const response = await ai.models.generateContent({
-      model,
+    // A rate limit on GEMINI_MODEL is retried once on GEMINI_FALLBACK_MODEL (callJudge).
+    const { response, model, fallback } = await callJudge(ai, (judgeModel) => ({
+      model: judgeModel,
       contents: prompt,
       config: {
         ...geminiCeilingConfig('verify'),
         tools: [{ googleSearch: {} }],
         // responseMimeType cannot be used with googleSearch, so we rely on the prompt and cleanJson
       }
-    });
+    }), true);
 
-    recordGeminiUsage(response, true, 'grounded-verify:gemini');
+    // Priced at the rates of the model that answered, the fallback included.
+    recordGeminiUsage(response, true, 'grounded-verify:gemini', model);
     // A reply cut at its ceiling is not a verdict, even if the part that arrived parses.
     if (isGeminiTruncated(response)) return truncatedVerdict(claim.id);
     // The grounded request searched and judged in one call, so retrieval and
@@ -263,7 +307,10 @@ export const verifyClaim = async (claim: Claim, apiKey: string): Promise<Verific
       explanation: verdict.explanation,
       sources: uniqueSources.slice(0, 3),
       ...searchSuggestionsOf(response.candidates?.[0]?.groundingMetadata),
-      provenance: { provider: 'gemini', model: servedModel, verifiedAt: returnedAt, retriever: 'gemini-grounding', retrievedAt: returnedAt },
+      provenance: {
+        provider: 'gemini', model: servedModel, verifiedAt: returnedAt, retriever: 'gemini-grounding', retrievedAt: returnedAt,
+        ...(fallback ? { judgeFallback: true } : {}),
+      },
       ...(verdict.sourcesAddressClaim === false ? { notCheckable: true } : {}),
     });
 
@@ -487,7 +534,7 @@ export const verifyClaimGrounded = async (
   claim: Claim,
   sources: Array<{ title: string; uri: string; snippet?: string }>,
   apiKey: string,
-  opts: { withExcerpts?: boolean; sourcesRule?: boolean } = {},
+  opts: { withExcerpts?: boolean; sourcesRule?: boolean; rateLimitFallback?: boolean } = {},
 ): Promise<VerificationResult> => {
   if (!apiKey) throw new Error('API Key required');
 
@@ -520,17 +567,20 @@ ${sourcesRule ? `
 
   try {
     const ai = getClient(apiKey);
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
+    // The rate-limit fallback runs only when the caller asks (the parallel
+    // grounding mode); a consensus vote is unchanged.
+    const { response, model, fallback } = await callJudge(ai, (judgeModel) => ({
+      model: judgeModel,
       contents: prompt,
       // JSON mode: this call has no search tool, so Gemini can be held to valid
       // JSON. Without it the judge sometimes quoted a source inside the
       // explanation without escaping the quotes, and the reply could not be read
       // (1 in 40 in a local reproduction, 2026-11-06).
       config: { ...geminiCeilingConfig('verifyGrounded'), responseMimeType: 'application/json' },
-    });
+    }), opts.rateLimitFallback === true);
 
-    recordGeminiUsage(response, false, 'grounded-verify:gemini');
+    // Priced at the rates of the model that answered, the fallback included.
+    recordGeminiUsage(response, false, 'grounded-verify:gemini', model);
     // A cut-off vote is a failed vote with its own reason, not a verdict.
     if (isGeminiTruncated(response)) return { ...truncatedVerdict(claim.id), sources };
     const verdict = readVerdictReply(cleanJson(response.text || ''));
@@ -542,6 +592,10 @@ ${sourcesRule ? `
       status: verdict.status,
       explanation: verdict.explanation,
       sources,
+      // Only a fallback verdict names its model here, so the parallel mode does
+      // not attribute it to GEMINI_MODEL (retrieveThenVerify keeps this model).
+      // A primary verdict is left as before: the caller names the configured model.
+      ...(fallback ? { provenance: { provider: 'gemini', model, verifiedAt: new Date().toISOString(), judgeFallback: true } } : {}),
     };
     // The judge said these sources are not about the claim: not checkable, no sources kept.
     return sourcesRule && verdict.sourcesAddressClaim === false ? notCheckableVerdict(result) : result;

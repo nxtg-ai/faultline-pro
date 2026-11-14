@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import { CONSENSUS_MODEL_RATES, summarizeScanUsage } from '../src/store/consensus-cost.js';
 import { buildServer } from '../src/server.js';
-import { GEMINI_MODEL, GEMINI_EXTRACTION_MODEL } from '@nxtg/faultline/services/geminiService.js';
+import { GEMINI_MODEL, GEMINI_EXTRACTION_MODEL, GEMINI_FALLBACK_MODEL } from '@nxtg/faultline/services/geminiService.js';
 
 describe('Gemini 3.x rates in the spend ledger', () => {
   it('has list-price rows for the three measured models', () => {
@@ -57,7 +57,7 @@ describe('/health names the Gemini models', () => {
     await server.ready();
     try {
       const body = (await server.inject({ method: 'GET', url: '/health' })).json();
-      expect(body.models).toEqual({ judge: GEMINI_MODEL, extraction: GEMINI_EXTRACTION_MODEL });
+      expect(body.models).toEqual({ judge: GEMINI_MODEL, extraction: GEMINI_EXTRACTION_MODEL, fallback: GEMINI_FALLBACK_MODEL });
       expect(typeof body.models.judge).toBe('string');
       expect(body.models.judge.length).toBeGreaterThan(0);
     } finally {

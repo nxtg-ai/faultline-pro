@@ -7,7 +7,7 @@ Which search grounds a claim's verdict. Set by `FAULTLINE_GROUNDING`. Code: `pac
 | `FAULTLINE_GROUNDING` | What a gemini verify does |
 |---|---|
 | unset, `google`, or any other value | Today's behaviour. One Gemini call with the `googleSearch` tool searches and judges (`verifyClaim`). Provenance `retriever: "gemini-grounding"`. |
-| `parallel` | Retrieve, then judge. One request to Parallel's Search API (`POST https://api.parallel.ai/v1/search`) finds the sources. One Gemini call with **no** search tool judges the claim against them (`verifyClaimGrounded`, with each source's excerpts in the prompt). Provenance `provider: "gemini"`, `model` (the Gemini model), `retriever: "parallel-search"`, `retrieverModel: "parallel-search-<mode>"`, `retrievedAt`, `verifiedAt`. |
+| `parallel` | Retrieve, then judge. One request to Parallel's Search API (`POST https://api.parallel.ai/v1/search`) finds the sources. One Gemini call with **no** search tool judges the claim against them (`verifyClaimGrounded`, with each source's excerpts in the prompt). Provenance `provider: "gemini"`, `model` (the Gemini model that judged: `FAULTLINE_GEMINI_MODEL`, or `FAULTLINE_GEMINI_FALLBACK_MODEL` with `judgeFallback: true` when the primary was rate-limited), `retriever: "parallel-search"`, `retrieverModel: "parallel-search-<mode>"`, `retrievedAt`, `verifiedAt`. |
 
 The mode changes only a non-consensus verify on `gemini`, the one verify that runs a Google search. `openai`, `claude`, `perplexity` and `mock` verify without a Google search and run as before. A consensus scan with no OpenAI key used to fall back to Gemini grounding for its shared search. In the `parallel` mode it falls back to Parallel instead.
 

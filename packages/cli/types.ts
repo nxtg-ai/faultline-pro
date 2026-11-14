@@ -206,6 +206,12 @@ export interface VerdictProvenance {
    * Absent for a Gemini grounded call and for consensus.
    */
   retrieverModel?: string;
+  /**
+   * True when the judge's configured Gemini model was rate-limited and the
+   * verdict came from FAULTLINE_GEMINI_FALLBACK_MODEL instead; `model` then
+   * names the fallback model. Absent on every other verdict (GoPMO 1.18.11.7.127).
+   */
+  judgeFallback?: true;
 }
 
 export interface VerificationResult {

@@ -224,7 +224,7 @@ describe('outside the two grounding modes', () => {
     };
     const r: Retriever = { name: 'parallel-search', retrieve: async () => [{ title: 't', uri: 'https://s.example/1' }] };
     const out = await retrieveThenVerify(CLAIMS[0] as Claim, judge, 'gemini', r);
-    expect(seen).toEqual([{ withExcerpts: true, sourcesRule: true }]);
+    expect(seen).toEqual([{ withExcerpts: true, sourcesRule: true, rateLimitFallback: true }]);
     expect(out).toMatchObject({ status: 'unverified', notCheckable: true, sources: [], provenance: { retriever: 'parallel-search' } });
   });
 });

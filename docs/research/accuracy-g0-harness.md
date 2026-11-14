@@ -65,7 +65,7 @@ node scripts/accuracy-g0.mjs --set full --arm both --sample 200 --seed 20261105 
 **Judge model A/B** (GoPMO 1.18.11.7.127, `2026-11-14-prereg-judge-model-ab-v1.md`). Each arm is one `--arm parallel` run against a local API whose judge is set by `FAULTLINE_GEMINI_MODEL`, with its own `--out`:
 
 - `--label <name>` names the arm in its rows (the scorer reads it as the arm name), and each row keeps the grounding arm in `grounding`. A resumed labelled run is checked against the label.
-- `--judge-model <id>` stops the run as invalid (exit 4) when any verdict names another judge model (the route's `judgeModel`, the provider's configured model).
+- `--judge-model <id>` stops the run as invalid (exit 4) when any verdict names another judge model (the route's `judgeModel`: the provider's configured model, or the rate-limit fallback model when that judged the claim, so a fallback verdict also stops the run).
 - `--price-in <usd/M> --price-out <usd/M> --cap-usd <usd>`, given together: after the arm's first 25 written claims, the runner prices each item's recorded tokens at those rates plus 0.005 USD a Parallel call, projects the whole arm, and stops (exit 5) when the projection passes the cap. The API's own `costUsd` prices every Gemini call at the `gemini-2.5-flash` rate, so it is not used for this.
 - Scoring: `python3 scripts/accuracy-g0-score.py --arms <each arm's out> --baseline <label of the gemini-2.5-flash arm> --json <summary>` reports every other arm minus the baseline (paired bootstrap, 2,000 resamples, seed 20260929). Without `--baseline` the scorer pairs each `parallel*` arm against `google`, as before.
 - Shared sources: start the first arm's local API with `FAULTLINE_RETRIEVAL_CACHE_DIR=<dir>` (write mode, the default) and the later arms' with the same directory and `FAULTLINE_RETRIEVAL_CACHE_MODE=read`. A read-mode arm reuses each claim's stored Parallel reply and never searches; a claim with no stored reply reads as not checked. The cache is ignored when `NODE_ENV` is production. It holds search replies, so keep it outside the repository and delete it after scoring.
@@ -119,7 +119,7 @@ One JSON object per item, written as soon as the item is final:
 | `parseFallback` | `true` when the reply was unreadable (`mixed` before 2026-10-16, `apiError` since) |
 | `attempts` | Calls made for this item, 1 to 4 |
 | `model` | The engine's model string for the call, `null` on a failure |
-| `judgeModel` | The judge model the provider was configured with, `null` on a failure |
+| `judgeModel` | The model that judged the claim: the provider's configured model, or `FAULTLINE_GEMINI_FALLBACK_MODEL` when the primary was rate-limited; `null` on a failure |
 | `inputTokens`, `outputTokens` | The item's tokens over every call, retries included; output includes thinking tokens |
 | `parallelCalls` | Parallel searches the item made (0 on a read-mode cached arm) |
 | `engineSha` | The deployed commit |

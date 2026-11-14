@@ -72,8 +72,9 @@ import type { Claim, ClaimStatus, VerificationResult } from '@nxtg/faultline/typ
  * (`grounding`), and each claim's usage counts its Google grounded calls apart
  * from every other search (`googleGroundingCalls`).
  *
- * Each result names `judgeModel`, the model the provider was configured to judge with,
- * so a judge-model comparison can check every row ran its arm's model. On a local
+ * Each result names `judgeModel`, the model that judged it: the provider's configured
+ * model, or the Gemini rate-limit fallback model when that produced the verdict
+ * (`judgeFallback`), so a judge-model comparison can check every row ran its arm's model. On a local
  * measurement API, FAULTLINE_RETRIEVAL_CACHE_DIR shares Parallel replies across runs
  * (providers/parallel_search_cache.ts); production never sets it, and it is ignored there.
  */
@@ -135,6 +136,7 @@ const RESPONSE_SCHEMA = {
             apiErrorReason: { type: ['string', 'null'] },
             model: { type: ['string', 'null'] },
             judgeModel: { type: ['string', 'null'] },
+            judgeFallback: { type: 'boolean' },
             sourcesCount: { type: 'number' },
             usage: {
               type: 'object',
@@ -201,8 +203,14 @@ export interface VerifyClaimOutcome {
   /** Why an unchecked claim went unchecked (a label such as output_truncated); null on a verdict. */
   apiErrorReason: string | null;
   model: string | null;
-  /** The model the provider was configured to judge with (its modelId), null when the call produced no verdict. */
+  /**
+   * The model that judged this claim: the provider's configured model (its modelId), or
+   * the Gemini rate-limit fallback model when that produced the verdict. Null when the
+   * call produced no verdict.
+   */
   judgeModel: string | null;
+  /** True when the Gemini judge was rate-limited and the fallback model produced the verdict. */
+  judgeFallback: boolean;
   /** How many sources the verdict carries (a count; no source leaves this route). */
   sourcesCount: number;
   /** This claim's own captured usage and cost. Cost figures only. */
@@ -238,6 +246,16 @@ function modelOf(legs: UsageLeg[], provider: LLMProvider): string | null {
 }
 
 /**
+ * The model that judged a verdict: the fallback model the provenance names when the
+ * Gemini judge fell back on a rate limit, else the provider's configured model.
+ */
+function judgeModelOf(result: VerificationResult, provider: LLMProvider): string | null {
+  const own = result.provenance;
+  if (own?.judgeFallback === true && typeof own.model === 'string' && own.model.length > 0) return own.model;
+  return provider.modelId ?? null;
+}
+
+/**
  * Verify one claim with one provider call. A thrown error is reported as
  * `apiError` (the call did not produce a verdict), never as a verdict. The
  * claim is billable only on the engine's rule (isBillableVerdict), with its
@@ -255,7 +273,7 @@ async function verifyOne(provider: LLMProvider, providerName: string, input: Ver
       legs,
       billable: false,
       verdict: { claimId: input.id, status: 'unverified', apiError: true, apiErrorReason: 'provider_error', sources: [] },
-      outcome: { id: input.id, status: 'unverified', apiError: true, parseFallback: false, noSourceAbstain: false, notCheckable: false, apiErrorReason: 'provider_error', model: null, judgeModel: null, sourcesCount: 0 },
+      outcome: { id: input.id, status: 'unverified', apiError: true, parseFallback: false, noSourceAbstain: false, notCheckable: false, apiErrorReason: 'provider_error', model: null, judgeModel: null, judgeFallback: false, sourcesCount: 0 },
     };
   }
   // Provenance is bound here with the runner's rule: the retriever comes from
@@ -281,7 +299,8 @@ async function verifyOne(provider: LLMProvider, providerName: string, input: Ver
       apiErrorReason: result.apiError === true ? (result.apiErrorReason ?? 'provider_error') : null,
       // A failed call produced no verdict and no engine model record.
       model: result.apiError === true ? null : modelOf(legs, provider),
-      judgeModel: result.apiError === true ? null : (provider.modelId ?? null),
+      judgeModel: result.apiError === true ? null : judgeModelOf(result, provider),
+      judgeFallback: result.apiError !== true && result.provenance?.judgeFallback === true,
       sourcesCount: Array.isArray(result.sources) ? result.sources.length : 0,
     },
   };
