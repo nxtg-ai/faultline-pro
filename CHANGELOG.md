@@ -9,6 +9,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **Judge model A/B tooling (GoPMO 1.18.11.7.127).** `POST /admin/verify-claims` names each verdict's `judgeModel`. A local measurement API can share Parallel search replies across runs through `FAULTLINE_RETRIEVAL_CACHE_DIR` and `FAULTLINE_RETRIEVAL_CACHE_MODE=read`, so each judge sees the same sources; the cache is ignored in production. The G0 runner adds `--label`, `--judge-model` and a list-price cost guard (`--price-in`, `--price-out`, `--cap-usd`), and records tokens and Parallel calls per claim. Docs: `docs/research/accuracy-g0-harness.md`.
 - **A reference is one claim, and a cited DOI is checked against the DOI registries (N-237).** A bibliography entry or inline citation used to split into about six field claims (title, year, pages, authors, DOI), so a verify cap of 8 checked about two references, and each field was judged against other works. Now:
   - Extraction returns ONE `fact` claim per cited work, with a `citation` object (`title`, `authors`, `year`, `venue`, `doi`, `raw`) and the text `The work "<title>" by <authors> (<year>) ... exists as cited.` All four model providers share the rule; Gemini declares `citation` in its response schema. The per-sentence guarantee no longer re-adds reference fragments as synthetic claims.
   - Citation claims are verified first and are eligible at any importance. They still count toward the cap.

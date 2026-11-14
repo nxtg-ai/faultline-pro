@@ -73,7 +73,7 @@ const PARALLEL_URL = 'https://api.parallel.ai/v1/search';
 const ENV_KEYS = [
   'FAULTLINE_API_KEY', 'FAULTLINE_GROUNDING', 'FAULTLINE_PARALLEL_MODE', 'PARALLEL_API_KEY', 'GEMINI_API_KEY', 'OPENAI_API_KEY',
   'FAULTLINE_GROUNDING_LEDGER', 'FAULTLINE_PROVIDER_SPEND_LEDGER', 'FAULTLINE_CONSENSUS', 'FAULTLINE_HISTORY_DIR',
-  'FAULTLINE_FULL_JOBS_LEDGER',
+  'FAULTLINE_FULL_JOBS_LEDGER', 'FAULTLINE_RETRIEVAL_CACHE_DIR', 'FAULTLINE_RETRIEVAL_CACHE_MODE',
 ];
 let saved: Record<string, string | undefined>;
 let dir: string;
@@ -479,6 +479,47 @@ describe('FAULTLINE_GROUNDING unset: Google grounding everywhere, as before', ()
       expect(parallelBodies[0].mode).toBe('fast');
       expect(googleSearchCalls()).toBe(0);
     });
+  }, 30_000);
+  // Validates: GoPMO 1.18.11.7.127 (judge model A/B prereg sections 2 and 4).
+  it('POST /admin/verify-claims names the judge model, and a local retrieval cache lets a later arm make no Parallel call', async () => {
+    const cacheDir = join(dir, 'retrieval-cache');
+    const body = { claims: [{ id: 'a', text: 'The Eiffel Tower was completed in 1889.' }], grounding: 'parallel' };
+    const headers = { 'x-api-key': SERVER_KEY, 'content-type': 'application/json' };
+    process.env.FAULTLINE_RETRIEVAL_CACHE_DIR = cacheDir;
+    await withServer(async (server) => {
+      const first = await server.inject({ method: 'POST', url: '/admin/verify-claims', headers, payload: body });
+      expect(first.statusCode).toBe(200);
+      expect(first.json().results[0].judgeModel).toBe('gemini-2.5-flash');
+      expect(first.json().results[0].usage.groundingCalls).toBe(1);
+      expect(parallelBodies).toHaveLength(1);
+      process.env.FAULTLINE_RETRIEVAL_CACHE_MODE = 'read';
+      const second = await server.inject({ method: 'POST', url: '/admin/verify-claims', headers, payload: body });
+      expect(second.statusCode).toBe(200);
+      expect(second.json().results[0].status).toBe(first.json().results[0].status);
+      expect(second.json().results[0].sourcesCount).toBe(first.json().results[0].sourcesCount);
+      // The cached reply is not a new search: nothing sent, nothing billed for search.
+      expect(parallelBodies).toHaveLength(1);
+      expect(second.json().results[0].usage.groundingCalls).toBe(0);
+      expect(googleSearchCalls()).toBe(0);
+    });
+  }, 30_000);
+
+  it('the retrieval cache is ignored in production: every request searches', async () => {
+    process.env.FAULTLINE_RETRIEVAL_CACHE_DIR = join(dir, 'prod-cache');
+    const savedNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      await withServer(async (server) => {
+        const payload = { claims: [{ id: 'a', text: 'The Eiffel Tower was completed in 1889.' }], grounding: 'parallel' };
+        const headers = { 'x-api-key': SERVER_KEY, 'content-type': 'application/json' };
+        await server.inject({ method: 'POST', url: '/admin/verify-claims', headers, payload });
+        await server.inject({ method: 'POST', url: '/admin/verify-claims', headers, payload });
+        expect(parallelBodies).toHaveLength(2);
+        expect(existsSync(join(dir, 'prod-cache'))).toBe(false);
+      });
+    } finally {
+      process.env.NODE_ENV = savedNodeEnv;
+    }
   }, 30_000);
 });
 

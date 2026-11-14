@@ -62,6 +62,13 @@ Grounding arms: `--arm google|parallel|parallel-fast|both` (default `google`) an
 node scripts/accuracy-g0.mjs --set full --arm both --sample 200 --seed 20261105 --out docs/research/data/grounding-arms.jsonl
 ```
 
+**Judge model A/B** (GoPMO 1.18.11.7.127, `2026-11-14-prereg-judge-model-ab-v1.md`). Each arm is one `--arm parallel` run against a local API whose judge is set by `FAULTLINE_GEMINI_MODEL`, with its own `--out`:
+
+- `--label <name>` names the arm in its rows (the scorer reads it as the arm name), and each row keeps the grounding arm in `grounding`. A resumed labelled run is checked against the label.
+- `--judge-model <id>` stops the run as invalid (exit 4) when any verdict names another judge model (the route's `judgeModel`, the provider's configured model).
+- `--price-in <usd/M> --price-out <usd/M> --cap-usd <usd>`, given together: after the arm's first 25 written claims, the runner prices each item's recorded tokens at those rates plus 0.005 USD a Parallel call, projects the whole arm, and stops (exit 5) when the projection passes the cap. The API's own `costUsd` prices every Gemini call at the `gemini-2.5-flash` rate, so it is not used for this.
+- Shared sources: start the first arm's local API with `FAULTLINE_RETRIEVAL_CACHE_DIR=<dir>` (write mode, the default) and the later arms' with the same directory and `FAULTLINE_RETRIEVAL_CACHE_MODE=read`. A read-mode arm reuses each claim's stored Parallel reply and never searches; a claim with no stored reply reads as not checked. The cache is ignored when `NODE_ENV` is production. It holds search replies, so keep it outside the repository and delete it after scoring.
+
 Options: `--api <url>` (default `https://faultline-api.fly.dev`), `--out <path>` (default `docs/research/data/accuracy-g0-<set>-<UTC timestamp>.jsonl`), `--resume`, `--engine-sha <sha>` (only used when `/health` reports no commit), `--allowance-api <url>` (a second engine whose grounded-prompt count joins the daily guard; see branch mode below).
 
 The key is the measurement key when one is set: `FAULTLINE_MEASUREMENT_KEY`, else the `FAULTLINE_MEASUREMENT_KEY=` line of `~/.config/faultline/measurement-key.env`. Its spend rows carry tier `measurement` (`docs/provider-spend-cap.md`, "The measurement key"). Without one the runner falls back to the admin key, `FAULTLINE_ADMIN_KEY`, else the `FAULTLINE_API_KEY=` line of `~/.config/faultline/hosted-api-key.env`, and prints a warning that the run is not labelled. The key goes only into the `x-api-key` header and is never printed (a test checks stdout and stderr).
@@ -111,6 +118,9 @@ One JSON object per item, written as soon as the item is final:
 | `parseFallback` | `true` when the reply was unreadable (`mixed` before 2026-10-16, `apiError` since) |
 | `attempts` | Calls made for this item, 1 to 4 |
 | `model` | The engine's model string for the call, `null` on a failure |
+| `judgeModel` | The judge model the provider was configured with, `null` on a failure |
+| `inputTokens`, `outputTokens` | The item's tokens over every call, retries included; output includes thinking tokens |
+| `parallelCalls` | Parallel searches the item made (0 on a read-mode cached arm) |
 | `engineSha` | The deployed commit |
 | `ts` | When the row was written |
 

@@ -73,6 +73,10 @@ interface FakeState {
   capAfterCallsThisRun?: number;
   /** verifyCalls when the current runner process started. */
   runStartCalls: number;
+  /** The judge model each answered verdict names (judge model A/B). */
+  judgeModel?: (id: number) => string;
+  /** Tokens each answered verdict reports. */
+  tokens?: { inputTokens: number; outputTokens: number };
 }
 
 let dir: string;
@@ -149,7 +153,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
         : {
           id, status: n % 3 === 0 ? 'contradicted' : 'supported', apiError: false, parseFallback: n % 7 === 0, model: state.model(state.verifyCalls),
           sourcesCount: parallelArm ? 5 : 2,
-          usage: { costUsd: parallelArm ? 0.00508 : 0.03508, googleGroundingCalls: parallelArm ? 0 : 1, groundingCalls: 1 },
+          usage: { costUsd: parallelArm ? 0.00508 : 0.03508, googleGroundingCalls: parallelArm ? 0 : 1, groundingCalls: 1, ...(state.tokens ?? {}) },
+          ...(state.judgeModel ? { judgeModel: state.judgeModel(n) } : {}),
         };
     });
     return send(res, 200, { provider: 'gemini', grounding: state.ranGrounding ?? grounding ?? 'google', results });
@@ -244,7 +249,7 @@ describe('accuracy-g0 runner: a complete run', () => {
     expect(written).toHaveLength(100);
     expect(written.map((row) => row.id)).toEqual([...SUBSAMPLE_IDS].sort((a, b) => a - b));
     expect(Object.keys(written[0]).sort()).toEqual(
-      ['apiError', 'apiErrorReason', 'arm', 'attempts', 'costUsd', 'engineSha', 'gold', 'googleGroundingCalls', 'id', 'model', 'noSourceAbstain', 'notCheckable',
+      ['apiError', 'apiErrorReason', 'arm', 'attempts', 'costUsd', 'engineSha', 'gold', 'googleGroundingCalls', 'id', 'inputTokens', 'judgeModel', 'model', 'noSourceAbstain', 'notCheckable', 'outputTokens', 'parallelCalls',
         'parseFallback', 'sourcesCount', 'status', 'ts', 'verdict'],
     );
     expect(written.every((row) => row.engineSha === state.commit && row.model === 'gemini-2.5-flash')).toBe(true);
@@ -855,5 +860,83 @@ describe('accuracy-g0 runner: grounding arms and a seeded subsample (GoPMO 1.18.
     expect(r.code).toBe(2);
     expect(r.out).toMatch(message);
     expect(state.requests).toBe(0);
+  });
+});
+
+// Validates: GoPMO 1.18.11.7.127 (judge model A/B pre-registration, docs/research/2026-11-14-prereg-judge-model-ab-v1.md sections 2, 5, 9)
+describe('accuracy-g0 runner: judge model A/B options', () => {
+  it('--label names the arm in every row, and rows carry tokens, Parallel calls and the judge model', async () => {
+    state.judgeModel = () => 'gemini-3.5-flash-lite';
+    state.tokens = { inputTokens: 1200, outputTokens: 300 };
+    const out = join(dir, 'lite.jsonl');
+    const r = await run(['--set', 'full', '--arm', 'parallel', '--sample', '6', '--seed', '7', '--out', out,
+      '--label', 'judge-3.5-flash-lite', '--judge-model', 'gemini-3.5-flash-lite']);
+    expect(r.code).toBe(0);
+    const written = rows(out);
+    expect(written).toHaveLength(6);
+    for (const row of written) {
+      expect(row.arm).toBe('judge-3.5-flash-lite');
+      expect(row.grounding).toBe('parallel');
+      expect(row.judgeModel).toBe('gemini-3.5-flash-lite');
+      expect(row.inputTokens).toBe(1200);
+      expect(row.outputTokens).toBe(300);
+      expect(row.parallelCalls).toBe(1);
+    }
+    // The scorer reads the label as the arm name.
+    const summary = JSON.parse(readFileSync(join(dir, 'lite.summary.json'), 'utf8'));
+    expect(Object.keys(summary.arms ?? summary)).toContain('judge-3.5-flash-lite');
+  });
+
+  it('a resumed labelled run is not refused as another arm', async () => {
+    state.judgeModel = () => 'gemini-2.5-flash';
+    const out = join(dir, 'a.jsonl');
+    const args = ['--set', 'full', '--arm', 'parallel', '--sample', '30', '--seed', '7', '--out', out, '--label', 'judge-a'];
+    state.capAfterCallsThisRun = 1;
+    const first = await run(args);
+    expect(first.code).toBe(3);
+    expect(rows(out).length).toBeGreaterThan(0);
+    state.capAfterCallsThisRun = undefined;
+    const second = await run([...args, '--resume']);
+    expect(second.code).toBe(0);
+    expect(rows(out)).toHaveLength(30);
+  });
+
+  it('--judge-model stops the run as invalid (exit 4) when a verdict names another model', async () => {
+    state.judgeModel = (id) => (id % 2 === 0 ? 'gemini-2.5-flash' : 'gemini-3.5-flash-lite');
+    const r = await run(['--set', 'full', '--arm', 'parallel', '--sample', '6', '--seed', '7', '--out', join(dir, 'x.jsonl'),
+      '--label', 'judge-lite', '--judge-model', 'gemini-3.5-flash-lite']);
+    expect(r.code).toBe(4);
+    expect(r.out).toMatch(/was judged by gemini-2\.5-flash, not gemini-3\.5-flash-lite/);
+  });
+
+  it('the list-price guard stops the arm (exit 5) after 25 claims when the projection passes the cap', async () => {
+    state.judgeModel = () => 'gemini-3.1-pro-preview';
+    // 10,000 in and 10,000 out at 2 / 12 USD per million is 0.14 USD, plus 0.005 for the search.
+    state.tokens = { inputTokens: 10_000, outputTokens: 10_000 };
+    const out = join(dir, 'pro.jsonl');
+    const r = await run(['--set', 'full', '--arm', 'parallel', '--sample', '40', '--seed', '7', '--out', out,
+      '--label', 'judge-pro', '--judge-model', 'gemini-3.1-pro-preview', '--price-in', '2', '--price-out', '12', '--cap-usd', '5']);
+    expect(r.code).toBe(5);
+    expect(r.out).toMatch(/projected 5\.8000 USD at list price passes the 5 USD cap/);
+    const written = rows(out).length;
+    expect(written).toBeGreaterThanOrEqual(25);
+    expect(written).toBeLessThan(40);
+  });
+
+  it('the guard lets an arm under the cap finish', async () => {
+    state.tokens = { inputTokens: 1000, outputTokens: 100 };
+    const r = await run(['--set', 'full', '--arm', 'parallel', '--sample', '30', '--seed', '7', '--out', join(dir, 'ok.jsonl'),
+      '--price-in', '0.3', '--price-out', '2.5', '--cap-usd', '5']);
+    expect(r.code).toBe(0);
+    expect(r.out).toMatch(/list-price projection: 0\.1665 USD for 30 claims/);
+  });
+
+  it('refuses the price flags apart, and a label with --arm both', async () => {
+    const a = await run(['--set', 'full', '--arm', 'parallel', '--price-in', '1']);
+    expect(a.code).not.toBe(0);
+    expect(a.out).toMatch(/go together/);
+    const b = await run(['--set', 'full', '--arm', 'both', '--label', 'x']);
+    expect(b.out).toMatch(/does not go with --arm both/);
+    expect(state.verifyCalls).toBe(0);
   });
 });
