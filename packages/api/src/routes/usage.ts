@@ -7,6 +7,7 @@ import { nextMonthResetEpoch } from '../plugins/usage-cap.js';
 import { getProviderSpendLedger, getProviderSpendStatus } from '../store/provider-spend.js';
 import { SPEND_CAP_TIERS } from '../plugins/provider-spend-cap.js';
 import { getGroundingAllowanceStatus } from '../store/grounding-allowance.js';
+import { getJudgeModelStatus } from '../store/judge-model-count.js';
 import { getFullScanJobStore } from '../store/full-scan-jobs.js';
 import { isMeteredKey } from '../lib/claim-meter.js';
 import { BILLED_VERDICTS, getClaimMeter, isClaimMeterEnabled } from '../store/claim-meter.js';
@@ -86,6 +87,9 @@ export async function usageRoutes(fastify: FastifyInstance): Promise<void> {
     // Daily Gemini grounded-prompt count vs Google's free allowance (N-230,
     // Asif ruling 2026-10-01). Admin only for the same reason as providerBudget.
     const groundingAllowance = seesBudget ? getGroundingAllowanceStatus() : undefined;
+    // Which Gemini model judged each claim over the last 7 UTC days, and the fallback judge's
+    // share (GoPMO 1.18.11.7.127, item 4: above 10% is the signal to price a higher tier). Admin only.
+    const judgeModels = seesBudget ? getJudgeModelStatus() : undefined;
     // Full-scan refund rate over the trailing 7 days, from the terminal-job ledger
     // (emma-soul condition 4, GoPMO 1.18.11.3.12). `alert` = refunded units above
     // 10% of charged units; fp then reports the cause. Admin only: fleet-wide.
@@ -106,6 +110,7 @@ export async function usageRoutes(fastify: FastifyInstance): Promise<void> {
       quota,
       ...(providerBudget ? { providerBudget } : {}),
       ...(groundingAllowance ? { groundingAllowance } : {}),
+      ...(judgeModels ? { judgeModels } : {}),
       ...(fullScanRefunds ? { fullScanRefunds } : {}),
       ...(claims ? { claims } : {}),
       ...(claimMeter ? { claimMeter } : {}),
