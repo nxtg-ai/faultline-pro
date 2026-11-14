@@ -13,6 +13,7 @@ import {
 } from '../store/status.js';
 import { FAULTLINE_API_VERSION } from '../version.js';
 import { RELEASE_STAGE } from '@nxtg/faultline/cli/release-stage.js';
+import { GEMINI_MODEL, GEMINI_EXTRACTION_MODEL } from '@nxtg/faultline/services/geminiService.js';
 
 // ── /status.json shape ────────────────────────────────────────────────────────
 
@@ -328,6 +329,8 @@ export async function healthRoutes(fastify: FastifyInstance): Promise<void> {
       version: FAULTLINE_API_VERSION,
       stage: RELEASE_STAGE,
       commit: engineCommit(),
+      // The Gemini models the engine runs: the verdict judge and claim extraction (GoPMO 1.18.11.7.127).
+      models: { judge: GEMINI_MODEL, extraction: GEMINI_EXTRACTION_MODEL },
       subsystems: {
         keyStore:   { status: 'ok', ...(admin ? { activeKeys: keyCount } : {}) },
         scanEngine: { status: anyProvider ? 'ok' : 'degraded', providersConfigured: Object.values(providers).filter(Boolean).length },

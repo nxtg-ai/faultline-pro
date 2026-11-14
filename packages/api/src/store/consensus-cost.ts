@@ -50,6 +50,13 @@ export interface Rate {
  */
 export const CONSENSUS_MODEL_RATES: Record<string, Rate> = {
   'gemini-2.5-flash': { inputPerM: 0.30, outputPerM: 2.50, groundingPerCall: 0.035 },
+  // The Gemini 3.x models measured in the judge model A/B (GoPMO 1.18.11.7.127), at the list
+  // prices read 2026-11-10. Their googleSearch surcharge was not read, so groundingPerCall carries
+  // the 2.5-flash rate; production grounds through Parallel and makes no googleSearch call.
+  // gemini-3.8-flash rises to 1.50 / 7.50 on 2027-01-01: re-pin this row before then.
+  'gemini-3.5-flash-lite':  { inputPerM: 0.30, outputPerM: 2.50, groundingPerCall: 0.035 },
+  'gemini-3.8-flash':       { inputPerM: 0.75, outputPerM: 3.75, groundingPerCall: 0.035 },
+  'gemini-3.1-pro-preview': { inputPerM: 2.00, outputPerM: 12.00, groundingPerCall: 0.035 },
   'gpt-4o-mini':      { inputPerM: 0.15, outputPerM: 0.60, groundingPerCall: 0.010 },
   'claude-opus-4-8':  { inputPerM: 5.00, outputPerM: 25.00, groundingPerCall: 0 },
   'gpt-4o':           { inputPerM: 2.50, outputPerM: 10.00, groundingPerCall: 0.010 },
