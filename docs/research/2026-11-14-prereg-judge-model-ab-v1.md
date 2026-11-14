@@ -1,6 +1,6 @@
 # Judge model A/B on the G0 claims: pre-registration v1
 
-**GoPMO:** 1.18.11.7.127 · **Owner:** fp · **Status:** REGISTERED, NOT RUN.
+**GoPMO:** 1.18.11.7.127 · **Owner:** fp · **Status:** v1 RUN 2026-11-14 (results file linked in section 10). Amendment A1 (v2) REGISTERED, NOT RUN.
 **Registered:** 2026-11-14. The commit that lands this file on `origin/main` is the registration timestamp. No paid call of this run may happen before that commit. Sections 3 to 7 may not change once the first paid arm call has been made. A change made before that point is an amendment in section 10, with its reason.
 
 ## 0. Why this run exists
@@ -102,7 +102,59 @@ Each arm is listed with its reading, its balanced accuracy and its cost per clai
 
 ## 10. Amendments
 
-None.
+### A1, 2026-11-14: run v2, the Gemini 4 arms
+
+Registered by the commit that lands this amendment on `origin/main`, before any paid call of v2. The v1 run (sections 2 to 9) is finished and stays as reported. Its results: `2026-11-14-judge-model-ab-results.md`.
+
+**Reason.** Three Gemini 4 models were generally available before v1 was registered, and v1 had no arm for any of them: `gemini-4-argon` (GA 2026-10-13), `gemini-4-carbon` (GA 2026-11-10) and `gemini-4-hydrogen` (GA 2026-11-12). Source: Google's Gemini API release notes and pricing page, read 2026-11-14. The program owner ruled a second run before any production change (GoPMO 1.18.11.7.127).
+
+**What v2 keeps from v1:** the 193 binary claims and labels (section 3), the scoring (section 5), the two readings (section 6), the validity rules (section 7), the runner and the scorer.
+
+**Arms.**
+
+| Arm | Judge model | Role |
+|---|---|---|
+| A' | `gemini-2.5-flash` | baseline; makes the searches and writes the shared cache |
+| H | `gemini-4-hydrogen` | GA |
+| AR | `gemini-4-argon` | GA |
+| C | `gemini-4-carbon` | GA |
+| P' | `gemini-3.1-pro-preview` | preview; the v1 choice, re-run on the same engine and sources as the anchor |
+
+- **Why the baseline runs again.** Section 4 deleted the v1 search cache after scoring, so the v1 sources cannot be reused. Every v2 arm is compared with A' on the same new sources: A' searches once per claim, and H, AR, C and P' read its cache and must make zero Parallel calls (section 7).
+- **`gemini-decision-1` is not an arm.** `models.list` on our key shows it supports only `createDecision`. The engine's judge calls `generateContent`, so testing it needs a new judge path in the engine, a production code change. That is out of scope for this run.
+- **Model ids.** `models.list` on our key, 2026-11-14 03:31Z, lists all five arm models with `generateContent`. One call per Gemini 4 model with the engine's judge settings (thinking budget 4096, maximum output 6144, JSON reply) returned a verdict; these smoke calls are not part of the run.
+- **Engine:** `origin/main` at registration, one local API per arm, with the judge set by `FAULTLINE_GEMINI_MODEL`. The rate-limit fallback (`FAULTLINE_GEMINI_FALLBACK_MODEL`) is unset, so every verdict comes from the arm's own model, and the runner's judge-model check fails any row that names another model.
+- **Order:** A' first, then H, AR, C, then P'. `gemini-3.1-pro-preview` has a limit of 250 requests a day on our tier, and 226 were used on 2026-11-13 Pacific (AI Studio rate-limit page, read 2026-11-14 03:33Z). So P' runs after the Pacific day resets at 08:00Z. All arms run within 24 hours of A'.
+- **No repeat arm.** The v1 spread of the same judge on the same sources, +0.019 [-0.007, +0.053], is cited beside the readings instead.
+
+**Prices**, per million tokens, input / output, from the Gemini API pricing page, read 2026-11-14:
+
+| Model | Billed during the run | From 2026-12-01 |
+|---|---|---|
+| `gemini-2.5-flash` | 0.30 / 2.50 | retired 2026-12-01 |
+| `gemini-4-hydrogen` | 1.50 / 7.50 | 1.50 / 7.50 |
+| `gemini-4-argon` | 2.00 / 10.00 | 4.00 / 20.00 |
+| `gemini-4-carbon` | 2.00 / 10.00 | 4.00 / 20.00 |
+| `gemini-3.1-pro-preview` | 2.00 / 12.00 | 2.00 / 12.00 |
+
+- **Cost per claim in the table is at the price from 2026-12-01**, the price production would pay, plus the 0.005 USD Parallel search.
+- **The spend cap is counted at the price billed during the run.**
+
+**Choice rule, fixed now (program owner's ruling, recorded here before the run):**
+1. A generally available model that is non-inferior (section 6, reading 1) beats the preview model.
+2. Among GA models that are non-inferior, the cheapest per claim at its price from 2026-12-01 wins, unless another GA arm is shown better than it (paired lower bound above +0.03).
+3. If no GA arm is non-inferior, `gemini-3.1-pro-preview` stands as the choice.
+
+This file records the rule. The choice itself is made by the program owner from the table.
+
+**Spend.**
+- **Hard cap:** 15 USD for v2, at the billed price.
+- **Per-arm guard** (the runner's `--cap-usd`, projected after 25 claims, including the search fee): A' 2.5, H 2.5, AR 3, C 3.5, P' 3 USD.
+- **Estimate:** about 8 to 13 USD, scaled from the v1 token counts. Thinking tokens on the Gemini 4 models are the unknown.
+
+**Data handling.** Google's storage of Generate Content requests was turned off for our project before v2 (AI Studio Logs and Datasets settings, 2026-11-14 03:35Z), so the run's requests are not stored. Section 4's rules on the cache hold for v2: kept outside the repository, readable by the owner only, deleted after scoring, and no claim, source or reply text committed.
+
+**Results file:** `2026-11-1x-judge-model-ab-v2-results.md`, with the contents listed in section 11 (no RQ2 extraction check in v2), plus each arm's GA or preview status and the outcome of the choice rule.
 
 ## 11. What the result file will contain
 
