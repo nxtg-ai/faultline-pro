@@ -32,6 +32,16 @@ export function classifyApiError(err: unknown): Exclude<ApiErrorReason, 'provide
 }
 
 /**
+ * True when a provider-call error is a rate limit a retry can clear: the
+ * `rate_limited` class above. An empty provider account is not one, even when
+ * it arrives as a 429 (it is classified first), so it never takes a model
+ * fallback that cannot help.
+ */
+export function isRateLimitError(err: unknown): boolean {
+  return classifyApiError(err) === 'rate_limited';
+}
+
+/**
  * Customer-safe text per reason. Callers forward `message` verbatim (API 500
  * bodies, MCP tool errors, CLI output), so it must never carry the raw provider
  * payload; that stays on `cause` for ops logs.

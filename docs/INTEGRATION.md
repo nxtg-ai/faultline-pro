@@ -507,6 +507,7 @@ interface VerificationResult {
     verifiedAt: string;   // ISO 8601, when the provider call returned
     retriever?: string;   // what retrieved the evidence: 'gemini-grounding', 'doi-resolver' (a citation settled by its DOI) or the consensus retriever's name
     retrievedAt?: string; // ISO 8601, when the evidence was retrieved (Gemini: same request as verifiedAt)
+    judgeFallback?: true; // the Gemini judge was rate-limited and FAULTLINE_GEMINI_FALLBACK_MODEL (named in model) judged instead
   };
 }
 ```

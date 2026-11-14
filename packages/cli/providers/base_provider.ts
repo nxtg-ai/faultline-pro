@@ -29,6 +29,14 @@ export interface GroundedVerifyOptions {
    * unchanged.
    */
   sourcesRule?: boolean;
+  /**
+   * Allow the judge's rate-limit fallback: a Gemini judge call rate-limited on
+   * its configured model is retried once on FAULTLINE_GEMINI_FALLBACK_MODEL,
+   * and the verdict names that model (GoPMO 1.18.11.7.127). Set by the
+   * parallel grounding mode. Off by default, so a consensus vote is unchanged.
+   * Providers with no fallback ignore it.
+   */
+  rateLimitFallback?: boolean;
 }
 
 /**

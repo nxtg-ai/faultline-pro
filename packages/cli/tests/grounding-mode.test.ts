@@ -183,7 +183,7 @@ describe('retrieveThenVerify', () => {
     const out = await retrieveThenVerify(CLAIM, judge(async (_c, s, o) => { seen.push(o); return { claimId: 'other', status: 'supported', explanation: 'e', sources: [{ title: 'forged', uri: 'https://forged.example' }] }; }), 'gemini', retriever(async () => SOURCES));
     expect(out.sources).toEqual(SOURCES);
     expect(out.claimId).toBe('c1');
-    expect(seen).toEqual([{ withExcerpts: true, sourcesRule: true }]);
+    expect(seen).toEqual([{ withExcerpts: true, sourcesRule: true, rateLimitFallback: true }]);
     expect(out.provenance).toMatchObject({ provider: 'gemini', model: 'judge-1', retriever: 'parallel-search', retrieverModel: 'parallel-search-advanced' });
   });
 

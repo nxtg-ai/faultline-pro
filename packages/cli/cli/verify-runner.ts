@@ -512,7 +512,9 @@ const ENGINE_RETRIEVERS: Readonly<Record<string, string>> = Object.freeze({ gemi
  * `returnedAt`, the moment the call returned. None of these is taken from the
  * provider's own object, so a retriever the provider set on itself is dropped.
  * Only the model is: Gemini reports the model Google served, else
- * `provider.modelId` (the configured model) is used. A verdict whose check
+ * `provider.modelId` (the configured model) is used; so is `judgeFallback`,
+ * set when the Gemini judge's rate-limit fallback model produced the verdict
+ * (that model is then the one named). A verdict whose check
  * never ran carries none. Every caller that runs `verifyClaim` outside the
  * runner (the admin verify route) binds provenance with this, so billing sees
  * the same retriever either way.
@@ -537,6 +539,8 @@ export function bindEngineProvenance(
       model: typeof own?.model === 'string' && own.model.length > 0 ? own.model : provider.modelId,
       verifiedAt: returnedAt,
       ...(retriever !== undefined ? { retriever, retrievedAt: returnedAt } : {}),
+      // A verdict from the judge's rate-limit fallback model keeps saying so.
+      ...(own?.judgeFallback === true ? { judgeFallback: true as const } : {}),
     },
   };
 }
@@ -547,8 +551,9 @@ function notCheckedResult(claim: Claim, explanation: string, reason: Verificatio
 }
 
 /**
- * Retrieve, then judge: the parallel grounding mode for one claim, one call
- * each, no retry. The retriever finds the sources; the provider judges the
+ * Retrieve, then judge: the parallel grounding mode for one claim: one search
+ * and one judge call (plus at most one rate-limit fallback call on the judge),
+ * no other retry. The retriever finds the sources; the provider judges the
  * claim against exactly those (verifyClaimGrounded, excerpts in the prompt),
  * with no search of its own. The verdict's sources are the retrieved set,
  * except on a claim the judge said those sources do not address: it reads
@@ -559,6 +564,9 @@ function notCheckedResult(claim: Claim, explanation: string, reason: Verificatio
  * judge that throws makes it not checked too. Provenance is bound here:
  * provider and model of the judge, `retriever` the retriever's name (never
  * gemini-grounding), `retrieverModel` its mode label, and both timestamps.
+ * The judge may retry once on its rate-limit fallback model
+ * (`rateLimitFallback`, Gemini only); the verdict then names that model and
+ * carries `judgeFallback: true`.
  */
 export async function retrieveThenVerify(
   claim: Claim,
@@ -583,7 +591,7 @@ export async function retrieveThenVerify(
   }
   let judged: VerificationResult;
   try {
-    judged = await provider.verifyClaimGrounded(claim, sources, { withExcerpts: true, sourcesRule: true });
+    judged = await provider.verifyClaimGrounded(claim, sources, { withExcerpts: true, sourcesRule: true, rateLimitFallback: true });
   } catch (err) {
     return notCheckedResult(claim, sanitizeVerifyError(err), classifyApiError(err));
   }
@@ -605,6 +613,8 @@ export async function retrieveThenVerify(
       retriever: retriever.name,
       retrievedAt,
       ...(typeof retrieverModel === 'string' && retrieverModel.length > 0 ? { retrieverModel } : {}),
+      // A verdict from the judge's rate-limit fallback model keeps saying so (`model` names it).
+      ...(own?.judgeFallback === true ? { judgeFallback: true as const } : {}),
     },
   };
 }
