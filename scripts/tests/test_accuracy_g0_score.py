@@ -455,6 +455,24 @@ class TestArms:
         assert "parallel - google" in summary["ba_difference"]
         assert "BA parallel - google" in r.stdout
 
+    def test_baseline_pairs_every_labelled_arm_against_it(self, tmp_path):
+        # Judge model A/B (GoPMO 1.18.11.7.127): runner --label names the arm; --baseline picks the reference.
+        a = write_arm(tmp_path / "a.jsonl", arm_rows("judge-2.5-flash", 4, 0.0099, 0))
+        lite = write_arm(tmp_path / "l.jsonl", arm_rows("judge-3.5-flash-lite", 3, 0.0099, 0))
+        pro = write_arm(tmp_path / "p.jsonl", arm_rows("judge-3.1-pro-preview", 6, 0.02, 0))
+        report = scorer.arms_report([a, lite, pro], GOLD, "judge-2.5-flash")
+        assert set(report["arms"]) == {"judge-2.5-flash", "judge-3.5-flash-lite", "judge-3.1-pro-preview"}
+        assert set(report["ba_difference"]) == {"judge-3.5-flash-lite - judge-2.5-flash", "judge-3.1-pro-preview - judge-2.5-flash"}
+        ba = {name: arm["balanced_accuracy"]["value"] for name, arm in report["arms"].items()}
+        diff = report["ba_difference"]["judge-3.1-pro-preview - judge-2.5-flash"]
+        assert diff["value"] == pytest.approx(ba["judge-3.1-pro-preview"] - ba["judge-2.5-flash"])
+        assert diff["resamples"] == 2000 and diff["seed"] == scorer.SEED
+        out = tmp_path / "s.json"
+        r = cli("--arms", a, lite, pro, "--baseline", "judge-2.5-flash", "--json", out)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "judge-3.5-flash-lite - judge-2.5-flash" in json.loads(out.read_text())["ba_difference"]
+        assert cli("--arms", a, lite, "--baseline", "judge-nope").returncode == 2
+
     def test_refuses_a_row_whose_gold_differs_and_an_arm_given_twice(self, tmp_path):
         rows = arm_rows("google", 3, 0.0, 1)
         rows[5] = {**rows[5], "gold": "false" if rows[5]["gold"] == "true" else "true"}

@@ -882,9 +882,7 @@ describe('accuracy-g0 runner: judge model A/B options', () => {
       expect(row.outputTokens).toBe(300);
       expect(row.parallelCalls).toBe(1);
     }
-    // The scorer reads the label as the arm name.
-    const summary = JSON.parse(readFileSync(join(dir, 'lite.summary.json'), 'utf8'));
-    expect(Object.keys(summary.arms ?? summary)).toContain('judge-3.5-flash-lite');
+    // The scorer's side (the label as the arm name, --baseline) is tested in scripts/tests/test_accuracy_g0_score.py.
   });
 
   it('a resumed labelled run is not refused as another arm', async () => {
