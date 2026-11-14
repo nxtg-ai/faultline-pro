@@ -1,0 +1,166 @@
+{
+  "goldSha256": "b87f971ce324c87e0427f100fe24b50594b9d44e3a764490b1bef188917dbae1",
+  "seed": 20260929,
+  "resamples": 2000,
+  "arms": {
+    "v2-judge-2.5-flash": {
+      "run": "judge-ab.v2-judge-2.5-flash.jsonl",
+      "runSha256": "f9ef38115649942058fb06177fc3fed3818e4fba591195687eb8ccfe1b4a4ee9",
+      "n": 200,
+      "binary_n": 193,
+      "balanced_accuracy": {
+        "value": 0.7855855855855856,
+        "ci95": [
+          0.7107948090259085,
+          0.855425763412766
+        ],
+        "undefinedResamples": 0
+      },
+      "unverified_rate": 0.015,
+      "failure_rate": 0.0,
+      "not_checkable_rate": 0.01,
+      "mean_cost_usd_per_claim": 0.009511863,
+      "total_cost_usd": 1.9023726,
+      "google_grounded_calls": 0,
+      "mean_sources_per_claim": 7.92
+    },
+    "v2-judge-4-hydrogen": {
+      "run": "judge-ab.v2-judge-4-hydrogen.jsonl",
+      "runSha256": "4a57cedbaf4918e83bbf783d19899be49487ab79c66faa272ca56307afb9c084",
+      "n": 200,
+      "binary_n": 193,
+      "balanced_accuracy": {
+        "value": 0.7093093093093092,
+        "ci95": [
+          0.6331234471163311,
+          0.7836463603784127
+        ],
+        "undefinedResamples": 0
+      },
+      "unverified_rate": 0.03,
+      "failure_rate": 0.0,
+      "not_checkable_rate": 0.01,
+      "mean_cost_usd_per_claim": 0.002954953,
+      "total_cost_usd": 0.5909906,
+      "google_grounded_calls": 0,
+      "mean_sources_per_claim": 7.92
+    },
+    "v2-judge-4-argon": {
+      "run": "judge-ab.v2-judge-4-argon.jsonl",
+      "runSha256": "2f6c752435c48871beeaa4cc6c7ea38730d18561abd8b9674df6f63bac7af41f",
+      "n": 200,
+      "binary_n": 193,
+      "balanced_accuracy": {
+        "value": 0.7947447447447448,
+        "ci95": [
+          0.7203178052161844,
+          0.8617096243870181
+        ],
+        "undefinedResamples": 0
+      },
+      "unverified_rate": 0.01,
+      "failure_rate": 0.0,
+      "not_checkable_rate": 0.01,
+      "mean_cost_usd_per_claim": 0.0011479435,
+      "total_cost_usd": 0.2295887,
+      "google_grounded_calls": 0,
+      "mean_sources_per_claim": 7.92
+    },
+    "v2-judge-4-carbon": {
+      "run": "judge-ab.v2-judge-4-carbon.jsonl",
+      "runSha256": "3d676c5e05c7a4bc58a2779859a4cfc4adfab70c7d422d95939caf062ceccf0a",
+      "n": 200,
+      "binary_n": 193,
+      "balanced_accuracy": {
+        "value": 0.745045045045045,
+        "ci95": [
+          0.6693778655617345,
+          0.8150344851227204
+        ],
+        "undefinedResamples": 0
+      },
+      "unverified_rate": 0.01,
+      "failure_rate": 0.0,
+      "not_checkable_rate": 0.01,
+      "mean_cost_usd_per_claim": 0.0021710175,
+      "total_cost_usd": 0.4342035,
+      "google_grounded_calls": 0,
+      "mean_sources_per_claim": 7.92
+    },
+    "v2-judge-3.1-pro-preview": {
+      "run": "judge-ab.v2-judge-3.1-pro-preview.jsonl",
+      "runSha256": "19c744c23fba959959ae1e06a66116bda1c845a62dfc2a3bce0971feb9dc6b28",
+      "n": 200,
+      "binary_n": 193,
+      "balanced_accuracy": {
+        "value": 0.7382882882882882,
+        "ci95": [
+          0.6627395425833542,
+          0.8082732936450616
+        ],
+        "undefinedResamples": 0
+      },
+      "unverified_rate": 0.08,
+      "failure_rate": 0.07,
+      "not_checkable_rate": 0.01,
+      "mean_cost_usd_per_claim": 0.01091783,
+      "total_cost_usd": 2.183566,
+      "google_grounded_calls": 0,
+      "mean_sources_per_claim": 7.92
+    }
+  },
+  "ba_difference": {
+    "v2-judge-4-hydrogen - v2-judge-2.5-flash": {
+      "n": 193,
+      "value": -0.07627627627627631,
+      "ci95": [
+        -0.14181582580764443,
+        -0.017407518583277142
+      ],
+      "undefinedResamples": 0,
+      "resamples": 2000,
+      "seed": 20260929,
+      "status_agreement_rate": 0.8134715025906736,
+      "ci_contains_zero": false
+    },
+    "v2-judge-4-argon - v2-judge-2.5-flash": {
+      "n": 193,
+      "value": 0.009159159159159214,
+      "ci95": [
+        -0.03366542450313458,
+        0.04829590183106129
+      ],
+      "undefinedResamples": 0,
+      "resamples": 2000,
+      "seed": 20260929,
+      "status_agreement_rate": 0.9119170984455959,
+      "ci_contains_zero": true
+    },
+    "v2-judge-4-carbon - v2-judge-2.5-flash": {
+      "n": 193,
+      "value": -0.04054054054054057,
+      "ci95": [
+        -0.08024454544495879,
+        0.0006394577698628828
+      ],
+      "undefinedResamples": 0,
+      "resamples": 2000,
+      "seed": 20260929,
+      "status_agreement_rate": 0.8549222797927462,
+      "ci_contains_zero": true
+    },
+    "v2-judge-3.1-pro-preview - v2-judge-2.5-flash": {
+      "n": 193,
+      "value": -0.04729729729729737,
+      "ci95": [
+        -0.10389480636379589,
+        0.005914987330550287
+      ],
+      "undefinedResamples": 0,
+      "resamples": 2000,
+      "seed": 20260929,
+      "status_agreement_rate": 0.8186528497409327,
+      "ci_contains_zero": true
+    }
+  }
+}
