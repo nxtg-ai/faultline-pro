@@ -11,7 +11,7 @@ let dir: string;
 
 const block = (over: Record<string, unknown> = {}) => ({
   windowDays: 7, from: '2026-11-14', to: '2026-11-20', primary: 'gemini-3.1-pro-preview',
-  byModel: { 'gemini-3.1-pro-preview': 90, 'gemini-3.8-flash': 10 }, total: 100, fallbackShare: 0.1,
+  byModel: { 'gemini-3.1-pro-preview': 90, 'gemini-3.8-flash': 10 }, total: 100, fallbackCalls: 10, fallbackShare: 0.1,
   alertShare: 0.1, alert: false, ledgerWriteFailures: 0, ...over,
 });
 const fetchOf = (status: number, body: unknown): typeof fetch => (async (_url: string | URL | Request, init?: RequestInit) => {
@@ -22,12 +22,12 @@ const fetchOf = (status: number, body: unknown): typeof fetch => (async (_url: s
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'judge-check-')); });
 afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
 
-function run(fetchImpl: typeof fetch, now = new Date('2026-11-20T15:00:00Z')) {
+function run(fetchImpl: typeof fetch, now = new Date('2026-11-20T15:00:00Z'), opts: { postFails?: boolean; pasteFails?: boolean; key?: string } = {}) {
   const lines: string[] = [];
   const posts: string[] = [];
   const pastes: string[] = [];
-  const env = { FAULTLINE_API_KEY: KEY, JUDGE_STATE_DIR: dir, JUDGE_MONITOR_LOG: join(dir, 'monitor.jsonl'), FAULTLINE_API_URL: 'http://api.test' };
-  const done = main({ env, fetchImpl, now, log: (l: string) => lines.push(l), post: (t: string) => posts.push(t), pane: (t: string) => pastes.push(t) });
+  const env = { FAULTLINE_API_KEY: opts.key ?? KEY, JUDGE_STATE_DIR: dir, JUDGE_MONITOR_LOG: join(dir, 'monitor.jsonl'), FAULTLINE_API_URL: 'http://api.test' };
+  const done = main({ env, fetchImpl, now, log: (l: string) => lines.push(l), post: (t: string) => { if (opts.postFails) throw new Error(`post failed for ${KEY}`); posts.push(t); }, pane: (t: string) => { if (opts.pasteFails) throw new Error('no pane'); pastes.push(t); } });
   return done.then((code: number) => ({ code, lines, posts, pastes }));
 }
 
@@ -44,7 +44,7 @@ describe('judge-fallback-check', () => {
   });
 
   it('above 10%: exit 1, wakes the owner by post and fp by pane, once per UTC day', async () => {
-    const alerting = fetchOf(200, { judgeModels: block({ fallbackShare: 0.2, alert: true, byModel: { 'gemini-3.1-pro-preview': 80, 'gemini-3.8-flash': 20 } }) });
+    const alerting = fetchOf(200, { judgeModels: block({ fallbackShare: 0.2, fallbackCalls: 20, alert: true, byModel: { 'gemini-3.1-pro-preview': 80, 'gemini-3.8-flash': 20 } }) });
     const first = await run(alerting);
     expect(first.code).toBe(1);
     expect(first.posts).toHaveLength(1);
@@ -59,6 +59,51 @@ describe('judge-fallback-check', () => {
     expect(nextDay.posts).toHaveLength(1);
   });
 
+  it('a failed post is retried on the next run while the pane paste is not repeated', async () => {
+    const alerting = fetchOf(200, { judgeModels: block({ fallbackShare: 0.2, fallbackCalls: 20, alert: true, byModel: { 'gemini-3.1-pro-preview': 80, 'gemini-3.8-flash': 20 } }) });
+    const first = await run(alerting, undefined, { postFails: true });
+    expect(first.posts).toHaveLength(0);
+    expect(first.pastes).toHaveLength(1);
+    expect(first.lines.join('\n')).not.toContain(KEY);
+    const second = await run(alerting);
+    expect(second.posts).toHaveLength(1);
+    expect(second.pastes).toHaveLength(0);
+    const third = await run(alerting);
+    expect(third.posts).toHaveLength(0);
+    expect(third.pastes).toHaveLength(0);
+  });
+
+  it('a malformed block is a probe failure, never OK', async () => {
+    for (const bad of [
+      block({ byModel: null }),
+      block({ byModel: { a: 50 }, total: 100 }),
+      block({ fallbackShare: 0.2, fallbackCalls: 20, alert: false }),
+      block({ fallbackCalls: 120 }),
+      block({ total: 0, byModel: {}, fallbackCalls: 0, fallbackShare: 0.1 }),
+      block({ primary: '' }),
+    ]) {
+      expect((await run(fetchOf(200, { judgeModels: bad }))).code).toBe(2);
+    }
+    expect((await run(fetchOf(200, { judgeModels: block({ total: 0, byModel: {}, fallbackCalls: 0, fallbackShare: null }) }))).code).toBe(0);
+  });
+
+  it('a malformed key is refused before any request, and is not printed', async () => {
+    const bad = `${KEY}\nX-Injected: 1`;
+    let called = false;
+    const r = await run((async () => { called = true; return {} as Response; }) as typeof fetch, undefined, { key: bad });
+    expect(r.code).toBe(2);
+    expect(called).toBe(false);
+    expect(r.lines.join('\n')).not.toContain(KEY);
+  });
+
+  it('a fetch error that quotes the key is redacted', async () => {
+    const r = await run((async () => { throw new Error(`invalid header value ${KEY}`); }) as typeof fetch);
+    expect(r.code).toBe(2);
+    expect(r.lines.join('\n')).toContain('[key]');
+    expect(r.lines.join('\n')).not.toContain(KEY);
+    expect(readFileSync(join(dir, 'monitor.jsonl'), 'utf8')).not.toContain(KEY);
+  });
+
   it('a probe failure is exit 2, never OK: no key, a non-200, no block, a malformed block', async () => {
     const noKey = await main({ env: { JUDGE_STATE_DIR: dir, JUDGE_MONITOR_LOG: join(dir, 'm.jsonl'), HOME: dir }, fetchImpl: async () => { throw new Error('must not call'); }, log: () => {} });
     expect(noKey).toBe(2);
@@ -68,7 +113,7 @@ describe('judge-fallback-check', () => {
   });
 
   it('never prints the key', async () => {
-    const r = await run(fetchOf(200, { judgeModels: block({ alert: true, fallbackShare: 0.5 }) }));
+    const r = await run(fetchOf(200, { judgeModels: block({ alert: true, fallbackShare: 0.5, fallbackCalls: 50, byModel: { 'gemini-3.1-pro-preview': 50, 'gemini-3.8-flash': 50 } }) }));
     expect([...r.lines, ...r.posts, ...r.pastes].join('\n')).not.toContain(KEY);
   });
 

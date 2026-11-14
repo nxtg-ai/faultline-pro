@@ -30,6 +30,11 @@ export interface JudgeCallEvent {
   /** UTC day, YYYY-MM-DD. */
   day: string;
   model: string;
+  /**
+   * Whether this call was the configured primary judge at the time it ran. Recorded per row so a
+   * later change of primary never turns past primary calls into fallback calls.
+   */
+  role: 'primary' | 'fallback';
 }
 
 export function judgeLedgerPath(): string {
@@ -56,13 +61,16 @@ export function windowDays(now: Date = new Date(), days: number = JUDGE_WINDOW_D
 class JudgeModelLedger {
   /** day → model → judge calls, hydrated from the file once, then kept live. */
   private counts = new Map<string, Map<string, number>>();
+  /** day → fallback judge calls (rows recorded with role 'fallback'). */
+  private fallbacks = new Map<string, number>();
   private hydrated = false;
   private writeFailures = 0;
 
-  private add(day: string, model: string): void {
+  private add(day: string, model: string, role: string | undefined): void {
     const byModel = this.counts.get(day) ?? new Map<string, number>();
     byModel.set(model, (byModel.get(model) ?? 0) + 1);
     this.counts.set(day, byModel);
+    if (role === 'fallback') this.fallbacks.set(day, (this.fallbacks.get(day) ?? 0) + 1);
   }
 
   /** Read the file once per process, before the first live count. Unreadable lines are skipped. */
@@ -81,7 +89,7 @@ class JudgeModelLedger {
       if (line.trim() === '') continue;
       try {
         const row = JSON.parse(line) as Partial<JudgeCallEvent>;
-        if (typeof row.day === 'string' && typeof row.model === 'string' && row.model !== '') this.add(row.day, row.model);
+        if (typeof row.day === 'string' && typeof row.model === 'string' && row.model !== '') this.add(row.day, row.model, row.role);
       } catch {
         continue;
       }
@@ -90,7 +98,7 @@ class JudgeModelLedger {
 
   record(event: JudgeCallEvent): void {
     this.ensureHydrated();
-    this.add(event.day, event.model);
+    this.add(event.day, event.model, event.role);
     try {
       const path = judgeLedgerPath();
       const dir = dirname(path);
@@ -111,12 +119,19 @@ class JudgeModelLedger {
     return out;
   }
 
+  /** Fallback judge calls summed over `days`. */
+  fallbacksOver(days: string[]): number {
+    this.ensureHydrated();
+    return days.reduce((s, day) => s + (this.fallbacks.get(day) ?? 0), 0);
+  }
+
   getWriteFailures(): number {
     return this.writeFailures;
   }
 
   reset(): void {
     this.counts.clear();
+    this.fallbacks.clear();
     this.hydrated = false;
     this.writeFailures = 0;
   }
@@ -136,9 +151,11 @@ export function resetJudgeModelLedger(): void {
 }
 
 /** Count one usage leg if it is a Gemini judge call with a known model. Returns whether it counted. */
-export function recordJudgeLeg(leg: UsageLeg, now: Date = new Date()): boolean {
+export function recordJudgeLeg(leg: UsageLeg, now: Date = new Date(), primary: string = GEMINI_MODEL): boolean {
   if (!isGeminiJudgeLeg(leg) || typeof leg.model !== 'string' || leg.model === '' || leg.model === '?') return false;
-  getJudgeModelLedger().record({ ts: now.toISOString(), day: utcDay(now), model: leg.model });
+  getJudgeModelLedger().record({
+    ts: now.toISOString(), day: utcDay(now), model: leg.model, role: leg.model === primary ? 'primary' : 'fallback',
+  });
   return true;
 }
 
@@ -161,11 +178,12 @@ export interface JudgeModelStatus {
   windowDays: number;
   from: string;
   to: string;
-  /** The configured primary judge. Every other model in `byModel` judged as a fallback. */
+  /** The configured primary judge now. Fallback calls are counted by the role each row recorded when it ran. */
   primary: string;
   byModel: Record<string, number>;
   total: number;
-  /** Share of judge calls in the window made by any model other than the primary; null with no calls. */
+  fallbackCalls: number;
+  /** Share of judge calls in the window made as a fallback; null with no calls. */
   fallbackShare: number | null;
   alertShare: number;
   /** True when fallbackShare is above alertShare. */
@@ -177,8 +195,8 @@ export function getJudgeModelStatus(now: Date = new Date(), primary: string = GE
   const days = windowDays(now);
   const byModel = getJudgeModelLedger().countsOver(days);
   const total = Object.values(byModel).reduce((s, n) => s + n, 0);
-  const fallback = total - (byModel[primary] ?? 0);
-  const fallbackShare = total === 0 ? null : fallback / total;
+  const fallbackCalls = getJudgeModelLedger().fallbacksOver(days);
+  const fallbackShare = total === 0 ? null : fallbackCalls / total;
   return {
     windowDays: JUDGE_WINDOW_DAYS,
     from: days[0],
@@ -186,6 +204,7 @@ export function getJudgeModelStatus(now: Date = new Date(), primary: string = GE
     primary,
     byModel,
     total,
+    fallbackCalls,
     fallbackShare,
     alertShare: FALLBACK_ALERT_SHARE,
     alert: fallbackShare !== null && fallbackShare > FALLBACK_ALERT_SHARE,

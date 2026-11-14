@@ -33,6 +33,16 @@ export function readApiKey(env = process.env, envFile = ENV_FILE) {
   return line ? line.slice('FAULTLINE_API_KEY='.length).trim().replace(/^["']|["']$/g, '') : '';
 }
 
+/** A key that can go into a header: printable ASCII, no spaces. Anything else is refused, never sent. */
+export function isUsableKey(key) {
+  return /^[\x21-\x7e]{8,512}$/.test(key);
+}
+
+/** An error message with any copy of the key removed. */
+export function redact(message, key) {
+  return key ? String(message).split(key).join('[key]') : String(message);
+}
+
 /** The one line a run reports, from the server's judgeModels block. */
 export function summarize(block) {
   const models = Object.entries(block.byModel ?? {}).sort((a, b) => b[1] - a[1]).map(([m, n]) => `${m} ${n}`).join(', ') || 'none';
@@ -40,28 +50,39 @@ export function summarize(block) {
   return `judge calls ${block.from} to ${block.to}: ${block.total} (${models}); fallback share ${share} vs ${(block.alertShare * 100).toFixed(0)}% alert line; primary ${block.primary}`;
 }
 
+const isCount = (n) => Number.isInteger(n) && n >= 0;
+
 /** Validate the block; a missing or malformed one is a probe failure, never an OK. */
 export function readBlock(json) {
   const b = json?.judgeModels;
-  if (!b || typeof b !== 'object') throw new Error('no judgeModels block on /usage (wrong key, or a server without the counter)');
-  if (typeof b.total !== 'number' || typeof b.alert !== 'boolean' || typeof b.alertShare !== 'number' || typeof b.byModel !== 'object') {
+  if (!b || typeof b !== 'object' || Array.isArray(b)) throw new Error('no judgeModels block on /usage (wrong key, or a server without the counter)');
+  const byModel = b.byModel;
+  const okByModel = byModel !== null && typeof byModel === 'object' && !Array.isArray(byModel) && Object.values(byModel).every(isCount);
+  const sum = okByModel ? Object.values(byModel).reduce((s, n) => s + n, 0) : -1;
+  const okShare = b.total === 0 ? b.fallbackShare === null : typeof b.fallbackShare === 'number' && b.fallbackShare >= 0 && b.fallbackShare <= 1;
+  if (!okByModel || !isCount(b.total) || sum !== b.total || !isCount(b.fallbackCalls) || b.fallbackCalls > b.total || !okShare
+    || typeof b.alert !== 'boolean' || typeof b.alertShare !== 'number' || typeof b.primary !== 'string' || b.primary === '') {
     throw new Error('judgeModels block is malformed');
   }
+  // The alert is recomputed here, so a server bug that drops it cannot read as OK.
+  const alert = b.fallbackShare !== null && b.fallbackShare > b.alertShare;
+  if (alert !== b.alert) throw new Error('judgeModels alert disagrees with its own share');
   return b;
 }
 
-/** Whether today's alert was already sent (one wake per UTC day). */
-export function alreadyAlerted(stateFile, day) {
+/** Which of today's two deliveries already went out: { posted, pasted }. Each is retried until it does. */
+export function deliveredToday(stateFile, day) {
   try {
-    return JSON.parse(readFileSync(stateFile, 'utf8')).lastAlertDay === day;
+    const s = JSON.parse(readFileSync(stateFile, 'utf8'));
+    return s.day === day ? { posted: s.posted === true, pasted: s.pasted === true } : { posted: false, pasted: false };
   } catch {
-    return false;
+    return { posted: false, pasted: false };
   }
 }
 
-export function markAlerted(stateFile, day) {
+export function markDelivered(stateFile, day, delivered) {
   mkdirSync(dirname(stateFile), { recursive: true });
-  writeFileSync(stateFile, JSON.stringify({ lastAlertDay: day }) + '\n');
+  writeFileSync(stateFile, JSON.stringify({ day, ...delivered }) + '\n');
 }
 
 export function alertPost(block, wake) {
@@ -100,14 +121,20 @@ export async function main({
     record({ status: 'probe_failure', reason: 'no key' });
     return 2;
   }
+  if (!isUsableKey(key)) {
+    log('PROBE FAILURE: the server key is malformed (it holds a space, a control character or a non-ASCII character); not sent');
+    record({ status: 'probe_failure', reason: 'malformed key' });
+    return 2;
+  }
   let block;
   try {
     const res = await fetchImpl(`${api}/usage`, { headers: { 'x-api-key': key }, signal: AbortSignal.timeout(20_000) });
     if (res.status !== 200) throw new Error(`/usage answered ${res.status}`);
     block = readBlock(await res.json());
   } catch (err) {
-    log(`PROBE FAILURE: ${err instanceof Error ? err.message : String(err)}`);
-    record({ status: 'probe_failure', reason: err instanceof Error ? err.message.slice(0, 120) : 'error' });
+    const reason = redact(err instanceof Error ? err.message : String(err), key).slice(0, 160);
+    log(`PROBE FAILURE: ${reason}`);
+    record({ status: 'probe_failure', reason });
     return 2;
   }
   record({ status: block.alert ? 'alert' : 'ok', total: block.total, byModel: block.byModel, fallbackShare: block.fallbackShare, primary: block.primary });
@@ -116,7 +143,8 @@ export async function main({
     return 0;
   }
   log(`ALERT ${summarize(block)}`);
-  if (!alreadyAlerted(stateFile, day)) {
+  const delivered = deliveredToday(stateFile, day);
+  {
     const text = alertPost(block, wake);
     const send = post ?? ((t) => execFileSync(sayCmd, ['--as', 'fp', t], { stdio: ['ignore', 'ignore', 'ignore'], timeout: 60_000 }));
     const paste = pane ?? ((t) => {
@@ -124,14 +152,13 @@ export async function main({
       execFileSync('tmux', ['paste-buffer', '-b', 'fp-judge', '-d', '-t', paneTarget], { timeout: 10_000 });
       execFileSync('tmux', ['send-keys', '-t', paneTarget, 'Enter'], { timeout: 10_000 });
     });
-    let woke = false;
-    if (sayCmd !== '' && wake.length > 0) {
-      try { send(text); woke = true; log(`posted, waking: ${wake.join(', ')}`); } catch (err) { log(`post failed: ${err instanceof Error ? err.message.slice(0, 120) : 'error'}`); }
+    if (!delivered.posted && sayCmd !== '' && wake.length > 0) {
+      try { send(text); delivered.posted = true; log(`posted, waking: ${wake.join(', ')}`); } catch (err) { log(`post failed: ${redact(err instanceof Error ? err.message : 'error', key).slice(0, 120)}`); }
     }
-    if (paneTarget !== '') {
-      try { paste(`[judge-fallback-check] ${text}`); woke = true; log(`pasted into ${paneTarget}`); } catch (err) { log(`pane paste failed: ${err instanceof Error ? err.message.slice(0, 120) : 'error'}`); }
+    if (!delivered.pasted && paneTarget !== '') {
+      try { paste(`[judge-fallback-check] ${text}`); delivered.pasted = true; log(`pasted into ${paneTarget}`); } catch (err) { log(`pane paste failed: ${redact(err instanceof Error ? err.message : 'error', key).slice(0, 120)}`); }
     }
-    if (woke) markAlerted(stateFile, day);
+    markDelivered(stateFile, day, delivered);
   }
   return 1;
 }

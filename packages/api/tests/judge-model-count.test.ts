@@ -50,8 +50,8 @@ describe('which legs count', () => {
 
 describe('the 7-day status', () => {
   it('reports per-model counts, the fallback share and no alert at 10% or less', () => {
-    for (let i = 0; i < 18; i += 1) recordJudgeLeg(judgeLeg(PRIMARY), NOW);
-    for (let i = 0; i < 2; i += 1) recordJudgeLeg(judgeLeg(FALLBACK), NOW);
+    for (let i = 0; i < 18; i += 1) recordJudgeLeg(judgeLeg(PRIMARY), NOW, PRIMARY);
+    for (let i = 0; i < 2; i += 1) recordJudgeLeg(judgeLeg(FALLBACK), NOW, PRIMARY);
     const s = getJudgeModelStatus(NOW, PRIMARY);
     expect(s.byModel).toEqual({ [PRIMARY]: 18, [FALLBACK]: 2 });
     expect(s.total).toBe(20);
@@ -62,16 +62,16 @@ describe('the 7-day status', () => {
   });
 
   it('alerts above 10%', () => {
-    for (let i = 0; i < 8; i += 1) recordJudgeLeg(judgeLeg(PRIMARY), NOW);
-    for (let i = 0; i < 2; i += 1) recordJudgeLeg(judgeLeg(FALLBACK), NOW);
+    for (let i = 0; i < 8; i += 1) recordJudgeLeg(judgeLeg(PRIMARY), NOW, PRIMARY);
+    for (let i = 0; i < 2; i += 1) recordJudgeLeg(judgeLeg(FALLBACK), NOW, PRIMARY);
     const s = getJudgeModelStatus(NOW, PRIMARY);
     expect(s.fallbackShare).toBeCloseTo(0.2, 10);
     expect(s.alert).toBe(true);
   });
 
   it('a day older than the window is left out', () => {
-    recordJudgeLeg(judgeLeg(FALLBACK), new Date('2026-11-13T23:59:59Z'));
-    recordJudgeLeg(judgeLeg(PRIMARY), NOW);
+    recordJudgeLeg(judgeLeg(FALLBACK), new Date('2026-11-13T23:59:59Z'), PRIMARY);
+    recordJudgeLeg(judgeLeg(PRIMARY), NOW, PRIMARY);
     const s = getJudgeModelStatus(NOW, PRIMARY);
     expect(s.byModel).toEqual({ [PRIMARY]: 1 });
     expect(s.fallbackShare).toBe(0);
@@ -89,14 +89,28 @@ describe('the 7-day status', () => {
   });
 });
 
+describe('a change of primary judge', () => {
+  it('past primary calls stay primary: the share does not jump when the primary changes', () => {
+    for (let i = 0; i < 5; i += 1) recordJudgeLeg(judgeLeg('gemini-2.5-flash'), NOW, 'gemini-2.5-flash');
+    recordJudgeLeg(judgeLeg(PRIMARY), NOW, PRIMARY);
+    recordJudgeLeg(judgeLeg(FALLBACK), NOW, PRIMARY);
+    const s = getJudgeModelStatus(NOW, PRIMARY);
+    expect(s.total).toBe(7);
+    expect(s.fallbackCalls).toBe(1);
+    expect(s.fallbackShare).toBeCloseTo(1 / 7, 10);
+    resetJudgeModelLedger();
+    expect(getJudgeModelStatus(NOW, PRIMARY).fallbackCalls).toBe(1);
+  });
+});
+
 describe('the ledger', () => {
   it('appends one row per judge call and a new process hydrates from it', () => {
-    recordJudgeLeg(judgeLeg(PRIMARY), NOW);
-    recordJudgeLeg(judgeLeg(FALLBACK), NOW);
+    recordJudgeLeg(judgeLeg(PRIMARY), NOW, PRIMARY);
+    recordJudgeLeg(judgeLeg(FALLBACK), NOW, PRIMARY);
     const rows = readFileSync(process.env.FAULTLINE_JUDGE_MODEL_LEDGER!, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
     expect(rows).toEqual([
-      { ts: NOW.toISOString(), day: '2026-11-20', model: PRIMARY },
-      { ts: NOW.toISOString(), day: '2026-11-20', model: FALLBACK },
+      { ts: NOW.toISOString(), day: '2026-11-20', model: PRIMARY, role: 'primary' },
+      { ts: NOW.toISOString(), day: '2026-11-20', model: FALLBACK, role: 'fallback' },
     ]);
     resetJudgeModelLedger();
     expect(getJudgeModelStatus(NOW, PRIMARY).byModel).toEqual({ [PRIMARY]: 1, [FALLBACK]: 1 });
@@ -110,7 +124,7 @@ describe('the ledger', () => {
   it('a failed write is counted and never throws', () => {
     process.env.FAULTLINE_JUDGE_MODEL_LEDGER = join(dir, 'missing', '\0bad', 'x.jsonl');
     resetJudgeModelLedger();
-    expect(() => recordJudgeLeg(judgeLeg(PRIMARY), NOW)).not.toThrow();
+    expect(() => recordJudgeLeg(judgeLeg(PRIMARY), NOW, PRIMARY)).not.toThrow();
     expect(getJudgeModelStatus(NOW, PRIMARY).ledgerWriteFailures).toBe(1);
     expect(getJudgeModelStatus(NOW, PRIMARY).byModel).toEqual({ [PRIMARY]: 1 });
   });
@@ -122,15 +136,34 @@ describe('wired into the server', () => {
     const server = buildServer();
     await server.ready();
     try {
+      // A second server in the same process must not subscribe the counter twice.
+      const second = buildServer();
+      await second.ready();
+      await second.close();
       await captureUsage(async () => { recordUsage(judgeLeg('gemini-2.5-flash')); });
       const body = (await server.inject({ method: 'GET', url: '/usage', headers: { 'x-api-key': 'judge-count-admin-key' } })).json();
-      expect(body.judgeModels).toBeDefined();
-      expect(body.judgeModels.total).toBeGreaterThan(0);
-      expect(body.judgeModels.byModel['gemini-2.5-flash']).toBeGreaterThan(0);
+      expect(body.judgeModels.total).toBe(1);
+      expect(body.judgeModels.byModel).toEqual({ 'gemini-2.5-flash': 1 });
+      expect(body.judgeModels.fallbackCalls).toBe(0);
       expect(body.judgeModels.alertShare).toBe(0.10);
     } finally {
       await server.close();
       delete process.env.FAULTLINE_API_KEY;
+    }
+  });
+  it('the measurement key does not get judgeModels: fleet figures are for the admin key only', async () => {
+    process.env.FAULTLINE_API_KEY = 'judge-count-admin-key';
+    process.env.FAULTLINE_MEASUREMENT_KEY = 'judge-count-measurement-key';
+    const server = buildServer();
+    await server.ready();
+    try {
+      const res = await server.inject({ method: 'GET', url: '/usage', headers: { 'x-api-key': 'judge-count-measurement-key' } });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().judgeModels).toBeUndefined();
+    } finally {
+      await server.close();
+      delete process.env.FAULTLINE_API_KEY;
+      delete process.env.FAULTLINE_MEASUREMENT_KEY;
     }
   });
 });
