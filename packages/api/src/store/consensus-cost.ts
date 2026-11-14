@@ -27,6 +27,12 @@ export interface Rate {
   inputPerM: number;
   outputPerM: number;
   groundingPerCall: number;
+  /**
+   * Per search query instead of per grounded call, when set (Gemini 3: 14 USD per 1,000 queries).
+   * A grounded leg is charged max(1, its searchQueries) queries, so an unreported count is never zero.
+   * The 5,000 free queries a month are not netted out, so the ledger over-counts, never under.
+   */
+  groundingPerQuery?: number;
 }
 
 /**
@@ -50,13 +56,16 @@ export interface Rate {
  */
 export const CONSENSUS_MODEL_RATES: Record<string, Rate> = {
   'gemini-2.5-flash': { inputPerM: 0.30, outputPerM: 2.50, groundingPerCall: 0.035 },
-  // The Gemini 3.x models measured in the judge model A/B (GoPMO 1.18.11.7.127), at the list
-  // prices read 2026-11-10. Their googleSearch surcharge was not read, so groundingPerCall carries
-  // the 2.5-flash rate; production grounds through Parallel and makes no googleSearch call.
-  // gemini-3.8-flash rises to 1.50 / 7.50 on 2027-01-01: re-pin this row before then.
-  'gemini-3.5-flash-lite':  { inputPerM: 0.30, outputPerM: 2.50, groundingPerCall: 0.035 },
-  'gemini-3.8-flash':       { inputPerM: 0.75, outputPerM: 3.75, groundingPerCall: 0.035 },
-  'gemini-3.1-pro-preview': { inputPerM: 2.00, outputPerM: 12.00, groundingPerCall: 0.035 },
+  // The Gemini 3.x models measured in the judge model A/B (GoPMO 1.18.11.7.127). Tokens at the list
+  // prices read 2026-11-10. Google Search grounding is billed per search query on Gemini 3:
+  // "5,000 free search requests per month (shared across all Gemini 3 and newer models), then $14 per
+  // 1,000 requests" (https://aistudio.google.com/docs/pricing, read 2026-11-14). Production grounds
+  // through Parallel and makes no googleSearch call; these rows price the google mode correctly anyway.
+  // gemini-3.8-flash rises to 1.50 / 7.50 on 2027-01-01: re-pin this row before then. Pro-preview's
+  // rate is for prompts up to 200k tokens.
+  'gemini-3.5-flash-lite':  { inputPerM: 0.30, outputPerM: 2.50, groundingPerCall: 0, groundingPerQuery: 0.014 },
+  'gemini-3.8-flash':       { inputPerM: 0.75, outputPerM: 3.75, groundingPerCall: 0, groundingPerQuery: 0.014 },
+  'gemini-3.1-pro-preview': { inputPerM: 2.00, outputPerM: 12.00, groundingPerCall: 0, groundingPerQuery: 0.014 },
   'gpt-4o-mini':      { inputPerM: 0.15, outputPerM: 0.60, groundingPerCall: 0.010 },
   'claude-opus-4-8':  { inputPerM: 5.00, outputPerM: 25.00, groundingPerCall: 0 },
   'gpt-4o':           { inputPerM: 2.50, outputPerM: 10.00, groundingPerCall: 0.010 },
@@ -101,6 +110,18 @@ export interface UsageLeg {
   outputTokens: number;
   /** True for the web_search / grounded-retrieval tool call (bills per call). */
   isGrounding: boolean;
+  /** Search queries the grounded call ran, when known (rates with groundingPerQuery bill on it). */
+  searchQueries?: number;
+}
+
+/** The grounding fee for one leg at its rate: per query when the rate bills that way, else per call. */
+export function groundingFee(leg: UsageLeg, rate: Rate): number {
+  if (!leg.isGrounding) return 0;
+  if (rate.groundingPerQuery !== undefined) {
+    const queries = typeof leg.searchQueries === 'number' && Number.isFinite(leg.searchQueries) ? Math.floor(leg.searchQueries) : 0;
+    return rate.groundingPerQuery * Math.max(1, queries);
+  }
+  return rate.groundingPerCall;
 }
 
 export interface ModelCostBreakdown {
@@ -144,7 +165,7 @@ export function priceLeg(leg: UsageLeg): number {
   return (
     (leg.inputTokens / 1_000_000) * rate.inputPerM +
     (leg.outputTokens / 1_000_000) * rate.outputPerM +
-    (leg.isGrounding ? rate.groundingPerCall : 0)
+    groundingFee(leg, rate)
   );
 }
 

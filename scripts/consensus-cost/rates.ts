@@ -21,6 +21,8 @@ export interface Rate {
   outputPerM: number;
   /** USD per grounding / web_search call. */
   groundingPerCall: number;
+  /** Per search query instead of per call, when set (Gemini 3 Google Search grounding). */
+  groundingPerQuery?: number;
 }
 
 /**
@@ -52,12 +54,12 @@ export const LIVE_RATES: Record<string, Rate | null> = {
   //   prompts after the free tier ⇒ $0.035/call.
   //   Source: https://ai.google.dev/gemini-api/docs/pricing (Gemini 2.5 Flash, Standard/Paid tier)
   'gemini-2.5-flash': { inputPerM: 0.30, outputPerM: 2.50, groundingPerCall: 0.035 },
-  // Gemini 3.x, list prices read 2026-11-10 (judge model A/B, GoPMO 1.18.11.7.127). The googleSearch
-  // surcharge was not read, so the 2.5-flash rate stands in; production grounds through Parallel.
-  // gemini-3.8-flash rises to 1.50 / 7.50 on 2027-01-01.
-  'gemini-3.5-flash-lite':  { inputPerM: 0.30, outputPerM: 2.50, groundingPerCall: 0.035 },
-  'gemini-3.8-flash':       { inputPerM: 0.75, outputPerM: 3.75, groundingPerCall: 0.035 },
-  'gemini-3.1-pro-preview': { inputPerM: 2.00, outputPerM: 12.00, groundingPerCall: 0.035 },
+  // Gemini 3.x, tokens at list prices read 2026-11-10 (judge model A/B, GoPMO 1.18.11.7.127). Google
+  // Search grounding bills per query: 14 USD per 1,000 after 5,000 free a month, shared across Gemini 3
+  // (https://aistudio.google.com/docs/pricing, read 2026-11-14). gemini-3.8-flash rises to 1.50 / 7.50 on 2027-01-01.
+  'gemini-3.5-flash-lite':  { inputPerM: 0.30, outputPerM: 2.50, groundingPerCall: 0, groundingPerQuery: 0.014 },
+  'gemini-3.8-flash':       { inputPerM: 0.75, outputPerM: 3.75, groundingPerCall: 0, groundingPerQuery: 0.014 },
+  'gemini-3.1-pro-preview': { inputPerM: 2.00, outputPerM: 12.00, groundingPerCall: 0, groundingPerQuery: 0.014 },
   // gpt-4o-mini: $0.15/M input, $0.60/M output. PROVENANCE: gpt-4o / gpt-4o-mini are NOT
   //   listed verbatim on the current official OpenAI pricing page (confirmed by direct fetch
   //   2026-07-03 — GPT-4.1/5.x families replaced the 4o listing). These are the grandfathered

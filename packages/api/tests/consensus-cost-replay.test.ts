@@ -167,6 +167,7 @@ describe('consensus-cost replay (BLG-005 verify-gate)', () => {
       expect(rate.inputPerM).toBe(pinned!.inputPerM);
       expect(rate.outputPerM).toBe(pinned!.outputPerM);
       expect(rate.groundingPerCall).toBe(pinned!.groundingPerCall);
+      expect(rate.groundingPerQuery).toBe(pinned!.groundingPerQuery);
     }
   });
 

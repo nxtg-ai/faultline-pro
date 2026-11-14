@@ -2,7 +2,7 @@
 // different Gemini model from the judge). The SDK is mocked at the module boundary.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const sdk = vi.hoisted(() => ({ calls: [] as Array<{ model: string }> }));
+const sdk = vi.hoisted(() => ({ calls: [] as Array<{ model: string }>, queries: undefined as string[] | undefined }));
 
 vi.mock('@google/genai', () => ({
   GoogleGenAI: class {
@@ -15,7 +15,7 @@ vi.mock('@google/genai', () => ({
             ? JSON.stringify([{ id: 'c1', text: 'The Eiffel Tower is in Paris.', type: 'fact', importance: 3 }])
             : JSON.stringify({ status: 'supported', explanation: 'e' }),
           usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 },
-          candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 't', uri: 'https://example.org/a' } }] } }],
+          candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 't', uri: 'https://example.org/a' } }], ...(sdk.queries ? { webSearchQueries: sdk.queries } : {}) } }],
         };
       },
     };
@@ -28,6 +28,7 @@ let saved: Record<string, string | undefined>;
 beforeEach(() => {
   saved = Object.fromEntries(ENV.map((k) => [k, process.env[k]]));
   sdk.calls = [];
+  sdk.queries = undefined;
   vi.resetModules();
 });
 
@@ -76,6 +77,17 @@ describe('the Gemini extraction model setting', () => {
       ['extraction', 'gemini-3.5-flash-lite'],
       ['grounded-verify:gemini', 'gemini-3.1-pro-preview'],
     ]);
+  });
+
+  it('a grounded Gemini leg records how many search queries it ran', async () => {
+    process.env.FAULTLINE_GEMINI_MODEL = 'gemini-3.1-pro-preview';
+    const { service, sink } = await load();
+    sdk.calls.push({ model: 'skip-extraction-branch' });
+    sdk.queries = ['eiffel tower location', 'eiffel tower paris'];
+    const { legs } = await sink.captureUsage(() => service.verifyClaim({ id: 'c1', text: 'The Eiffel Tower is in Paris.', type: 'fact', importance: 3 }, 'key'));
+    expect(legs).toHaveLength(1);
+    expect(legs[0].isGrounding).toBe(true);
+    expect(legs[0].searchQueries).toBe(2);
   });
 
   it('a blank extraction setting falls back to FAULTLINE_GEMINI_MODEL', async () => {

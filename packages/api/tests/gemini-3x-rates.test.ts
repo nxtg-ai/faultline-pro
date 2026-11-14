@@ -25,6 +25,32 @@ describe('Gemini 3.x rates in the spend ledger', () => {
   });
 });
 
+describe('Gemini 3 Google Search grounding is priced per query', () => {
+  const grounded = (searchQueries?: number) => ({
+    model: 'gemini-3.1-pro-preview', callType: 'grounded-verify:gemini', provider: 'gemini',
+    inputTokens: 0, outputTokens: 0, isGrounding: true, ...(searchQueries === undefined ? {} : { searchQueries }),
+  });
+
+  it('three queries cost three times 0.014 USD', () => {
+    expect(summarizeScanUsage([grounded(3)]).costUsd).toBeCloseTo(0.042, 10);
+  });
+
+  it('an unreported or zero query count is charged one query, never zero', () => {
+    expect(summarizeScanUsage([grounded()]).costUsd).toBeCloseTo(0.014, 10);
+    expect(summarizeScanUsage([grounded(0)]).costUsd).toBeCloseTo(0.014, 10);
+  });
+
+  it('2.5-flash keeps its per-prompt rate, whatever the query count', () => {
+    const leg = { ...grounded(4), model: 'gemini-2.5-flash' };
+    expect(summarizeScanUsage([leg]).costUsd).toBeCloseTo(0.035, 10);
+  });
+
+  it('a Parallel search leg is unchanged', () => {
+    const leg = { model: 'parallel-search-advanced', callType: 'parallel-search', provider: 'parallel', inputTokens: 0, outputTokens: 0, isGrounding: true };
+    expect(summarizeScanUsage([leg]).costUsd).toBeCloseTo(0.005, 10);
+  });
+});
+
 describe('/health names the Gemini models', () => {
   it('reports the judge and the extraction model this process runs', async () => {
     const server = buildServer();

@@ -47,7 +47,15 @@ function recordGeminiUsage(response: any, isGrounding: boolean, callType: string
     inputTokens: count(u.promptTokenCount) + count(u.toolUsePromptTokenCount),
     outputTokens: count(u.candidatesTokenCount) + count(u.thoughtsTokenCount),
     isGrounding,
+    // Gemini 3 bills Google Search grounding per query, so a grounded leg carries how many it ran.
+    ...(isGrounding ? { searchQueries: searchQueryCount(response) } : {}),
   });
+}
+
+/** The number of search queries a grounded reply lists, 0 when it lists none. */
+function searchQueryCount(response: any): number {
+  const queries = response?.candidates?.[0]?.groundingMetadata?.webSearchQueries;
+  return Array.isArray(queries) ? queries.length : 0;
 }
 
 const count = (n: unknown): number => (typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : 0);
