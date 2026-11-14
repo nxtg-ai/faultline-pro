@@ -1,6 +1,6 @@
 # Judge model A/B on the G0 claims: pre-registration v1
 
-**GoPMO:** 1.18.11.7.127 · **Owner:** fp · **Status:** v1 RUN 2026-11-14 (results file linked in section 10). Amendment A1 (v2) REGISTERED, NOT RUN.
+**GoPMO:** 1.18.11.7.127 · **Owner:** fp · **Status:** v1 RUN 2026-11-14 (results file linked in section 10). Amendment A1 (v2) RUN 2026-11-14; results in `2026-11-14-judge-model-ab-v2-results.md`.
 **Registered:** 2026-11-14. The commit that lands this file on `origin/main` is the registration timestamp. No paid call of this run may happen before that commit. Sections 3 to 7 may not change once the first paid arm call has been made. A change made before that point is an amendment in section 10, with its reason.
 
 ## 0. Why this run exists
