@@ -885,6 +885,35 @@ describe('accuracy-g0 runner: judge model A/B options', () => {
     // The scorer's side (the label as the arm name, --baseline) is tested in scripts/tests/test_accuracy_g0_score.py.
   });
 
+  it('--judge-model: a row whose model is its own judge (a cache-hit retry) does not stop the run (A/B v2, 2026-11-14)', async () => {
+    state.judgeModel = () => 'gemini-2.5-flash';
+    // The engine answers one batch per call: the second batch names the judge, as a retry served from the research cache does.
+    state.model = (call) => (call === 2 ? 'gemini-2.5-flash' : 'parallel-search-advanced');
+    const out = join(dir, 'cachehit.jsonl');
+    const r = await run(['--set', 'full', '--arm', 'parallel', '--sample', '60', '--seed', '7', '--out', out,
+      '--label', 'judge-a', '--judge-model', 'gemini-2.5-flash']);
+    expect(r.code).toBe(0);
+    const written = rows(out);
+    expect(written).toHaveLength(60);
+    expect(new Set(written.map((row) => row.model))).toEqual(new Set(['parallel-search-advanced', 'gemini-2.5-flash']));
+  });
+
+  it('--judge-model: a change of the search leg still stops the run with exit 4', async () => {
+    state.judgeModel = () => 'gemini-2.5-flash';
+    state.model = (call) => (call === 1 ? 'parallel-search-advanced' : 'parallel-search-basic');
+    const r = await run(['--set', 'full', '--arm', 'parallel', '--sample', '60', '--seed', '7', '--out', join(dir, 'leg.jsonl'),
+      '--label', 'judge-a', '--judge-model', 'gemini-2.5-flash']);
+    expect(r.code).toBe(4);
+    expect(r.out).toMatch(/model changed .*parallel-search-advanced -> parallel-search-basic/);
+  });
+
+  it('without --judge-model, a row naming the judge after the search leg still stops the run', async () => {
+    state.judgeModel = () => 'gemini-2.5-flash';
+    state.model = (call) => (call === 1 ? 'parallel-search-advanced' : 'gemini-2.5-flash');
+    const r = await run(['--set', 'full', '--arm', 'parallel', '--sample', '60', '--seed', '7', '--out', join(dir, 'nojm.jsonl')]);
+    expect(r.code).toBe(4);
+  });
+
   it('a resumed labelled run is not refused as another arm', async () => {
     state.judgeModel = () => 'gemini-2.5-flash';
     const out = join(dir, 'a.jsonl');

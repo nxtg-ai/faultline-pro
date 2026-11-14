@@ -576,6 +576,21 @@ export function emptySpend() {
   return { costUsd: 0, googleGroundingCalls: 0, inputTokens: 0, outputTokens: 0, parallelCalls: 0 };
 }
 
+/**
+ * The engine model a row reports, for the model-change check (prereg §5).
+ * `model` is the first usage leg the engine logged: on the parallel arm, the
+ * Parallel search leg. A retry whose search is served from the local research
+ * cache logs no search leg, so its `model` is the judge instead. With
+ * --judge-model set, every row's judge is already checked, so a row whose
+ * `model` is just its own judge carries no engine-model evidence and is skipped;
+ * a change of the search leg still stops the run (judge model A/B v2, 2026-11-14).
+ */
+export function engineModelOf(row, options) {
+  if (!row || typeof row.model !== 'string' || row.model === '') return null;
+  if (options.judgeModel !== undefined && row.model === row.judgeModel) return null;
+  return row.model;
+}
+
 /** One item's spend at an arm's own list price: tokens plus 0.005 USD a Parallel call. */
 export function listPriceUsd(spend, priceIn, priceOut) {
   return (count(spend.inputTokens) * priceIn + count(spend.outputTokens) * priceOut) / 1e6 + count(spend.parallelCalls) * PARALLEL_SEARCH_USD;
@@ -638,7 +653,7 @@ function closeExhausted(pending, attempts, options, engine, log, spent = new Map
 }
 
 async function runBatches({ request, allowance, options, pending, engine, done, attempts, log }) {
-  let model = [...done.values()].find((row) => row.model)?.model ?? null;
+  let model = [...done.values()].map((row) => engineModelOf(row, options)).find(Boolean) ?? null;
   const arm = options.runArm ?? 'google';
   const spendFile = spendPath(options.out);
   // Restored before closeExhausted, so an item that used all its calls before a stop keeps what they cost.
@@ -700,7 +715,7 @@ async function runBatches({ request, allowance, options, pending, engine, done, 
     appendRows(options.out, rows);
     guardListPrice(options, spent, done, rows, total, log);
     log(`batch ${batch[0].id}..${batch[batch.length - 1].id}: ${rows.length} written, ${retry.length} to retry`);
-    const seen = [...new Set(rows.map((row) => row.model).filter(Boolean))];
+    const seen = [...new Set(rows.map((row) => engineModelOf(row, options)).filter(Boolean))];
     for (const current of seen) {
       if (model && current !== model) {
         throw new RunStop(EXIT.INVALID, `INVALID (prereg §5): engine model changed during the run (${model} -> ${current}). Stop; do not score.`);
