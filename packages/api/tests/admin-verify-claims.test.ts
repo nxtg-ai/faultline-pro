@@ -275,8 +275,8 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
     const body = res.json();
     expect(body.provider).toBe('gemini');
     expect(body.results).toEqual([
-      { id: '10', status: 'contradicted', apiError: false, parseFallback: false, noSourceAbstain: false, notCheckable: false, apiErrorReason: null, model: 'gemini-2.5-flash', sourcesCount: 1, usage: GEMINI_USAGE },
-      { id: '11', status: 'supported', apiError: false, parseFallback: false, noSourceAbstain: false, notCheckable: false, apiErrorReason: null, model: 'gemini-2.5-flash', sourcesCount: 1, usage: GEMINI_USAGE },
+      { id: '10', status: 'contradicted', apiError: false, parseFallback: false, noSourceAbstain: false, notCheckable: false, apiErrorReason: null, model: 'gemini-2.5-flash', judgeModel: 'gemini-2.5-flash', sourcesCount: 1, usage: GEMINI_USAGE },
+      { id: '11', status: 'supported', apiError: false, parseFallback: false, noSourceAbstain: false, notCheckable: false, apiErrorReason: null, model: 'gemini-2.5-flash', judgeModel: 'gemini-2.5-flash', sourcesCount: 1, usage: GEMINI_USAGE },
     ]);
     expect(sdk.calls).toBe(2);
   });
@@ -285,7 +285,7 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
   it('reports a non-JSON model reply as apiError with parseFallback, never as mixed', async () => {
     const res = await post({ claims: [{ id: '3', text: 'NOT-JSON reply please.' }] });
     expect(res.json().results[0]).toEqual({
-      id: '3', status: 'unverified', apiError: true, parseFallback: true, noSourceAbstain: false, notCheckable: false, apiErrorReason: 'provider_unparseable', model: null, sourcesCount: 0,
+      id: '3', status: 'unverified', apiError: true, parseFallback: true, noSourceAbstain: false, notCheckable: false, apiErrorReason: 'provider_unparseable', model: null, judgeModel: null, sourcesCount: 0,
       // The unreadable reply still spent tokens, so it is priced.
       usage: GEMINI_USAGE,
     });
@@ -294,7 +294,7 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
   it('labels a reply cut off at the output ceiling output_truncated, never a verdict (GoPMO 1.18.11.7.18)', async () => {
     const res = await post({ claims: [{ id: '6', text: 'CUT-OFF reply.' }] });
     expect(res.json().results[0]).toEqual({
-      id: '6', status: 'unverified', apiError: true, parseFallback: false, noSourceAbstain: false, notCheckable: false, apiErrorReason: 'output_truncated', model: null, sourcesCount: 0,
+      id: '6', status: 'unverified', apiError: true, parseFallback: false, noSourceAbstain: false, notCheckable: false, apiErrorReason: 'output_truncated', model: null, judgeModel: null, sourcesCount: 0,
       usage: GEMINI_USAGE,
     });
   });
@@ -327,7 +327,7 @@ describe('POST /admin/verify-claims — verdicts, flags, and nothing grounded on
     expect(res.json().billing.unbilled.map((u: { claimId: string }) => u.claimId).every((id: string) => id === '1' || id === '2')).toBe(true);
     expect([...keys].sort()).toEqual([
       'apiError', 'apiErrorReason', 'billedClaims', 'billing', 'claimId', 'costUsd', 'googleGroundingCalls', 'grounding',
-      'groundingCalls', 'id', 'inputTokens', 'model', 'noSourceAbstain', 'notCheckable', 'outputTokens', 'parseFallback', 'priced', 'provider',
+      'groundingCalls', 'id', 'inputTokens', 'judgeModel', 'model', 'noSourceAbstain', 'notCheckable', 'outputTokens', 'parseFallback', 'priced', 'provider',
       'reason', 'results', 'sourcesCount', 'status', 'unbilled', 'unbilledClaims', 'usage',
     ]);
   });
