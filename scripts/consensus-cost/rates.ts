@@ -60,6 +60,10 @@ export const LIVE_RATES: Record<string, Rate | null> = {
   'gemini-3.5-flash-lite':  { inputPerM: 0.30, outputPerM: 2.50, groundingPerCall: 0, groundingPerQuery: 0.014 },
   'gemini-3.8-flash':       { inputPerM: 0.75, outputPerM: 3.75, groundingPerCall: 0, groundingPerQuery: 0.014 },
   'gemini-3.1-pro-preview': { inputPerM: 2.00, outputPerM: 12.00, groundingPerCall: 0, groundingPerQuery: 0.014 },
+  // gemini-4-argon, the judge's rate-limit fallback (ruling Dx3 15ff238e): priced at its list price from
+  // 2026-12-01, 4.00 / 20.00 (https://ai.google.dev/gemini-api/docs/pricing, read 2026-11-14). Through
+  // 2026-11-30 Google bills half that, so until then this row overstates its spend, never understates it.
+  'gemini-4-argon':         { inputPerM: 4.00, outputPerM: 20.00, groundingPerCall: 0, groundingPerQuery: 0.014 },
   // gpt-4o-mini: $0.15/M input, $0.60/M output. PROVENANCE: gpt-4o / gpt-4o-mini are NOT
   //   listed verbatim on the current official OpenAI pricing page (confirmed by direct fetch
   //   2026-07-03 — GPT-4.1/5.x families replaced the 4o listing). These are the grandfathered
