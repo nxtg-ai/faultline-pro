@@ -18,7 +18,8 @@ import { DEFAULT_SCAN_PROVIDER, resolveApiKey } from '@nxtg/faultline/cli/provid
 import { bindEngineProvenance, retrieveThenVerify, usesParallelGrounding } from '@nxtg/faultline/cli/verify-runner.js';
 import type { UsageLeg } from '@nxtg/faultline/lib/usage-sink.js';
 import type { Retriever } from '@nxtg/faultline/providers/base_provider.js';
-import { ParallelSearchRetriever, PARALLEL_SEARCH_MODES } from '@nxtg/faultline/providers/parallel_search_retriever.js';
+import { PARALLEL_SEARCH_MODES } from '@nxtg/faultline/providers/parallel_search_retriever.js';
+import { parallelRetrieverFromEnv } from '@nxtg/faultline/providers/parallel_search_cache.js';
 import type { GroundingMode } from '@nxtg/faultline/cli/grounding.js';
 import { captureOutcome, withSearchLabel } from '../lib/scan-spend.js';
 import { requestGrounding } from '../lib/grounding.js';
@@ -70,6 +71,11 @@ import type { Claim, ClaimStatus, VerificationResult } from '@nxtg/faultline/typ
  * FAULTLINE_PARALLEL_MODE, else advanced). The response names the arm that ran
  * (`grounding`), and each claim's usage counts its Google grounded calls apart
  * from every other search (`googleGroundingCalls`).
+ *
+ * Each result names `judgeModel`, the model the provider was configured to judge with,
+ * so a judge-model comparison can check every row ran its arm's model. On a local
+ * measurement API, FAULTLINE_RETRIEVAL_CACHE_DIR shares Parallel replies across runs
+ * (providers/parallel_search_cache.ts); production never sets it, and it is ignored there.
  */
 
 export const MAX_VERIFY_CLAIMS = 25;
@@ -128,6 +134,7 @@ const RESPONSE_SCHEMA = {
             notCheckable: { type: 'boolean' },
             apiErrorReason: { type: ['string', 'null'] },
             model: { type: ['string', 'null'] },
+            judgeModel: { type: ['string', 'null'] },
             sourcesCount: { type: 'number' },
             usage: {
               type: 'object',
@@ -194,6 +201,8 @@ export interface VerifyClaimOutcome {
   /** Why an unchecked claim went unchecked (a label such as output_truncated); null on a verdict. */
   apiErrorReason: string | null;
   model: string | null;
+  /** The model the provider was configured to judge with (its modelId), null when the call produced no verdict. */
+  judgeModel: string | null;
   /** How many sources the verdict carries (a count; no source leaves this route). */
   sourcesCount: number;
   /** This claim's own captured usage and cost. Cost figures only. */
@@ -246,7 +255,7 @@ async function verifyOne(provider: LLMProvider, providerName: string, input: Ver
       legs,
       billable: false,
       verdict: { claimId: input.id, status: 'unverified', apiError: true, apiErrorReason: 'provider_error', sources: [] },
-      outcome: { id: input.id, status: 'unverified', apiError: true, parseFallback: false, noSourceAbstain: false, notCheckable: false, apiErrorReason: 'provider_error', model: null, sourcesCount: 0 },
+      outcome: { id: input.id, status: 'unverified', apiError: true, parseFallback: false, noSourceAbstain: false, notCheckable: false, apiErrorReason: 'provider_error', model: null, judgeModel: null, sourcesCount: 0 },
     };
   }
   // Provenance is bound here with the runner's rule: the retriever comes from
@@ -272,6 +281,7 @@ async function verifyOne(provider: LLMProvider, providerName: string, input: Ver
       apiErrorReason: result.apiError === true ? (result.apiErrorReason ?? 'provider_error') : null,
       // A failed call produced no verdict and no engine model record.
       model: result.apiError === true ? null : modelOf(legs, provider),
+      judgeModel: result.apiError === true ? null : (provider.modelId ?? null),
       sourcesCount: Array.isArray(result.sources) ? result.sources.length : 0,
     },
   };
@@ -360,7 +370,8 @@ export async function adminVerifyRoutes(fastify: FastifyInstance): Promise<void>
       const requested: GroundingMode = request.body.grounding ?? requestGrounding();
       const parallel = usesParallelGrounding(providerName, undefined, { grounding: requested });
       const retriever = parallel
-        ? new ParallelSearchRetriever((process.env.PARALLEL_API_KEY ?? '').trim(), { mode: request.body.parallelMode })
+        // A local measurement run may set a retrieval cache (parallel_search_cache.ts); production never does.
+        ? parallelRetrieverFromEnv((process.env.PARALLEL_API_KEY ?? '').trim(), { mode: request.body.parallelMode })
         : null;
 
       const startMs = Date.now();

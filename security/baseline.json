@@ -949,6 +949,14 @@
       "fp": "6078302122c96ef68e1067a2701c2b4f_0",
       "disposition": "false-positive",
       "reason": "false-positive, triaged 2026-11-01: writeFileSync writes the summary JSON to the --out path the local operator passes on the command line, in a script run by hand; the API response is the content, never the path, and no remote input reaches a path"
+    },
+    {
+      "tool": "bearer",
+      "ruleId": "javascript_lang_path_traversal",
+      "uri": "packages/cli/providers/parallel_search_cache.ts",
+      "fp": "5d5e299d6b3650e1e6d808f89ef4a091_0",
+      "disposition": "false-positive",
+      "reason": "false-positive, triaged 2026-11-14 (fp): path.join joins the operator's own FAULTLINE_RETRIEVAL_CACHE_DIR with a sha256 hex file name; no request input reaches the path, and the cache is off in production (NODE_ENV production or the variable unset)"
     }
   ]
 }

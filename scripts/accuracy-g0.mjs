@@ -11,6 +11,15 @@
  *   node scripts/accuracy-g0.mjs --set full|verify-subsample
  *        [--api <url>] [--out <path>] [--resume] [--engine-sha <sha>] [--allowance-api <url>]
  *        [--arm google|parallel|parallel-fast|both] [--sample <N> --seed <S>]
+ *        [--label <name>] [--judge-model <id>] [--price-in <usd/M> --price-out <usd/M> --cap-usd <usd>]
+ *
+ * Judge model A/B (docs/research/2026-11-14-prereg-judge-model-ab-v1.md): --label names the
+ * arm in its rows (the scorer reads it as the arm name), so several runs of one grounding arm
+ * against local APIs with different judge models score side by side. --judge-model stops the
+ * run as invalid when a verdict names any other judge model. Each row records the claim's
+ * input and output tokens and its Parallel calls. --price-in/--price-out/--cap-usd price those
+ * tokens at the arm's own list price (plus 0.005 USD a Parallel call) and stop the arm, after
+ * its first 25 claims, when the projected cost of the whole arm would pass --cap-usd.
  *
  * --arm picks the grounding arm (docs/grounding-providers.md), sent to the route as
  * `grounding` (and `parallelMode`): google (arm A, the default) is Gemini with Google
@@ -135,11 +144,13 @@ export function parseArgs(argv) {
   const options = {
     set: undefined, api: DEFAULT_API, out: undefined, resume: false, engineSha: undefined, allowanceApi: undefined,
     gold: GOLD_PATH, subsample: SUBSAMPLE_PATH, retryBaseMs: 2000, arm: 'google', sample: undefined, seed: undefined,
+    label: undefined, judgeModel: undefined, priceIn: undefined, priceOut: undefined, capUsd: undefined,
   };
   const valueFlags = {
     '--set': 'set', '--api': 'api', '--out': 'out', '--engine-sha': 'engineSha',
     '--gold': 'gold', '--subsample': 'subsample', '--retry-base-ms': 'retryBaseMs', '--allowance-api': 'allowanceApi',
     '--arm': 'arm', '--sample': 'sample', '--seed': 'seed',
+    '--label': 'label', '--judge-model': 'judgeModel', '--price-in': 'priceIn', '--price-out': 'priceOut', '--cap-usd': 'capUsd',
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -162,6 +173,15 @@ export function parseArgs(argv) {
     if (!/^\d+$/.test(options.seed)) throw new Error('--seed must be a whole number >= 0');
     options.sample = Number(options.sample);
     options.seed = Number(options.seed);
+  }
+  if (options.label !== undefined && !/^[a-z0-9][a-z0-9._-]{0,63}$/.test(options.label)) throw new Error('--label must be 1-64 of a-z 0-9 . _ -');
+  if (options.label !== undefined && options.arm === 'both') throw new Error('--label names one arm; it does not go with --arm both');
+  const priced = [options.priceIn, options.priceOut, options.capUsd].filter((v) => v !== undefined).length;
+  if (priced !== 0 && priced !== 3) throw new Error('--price-in, --price-out and --cap-usd go together');
+  for (const key of ['priceIn', 'priceOut', 'capUsd']) {
+    if (options[key] === undefined) continue;
+    options[key] = Number(options[key]);
+    if (!Number.isFinite(options[key]) || options[key] < 0) throw new Error(`--${key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)} must be a number >= 0`);
   }
   options.retryBaseMs = Number(options.retryBaseMs);
   if (!Number.isFinite(options.retryBaseMs) || options.retryBaseMs < 0) throw new Error('--retry-base-ms must be >= 0');
@@ -529,9 +549,12 @@ export function readSpend(file, arm) {
     if (line.trim() === '') continue;
     const row = JSON.parse(line);
     if (row.arm !== arm) throw new RunStop(EXIT.REFUSED, `REFUSED: spend ledger ${file} holds arm ${row.arm}, not ${arm}`);
-    const so = spent.get(row.id) ?? { costUsd: 0, googleGroundingCalls: 0 };
+    const so = spent.get(row.id) ?? emptySpend();
     so.costUsd += count(row.costUsd);
     so.googleGroundingCalls += count(row.googleGroundingCalls);
+    so.inputTokens += count(row.inputTokens);
+    so.outputTokens += count(row.outputTokens);
+    so.parallelCalls += count(row.parallelCalls);
     spent.set(row.id, so);
   }
   return spent;
@@ -548,10 +571,24 @@ function recordSpend(file, entries) {
   }
 }
 
-function buildRow(item, result, attempts, engineSha, arm = 'google', spent = { costUsd: 0, googleGroundingCalls: 0 }) {
+/** What one item has spent over every attempt. */
+export function emptySpend() {
+  return { costUsd: 0, googleGroundingCalls: 0, inputTokens: 0, outputTokens: 0, parallelCalls: 0 };
+}
+
+/** One item's spend at an arm's own list price: tokens plus 0.005 USD a Parallel call. */
+export function listPriceUsd(spend, priceIn, priceOut) {
+  return (count(spend.inputTokens) * priceIn + count(spend.outputTokens) * priceOut) / 1e6 + count(spend.parallelCalls) * PARALLEL_SEARCH_USD;
+}
+
+/** Parallel's advanced search fee per request (packages/api/src/store/consensus-cost.ts). */
+export const PARALLEL_SEARCH_USD = 0.005;
+
+function buildRow(item, result, attempts, engineSha, arm = 'google', spent = emptySpend(), label = undefined) {
   return {
     id: item.id,
-    arm,
+    arm: label ?? arm,
+    ...(label === undefined ? {} : { grounding: arm }),
     gold: item.gold,
     status: result ? result.status : 'unverified',
     // The verdict label (the same value as status), named for the arm comparison.
@@ -560,6 +597,9 @@ function buildRow(item, result, attempts, engineSha, arm = 'google', spent = { c
     // Summed over every call made for this item, retries included: what the item cost.
     costUsd: spent.costUsd,
     googleGroundingCalls: spent.googleGroundingCalls,
+    inputTokens: count(spent.inputTokens),
+    outputTokens: count(spent.outputTokens),
+    parallelCalls: count(spent.parallelCalls),
     apiError: result ? result.apiError === true : true,
     parseFallback: result ? result.parseFallback === true : false,
     noSourceAbstain: result ? result.noSourceAbstain === true : false,
@@ -571,6 +611,7 @@ function buildRow(item, result, attempts, engineSha, arm = 'google', spent = { c
     apiErrorReason: result && typeof result.apiErrorReason === 'string' && /^[a-z_]{1,40}$/.test(result.apiErrorReason) ? result.apiErrorReason : null,
     attempts,
     model: result && typeof result.model === 'string' ? result.model : null,
+    judgeModel: result && typeof result.judgeModel === 'string' ? result.judgeModel : null,
     engineSha,
     ts: new Date().toISOString(),
   };
@@ -591,7 +632,7 @@ function appendRows(file, rows) {
 function closeExhausted(pending, attempts, options, engine, log, spent = new Map()) {
   const exhausted = pending.filter((item) => (attempts.get(item.id) ?? 0) >= MAX_CALLS);
   appendRows(options.out, exhausted.map((item) => buildRow(item, null, MAX_CALLS, engine.engineSha, options.runArm,
-    spent.get(item.id) ?? { costUsd: 0, googleGroundingCalls: 0 })));
+    spent.get(item.id) ?? emptySpend(), options.label)));
   if (exhausted.length > 0) log(`${exhausted.length} item(s) already had ${MAX_CALLS} calls in the ledger: written as failures, not called again`);
   return pending.filter((item) => (attempts.get(item.id) ?? 0) < MAX_CALLS);
 }
@@ -602,11 +643,16 @@ async function runBatches({ request, allowance, options, pending, engine, done, 
   const spendFile = spendPath(options.out);
   // Restored before closeExhausted, so an item that used all its calls before a stop keeps what they cost.
   const spent = readSpend(spendFile, arm);
+  const total = done.size + pending.length;
+  // A resumed arm is held to the same judge model and cost cap before anything new is spent.
+  guardJudgeModel(options, [...done.values()]);
+  guardListPrice(options, spent, done, [], total, log);
   const queue = closeExhausted(pending, attempts, options, engine, log, spent);
   const ledger = ledgerPath(options.out);
   let retryRound = 0;
   while (queue.length > 0) {
     const batch = queue.splice(0, BATCH_SIZE);
+    guardListPrice(options, spent, done, [], total, log);
     await guardAllowance(allowance, batch.length, log);
     await guardEngine(request, engine);
     const calls = batch.map((item) => ({ id: item.id, attempt: (attempts.get(item.id) ?? 0) + 1 }));
@@ -622,10 +668,17 @@ async function runBatches({ request, allowance, options, pending, engine, done, 
         counted.add(id);
         const costUsd = count(answer?.usage?.costUsd);
         const googleGroundingCalls = count(answer?.usage?.googleGroundingCalls);
-        spendRows.push({ id, arm, attempt: attempts.get(id), costUsd, googleGroundingCalls });
-        const so = spent.get(id) ?? { costUsd: 0, googleGroundingCalls: 0 };
+        const inputTokens = count(answer?.usage?.inputTokens);
+        const outputTokens = count(answer?.usage?.outputTokens);
+        // Every search the claim made that was not a Google grounded call is a Parallel search here.
+        const parallelCalls = Math.max(0, count(answer?.usage?.groundingCalls) - googleGroundingCalls);
+        spendRows.push({ id, arm, attempt: attempts.get(id), costUsd, googleGroundingCalls, inputTokens, outputTokens, parallelCalls });
+        const so = spent.get(id) ?? emptySpend();
         so.costUsd += costUsd;
         so.googleGroundingCalls += googleGroundingCalls;
+        so.inputTokens += inputTokens;
+        so.outputTokens += outputTokens;
+        so.parallelCalls += parallelCalls;
         spent.set(id, so);
       }
       recordSpend(spendFile, spendRows);
@@ -636,12 +689,16 @@ async function runBatches({ request, allowance, options, pending, engine, done, 
     for (const item of batch) {
       const result = results?.get(item.id) ?? null;
       const tries = attempts.get(item.id);
-      const so = spent.get(item.id) ?? { costUsd: 0, googleGroundingCalls: 0 };
+      const so = spent.get(item.id) ?? emptySpend();
       const failed = !result || result.apiError === true;
+      if (!failed && options.judgeModel !== undefined && result.judgeModel !== options.judgeModel) {
+        throw new RunStop(EXIT.INVALID, `INVALID: item ${item.id} was judged by ${result.judgeModel ?? 'an unnamed model'}, not ${options.judgeModel}. Stop; do not score.`);
+      }
       if (failed && tries < MAX_CALLS) retry.push(item);
-      else rows.push(buildRow(item, result, tries, engine.engineSha, arm, so));
+      else rows.push(buildRow(item, result, tries, engine.engineSha, arm, so, options.label));
     }
     appendRows(options.out, rows);
+    guardListPrice(options, spent, done, rows, total, log);
     log(`batch ${batch[0].id}..${batch[batch.length - 1].id}: ${rows.length} written, ${retry.length} to retry`);
     const seen = [...new Set(rows.map((row) => row.model).filter(Boolean))];
     for (const current of seen) {
@@ -657,6 +714,38 @@ async function runBatches({ request, allowance, options, pending, engine, done, 
     } else {
       retryRound = 0;
     }
+  }
+}
+
+/**
+ * The judge A/B cost guard (prereg section 9): once the arm has 25 written claims, project
+ * its whole cost at its own list price and stop when that would pass --cap-usd.
+ */
+const COST_GUARD_AFTER = 25;
+export function projectedArmUsd(spentByItem, written, total, priceIn, priceOut) {
+  if (written === 0) return 0;
+  let usd = 0;
+  for (const so of spentByItem.values()) usd += listPriceUsd(so, priceIn, priceOut);
+  return (usd / written) * total;
+}
+
+/** Rows already written must name the arm's judge model too (a resume with another --judge-model). */
+function guardJudgeModel(options, rows) {
+  if (options.judgeModel === undefined) return;
+  const other = rows.find((row) => row.apiError !== true && row.judgeModel !== options.judgeModel);
+  if (other) {
+    throw new RunStop(EXIT.INVALID, `INVALID: item ${other.id} was judged by ${other.judgeModel ?? 'an unnamed model'}, not ${options.judgeModel}. Stop; do not score.`);
+  }
+}
+
+function guardListPrice(options, spent, done, rows, total, log) {
+  if (options.capUsd === undefined) return;
+  for (const row of rows) done.set(row.id, row);
+  if (done.size < COST_GUARD_AFTER) return;
+  const projected = projectedArmUsd(spent, done.size, total, options.priceIn, options.priceOut);
+  log(`list-price projection: ${projected.toFixed(4)} USD for ${total} claims (cap ${options.capUsd})`);
+  if (projected > options.capUsd) {
+    throw new RunStop(EXIT.SPEND_CAP, `STOP (prereg section 9): projected ${projected.toFixed(4)} USD at list price passes the ${options.capUsd} USD cap`);
   }
 }
 
@@ -741,7 +830,8 @@ async function runArm(options, deps = {}) {
     mkdirSync(path.dirname(options.out), { recursive: true });
     const done = readDone(options.out);
     const allowed = new Set(items.map((item) => item.id));
-    const runArmName = options.runArm ?? 'google';
+    // With --label the rows carry the label as their arm name.
+    const runArmName = options.label ?? options.runArm ?? 'google';
     const otherArm = [...done.values()].find((row) => (row.arm ?? 'google') !== runArmName);
     if (otherArm) {
       throw new RunStop(EXIT.REFUSED, `REFUSED: ${options.out} holds rows from arm ${otherArm.arm ?? 'google'}, not ${runArmName}`);

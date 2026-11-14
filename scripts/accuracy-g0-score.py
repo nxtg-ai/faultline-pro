@@ -437,7 +437,10 @@ def paired_difference(primary: list[dict], other: list[dict]) -> dict:
     }
 
 
-def arms_report(paths: list[Path], gold: list[dict]) -> dict:
+def arms_report(paths: list[Path], gold: list[dict], baseline_arm: str | None = None) -> dict:
+    """Per-arm blocks and paired differences. With `baseline_arm` (the judge model A/B,
+    docs/research/2026-11-14-prereg-judge-model-ab-v1.md section 5), every other arm minus that
+    arm; without it, each parallel arm minus google, as before."""
     arms: dict[str, dict] = {}
     items_by_arm: dict[str, list[dict]] = {}
     for path in paths:
@@ -453,6 +456,13 @@ def arms_report(paths: list[Path], gold: list[dict]) -> dict:
         items_by_arm[name] = items
         arms[name] = {"run": str(path), "runSha256": sha256_file(path), **arm_block(items)}
     report: dict = {"goldSha256": GOLD_SHA256, "seed": SEED, "resamples": RESAMPLES, "arms": arms}
+    if baseline_arm is not None:
+        if baseline_arm not in items_by_arm:
+            raise Refused(f"--baseline arm {baseline_arm} is not among the arms given")
+        for name, items in items_by_arm.items():
+            if name != baseline_arm:
+                report.setdefault("ba_difference", {})[f"{name} - {baseline_arm}"] = paired_difference(items, items_by_arm[baseline_arm])
+        return report
     baseline = items_by_arm.get("google")
     for name, items in items_by_arm.items():
         if name.startswith("parallel") and baseline is not None:
@@ -538,6 +548,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("run", type=Path, nargs="?")
     parser.add_argument("--arms", type=Path, nargs="+")
+    parser.add_argument("--baseline", dest="baseline_arm")
     parser.add_argument("--set", choices=("full", "verify-subsample"))
     parser.add_argument("--json", type=Path, dest="json_out")
     parser.add_argument("--paired", type=Path)
@@ -549,7 +560,7 @@ def main(argv: list[str] | None = None) -> int:
             print("REFUSED: --arms takes the arm files only", file=sys.stderr)
             return EXIT_REFUSED
         try:
-            report = arms_report(args.arms, load_gold(args.gold))
+            report = arms_report(args.arms, load_gold(args.gold), args.baseline_arm)
         except Refused as error:
             print(f"REFUSED: {error}", file=sys.stderr)
             return EXIT_REFUSED
