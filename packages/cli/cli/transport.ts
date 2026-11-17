@@ -117,12 +117,18 @@ export async function hostedScan(
   }
 
   if (!res.ok) {
-    const body = await res.text().catch(() => '');
+    const raw = await res.text().catch(() => '');
+    // A server that echoes the request (a proxy, a custom FAULTLINE_API_URL)
+    // must not put the caller's key into the error text.
+    const body = raw.split(transport.apiKey).join('[redacted]');
     throw new HostedScanError(explainStatus(res.status, body.slice(0, 300)), res.status);
   }
 
   const json = (await res.json()) as ScanResult;
-  if (!json || !Array.isArray(json.claims)) {
+  if (
+    !json || !Array.isArray(json.claims)
+    || typeof json.verifications !== 'object' || json.verifications === null || Array.isArray(json.verifications)
+  ) {
     throw new HostedScanError('the API returned an unrecognised response shape.');
   }
   return json;

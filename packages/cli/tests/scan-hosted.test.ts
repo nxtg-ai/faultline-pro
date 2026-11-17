@@ -170,6 +170,14 @@ describe('batch modes with only FAULTLINE_API_KEY', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('--templates says the same and sends nothing', async () => {
+    process.env.FAULTLINE_API_KEY = TEST_KEY;
+    const { exitCode, output } = await main(['scan', '--templates', 'medical']);
+    expect(exitCode).toBe(1);
+    expect(output).toMatch(/--dir and --templates run on your own provider key/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('--dir still runs locally on an explicit provider', async () => {
     process.env.FAULTLINE_API_KEY = TEST_KEY;
     const { output } = await main(['scan', '--dir', dir, '--provider', 'mock']);

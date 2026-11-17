@@ -165,6 +165,26 @@ describe('hostedScan', () => {
     ).rejects.toThrow(/Nothing was verified/);
   });
 
+  it('rejects a 200 with claims but no verifications object, so no pass is built from it', async () => {
+    for (const verifications of [undefined, null, []]) {
+      const fetchImpl = vi.fn(async () => jsonResponse({ ...OK_RESULT, verifications }));
+      await expect(
+        hostedScan('t', undefined, { mode: 'hosted', apiUrl: 'https://x.test', apiKey: 'k' }, fetchImpl as unknown as typeof fetch),
+      ).rejects.toThrow(/unrecognised response shape/);
+    }
+  });
+
+  it('never puts the key into the error when the server echoes it back', async () => {
+    const key = ['echoed', 'secret', 'value'].join('_');
+    const fetchImpl = vi.fn(async () => new Response(`{"error":"bad key","key":"${key}","again":"${key}"}`, { status: 401 }));
+    const err = await hostedScan('t', undefined, { mode: 'hosted', apiUrl: 'https://x.test', apiKey: key }, fetchImpl as unknown as typeof fetch)
+      .then(() => new Error("hostedScan resolved"), (e: unknown) => e as Error);
+    expect(err).toBeInstanceOf(HostedScanError);
+    expect(err.message).not.toContain(key);
+    expect(err.message).toContain('[redacted]');
+    expect(err.message).toMatch(/\(401\)/);
+  });
+
   it('rejects an unrecognised response shape instead of returning empty claims', async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ unexpected: true }));
     await expect(
