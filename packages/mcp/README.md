@@ -10,7 +10,7 @@ Agents assert things that aren't true, confidently, in the exact register that r
 
 ## Install
 
-> **Not on npm yet.** As of 2026-10-01 `npm view @nxtg/faultline-mcp` returns 404, so `npx -y @nxtg/faultline-mcp` fails. Until it is published, run it from a checkout of this repo: after `npm install` at the repo root, use `node /absolute/path/to/packages/mcp/bin/faultline-mcp.js` where the commands below say `npx -y @nxtg/faultline-mcp`. Package version in the repo: 0.12.1.
+> **Not on npm yet.** As of 2026-10-01 `npm view @nxtg/faultline-mcp` returns 404, so `npx -y @nxtg/faultline-mcp` fails. Until it is published, run it from a checkout of this repo: after `npm install` at the repo root, use `node /absolute/path/to/packages/mcp/bin/faultline-mcp.js` where the commands below say `npx -y @nxtg/faultline-mcp`. Package version in the repo: 0.12.2.
 
 **Claude Code**
 

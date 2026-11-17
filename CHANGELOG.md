@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [v0.12.2] — 2026-11-17
+
+`@nxtg/faultline` 0.12.2. The `faultline-mcp` bin is unchanged: `npx -y -p @nxtg/faultline faultline-mcp`, with `FAULTLINE_API_KEY` for the hosted API.
+
 ### Added
 
 - **Set the Gemini models from Fly ops (GoPMO 1.18.11.7.127).** `fly-ops.yml` gains `gemini-models-set` (judge, rate-limit fallback and extraction model, in one release) and `gemini-models-unset`. It accepts only Gemini models the spend ledger prices at their own rate. A test pins that list to the rate table and runs the step's own script against a stub flyctl. The spend ledger gains a `gemini-4-argon` row at its list price from 2026-12-01 (4.00 / 20.00 USD per million tokens; Google bills half that through 2026-11-30, so until then the ledger overstates it). Docs: the operating runbook.

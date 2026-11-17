@@ -10,7 +10,7 @@ Forensic verification of AI-generated claims. Extract atomic facts, verify again
 
 > **Release stage: alpha.** Usable today, with sharp edges. Verdict accuracy was measured once on the hosted engine, not pre-registered: 0.755 balanced accuracy [0.678, 0.829] on 193 labelled Factcheck-Bench claims (commit `ba11345`, judge model `gemini-2.5-flash`); four runs on that sample read 0.755 to 0.802. The figure is for the hosted path (Parallel search, Gemini judge), not for a local run on your own provider key. Anything may change before 1.0.
 
-Version in this repo: 0.12.1. The `faultline-mcp` bin first shipped in 0.12.0; 0.12.1 makes it refuse to answer without a key. Check what npm serves with `npm view @nxtg/faultline version`.
+Version in this repo: 0.12.2. The `faultline-mcp` bin first shipped in 0.12.0; 0.12.1 makes it refuse to answer without a key; 0.12.2 makes `scan --input` and `scan --file` run on the hosted API when `FAULTLINE_API_KEY` is set. Check what npm serves with `npm view @nxtg/faultline version`.
 
 ---
 
@@ -162,7 +162,7 @@ See [`examples/ci-integration.yml`](https://github.com/nxtg-ai/faultline-pro/blo
 
 ## MCP Server (`verify_claims`)
 
-This package also ships the `faultline-mcp` bin: an MCP stdio server with one tool, `verify_claims`, for Claude Code, Cursor and any MCP client. It is the server from `packages/mcp`, with the same tool contract as the hosted MCP endpoint at `POST https://faultline-api.fly.dev/mcp` (Streamable HTTP, `x-api-key` header). On a hosted scan the result also carries `billing`. The bin ships from `@nxtg/faultline@0.12.0`; the current release, `@nxtg/faultline@0.12.1`, also refuses a call made without a key. 0.11.1 and earlier do not have the bin.
+This package also ships the `faultline-mcp` bin: an MCP stdio server with one tool, `verify_claims`, for Claude Code, Cursor and any MCP client. It is the server from `packages/mcp`, with the same tool contract as the hosted MCP endpoint at `POST https://faultline-api.fly.dev/mcp` (Streamable HTTP, `x-api-key` header). On a hosted scan the result also carries `billing`. The bin ships from `@nxtg/faultline@0.12.0`; the current release is `@nxtg/faultline@0.12.2`, and 0.12.1 and later refuse a call made without a key. 0.11.1 and earlier do not have the bin.
 
 **Run it with a key.** One command, nothing to install first. The MCP client starts the server over stdio and passes the key in its environment:
 
