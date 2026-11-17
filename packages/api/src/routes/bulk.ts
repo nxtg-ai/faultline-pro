@@ -62,7 +62,7 @@ async function processBulkJob(
     try {
       const text = entry.getData().toString('utf8');
       // Each file is metered on its own; once the key's cap is reached the rest fail unscanned.
-      const result = await meteredScan(keyId, ENGINE_VERIFY_CAP, randomUUID(), provider, () => scanWithSpend({ text, provider, keyId }, () => scanInRequestMode(text, provider)));
+      const result = await meteredScan(keyId, ENGINE_VERIFY_CAP, randomUUID(), provider, () => scanWithSpend({ text, provider, keyId }, () => scanInRequestMode(text, provider, undefined, keyId)));
       store.recordFileResult(jobId, {
         filename,
         status: 'done',

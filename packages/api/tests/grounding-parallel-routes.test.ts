@@ -64,7 +64,8 @@ import { resetProviderSpendLedger } from '../src/store/provider-spend.js';
 import { resetGroundingAllowanceLedger, uninstallGroundingCounter } from '../src/store/grounding-allowance.js';
 import { resetRateLimiter } from '../src/store/ratelimit.js';
 import { resetCircuitBreaker } from '../src/store/circuit-breaker.js';
-import { requestGrounding, groundingOption } from '../src/lib/grounding.js';
+import { requestGrounding, groundingOption, sourcePolicyOption } from '../src/lib/grounding.js';
+import { assertSourcePolicy, storedSourcePolicy, HEALTHCARE_AUTHORITY_DOMAINS } from '@nxtg/faultline/cli/source-policy.js';
 import { resetFullScanJobStore } from '../src/store/full-scan-jobs.js';
 
 const SERVER_KEY = 'grounding-parallel-server-key-0123456789';
@@ -78,8 +79,13 @@ const ENV_KEYS = [
 let saved: Record<string, string | undefined>;
 let dir: string;
 
-/** What Parallel answers: 'ok' (two results with excerpts), or an HTTP status to fail with. */
+/** What Parallel answers: 'ok' (the results below), or an HTTP status to fail with. */
 let parallelReply: 'ok' | number = 'ok';
+const DEFAULT_PARALLEL_RESULTS = [
+  { url: 'https://history.example/eiffel', title: 'Eiffel history', publish_date: '2020-01-02', excerpts: ['Completed in March 1889.', 'Opened for the World Fair.'] },
+  { url: 'https://geo.example/everest', title: 'Everest', publish_date: null, excerpts: ['8,849 m above sea level.'] },
+];
+let parallelResults = DEFAULT_PARALLEL_RESULTS;
 const parallelBodies: Array<Record<string, any>> = [];
 const parallelHeaders: Array<Record<string, string>> = [];
 
@@ -91,10 +97,7 @@ const fetchStub = vi.fn(async (input: string | URL | Request, init?: RequestInit
   if (parallelReply !== 'ok') return new Response('{"error":"failure"}', { status: parallelReply, statusText: 'Failure' });
   return new Response(JSON.stringify({
     search_id: 'search_1',
-    results: [
-      { url: 'https://history.example/eiffel', title: 'Eiffel history', publish_date: '2020-01-02', excerpts: ['Completed in March 1889.', 'Opened for the World Fair.'] },
-      { url: 'https://geo.example/everest', title: 'Everest', publish_date: null, excerpts: ['8,849 m above sea level.'] },
-    ],
+    results: parallelResults,
     usage: [{ name: 'sku_search', count: 1 }],
   }), { status: 200, headers: { 'content-type': 'application/json' } });
 });
@@ -119,6 +122,7 @@ beforeEach(() => {
   parallelBodies.length = 0;
   parallelHeaders.length = 0;
   parallelReply = 'ok';
+  parallelResults = DEFAULT_PARALLEL_RESULTS;
   fetchStub.mockClear();
   vi.stubGlobal('fetch', fetchStub);
   vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -246,6 +250,38 @@ describe('FAULTLINE_GROUNDING=parallel: Parallel then Gemini, no googleSearch, o
       expect(body.search_queries[0]).toBe('Eiffel Tower completed 1889');
       expect(body.advanced_settings).toEqual({ max_results: 8, excerpt_settings: { max_chars_per_result: 1500 } });
       expect(parallelHeaders[0]['x-api-key']).toBe('test-parallel');
+    });
+  }, 30_000);
+
+  it('a key with healthcare-authority sends that allowlist, records it, and does not keep an off-list page', async () => {
+    parallelResults = [
+      { url: 'https://www.cms.gov/medicare/fees', title: 'CMS fees', publish_date: '2024-05-01', excerpts: ['The fee schedule.'] },
+      { url: 'https://news.example/story', title: 'News', publish_date: '2024-05-01', excerpts: ['A newspaper.'] },
+    ];
+    await withServer(async (server) => {
+      expect(sourcePolicyOption(undefined)).toEqual({});
+      const plain = getKeyStore().create('plain', ['scan']);
+      expect(sourcePolicyOption(plain.id)).toEqual({});
+      const payer = getKeyStore().create('payer', ['scan'], undefined, {
+        sourcePolicy: storedSourcePolicy(assertSourcePolicy('healthcare-authority')),
+      });
+      expect(sourcePolicyOption(payer.id).sourcePolicy?.profile).toBe('healthcare-authority');
+      const res = await postScan(server, payer.key);
+      expect(res.statusCode).toBe(200);
+      expect(parallelBodies.length).toBeGreaterThan(0);
+      for (const body of parallelBodies) {
+        expect(body.advanced_settings.source_policy).toEqual({ include_domains: [...HEALTHCARE_AUTHORITY_DOMAINS] });
+        expect(body.advanced_settings.fetch_policy).toBeUndefined();
+      }
+      const verifications = Object.values(res.json().verifications as Record<string, any>);
+      expect(verifications.length).toBeGreaterThan(0);
+      for (const v of verifications) {
+        expect(v.apiError).not.toBe(true);
+        expect(v.provenance.sourcePolicy.profile).toBe('healthcare-authority');
+        expect(v.provenance.sourcePolicy.includeDomains).toEqual([...HEALTHCARE_AUTHORITY_DOMAINS]);
+        expect(v.sources.map((s: { uri: string }) => s.uri)).toEqual(['https://www.cms.gov/medicare/fees']);
+      }
+      expect(googleSearchCalls()).toBe(0);
     });
   }, 30_000);
 

@@ -222,7 +222,7 @@ export async function complianceGateRoutes(fastify: FastifyInstance): Promise<vo
       const { text, provider, projectName, threshold, strict } = request.body;
       const keyId = request.keyId ?? 'unknown';
 
-      const result = await scanWithSpend({ text, provider, keyId }, () => scanInRequestMode(text, provider));
+      const result = await scanWithSpend({ text, provider, keyId }, () => scanInRequestMode(text, provider, undefined, keyId));
       const stored = getScanStore().record(keyId, text, result as unknown as Record<string, unknown>);
       commitClaims(request, stored.id, result, provider ?? 'gemini');
       const report = buildEuComplianceReport(result, { projectName });

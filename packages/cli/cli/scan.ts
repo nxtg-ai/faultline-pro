@@ -1,7 +1,8 @@
 import type { EvidenceOptions } from '../evidence/passage.js';
 import type { IndependentEvidenceOptions } from '../evidence/independent.js';
 import type { DoiCheckOptions } from '../evidence/doi.js';
-import { groundingFromEnv, type GroundingMode } from './grounding.js';
+import { type GroundingMode } from './grounding.js';
+import { localGroundingAdditions, type SourcePolicy } from './source-policy.js';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import type { Claim, VerificationResult, AnalysisState, RetrievalStatus } from '../types.js';
@@ -90,6 +91,14 @@ export interface ScanOptions {
    * FAULTLINE_GROUNDING itself: the caller decides per request and passes it.
    */
   grounding?: GroundingMode;
+  /**
+   * Allowlist for the Parallel search retriever (cli/source-policy.ts).
+   * Absent means no restriction, and the search request is unchanged. The
+   * engine does not read FAULTLINE_SOURCE_POLICY: the caller passes this.
+   * It applies only when `grounding` is `parallel`. An invalid policy makes
+   * the search refuse rather than run on the open web.
+   */
+  sourcePolicy?: SourcePolicy | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -202,6 +211,8 @@ export interface VerifyFullScanOptions {
   doi?: DoiCheckOptions | false;
   /** See ScanOptions.grounding. */
   grounding?: GroundingMode;
+  /** See ScanOptions.sourcePolicy. */
+  sourcePolicy?: SourcePolicy | null;
 }
 
 // ── Sentence-level claim coverage guarantee ───────────────────────────────────
@@ -359,7 +370,10 @@ export async function scan(
   pipelineConfig?: PipelineConfig,
   options?: ScanOptions,
 ): Promise<ScanResult> {
-  const { extractionProvider, verifier } = resolveScanProviders(providerName, pipelineConfig, { grounding: options?.grounding });
+  const { extractionProvider, verifier } = resolveScanProviders(providerName, pipelineConfig, {
+    grounding: options?.grounding,
+    sourcePolicy: options?.sourcePolicy,
+  });
 
   onProgress?.('Extracting claims...');
   const rawClaims = await extractionProvider.extractClaims(text);
@@ -434,7 +448,10 @@ export async function verifyFullScan(
   claims: Claim[],
   opts: VerifyFullScanOptions = {},
 ): Promise<FullScanResult> {
-  const verifier = resolveVerifier(opts.providerName, opts.pipelineConfig, { grounding: opts.grounding });
+  const verifier = resolveVerifier(opts.providerName, opts.pipelineConfig, {
+    grounding: opts.grounding,
+    sourcePolicy: opts.sourcePolicy,
+  });
   return runFullVerification(claims, verifier, { ...opts, provider: verifier.provider.name });
 }
 
@@ -578,9 +595,11 @@ export async function batchScan(
         filesSkipped++;
         continue;
       }
-      // A local batch: the user's own FAULTLINE_GROUNDING, else exactly the call it was before.
-      const result = groundingFromEnv() === 'parallel'
-        ? await scan(text, providerName, minConfidence, undefined, undefined, undefined, undefined, { grounding: 'parallel' })
+      // A local batch: the user's own FAULTLINE_GROUNDING and FAULTLINE_SOURCE_POLICY,
+      // else exactly the call it was before.
+      const extra = localGroundingAdditions();
+      const result = extra
+        ? await scan(text, providerName, minConfidence, undefined, undefined, undefined, undefined, extra)
         : await scan(text, providerName, minConfidence);
       results.push({ file: relative(dir, file), result });
     } catch (err) {

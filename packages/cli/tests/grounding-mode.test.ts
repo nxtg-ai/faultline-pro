@@ -41,7 +41,7 @@ import type { LLMProvider, Retriever } from '../providers/base_provider';
 const mockFetch = vi.fn();
 const TEXT = 'The Eiffel Tower was completed in 1889.';
 const CLAIM: Claim = { id: 'c1', text: TEXT, type: 'fact', importance: 4 };
-const ENV = ['GEMINI_API_KEY', 'OPENAI_API_KEY', 'PARALLEL_API_KEY', 'FAULTLINE_GROUNDING', 'FAULTLINE_PARALLEL_MODE'];
+const ENV = ['GEMINI_API_KEY', 'OPENAI_API_KEY', 'PARALLEL_API_KEY', 'FAULTLINE_GROUNDING', 'FAULTLINE_PARALLEL_MODE', 'FAULTLINE_SOURCE_POLICY'];
 let saved: Record<string, string | undefined>;
 
 const parallelOk = () => new Response(JSON.stringify({
@@ -118,6 +118,7 @@ describe('scan() in the parallel mode', () => {
       sources: [{ uri: 'https://p.example/eiffel', title: 'P', publishDate: '2021-03-04', excerpts: ['Completed 1889.'], snippet: 'Completed 1889.' }],
       provenance: { provider: 'gemini', model: 'gemini-2.5-flash', retriever: 'parallel-search', retrieverModel: 'parallel-search-advanced' },
     });
+    expect(Object.prototype.hasOwnProperty.call(verdicts[0].provenance, 'sourcePolicy')).toBe(false);
     expect(sdk.configs.length).toBeGreaterThan(0);
     expect(googleSearchCalls()).toBe(0);
     expect(mockFetch).toHaveBeenCalledTimes(1);
@@ -159,6 +160,42 @@ describe('scanLocal: the user\'s own env decides a local run', () => {
     expect(Object.keys(result.verifications).length).toBeGreaterThan(0);
     expect(googleSearchCalls()).toBe(0);
     expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('FAULTLINE_SOURCE_POLICY limits the Parallel request and is recorded on the verdict', async () => {
+    process.env.FAULTLINE_GROUNDING = 'parallel';
+    process.env.FAULTLINE_SOURCE_POLICY = 'healthcare-authority';
+    mockFetch.mockImplementation(async () => new Response(JSON.stringify({
+      search_id: 's',
+      results: [{ url: 'https://www.cms.gov/medicare', title: 'CMS', publish_date: '2024-05-01', excerpts: ['Fee schedule.'] }],
+    }), { status: 200 }));
+    const result = await scanLocal(TEXT, 'gemini');
+    const verdicts = Object.values(result.verifications);
+    expect(verdicts.length).toBeGreaterThan(0);
+    expect(verdicts[0].status).toBe('contradicted');
+    expect(verdicts[0].provenance?.sourcePolicy).toMatchObject({ profile: 'healthcare-authority' });
+    expect(verdicts[0].provenance?.sourcePolicy?.includeDomains).toContain('cms.gov');
+    expect(verdicts[0].sources[0].uri).toBe('https://www.cms.gov/medicare');
+    const body = JSON.parse(String(mockFetch.mock.calls[0][1].body));
+    expect(body.advanced_settings.source_policy.include_domains).toContain('nih.gov');
+    expect(googleSearchCalls()).toBe(0);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('a policy with no on-list page leaves the claim unverified and does not search the open web', async () => {
+    process.env.FAULTLINE_GROUNDING = 'parallel';
+    process.env.FAULTLINE_SOURCE_POLICY = 'healthcare-authority';
+    const result = await scanLocal(TEXT, 'gemini');
+    const verdicts = Object.values(result.verifications);
+    expect(verdicts.length).toBeGreaterThan(0);
+    expect(verdicts[0]).toMatchObject({ status: 'unverified', apiError: true, apiErrorReason: 'provider_error', sources: [] });
+    expect(verdicts[0].provenance).toBeUndefined();
+    expect(verdicts[0].explanation).toMatch(/allowlist/);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(String(mockFetch.mock.calls[0][1].body));
+    expect(body.advanced_settings.source_policy.include_domains).toContain('cms.gov');
+    expect(googleSearchCalls()).toBe(0);
+    expect(sdk.prompts.some((p) => p.includes('Retrieved sources'))).toBe(false);
   });
 
   it('an explicit options.grounding wins over the env', async () => {

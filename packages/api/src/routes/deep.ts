@@ -78,7 +78,7 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
       let lastError = '';
       for (const p of chain) {
         try {
-          const result = await scanWithSpend({ text, provider: p, keyId }, () => scanInRequestMode(text, p));
+          const result = await scanWithSpend({ text, provider: p, keyId }, () => scanInRequestMode(text, p, undefined, keyId));
           cb.recordSuccess(p);
 
           // Build evidence links from source URLs in verifications

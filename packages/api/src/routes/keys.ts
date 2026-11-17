@@ -5,6 +5,7 @@ import { hasScope, isAdminKeyId, requireAdmin } from '../plugins/auth.js';
 import { esc } from '../lib/html.js';
 import { getKeyStore, KeyFieldError, KEY_SCOPES, MAX_KEY_IDEMPOTENCY_KEY_LENGTH, ROTATION_GRACE_HOURS } from '../store/keys.js';
 import type { ApiKey, KeyScope, Permission } from '../store/keys.js';
+import { isActiveSourcePolicy, parseSourcePolicy, storedSourcePolicy, type StoredSourcePolicy } from '@nxtg/faultline/cli/source-policy.js';
 import { getNotificationStore } from '../store/notifications.js';
 
 const VALID_PERMISSIONS: Permission[] = ['scan', 'report', 'upload', 'admin', 'pro'];
@@ -21,6 +22,34 @@ const CLAIM_CAP_PLACEHOLDER = 1000;
 const STRIPE_CUSTOMER_SCHEMA = { type: 'string', pattern: '^cus_[A-Za-z0-9]{1,64}$' } as const;
 const METERED_SCHEMA = { type: 'boolean' } as const;
 const SCOPES_SCHEMA = { type: 'array', uniqueItems: true, items: { type: 'string', enum: [...KEY_SCOPES] } } as const;
+
+/**
+ * The body shape of a Parallel allowlist. The handler still parses it
+ * (cli/source-policy.ts): a string the schema accepts can still be a domain
+ * Parallel would refuse, and that must not be stored.
+ */
+const SOURCE_POLICY_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    profile: { type: 'string', enum: ['healthcare-authority'] },
+    includeDomains: { type: 'array', maxItems: 200, items: { type: 'string', minLength: 1, maxLength: 300 } },
+    excludeDomains: { type: 'array', maxItems: 200, items: { type: 'string', minLength: 1, maxLength: 300 } },
+    afterDate: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+  },
+} as const;
+
+const INVALID_SOURCE_POLICY = {
+  error: 'invalid_source_policy',
+  message: 'The source policy needs an allowlist of domains Parallel search can use. It was not stored.',
+} as const;
+
+/** The stored policy, or null when `value` cannot be used. */
+function canonicalSourcePolicy(value: unknown): StoredSourcePolicy | null {
+  const parsed = parseSourcePolicy(value);
+  if (!isActiveSourcePolicy(parsed)) return null;
+  return storedSourcePolicy(parsed);
+}
 
 /** The key fields that bind a key to billing. Setting any of them needs scope keys:write. */
 const BILLING_FIELDS = ['claimCap', 'stripeCustomerId', 'metered', 'scopes'] as const;
@@ -156,6 +185,7 @@ const CREATE_BODY_SCHEMA = {
     stripeCustomerId: STRIPE_CUSTOMER_SCHEMA,
     metered: METERED_SCHEMA,
     scopes: SCOPES_SCHEMA,
+    sourcePolicy: SOURCE_POLICY_SCHEMA,
   },
   additionalProperties: false,
 } as const;
@@ -168,6 +198,7 @@ interface CreateKeyBody {
   stripeCustomerId?: string;
   metered?: boolean;
   scopes?: KeyScope[];
+  sourcePolicy?: StoredSourcePolicy;
 }
 
 export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
@@ -181,7 +212,13 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
       schema: { tags: ['Keys'], summary: 'Create a new API key (Idempotency-Key optional)', body: CREATE_BODY_SCHEMA },
     },
     async (request, reply) => {
-      const { name, permissions, expiresAt, claimCap, stripeCustomerId, metered, scopes } = request.body;
+      const { name, permissions, expiresAt, claimCap, stripeCustomerId, metered, scopes, sourcePolicy: rawPolicy } = request.body;
+      let sourcePolicy: StoredSourcePolicy | undefined;
+      if (rawPolicy !== undefined) {
+        const canonical = canonicalSourcePolicy(rawPolicy);
+        if (!canonical) return reply.status(400).send(INVALID_SOURCE_POLICY);
+        sourcePolicy = canonical;
+      }
       const idempotencyKey = readIdempotencyKey(request);
       if (idempotencyKey === null) return reply.status(400).send({ error: 'idempotency_key_invalid' });
       const store = getKeyStore();
@@ -194,7 +231,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
       if (refusal) return reply.status(403).send(refusal);
       if (!mayIssueKey(permissions)) return reply.status(403).send(CUSTOMER_KEYS_CLOSED);
       // A non-admin key is metered at the default cap unless the request says otherwise.
-      const billing = issuedKeyBilling(permissions, { claimCap, stripeCustomerId, metered, scopes });
+      const billing = issuedKeyBilling(permissions, { claimCap, stripeCustomerId, metered, scopes, sourcePolicy });
       if (billing.claimCap !== undefined && !claimCapInBounds(permissions, billing.claimCap)) {
         return reply.status(400).send(CLAIM_CAP_OUT_OF_RANGE);
       }
@@ -571,6 +608,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
       stripeCustomerId: { ...STRIPE_CUSTOMER_SCHEMA, type: ['string', 'null'] },
       metered: METERED_SCHEMA,
       scopes: SCOPES_SCHEMA,
+      sourcePolicy: { anyOf: [SOURCE_POLICY_SCHEMA, { type: 'null' }] },
     },
     additionalProperties: false,
   } as const;
@@ -583,6 +621,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
     stripeCustomerId?: string | null;
     metered?: boolean;
     scopes?: KeyScope[];
+    sourcePolicy?: StoredSourcePolicy | null;
   }
 
   fastify.patch<{ Params: { id: string }; Body: PatchKeyBody }>(
@@ -610,6 +649,11 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
       if (!current) return reply.status(404).send({ error: 'Key not found.' });
       // Check the key as it will be after the patch, not only the fields supplied.
       const patch: PatchKeyBody = { ...request.body };
+      if (patch.sourcePolicy !== undefined && patch.sourcePolicy !== null) {
+        const canonical = canonicalSourcePolicy(patch.sourcePolicy);
+        if (!canonical) return reply.status(400).send(INVALID_SOURCE_POLICY);
+        patch.sourcePolicy = canonical;
+      }
       const permissions = patch.permissions ?? current.permissions;
       const nonAdminAfter = !isAdminPermissions(permissions);
       if (nonAdminAfter && patch.claimCap !== undefined && patch.claimCap !== null && !claimCapInBounds(permissions, patch.claimCap)) {

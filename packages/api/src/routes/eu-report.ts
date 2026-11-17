@@ -291,7 +291,7 @@ export async function euReportRoutes(fastify: FastifyInstance): Promise<void> {
       const { text, provider, projectName } = request.body;
       const scanDate = new Date().toISOString().split('T')[0];
       try {
-        const result = await scanWithSpend({ text, provider, keyId: request.keyId ?? 'unknown' }, () => scanInRequestMode(text, provider));
+        const result = await scanWithSpend({ text, provider, keyId: request.keyId ?? 'unknown' }, () => scanInRequestMode(text, provider, undefined, request.keyId));
         const pdf = await buildEuPdf(result, projectName ?? 'EU AI Act Assessment', scanDate);
         commitClaims(request, randomUUID(), result, provider ?? 'gemini');
         // Counted once, like /scan, when the report it serves holds a billable verdict.

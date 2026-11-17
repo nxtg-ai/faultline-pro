@@ -140,6 +140,46 @@ describe('a key survives a restart', () => {
     expect(getKeyStore().validateById(id)).toEqual(before);
     expect(before).toMatchObject({ metered: true, claimCap: 5000, stripeCustomerId: 'cus_ABC123', scopes: ['usage:read'] });
   });
+
+  it('a source policy is stored, reloaded, and cleared, and a bad one is refused', async () => {
+    const created = await app.inject({
+      method: 'POST', url: '/keys', headers: { 'x-api-key': ADMIN },
+      payload: { name: 'payer', permissions: ['scan'], sourcePolicy: { profile: 'healthcare-authority' } },
+    });
+    expect(created.statusCode).toBe(201);
+    const issued = created.json() as { id: string; key: string; sourcePolicy: { profile: string; includeDomains: string[] } };
+    expect(issued.sourcePolicy.profile).toBe('healthcare-authority');
+    expect(issued.sourcePolicy.includeDomains).toContain('cms.gov');
+    expect(issued.sourcePolicy.includeDomains).toContain('cochranelibrary.com');
+    expect(fileText()).toContain('healthcare-authority');
+    expect(fileText()).not.toContain(issued.key);
+    await restart();
+    expect(getKeyStore().validateById(issued.id)?.sourcePolicy?.includeDomains).toEqual(issued.sourcePolicy.includeDomains);
+    const cleared = await app.inject({
+      method: 'PATCH', url: `/keys/${issued.id}`, headers: { 'x-api-key': ADMIN },
+      payload: { sourcePolicy: null },
+    });
+    expect(cleared.statusCode).toBe(200);
+    expect(cleared.json().sourcePolicy).toBeUndefined();
+    expect(getKeyStore().validateById(issued.id)?.sourcePolicy).toBeUndefined();
+    const custom = await app.inject({
+      method: 'PATCH', url: `/keys/${issued.id}`, headers: { 'x-api-key': ADMIN },
+      payload: { sourcePolicy: { includeDomains: ['www.fda.gov', 'cms.gov'], excludeDomains: ['fda.gov/tobacco'], afterDate: '2024-01-01' } },
+    });
+    expect(custom.statusCode).toBe(200);
+    expect(custom.json().sourcePolicy).toEqual({
+      includeDomains: ['fda.gov', 'cms.gov'],
+      excludeDomains: ['fda.gov/tobacco'],
+      afterDate: '2024-01-01',
+    });
+    const bad = await app.inject({
+      method: 'PATCH', url: `/keys/${issued.id}`, headers: { 'x-api-key': ADMIN },
+      payload: { sourcePolicy: { includeDomains: ['https://cms.gov'] } },
+    });
+    expect(bad.statusCode).toBe(400);
+    expect(bad.json().error).toBe('invalid_source_policy');
+    expect(getKeyStore().validateById(issued.id)?.sourcePolicy?.includeDomains).toEqual(['fda.gov', 'cms.gov']);
+  });
 });
 
 describe('only hashes at rest', () => {

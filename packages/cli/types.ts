@@ -212,6 +212,20 @@ export interface VerdictProvenance {
    * names the fallback model. Absent on every other verdict (GoPMO 1.18.11.7.127).
    */
   judgeFallback?: true;
+  /**
+   * The Parallel source policy this verdict was judged under, when one was
+   * configured (cli/source-policy.ts). `includeDomains` is the allowlist that
+   * was sent. `profile` is `healthcare-authority` when that profile supplied
+   * the allowlist. `excludeDomains` and `afterDate` are present only when they
+   * were sent. Absent when no policy was set, and on a claim whose check never
+   * ran.
+   */
+  sourcePolicy?: {
+    profile?: 'healthcare-authority';
+    includeDomains: string[];
+    excludeDomains?: string[];
+    afterDate?: string;
+  };
 }
 
 export interface VerificationResult {

@@ -18,6 +18,16 @@ const SAFE_MESSAGES: Record<RetrievalErrorReason, string> = {
   provider_error: 'The source search failed, so this claim was not checked.',
 };
 
+/** A source policy was set and no retrieved page satisfied it. The open web is not searched instead. */
+export const SOURCE_POLICY_MISS_EXPLANATION =
+  'No source on the configured source-policy allowlist was found, so this claim was not checked.';
+
+/** A source policy was set but could not be used. Nothing is searched in its place. */
+export const SOURCE_POLICY_INVALID_EXPLANATION =
+  'The source policy is not usable, so this claim was not checked.';
+
+const SOURCE_POLICY_EXPLANATIONS = new Set<string>([SOURCE_POLICY_MISS_EXPLANATION, SOURCE_POLICY_INVALID_EXPLANATION]);
+
 /**
  * Thrown by a Retriever when the search itself failed.
  *
@@ -28,8 +38,11 @@ const SAFE_MESSAGES: Record<RetrievalErrorReason, string> = {
 export class RetrievalError extends Error {
   readonly reason: RetrievalErrorReason;
 
-  constructor(reason: RetrievalErrorReason, cause?: unknown) {
-    super(SAFE_MESSAGES[reason], { cause });
+  constructor(reason: RetrievalErrorReason, cause?: unknown, explanation?: string) {
+    super(
+      explanation !== undefined && SOURCE_POLICY_EXPLANATIONS.has(explanation) ? explanation : SAFE_MESSAGES[reason],
+      { cause },
+    );
     this.name = 'RetrievalError';
     this.reason = reason;
   }

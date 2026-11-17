@@ -11,6 +11,7 @@ import type { LLMProvider, Retriever } from '../providers/base_provider.js';
 import { sanitizeVerifyError } from '../services/verify-error.js';
 import { classifyApiError } from '../providers/extraction-error.js';
 import { RetrievalError } from '../providers/retrieval-error.js';
+import { provenanceSourcePolicy, type SourcePolicy } from '../cli/source-policy.js';
 
 /**
  * Grounded multi-model consensus engine — "ground every claim by construction".
@@ -301,6 +302,7 @@ export async function consensusVerify(
   // there is no producer to name, so there is no provenance.
   const voters = providers.filter((p, i) => isRealVerdict(votes[i]));
   if (voters.length === 0) return fused;
+  const sourcePolicy = provenanceSourcePolicy(retriever as { sourcePolicy?: SourcePolicy | null });
   return {
     ...fused,
     provenance: {
@@ -309,6 +311,7 @@ export async function consensusVerify(
       verifiedAt: new Date().toISOString(),
       retriever: retriever.name,
       retrievedAt,
+      ...(sourcePolicy ? { sourcePolicy } : {}),
     },
   };
 }

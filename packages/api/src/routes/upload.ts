@@ -82,7 +82,7 @@ export async function uploadRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       try {
-        const result = await scanWithSpend({ text, provider, keyId: request.keyId ?? 'unknown' }, () => scanInRequestMode(text, provider));
+        const result = await scanWithSpend({ text, provider, keyId: request.keyId ?? 'unknown' }, () => scanInRequestMode(text, provider, undefined, request.keyId));
         getAnalyticsStore().record(request.keyId ?? 'unknown', result.overallRisk as RiskLevel);
         const delivered = issueScanId(result, request.keyId);
         commitClaims(request, delivered.scanId, result, provider ?? 'gemini');

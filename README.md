@@ -85,6 +85,8 @@ The hosted API ships three governance records as code: a risk register export (`
 
 Switch providers with `--provider <name>`. No code changes required. With no provider key and no `FAULTLINE_API_KEY`, the CLI says nothing was checked and exits instead of inventing a verdict (since v0.10.1). With `FAULTLINE_API_KEY` set, `scan --input`, `scan --file`, `guard` and the MCP server run the scan on the hosted API with server-side provider keys (since v0.12.2 for `scan`). The batch modes `--dir` and `--templates` run on your own provider key.
 
+**Healthcare source policy (opt-in).** With `FAULTLINE_GROUNDING=parallel`, `FAULTLINE_SOURCE_POLICY=healthcare-authority` limits that local Parallel search to CMS, eCFR, the Federal Register, GovInfo, Congress, HHS, AHRQ, the FDA, the NIH and the Cochrane Library (and their subdomains). On the hosted API the same allowlist is set per key (`sourcePolicy` on `POST /keys` or `PATCH /keys/:id`), not on the scan body. If no page on the list is found, the claim is unverified and the open web is not searched. Unset, the search is unchanged. Details and limits: [`docs/grounding-providers.md`](docs/grounding-providers.md).
+
 ### Document Ingestion
 - **PDF + image upload with OCR** — `faultline scan --file document.pdf` or `POST /scan/upload`; powered by `pdf-parse` + `tesseract.js`
 - **Text files** — `--input doc.txt`

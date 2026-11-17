@@ -17,6 +17,8 @@
  */
 import { scan, type ScanOptions } from '@nxtg/faultline/cli/scan.js';
 import { groundingFromEnv, type GroundingMode } from '@nxtg/faultline/cli/grounding.js';
+import { parseSourcePolicy, type SourcePolicy } from '@nxtg/faultline/cli/source-policy.js';
+import { getKeyStore } from '../store/keys.js';
 
 export type { GroundingMode };
 
@@ -35,15 +37,38 @@ export function groundingOption(mode: GroundingMode = requestGrounding()): Pick<
 }
 
 /**
+ * The source policy stored on `keyId`, or null. The server key (`admin`), a
+ * missing key and a key with no policy are null, so a scan options object
+ * that spreads `sourcePolicyOption` gains no field. A stored value that can
+ * no longer be read is the invalid sentinel: the retriever then searches
+ * nothing rather than the open web.
+ */
+export function sourcePolicyForKey(keyId: string | undefined): SourcePolicy | null {
+  if (!keyId || keyId === 'admin' || keyId === 'unknown' || keyId === 'measurement' || keyId === 'public') return null;
+  const stored = getKeyStore().validateById(keyId)?.sourcePolicy;
+  if (stored === undefined) return null;
+  return parseSourcePolicy(stored);
+}
+
+/** `{ sourcePolicy }` when this key has one, `{}` when it does not. */
+export function sourcePolicyOption(keyId?: string): Pick<ScanOptions, 'sourcePolicy'> {
+  const sourcePolicy = sourcePolicyForKey(keyId);
+  return sourcePolicy ? { sourcePolicy } : {};
+}
+
+/**
  * `scan(text, provider)` for a route that passes no other option, in the
  * request's grounding mode. In the google mode the call is exactly
- * `scan(text, provider)`, as before.
+ * `scan(text, provider)`, as before. A key policy is added only in the
+ * parallel mode: Google Search is not filtered by it (docs/grounding-providers.md).
  */
 export function scanInRequestMode(
   text: string,
   provider?: Parameters<typeof scan>[1],
   mode: GroundingMode = requestGrounding(),
+  keyId?: string,
 ): ReturnType<typeof scan> {
   if (mode !== 'parallel') return scan(text, provider);
-  return scan(text, provider, undefined, undefined, undefined, undefined, undefined, { grounding: 'parallel' });
+  const policy = sourcePolicyOption(keyId);
+  return scan(text, provider, undefined, undefined, undefined, undefined, undefined, { grounding: 'parallel', ...policy });
 }

@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **An opt-in source policy for Parallel search.** `FAULTLINE_SOURCE_POLICY` (local CLI and stdio MCP) and a key's `sourcePolicy` (`POST /keys`, `PATCH /keys/:id`) limit the Parallel web search to an allowlist. `healthcare-authority` allows `cms.gov`, `ecfr.gov`, `federalregister.gov`, `govinfo.gov`, `congress.gov`, `hhs.gov`, `ahrq.gov`, `fda.gov`, `nih.gov` and `cochranelibrary.com`, plus their subdomains. A custom policy can add `excludeDomains` and `afterDate` (`YYYY-MM-DD`). The request sends Parallel's `advanced_settings.source_policy` (`include_domains`, `exclude_domains`, `after_date`; docs.parallel.ai, read 2026-11-17) and no other new field. A page outside the policy is dropped. If none remain, the claim is unverified (`apiError`) and the open web is not searched. A verdict judged under the policy records it on `provenance.sourcePolicy`. Unset, the Parallel body is unchanged and the hosted default stays Google grounding. The policy does not filter Google Search or OpenAI web search, and `POST /admin/verify-claims` does not apply it. Docs: `docs/grounding-providers.md`, `docs/INTEGRATION.md`.
+
 ## [v0.12.3] — 2026-11-19
 
 `@nxtg/faultline` 0.12.3 adds `faultline audit-report`. The `faultline-mcp` bin is unchanged: `npx -y -p @nxtg/faultline faultline-mcp`, with `FAULTLINE_API_KEY` for the hosted API.

@@ -180,7 +180,7 @@ class ScanQueue {
       }
       // Metered when it runs, against the key that queued it.
       const result = await meteredScan(item.keyId, ENGINE_VERIFY_CAP, randomUUID(), item.provider,
-        () => scanWithSpend({ text: item.text, provider: item.provider, keyId: item.keyId }, () => scanInRequestMode(item.text, item.provider as Parameters<typeof scan>[1])));
+        () => scanWithSpend({ text: item.text, provider: item.provider, keyId: item.keyId }, () => scanInRequestMode(item.text, item.provider as Parameters<typeof scan>[1], undefined, item.keyId)));
       item.status = 'completed';
       item.result = result;
     } catch (err) {

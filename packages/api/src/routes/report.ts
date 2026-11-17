@@ -240,7 +240,7 @@ export async function reportRoutes(fastify: FastifyInstance): Promise<void> {
       const scanDate = new Date().toISOString().split('T')[0];
 
       try {
-        const result = await scanWithSpend({ text, provider, keyId: request.keyId ?? 'unknown' }, () => scanInRequestMode(text, provider));
+        const result = await scanWithSpend({ text, provider, keyId: request.keyId ?? 'unknown' }, () => scanInRequestMode(text, provider, undefined, request.keyId));
         const pdf = await buildPdf(result, projectName ?? 'Faultline Scan', scanDate);
         commitClaims(request, randomUUID(), result, provider ?? 'gemini');
         // Counted once, like /scan, when the report it serves holds a billable verdict.
