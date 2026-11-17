@@ -72,6 +72,12 @@ export const LCD_LICENSE_URL = `${CMS_ORIGIN}/v1/metadata/license-agreement`;
 const DATE_SHAPE = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** A UUID string, or null. The CMS license value is accepted only in this shape, so a header cannot be injected. */
+function uuidString(value: unknown): string | null {
+  if (typeof value !== 'string' || !UUID_SHAPE.test(value)) return null;
+  return value;
+}
+
 export interface RegulationCheckOptions {
   /**
    * One-hop fetch. The API passes its SSRF-guarded fetchOutbound; the CLI
@@ -190,7 +196,8 @@ export function lcdDocumentUrl(id: string): string {
 interface CmsBody {
   statusId: number;
   notes: string;
-  nextToken: string | undefined;
+  /** CMS `next_token`. Empty means this page is the whole list. A pagination cursor, not a credential. */
+  continuation: string | undefined;
   data: unknown[];
 }
 
@@ -205,11 +212,11 @@ function readCms(body: unknown): CmsBody | null {
   const data = (body as { data?: unknown }).data;
   if (!Array.isArray(data)) return null;
   const notes = (meta as { notes?: unknown }).notes;
-  const nextToken = (meta as { next_token?: unknown }).next_token;
+  const continuation = (meta as { next_token?: unknown }).next_token;
   return {
     statusId,
     notes: typeof notes === 'string' ? notes : '',
-    nextToken: typeof nextToken === 'string' ? nextToken : undefined,
+    continuation: typeof continuation === 'string' ? continuation : undefined,
     data,
   };
 }
@@ -367,7 +374,7 @@ async function lookupNcd(cite: RegulationCitation, opts: RegulationCheckOptions)
   const reply = await get(NCD_REPORT_URL, opts, baseHeaders());
   if (!reply || reply.status !== 200) return failed();
   const cms = readCms(parseJson(reply.text));
-  if (!cms || cms.statusId !== 200 || cms.nextToken !== '') return failed();
+  if (!cms || cms.statusId !== 200 || cms.continuation !== '') return failed();
   const report: Source = { title: `CMS national coverage determination list`, uri: NCD_REPORT_URL };
   const rows = cms.data.filter((row): row is Record<string, unknown> => !!row && typeof row === 'object'
     && (row as { document_display_id?: unknown }).document_display_id === cite.ncdId);
@@ -389,14 +396,16 @@ async function lookupNcd(cite: RegulationCitation, opts: RegulationCheckOptions)
 async function lookupLcd(cite: RegulationCitation, opts: RegulationCheckOptions): Promise<Hit> {
   const docUrl = lcdDocumentUrl(cite.lcdNumber!);
   if (!regulationUrlAllowed(LCD_LICENSE_URL) || !regulationUrlAllowed(docUrl)) return failed();
-  const license = await get(LCD_LICENSE_URL, opts, baseHeaders());
-  if (!license || license.status !== 200) return failed();
-  const issued = readCms(parseJson(license.text));
-  const token = issued && issued.statusId === 200 && issued.data[0] && typeof issued.data[0] === 'object'
-    ? (issued.data[0] as { Token?: unknown }).Token
-    : undefined;
-  if (typeof token !== 'string' || !UUID_SHAPE.test(token)) return failed();
-  const reply = await get(docUrl, opts, { ...baseHeaders(), authorization: `Bearer ${token}` });
+  const licenseReply = await get(LCD_LICENSE_URL, opts, baseHeaders());
+  if (!licenseReply || licenseReply.status !== 200) return failed();
+  const issued = readCms(parseJson(licenseReply.text));
+  const license = uuidString(
+    issued && issued.statusId === 200 && issued.data[0] && typeof issued.data[0] === 'object'
+      ? (issued.data[0] as { Token?: unknown }).Token
+      : undefined,
+  );
+  if (!license) return failed();
+  const reply = await get(docUrl, opts, { ...baseHeaders(), authorization: `Bearer ${license}` });
   if (!reply) return failed();
   if (reply.status === 401 || reply.status === 400) return failed();
   if (reply.status !== 200) return failed();

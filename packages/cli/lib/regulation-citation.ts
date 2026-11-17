@@ -63,12 +63,12 @@ export interface RegulationCitation {
   lcdNumber?: string;
 }
 
-/** True for a paragraph token the eCFR actually uses: a letter, a roman numeral, or a number. */
-export function isDesignator(token: string): boolean {
-  if (/^\d{1,3}$/.test(token)) return !token.startsWith('0') || token === '0';
-  if (/^[A-Z]$/.test(token)) return true;
-  if (/^[a-z]$/.test(token)) return true;
-  return ROMANS.has(token);
+/** True for a paragraph mark the eCFR actually uses: a letter, a roman numeral, or a number. */
+export function isDesignator(mark: string): boolean {
+  if (/^\d{1,3}$/.test(mark)) return mark.length === 1 || !mark.startsWith('0');
+  if (/^[A-Z]$/.test(mark)) return true;
+  if (/^[a-z]$/.test(mark)) return true;
+  return ROMANS.has(mark);
 }
 
 function noLeadingZero(part: string): boolean {
