@@ -93,4 +93,16 @@ describe('eCFR section heading and paragraphs (recorded 42 CFR 422.101)', () => 
     expect(cfrParagraphPaths('<html>422.101</html>', '422.101')).toBeNull();
     expect(cfrParagraphPaths(xml, '422.9999')).toBeNull();
   });
+
+  it('a tag nested inside another tag does not hide a paragraph or invent one', () => {
+    const nested = '<DIV8 N="422.101"><P><scr<script>ipt>(c) The plan covers emergency care.</P><P><E T="(z)">(a) The plan offers a benefit.</P></DIV8>';
+    const found = cfrParagraphPaths(nested, '422.101');
+    expect(found).not.toBeNull();
+    expect(found!.has('c')).toBe(true);
+    expect(found!.has('a')).toBe(true);
+    expect(found!.has('z')).toBe(false);
+    const unclosed = cfrParagraphPaths('<DIV8 N="1.1"><P><script(c) this marker stays inside the tag</P></DIV8>', '1.1');
+    expect(unclosed).not.toBeNull();
+    expect(unclosed!.has('c')).toBe(false);
+  });
 });

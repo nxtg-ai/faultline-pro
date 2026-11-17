@@ -327,8 +327,7 @@ describe('verify runner: a regulation citation settles before the normal verify,
     expect(run.verifications.missing?.provenance?.retriever).toBe(REGULATION_RETRIEVER);
     expect(h.retrieve).not.toHaveBeenCalled();
     expect(h.doiCalls).toHaveLength(0);
-    const fetched = h.evidenceFetch.mock.calls.map((c) => String((c as unknown[])[0]));
-    expect(fetched.every((url) => !url.includes('ecfr.gov') && !url.includes('coverage.cms.gov'))).toBe(true);
+    expect(h.evidenceFetch).not.toHaveBeenCalled();
   });
 
   it('a real citation that the claim goes beyond falls through to one search', async () => {

@@ -221,8 +221,32 @@ function decodeEntities(value: string): string {
   });
 }
 
+/**
+ * Drop XML tags by walking the string. A one-pass removal of `<...>` leaves
+ * `<scr<script>ipt>` behind as `<script>`, which both hides a paragraph marker
+ * and is the incomplete sanitizer CodeQL rejects. A `<` with no closing `>`
+ * consumes the rest of the paragraph, so a marker inside an unclosed tag is
+ * not read as a paragraph.
+ */
+function stripTags(value: string): string {
+  let out = '';
+  let depth = 0;
+  for (const ch of value) {
+    if (ch === '<') {
+      depth += 1;
+      continue;
+    }
+    if (ch === '>' && depth > 0) {
+      depth -= 1;
+      continue;
+    }
+    if (depth === 0) out += ch;
+  }
+  return out;
+}
+
 function plainParagraph(inner: string): string {
-  return decodeEntities(inner.replace(/<[^>]*>/g, '')).replace(/\s+/g, ' ').trim();
+  return decodeEntities(stripTags(inner)).replace(/\s+/g, ' ').trim();
 }
 
 /**
