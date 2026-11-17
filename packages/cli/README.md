@@ -30,7 +30,7 @@ Check piped agent output and gate on the verdict:
 claude -p "..." | faultline guard --fail-on refuted
 ```
 
-Set `FAULTLINE_API_KEY` to run `guard` on the hosted API (`https://faultline-api.fly.dev`) with server-side provider keys.
+Set `FAULTLINE_API_KEY` to run `scan --input`, `scan --file` and `guard` on the hosted API (`https://faultline-api.fly.dev`) with server-side provider keys; no provider key is needed. The hosted API applies its own rules and threshold, so `--rules` and `--min-confidence` are refused there. The batch modes (`--dir`, `--templates`) run on your own provider key.
 
 ---
 

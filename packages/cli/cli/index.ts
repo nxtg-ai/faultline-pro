@@ -43,7 +43,7 @@ import { printConversionNudge } from './nudge.js';
 import { RELEASE_STAGE } from './release-stage.js';
 import { governCommand } from './govern.js';
 import { evaluateGuard, formatGuardReport, formatGuardJson, readStdin, isFailOn, FAIL_ON_VALUES } from './guard.js';
-import { resolveTransport, runScan, isGrounded } from './transport.js';
+import { resolveTransport, runScan, isGrounded, HostedScanError } from './transport.js';
 import { isExtractionError } from '../providers/extraction-error.js';
 
 /**
@@ -842,6 +842,46 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
           ? { ...noProviderKeyOutput('scan'), exitCode: 1 }
           : null;
 
+      // FAULTLINE_API_KEY (or --api-url) means the hosted API, as the help
+      // text, the no-key message and the README say: --input and --file run
+      // there, the way guard does, and need no provider key. The batch modes
+      // (--dir, --templates) still run on the caller's own provider key.
+      const scanTransport = resolveTransport(process.env, flags['api-url']);
+      const hosted = scanTransport.mode === 'hosted' && (inputPath !== undefined || fileFlag !== undefined);
+      if (scanTransport.mode === 'hosted' && !hosted && noKeyGuard()) {
+        return {
+          exitCode: 1,
+          output:
+            'Error: --dir and --templates run on your own provider key, not on the hosted API. ' +
+            'With FAULTLINE_API_KEY set, scan one file at a time with --input, or set a provider key ' +
+            '(for example GEMINI_API_KEY) to run a batch locally. Nothing was checked.',
+        };
+      }
+      // The hosted API applies its own rules and threshold, so a flag that would
+      // change them is refused rather than silently dropped.
+      if (hosted && (flags['rules'] !== undefined || flags['min-confidence'] !== undefined)) {
+        return {
+          exitCode: 1,
+          output:
+            'Error: --rules and --min-confidence apply only to a local scan; the hosted API uses its own. ' +
+            'Drop them, or unset FAULTLINE_API_KEY and set a provider key to run locally. Nothing was checked.',
+        };
+      }
+      // Rules or a threshold from .faultlinerc.json or a named template are not
+      // sent to the hosted API: say so on stderr rather than drop them unseen.
+      const noteHostedDefaults = (): void => {
+        if (ruleNames?.length || minConfidence !== undefined) {
+          process.stderr.write(
+            'faultline scan: running on the hosted API, which applies its own rules and threshold; ' +
+              'the rules or min-confidence from your config are not applied.\n',
+          );
+        }
+      };
+      const hostedFailure = (err: unknown): { exitCode: number; output: string } | null =>
+        err instanceof HostedScanError
+          ? { exitCode: 1, output: `Error: the hosted scan could not run: ${err.message}` }
+          : null;
+
       // --sarif shorthand: sets format to sarif and writes results.sarif
       const sarifShorthand = flags['sarif'] === 'true';
       if (sarifShorthand) {
@@ -1012,8 +1052,10 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
           return { exitCode: 1, output: `Error: File not found: ${resolvedFile}` };
         }
 
-        const apiKeyErrFile = checkApiKey(providerName);
-        if (apiKeyErrFile) return apiKeyErrFile;
+        if (!hosted) {
+          const apiKeyErrFile = checkApiKey(providerName);
+          if (apiKeyErrFile) return apiKeyErrFile;
+        }
 
         let extractedText: string;
         try {
@@ -1031,12 +1073,19 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
         const fileSpinner = await createScanSpinner(outputFormat);
         let fileResult;
         try {
-          const fileNoKey = noKeyGuard();
-          if (fileNoKey) return fileNoKey;
-          fileResult = await scanLocal(extractedText, providerName, minConfidence, ruleNames, fileSpinner.onProgress);
+          if (hosted) {
+            noteHostedDefaults();
+            fileResult = await runScan(extractedText, scanProviderExplicit ? providerName : undefined, scanTransport);
+          } else {
+            const fileNoKey = noKeyGuard();
+            if (fileNoKey) return fileNoKey;
+            fileResult = await scanLocal(extractedText, providerName, minConfidence, ruleNames, fileSpinner.onProgress);
+          }
           fileSpinner.succeed('Scan complete');
         } catch (err) {
           fileSpinner.fail('Scan failed');
+          const fileHostedFailure = hostedFailure(err);
+          if (fileHostedFailure) return fileHostedFailure;
           const extractionFailure = extractionFailureOutput(err);
           if (extractionFailure) return extractionFailure;
           throw err;
@@ -1067,20 +1116,29 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
         return { exitCode: 1, output: 'Error: Input file is empty.' };
       }
 
-      const apiKeyErrSingle = checkApiKey(providerName);
-      if (apiKeyErrSingle) return apiKeyErrSingle;
+      if (!hosted) {
+        const apiKeyErrSingle = checkApiKey(providerName);
+        if (apiKeyErrSingle) return apiKeyErrSingle;
+      }
 
       const spinner = await createScanSpinner(outputFormat);
       let result;
       try {
-        const inputNoKey = noKeyGuard();
-        if (inputNoKey) return inputNoKey;
-        result = await scanLocal(text, providerName, minConfidence, ruleNames, spinner.onProgress);
+        if (hosted) {
+          noteHostedDefaults();
+          result = await runScan(text, scanProviderExplicit ? providerName : undefined, scanTransport);
+        } else {
+          const inputNoKey = noKeyGuard();
+          if (inputNoKey) return inputNoKey;
+          result = await scanLocal(text, providerName, minConfidence, ruleNames, spinner.onProgress);
+        }
         spinner.succeed('Scan complete');
         sendTelemetry({ version: VERSION, provider: result.provider, exit_status: 0, eval_count: result.claims.length });
       } catch (err) {
         spinner.fail('Scan failed');
         sendTelemetry({ version: VERSION, provider: providerName ?? 'unknown', exit_status: 1, eval_count: 0, error_code: classifyError(err) });
+        const inputHostedFailure = hostedFailure(err);
+        if (inputHostedFailure) return inputHostedFailure;
         const extractionFailure = extractionFailureOutput(err);
         if (extractionFailure) return extractionFailure;
         throw err;
