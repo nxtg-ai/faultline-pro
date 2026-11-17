@@ -89,6 +89,7 @@ Faultline decomposes AI-generated text into atomic claims, then runs a four-phas
 
 - `scan` — scan a file, text, PDF, or image
 - `guard`: verify piped text, gate on the verdict
+- `audit-report` — AI output audit from a scan file (markdown, HTML or PDF), plus a reviewer CSV and an importer for agreement and error rate. See `docs/audit-report.md`
 - `report` — generate PDF compliance report
 - `watch` — continuous monitoring
 - `critique` — generate improved prompts
