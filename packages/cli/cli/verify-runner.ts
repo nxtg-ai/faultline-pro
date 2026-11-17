@@ -23,6 +23,7 @@ import { abstainWithoutSource, guardVerdict, isNotCheckable, referenceNotFoundVe
 import { attachEvidence, type EvidenceOptions } from '../evidence/passage.js';
 import { attachIndependentEvidence, type IndependentEvidenceOptions } from '../evidence/independent.js';
 import { checkCitationDoi, DOI_RETRIEVER, resolveDoiCheck, type DoiCheckOptions } from '../evidence/doi.js';
+import { checkRegulationCitation, REGULATION_RETRIEVER, resolveRegulationCheck, type RegulationCheckOptions } from '../evidence/regulation.js';
 
 /** Claims verified at the same time within one scan. */
 export const VERIFY_CONCURRENCY = 8;
@@ -455,6 +456,13 @@ export interface RunVerificationOptions {
    * boot). `false`: no DOI check. FAULTLINE_DOI_CHECK=off turns it off either way.
    */
   doi?: DoiCheckOptions | false;
+  /**
+   * The regulation lookup for CFR, NCD and LCD citations (evidence/regulation.ts).
+   * Omitted: the engine default. `false`: no regulation check.
+   * FAULTLINE_REGULATION_CHECK=off turns it off either way. A claim with no
+   * such citation is unchanged.
+   */
+  regulation?: RegulationCheckOptions | false;
 }
 
 /** What one verify-stage run produced. */
@@ -635,8 +643,9 @@ async function verifyOneClaim(
   verifier: Verifier,
   flagExhaustedRetries: boolean,
   doi: DoiCheckOptions | null,
+  regulation: RegulationCheckOptions | null,
 ): Promise<VerificationResult> {
-  const result = await verifyOneClaimByMode(claim, verifier, flagExhaustedRetries, doi);
+  const result = await verifyOneClaimByMode(claim, verifier, flagExhaustedRetries, doi, regulation);
   // A citation claim whose sources do not address the work: the search found no
   // record of it. That is the finding for an existence claim, so it carries risk
   // (referenceNotFoundVerdict) instead of reading not checkable.
@@ -648,7 +657,15 @@ async function verifyOneClaimByMode(
   verifier: Verifier,
   flagExhaustedRetries: boolean,
   doi: DoiCheckOptions | null,
+  regulation: RegulationCheckOptions | null,
 ): Promise<VerificationResult> {
+  if (regulation) {
+    // A CFR, NCD or LCD citation is settled from the official record when the
+    // lookup can settle it. No citation, or a failed lookup, falls through
+    // (evidence/regulation.ts) and a DOI citation is checked exactly as before.
+    const settled = await checkRegulationCitation(claim, regulation);
+    if (settled) return settled;
+  }
   if (doi && claim.citation?.doi) {
     // Privacy rule: the DOI lookup sends only the normalized DOI, in the URL path (evidence/doi.ts).
     const settled = await checkCitationDoi(claim, doi);
@@ -689,6 +706,7 @@ export async function runVerification(
   const { onProgress, onClaimVerified, signal, flagExhaustedRetries = true } = options;
   const concurrency = resolveVerifyConcurrency(options.concurrency ?? VERIFY_CONCURRENCY);
   const doi = resolveDoiCheck(options.doi);
+  const regulation = resolveRegulationCheck(options.regulation);
   const verifications: Record<string, VerificationResult> = {};
   const results: Array<VerificationResult | undefined> = new Array(claims.length).fill(undefined);
   let cursor = 0;
@@ -700,11 +718,11 @@ export async function runVerification(
       // entry makes the whole result a provider error. Only a well-formed verdict then has
       // its unopenable sources dropped, and is reported as unverified when none remain
       // (abstainWithoutSource), before anything reads or bills it.
-      const checked = abstainWithoutSource(guardVerdict(await verifyOneClaim(claims[i], verifier, flagExhaustedRetries, doi), claims[i].id));
-      // A DOI verdict's sources are registry records, not pages: no passage fetch and no second search runs on it.
-      const fromDoi = checked.provenance?.retriever === DOI_RETRIEVER;
-      const withSources = options.evidence && !fromDoi ? await attachEvidence(checked, claims[i].text, options.evidence) : checked;
-      const result = options.independentEvidence && !fromDoi
+      const checked = abstainWithoutSource(guardVerdict(await verifyOneClaim(claims[i], verifier, flagExhaustedRetries, doi, regulation), claims[i].id));
+      // A DOI or regulation verdict's sources are registry records, not pages: no passage fetch and no second search runs on it.
+      const fromRegistry = checked.provenance?.retriever === DOI_RETRIEVER || checked.provenance?.retriever === REGULATION_RETRIEVER;
+      const withSources = options.evidence && !fromRegistry ? await attachEvidence(checked, claims[i].text, options.evidence) : checked;
+      const result = options.independentEvidence && !fromRegistry
         ? await attachIndependentEvidence(withSources, claims[i].text, options.independentEvidence)
         : withSources;
       verifications[claims[i].id] = result;

@@ -12,6 +12,7 @@ import type { IndependentEvidenceOptions } from '@nxtg/faultline/evidence/indepe
 import { OpenAIWebSearchRetriever } from '@nxtg/faultline/providers/openai_web_search_retriever.js';
 import { fetchOutbound } from './outbound-url.js';
 import { setDefaultDoiCheck, type DoiCheckOptions } from '@nxtg/faultline/evidence/doi.js';
+import { setDefaultRegulationCheck, type RegulationCheckOptions } from '@nxtg/faultline/evidence/regulation.js';
 
 export function apiEvidenceOptions(): EvidenceOptions | undefined {
   if ((process.env.FAULTLINE_EVIDENCE_FETCH ?? '').toLowerCase() === 'off') return undefined;
@@ -75,4 +76,23 @@ export const API_DOI_CHECK: DoiCheckOptions = Object.freeze({
  */
 export function installDoiCheck(): void {
   setDefaultDoiCheck(API_DOI_CHECK);
+}
+
+/**
+ * The CFR, NCD and LCD lookup (evidence/regulation.ts): eCFR and the CMS
+ * Coverage API, one hop each, through the guarded fetchOutbound. An LCD
+ * document request also sends the license token the Coverage API issues, as
+ * a Bearer header and nowhere else. FAULTLINE_REGULATION_CHECK=off turns it off.
+ */
+export const API_REGULATION_CHECK: RegulationCheckOptions = Object.freeze({
+  fetch: (url: string, init: RequestInit) => fetchOutbound(url, init),
+});
+
+/**
+ * Make API_REGULATION_CHECK the engine's default, so every route that runs a
+ * scan looks regulation citations up through the guarded fetch. Called once
+ * by buildServer, beside installDoiCheck.
+ */
+export function installRegulationCheck(): void {
+  setDefaultRegulationCheck(API_REGULATION_CHECK);
 }

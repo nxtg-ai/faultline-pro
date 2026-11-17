@@ -1,5 +1,5 @@
 import { groundingOption } from '../lib/grounding.js';
-import { API_DOI_CHECK, apiEvidenceOptions, apiIndependentEvidenceOptions } from '../lib/evidence.js';
+import { API_DOI_CHECK, API_REGULATION_CHECK, apiEvidenceOptions, apiIndependentEvidenceOptions } from '../lib/evidence.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { extractForFullScan, verifyFullScan, type FullScanResult } from '@nxtg/faultline/cli/scan.js';
 import { billableVerdictCount } from '@nxtg/faultline/lib/verdict-guard.js';
@@ -224,12 +224,13 @@ async function runFullScanJob(store: FullScanJobStore, job: FullScanJob): Promis
     signal: job.controller.signal,
     evidence: apiEvidenceOptions(),
     doi: API_DOI_CHECK,
+    regulation: API_REGULATION_CHECK,
     independentEvidence: apiIndependentEvidenceOptions(),
     // Read when the job runs: the mode is passed to the engine, never set in process.env.
     ...groundingOption(),
     onClaim: (_claim, verdict, index) => store.recordVerdict(job, index, verdict),
   }));
-  // A DOI-settled verdict made no model or search call (N-237): it is left out of
+  // A DOI or regulation verdict made no model or search call: it is left out of
   // the grounding-call count, and with no searched verdict and no usage there is
   // no call to estimate tokens for, so the estimate gets no text. Matches scanWithSpend.
   const searched = searchedVerdictCount(job.verdicts);
