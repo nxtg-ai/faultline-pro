@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Markdown cells in an audit report escape backslashes before pipes.** A claim containing `\|` no longer leaves the backslash able to undo the pipe escape, so the cell stays in its column.
+
 ### Added
 
 - **An AI output audit from a scan file.** `faultline audit-report --scan result.json --out report.html` (also `.md` and `.pdf`) writes a client record of that scan: scope, method, counts by verdict and by claim type, a table of unsupported and contradicted claims with sources, retrieval time, model and passage SHA-256, mixed claims on their own, and unchecked claims listed apart from those findings. A provider error, including a `Verify failed:` explanation saved before `apiError` was set, is unchecked. The raw provider payload is not copied into the report. The limitations section quotes the hosted balanced accuracy from the score file, `0.7546546546546546` with 95% CI `[0.6778109736738769, 0.8294247419247419]` (`docs/research/data/parallel-fast-2026-11-06.parallel.summary.json`), and says that the README's `0.755 [0.678, 0.829]` rounds the point estimate and the lower bound up. `--labels-out claims.csv` is a row per claim for a person to label. `--import-labels` reports reviewer agreement (Cohen's kappa when two people labelled the file) and the exact-match error rate against those labels, with a 2,000-resample bootstrap interval (mulberry32, seed 20260929). That rate is not the published balanced accuracy. No provider is called. Docs: `docs/audit-report.md`. A sample from `docs/demo/scan-result.json` is `docs/demo/audit-report.md`, `.html` and `.pdf`.

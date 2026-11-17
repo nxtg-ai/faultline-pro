@@ -395,7 +395,9 @@ function flat(s: string): string {
 }
 
 function mdCell(s: string): string {
-  return flat(s).replace(/\|/g, '\\|');
+  // Escape the backslash first. Replacing "|" with "\|" alone leaves a
+  // backslash in the claim able to escape the pipe that follows it.
+  return flat(s).replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
 }
 
 function fence(text: string): string {

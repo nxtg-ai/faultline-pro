@@ -273,6 +273,22 @@ describe('provenance on unsupported and contradicted claims', () => {
     expect(mixed).toContain('not recorded');
   });
 
+  it('escapes a backslash before a pipe in a markdown cell', () => {
+    const model = buildAuditReport({
+      claims: [{ id: 'p', text: 'cost \\| 9', type: 'fact', importance: 1 }],
+      verifications: {
+        p: { claimId: 'p', status: 'contradicted', explanation: 'a\\|b', sources: [] },
+      },
+    });
+    const section = renderAuditMarkdown(model);
+    const row = section.split('\n').find((line) => line.startsWith('| p '));
+    expect(row).toBeDefined();
+    // "\|" in the claim is three backslashes and a pipe in the file: \\ then \|.
+    expect(row).toContain('cost \\\\\\| 9');
+    expect(row).toContain('a\\\\\\|b');
+    expect(row).toContain('| contradicted |');
+  });
+
   it('escapes claim text in html', () => {
     const nasty = buildAuditReport({
       claims: [{ id: 'x', text: '<script>alert(1)</script>', type: 'fact', importance: 1 }],
