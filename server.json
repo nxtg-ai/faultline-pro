@@ -3,7 +3,7 @@
   "name": "io.github.nxtg-ai/faultline",
   "title": "Faultline",
   "description": "Checks the most important factual claims in AI output against live web sources by default.",
-  "version": "0.12.1",
+  "version": "0.12.2",
   "websiteUrl": "https://faultline.nxtg.ai/pricing?ref=mcp-registry#api-key",
   "repository": {
     "url": "https://github.com/nxtg-ai/faultline-pro",

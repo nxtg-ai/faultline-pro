@@ -83,7 +83,7 @@ The hosted API ships three governance records as code: a risk register export (`
 | Claude | `ANTHROPIC_API_KEY` | Training-data verification, reasoning-heavy docs |
 | Mock | None | CI pipelines, unit tests, offline development. Returns synthetic verdicts and verifies nothing; the CLI never falls back to it silently |
 
-Switch providers with `--provider <name>`. No code changes required. With no provider key and no `FAULTLINE_API_KEY`, the CLI says nothing was checked and exits instead of inventing a verdict (since v0.10.1). With `FAULTLINE_API_KEY` set, `guard` and the MCP server run the scan on the hosted API with server-side provider keys.
+Switch providers with `--provider <name>`. No code changes required. With no provider key and no `FAULTLINE_API_KEY`, the CLI says nothing was checked and exits instead of inventing a verdict (since v0.10.1). With `FAULTLINE_API_KEY` set, `scan --input`, `scan --file`, `guard` and the MCP server run the scan on the hosted API with server-side provider keys (since v0.12.2 for `scan`). The batch modes `--dir` and `--templates` run on your own provider key.
 
 ### Document Ingestion
 - **PDF + image upload with OCR** — `faultline scan --file document.pdf` or `POST /scan/upload`; powered by `pdf-parse` + `tesseract.js`
@@ -300,7 +300,7 @@ packages/
 │   ├── src/store/        # KeyStore, AuditLogger, CircuitBreaker, ScanCache, provider-spend ledger…
 │   ├── src/plugins/      # Auth, rate limit, usage cap, provider-spend cap, consensus entitlement
 │   └── docs/             # openapi.yaml (partial, version 0.7.0)
-├── mcp/                  # @nxtg/faultline-mcp 0.12.1: MCP server (not on npm as of 2026-10-01)
+├── mcp/                  # @nxtg/faultline-mcp 0.12.2: MCP server (not on npm as of 2026-10-01)
 ├── terraform-provider/   # Go Terraform provider
 └── web/                  # @nxtg/faultline-web: original React/Vite visualization app (Kaggle origin)
 sdks/
@@ -409,7 +409,7 @@ print(result.overall_risk)  # 'low' | 'medium' | 'high' | 'critical'
 
 ### MCP server
 
-`packages/mcp` (`@nxtg/faultline-mcp` 0.12.1) exposes a `verify_claims` tool to Claude Code, Cursor and other MCP clients. It was not published to npm as of 2026-10-01 (`npm view` returned 404), so run it from a checkout. See [`packages/mcp/README.md`](packages/mcp/README.md).
+`packages/mcp` (`@nxtg/faultline-mcp` 0.12.2) exposes a `verify_claims` tool to Claude Code, Cursor and other MCP clients. It was not published to npm as of 2026-10-01 (`npm view` returned 404), so run it from a checkout. See [`packages/mcp/README.md`](packages/mcp/README.md).
 
 Hosted, with nothing to install: the API serves the same tool at `POST /mcp` (Streamable HTTP, header `x-api-key`), once deployed at `https://faultline-api.fly.dev/mcp`; every scan gate applies. See [docs/INTEGRATION.md §13](docs/INTEGRATION.md#13-hosted-mcp).
 
