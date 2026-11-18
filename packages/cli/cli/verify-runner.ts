@@ -782,6 +782,20 @@ async function verifyOneClaimByMode(
 }
 
 /**
+ * Log which fixed refusal applied. The argument is only compared to the two
+ * known sentences; the log line is a literal, so a policy value is never written out.
+ */
+function logSourcePolicyRefusal(warning: string | undefined): void {
+  if (warning === SOURCE_POLICY_OPENAI_CONSENSUS_WARNING) {
+    console.error('[faultline] A source policy is set, but consensus would use OpenAI web search, which a source policy does not cover, so no claim was checked. The open web was not searched.');
+    return;
+  }
+  if (warning === SOURCE_POLICY_NOT_PARALLEL_WARNING) {
+    console.error('[faultline] A source policy is set, but this scan is not using Parallel search, so no claim was checked. The open web was not searched.');
+  }
+}
+
+/**
  * Verify `claims` in order with `options.concurrency` workers (default
  * VERIFY_CONCURRENCY). Every claim is
  * attempted unless `signal` aborts, in which case the rest are reported in
@@ -792,7 +806,7 @@ export async function runVerification(
   verifier: Verifier,
   options: RunVerificationOptions = {},
 ): Promise<VerificationRun> {
-  if (verifier.sourcePolicyRefusal) console.error(`[faultline] ${verifier.sourcePolicyRefusal}`);
+  logSourcePolicyRefusal(verifier.sourcePolicyRefusal);
   const { onProgress, onClaimVerified, signal, flagExhaustedRetries = true } = options;
   const concurrency = resolveVerifyConcurrency(options.concurrency ?? VERIFY_CONCURRENCY);
   const doi = resolveDoiCheck(options.doi);
