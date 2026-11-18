@@ -16,7 +16,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getProvider } from '../providers/registry.js';
 import { runVerification, type Verifier } from '../cli/verify-runner.js';
 import {
@@ -30,11 +30,13 @@ import {
   lcdDocumentUrl,
   ncdDocumentUrl,
   regulationUrlAllowed,
+  resetLcdLicenseCache,
   resolveRegulationCheck,
   type RegulationCheckOptions,
 } from '../evidence/regulation.js';
 import { doiHandleUrl, DOI_RETRIEVER, type DoiCheckOptions } from '../evidence/doi.js';
 import { isBillableVerdict } from '../lib/verdict-guard.js';
+import { toClaimVerdict } from '../cli/verdict.js';
 import type { Claim, Source } from '../types.js';
 import type { Retriever } from '../providers/base_provider.js';
 
@@ -100,14 +102,28 @@ describe('regulation URLs stay on the official hosts', () => {
 });
 
 describe('checkRegulationCitation', () => {
-  it('a real CFR paragraph is supported from the eCFR, and the lookup sends only the identifier', async () => {
+  beforeEach(() => {
+    resetLcdLicenseCache();
+    vi.stubEnv('FAULTLINE_LCD_LICENSE_ACCEPTED', 'true');
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+    resetLcdLicenseCache();
+  });
+
+  it('a real CFR paragraph is in the record, which is not a supported claim, and the lookup sends only the identifier', async () => {
     const { opts, calls } = fakeFetch(recorded);
     const result = await checkRegulationCitation(claim('See 42 CFR 422.101(c).'), opts);
-    expect(result?.status).toBe('supported');
+    expect(result?.status).toBe('unverified');
+    expect(result?.citationCheck).toBe('exists');
+    expect(result?.citationCheckReason).toBe('citation_exists');
     expect(result?.explanation).toContain('Requirements relating to basic benefits');
+    expect(result?.explanation).toContain('not a verdict');
     expect(result?.sources.map((s) => s.uri)).toEqual([XML_422, VERSIONS_422]);
     expect(result?.provenance?.retriever).toBe(REGULATION_RETRIEVER);
-    expect(isBillableVerdict(result)).toBe(true);
+    expect(isBillableVerdict(result)).toBe(false);
+    expect(toClaimVerdict('See 42 CFR 422.101(c).', result!).verdict).toBe('UNCHECKED');
     expect(calls.map((c) => c.url)).toEqual([VERSIONS_422, XML_422]);
     for (const call of calls) {
       expect(headersOf(call)).toEqual({ 'user-agent': REGULATION_USER_AGENT });
@@ -116,16 +132,18 @@ describe('checkRegulationCitation', () => {
     }
   });
 
-  it('a nested paragraph that is in the section is supported', async () => {
+  it('a nested paragraph that is in the section is recorded as existing, not as a supported claim', async () => {
     const { opts } = fakeFetch(recorded);
     const result = await checkRegulationCitation(claim('42 C.F.R. § 422.101(b)(3)(ii)'), opts);
-    expect(result?.status).toBe('supported');
+    expect(result?.status).toBe('unverified');
+    expect(result?.citationCheck).toBe('exists');
   });
 
-  it('a quoted title that matches is supported, and one that does not is mixed', async () => {
+  it('a quoted title that matches is not a supported claim, and one that does not is mixed', async () => {
     const match = await checkRegulationCitation(
       claim('42 CFR 422.101(c) "Requirements relating to basic benefits"'), fakeFetch(recorded).opts);
-    expect(match?.status).toBe('supported');
+    expect(match?.status).toBe('unverified');
+    expect(match?.citationCheck).toBe('exists');
     const mixed = await checkRegulationCitation(
       claim('42 CFR 422.101(c) "Glucose monitors for home use only"'), fakeFetch(recorded).opts);
     expect(mixed?.status).toBe('mixed');
@@ -201,9 +219,10 @@ describe('checkRegulationCitation', () => {
     expect(await checkRegulationCitation(claim('42 CFR 422.101(z)'), opts)).toBeNull();
   });
 
-  it('a real NCD is supported and a missing one is contradicted from the report URL', async () => {
+  it('a real NCD is recorded as existing, and a missing one is contradicted from the report URL', async () => {
     const found = await checkRegulationCitation(claim('NCD 220.6.17'), fakeFetch(recorded).opts);
-    expect(found?.status).toBe('supported');
+    expect(found?.status).toBe('unverified');
+    expect(found?.citationCheck).toBe('exists');
     expect(found?.explanation).toContain('Positron Emission Tomography (FDG) for Oncologic Conditions');
     expect(found?.sources.map((s) => s.uri)).toEqual([NCD_DOC, NCD_REPORT_URL]);
     const { opts, calls } = fakeFetch(recorded);
@@ -227,7 +246,8 @@ describe('checkRegulationCitation', () => {
   it('an LCD is looked up with the license token in the Authorization header and not in the URL', async () => {
     const { opts, calls } = fakeFetch(recorded);
     const result = await checkRegulationCitation(claim('LCD L33797'), opts);
-    expect(result?.status).toBe('supported');
+    expect(result?.status).toBe('unverified');
+    expect(result?.citationCheck).toBe('exists');
     expect(result?.explanation).toContain('Oxygen and Oxygen Equipment');
     expect(result?.sources[0]!.uri).toBe(LCD_33797);
     expect(calls.map((c) => c.url)).toEqual([LCD_LICENSE_URL, LCD_33797]);
@@ -272,12 +292,65 @@ describe('checkRegulationCitation', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('is off for `false` and for FAULTLINE_REGULATION_CHECK=off', () => {
+  it('a missing section the claim says was repealed or never existed is not contradicted', async () => {
+    const gone = await checkRegulationCitation(claim('There is no 42 CFR 422.9999.'), fakeFetch(recorded).opts);
+    expect(gone?.status).toBe('supported');
+    expect(gone?.explanation).toContain('matches the claim');
+    expect(isBillableVerdict(gone)).toBe(true);
+    const repealed = await checkRegulationCitation(claim('42 CFR 422.9999 was repealed.'), fakeFetch(recorded).opts);
+    expect(repealed?.status).toBe('supported');
+    const past = await checkRegulationCitation(
+      claim('As of January 1, 2019, 42 CFR 422.9999 required daily coverage.'), fakeFetch(recorded).opts);
+    expect(past?.status).toBe('unverified');
+    expect(past?.citationCheck).toBe('not_found');
+    expect(past?.citationCheckReason).toBe('historical_not_checked');
+    expect(past?.status).not.toBe('contradicted');
+    const former = await checkRegulationCitation(claim('Formerly 42 CFR 422.9999, since removed.'), fakeFetch(recorded).opts);
+    expect(former?.citationCheckReason).toBe('historical_not_checked');
+    expect(former?.status).toBe('unverified');
+  });
+
+  it('an uncertain paragraph reading is unverified, not contradicted', async () => {
+    const xml = '<DIV8 N="422.101"><P>This section is a single block of prose with no paragraph markers and more than eighty characters of text so a missing marker is not proof of absence.</P></DIV8>';
+    const { opts } = fakeFetch({
+      [VERSIONS_422]: recorded[VERSIONS_422]!,
+      [XML_422]: () => new Response(xml, { status: 200 }),
+    });
+    const result = await checkRegulationCitation(claim('42 CFR 422.101(c)'), opts);
+    expect(result?.status).toBe('unverified');
+    expect(result?.citationCheck).toBe('uncertain');
+    expect(result?.citationCheckReason).toBe('paragraph_parse_uncertain');
+  });
+
+  it('an LCD is not looked up unless the license terms are accepted, and the license value is reused for an hour', async () => {
+    vi.stubEnv('FAULTLINE_LCD_LICENSE_ACCEPTED', 'false');
+    const declined = fakeFetch(recorded);
+    const skipped = await checkRegulationCitation(claim('LCD L33797'), declined.opts);
+    expect(skipped?.status).toBe('unverified');
+    expect(skipped?.citationCheckReason).toBe('lcd_license_not_accepted');
+    expect(declined.calls).toHaveLength(0);
+
+    vi.stubEnv('FAULTLINE_LCD_LICENSE_ACCEPTED', 'true');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-17T00:00:00Z'));
+    const first = fakeFetch(recorded);
+    await checkRegulationCitation(claim('LCD L33797'), first.opts);
+    await checkRegulationCitation(claim('LCD L33797 exists as cited.'), first.opts);
+    expect(first.calls.filter((c) => c.url === LCD_LICENSE_URL)).toHaveLength(1);
+    expect(first.calls.filter((c) => c.url === LCD_33797)).toHaveLength(2);
+    vi.setSystemTime(new Date('2026-11-17T01:00:01Z'));
+    await checkRegulationCitation(claim('LCD L33797'), first.opts);
+    expect(first.calls.filter((c) => c.url === LCD_LICENSE_URL)).toHaveLength(2);
+    vi.useRealTimers();
+  });
+
+  it('is off unless FAULTLINE_REGULATION_CHECK=on, and off for `false`', () => {
     expect(resolveRegulationCheck(false)).toBeNull();
-    vi.stubEnv('FAULTLINE_REGULATION_CHECK', 'OFF');
     expect(resolveRegulationCheck({ fetch: async () => new Response('') })).toBeNull();
-    vi.unstubAllEnvs();
-    expect(resolveRegulationCheck({ fetch: fetch })).toMatchObject({ fetch });
+    vi.stubEnv('FAULTLINE_REGULATION_CHECK', 'on');
+    expect(resolveRegulationCheck({ fetch })).toMatchObject({ fetch });
+    vi.stubEnv('FAULTLINE_REGULATION_CHECK', 'off');
+    expect(resolveRegulationCheck({ fetch })).toBeNull();
   });
 });
 
@@ -316,6 +389,7 @@ describe('verify runner: a regulation citation settles before the normal verify,
     return { regulation, regulationCalls, doi, doiCalls, retrieve, verifier, evidenceFetch };
   }
 
+  beforeEach(() => { vi.stubEnv('FAULTLINE_REGULATION_CHECK', 'on'); });
   afterEach(() => { vi.unstubAllEnvs(); });
 
   it('a missing section is contradicted with no search and no page fetch', async () => {

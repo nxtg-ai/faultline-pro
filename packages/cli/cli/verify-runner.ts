@@ -459,7 +459,7 @@ export interface RunVerificationOptions {
   /**
    * The regulation lookup for CFR, NCD and LCD citations (evidence/regulation.ts).
    * Omitted: the engine default. `false`: no regulation check.
-   * FAULTLINE_REGULATION_CHECK=off turns it off either way. A claim with no
+   * The lookup runs only when FAULTLINE_REGULATION_CHECK=on. A claim with no
    * such citation is unchanged.
    */
   regulation?: RegulationCheckOptions | false;

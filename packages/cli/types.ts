@@ -274,6 +274,24 @@ export interface VerificationResult {
    */
   referenceNotFound?: boolean;
   /**
+   * Set when a US healthcare regulation citation was checked against the
+   * current official record without that check settling the claim.
+   * `exists` means the cited section or document is in the current record;
+   * that is not a verdict that the claim is true, and calculateRisk leaves
+   * it out. `not_found` with `citationCheckReason: 'historical_not_checked'`
+   * means the claim is about a past date or an earlier text. `uncertain`
+   * means a paragraph was requested and the section text did not parse
+   * confidently. `license_required` means an LCD was not looked up because
+   * FAULTLINE_LCD_LICENSE_ACCEPTED is not true. Absent on every other result.
+   */
+  citationCheck?: 'exists' | 'not_found' | 'uncertain' | 'license_required';
+  /**
+   * Machine reason paired with `citationCheck`: `citation_exists`,
+   * `historical_not_checked`, `paragraph_parse_uncertain`, or
+   * `lcd_license_not_accepted`. Absent when `citationCheck` is absent.
+   */
+  citationCheckReason?: string;
+  /**
    * Google Search Suggestions for the grounded prompt behind this verdict,
    * passed through unaltered from `candidates[0].groundingMetadata`. Google's
    * grounding terms require them to be shown, unaltered, wherever this

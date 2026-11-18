@@ -56,6 +56,15 @@ describe('calculateRisk — unverified is never low', () => {
     expect(calculateRisk(verdicts(...statuses))).toBe(expected);
   });
 
+  it('a regulation citation that exists does not raise the band', () => {
+    const only = verdicts('unverified');
+    only.c1!.citationCheck = 'exists';
+    expect(calculateRisk(only)).toBe('low');
+    const withSupported = verdicts('unverified', 'supported');
+    withSupported.c1!.citationCheck = 'exists';
+    expect(calculateRisk(withSupported)).toBe('low');
+  });
+
   it('an unverified provider error counts as unverified', () => {
     const v = verdicts('unverified', 'supported', 'supported', 'supported');
     v.c1.apiError = true;

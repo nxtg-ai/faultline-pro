@@ -148,12 +148,8 @@ export function findRegulationCitations(text: string): RegulationCitation[] {
   return found;
 }
 
-/**
- * True when `text`, with every citation span (including an attached title)
- * removed, says nothing beyond the citation itself. A claim that still
- * asserts something ("covers emergency care") is not an identity claim.
- */
-export function isIdentityClaim(text: string, spans: Array<{ start: number; end: number }>): boolean {
+/** Words left after the citation spans are removed. */
+function wordsBeside(text: string, spans: Array<{ start: number; end: number }>): string[] {
   const ordered = [...spans].sort((a, b) => a.start - b.start);
   let masked = '';
   let cursor = 0;
@@ -163,8 +159,48 @@ export function isIdentityClaim(text: string, spans: Array<{ start: number; end:
     cursor = Math.max(cursor, span.end);
   }
   masked += text.slice(cursor);
-  const words = masked.toLowerCase().match(/[a-z]{2,}/g) ?? [];
-  return words.every((w) => BOILERPLATE.has(w));
+  return masked.toLowerCase().match(/[a-z]{2,}/g) ?? [];
+}
+
+/**
+ * True when `text`, with every citation span (including an attached title)
+ * removed, says nothing beyond the citation itself. A claim that still
+ * asserts something ("covers emergency care") is not an identity claim.
+ */
+export function isIdentityClaim(text: string, spans: Array<{ start: number; end: number }>): boolean {
+  return wordsBeside(text, spans).every((w) => BOILERPLATE.has(w));
+}
+
+/** Words that, with boilerplate, say the cited item is gone or was never there. */
+const ABSENCE_SIGNAL: ReadonlySet<string> = new Set([
+  'no', 'not', 'never', 'none', 'repealed', 'repeal', 'removed', 'removal', 'rescinded', 'withdrawn',
+  'deleted', 'nonexistent', 'abolished', 'vacated', 'sunset', 'longer', 'existed',
+]);
+
+/** Filler around an absence claim. Not itself an assertion that something else is true. */
+const ABSENCE_FILLER: ReadonlySet<string> = new Set([
+  'was', 'were', 'been', 'had', 'has', 'have', 'does', 'did', 'do', 'it', 'since', 'there', 'such',
+  'now', 'currently', 'today', 'effect', 'force', 'code', 'federal',
+]);
+
+/**
+ * True when, apart from the citation, the claim only says the cited item does
+ * not exist, was removed, or was repealed. A further assertion ("requires
+ * plans to cover emergency care") is not an absence claim.
+ */
+export function claimAssertsAbsence(text: string, spans: Array<{ start: number; end: number }>): boolean {
+  const words = wordsBeside(text, spans);
+  if (!words.some((w) => ABSENCE_SIGNAL.has(w))) return false;
+  return words.every((w) => BOILERPLATE.has(w) || ABSENCE_FILLER.has(w) || ABSENCE_SIGNAL.has(w));
+}
+
+/**
+ * True when the claim places the citation in the past: a former text, or a
+ * calendar date. The checker only reads the current record, so this claim
+ * cannot be settled by a not-found result.
+ */
+export function claimCitesPast(text: string): boolean {
+  return /\b(?:historically|historical|formerly|as of|prior to|used to|at the time|in (?:19|20)\d{2}|before (?:19|20)\d{2}|after (?:19|20)\d{2}|effective (?:19|20)\d{2}|(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)[.]?\s+\d{1,2},?\s+(?:19|20)\d{2}|(?:19|20)\d{2}-\d{2}-\d{2})\b/i.test(text);
 }
 
 type Level = 'alpha' | 'num' | 'roman' | 'Alpha' | 'num2';
@@ -249,31 +285,58 @@ function plainParagraph(inner: string): string {
   return decodeEntities(stripTags(inner)).replace(/\s+/g, ' ').trim();
 }
 
+/** Paragraph paths read from one eCFR section, and whether that reading is safe to verdict on. */
+export interface CfrParagraphIndex {
+  /** Paths such as "c", "c.1", "b.3.ii". */
+  paths: ReadonlySet<string>;
+  /**
+   * True when a marker could not be placed, or a single letter i/v/x was read
+   * as a letter where it might be a roman numeral. A missing path is then not
+   * evidence that the paragraph is absent.
+   */
+  uncertain: boolean;
+  /** True when the section text is only a reserved notice and no paragraph was indexed. */
+  reserved: boolean;
+}
+
+function isReservedNotice(text: string): boolean {
+  return /^\[?\s*reserved\s*\]?[.]?$/i.test(text);
+}
+
 /**
- * Paragraph paths in one eCFR section XML document ("c", "c.1", "b.3.ii").
+ * Paragraph paths in one eCFR section XML document.
  * Null when `xml` is not that section's document (no DIV8 for `section`):
  * the caller must not treat a missing path as a missing paragraph.
- * Measured against 42 CFR 422.101 as published for 2026-06-01.
+ * Measured against 42 CFR 422.101 as published for 2026-06-01. Other shapes
+ * (a reserved notice, (a)(1)(i)(A)(1), a letter i/v/x that may be roman) are
+ * covered by the parser tests.
  */
-export function cfrParagraphPaths(xml: string, section: string): Set<string> | null {
+export function cfrParagraphPaths(xml: string, section: string): CfrParagraphIndex | null {
   if (!xml.includes('<DIV8') || !xml.includes(`N="${section}"`)) return null;
   const paths = new Set<string>();
+  const bodies: string[] = [];
+  let uncertain = false;
   let stack: ParaNode[] = [];
   for (const match of xml.matchAll(/<P>([\s\S]*?)<\/P>/gi)) {
     const text = plainParagraph(match[1] ?? '');
+    if (text) bodies.push(text);
     const lead = new RegExp(String.raw`^(\((?:${DESIGNATOR})\))+`).exec(text);
     if (!lead) continue;
     const tokens = [...lead[0].matchAll(/\(([^)]+)\)/g)].map((m) => m[1]!);
-    if (!tokens.every((t) => isDesignator(t))) continue;
+    if (!tokens.every((t) => isDesignator(t))) {
+      uncertain = true;
+      continue;
+    }
     let cur: ParaNode[] | null = stack;
     let ok = true;
     for (const token of tokens) {
       const placed = cur ? place(cur, token) : null;
       if (!placed) { ok = false; break; }
       cur = placed;
+      if (/^[ivx]$/.test(token) && placed[placed.length - 1]!.level === 'alpha') uncertain = true;
       paths.add(cur.map((n) => n.token).join('.'));
     }
-    if (!ok || !cur) continue;
+    if (!ok || !cur) { uncertain = true; continue; }
     stack = cur;
     const rest = text.slice(lead[0].length);
     const dash = /^[\s\S]{0,240}?—\(([a-z]{1,6}|\d{1,3}|[A-Z])\)/.exec(rest);
@@ -281,13 +344,18 @@ export function cfrParagraphPaths(xml: string, section: string): Set<string> | n
     const extra = dash?.[1] ?? dot?.[1] ?? null;
     if (extra && isDesignator(extra)) {
       const placed = place(stack, extra);
-      if (placed) {
+      if (!placed) uncertain = true;
+      else {
         stack = placed;
+        if (/^[ivx]$/.test(extra) && placed[placed.length - 1]!.level === 'alpha') uncertain = true;
         paths.add(stack.map((n) => n.token).join('.'));
       }
     }
   }
-  return paths;
+  const reserved = paths.size === 0 && bodies.some((b) => b.length > 0) && bodies.every((b) => isReservedNotice(b));
+  if (reserved) uncertain = false;
+  else if (paths.size === 0 && bodies.some((b) => b.length > 80)) uncertain = true;
+  return { paths, uncertain, reserved };
 }
 
 /** The section heading without the "§ 422.101" marker, or null when nothing remains. */

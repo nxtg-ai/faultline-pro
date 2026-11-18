@@ -110,6 +110,7 @@ async function postScan(): Promise<Record<string, any>> {
 
 describe('POST /scan: a CFR citation is checked through the guarded fetch', () => {
   it('a section the eCFR does not have is contradicted, and the claim text does not leave', async () => {
+    process.env.FAULTLINE_REGULATION_CHECK = 'on';
     const body = await postScan();
     const v = body.verifications.c1;
     expect(v.status).toBe('contradicted');
@@ -127,7 +128,12 @@ describe('POST /scan: a CFR citation is checked through the guarded fetch', () =
     expect(globalFetch).not.toHaveBeenCalled();
   }, 30_000);
 
-  it('FAULTLINE_REGULATION_CHECK=off: no lookup, the claim goes to the normal verify', async () => {
+  it('unset or FAULTLINE_REGULATION_CHECK=off: no lookup, the claim goes to the normal verify', async () => {
+    const unset = await postScan();
+    expect(outbound).toHaveLength(0);
+    expect(verifyClaim).toHaveBeenCalledTimes(1);
+    expect(unset.verifications.c1.status).toBe('unverified');
+    verifyClaim.mockClear();
     process.env.FAULTLINE_REGULATION_CHECK = 'off';
     const body = await postScan();
     expect(outbound).toHaveLength(0);
@@ -141,6 +147,8 @@ describe('the default regulation check buildServer installs', () => {
   it('is API_REGULATION_CHECK, and a host that resolves to a private address produces no verdict', async () => {
     resetDefaultRegulationCheck();
     installRegulationCheck();
+    expect(resolveRegulationCheck()).toBeNull();
+    process.env.FAULTLINE_REGULATION_CHECK = 'on';
     expect(resolveRegulationCheck()).toBe(API_REGULATION_CHECK);
     resetOutboundFetch();
     setOutboundResolver(async (host) => { resolved.push(host); return [{ address: '127.0.0.1', family: 4 }]; });

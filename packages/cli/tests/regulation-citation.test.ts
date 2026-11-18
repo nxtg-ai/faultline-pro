@@ -9,6 +9,8 @@ import { describe, expect, it } from 'vitest';
 import {
   cfrHeading,
   cfrParagraphPaths,
+  claimAssertsAbsence,
+  claimCitesPast,
   findRegulationCitations,
   isIdentityClaim,
 } from '../lib/regulation-citation.js';
@@ -72,6 +74,16 @@ describe('findRegulationCitations', () => {
     const titledCites = findRegulationCitations(titled);
     expect(isIdentityClaim(titled, titledCites.map((c) => ({ start: c.start, end: c.spanEnd })))).toBe(true);
   });
+
+  it('an absence claim is only the citation plus repeal or nonexistence, and a past date is marked', () => {
+    const spansOf = (text: string) => findRegulationCitations(text).map((c) => ({ start: c.start, end: c.spanEnd }));
+    expect(claimAssertsAbsence('There is no 42 CFR 422.9999.', spansOf('There is no 42 CFR 422.9999.'))).toBe(true);
+    expect(claimAssertsAbsence('42 CFR 422.9999 was repealed.', spansOf('42 CFR 422.9999 was repealed.'))).toBe(true);
+    expect(claimAssertsAbsence('42 CFR 422.9999 requires a secret benefit.', spansOf('42 CFR 422.9999 requires a secret benefit.'))).toBe(false);
+    expect(claimCitesPast('As of January 1, 2019, 42 CFR 422.9999 required daily coverage.')).toBe(true);
+    expect(claimCitesPast('Formerly 42 CFR 422.9999, since removed.')).toBe(true);
+    expect(claimCitesPast('42 CFR 422.9999 was repealed.')).toBe(false);
+  });
 });
 
 describe('eCFR section heading and paragraphs (recorded 42 CFR 422.101)', () => {
@@ -85,8 +97,10 @@ describe('eCFR section heading and paragraphs (recorded 42 CFR 422.101)', () => 
 
   it('finds the paragraphs a citation names, and not ones the section does not have', () => {
     expect(paths).not.toBeNull();
-    for (const path of ['c', 'c.1', 'b.3.ii', 'e.1', 'f.3.i', 'f.1.iii.B.1']) expect(paths!.has(path)).toBe(true);
-    for (const path of ['z', 'a.1', 'c.9']) expect(paths!.has(path)).toBe(false);
+    expect(paths!.uncertain).toBe(false);
+    expect(paths!.reserved).toBe(false);
+    for (const path of ['c', 'c.1', 'b.3.ii', 'e.1', 'f.3.i', 'f.1.iii.B.1']) expect(paths!.paths.has(path)).toBe(true);
+    for (const path of ['z', 'a.1', 'c.9']) expect(paths!.paths.has(path)).toBe(false);
   });
 
   it('a document that is not this section is not a paragraph index', () => {
@@ -98,11 +112,40 @@ describe('eCFR section heading and paragraphs (recorded 42 CFR 422.101)', () => 
     const nested = '<DIV8 N="422.101"><P><scr<script>ipt>(c) The plan covers emergency care.</P><P><E T="(z)">(a) The plan offers a benefit.</P></DIV8>';
     const found = cfrParagraphPaths(nested, '422.101');
     expect(found).not.toBeNull();
-    expect(found!.has('c')).toBe(true);
-    expect(found!.has('a')).toBe(true);
-    expect(found!.has('z')).toBe(false);
+    expect(found!.uncertain).toBe(false);
+    expect(found!.paths.has('c')).toBe(true);
+    expect(found!.paths.has('a')).toBe(true);
+    expect(found!.paths.has('z')).toBe(false);
     const unclosed = cfrParagraphPaths('<DIV8 N="1.1"><P><script(c) this marker stays inside the tag</P></DIV8>', '1.1');
     expect(unclosed).not.toBeNull();
-    expect(unclosed!.has('c')).toBe(false);
+    expect(unclosed!.paths.has('c')).toBe(false);
+  });
+
+  it('reads nested paragraphs, a reserved section, and an ambiguous marker', () => {
+    const hipaa = [
+      '<DIV8 N="164.502">',
+      '<P>(a) Standard.</P>',
+      '<P>(1) Required disclosures.</P>',
+      '<P>(i) To the individual.</P>',
+      '<P>(A) In writing.</P>',
+      '<P>(1) Within thirty days.</P>',
+      '<P>(b) Implementation specifications.</P>',
+      '</DIV8>',
+    ].join('');
+    const hipaaPaths = cfrParagraphPaths(hipaa, '164.502');
+    expect(hipaaPaths).toMatchObject({ uncertain: false, reserved: false });
+    for (const path of ['a', 'a.1', 'a.1.i', 'a.1.i.A', 'a.1.i.A.1', 'b']) expect(hipaaPaths!.paths.has(path)).toBe(true);
+
+    const letterI = '<DIV8 N="314.80"><P>(a) Definitions.</P><P>(i) Adverse experience means an event.</P><P>(ii) Serious means an outcome.</P></DIV8>';
+    const fda = cfrParagraphPaths(letterI, '314.80');
+    expect(fda!.uncertain).toBe(true);
+
+    const reserved = cfrParagraphPaths('<DIV8 N="422.128"><HEAD>§ 422.128 [Reserved]</HEAD><P>[Reserved]</P></DIV8>', '422.128');
+    expect(reserved).toMatchObject({ uncertain: false, reserved: true });
+    expect(reserved!.paths.size).toBe(0);
+
+    const prose = cfrParagraphPaths('<DIV8 N="100.1"><P>This section is a single block of prose with no paragraph markers and more than eighty characters of text so a missing marker is not treated as proof.</P></DIV8>', '100.1');
+    expect(prose!.uncertain).toBe(true);
+    expect(prose!.paths.size).toBe(0);
   });
 });

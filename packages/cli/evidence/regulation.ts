@@ -27,9 +27,21 @@
  *   - the section or document is not there → `contradicted`, source = the lookup URL
  *   - an explicit title clearly does not match the official one → `mixed`
  *   - it is there, and the claim only asserts the citation (and, when it
- *     gives one, a title that matches) → `supported`
+ *     gives one, a title that matches) → `unverified` with
+ *     `citationCheck: 'exists'`. Existence is not a verdict that the claim
+ *     is true, and it does not raise the scan's risk band.
  *   - the claim asserts more than the citation, and the citation is real
  *     with no title mismatch → null (the normal verify judges the assertion)
+ *   - the record has no such item, and the claim says it was repealed,
+ *     removed, or never existed → `supported` (the current record agrees)
+ *   - the record has no such item, and the claim cites a past date or a
+ *     former text → `unverified` (`historical_not_checked`). Absence from
+ *     the current record does not contradict that claim.
+ *   - an LCD is cited and FAULTLINE_LCD_LICENSE_ACCEPTED is not `true` →
+ *     `unverified` (`lcd_license_not_accepted`). The license endpoint is
+ *     not called.
+ *   - a paragraph was requested and the section XML did not parse
+ *     confidently → `unverified` (`paragraph_parse_uncertain`)
  *   - a timeout, a redirect, a non-JSON body, a 401/429/5xx, an incomplete
  *     NCD list, or any shape we do not document → null. A failed lookup
  *     never produces a verdict.
@@ -46,6 +58,8 @@ import {
   MAX_REGULATION_CITATIONS,
   cfrHeading,
   cfrParagraphPaths,
+  claimAssertsAbsence,
+  claimCitesPast,
   findRegulationCitations,
   isIdentityClaim,
   type RegulationCitation,
@@ -72,10 +86,22 @@ export const LCD_LICENSE_URL = `${CMS_ORIGIN}/v1/metadata/license-agreement`;
 const DATE_SHAPE = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** CMS says the license value lasts one hour (Coverage API 1.5). */
+const LICENSE_TTL_MS = 60 * 60 * 1000;
+
 /** A UUID string, or null. The CMS license value is accepted only in this shape, so a header cannot be injected. */
 function uuidString(value: unknown): string | null {
   if (typeof value !== 'string' || !UUID_SHAPE.test(value)) return null;
   return value;
+}
+
+let licenseCache: { value: string; expiresAt: number } | null = null;
+let licenseInflight: Promise<string | null> | null = null;
+
+/** Drop the cached CMS license value. Test seam. */
+export function resetLcdLicenseCache(): void {
+  licenseCache = null;
+  licenseInflight = null;
 }
 
 export interface RegulationCheckOptions {
@@ -268,7 +294,7 @@ function titlesVerdict(cited: string | undefined, officials: string[]): { verdic
 }
 
 type Hit = {
-  kind: 'not_found' | 'mismatch' | 'ok' | 'failed' | 'unsure';
+  kind: 'not_found' | 'mismatch' | 'ok' | 'failed' | 'unsure' | 'uncertain' | 'license';
   explanation: string;
   sources: Source[];
 };
@@ -340,15 +366,23 @@ async function lookupCfr(cite: RegulationCitation, opts: RegulationCheckOptions)
     if (!regulationUrlAllowed(xmlUrl)) return failed();
     const xml = await get(xmlUrl, opts, baseHeaders());
     if (!xml || xml.status !== 200) return failed();
-    const paths = cfrParagraphPaths(xml.text, section);
-    if (!paths) return failed();
+    const index = cfrParagraphPaths(xml.text, section);
+    if (!index) return failed();
     paragraphSource = { title: heading ? quote(heading) : `eCFR section ${title} CFR ${section}`, uri: xmlUrl };
-    if (!paths.has(paragraphs.join('.'))) {
-      const chain = paragraphs.map((p) => `(${p})`).join('');
-      return notFound(
-        `${cite.label} is not in the Code of Federal Regulations. Section ${section} has no paragraph ${chain}.`,
-        paragraphSource,
-      );
+    const chain = paragraphs.map((p) => `(${p})`).join('');
+    const path = paragraphs.join('.');
+    if (index.uncertain) {
+      return {
+        kind: 'uncertain',
+        explanation: `${cite.label} is in the eCFR, but the paragraph structure of section ${section} could not be read confidently, so paragraph ${chain} was not checked.`,
+        sources: [paragraphSource, source],
+      };
+    }
+    if (!index.paths.has(path)) {
+      const why = index.reserved
+        ? `Section ${section} is reserved and has no paragraph ${chain}.`
+        : `Section ${section} has no paragraph ${chain}.`;
+      return notFound(`${cite.label} is not in the Code of Federal Regulations. ${why}`, paragraphSource);
     }
   }
   const titles = titlesVerdict(cite.title, heading ? [heading] : []);
@@ -393,17 +427,45 @@ async function lookupNcd(cite: RegulationCitation, opts: RegulationCheckOptions)
     `${cite.label} is a national coverage determination${named}.`);
 }
 
-async function lookupLcd(cite: RegulationCitation, opts: RegulationCheckOptions): Promise<Hit> {
-  const docUrl = lcdDocumentUrl(cite.lcdNumber!);
-  if (!regulationUrlAllowed(LCD_LICENSE_URL) || !regulationUrlAllowed(docUrl)) return failed();
-  const licenseReply = await get(LCD_LICENSE_URL, opts, baseHeaders());
-  if (!licenseReply || licenseReply.status !== 200) return failed();
-  const issued = readCms(parseJson(licenseReply.text));
+/** True when the operator has set FAULTLINE_LCD_LICENSE_ACCEPTED=true. */
+export function lcdLicenseAccepted(env: NodeJS.ProcessEnv = process.env): boolean {
+  return (env.FAULTLINE_LCD_LICENSE_ACCEPTED ?? '').toLowerCase() === 'true';
+}
+
+async function fetchLicense(opts: RegulationCheckOptions): Promise<string | null> {
+  const reply = await get(LCD_LICENSE_URL, opts, baseHeaders());
+  if (!reply || reply.status !== 200) return null;
+  const issued = readCms(parseJson(reply.text));
   const license = uuidString(
     issued && issued.statusId === 200 && issued.data[0] && typeof issued.data[0] === 'object'
       ? (issued.data[0] as { Token?: unknown }).Token
       : undefined,
   );
+  if (!license) return null;
+  licenseCache = { value: license, expiresAt: Date.now() + LICENSE_TTL_MS };
+  return license;
+}
+
+/** The CMS license value, reused until its one-hour validity ends. One in-flight fetch is shared. */
+async function cachedLicense(opts: RegulationCheckOptions): Promise<string | null> {
+  if (licenseCache && licenseCache.expiresAt > Date.now()) return licenseCache.value;
+  if (!licenseInflight) {
+    licenseInflight = fetchLicense(opts).finally(() => { licenseInflight = null; });
+  }
+  return licenseInflight;
+}
+
+async function lookupLcd(cite: RegulationCitation, opts: RegulationCheckOptions): Promise<Hit> {
+  if (!lcdLicenseAccepted()) {
+    return {
+      kind: 'license',
+      explanation: `${cite.label} was not looked up. Set FAULTLINE_LCD_LICENSE_ACCEPTED=true to accept the CMS license terms (AMA CPT, ADA CDT and AHA UB-04) and check local coverage determinations.`,
+      sources: [],
+    };
+  }
+  const docUrl = lcdDocumentUrl(cite.lcdNumber!);
+  if (!regulationUrlAllowed(LCD_LICENSE_URL) || !regulationUrlAllowed(docUrl)) return failed();
+  const license = await cachedLicense(opts);
   if (!license) return failed();
   const reply = await get(docUrl, opts, { ...baseHeaders(), authorization: `Bearer ${license}` });
   if (!reply) return failed();
@@ -434,13 +496,20 @@ async function lookupOne(cite: RegulationCitation, opts: RegulationCheckOptions)
   return lookupLcd(cite, opts);
 }
 
-function verdict(claim: Claim, status: 'supported' | 'contradicted' | 'mixed', explanation: string, sources: Source[]): VerificationResult {
+function verdict(
+  claim: Claim,
+  status: 'supported' | 'contradicted' | 'mixed' | 'unverified',
+  explanation: string,
+  sources: Source[],
+  citation?: { citationCheck: NonNullable<VerificationResult['citationCheck']>; citationCheckReason: string },
+): VerificationResult {
   const at = new Date().toISOString();
   return {
     claimId: claim.id,
     status,
     explanation,
     sources,
+    ...(citation ?? {}),
     provenance: {
       provider: REGULATION_RETRIEVER,
       model: 'ecfr+cms-coverage',
@@ -451,26 +520,7 @@ function verdict(claim: Claim, status: 'supported' | 'contradicted' | 'mixed', e
   };
 }
 
-/**
- * Settle a claim from regulation citations in its text, or return null to
- * send it to the normal verify. Null when the text cites no regulation, cites
- * more than MAX_REGULATION_CITATIONS, a lookup fails, a title comparison is
- * not decisive, or the citation is real but the claim asserts something beyond
- * it (and no title mismatches).
- */
-export async function checkRegulationCitation(claim: Claim, opts: RegulationCheckOptions): Promise<VerificationResult | null> {
-  const text = typeof claim?.text === 'string' ? claim.text : '';
-  const cites = findRegulationCitations(text);
-  if (cites.length === 0 || cites.length > MAX_REGULATION_CITATIONS) return null;
-  const hits: Hit[] = [];
-  for (const cite of cites) hits.push(await lookupOne(cite, opts));
-
-  const missing = hits.find((h) => h.kind === 'not_found');
-  if (missing) return verdict(claim, 'contradicted', missing.explanation, missing.sources);
-  const mismatch = hits.find((h) => h.kind === 'mismatch');
-  if (mismatch) return verdict(claim, 'mixed', mismatch.explanation, mismatch.sources);
-  if (hits.some((h) => h.kind === 'failed' || h.kind === 'unsure')) return null;
-  if (!isIdentityClaim(text, cites.map((c) => ({ start: c.start, end: c.spanEnd })))) return null;
+function collectedSources(hits: Hit[]): Source[] {
   const sources: Source[] = [];
   const seen = new Set<string>();
   for (const hit of hits) {
@@ -480,12 +530,75 @@ export async function checkRegulationCitation(claim: Claim, opts: RegulationChec
       sources.push(source);
     }
   }
-  return verdict(claim, 'supported', hits.map((h) => h.explanation).filter((e) => e.length > 0).join(' '), sources);
+  return sources;
 }
 
-/** True when the regulation check is switched off (FAULTLINE_REGULATION_CHECK=off). */
+/**
+ * Settle a claim from regulation citations in its text, or return null to
+ * send it to the normal verify. Null when the text cites no regulation, cites
+ * more than MAX_REGULATION_CITATIONS, a lookup fails, a title comparison is
+ * not decisive, or the citation is real but the claim asserts something beyond
+ * it (and no title mismatches). Existence of the cited item alone is
+ * `unverified` with `citationCheck: 'exists'`, not `supported`.
+ */
+export async function checkRegulationCitation(claim: Claim, opts: RegulationCheckOptions): Promise<VerificationResult | null> {
+  const text = typeof claim?.text === 'string' ? claim.text : '';
+  const cites = findRegulationCitations(text);
+  if (cites.length === 0 || cites.length > MAX_REGULATION_CITATIONS) return null;
+  const spans = cites.map((c) => ({ start: c.start, end: c.spanEnd }));
+  const hits: Hit[] = [];
+  for (const cite of cites) hits.push(await lookupOne(cite, opts));
+
+  const missing = hits.find((h) => h.kind === 'not_found');
+  if (missing) {
+    if (claimCitesPast(text)) {
+      return verdict(
+        claim, 'unverified',
+        `${missing.explanation} The claim refers to a past date or an earlier text, and this check only reads the current record, so that absence is not a contradiction.`,
+        missing.sources,
+        { citationCheck: 'not_found', citationCheckReason: 'historical_not_checked' },
+      );
+    }
+    if (claimAssertsAbsence(text, spans)) {
+      return verdict(
+        claim, 'supported',
+        `${missing.explanation} That matches the claim that the cited item does not exist, was removed, or was repealed.`,
+        missing.sources,
+      );
+    }
+    return verdict(claim, 'contradicted', missing.explanation, missing.sources);
+  }
+  const mismatch = hits.find((h) => h.kind === 'mismatch');
+  if (mismatch) return verdict(claim, 'mixed', mismatch.explanation, mismatch.sources);
+  const license = hits.find((h) => h.kind === 'license');
+  if (license) {
+    return verdict(claim, 'unverified', license.explanation, license.sources, {
+      citationCheck: 'license_required', citationCheckReason: 'lcd_license_not_accepted',
+    });
+  }
+  const uncertain = hits.find((h) => h.kind === 'uncertain');
+  if (uncertain) {
+    return verdict(claim, 'unverified', uncertain.explanation, uncertain.sources, {
+      citationCheck: 'uncertain', citationCheckReason: 'paragraph_parse_uncertain',
+    });
+  }
+  if (hits.some((h) => h.kind === 'failed' || h.kind === 'unsure')) return null;
+  if (!isIdentityClaim(text, spans)) return null;
+  const found = hits.map((h) => h.explanation).filter((e) => e.length > 0).join(' ');
+  return verdict(
+    claim, 'unverified',
+    `${found} This check establishes only that the citation is in the current official record. It is not a verdict on the claim.`,
+    collectedSources(hits),
+    { citationCheck: 'exists', citationCheckReason: 'citation_exists' },
+  );
+}
+
+/**
+ * True unless FAULTLINE_REGULATION_CHECK=on. The lookup is opt-in: an unset
+ * variable makes no eCFR or CMS request.
+ */
 export function regulationCheckDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return (env.FAULTLINE_REGULATION_CHECK ?? '').toLowerCase() === 'off';
+  return (env.FAULTLINE_REGULATION_CHECK ?? '').toLowerCase() !== 'on';
 }
 
 const globalRegulationFetch: EvidenceFetch = (url, init) => fetch(url, init);
@@ -506,9 +619,9 @@ export function resetDefaultRegulationCheck(): void {
 }
 
 /**
- * The regulation options a verify run uses: none when
- * FAULTLINE_REGULATION_CHECK=off or the run passed `false`; else the run's
- * own options, else the default.
+ * The regulation options a verify run uses: none unless
+ * FAULTLINE_REGULATION_CHECK=on, and none when the run passed `false`.
+ * Otherwise the run's own options, else the default.
  */
 export function resolveRegulationCheck(override?: RegulationCheckOptions | false): RegulationCheckOptions | null {
   if (override === false || regulationCheckDisabled()) return null;

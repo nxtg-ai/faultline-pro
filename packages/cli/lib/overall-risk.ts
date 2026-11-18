@@ -28,10 +28,14 @@ function atLeast(band: OverallRisk, floor: OverallRisk): OverallRisk {
  * address it, GoPMO 1.18.11.7.19) adds no risk: it is left out of every count
  * above, the total included, so the band is the band of the other claims.
  *
+ * A regulation citation confirmed to exist (`citationCheck: 'exists'`) is the
+ * same: the claim was not judged, and the citation finding is not an
+ * unverified risk. It is left out of every count.
+ *
  * A scan with no verdicts reads low, as before.
  */
 export function calculateRisk(verifications: Record<string, VerificationResult>): OverallRisk {
-  const values = Object.values(verifications).filter((v) => !isNotCheckable(v));
+  const values = Object.values(verifications).filter((v) => !isNotCheckable(v) && v.citationCheck !== 'exists');
   const total = values.length;
   const contradicted = values.filter((v) => v.status === 'contradicted').length;
   const mixed = values.filter((v) => v.status === 'mixed').length;

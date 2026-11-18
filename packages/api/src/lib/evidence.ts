@@ -80,9 +80,11 @@ export function installDoiCheck(): void {
 
 /**
  * The CFR, NCD and LCD lookup (evidence/regulation.ts): eCFR and the CMS
- * Coverage API, one hop each, through the guarded fetchOutbound. An LCD
- * document request also sends the license token the Coverage API issues, as
- * a Bearer header and nowhere else. FAULTLINE_REGULATION_CHECK=off turns it off.
+ * Coverage API, one hop each, through the guarded fetchOutbound. It runs only
+ * when FAULTLINE_REGULATION_CHECK=on. An LCD document request also requires
+ * FAULTLINE_LCD_LICENSE_ACCEPTED=true (that call accepts the AMA CPT, ADA CDT
+ * and AHA UB-04 agreements). The license value is cached for its one-hour
+ * life and sent only as a Bearer header.
  */
 export const API_REGULATION_CHECK: RegulationCheckOptions = Object.freeze({
   fetch: (url: string, init: RequestInit) => fetchOutbound(url, init),
