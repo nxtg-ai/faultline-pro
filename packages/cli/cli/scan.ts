@@ -95,8 +95,10 @@ export interface ScanOptions {
    * Allowlist for the Parallel search retriever (cli/source-policy.ts).
    * Absent means no restriction, and the search request is unchanged. The
    * engine does not read FAULTLINE_SOURCE_POLICY: the caller passes this.
-   * It applies only when `grounding` is `parallel`. An invalid policy makes
-   * the search refuse rather than run on the open web.
+   * When `grounding` is `parallel` and the retriever is Parallel, the search
+   * is limited to it. When a policy is set and this scan would not search
+   * with Parallel, nothing is checked and `warnings` says so. An invalid
+   * policy makes the search refuse rather than run on the open web.
    */
   sourcePolicy?: SourcePolicy | null;
 }
@@ -125,6 +127,12 @@ export interface ScanResult {
    * and must not bill or consume quota for a fully-degraded scan.
    */
   degraded?: boolean;
+  /**
+   * A source policy was set and this scan did not search with Parallel, so no
+   * claim was checked against the web. Absent when there is nothing to say,
+   * including every scan with no policy. One fixed sentence.
+   */
+  warnings?: string[];
   /**
    * What the verify stage did to this scan. Quick mode: what the cap left
    * unchecked (VerificationSummary, no `mode` field). Full mode: the
@@ -409,6 +417,7 @@ export async function scan(
     verificationErrors,
     degraded: verificationErrors > 0,
     verification: buildVerificationSummary(rankedEligible, toVerify, verifyCap),
+    ...sourcePolicyWarnings(verifier),
     ...withEvidenceCoverage(verifications),
   };
 }
@@ -507,8 +516,14 @@ async function runFullVerification(
     degraded: verificationErrors > 0,
     verification,
     notAttemptedClaimIds: verification.uncheckedClaimIds,
+    ...sourcePolicyWarnings(verifier),
     ...withEvidenceCoverage(run.verifications),
   };
+}
+
+/** `warnings` only when a source policy could not be applied, so an ordinary scan omits the field. */
+function sourcePolicyWarnings(verifier: { sourcePolicyRefusal?: string }): { warnings?: string[] } {
+  return verifier.sourcePolicyRefusal ? { warnings: [verifier.sourcePolicyRefusal] } : {};
 }
 
 // --- Batch scanning ---

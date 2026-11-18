@@ -59,9 +59,10 @@ When a policy is set:
 
 - The search request adds `source_policy` and nothing else. There is no second request without it.
 - A returned page outside the allowlist, on the exclude list, or (when `after_date` is set) undated or older is dropped. An undated page is not treated as recent.
-- If no page remains, the claim is unverified and not checked (`apiError: true`, `apiErrorReason: "provider_error"`). The open web is not searched instead. The explanation is "No source on the configured source-policy allowlist was found, so this claim was not checked."
-- A value that cannot be used (a bad domain, a scheme, an unknown profile, the same entry included and excluded) does not search at all. The claim is unverified the same way.
-- A verdict that was judged under the policy carries `provenance.sourcePolicy`: `profile` when the built-in list was used, `includeDomains`, and `excludeDomains` / `afterDate` only when they were sent. A claim that was not checked has no provenance, as every other unchecked claim.
+- If no page remains, the claim is unverified and not a provider outage: `apiError: false`, `apiErrorReason: "source_policy_no_match"`, the fixed explanation "No source on the configured source-policy allowlist was found, so this claim was not checked." Provenance is present and carries `sourcePolicy`, so the miss is auditable. It does not count as `degraded` and it is not billed. The open web is not searched instead.
+- A value that cannot be used (a bad domain, a scheme, an unknown profile, the same entry included and excluded) does not search at all. That claim is unverified with `apiError: true` and `apiErrorReason: "provider_error"`.
+- A verdict judged under the policy carries `provenance.sourcePolicy`: `profile` when the built-in list was used, `includeDomains`, and `excludeDomains` / `afterDate` only when they were sent. An allowlist miss carries the same object.
+- A policy that this scan cannot apply does not search the open web. That is Google grounding, any verify that is not Parallel, and a consensus scan that would retrieve with OpenAI web search because an OpenAI key is set. Every claim is unverified with `apiError: false` and `apiErrorReason: "source_policy_not_applied"`, `provenance.sourcePolicy` when the policy is usable, and the scan result's `warnings` array holds one fixed sentence. The same sentence is written to stderr as `[faultline] ...`. A scan with no policy has no `warnings` field.
 
 Code: `packages/cli/cli/source-policy.ts`, applied in `packages/cli/providers/parallel_search_retriever.ts`. The engine does not read `FAULTLINE_SOURCE_POLICY`. The local CLI reads it in `scanLocal` / `batchScan`. The API reads the key in `packages/api/src/lib/grounding.ts`.
 

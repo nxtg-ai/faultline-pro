@@ -13,8 +13,15 @@ import { DEFAULT_SCAN_PROVIDER, resolveApiKey } from './provider-keys.js';
 import { GeminiGroundingRetriever } from '../providers/gemini_provider.js';
 import { OpenAIWebSearchRetriever } from '../providers/openai_web_search_retriever.js';
 import { ParallelSearchRetriever } from '../providers/parallel_search_retriever.js';
-import { provenanceSourcePolicy, type SourcePolicy } from './source-policy.js';
-import { RetrievalError } from '../providers/retrieval-error.js';
+import {
+  provenanceSourcePolicy,
+  sourcePolicyNoMatchResult,
+  sourcePolicyNotAppliedResult,
+  SOURCE_POLICY_NOT_PARALLEL_WARNING,
+  SOURCE_POLICY_OPENAI_CONSENSUS_WARNING,
+  type SourcePolicy,
+} from './source-policy.js';
+import { isSourcePolicyMiss, RetrievalError } from '../providers/retrieval-error.js';
 import { sanitizeVerifyError } from '../services/verify-error.js';
 import type { GroundingMode } from './grounding.js';
 import { consensusVerify, type NamedProvider } from '../consensus/consensus_engine.js';
@@ -218,7 +225,8 @@ export interface VerifierOptions {
   grounding?: GroundingMode;
   /**
    * Allowlist for the Parallel retriever (cli/source-policy.ts). Absent means
-   * no restriction. Ignored unless this request's retriever is Parallel.
+   * no restriction. When it is set and this request would not search with
+   * Parallel, the scan checks nothing and says so (`sourcePolicyRefusal`).
    */
   sourcePolicy?: SourcePolicy | null;
 }
@@ -235,6 +243,13 @@ export interface Verifier {
   groundedRig?: GroundedRig | null;
   /** The provider id the verify stage resolved to (e.g. 'gemini'); names the verdict's provenance and selects its retriever. */
   providerName: string;
+  /**
+   * Set when a source policy was configured but this verify would not search
+   * with Parallel. The text is also `ScanResult.warnings`. No web search runs.
+   */
+  sourcePolicyRefusal?: string;
+  /** The policy behind `sourcePolicyRefusal`, copied onto each claim's provenance. */
+  refusedSourcePolicy?: SourcePolicy | null;
 }
 
 /** The provider names each stage resolves to. */
@@ -336,6 +351,44 @@ function parallelRetriever(sourcePolicy?: SourcePolicy | null): Retriever {
   return new ParallelSearchRetriever(parallelApiKey());
 }
 
+function openAiConfigured(): boolean {
+  try {
+    return resolveApiKey('openai').length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The warning when `opts.sourcePolicy` is set and the retriever this verify
+ * would use is not Parallel. Undefined when there is no policy, or when
+ * Parallel will run (non-consensus gemini in the parallel mode, or consensus
+ * in that mode with no OpenAI key). An all-mock consensus does not search, so
+ * it is not refused.
+ */
+export function sourcePolicyRefusalMessage(
+  names: StageNames,
+  opts: VerifierOptions,
+  pipelineConfig?: PipelineConfig,
+): string | undefined {
+  if (!opts.sourcePolicy) return undefined;
+  const grounding = opts.grounding ?? 'google';
+  if (names.consensusEnabled) {
+    const voters = pipelineConfig?.consensusProviders ?? DEFAULT_CONSENSUS_PROVIDERS;
+    if (isOfflineRun(names, voters)) return undefined;
+    if (openAiConfigured()) return SOURCE_POLICY_OPENAI_CONSENSUS_WARNING;
+    if (grounding === 'parallel') return undefined;
+    return SOURCE_POLICY_NOT_PARALLEL_WARNING;
+  }
+  if (grounding === 'parallel' && names.verificationName === 'gemini') return undefined;
+  return SOURCE_POLICY_NOT_PARALLEL_WARNING;
+}
+
+function withSourcePolicyRefusal(verifier: Verifier, names: StageNames, opts: VerifierOptions, pipelineConfig?: PipelineConfig): Verifier {
+  const sourcePolicyRefusal = sourcePolicyRefusalMessage(names, opts, pipelineConfig);
+  return sourcePolicyRefusal ? { ...verifier, sourcePolicyRefusal, refusedSourcePolicy: opts.sourcePolicy } : verifier;
+}
+
 function buildRetriever(grounding: GroundingMode = 'google', sourcePolicy?: SourcePolicy | null): Retriever {
   let openaiKey = '';
   try {
@@ -416,12 +469,12 @@ export function resolveScanProviders(
     : getProvider(verificationApiKey, names.verificationName);
   return {
     extractionProvider,
-    verifier: {
+    verifier: withSourcePolicyRefusal({
       provider,
       consensusRig: buildConsensusRigIfEnabled(names, pipelineConfig, opts.grounding, opts.sourcePolicy),
       groundedRig: buildGroundedRigIfEnabled(names, opts.grounding, opts.sourcePolicy),
       providerName: names.verificationName,
-    },
+    }, names, opts, pipelineConfig),
   };
 }
 
@@ -447,12 +500,12 @@ export function resolveExtractionProvider(
 export function resolveVerifier(providerName?: string, pipelineConfig?: PipelineConfig, opts: VerifierOptions = {}): Verifier {
   const names = resolveStageNames(providerName, pipelineConfig);
   const provider = getProvider(resolveApiKey(names.verificationName), names.verificationName);
-  return {
+  return withSourcePolicyRefusal({
     provider,
     consensusRig: buildConsensusRigIfEnabled(names, pipelineConfig, opts.grounding, opts.sourcePolicy),
     groundedRig: buildGroundedRigIfEnabled(names, opts.grounding, opts.sourcePolicy),
     providerName: names.verificationName,
-  };
+  }, names, opts, pipelineConfig);
 }
 
 /** Options for one verify-stage run. */
@@ -606,6 +659,20 @@ export async function retrieveThenVerify(
     sources = await retriever.retrieve(claim.text);
   } catch (err) {
     const failure = RetrievalError.fromError(err);
+    if (isSourcePolicyMiss(failure)) {
+      const now = new Date().toISOString();
+      const retrieverModel = (retriever as { model?: unknown }).model;
+      const sourcePolicy = provenanceSourcePolicy(retriever as { sourcePolicy?: SourcePolicy | null });
+      return sourcePolicyNoMatchResult(claim.id, {
+        provider: providerName,
+        model: provider.modelId,
+        verifiedAt: now,
+        retriever: retriever.name,
+        retrievedAt: now,
+        ...(typeof retrieverModel === 'string' && retrieverModel.length > 0 ? { retrieverModel } : {}),
+        ...(sourcePolicy ? { sourcePolicy } : {}),
+      });
+    }
     return notCheckedResult(claim, failure.message, failure.reason);
   }
   const retrievedAt = new Date().toISOString();
@@ -678,6 +745,16 @@ async function verifyOneClaimByMode(
   flagExhaustedRetries: boolean,
   doi: DoiCheckOptions | null,
 ): Promise<VerificationResult> {
+  if (verifier.sourcePolicyRefusal) {
+    const now = new Date().toISOString();
+    const sourcePolicy = provenanceSourcePolicy({ sourcePolicy: verifier.refusedSourcePolicy });
+    return sourcePolicyNotAppliedResult(claim.id, verifier.sourcePolicyRefusal, {
+      provider: verifier.providerName,
+      model: verifier.provider.modelId,
+      verifiedAt: now,
+      ...(sourcePolicy ? { sourcePolicy } : {}),
+    });
+  }
   if (doi && claim.citation?.doi) {
     // Privacy rule: the DOI lookup sends only the normalized DOI, in the URL path (evidence/doi.ts).
     const settled = await checkCitationDoi(claim, doi);
@@ -715,6 +792,7 @@ export async function runVerification(
   verifier: Verifier,
   options: RunVerificationOptions = {},
 ): Promise<VerificationRun> {
+  if (verifier.sourcePolicyRefusal) console.error(`[faultline] ${verifier.sourcePolicyRefusal}`);
   const { onProgress, onClaimVerified, signal, flagExhaustedRetries = true } = options;
   const concurrency = resolveVerifyConcurrency(options.concurrency ?? VERIFY_CONCURRENCY);
   const doi = resolveDoiCheck(options.doi);

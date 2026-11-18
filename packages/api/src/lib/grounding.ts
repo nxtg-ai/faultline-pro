@@ -58,9 +58,10 @@ export function sourcePolicyOption(keyId?: string): Pick<ScanOptions, 'sourcePol
 
 /**
  * `scan(text, provider)` for a route that passes no other option, in the
- * request's grounding mode. In the google mode the call is exactly
- * `scan(text, provider)`, as before. A key policy is added only in the
- * parallel mode: Google Search is not filtered by it (docs/grounding-providers.md).
+ * request's grounding mode. In the google mode with no key policy the call is
+ * exactly `scan(text, provider)`, as before. A key policy is passed either
+ * way: Parallel applies it, and any other mode refuses the scan instead of
+ * searching the open web (docs/grounding-providers.md).
  */
 export function scanInRequestMode(
   text: string,
@@ -68,7 +69,10 @@ export function scanInRequestMode(
   mode: GroundingMode = requestGrounding(),
   keyId?: string,
 ): ReturnType<typeof scan> {
-  if (mode !== 'parallel') return scan(text, provider);
   const policy = sourcePolicyOption(keyId);
+  if (mode !== 'parallel') {
+    if (!policy.sourcePolicy) return scan(text, provider);
+    return scan(text, provider, undefined, undefined, undefined, undefined, undefined, policy);
+  }
   return scan(text, provider, undefined, undefined, undefined, undefined, undefined, { grounding: 'parallel', ...policy });
 }

@@ -32,6 +32,7 @@ vi.mock('@google/genai', () => ({
 
 import { scan } from '../cli/scan';
 import { scanLocal } from '../cli/local-scan';
+import { parseSourcePolicy, SOURCE_POLICY_NOT_PARALLEL_WARNING, SOURCE_POLICY_OPENAI_CONSENSUS_WARNING } from '../cli/source-policy';
 import { parseGroundingMode, groundingFromEnv } from '../cli/grounding';
 import { resolveVerifier, resolveScanProviders, usesParallelGrounding, retrieveThenVerify, runVerification } from '../cli/verify-runner';
 import { verifyClaimGrounded, groundedSourceLine } from '../services/geminiService';
@@ -188,14 +189,65 @@ describe('scanLocal: the user\'s own env decides a local run', () => {
     const result = await scanLocal(TEXT, 'gemini');
     const verdicts = Object.values(result.verifications);
     expect(verdicts.length).toBeGreaterThan(0);
-    expect(verdicts[0]).toMatchObject({ status: 'unverified', apiError: true, apiErrorReason: 'provider_error', sources: [] });
-    expect(verdicts[0].provenance).toBeUndefined();
+    expect(verdicts[0]).toMatchObject({
+      status: 'unverified',
+      apiError: false,
+      apiErrorReason: 'source_policy_no_match',
+      sources: [],
+    });
+    expect(verdicts[0].provenance?.sourcePolicy).toMatchObject({ profile: 'healthcare-authority' });
+    expect(verdicts[0].provenance?.retriever).toBe('parallel-search');
+    expect(result.degraded).toBe(false);
+    expect(result.warnings).toBeUndefined();
     expect(verdicts[0].explanation).toMatch(/allowlist/);
     expect(mockFetch).toHaveBeenCalledTimes(1);
     const body = JSON.parse(String(mockFetch.mock.calls[0][1].body));
     expect(body.advanced_settings.source_policy.include_domains).toContain('cms.gov');
     expect(googleSearchCalls()).toBe(0);
     expect(sdk.prompts.some((p) => p.includes('Retrieved sources'))).toBe(false);
+  });
+
+  it('a policy with Google grounding checks nothing and does not search', async () => {
+    process.env.FAULTLINE_SOURCE_POLICY = 'healthcare-authority';
+    const result = await scanLocal(TEXT, 'gemini');
+    const verdicts = Object.values(result.verifications);
+    expect(verdicts.length).toBeGreaterThan(0);
+    expect(verdicts[0]).toMatchObject({
+      status: 'unverified',
+      apiError: false,
+      apiErrorReason: 'source_policy_not_applied',
+      sources: [],
+    });
+    expect(verdicts[0].provenance?.sourcePolicy?.profile).toBe('healthcare-authority');
+    expect(verdicts[0].provenance?.retriever).toBeUndefined();
+    expect(result.warnings).toEqual([SOURCE_POLICY_NOT_PARALLEL_WARNING]);
+    expect(result.degraded).toBe(false);
+    expect(googleSearchCalls()).toBe(0);
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(console.error).toHaveBeenCalledWith(`[faultline] ${SOURCE_POLICY_NOT_PARALLEL_WARNING}`);
+  });
+
+  it('consensus with an OpenAI key does not use that web search when a policy is set', async () => {
+    process.env.OPENAI_API_KEY = 'test-key';
+    const policy = parseSourcePolicy('healthcare-authority');
+    const result = await scan(TEXT, 'gemini', undefined, undefined, undefined, undefined, {
+      consensus: true,
+      consensusProviders: ['gemini'],
+      extractionProvider: 'gemini',
+      verificationProvider: 'gemini',
+    }, { grounding: 'parallel', sourcePolicy: policy });
+    const verdicts = Object.values(result.verifications);
+    expect(verdicts.length).toBeGreaterThan(0);
+    expect(verdicts[0]).toMatchObject({
+      status: 'unverified',
+      apiError: false,
+      apiErrorReason: 'source_policy_not_applied',
+    });
+    expect(verdicts[0].provenance?.sourcePolicy?.includeDomains).toContain('cms.gov');
+    expect(result.warnings).toEqual([SOURCE_POLICY_OPENAI_CONSENSUS_WARNING]);
+    expect(googleSearchCalls()).toBe(0);
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(console.error).toHaveBeenCalledWith(`[faultline] ${SOURCE_POLICY_OPENAI_CONSENSUS_WARNING}`);
   });
 
   it('an explicit options.grounding wins over the env', async () => {

@@ -217,6 +217,9 @@ function unbilledReason(value: unknown): string {
     status?: unknown; sources?: unknown; provenance?: unknown;
     apiError?: unknown; apiErrorReason?: unknown; noSourceAbstain?: unknown;
   };
+  if (v.apiErrorReason === 'source_policy_no_match' || v.apiErrorReason === 'source_policy_not_applied') {
+    return v.apiErrorReason;
+  }
   if (v.apiError === true) {
     return typeof v.apiErrorReason === 'string' && v.apiErrorReason.length > 0 ? v.apiErrorReason : 'provider_error';
   }

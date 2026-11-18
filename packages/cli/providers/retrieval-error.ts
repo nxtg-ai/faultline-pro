@@ -37,6 +37,12 @@ const SOURCE_POLICY_EXPLANATIONS = new Set<string>([SOURCE_POLICY_MISS_EXPLANATI
  */
 export class RetrievalError extends Error {
   readonly reason: RetrievalErrorReason;
+  /**
+   * True only for an allowlist miss. The reason stays `provider_error` so this
+   * is still a search failure, and the verify stage reports it as
+   * `source_policy_no_match` with `apiError: false` (not an outage).
+   */
+  readonly sourcePolicyMiss: boolean;
 
   constructor(reason: RetrievalErrorReason, cause?: unknown, explanation?: string) {
     super(
@@ -45,6 +51,7 @@ export class RetrievalError extends Error {
     );
     this.name = 'RetrievalError';
     this.reason = reason;
+    this.sourcePolicyMiss = explanation === SOURCE_POLICY_MISS_EXPLANATION;
   }
 
   /** Wrap any search failure, classifying it like the verify stage does. */
@@ -62,4 +69,14 @@ export class RetrievalError extends Error {
 export function isRetrievalError(err: unknown): err is RetrievalError {
   return err instanceof RetrievalError
     || (err instanceof Error && err.name === 'RetrievalError' && typeof (err as { reason?: unknown }).reason === 'string');
+}
+
+/**
+ * An allowlist miss, including one from a second copy of this module. The
+ * verify stage turns it into `source_policy_no_match` rather than a provider outage.
+ */
+export function isSourcePolicyMiss(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const candidate = err as { sourcePolicyMiss?: unknown; message?: unknown };
+  return candidate.sourcePolicyMiss === true || candidate.message === SOURCE_POLICY_MISS_EXPLANATION;
 }

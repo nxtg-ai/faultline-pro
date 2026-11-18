@@ -65,7 +65,7 @@ import { resetGroundingAllowanceLedger, uninstallGroundingCounter } from '../src
 import { resetRateLimiter } from '../src/store/ratelimit.js';
 import { resetCircuitBreaker } from '../src/store/circuit-breaker.js';
 import { requestGrounding, groundingOption, sourcePolicyOption } from '../src/lib/grounding.js';
-import { assertSourcePolicy, storedSourcePolicy, HEALTHCARE_AUTHORITY_DOMAINS } from '@nxtg/faultline/cli/source-policy.js';
+import { assertSourcePolicy, storedSourcePolicy, HEALTHCARE_AUTHORITY_DOMAINS, SOURCE_POLICY_NOT_PARALLEL_WARNING } from '@nxtg/faultline/cli/source-policy.js';
 import { resetFullScanJobStore } from '../src/store/full-scan-jobs.js';
 
 const SERVER_KEY = 'grounding-parallel-server-key-0123456789';
@@ -285,6 +285,31 @@ describe('FAULTLINE_GROUNDING=parallel: Parallel then Gemini, no googleSearch, o
     });
   }, 30_000);
 
+  it('an allowlist miss is source_policy_no_match, not a provider outage, and keeps the policy', async () => {
+    parallelResults = [
+      { url: 'https://news.example/story', title: 'News', publish_date: '2024-05-01', excerpts: ['A newspaper.'] },
+    ];
+    await withServer(async (server) => {
+      const payer = getKeyStore().create('payer-miss', ['scan'], undefined, {
+        sourcePolicy: storedSourcePolicy(assertSourcePolicy('healthcare-authority')),
+      });
+      const res = await postScan(server, payer.key);
+      expect(res.statusCode).toBe(200);
+      expect(res.json().degraded).toBe(false);
+      expect(res.json().warnings).toBeUndefined();
+      const verifications = Object.values(res.json().verifications as Record<string, any>);
+      expect(verifications.length).toBeGreaterThan(0);
+      for (const v of verifications) {
+        expect(v).toMatchObject({ status: 'unverified', apiError: false, apiErrorReason: 'source_policy_no_match', sources: [] });
+        expect(v.provenance.sourcePolicy.profile).toBe('healthcare-authority');
+        expect(v.provenance.retriever).toBe('parallel-search');
+      }
+      expect(parallelBodies.length).toBe(verifications.length);
+      expect(googleSearchCalls()).toBe(0);
+      expect(sdk.prompts.filter((p) => p.includes('Retrieved sources'))).toHaveLength(0);
+    });
+  }, 30_000);
+
   it('server-key POST /scan (faultline-web) also runs Parallel: zero googleSearch calls', async () => {
     await withServer(async (server) => {
       const res = await postScan(server, SERVER_KEY);
@@ -486,6 +511,28 @@ describe('FAULTLINE_GROUNDING=parallel: Parallel then Gemini, no googleSearch, o
 });
 
 describe('FAULTLINE_GROUNDING unset: Google grounding everywhere, as before', () => {
+  it('a key with a source policy is not searched on Google', async () => {
+    await withServer(async (server) => {
+      const payer = getKeyStore().create('payer-google', ['scan'], undefined, {
+        sourcePolicy: storedSourcePolicy(assertSourcePolicy('healthcare-authority')),
+      });
+      const res = await postScan(server, payer.key);
+      expect(res.statusCode).toBe(200);
+      expect(res.json().degraded).toBe(false);
+      expect(res.json().warnings).toEqual([SOURCE_POLICY_NOT_PARALLEL_WARNING]);
+      const verifications = Object.values(res.json().verifications as Record<string, any>);
+      expect(verifications.length).toBeGreaterThan(0);
+      for (const v of verifications) {
+        expect(v).toMatchObject({ status: 'unverified', apiError: false, apiErrorReason: 'source_policy_not_applied', sources: [] });
+        expect(v.provenance.sourcePolicy.profile).toBe('healthcare-authority');
+        expect(v.provenance.retriever).toBeUndefined();
+      }
+      expect(googleSearchCalls()).toBe(0);
+      expect(parallelBodies).toHaveLength(0);
+      expect(console.error).toHaveBeenCalledWith(`[faultline] ${SOURCE_POLICY_NOT_PARALLEL_WARNING}`);
+    });
+  }, 30_000);
+
   it.each([['a customer key', 'customer'], ['the server key', 'server']] as const)('%s POST /scan uses googleSearch and never calls Parallel', async (_label, who) => {
     await withServer(async (server, key) => {
       const res = await postScan(server, who === 'server' ? SERVER_KEY : key);

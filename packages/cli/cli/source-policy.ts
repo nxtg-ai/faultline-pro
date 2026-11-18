@@ -14,7 +14,29 @@
  * A caller (the local CLI, the hosted API) passes a policy only when one is
  * configured. An unusable value does not mean "search the open web".
  */
+import type { SourcePolicyVerdictReason, VerificationResult, VerdictProvenance } from '../types';
+import { SOURCE_POLICY_MISS_EXPLANATION } from '../providers/retrieval-error';
 import { groundingFromEnv } from './grounding.js';
+
+/** Allowlist miss. PR #146 displays this as "no allowed source found". Set with `apiError: false`. */
+export const SOURCE_POLICY_NO_MATCH_REASON: SourcePolicyVerdictReason = 'source_policy_no_match';
+
+/** A policy was set but this scan would not search with Parallel. Set with `apiError: false`. */
+export const SOURCE_POLICY_NOT_APPLIED_REASON: SourcePolicyVerdictReason = 'source_policy_not_applied';
+
+/**
+ * Scan-level warning when a policy is set and grounding is not Parallel.
+ * Also the claim explanation. The open web is not searched.
+ */
+export const SOURCE_POLICY_NOT_PARALLEL_WARNING =
+  'A source policy is set, but this scan is not using Parallel search, so no claim was checked. The open web was not searched.';
+
+/**
+ * Scan-level warning when consensus would retrieve with OpenAI web search.
+ * A source policy does not cover that retriever, so nothing is checked.
+ */
+export const SOURCE_POLICY_OPENAI_CONSENSUS_WARNING =
+  'A source policy is set, but consensus would use OpenAI web search, which a source policy does not cover, so no claim was checked. The open web was not searched.';
 
 /** The env var a local run reads. The hosted API does not: a key carries the policy. */
 export const SOURCE_POLICY_ENV = 'FAULTLINE_SOURCE_POLICY';
@@ -401,6 +423,38 @@ export function sourceSatisfiesPolicy(uri: string, publishDate: string | undefin
     if (!isIsoDate(day) || day < policy.afterDate) return false;
   }
   return true;
+}
+
+/**
+ * An allowlist miss: unverified, not an outage, and the policy is on the
+ * provenance so a reader can see what was required.
+ */
+export function sourcePolicyNoMatchResult(claimId: string, provenance: VerdictProvenance): VerificationResult {
+  return {
+    claimId,
+    status: 'unverified',
+    explanation: SOURCE_POLICY_MISS_EXPLANATION,
+    sources: [],
+    apiError: false,
+    apiErrorReason: SOURCE_POLICY_NO_MATCH_REASON,
+    provenance,
+  };
+}
+
+/**
+ * A policy that this scan cannot apply. `warning` is the scan-level text.
+ * No web search runs.
+ */
+export function sourcePolicyNotAppliedResult(claimId: string, warning: string, provenance: VerdictProvenance): VerificationResult {
+  return {
+    claimId,
+    status: 'unverified',
+    explanation: warning,
+    sources: [],
+    apiError: false,
+    apiErrorReason: SOURCE_POLICY_NOT_APPLIED_REASON,
+    provenance,
+  };
 }
 
 /** The policy a retriever carried, in the provenance shape, or undefined when it had none. */
