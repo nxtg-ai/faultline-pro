@@ -20,14 +20,17 @@ import {
 import {
   bootstrapRate,
   cohensKappa,
+  csvEscape,
   formatAgreementMarkdown,
   importReviewerLabels,
   parseCsv,
   parseReviewerLabel,
 } from '../cli/audit-labels';
+import { renderCsv } from '../cli/export';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const demoPath = join(repoRoot, 'docs/demo/scan-result.json');
+const samplePath = join(repoRoot, 'docs/demo/audit-scan.json');
 
 function demoScan(): unknown {
   return JSON.parse(readFileSync(demoPath, 'utf8'));
@@ -66,13 +69,16 @@ describe('audit report from the demo scan', () => {
     expect(model.claims.filter((c) => c.uncheckedCode === 'no_record').map((c) => c.id)).toEqual(['s9', 's10']);
   });
 
-  it('matches the committed markdown, html and pdf samples', async () => {
-    expect(markdown).toBe(readFileSync(join(repoRoot, 'docs/demo/audit-report.md'), 'utf8'));
-    expect(html).toBe(readFileSync(join(repoRoot, 'docs/demo/audit-report.html'), 'utf8'));
-    const pdf = await renderAuditPdf(model);
-    const again = await renderAuditPdf(model);
-    expect(pdf.equals(again)).toBe(true);
-    expect(pdf.equals(readFileSync(join(repoRoot, 'docs/demo/audit-report.pdf')))).toBe(true);
+  it('does not name a measurement model or commit the scan did not record', () => {
+    expect(model.judgeModel).toBe('unknown');
+    expect(model.engineCommit).toBe('unknown');
+    expect(model.sourcePolicyMisses).toBe(0);
+    for (const body of [markdown, html, limitationParagraphs(model).join('\n')]) {
+      expect(body).not.toContain('gemini-2.5-flash');
+      expect(body).not.toContain('ba11345');
+      expect(body).toContain('The judge model recorded on this scan is unknown.');
+      expect(body).toContain('The engine commit recorded on this scan is unknown.');
+    }
   });
 
   it('does not copy provider error payloads or the scan compliance block into the report', () => {
@@ -100,7 +106,7 @@ describe('audit report from the demo scan', () => {
 
   it('quotes the score-file accuracy and both interval ends, not a rounded-up figure', () => {
     const headline = ACCURACY_READINGS[0];
-    for (const body of [markdown, html, limitationParagraphs().join('\n')]) {
+    for (const body of [markdown, html, limitationParagraphs(model).join('\n')]) {
       expect(body).toContain(headline.value);
       expect(body).toContain(headline.ciLow);
       expect(body).toContain(headline.ciHigh);
@@ -432,6 +438,187 @@ describe('reviewer CSV import', () => {
   });
 });
 
+describe('synthetic example sample', () => {
+  const scan = JSON.parse(readFileSync(samplePath, 'utf8'));
+  const model = buildAuditReport(scan);
+  const markdown = renderAuditMarkdown(model);
+  const html = renderAuditHtml(model);
+
+  it('populates supported, contradicted and unverified rows and says the file is an example', () => {
+    expect(model.syntheticExample).toBe(true);
+    expect(model.byBucket).toEqual({
+      supported: 1,
+      contradicted: 1,
+      mixed: 1,
+      unsupported: 1,
+      unchecked: 1,
+    });
+    expect(model.judgeModel).toBe('example-judge');
+    expect(model.engineCommit).toBe('unknown');
+    expect(model.sourcePolicyMisses).toBe(1);
+    expect(model.providerErrors).toBe(0);
+    expect(markdown).toContain('Synthetic example data.');
+    expect(markdown).toContain('https://example.test/northwind/payments');
+    expect(markdown).toContain('Unchecked: no allowed source found');
+    expect(markdown).not.toContain('gemini-2.5-flash');
+    expect(markdown).not.toContain('ba11345');
+    const findings = markdown.slice(
+      markdown.indexOf('## Unsupported and contradicted claims'),
+      markdown.indexOf('## Mixed claims'),
+    );
+    expect(findings).toContain('n2');
+    expect(findings).toContain('n3');
+    expect(findings).not.toContain('None. The scan recorded no contradicted');
+  });
+
+  it('matches the committed markdown, html and pdf samples', async () => {
+    expect(markdown).toBe(readFileSync(join(repoRoot, 'docs/demo/audit-report.md'), 'utf8'));
+    expect(html).toBe(readFileSync(join(repoRoot, 'docs/demo/audit-report.html'), 'utf8'));
+    const pdf = await renderAuditPdf(model);
+    const again = await renderAuditPdf(model);
+    expect(pdf.equals(again)).toBe(true);
+    expect(pdf.equals(readFileSync(join(repoRoot, 'docs/demo/audit-report.pdf')))).toBe(true);
+    expect(pdfText(pdf)).toContain('Synthetic example data.');
+    expect(pdfText(pdf)).toContain('example-judge');
+  });
+});
+
+describe('judge model and engine commit come from the scan', () => {
+  it('says unknown when the scan recorded neither', () => {
+    const model = buildAuditReport({ input: 'x', claims: [], verifications: {} });
+    expect(model.judgeModel).toBe('unknown');
+    expect(model.engineCommit).toBe('unknown');
+    const text = renderAuditMarkdown(model);
+    expect(text).toContain('The judge model recorded on this scan is unknown.');
+    expect(text).toContain('The engine commit recorded on this scan is unknown.');
+    expect(text).not.toContain('gemini-2.5-flash');
+    expect(text).not.toContain('ba11345');
+  });
+
+  it('reads a verdict provenance model and a scan commit, and a config value when provenance is absent', () => {
+    const fromVerdict = buildAuditReport({
+      engineCommit: 'cafebabe',
+      claims: [{ id: 'a', text: 't', type: 'fact', importance: 1 }],
+      verifications: {
+        a: {
+          claimId: 'a',
+          status: 'supported',
+          explanation: 'y',
+          sources: [{ uri: 'https://example.test/a', title: 'A' }],
+          provenance: { provider: 'example', model: 'example-judge', verifiedAt: '2026-11-17T00:00:00.000Z' },
+        },
+      },
+    });
+    expect(fromVerdict.judgeModel).toBe('example-judge');
+    expect(fromVerdict.engineCommit).toBe('cafebabe');
+
+    const fromConfig = buildAuditReport({
+      config: { judgeModel: 'from-config', engineCommit: 'cfg123' },
+      claims: [],
+      verifications: {},
+    });
+    expect(fromConfig.judgeModel).toBe('from-config');
+    expect(fromConfig.engineCommit).toBe('cfg123');
+  });
+});
+
+describe('source policy misses are not provider errors', () => {
+  function one(verification: Record<string, unknown>) {
+    return buildAuditReport({
+      claims: [{ id: 'p', text: 'A fee schedule line.', type: 'fact', importance: 1 }],
+      verifications: { p: verification },
+    });
+  }
+
+  it('labels a distinct reason, a provenance flag, and the allowlist sentence', () => {
+    const reason = one({
+      claimId: 'p', status: 'unverified', apiError: true, apiErrorReason: 'source_policy_no_match',
+      explanation: 'not checked', sources: [],
+    });
+    expect(reason.claims[0].explanation).toBe('Unchecked: no allowed source found');
+    expect(reason.providerErrors).toBe(0);
+    expect(reason.sourcePolicyMisses).toBe(1);
+
+    const flag = one({
+      claimId: 'p', status: 'unverified', apiError: true, apiErrorReason: 'provider_error',
+      explanation: 'not checked', sources: [],
+      provenance: { sourcePolicyNoMatch: true },
+    });
+    expect(flag.claims[0].explanation).toBe('Unchecked: no allowed source found');
+    expect(flag.providerErrors).toBe(0);
+
+    const sentence = one({
+      claimId: 'p', status: 'unverified', apiError: true, apiErrorReason: 'provider_error',
+      explanation: 'No source on the configured source-policy allowlist was found, so this claim was not checked.',
+      sources: [],
+    });
+    expect(sentence.claims[0].bucket).toBe('unchecked');
+    expect(sentence.claims[0].explanation).toBe('Unchecked: no allowed source found');
+    expect(sentence.providerErrors).toBe(0);
+    expect(renderAuditMarkdown(sentence)).toContain('Unchecked: no allowed source found');
+    expect(renderAuditMarkdown(sentence)).not.toContain('provider error. An unchecked');
+  });
+
+  it('keeps a provider error a provider error when no policy field or sentence is present', () => {
+    const plain = one({
+      claimId: 'p', status: 'unverified', apiError: true, apiErrorReason: 'provider_error',
+      explanation: 'The provider failed.', sources: [],
+    });
+    expect(plain.claims[0].uncheckedCode).toBe('provider_error');
+    expect(plain.providerErrors).toBe(1);
+    expect(plain.sourcePolicyMisses).toBe(0);
+    expect(plain.claims[0].explanation).not.toContain('no allowed source');
+  });
+});
+
+describe('spreadsheet formula cells', () => {
+  it('prefixes = + - @ tab and CR with one quote, and a round-trip restores the text', () => {
+    for (const cell of ['=1+1', '+1', '-1', '@SUM(A1)', '\tcmd', '\rcmd', '=1,2', '=say "hi"']) {
+      const escaped = csvEscape(cell);
+      expect(escaped.startsWith("'") || escaped.startsWith("\"'")).toBe(true);
+      expect(parseCsv(escaped + '\n')[0][0]).toBe(cell);
+    }
+    expect(csvEscape('supported')).toBe('supported');
+    expect(csvEscape('She said "no"')).toBe('"She said ""no"""');
+  });
+
+  it('neutralizes a claim that starts with = in the reviewer CSV and the history CSV', () => {
+    const model = buildAuditReport({
+      claims: [{ id: 'f', text: '=HYPERLINK("https://example.test")', type: 'fact', importance: 1 }],
+      verifications: {
+        f: { claimId: 'f', status: 'contradicted', explanation: '+cmd', sources: [{ title: '@title', uri: 'https://example.test/x' }] },
+      },
+    });
+    const labels = renderLabelCsv(model);
+    expect(labels).toContain("'=HYPERLINK");
+    expect(labels).toContain("'+cmd");
+    expect(labels).toContain("'@title");
+    expect(parseCsv(labels)[1][1]).toBe('=HYPERLINK("https://example.test")');
+
+    const history = renderCsv([{
+      timestamp: '2026-11-17T00:00:00.000Z',
+      file: 'note.txt',
+      provider: 'example',
+      overallRisk: 'low',
+      findingCount: 0,
+      claimCount: 1,
+      verificationCount: 1,
+      ruleFindings: [],
+      scanResult: {
+        input: '=1',
+        provider: 'example',
+        claims: [{ id: 'f', text: '=HYPERLINK("https://example.test")', type: 'fact', importance: 1 }],
+        verifications: { f: { claimId: 'f', status: 'contradicted', explanation: '-2+2', sources: [] } },
+        overallRisk: 'low',
+        complianceReport: { generatedAt: '2026-11-17T00:00:00.000Z' },
+        ruleFindings: [],
+      },
+    } as never]);
+    expect(history).toContain("'=HYPERLINK");
+    expect(history).toContain("'-2+2");
+  });
+});
+
 describe('audit-report command', () => {
   it('is named in the help text', async () => {
     const { output } = await main(['help']);
@@ -448,7 +635,7 @@ describe('audit-report command', () => {
     expect(exitCode).toBe(0);
     expect(output).toContain('Unsupported: 1');
     expect(output).toContain('Unchecked: 9');
-    expect(readFileSync(out, 'utf8')).toBe(readFileSync(join(repoRoot, 'docs/demo/audit-report.md'), 'utf8'));
+    expect(readFileSync(out, 'utf8')).toContain('The judge model recorded on this scan is unknown.');
     expect(readFileSync(csv, 'utf8').split('\n')[0]).toContain('reviewer_label');
   });
 

@@ -135,8 +135,23 @@ export function cohensKappa(a: readonly string[], b: readonly string[]): number 
   return (agree / n - pe) / (1 - pe);
 }
 
+/** Characters a spreadsheet treats as the start of a formula (OWASP CSV injection). */
+const SPREADSHEET_FORMULA_START = '=+-@\t\r';
+
+function spreadsheetPrefix(s: string): string {
+  if (s.length > 0 && SPREADSHEET_FORMULA_START.includes(s[0])) return "'" + s;
+  return s;
+}
+
+/** Drop the one quote this exporter added so a round-trip keeps the original text. */
+function undoSpreadsheetPrefix(s: string): string {
+  if (s.length > 1 && s[0] === "'" && SPREADSHEET_FORMULA_START.includes(s[1])) return s.slice(1);
+  return s;
+}
+
 export function csvEscape(val: unknown): string {
-  const s = val === null || val === undefined ? '' : String(val);
+  const raw = val === null || val === undefined ? '' : String(val);
+  const s = spreadsheetPrefix(raw);
   if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
     return '"' + s.replace(/"/g, '""') + '"';
   }
@@ -174,13 +189,13 @@ export function parseCsv(text: string): string[][] {
       continue;
     }
     if (c === ',') {
-      row.push(field);
+      row.push(undoSpreadsheetPrefix(field));
       field = '';
       continue;
     }
     if (c === '\n' || c === '\r') {
       if (c === '\r' && s[i + 1] === '\n') i++;
-      row.push(field);
+      row.push(undoSpreadsheetPrefix(field));
       rows.push(row);
       row = [];
       field = '';
@@ -189,7 +204,7 @@ export function parseCsv(text: string): string[][] {
     field += c;
   }
   if (field.length > 0 || row.length > 0) {
-    row.push(field);
+    row.push(undoSpreadsheetPrefix(field));
     rows.push(row);
   }
   return rows.filter((r) => r.some((cell) => cell.length > 0));

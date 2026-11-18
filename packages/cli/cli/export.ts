@@ -13,6 +13,7 @@
 import type { HistoryEntry } from '../history/store.js';
 import type { Claim, VerificationResult } from '../types.js';
 import { auditTrail } from './audit-trail.js';
+import { csvEscape } from './audit-labels.js';
 
 export type ExportFormat = 'csv' | 'json' | 'ndjson';
 
@@ -64,15 +65,6 @@ const CSV_HEADERS = [
   'evidence_json',
   'independent_evidence_json',
 ] as const;
-
-function csvEscape(val: unknown): string {
-  const s = val === null || val === undefined ? '' : String(val);
-  // RFC 4180: wrap in quotes if the value contains comma, quote, or newline
-  if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
-    return '"' + s.replace(/"/g, '""') + '"';
-  }
-  return s;
-}
 
 function csvRow(fields: unknown[]): string {
   return fields.map(csvEscape).join(',');

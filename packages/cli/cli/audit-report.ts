@@ -149,7 +149,13 @@ export interface AuditReportModel {
   byBucket: Record<AuditBucket, number>;
   byType: TypeCount[];
   providerErrors: number;
+  sourcePolicyMisses: number;
   otherUnchecked: number;
+  /** Judge model names copied from the scan. "unknown" when the file recorded none. */
+  judgeModel: string;
+  /** Engine commit copied from the scan. "unknown" when the file recorded none. */
+  engineCommit: string;
+  syntheticExample: boolean;
 }
 
 const PROVIDER_CODES = new Set([
@@ -182,8 +188,21 @@ function legacyCode(explanation: string): string {
   return 'provider_error';
 }
 
+function sourcePolicyMiss(v: Record<string, unknown>, explanation: string): boolean {
+  const reason = typeof v.apiErrorReason === 'string' ? v.apiErrorReason : '';
+  if (reason === 'source_policy_no_match') return true;
+  const provenance = asRecord(v.provenance);
+  if (provenance?.sourcePolicyNoMatch === true || provenance?.sourcePolicyMiss === true || provenance?.noAllowedSource === true) {
+    return true;
+  }
+  // An allowlist miss may be stored as a provider error plus this sentence, with no separate field.
+  // A provider error whose text does not say that stays a provider error.
+  return v.apiError === true && /source-policy allowlist|no source within the configured source policy/i.test(explanation);
+}
+
 function uncheckedCopy(code: string, explanation: string, raw: boolean): string {
   if (code === 'not_verifiable') return NOT_CHECKABLE_EXPLANATION;
+  if (code === 'source_policy_no_match') return 'Unchecked: no allowed source found';
   if (code === 'no_record') return 'No verification record for this claim. This is not a verdict.';
   if (code === 'skipped' || code === 'loading') return 'This claim was not sent to verification. This is not a verdict.';
   if (code === 'provider_out_of_credits') return OUT_OF_CREDITS_VERIFY_MESSAGE;
@@ -213,6 +232,14 @@ function classify(v: Record<string, unknown> | undefined): Classified {
   const status = typeof v.status === 'string' ? v.status : '';
   if (status === 'skipped' || status === 'loading') {
     return { bucket: 'unchecked', status: null, code: status, explanation: uncheckedCopy(status, '', true) };
+  }
+  if (sourcePolicyMiss(v, explanation)) {
+    return {
+      bucket: 'unchecked',
+      status: null,
+      code: 'source_policy_no_match',
+      explanation: uncheckedCopy('source_policy_no_match', '', false),
+    };
   }
   if (v.apiError === true || legacy) {
     const reason = typeof v.apiErrorReason === 'string' ? v.apiErrorReason : '';
@@ -309,10 +336,12 @@ export function buildAuditReport(scan: unknown): AuditReportModel {
   });
 
   let providerErrors = 0;
+  let sourcePolicyMisses = 0;
   let otherUnchecked = 0;
   for (const c of claims) {
     if (c.bucket !== 'unchecked') continue;
-    if (c.uncheckedCode && PROVIDER_CODES.has(c.uncheckedCode)) providerErrors++;
+    if (c.uncheckedCode === 'source_policy_no_match') sourcePolicyMisses++;
+    else if (c.uncheckedCode && PROVIDER_CODES.has(c.uncheckedCode)) providerErrors++;
     else otherUnchecked++;
   }
 
@@ -335,8 +364,63 @@ export function buildAuditReport(scan: unknown): AuditReportModel {
     byBucket,
     byType,
     providerErrors,
+    sourcePolicyMisses,
     otherUnchecked,
+    judgeModel: recordedJudgeModel(root),
+    engineCommit: recordedEngineCommit(root),
+    syntheticExample: root.syntheticExample === true,
   };
+}
+
+function trimmedString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function firstString(values: unknown[]): string | null {
+  for (const value of values) {
+    const text = trimmedString(value);
+    if (text) return text;
+  }
+  return null;
+}
+
+function provenanceStrings(root: Record<string, unknown>, key: string): string[] {
+  const found = new Set<string>();
+  const verifications = asRecord(root.verifications) ?? {};
+  for (const value of Object.values(verifications)) {
+    const text = trimmedString(asRecord(asRecord(value)?.provenance)?.[key]);
+    if (text) found.add(text);
+  }
+  return [...found].sort();
+}
+
+/** Model names on verdict provenance, then a scan-level or config value, else unknown. */
+function recordedJudgeModel(root: Record<string, unknown>): string {
+  const fromVerdicts = provenanceStrings(root, 'model');
+  if (fromVerdicts.length > 0) return fromVerdicts.join(', ');
+  const provenance = asRecord(root.provenance);
+  const config = asRecord(root.config);
+  return firstString([root.judgeModel, provenance?.model, config?.judgeModel, config?.model]) ?? 'unknown';
+}
+
+/** Commit on verdict provenance, then a scan-level or config value, else unknown. */
+function recordedEngineCommit(root: Record<string, unknown>): string {
+  const fromVerdicts = [...new Set([
+    ...provenanceStrings(root, 'commit'),
+    ...provenanceStrings(root, 'engineCommit'),
+  ])].sort();
+  if (fromVerdicts.length > 0) return fromVerdicts.join(', ');
+  const provenance = asRecord(root.provenance);
+  const config = asRecord(root.config);
+  return firstString([
+    root.engineCommit,
+    root.commit,
+    provenance?.engineCommit,
+    provenance?.commit,
+    provenance?.engine,
+    config?.engineCommit,
+    config?.commit,
+  ]) ?? 'unknown';
 }
 
 export function methodParagraphs(): string[] {
@@ -344,15 +428,17 @@ export function methodParagraphs(): string[] {
     'This report was rendered from the scan file only. It did not call a model or a search service.',
     'Claims are the scan\'s claims, in file order. A verification id with no claim is listed after those.',
     'A checked verdict is supported, contradicted, mixed, or unverified. Unverified means the check ran and the scan recorded no support; this report calls that unsupported.',
-    'A claim is unchecked when it has no verification record, its status is skipped or loading, the record has apiError, the record has notCheckable, or the explanation begins with "Verify failed" (the engine\'s wording for a provider error, including files saved before apiError was set). An unchecked claim is not a verdict.',
+    'A claim is unchecked when it has no verification record, its status is skipped or loading, the record has apiError, the record has notCheckable, or the explanation begins with "Verify failed" (the engine\'s wording for a provider error, including files saved before apiError was set). An unchecked claim is not a verdict. A claim left unchecked because no source was inside the configured source policy is labelled "Unchecked: no allowed source found". That is not a provider error. The scan may record it as apiErrorReason "source_policy_no_match", as a provenance flag, or, when neither field is present, as apiError with an explanation that says no source was on the source-policy allowlist.',
     'Sources, retrieval time, model and passage hash are copied from the verification. Retrieval time is provenance.retrievedAt when the scan recorded it, otherwise the time a cited page was fetched. The passage hash is the SHA-256 of the page bytes the scan fetched (evidence.contentSha256). A field the scan did not record is written as "not recorded". Nothing in those columns is inferred.',
   ];
 }
 
-export function limitationParagraphs(): string[] {
+export function limitationParagraphs(recorded: { judgeModel: string; engineCommit: string }): string[] {
   const headline = ACCURACY_READINGS[0];
+  const judgeModel = recorded.judgeModel.trim() || 'unknown';
+  const engineCommit = recorded.engineCommit.trim() || 'unknown';
   return [
-    'Faultline\'s verdict accuracy was measured on a labelled set. The measurement was not pre-registered. The figure this report quotes for the hosted path is balanced accuracy on the 193 Factcheck-Bench claims, in a 200-claim sample, that have a true or false gold label. The hosted path is Parallel search in advanced mode, then a Gemini judge with no Google search tool. The judge model is gemini-2.5-flash. The engine commit is ba11345.',
+    `Faultline's verdict accuracy was measured on a labelled set. The measurement was not pre-registered. The figure this report quotes for the hosted path is balanced accuracy on the 193 Factcheck-Bench claims, in a 200-claim sample, that have a true or false gold label. The hosted path in that measurement was Parallel search in advanced mode, then a Gemini judge with no Google search tool. This report does not copy that measurement's model name or commit onto this scan. The judge model recorded on this scan is ${judgeModel}. The engine commit recorded on this scan is ${engineCommit}. A value the scan file did not record is unknown.`,
     'Balanced accuracy is the mean of recall on true claims and recall on false claims. Supported counts as true and contradicted as false. Mixed, unverified and a failed check count as wrong. The interval is a 2,000-resample bootstrap, seed 20260929, from scripts/accuracy-g0-score.py.',
     `The score file ${headline.scoreFile} records balanced accuracy ${headline.value}, 95% CI [${headline.ciLow}, ${headline.ciHigh}]. README.md and the changelog print this as 0.755 [0.678, 0.829]. That three-decimal form rounds the point estimate and the lower bound up, and rounds the upper bound down. This report quotes the score file.`,
     'Four readings of the same 200-claim sample are in the repo from 2026-11-05 and 2026-11-06. README.md describes them as 0.755 to 0.802. That range rounds the lowest of the four up and the highest up. The score-file values are in the table. They are not pooled into one interval. Two of the four were local API servers, not the hosted engine.',
@@ -427,6 +513,10 @@ export function renderAuditMarkdown(model: AuditReportModel): string {
   lines.push('');
   lines.push('Claim-level record of one Faultline scan. Prepared from the scan file alone.');
   lines.push('');
+  if (model.syntheticExample) {
+    lines.push('Synthetic example data. This report was rendered from an example scan, not from a client document.');
+    lines.push('');
+  }
   if (model.providerErrors > 0) {
     lines.push('This scan left claims unchecked after a provider error. An unchecked claim is not a finding that the claim is unsupported.');
     lines.push('');
@@ -438,12 +528,15 @@ export function renderAuditMarkdown(model: AuditReportModel): string {
   lines.push('|---|---|');
   lines.push(`| Renderer | Faultline ${model.version} |`);
   lines.push(`| Provider recorded | ${mdCell(model.provider)} |`);
+  lines.push(`| Judge model recorded | ${mdCell(model.judgeModel)} |`);
+  lines.push(`| Engine commit recorded | ${mdCell(model.engineCommit)} |`);
   lines.push(`| Risk band recorded by the scan | ${model.overallRisk ? mdCell(model.overallRisk) : 'not recorded'} |`);
   lines.push(`| Scan timestamp recorded | ${model.generatedAt ? mdCell(model.generatedAt) : 'not recorded'} |`);
   lines.push(`| Input characters (Unicode code points) | ${model.inputChars === null ? 'not recorded' : String(model.inputChars)} |`);
   lines.push(`| Input SHA-256 | ${model.inputSha256 ?? 'not recorded'} |`);
   lines.push(`| Claims | ${model.claims.length} |`);
   lines.push(`| Unchecked after a provider error | ${model.providerErrors} |`);
+  lines.push(`| Unchecked: no allowed source found | ${model.sourcePolicyMisses} |`);
   lines.push(`| Unchecked for another reason | ${model.otherUnchecked} |`);
   lines.push(`| Scan file degraded flag | ${model.degradedFlag === null ? 'not recorded' : model.degradedFlag ? 'true' : 'false'} |`);
   lines.push('');
@@ -538,14 +631,14 @@ export function renderAuditMarkdown(model: AuditReportModel): string {
 
   lines.push('## Limitations');
   lines.push('');
-  for (const p of limitationParagraphs()) {
+  for (const p of limitationParagraphs(model)) {
     lines.push(p);
     lines.push('');
   }
-  lines.push('| Reading | Balanced accuracy | 95% CI | Commit | Where | Score file |');
-  lines.push('|---------|-------------------|--------|--------|-------|------------|');
+  lines.push('| Reading | Balanced accuracy | 95% CI | Where | Score file |');
+  lines.push('|---------|-------------------|--------|-------|------------|');
   for (const r of ACCURACY_READINGS) {
-    lines.push(`| ${r.label} | ${r.value} | [${r.ciLow}, ${r.ciHigh}] | ${r.commit} | ${r.where} | ${r.scoreFile} |`);
+    lines.push(`| ${r.label} | ${r.value} | [${r.ciLow}, ${r.ciHigh}] | ${r.where} | ${r.scoreFile} |`);
   }
   lines.push('');
   return lines.join('\n');
@@ -603,6 +696,9 @@ ${unchecked.map((c) => `<tr><td><strong>${escapeHtml(c.id)}</strong> ${escapeHtm
       ? `The input is ${model.inputChars} characters. The first ${INPUT_QUOTE_CAP} are quoted. The SHA-256 covers the whole input.`
       : 'Input text, as stored on the scan:'}</p>
 <pre>${escapeHtml(model.inputQuote)}</pre>`;
+  const synthetic = model.syntheticExample
+    ? '<p class="banner">Synthetic example data. This report was rendered from an example scan, not from a client document.</p>'
+    : '';
   const banner = model.providerErrors > 0
     ? '<p class="banner">This scan left claims unchecked after a provider error. An unchecked claim is not a finding that the claim is unsupported.</p>'
     : '';
@@ -626,18 +722,22 @@ ${unchecked.map((c) => `<tr><td><strong>${escapeHtml(c.id)}</strong> ${escapeHtm
 <body>
 <h1>AI output audit</h1>
 <p>Claim-level record of one Faultline scan. Prepared from the scan file alone.</p>
+${synthetic}
 ${banner}
 <h2>Scope</h2>
 <table>
 <tbody>
 <tr><th>Renderer</th><td>Faultline ${escapeHtml(model.version)}</td></tr>
 <tr><th>Provider recorded</th><td>${escapeHtml(model.provider)}</td></tr>
+<tr><th>Judge model recorded</th><td>${escapeHtml(model.judgeModel)}</td></tr>
+<tr><th>Engine commit recorded</th><td>${escapeHtml(model.engineCommit)}</td></tr>
 <tr><th>Risk band recorded by the scan</th><td>${escapeHtml(model.overallRisk ?? 'not recorded')}</td></tr>
 <tr><th>Scan timestamp recorded</th><td>${escapeHtml(model.generatedAt ?? 'not recorded')}</td></tr>
 <tr><th>Input characters (Unicode code points)</th><td>${model.inputChars === null ? 'not recorded' : String(model.inputChars)}</td></tr>
 <tr><th>Input SHA-256</th><td>${escapeHtml(model.inputSha256 ?? 'not recorded')}</td></tr>
 <tr><th>Claims</th><td>${model.claims.length}</td></tr>
 <tr><th>Unchecked after a provider error</th><td>${model.providerErrors}</td></tr>
+<tr><th>Unchecked: no allowed source found</th><td>${model.sourcePolicyMisses}</td></tr>
 <tr><th>Unchecked for another reason</th><td>${model.otherUnchecked}</td></tr>
 <tr><th>Scan file degraded flag</th><td>${model.degradedFlag === null ? 'not recorded' : model.degradedFlag ? 'true' : 'false'}</td></tr>
 </tbody>
@@ -671,11 +771,11 @@ ${mixedBlock}
 <h2>Unchecked claims</h2>
 ${uncheckedBlock}
 <h2>Limitations</h2>
-${htmlParas(limitationParagraphs())}
+${htmlParas(limitationParagraphs(model))}
 <table>
-<thead><tr><th>Reading</th><th>Balanced accuracy</th><th>95% CI</th><th>Commit</th><th>Where</th><th>Score file</th></tr></thead>
+<thead><tr><th>Reading</th><th>Balanced accuracy</th><th>95% CI</th><th>Where</th><th>Score file</th></tr></thead>
 <tbody>
-${ACCURACY_READINGS.map((r) => `<tr><td>${escapeHtml(r.label)}</td><td>${r.value}</td><td>[${r.ciLow}, ${r.ciHigh}]</td><td>${escapeHtml(r.commit)}</td><td>${escapeHtml(r.where)}</td><td>${escapeHtml(r.scoreFile)}</td></tr>`).join('\n')}
+${ACCURACY_READINGS.map((r) => `<tr><td>${escapeHtml(r.label)}</td><td>${r.value}</td><td>[${r.ciLow}, ${r.ciHigh}]</td><td>${escapeHtml(r.where)}</td><td>${escapeHtml(r.scoreFile)}</td></tr>`).join('\n')}
 </tbody>
 </table>
 </body>
@@ -738,6 +838,9 @@ export async function renderAuditPdf(model: AuditReportModel): Promise<Buffer> {
 
     write('AI output audit', { size: 18, bold: true, gap: 0.3 });
     write('Claim-level record of one Faultline scan. Prepared from the scan file alone.', { gap: 0.6 });
+    if (model.syntheticExample) {
+      write('Synthetic example data. This report was rendered from an example scan, not from a client document.', { gap: 0.6 });
+    }
     if (model.providerErrors > 0) {
       write('This scan left claims unchecked after a provider error. An unchecked claim is not a finding that the claim is unsupported.', { gap: 0.6 });
     }
@@ -746,12 +849,15 @@ export async function renderAuditPdf(model: AuditReportModel): Promise<Buffer> {
     const scope: Array<[string, string]> = [
       ['Renderer', `Faultline ${model.version}`],
       ['Provider recorded', model.provider],
+      ['Judge model recorded', model.judgeModel],
+      ['Engine commit recorded', model.engineCommit],
       ['Risk band recorded by the scan', model.overallRisk ?? 'not recorded'],
       ['Scan timestamp recorded', model.generatedAt ?? 'not recorded'],
       ['Input characters (Unicode code points)', model.inputChars === null ? 'not recorded' : String(model.inputChars)],
       ['Input SHA-256', model.inputSha256 ?? 'not recorded'],
       ['Claims', String(model.claims.length)],
       ['Unchecked after a provider error', String(model.providerErrors)],
+      ['Unchecked: no allowed source found', String(model.sourcePolicyMisses)],
       ['Unchecked for another reason', String(model.otherUnchecked)],
       ['Scan file degraded flag', model.degradedFlag === null ? 'not recorded' : String(model.degradedFlag)],
     ];
@@ -827,9 +933,9 @@ export async function renderAuditPdf(model: AuditReportModel): Promise<Buffer> {
     }
 
     write('Limitations', { size: 13, bold: true, gap: 0.3 });
-    for (const p of limitationParagraphs()) write(p, { gap: 0.3 });
+    for (const p of limitationParagraphs(model)) write(p, { gap: 0.3 });
     for (const r of ACCURACY_READINGS) {
-      write(`${r.label}: balanced accuracy ${r.value}, 95% CI [${r.ciLow}, ${r.ciHigh}], commit ${r.commit}, ${r.where}. ${r.scoreFile}`);
+      write(`${r.label}: balanced accuracy ${r.value}, 95% CI [${r.ciLow}, ${r.ciHigh}], ${r.where}. ${r.scoreFile}`);
     }
 
     doc.end();
