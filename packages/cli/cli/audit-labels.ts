@@ -565,7 +565,10 @@ function codeSpan(text: string): string {
   for (const run of text.match(/`+/g) ?? []) longest = Math.max(longest, run.length);
   const fence = '`'.repeat(longest + 1);
   const pad = text.startsWith('`') || text.endsWith('`') ? ' ' : '';
-  return fence + pad + text.replace(/\|/g, '\\|') + pad + fence;
+  // Escape the backslash first. Replacing "|" with "\|" alone leaves a
+  // backslash in the text able to escape the pipe that follows it.
+  const body = text.replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
+  return fence + pad + body + pad + fence;
 }
 
 /**

@@ -293,6 +293,19 @@ describe('provenance on unsupported and contradicted claims', () => {
     expect(mixed).toContain('not recorded');
   });
 
+  it('escapes a backslash before a pipe inside a link code span', () => {
+    const model = buildAuditReport({
+      claims: [{ id: 'p', text: 'see https://example.test/a\\|b end', type: 'fact', importance: 1 }],
+      verifications: {
+        p: { claimId: 'p', status: 'contradicted', explanation: 'no', sources: [] },
+      },
+    });
+    const row = renderAuditMarkdown(model).split('\n').find((line) => line.startsWith('| p '));
+    expect(row).toBeDefined();
+    expect(row).toContain('`https://example.test/a\\\\\\|b`');
+    expect(row).toContain('| contradicted |');
+  });
+
   it('escapes a backslash before a pipe in a markdown cell', () => {
     const model = buildAuditReport({
       claims: [{ id: 'p', text: 'cost \\| 9', type: 'fact', importance: 1 }],
