@@ -105,6 +105,9 @@ export const HEADLINE_MEASUREMENT = {
   writeupJudgeWords: 'Gemini 2.5 Flash judge',
 } as const;
 
+/** The current judge's pre-registered reading, in the wording passed by the claims gate (2026-11-19). */
+export const CURRENT_JUDGE_READING = 'On the same 193 claims, a pre-registered comparison on 2026-11-14, run on a local API and not the hosted engine, measured gemini-3.1-pro-preview at balanced accuracy 0.7822072072072072, 95% CI [0.7091077288175319, 0.8512971989705367] (docs/research/data/judge-ab-2026-11-14.summary.json). In that run it was not shown better than gemini-2.5-flash: paired difference +0.0309309309309308 [-0.01083119383825415, 0.07636544483803065]. A second pre-registered run that day on the same model is invalid under its pre-registration, because 179 of 193 claims returned a status.';
+
 /** The production judge model changed after the headline reading. It has not been re-measured since. */
 export const PRODUCTION_JUDGE_CHANGE = {
   on: '2026-11-14',
@@ -499,7 +502,7 @@ export function limitationParagraphs(recorded: { judgeModel: string; engineCommi
     'Balanced accuracy is the mean of recall on true claims and recall on false claims. Supported counts as true and contradicted as false. Mixed, unverified and a failed check count as wrong. The interval is a 2,000-resample bootstrap, seed 20260929, from scripts/accuracy-g0-score.py.',
     `The score file ${headline.scoreFile} records balanced accuracy ${headline.value}, 95% CI [${headline.ciLow}, ${headline.ciHigh}]. ` +
       `It was measured on ${HEADLINE_MEASUREMENT.measuredOn} with the judge model ${HEADLINE_MEASUREMENT.judgeModel} (${headline.writeup}). ` +
-      `The production judge model changed on ${PRODUCTION_JUDGE_CHANGE.on}, to ${PRODUCTION_JUDGE_CHANGE.judgeModel}. This hosted figure has not been re-measured since that change. ` +
+      `The production judge model changed on ${PRODUCTION_JUDGE_CHANGE.on}, to ${PRODUCTION_JUDGE_CHANGE.judgeModel}. This hosted figure has not been re-measured since that change. ${CURRENT_JUDGE_READING} ` +
       `README.md and the changelog print this as 0.755 [0.678, 0.829]. That three-decimal form rounds the point estimate and the lower bound up, and rounds the upper bound down. This report quotes the score file.`,
     'Four readings of the same 200-claim sample are in the repo from 2026-11-05 and 2026-11-06. README.md describes them as 0.755 to 0.802. That range rounds the lowest of the four up and the highest up. The score-file values are in the table. They are not pooled into one interval. Two of the four were local API servers, not the hosted engine.',
     `On 2026-11-06 a fast-mode arm, which is not the production setting, scored ${FAST_ARM.value}, 95% CI [${FAST_ARM.ciLow}, ${FAST_ARM.ciHigh}] (${FAST_ARM.scoreFile}). The write-up kept advanced mode.`,

@@ -13,6 +13,7 @@ import {
   PRODUCTION_JUDGE_CHANGE,
   buildAuditReport,
   limitationParagraphs,
+  CURRENT_JUDGE_READING,
   renderAuditHtml,
   renderAuditMarkdown,
   renderAuditPdf,
@@ -940,6 +941,9 @@ describe('the headline accuracy states its judge model and date', () => {
       expect(body).toContain(
         'The production judge model changed on 2026-11-14, to gemini-3.1-pro-preview. This hosted figure has not been re-measured since that change.',
       );
+      expect(body).toContain(CURRENT_JUDGE_READING);
+      expect(body).toContain('In that run it was not shown better than gemini-2.5-flash');
+      expect(body).toContain('179 of 193 claims returned a status');
       expect(body).toContain(ACCURACY_READINGS[0].value);
     }
     expect(scopeSection(renderAuditMarkdown(model))).toContain('| Judge model recorded | unknown |');
