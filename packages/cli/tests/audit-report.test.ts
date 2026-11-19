@@ -968,3 +968,44 @@ describe('audit-report --import-labels needs the scan', () => {
     expect(output).toContain('Error rate: 1/1 = 1');
   });
 });
+
+// Second-seat re-check on the review fold-in (findings 2 to 4).
+describe('audit-report re-check fold-in', () => {
+  it('matches verification keys trimmed, so an untrimmed key is the real claim and scores on import', () => {
+    const model = buildAuditReport({
+      claims: [{ text: 'A claim the scan saved without an id.', type: 'fact', importance: 1 }],
+      verifications: {
+        ' missing-id-1 ': { claimId: 'missing-id-1', status: 'contradicted', explanation: 'A real record.', sources: [] },
+      },
+    });
+    expect(model.claims).toHaveLength(2);
+    const noId = model.claims[0];
+    expect(noId.bucket).toBe('unchecked');
+    expect(noId.id).not.toBe('missing-id-1');
+    const real = model.claims.find((c) => c.id === 'missing-id-1');
+    expect(real?.bucket).toBe('contradicted');
+    const result = importReviewerLabels(
+      'claim_id,engine_status,reviewer_label\nmissing-id-1,contradicted,contradicted\n',
+      scanVerdicts(model),
+    );
+    expect(result.scored).toBe(1);
+    expect(result.errors).toBe(0);
+  });
+
+  it('counts a row whose every cell is empty as a row with no claim id', () => {
+    const result = importReviewerLabels(
+      'claim_id,engine_status,reviewer_label\n,,\nc1,supported,supported\n',
+      verdicts({ c1: 'supported' }),
+    );
+    expect(result.rowsNoClaimId).toBe(1);
+    expect(result.scored).toBe(1);
+  });
+
+  it('a status that agrees with the scan does not mask a bucket that disagrees', () => {
+    const result = importReviewerLabels(
+      'claim_id,engine_status,engine_bucket,reviewer_label\nc1,supported,contradicted,supported\n',
+      verdicts({ c1: 'supported' }),
+    );
+    expect(result.engineColumnMismatches).toBe(1);
+  });
+});

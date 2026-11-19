@@ -334,7 +334,14 @@ export function buildAuditReport(scan: unknown): AuditReportModel {
   if (!root) throw new AuditReportError('Scan result must be a JSON object.');
 
   const claimList = Array.isArray(root.claims) ? root.claims : [];
-  const verifications = asRecord(root.verifications) ?? {};
+  // Verification keys are matched trimmed, like claim ids, so " c1 " and "c1"
+  // are one claim and no untrimmed key can sit beside a synthetic id. On a
+  // trimmed collision the first key wins.
+  const verifications: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(asRecord(root.verifications) ?? {})) {
+    const k = key.trim();
+    if (k && !(k in verifications)) verifications[k] = value;
+  }
   const seen = new Set<string>();
   const claims: AuditClaim[] = [];
 

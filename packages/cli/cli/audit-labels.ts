@@ -207,7 +207,9 @@ export function parseCsv(text: string): string[][] {
     row.push(undoSpreadsheetPrefix(field));
     rows.push(row);
   }
-  return rows.filter((r) => r.some((cell) => cell.length > 0));
+  // A blank line is dropped. A row of delimiters with every cell empty (",,,,")
+  // is kept, so the import counts it as a row with no claim id.
+  return rows.filter((r) => r.length > 1 || r.some((cell) => cell.length > 0));
 }
 
 export type ParsedReviewerLabel = EngineWord | 'skip' | 'blank' | 'invalid';
@@ -363,11 +365,13 @@ export function importReviewerLabels(csvText: string, scanVerdicts: ReadonlyMap<
       notInScan.add(claimId);
       continue;
     }
-    const csvEngine = engineWordFromCells(
-      statusCol >= 0 ? cells[statusCol] ?? '' : '',
-      bucketCol >= 0 ? cells[bucketCol] ?? '' : '',
-    );
-    if (csvEngine !== 'unknown' && csvEngine !== verdict) engineColumnMismatches++;
+    // Each engine column is checked on its own, so a status that agrees with
+    // the scan cannot mask a bucket that disagrees.
+    const fromStatus = engineWordFromCells(statusCol >= 0 ? cells[statusCol] ?? '' : '', '');
+    const fromBucket = engineWordFromCells('', bucketCol >= 0 ? cells[bucketCol] ?? '' : '');
+    if ((fromStatus !== 'unknown' && fromStatus !== verdict) || (fromBucket !== 'unknown' && fromBucket !== verdict)) {
+      engineColumnMismatches++;
+    }
     const reviewerId = (reviewerCol >= 0 ? cells[reviewerCol] ?? '' : '').trim() || 'reviewer';
     const reviewers = byClaim.get(claimId) ?? new Map<string, ParsedReviewerLabel[]>();
     const labels = reviewers.get(reviewerId) ?? [];
