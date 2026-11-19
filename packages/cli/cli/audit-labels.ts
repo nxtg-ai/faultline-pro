@@ -555,8 +555,50 @@ export function markdownCell(raw: string): string {
   return out;
 }
 
+// A web address, a bare www. host or an email address: the shapes a GFM viewer
+// turns into a link on its own.
+const LINK_LIKE = /(?:\b[a-z][a-z0-9+.-]*:\/\/|\bwww\.)[^\s<>]*|\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b/gi;
+
+/** One code span of `text`, fenced so no backtick in it can close the span. A pipe is escaped for the table. */
+function codeSpan(text: string): string {
+  let longest = 0;
+  for (const run of text.match(/`+/g) ?? []) longest = Math.max(longest, run.length);
+  const fence = '`'.repeat(longest + 1);
+  const pad = text.startsWith('`') || text.endsWith('`') ? ' ' : '';
+  return fence + pad + text.replace(/\|/g, '\\|') + pad + fence;
+}
+
+/**
+ * A Markdown table cell for UNTRUSTED text: claim text, model output,
+ * explanations, reviewer ids, anything read from the scan file or a CSV.
+ * Every link-like run goes in a code span, so no viewer makes it clickable
+ * under our report; the rest is escaped as markdownCell does.
+ */
+export function untrustedCell(raw: string): string {
+  const s = raw.replace(/\s+/g, ' ').trim();
+  let out = '';
+  let last = 0;
+  for (const m of s.matchAll(LINK_LIKE)) {
+    const start = m.index ?? 0;
+    out += markdownCell(s.slice(last, start)) + codeSpan(m[0]);
+    last = start + m[0].length;
+  }
+  return out + markdownCell(s.slice(last));
+}
+
+/**
+ * A source URL that the scan's own retrieval recorded: an http(s) address with
+ * no space or angle bracket becomes a Markdown autolink, so the reader can open
+ * the evidence. Anything else is shown as untrusted text, never as a link.
+ */
+export function sourceUrlCell(uri: string): string {
+  const u = uri.trim();
+  if (/^https?:\/\/[^\s<>]+$/i.test(u)) return '<' + u.replace(/\|/g, '%7C') + '>';
+  return untrustedCell(u);
+}
+
 function idList(ids: readonly string[]): string {
-  return ids.map(markdownCell).join(', ');
+  return ids.map(untrustedCell).join(', ');
 }
 
 export function formatQuotient(numer: number, denom: number): string {
@@ -641,7 +683,7 @@ export function formatAgreementMarkdown(result: AgreementResult): string {
     for (const p of result.pairs) {
       const rate = p.agreementRate === null ? 'not computed' : formatQuotient(p.agreements, p.n);
       const kappa = p.cohensKappa === null ? 'undefined (chance agreement is 1)' : String(p.cohensKappa);
-      lines.push(`| ${markdownCell(p.a)} vs ${markdownCell(p.b)} | ${p.n} | ${rate} | ${kappa} |`);
+      lines.push(`| ${untrustedCell(p.a)} vs ${untrustedCell(p.b)} | ${p.n} | ${rate} | ${kappa} |`);
     }
   }
   lines.push('');

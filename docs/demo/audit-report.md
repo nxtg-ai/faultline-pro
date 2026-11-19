@@ -65,14 +65,14 @@ Sources, retrieval time, model and passage hash are copied from the verification
 
 | Claim | Status | Sources | Retrieved | Model | Passage SHA-256 |
 |-------|--------|---------|-----------|-------|-----------------|
-| n2 — The plan paid $400 for each of those visits. Recorded explanation: The example payment file shows $125 per visit, not $400. | contradicted | Example payment file \(https://example.test/northwind/payments\) | 2026-11-17T12:00:02.000Z | example-judge | bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb |
+| n2 — The plan paid $400 for each of those visits. Recorded explanation: The example payment file shows $125 per visit, not $400. | contradicted | Example payment file (<https://example.test/northwind/payments>) | 2026-11-17T12:00:02.000Z | example-judge | bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb |
 | n3 — The clinic is in Portland. Recorded explanation: No example source states the city. | unsupported | not recorded | 2026-11-17T12:00:03.500Z | example-judge | not recorded |
 
 ## Mixed claims
 
 | Claim | Sources | Retrieved | Model | Passage SHA-256 |
 |-------|---------|-----------|-------|-----------------|
-| n4 — Volume rose while the payment per visit fell. Recorded explanation: Visit counts rose in the example ledger. The payment per visit did not fall. | Example visit ledger \(https://example.test/northwind/visits\) | 2026-11-17T12:00:00.000Z | example-judge | aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa |
+| n4 — Volume rose while the payment per visit fell. Recorded explanation: Visit counts rose in the example ledger. The payment per visit did not fall. | Example visit ledger (<https://example.test/northwind/visits>) | 2026-11-17T12:00:00.000Z | example-judge | aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa |
 
 ## Unchecked claims
 

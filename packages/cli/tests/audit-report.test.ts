@@ -861,7 +861,7 @@ describe('untrusted scan text in markdown', () => {
     expect(row).toContain('\\[x\\]\\(javascript:alert\\(1\\)\\)');
     expect(row).toContain('\\*b\\* \\_i\\_ \\`c\\` &amp; ok');
     expect(row).toContain('\\[t\\]\\(javascript:alert\\(2\\)\\)');
-    expect(row).toContain('https://example.test/a\\_b');
+    expect(row).toContain('<https://example.test/a_b>');
     expect(md).toContain('| Provider recorded | &lt;b&gt;prov&lt;/b&gt; |');
   });
 
@@ -1007,5 +1007,58 @@ describe('audit-report re-check fold-in', () => {
       verdicts({ c1: 'supported' }),
     );
     expect(result.engineColumnMismatches).toBe(1);
+  });
+});
+
+// Ruling 4c07d198: a recorded source URL stays a link; a URL inside untrusted
+// text (claim text, explanations, model output, reviewer ids) never becomes one.
+describe('audit-report links: sources clickable, untrusted text not', () => {
+  const scanWithLinks = () => buildAuditReport({
+    claims: [{ id: 'c1', text: 'See https://audited-model.example/promo or www.audited.example, mail x@audited.example.', type: 'fact', importance: 1 }],
+    verifications: {
+      c1: {
+        claimId: 'c1',
+        status: 'contradicted',
+        explanation: 'The model wrote https://explain.example/a`b|c too.',
+        sources: [
+          { title: 'Evidence page https://title.example', uri: 'https://evidence.example/page?a=1&b=2' },
+          { title: 'Bad scheme', uri: 'javascript:alert(1)' },
+        ],
+      },
+    },
+  });
+
+  it('a URL in claim text or an explanation is in a code span, not a bare link', () => {
+    const md = renderAuditMarkdown(scanWithLinks());
+    expect(md).toContain('`https://audited-model.example/promo`');
+    expect(md).toContain('`www.audited.example,`');
+    expect(md).toContain('`x@audited.example`');
+    expect(md).toContain('``https://explain.example/a`b\\|c``');
+    // No bare occurrence outside a code span.
+    const outsideCode = md.replace(/(`+)[\s\S]*?\1/g, '');
+    expect(outsideCode).not.toContain('audited-model.example');
+    expect(outsideCode).not.toContain('explain.example');
+    expect(outsideCode).not.toContain('title.example');
+  });
+
+  it('a recorded http(s) source URL is an explicit link; any other scheme is not', () => {
+    const md = renderAuditMarkdown(scanWithLinks());
+    expect(md).toContain('<https://evidence.example/page?a=1&b=2>');
+    expect(md).not.toContain('<javascript:');
+    expect(md).not.toMatch(/\]\(javascript:/i);
+    expect(md).toContain('javascript:alert\\(1\\)');
+  });
+
+  it('a URL in a reviewer id is not linked in the agreement table', () => {
+    const md = formatAgreementMarkdown(importReviewerLabels(
+      [
+        'claim_id,engine_status,reviewer_id,reviewer_label',
+        'c1,supported,https://reviewer.example,supported',
+        'c1,supported,bob,supported',
+      ].join('\n'),
+      verdicts({ c1: 'supported' }),
+    ));
+    expect(md).toContain('`https://reviewer.example`');
+    expect(md.replace(/(`+)[\s\S]*?\1/g, '')).not.toContain('reviewer.example');
   });
 });

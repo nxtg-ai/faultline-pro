@@ -25,6 +25,8 @@ import {
   formatAgreementMarkdown,
   importReviewerLabels,
   markdownCell,
+  sourceUrlCell,
+  untrustedCell,
   renderCsvRow,
   type ScanVerdict,
 } from './audit-labels.js';
@@ -550,8 +552,15 @@ function flat(s: string): string {
   return s.replace(/\s+/g, ' ').trim();
 }
 
+/** Every value read from the scan file is untrusted: see untrustedCell. */
 function mdCell(s: string): string {
-  return markdownCell(s);
+  return untrustedCell(s);
+}
+
+/** The Sources cell: titles are untrusted text, recorded http(s) source URLs stay links. */
+function sourceCell(c: AuditClaim): string {
+  if (c.sources.length === 0) return 'not recorded';
+  return c.sources.map((s) => (s.title ? `${untrustedCell(s.title)} (${sourceUrlCell(s.uri)})` : sourceUrlCell(s.uri))).join('; ');
 }
 
 /**
@@ -655,7 +664,7 @@ export function renderAuditMarkdown(model: AuditReportModel): string {
     lines.push('|-------|--------|---------|-----------|-------|-----------------|');
     for (const c of adverse) {
       const claim = `${c.id} — ${flat(c.text)} Recorded explanation: ${flat(c.explanation) || 'not recorded'}`;
-      lines.push(`| ${mdCell(claim)} | ${c.bucket} | ${mdCell(sourceText(c))} | ${mdCell(retrievedText(c))} | ${mdCell(modelText(c))} | ${mdCell(passageCell(c))} |`);
+      lines.push(`| ${mdCell(claim)} | ${c.bucket} | ${sourceCell(c)} | ${mdCell(retrievedText(c))} | ${mdCell(modelText(c))} | ${mdCell(passageCell(c))} |`);
     }
     lines.push('');
   }
@@ -671,7 +680,7 @@ export function renderAuditMarkdown(model: AuditReportModel): string {
     lines.push('|-------|---------|-----------|-------|-----------------|');
     for (const c of mixed) {
       const claim = `${c.id} — ${flat(c.text)} Recorded explanation: ${flat(c.explanation) || 'not recorded'}`;
-      lines.push(`| ${mdCell(claim)} | ${mdCell(sourceText(c))} | ${mdCell(retrievedText(c))} | ${mdCell(modelText(c))} | ${mdCell(passageCell(c))} |`);
+      lines.push(`| ${mdCell(claim)} | ${sourceCell(c)} | ${mdCell(retrievedText(c))} | ${mdCell(modelText(c))} | ${mdCell(passageCell(c))} |`);
     }
     lines.push('');
   }
