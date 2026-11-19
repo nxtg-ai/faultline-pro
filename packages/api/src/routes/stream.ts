@@ -3,7 +3,7 @@ import { groundingOption, sourcePolicyOption } from '../lib/grounding.js';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
-import { scan } from '@nxtg/faultline/cli/scan.js';
+import { scan, type ScanResult } from '@nxtg/faultline/cli/scan.js';
 import type { PipelineConfig } from '@nxtg/faultline/cli/scan.js';
 import { resolveTierFromRequest } from '../store/costs.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
@@ -122,9 +122,24 @@ function streamErrorEvent(err: unknown): Record<string, unknown> {
  *   data: {"type":"start","claimCount":N,"provider":"mock"}        ← on first claim verified
  *   data: {"type":"claim_verified","index":0,"claim":{...},"verdict":{...}}  × N
  *   data: {"type":"complete","overallRisk":"low|medium|high|critical","claimCount":N,"verification":{tier,cap,eligibleClaims,verifiedClaims,uncheckedClaims,uncheckedClaimIds},"billing":{billedClaims,unbilledClaims,unbilled},"evidenceCoverage":{...}}
- *   (evidenceCoverage only when the independent search ran; same value as POST /scan)
+ *   (evidenceCoverage only when the independent search ran; warnings, degraded and sourcePolicyCounts only when the scan set them; same values as POST /scan)
  *   data: {"type":"error","message":"..."}  (on failure only; plus "error":"extraction_failed","reason" when extraction failed)
  */
+/** The scan-level fields of a complete event. Absent fields stay off the wire, as before. */
+function completeEvent(result: ScanResult, claimCount: number, tier: Parameters<typeof withVerificationTier>[1]): Record<string, unknown> {
+  return {
+    type: 'complete',
+    overallRisk: result.overallRisk,
+    claimCount,
+    verification: withVerificationTier(result, tier).verification,
+    billing: billingSummary(result.verifications, claimOrderOf(result)),
+    ...(result.evidenceCoverage ? { evidenceCoverage: result.evidenceCoverage } : {}),
+    ...(result.warnings && result.warnings.length > 0 ? { warnings: result.warnings } : {}),
+    ...(result.degraded === true ? { degraded: true } : {}),
+    ...(result.sourcePolicyCounts ? { sourcePolicyCounts: result.sourcePolicyCounts } : {}),
+  };
+}
+
 export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: { text?: string; provider?: string } }>(
     '/scan/stream',
@@ -209,14 +224,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
           emit({ type: 'start', claimCount, provider: effectiveProvider });
         }
 
-        emit({
-          type: 'complete',
-          overallRisk: result.overallRisk,
-          claimCount,
-          verification: withVerificationTier(result, verifyPolicy.tier).verification,
-          billing: billingSummary(result.verifications, claimOrderOf(result)),
-          ...(result.evidenceCoverage ? { evidenceCoverage: result.evidenceCoverage } : {}),
-        });
+        emit(completeEvent(result, claimCount, verifyPolicy.tier));
 
         // Counted toward the monthly quota only when the result holds a billable verdict.
         meterScan(keyId, result.verifications);
@@ -244,7 +252,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
    * Event sequence:
    *   data: {"type":"start","claimCount":N,"provider":"..."}
    *   data: {"type":"claim_verified","index":N,"claim":{...},"verdict":{...}}  × N
-   *   data: {"type":"complete","overallRisk":"low|medium|high|critical","claimCount":N,"verification":{...},"billing":{...},"evidenceCoverage":{...}}
+   *   data: {"type":"complete","overallRisk":"low|medium|high|critical","claimCount":N,"verification":{...},"billing":{...},"evidenceCoverage":{...},"warnings":[...]}
    *   data: {"type":"error","message":"..."}  (on failure only; plus "error":"extraction_failed","reason" when extraction failed)
    */
   fastify.post<{ Body: StreamPostBody }>(
@@ -330,14 +338,7 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
           return;
         }
 
-        emit({
-          type: 'complete',
-          overallRisk: result.overallRisk,
-          claimCount,
-          verification: withVerificationTier(result, verifyPolicy.tier).verification,
-          billing: billingSummary(result.verifications, claimOrderOf(result)),
-          ...(result.evidenceCoverage ? { evidenceCoverage: result.evidenceCoverage } : {}),
-        });
+        emit(completeEvent(result, claimCount, verifyPolicy.tier));
 
         // Counted toward the monthly quota only when the result holds a billable verdict.
         meterScan(keyId, result.verifications);

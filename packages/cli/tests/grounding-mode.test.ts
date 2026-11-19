@@ -198,6 +198,8 @@ describe('scanLocal: the user\'s own env decides a local run', () => {
     expect(verdicts[0].provenance?.sourcePolicy).toMatchObject({ profile: 'healthcare-authority' });
     expect(verdicts[0].provenance?.retriever).toBe('parallel-search');
     expect(result.degraded).toBe(false);
+    expect(result.overallRisk).toBe('low');
+    expect(result.sourcePolicyCounts).toEqual({ notApplied: 0, noMatch: verdicts.length });
     expect(result.warnings).toBeUndefined();
     expect(verdicts[0].explanation).toMatch(/allowlist/);
     expect(mockFetch).toHaveBeenCalledTimes(1);
@@ -221,7 +223,9 @@ describe('scanLocal: the user\'s own env decides a local run', () => {
     expect(verdicts[0].provenance?.sourcePolicy?.profile).toBe('healthcare-authority');
     expect(verdicts[0].provenance?.retriever).toBeUndefined();
     expect(result.warnings).toEqual([SOURCE_POLICY_NOT_PARALLEL_WARNING]);
-    expect(result.degraded).toBe(false);
+    expect(result.degraded).toBe(true);
+    expect(result.overallRisk).toBe('low');
+    expect(result.sourcePolicyCounts).toEqual({ notApplied: verdicts.length, noMatch: 0 });
     expect(googleSearchCalls()).toBe(0);
     expect(mockFetch).not.toHaveBeenCalled();
     expect(console.error).toHaveBeenCalledWith(`[faultline] ${SOURCE_POLICY_NOT_PARALLEL_WARNING}`);
@@ -245,6 +249,9 @@ describe('scanLocal: the user\'s own env decides a local run', () => {
     });
     expect(verdicts[0].provenance?.sourcePolicy?.includeDomains).toContain('cms.gov');
     expect(result.warnings).toEqual([SOURCE_POLICY_OPENAI_CONSENSUS_WARNING]);
+    expect(result.degraded).toBe(true);
+    expect(result.overallRisk).toBe('low');
+    expect(result.sourcePolicyCounts).toEqual({ notApplied: verdicts.length, noMatch: 0 });
     expect(googleSearchCalls()).toBe(0);
     expect(mockFetch).not.toHaveBeenCalled();
     expect(console.error).toHaveBeenCalledWith(`[faultline] ${SOURCE_POLICY_OPENAI_CONSENSUS_WARNING}`);

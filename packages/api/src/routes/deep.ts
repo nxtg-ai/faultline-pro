@@ -4,7 +4,7 @@ import { enforceProviderSpendCap } from '../plugins/provider-spend-cap.js';
 import { rateLimitScan } from '../plugins/ratelimit.js';
 import { enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { meterScan } from '../lib/scan-quota.js';
-import { scanInRequestMode } from '../lib/grounding.js';
+import { scanInRequestMode, sourcePolicyCacheMaterial } from '../lib/grounding.js';
 import { scanWithSpend } from '../lib/scan-spend.js';
 import { getAnalyticsStore } from '../store/analytics.js';
 import type { RiskLevel } from '../store/analytics.js';
@@ -52,7 +52,8 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
 
       // Check cache first
       const caller = cacheCaller(request);
-      const hit = caller === null ? null : getScanCache().get(caller, text, `deep:${effectiveProvider}`);
+      const policyKey = sourcePolicyCacheMaterial(keyId);
+      const hit = caller === null ? null : getScanCache().get(caller, text, `deep:${effectiveProvider}`, undefined, policyKey);
       if (hit) {
         const cached: Record<string, unknown> = { ...hit.result, cache: { hit: true, checkedAt: hit.checkedAt } };
         reply.header('X-Cache', 'HIT');
@@ -88,7 +89,7 @@ export async function deepRoutes(fastify: FastifyInstance): Promise<void> {
 
           const enriched = { ...result, evidenceLinks };
 
-          if (caller !== null) getScanCache().set(caller, text, `deep:${effectiveProvider}`, enriched as unknown as Record<string, unknown>);
+          if (caller !== null) getScanCache().set(caller, text, `deep:${effectiveProvider}`, enriched as unknown as Record<string, unknown>, undefined, policyKey);
           getAnalyticsStore().record(keyId, result.overallRisk as RiskLevel);
           const delivered = issueScanId(enriched, request.keyId);
           commitClaims(request, delivered.scanId, result, p);

@@ -17,7 +17,7 @@
  */
 import { scan, type ScanOptions } from '@nxtg/faultline/cli/scan.js';
 import { groundingFromEnv, type GroundingMode } from '@nxtg/faultline/cli/grounding.js';
-import { parseSourcePolicy, type SourcePolicy } from '@nxtg/faultline/cli/source-policy.js';
+import { isActiveSourcePolicy, parseSourcePolicy, storedSourcePolicy, type SourcePolicy } from '@nxtg/faultline/cli/source-policy.js';
 import { getKeyStore } from '../store/keys.js';
 
 export type { GroundingMode };
@@ -54,6 +54,18 @@ export function sourcePolicyForKey(keyId: string | undefined): SourcePolicy | nu
 export function sourcePolicyOption(keyId?: string): Pick<ScanOptions, 'sourcePolicy'> {
   const sourcePolicy = sourcePolicyForKey(keyId);
   return sourcePolicy ? { sourcePolicy } : {};
+}
+
+/**
+ * Canonical cache-key material for this key's source policy. Undefined when
+ * the key has none, so the no-policy hash input is unchanged. An unusable
+ * policy is its own material and does not share an entry with a usable one.
+ */
+export function sourcePolicyCacheMaterial(keyId?: string): string | undefined {
+  const policy = sourcePolicyForKey(keyId);
+  if (!policy) return undefined;
+  if (!isActiveSourcePolicy(policy)) return 'invalid';
+  return JSON.stringify(storedSourcePolicy(policy));
 }
 
 /**

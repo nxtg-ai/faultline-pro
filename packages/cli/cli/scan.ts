@@ -2,7 +2,7 @@ import type { EvidenceOptions } from '../evidence/passage.js';
 import type { IndependentEvidenceOptions } from '../evidence/independent.js';
 import type { DoiCheckOptions } from '../evidence/doi.js';
 import { type GroundingMode } from './grounding.js';
-import { localGroundingAdditions, type SourcePolicy } from './source-policy.js';
+import { localGroundingAdditions, SOURCE_POLICY_NO_MATCH_REASON, SOURCE_POLICY_NOT_APPLIED_REASON, type SourcePolicy } from './source-policy.js';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import type { Claim, VerificationResult, AnalysisState, RetrievalStatus } from '../types.js';
@@ -119,14 +119,24 @@ export interface ScanResult {
    */
   verificationErrors?: number;
   /**
-   * True when one or more verifications could not be performed. A degraded scan
-   * is NOT trustworthy: 'unverified' results may mean "never checked", not
-   * "no support found". Surfaces LOUDLY so a paid/public surface never presents
-   * a confident scorecard built on un-run verifications (e.g. a quota-exhausted
+   * True when one or more verifications could not be performed: a provider
+   * error, or a source policy this scan could not apply
+   * (`source_policy_not_applied`). An allowlist miss
+   * (`source_policy_no_match`) does not set this. A degraded scan is NOT
+   * trustworthy: 'unverified' results may mean "never checked", not "no
+   * support found". Surfaces LOUDLY so a paid/public surface never presents a
+   * confident scorecard built on un-run verifications (e.g. a quota-exhausted
    * key returning all-'unverified'). Consumers should show a degraded banner
    * and must not bill or consume quota for a fully-degraded scan.
    */
   degraded?: boolean;
+  /**
+   * Claims this scan did not check because of a source policy. `notApplied` is
+   * a refusal (the scan is also `degraded`). `noMatch` is an allowlist miss.
+   * Absent when both are zero, including every scan with no policy. Neither
+   * count raises `overallRisk`.
+   */
+  sourcePolicyCounts?: { notApplied: number; noMatch: number };
   /**
    * A source policy was set and this scan did not search with Parallel, so no
    * claim was checked against the web. Absent when there is nothing to say,
@@ -415,7 +425,7 @@ export async function scan(
     complianceReport,
     ruleFindings: findRules(text, ruleNames),
     verificationErrors,
-    degraded: verificationErrors > 0,
+    ...degradedFields(verificationErrors, verifications),
     verification: buildVerificationSummary(rankedEligible, toVerify, verifyCap),
     ...sourcePolicyWarnings(verifier),
     ...withEvidenceCoverage(verifications),
@@ -513,7 +523,7 @@ async function runFullVerification(
     complianceReport,
     ruleFindings: context.text !== undefined ? findRules(context.text, context.ruleNames) : [],
     verificationErrors,
-    degraded: verificationErrors > 0,
+    ...degradedFields(verificationErrors, run.verifications),
     verification,
     notAttemptedClaimIds: verification.uncheckedClaimIds,
     ...sourcePolicyWarnings(verifier),
@@ -524,6 +534,23 @@ async function runFullVerification(
 /** `warnings` only when a source policy could not be applied, so an ordinary scan omits the field. */
 function sourcePolicyWarnings(verifier: { sourcePolicyRefusal?: string }): { warnings?: string[] } {
   return verifier.sourcePolicyRefusal ? { warnings: [verifier.sourcePolicyRefusal] } : {};
+}
+
+/** `degraded` for provider errors and a source-policy refusal, plus the counts for both policy outcomes. */
+function degradedFields(
+  verificationErrors: number,
+  verifications: Record<string, VerificationResult | undefined>,
+): { degraded: boolean; sourcePolicyCounts?: { notApplied: number; noMatch: number } } {
+  let notApplied = 0;
+  let noMatch = 0;
+  for (const verdict of Object.values(verifications)) {
+    if (verdict?.apiErrorReason === SOURCE_POLICY_NOT_APPLIED_REASON) notApplied += 1;
+    else if (verdict?.apiErrorReason === SOURCE_POLICY_NO_MATCH_REASON) noMatch += 1;
+  }
+  return {
+    degraded: verificationErrors > 0 || notApplied > 0,
+    ...(notApplied > 0 || noMatch > 0 ? { sourcePolicyCounts: { notApplied, noMatch } } : {}),
+  };
 }
 
 // --- Batch scanning ---

@@ -1,7 +1,7 @@
 import { entitledProvider } from '../plugins/provider-entitlement.js';
 import { randomUUID } from 'node:crypto';
 import { API_DOI_CHECK, apiEvidenceOptions, apiIndependentEvidenceOptions } from '../lib/evidence.js';
-import { groundingOption, sourcePolicyOption } from '../lib/grounding.js';
+import { groundingOption, sourcePolicyCacheMaterial, sourcePolicyOption } from '../lib/grounding.js';
 import { assertValidScanResult, isInvalidVerdictError } from '@nxtg/faultline/lib/verdict-guard.js';
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey, resolveRequestTenantId } from '../plugins/auth.js';
@@ -187,7 +187,8 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       const caller = cacheCaller(request);
-      const hit = caller === null ? null : getScanCache().get(caller, text, effectiveProvider, verifyPolicy.cap);
+      const policyKey = sourcePolicyCacheMaterial(keyId);
+      const hit = caller === null ? null : getScanCache().get(caller, text, effectiveProvider, verifyPolicy.cap, policyKey);
       const cached = hit?.result;
       if (hit && cached) {
         reply.header('X-Cache', 'HIT');
@@ -264,7 +265,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
           });
 
 
-          if (caller !== null) getScanCache().set(caller, text, effectiveProvider, result as unknown as Record<string, unknown>, verifyPolicy.cap);
+          if (caller !== null) getScanCache().set(caller, text, effectiveProvider, result as unknown as Record<string, unknown>, verifyPolicy.cap, policyKey);
           const scanId = `scan-${randomUUID()}`;
           getClaimIndex().ingest(
             Array.isArray(result.claims) ? (result.claims as Array<{ id: string; text: string; type?: string }>) : [],

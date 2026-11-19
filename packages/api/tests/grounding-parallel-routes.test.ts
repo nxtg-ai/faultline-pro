@@ -296,7 +296,10 @@ describe('FAULTLINE_GROUNDING=parallel: Parallel then Gemini, no googleSearch, o
       const res = await postScan(server, payer.key);
       expect(res.statusCode).toBe(200);
       expect(res.json().degraded).toBe(false);
+      expect(res.json().overallRisk).toBe('low');
       expect(res.json().warnings).toBeUndefined();
+      expect(res.json().sourcePolicyCounts.noMatch).toBeGreaterThan(0);
+      expect(res.json().sourcePolicyCounts.notApplied).toBe(0);
       const verifications = Object.values(res.json().verifications as Record<string, any>);
       expect(verifications.length).toBeGreaterThan(0);
       for (const v of verifications) {
@@ -518,8 +521,11 @@ describe('FAULTLINE_GROUNDING unset: Google grounding everywhere, as before', ()
       });
       const res = await postScan(server, payer.key);
       expect(res.statusCode).toBe(200);
-      expect(res.json().degraded).toBe(false);
+      expect(res.json().degraded).toBe(true);
+      expect(res.json().overallRisk).toBe('low');
       expect(res.json().warnings).toEqual([SOURCE_POLICY_NOT_PARALLEL_WARNING]);
+      const refused = Object.keys(res.json().verifications as Record<string, unknown>).length;
+      expect(res.json().sourcePolicyCounts).toEqual({ notApplied: refused, noMatch: 0 });
       const verifications = Object.values(res.json().verifications as Record<string, any>);
       expect(verifications.length).toBeGreaterThan(0);
       for (const v of verifications) {
@@ -530,6 +536,55 @@ describe('FAULTLINE_GROUNDING unset: Google grounding everywhere, as before', ()
       expect(googleSearchCalls()).toBe(0);
       expect(parallelBodies).toHaveLength(0);
       expect(console.error).toHaveBeenCalledWith(`[faultline] ${SOURCE_POLICY_NOT_PARALLEL_WARNING}`);
+    });
+  }, 30_000);
+
+  it('warnings reach POST /scan, POST /scan/stream and a full-scan result when the policy cannot be applied', async () => {
+    await withServer(async (server) => {
+      const payer = getKeyStore().create('payer-warnings', ['scan'], undefined, {
+        sourcePolicy: storedSourcePolicy(assertSourcePolicy('healthcare-authority')),
+      });
+      const headers = { 'x-api-key': payer.key, 'content-type': 'application/json' };
+
+      const scanRes = await postScan(server, payer.key);
+      expect(scanRes.statusCode).toBe(200);
+      expect(scanRes.json().warnings).toEqual([SOURCE_POLICY_NOT_PARALLEL_WARNING]);
+
+      const stream = await server.inject({
+        method: 'POST',
+        url: '/scan/stream',
+        headers,
+        payload: { text: TEXT, provider: 'gemini' },
+      });
+      expect(stream.statusCode).toBe(200);
+      const events = stream.body.split('\n\n').filter((c) => c.startsWith('data: ')).map((c) => JSON.parse(c.slice(6)));
+      const complete = events.find((e) => e.type === 'complete');
+      expect(complete.warnings).toEqual([SOURCE_POLICY_NOT_PARALLEL_WARNING]);
+      expect(complete.degraded).toBe(true);
+      expect(complete.sourcePolicyCounts.notApplied).toBeGreaterThan(0);
+
+      const est = await server.inject({ method: 'POST', url: '/scan/full/estimate', headers, payload: { text: TEXT, provider: 'gemini' } });
+      expect(est.statusCode).toBe(200);
+      const started = await server.inject({
+        method: 'POST',
+        url: '/scan/full',
+        headers: { ...headers, 'idempotency-key': 'idem-policy-warnings' },
+        payload: { estimateId: est.json().estimateId },
+      });
+      expect(started.statusCode).toBe(202);
+      const jobId = started.json().jobId as string;
+      const deadline = Date.now() + 10_000;
+      let job: Record<string, any> = {};
+      while (job.status !== 'done') {
+        if (Date.now() > deadline) throw new Error('job did not finish');
+        job = (await server.inject({ method: 'GET', url: `/scan/full/${jobId}`, headers: { 'x-api-key': payer.key } })).json();
+        if (job.status !== 'done') await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      expect(job.result.warnings).toEqual([SOURCE_POLICY_NOT_PARALLEL_WARNING]);
+      expect(job.result.degraded).toBe(true);
+      expect(job.result.sourcePolicyCounts.notApplied).toBeGreaterThan(0);
+      expect(googleSearchCalls()).toBe(0);
+      expect(parallelBodies).toHaveLength(0);
     });
   }, 30_000);
 

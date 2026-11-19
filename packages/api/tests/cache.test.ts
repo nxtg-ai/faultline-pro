@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { buildServer } from '../src/server.js';
-import { resetKeyStore } from '../src/store/keys.js';
+import { getKeyStore, resetKeyStore } from '../src/store/keys.js';
+import { parseSourcePolicy, storedSourcePolicy } from '@nxtg/faultline/cli/source-policy.js';
 import { resetRateLimiter } from '../src/store/ratelimit.js';
 import { resetAuditLogger } from '../src/store/audit.js';
 import { resetUsageMeter } from '../src/store/usage.js';
@@ -313,6 +314,65 @@ describe('Cache — size tracking', () => {
     const body = JSON.parse(res.payload);
     expect(body.size).toBe(2);
   });
+
+  it('changing a key source policy does not reuse a cached consensus verdict for the same claim', async () => {
+    const policy = parseSourcePolicy('healthcare-authority');
+    if (!policy || policy.invalid) throw new Error('healthcare-authority did not parse');
+    const issued = getKeyStore().create('payer-cache', ['scan'], undefined, {
+      sourcePolicy: storedSourcePolicy(policy),
+    });
+    const consensus = (includeDomains: string[]) => ({
+      input: 'cms covers this',
+      provider: 'consensus',
+      claims: [{ id: 'c1', text: 'cms covers this', type: 'fact', importance: 3 }],
+      verifications: {
+        c1: {
+          claimId: 'c1',
+          status: 'supported',
+          explanation: 'ok',
+          sources: [{ title: 'CMS', uri: 'https://www.cms.gov/medicare', snippet: 'fee' }],
+          provenance: {
+            provider: 'consensus',
+            model: 'openai:gpt-4o',
+            retriever: 'parallel-search',
+            retrievedAt: '2026-11-19T00:00:00.000Z',
+            sourcePolicy: { profile: 'healthcare-authority', includeDomains },
+          },
+        },
+      },
+      overallRisk: 'low',
+      complianceReport: {},
+      ruleFindings: [],
+    });
+    mockScan.mockResolvedValue(consensus(['cms.gov', 'fda.gov', 'nih.gov', 'hhs.gov', 'ahrq.gov', 'ecfr.gov', 'federalregister.gov', 'govinfo.gov', 'congress.gov', 'cochranelibrary.com']));
+    const headers = { 'x-api-key': issued.key, 'content-type': 'application/json' };
+    const payload = { text: 'cms covers this', provider: 'gemini' };
+    const first = await server.inject({ method: 'POST', url: '/scan', headers, payload });
+    expect(first.statusCode).toBe(200);
+    expect(first.headers['x-cache']).toBe('MISS');
+    expect(first.json().verifications.c1.provenance.provider).toBe('consensus');
+
+    const second = await server.inject({ method: 'POST', url: '/scan', headers, payload });
+    expect(second.headers['x-cache']).toBe('HIT');
+    expect(second.json().verifications.c1.provenance.provider).toBe('consensus');
+    expect(mockScan).toHaveBeenCalledTimes(1);
+
+    const patched = await server.inject({
+      method: 'PATCH',
+      url: `/keys/${issued.id}`,
+      headers: { 'x-api-key': ADMIN, 'content-type': 'application/json' },
+      payload: { sourcePolicy: { includeDomains: ['fda.gov'] } },
+    });
+    expect(patched.statusCode).toBe(200);
+
+    mockScan.mockResolvedValue(consensus(['fda.gov']));
+    const third = await server.inject({ method: 'POST', url: '/scan', headers, payload });
+    expect(third.statusCode).toBe(200);
+    expect(third.headers['x-cache']).toBe('MISS');
+    expect(mockScan).toHaveBeenCalledTimes(2);
+    expect(third.json().verifications.c1.provenance.sourcePolicy.includeDomains).toEqual(['fda.gov']);
+    expect(third.json().verifications.c1.provenance.provider).toBe('consensus');
+  });
 });
 
 // Guard: a scan whose verification never ran (apiError) must NOT be cached —
@@ -342,5 +402,49 @@ describe('ScanCache — never caches unchecked/apiError results', () => {
   it('refuses to cache when apiError is inline on a claim', () => {
     getScanCache().set('k', 'doc2', 'openai', { claims: [{ id: 'c1', apiError: true }] });
     expect(getScanCache().get('k', 'doc2', 'openai')).toBeNull();
+  });
+});
+
+describe('ScanCache — a source policy is part of the key', () => {
+  beforeEach(() => resetCache());
+
+  const consensus = (includeDomains: string[]) => ({
+    claims: [{ id: 'c1' }],
+    provider: 'consensus',
+    verifications: {
+      c1: {
+        status: 'supported',
+        sources: [{ title: 'CMS', uri: 'https://www.cms.gov/medicare' }],
+        provenance: {
+          provider: 'consensus',
+          model: 'openai:gpt-4o',
+          retriever: 'parallel-search',
+          sourcePolicy: { profile: 'healthcare-authority', includeDomains },
+        },
+      },
+    },
+  });
+
+  it('does not store a consensus verdict that carries a source policy under the no-policy key', () => {
+    expect(getScanCache().set('k', 'doc', 'gemini', consensus(['cms.gov']))).toBe(false);
+    expect(getScanCache().get('k', 'doc', 'gemini')).toBeNull();
+  });
+
+  it('a consensus verdict cached under one policy is not served for another policy or for no policy', () => {
+    const cache = getScanCache();
+    const materialA = JSON.stringify({ profile: 'healthcare-authority', includeDomains: ['cms.gov'] });
+    const materialB = JSON.stringify({ includeDomains: ['fda.gov'] });
+    expect(cache.set('k', 'doc', 'gemini', consensus(['cms.gov']), undefined, materialA)).toBe(true);
+    expect(cache.get('k', 'doc', 'gemini')).toBeNull();
+    expect(cache.get('k', 'doc', 'gemini', undefined, materialB)).toBeNull();
+    const hit = cache.get('k', 'doc', 'gemini', undefined, materialA);
+    expect(hit?.result).toMatchObject({ provider: 'consensus' });
+    expect((hit?.result as { verifications: { c1: { provenance: { provider: string } } } }).verifications.c1.provenance.provider).toBe('consensus');
+  });
+
+  it('omitting the policy keeps the previous key for a result that carries none', () => {
+    const clean = { claims: [{ id: 'c1' }], verifications: { c1: { status: 'supported', sources: [{ title: 'S', uri: 'https://s.example' }] } } };
+    expect(getScanCache().set('k', 'doc', 'gemini', clean)).toBe(true);
+    expect(getScanCache().get('k', 'doc', 'gemini', undefined, undefined)?.result).toEqual(clean);
   });
 });

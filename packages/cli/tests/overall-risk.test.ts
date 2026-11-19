@@ -61,6 +61,32 @@ describe('calculateRisk — unverified is never low', () => {
     v.c1.apiError = true;
     expect(calculateRisk(v)).toBe('medium');
   });
+
+  it('a source-policy miss or refusal does not raise the band', () => {
+    const miss = verdicts('unverified', 'supported');
+    miss.c1.apiError = false;
+    miss.c1.apiErrorReason = 'source_policy_no_match';
+    expect(calculateRisk(miss)).toBe('low');
+
+    const refused = verdicts('unverified', 'supported');
+    refused.c1.apiError = false;
+    refused.c1.apiErrorReason = 'source_policy_not_applied';
+    expect(calculateRisk(refused)).toBe('low');
+
+    const onlyMiss = verdicts('unverified');
+    onlyMiss.c1.apiErrorReason = 'source_policy_no_match';
+    expect(calculateRisk(onlyMiss)).toBe('low');
+
+    const onlyRefused = verdicts('unverified', 'unverified');
+    onlyRefused.c1.apiErrorReason = 'source_policy_not_applied';
+    onlyRefused.c2.apiErrorReason = 'source_policy_not_applied';
+    expect(calculateRisk(onlyRefused)).toBe('low');
+
+    const alongside = verdicts('unverified', 'unverified');
+    alongside.c1.apiErrorReason = 'source_policy_no_match';
+    alongside.c2.apiError = true;
+    expect(calculateRisk(alongside)).toBe('high');
+  });
 });
 
 describe('every engine scan path applies the rule (mock provider → unverified)', () => {
