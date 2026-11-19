@@ -20,7 +20,7 @@ npm publishing runs in GitHub Actions with OIDC trusted publishing (npm retired 
 
 1. Bump `packages/cli/package.json`, `packages/api/package.json` and the root `server.json` `version` to the same version (`agent-discovery.test.ts` MR7 fails if `server.json` lags); bump `packages/mcp/package.json`'s `@nxtg/faultline` dependency; `npm install --package-lock-only --ignore-scripts`.
 2. Roll `CHANGELOG.md` `[Unreleased]` into `## [vX.Y.Z] — YYYY-MM-DD`, leave an empty `[Unreleased]`.
-3. Update pinned versions in `README.md`, `CLAUDE.md`, `packages/*/README.md` (`grep -rn "<old version>"`).
+3. Update pinned versions in `README.md`, `CLAUDE.md`, `packages/*/README.md` (`grep -rn "<old version>"`). Re-render the audit-report demo, whose Renderer row prints the version: `for f in md html pdf; do node packages/cli/bin/faultline.js audit-report --scan docs/demo/audit-scan.json --out docs/demo/audit-report.$f; done` (`tests/audit-report.test.ts` compares the committed samples byte for byte).
 4. Run `packages/api` and `packages/cli` vitest; commit `release: vX.Y.Z`; push `main` (the api `package.json` change triggers the Fly deploy).
 5. `git tag -a vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z`.
 6. `gh release create vX.Y.Z --title vX.Y.Z --notes-file <the CHANGELOG section> --prerelease`. Keep `--prerelease` while the release stage is alpha or beta (release-stage skill §3.7).

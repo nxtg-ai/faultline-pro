@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [v0.12.3] — 2026-11-19
+
+`@nxtg/faultline` 0.12.3 adds `faultline audit-report`. The `faultline-mcp` bin is unchanged: `npx -y -p @nxtg/faultline faultline-mcp`, with `FAULTLINE_API_KEY` for the hosted API.
+
 ### Fixed
 
 - **A link written as a code span in an audit report escapes a backslash before a pipe.** A `\|` inside that span no longer leaves the backslash able to undo the pipe escape, so the cell stays in its column.

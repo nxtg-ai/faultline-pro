@@ -8,7 +8,7 @@ Synthetic example data. This report was rendered from an example scan, not from 
 
 | | |
 |---|---|
-| Renderer | Faultline 0.12.2 |
+| Renderer | Faultline 0.12.3 |
 | Provider recorded | Example |
 | Judge model recorded | example-judge |
 | Engine commit recorded | unknown |
