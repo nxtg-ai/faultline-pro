@@ -24,7 +24,9 @@ import {
   formatAgreementJson,
   formatAgreementMarkdown,
   importReviewerLabels,
+  markdownCell,
   renderCsvRow,
+  type ScanVerdict,
 } from './audit-labels.js';
 
 const require = createRequire(import.meta.url);
@@ -90,6 +92,22 @@ export const ACCURACY_READINGS = [
     writeup: 'docs/research/2026-11-05-judge-not-checkable-g0.md',
   },
 ] as const;
+
+/**
+ * The judge model and date of the headline reading. The score file does not
+ * record the judge; its write-up does (HEADLINE_MEASUREMENT.writeupJudgeWords).
+ */
+export const HEADLINE_MEASUREMENT = {
+  judgeModel: 'gemini-2.5-flash',
+  measuredOn: '2026-11-06',
+  writeupJudgeWords: 'Gemini 2.5 Flash judge',
+} as const;
+
+/** The production judge model changed after the headline reading. It has not been re-measured since. */
+export const PRODUCTION_JUDGE_CHANGE = {
+  on: '2026-11-14',
+  judgeModel: 'gemini-3.1-pro-preview',
+} as const;
 
 export const FAST_ARM = {
   value: '0.7189189189189189',
@@ -204,6 +222,7 @@ function uncheckedCopy(code: string, explanation: string, raw: boolean): string 
   if (code === 'not_verifiable') return NOT_CHECKABLE_EXPLANATION;
   if (code === 'source_policy_no_match') return 'Unchecked: no allowed source found';
   if (code === 'no_record') return 'No verification record for this claim. This is not a verdict.';
+  if (code === 'no_claim_id') return NO_CLAIM_ID_EXPLANATION;
   if (code === 'skipped' || code === 'loading') return 'This claim was not sent to verification. This is not a verdict.';
   if (code === 'provider_out_of_credits') return OUT_OF_CREDITS_VERIFY_MESSAGE;
   if (code === 'provider_unparseable') return "The provider's reply could not be read. This claim was not checked. This is not a verdict.";
@@ -211,6 +230,9 @@ function uncheckedCopy(code: string, explanation: string, raw: boolean): string 
   if (raw || !explanation.trim()) return sanitizeVerifyError(explanation || 'provider error');
   return explanation;
 }
+
+const NO_CLAIM_ID_EXPLANATION =
+  'The claim has no id in the scan file, so no verification record can be matched to it. This is not a verdict.';
 
 interface Classified {
   bucket: AuditBucket;
@@ -260,8 +282,15 @@ function classify(v: Record<string, unknown> | undefined): Classified {
   };
 }
 
-function claimFrom(id: string, claim: Record<string, unknown> | undefined, verification: Record<string, unknown> | undefined): AuditClaim {
-  const classified = classify(verification);
+function claimFrom(
+  id: string,
+  claim: Record<string, unknown> | undefined,
+  verification: Record<string, unknown> | undefined,
+  noClaimId = false,
+): AuditClaim {
+  const classified: Classified = noClaimId
+    ? { bucket: 'unchecked', status: null, code: 'no_claim_id', explanation: uncheckedCopy('no_claim_id', '', false) }
+    : classify(verification);
   const text = typeof claim?.text === 'string' && claim.text.trim() ? claim.text : 'not recorded';
   const type = typeof claim?.type === 'string' && claim.type.trim() ? claim.type : 'not recorded';
   const importance = typeof claim?.importance === 'number' && Number.isFinite(claim.importance) ? claim.importance : null;
@@ -309,13 +338,32 @@ export function buildAuditReport(scan: unknown): AuditReportModel {
   const seen = new Set<string>();
   const claims: AuditClaim[] = [];
 
+  const rawIdOf = (entry: unknown): string => {
+    const claim = asRecord(entry);
+    return typeof claim?.id === 'string' ? claim.id.trim() : '';
+  };
+  // A claim with no id gets a label for the report only. It is never used to
+  // look up a verification, and it is chosen so it cannot equal a real claim
+  // id or a verification key.
+  const taken = new Set<string>([...Object.keys(verifications), ...claimList.map(rawIdOf).filter(Boolean)]);
+  const syntheticId = (index: number): string => {
+    const base = `missing-id-${index + 1}`;
+    let id = base;
+    for (let n = 2; taken.has(id); n++) id = `${base}-${n}`;
+    taken.add(id);
+    return id;
+  };
+
   claimList.forEach((entry, index) => {
     const claim = asRecord(entry) ?? undefined;
-    const rawId = typeof claim?.id === 'string' ? claim.id.trim() : '';
-    const id = rawId || `missing-id-${index + 1}`;
-    seen.add(id);
-    const verification = asRecord(verifications[id]) ?? undefined;
-    claims.push(claimFrom(id, claim, verification));
+    const rawId = rawIdOf(entry);
+    if (!rawId) {
+      claims.push(claimFrom(syntheticId(index), claim, undefined, true));
+      return;
+    }
+    seen.add(rawId);
+    const verification = asRecord(verifications[rawId]) ?? undefined;
+    claims.push(claimFrom(rawId, claim, verification));
   });
 
   for (const id of Object.keys(verifications).sort()) {
@@ -438,9 +486,12 @@ export function limitationParagraphs(recorded: { judgeModel: string; engineCommi
   const judgeModel = recorded.judgeModel.trim() || 'unknown';
   const engineCommit = recorded.engineCommit.trim() || 'unknown';
   return [
-    `Faultline's verdict accuracy was measured on a labelled set. The measurement was not pre-registered. The figure this report quotes for the hosted path is balanced accuracy on the 193 Factcheck-Bench claims, in a 200-claim sample, that have a true or false gold label. The hosted path in that measurement was Parallel search in advanced mode, then a Gemini judge with no Google search tool. This report does not copy that measurement's model name or commit onto this scan. The judge model recorded on this scan is ${judgeModel}. The engine commit recorded on this scan is ${engineCommit}. A value the scan file did not record is unknown.`,
+    `Faultline's verdict accuracy was measured on a labelled set. The measurement was not pre-registered. The figure this report quotes for the hosted path is balanced accuracy on the 193 Factcheck-Bench claims, in a 200-claim sample, that have a true or false gold label. The hosted path in that measurement was Parallel search in advanced mode, then a Gemini judge with no Google search tool. The measurement's judge model and date are stated with the figure below. They describe that measurement, not this scan. The judge model recorded on this scan is ${judgeModel}. The engine commit recorded on this scan is ${engineCommit}. A value the scan file did not record is unknown.`,
     'Balanced accuracy is the mean of recall on true claims and recall on false claims. Supported counts as true and contradicted as false. Mixed, unverified and a failed check count as wrong. The interval is a 2,000-resample bootstrap, seed 20260929, from scripts/accuracy-g0-score.py.',
-    `The score file ${headline.scoreFile} records balanced accuracy ${headline.value}, 95% CI [${headline.ciLow}, ${headline.ciHigh}]. README.md and the changelog print this as 0.755 [0.678, 0.829]. That three-decimal form rounds the point estimate and the lower bound up, and rounds the upper bound down. This report quotes the score file.`,
+    `The score file ${headline.scoreFile} records balanced accuracy ${headline.value}, 95% CI [${headline.ciLow}, ${headline.ciHigh}]. ` +
+      `It was measured on ${HEADLINE_MEASUREMENT.measuredOn} with the judge model ${HEADLINE_MEASUREMENT.judgeModel} (${headline.writeup}). ` +
+      `The production judge model changed on ${PRODUCTION_JUDGE_CHANGE.on}, to ${PRODUCTION_JUDGE_CHANGE.judgeModel}. This hosted figure has not been re-measured since that change. ` +
+      `README.md and the changelog print this as 0.755 [0.678, 0.829]. That three-decimal form rounds the point estimate and the lower bound up, and rounds the upper bound down. This report quotes the score file.`,
     'Four readings of the same 200-claim sample are in the repo from 2026-11-05 and 2026-11-06. README.md describes them as 0.755 to 0.802. That range rounds the lowest of the four up and the highest up. The score-file values are in the table. They are not pooled into one interval. Two of the four were local API servers, not the hosted engine.',
     `On 2026-11-06 a fast-mode arm, which is not the production setting, scored ${FAST_ARM.value}, 95% CI [${FAST_ARM.ciLow}, ${FAST_ARM.ciHigh}] (${FAST_ARM.scoreFile}). The write-up kept advanced mode.`,
     'This scan is not that measurement. The interval does not apply to a different provider, a different model, a local key, or to the claims in this file. An unchecked claim has no verdict, so it sits outside the figure. Rule findings stored on the scan are not part of this report. This document does not assess regulatory obligations.',
@@ -493,14 +544,20 @@ function flat(s: string): string {
 }
 
 function mdCell(s: string): string {
-  // Escape the backslash first. Replacing "|" with "\|" alone leaves a
-  // backslash in the claim able to escape the pipe that follows it.
-  return flat(s).replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
+  return markdownCell(s);
 }
 
+/**
+ * A tilde fence longer than any run of tildes in the text (at least four), so
+ * no line of the text can close it (CommonMark: a closing fence needs at least
+ * as many tildes as the opening). Backticks cannot close a tilde fence, so the
+ * text is quoted unchanged.
+ */
 function fence(text: string): string {
-  const body = text.includes('```') ? text.replace(/```/g, "'''") : text;
-  return '~~~~\n' + body + '\n~~~~';
+  let longest = 0;
+  for (const run of text.match(/~+/g) ?? []) longest = Math.max(longest, run.length);
+  const bar = '~'.repeat(Math.max(4, longest + 1));
+  return bar + '\n' + text + '\n' + bar;
 }
 
 function findings(model: AuditReportModel, buckets: AuditBucket[]): AuditClaim[] {
@@ -631,7 +688,8 @@ export function renderAuditMarkdown(model: AuditReportModel): string {
 
   lines.push('## Limitations');
   lines.push('');
-  for (const p of limitationParagraphs(model)) {
+  // The scan's judge model and commit are untrusted text inside a paragraph.
+  for (const p of limitationParagraphs({ judgeModel: mdCell(model.judgeModel), engineCommit: mdCell(model.engineCommit) })) {
     lines.push(p);
     lines.push('');
   }
@@ -981,27 +1039,57 @@ function summary(model: AuditReportModel): string {
   return `Claims: ${model.claims.length}. Supported: ${b.supported}. Contradicted: ${b.contradicted}. Mixed: ${b.mixed}. Unsupported: ${b.unsupported}. Unchecked: ${b.unchecked}.`;
 }
 
+/** The scan's verdict for each claim id, as this report classifies it. */
+export function scanVerdicts(model: AuditReportModel): Map<string, ScanVerdict> {
+  const verdicts = new Map<string, ScanVerdict>();
+  for (const c of model.claims) {
+    if (verdicts.has(c.id)) continue;
+    verdicts.set(c.id, c.bucket === 'unchecked' || c.status === null ? 'unchecked' : c.status);
+  }
+  return verdicts;
+}
+
+function readScan(flag: string): { model: AuditReportModel } | { error: string } {
+  const scanPath = resolve(flag);
+  if (!existsSync(scanPath)) return { error: `Error: file not found: ${flag}` };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(scanPath, 'utf8'));
+  } catch {
+    return { error: `Error: could not parse scan result JSON from ${flag}` };
+  }
+  return { model: buildAuditReport(parsed) };
+}
+
 export async function runAuditReport(flags: Record<string, string>): Promise<{ exitCode: number; output: string }> {
   try {
     if (flags['import-labels']) {
-      if (flags['scan'] || flags['labels-out']) {
-        return { exitCode: 1, output: 'Error: --import-labels reads a labelled CSV and does not take --scan or --labels-out.' };
+      if (flags['labels-out']) {
+        return { exitCode: 1, output: 'Error: --import-labels does not take --labels-out.' };
+      }
+      if (!flags['scan']) {
+        return {
+          exitCode: 1,
+          output:
+            'Error: --import-labels needs --scan <result.json>, the scan the CSV was exported from. ' +
+            'Each claim is scored against that scan\'s verdict.\n\n' +
+            'Usage: faultline audit-report --scan result.json --import-labels claims.csv [--out agreement.md|json]',
+        };
       }
       const src = resolve(flags['import-labels']);
       if (!existsSync(src)) return { exitCode: 1, output: `Error: file not found: ${flags['import-labels']}` };
-      const result = importReviewerLabels(readFileSync(src, 'utf8'));
       const out = flags['out'];
+      const ext = out ? extname(out).toLowerCase() : '';
+      if (out && ext !== '.json' && ext !== '.md' && ext !== '.markdown') {
+        return { exitCode: 1, output: 'Error: --out for --import-labels must end in .md or .json.' };
+      }
+      const scan = readScan(flags['scan']);
+      if ('error' in scan) return { exitCode: 1, output: scan.error };
+      const result = importReviewerLabels(readFileSync(src, 'utf8'), scanVerdicts(scan.model));
       if (!out) return { exitCode: 0, output: formatAgreementMarkdown(result) };
-      const ext = extname(out).toLowerCase();
-      if (ext === '.json') {
-        writeFileSync(resolve(out), formatAgreementJson(result), 'utf8');
-        return { exitCode: 0, output: agreementSummary(result, resolve(out)) };
-      }
-      if (ext === '.md' || ext === '.markdown') {
-        writeFileSync(resolve(out), formatAgreementMarkdown(result), 'utf8');
-        return { exitCode: 0, output: agreementSummary(result, resolve(out)) };
-      }
-      return { exitCode: 1, output: 'Error: --out for --import-labels must end in .md or .json.' };
+      const body = ext === '.json' ? formatAgreementJson(result) : formatAgreementMarkdown(result);
+      writeFileSync(resolve(out), body, 'utf8');
+      return { exitCode: 0, output: agreementSummary(result, resolve(out)) };
     }
 
     if (!flags['scan']) {
@@ -1013,19 +1101,13 @@ export async function runAuditReport(flags: Record<string, string>): Promise<{ e
     if (!flags['out'] && !flags['labels-out']) {
       return { exitCode: 1, output: 'Error: provide --out <report.html|md|pdf> or --labels-out <claims.csv>, or both.' };
     }
-    const scanPath = resolve(flags['scan']);
-    if (!existsSync(scanPath)) return { exitCode: 1, output: `Error: file not found: ${flags['scan']}` };
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(readFileSync(scanPath, 'utf8'));
-    } catch {
-      return { exitCode: 1, output: `Error: could not parse scan result JSON from ${flags['scan']}` };
-    }
+    const scan = readScan(flags['scan']);
+    if ('error' in scan) return { exitCode: 1, output: scan.error };
     const format = flags['out'] ? reportFormat(flags['out']) : null;
     if (flags['out'] && !format) {
       return { exitCode: 1, output: 'Error: --out must end in .html, .md, or .pdf. Reviewer CSV is --labels-out.' };
     }
-    const model = buildAuditReport(parsed);
+    const model = scan.model;
     const notes: string[] = [];
 
     if (flags['labels-out']) {
@@ -1054,5 +1136,6 @@ function agreementSummary(result: ReturnType<typeof importReviewerLabels>, dest:
   const rate = result.errorRate === null
     ? 'The error rate was not computed. No checked claim had a usable reviewer label.'
     : `Error rate ${result.errors}/${result.scored} = ${String(result.errorRate)}, 95% CI [${String(result.errorRateCi95?.[0])}, ${String(result.errorRateCi95?.[1])}].`;
-  return `Wrote reviewer agreement to ${dest}\n${rate}`;
+  const counted = `Scored ${result.scored} of ${result.scanClaims} claims in the scan. Every exclusion, with its reason and count, is in the file.`;
+  return `Wrote reviewer agreement to ${dest}\n${counted}\n${rate}`;
 }

@@ -9,6 +9,8 @@ import { NOT_CHECKABLE_EXPLANATION } from '../lib/verdict-guard';
 import {
   ACCURACY_READINGS,
   FAST_ARM,
+  HEADLINE_MEASUREMENT,
+  PRODUCTION_JUDGE_CHANGE,
   buildAuditReport,
   limitationParagraphs,
   renderAuditHtml,
@@ -16,6 +18,7 @@ import {
   renderAuditPdf,
   renderLabelCsv,
   runAuditReport,
+  scanVerdicts,
 } from '../cli/audit-report';
 import {
   bootstrapRate,
@@ -25,6 +28,7 @@ import {
   importReviewerLabels,
   parseCsv,
   parseReviewerLabel,
+  type ScanVerdict,
 } from '../cli/audit-labels';
 import { renderCsv } from '../cli/export';
 
@@ -34,6 +38,14 @@ const samplePath = join(repoRoot, 'docs/demo/audit-scan.json');
 
 function demoScan(): unknown {
   return JSON.parse(readFileSync(demoPath, 'utf8'));
+}
+
+function verdicts(map: Record<string, ScanVerdict>): Map<string, ScanVerdict> {
+  return new Map(Object.entries(map));
+}
+
+function scopeSection(markdown: string): string {
+  return markdown.slice(markdown.indexOf('## Scope'), markdown.indexOf('## Method'));
 }
 
 function pdfText(buf: Buffer): string {
@@ -69,12 +81,14 @@ describe('audit report from the demo scan', () => {
     expect(model.claims.filter((c) => c.uncheckedCode === 'no_record').map((c) => c.id)).toEqual(['s9', 's10']);
   });
 
-  it('does not name a measurement model or commit the scan did not record', () => {
+  it('does not put the measurement model or commit on the scan', () => {
     expect(model.judgeModel).toBe('unknown');
     expect(model.engineCommit).toBe('unknown');
     expect(model.sourcePolicyMisses).toBe(0);
+    expect(scopeSection(markdown)).not.toContain('gemini-2.5-flash');
+    expect(scopeSection(markdown)).toContain('| Judge model recorded | unknown |');
+    expect(html).toContain('<tr><th>Judge model recorded</th><td>unknown</td></tr>');
     for (const body of [markdown, html, limitationParagraphs(model).join('\n')]) {
-      expect(body).not.toContain('gemini-2.5-flash');
       expect(body).not.toContain('ba11345');
       expect(body).toContain('The judge model recorded on this scan is unknown.');
       expect(body).toContain('The engine commit recorded on this scan is unknown.');
@@ -259,7 +273,7 @@ describe('provenance on unsupported and contradicted claims', () => {
     expect(section).not.toContain('c4');
     expect(section).toContain('https://example.com/filing');
     expect(section).toContain('2026-11-01T00:00:00.500Z');
-    expect(section).toContain('gemini-2.5-flash (fallback model)');
+    expect(section).toContain('gemini-2.5-flash \\(fallback model\\)');
     expect(section).toContain('abc123');
     expect(section).toContain('1 source with no passage hash');
     expect(section).toContain('not recorded');
@@ -374,7 +388,9 @@ describe('reviewer CSV import', () => {
       'c5,,unchecked,alice,contradicted',
       'c6,supported,supported,alice,maybe',
     ].join('\n');
-    const result = importReviewerLabels(csv);
+    const result = importReviewerLabels(csv, verdicts({
+      c1: 'supported', c2: 'supported', c3: 'supported', c4: 'unverified', c5: 'unchecked', c6: 'supported',
+    }));
     expect(result.scored).toBe(2);
     expect(result.errors).toBe(1);
     expect(result.errorRate).toBe(0.5);
@@ -383,7 +399,9 @@ describe('reviewer CSV import', () => {
     expect(result.excludedNoLabel).toBe(1);
     expect(result.excludedUnchecked).toBe(1);
     expect(result.uncheckedButLabelled).toBe(1);
-    expect(result.excludedUnreadable).toBe(1);
+    expect(result.excludedUnknownLabel).toBe(1);
+    expect(result.unknownLabelClaimIds).toEqual(['c6']);
+    expect(result.scanClaims).toBe(6);
     expect(result.pairs).toHaveLength(1);
     expect(result.pairs[0].n).toBe(3);
     expect(result.pairs[0].agreements).toBe(2);
@@ -398,7 +416,7 @@ describe('reviewer CSV import', () => {
   });
 
   it('does not invent a zero error rate when nothing was scored', () => {
-    const result = importReviewerLabels('claim_id,engine_status,reviewer_label\nc1,,\n');
+    const result = importReviewerLabels('claim_id,engine_status,reviewer_label\nc1,,\n', verdicts({ c1: 'supported' }));
     expect(result.scored).toBe(0);
     expect(result.errorRate).toBeNull();
     expect(result.errorRateCi95).toBeNull();
@@ -419,22 +437,137 @@ describe('reviewer CSV import', () => {
     expect(csv).toContain('"She said ""no"",');
   });
 
-  it('keeps the last duplicate row and a blank engine cell does not erase the verdict', () => {
+  it('excludes a claim when one reviewer gave it two labelled rows, and leaves it out of reviewer agreement', () => {
     const csv = [
       'claim_id,engine_status,reviewer_id,reviewer_label',
       'c1,supported,alice,contradicted',
       'c1,supported,alice,supported',
       'c1,,bob,supported',
+      'c2,supported,alice,supported',
+      'c2,supported,bob,supported',
     ].join('\n');
-    const result = importReviewerLabels(csv);
-    expect(result.duplicateRows).toBe(1);
+    const result = importReviewerLabels(csv, verdicts({ c1: 'supported', c2: 'supported' }));
+    expect(result.scored).toBe(1);
+    expect(result.excludedConflict).toBe(1);
+    expect(result.conflictClaimIds).toEqual(['c1']);
     expect(result.scored).toBe(1);
     expect(result.errors).toBe(0);
     expect(result.pairs[0].n).toBe(1);
+    expect(formatAgreementMarkdown(result)).toContain(
+      'Excluded, conflict (one reviewer gave the claim more than one labelled row): 1. Claim ids: c1',
+    );
+  });
+
+  it('a later blank row does not hide an earlier label from the same reviewer', () => {
+    const csv = [
+      'claim_id,engine_status,reviewer_id,reviewer_label',
+      'c1,supported,alice,contradicted',
+      'c1,supported,alice,',
+    ].join('\n');
+    const result = importReviewerLabels(csv, verdicts({ c1: 'supported' }));
+    expect(result.scored).toBe(1);
+    expect(result.errors).toBe(1);
+    expect(result.excludedNoLabel).toBe(0);
+    expect(result.blankDuplicateRows).toBe(1);
+    expect(formatAgreementMarkdown(result)).toContain(
+      'Extra rows with a blank label for a claim and reviewer that already had a row, ignored: 1',
+    );
   });
 
   it('refuses a CSV with no reviewer column', () => {
-    expect(() => importReviewerLabels('claim_id,engine_status\nc1,supported\n')).toThrow(/reviewer_label/);
+    expect(() => importReviewerLabels('claim_id,engine_status\nc1,supported\n', verdicts({ c1: 'supported' }))).toThrow(/reviewer_label/);
+  });
+
+  it('excludes a claim with an unknown label even when another reviewer agreed with the scan', () => {
+    const csv = [
+      'claim_id,engine_status,reviewer_id,reviewer_label',
+      'c1,supported,alice,maybe',
+      'c1,supported,bob,supported',
+    ].join('\n');
+    const result = importReviewerLabels(csv, verdicts({ c1: 'supported' }));
+    expect(result.scored).toBe(0);
+    expect(result.agreements).toBe(0);
+    expect(result.excludedUnknownLabel).toBe(1);
+    expect(result.unknownLabelClaimIds).toEqual(['c1']);
+    expect(result.errorRate).toBeNull();
+    expect(formatAgreementMarkdown(result)).toContain('Excluded, unknown label: 1. Claim ids: c1');
+  });
+
+  it('counts and reports a labelled row with an empty claim id', () => {
+    const csv = [
+      'claim_id,engine_status,reviewer_id,reviewer_label',
+      ',supported,alice,contradicted',
+      'c1,supported,alice,supported',
+    ].join('\n');
+    const result = importReviewerLabels(csv, verdicts({ c1: 'supported' }));
+    expect(result.rowsNoClaimId).toBe(1);
+    expect(result.csvRows).toBe(2);
+    expect(result.scored).toBe(1);
+    expect(formatAgreementMarkdown(result)).toContain('Rows with no claim id: 1');
+  });
+
+  it('scores against the scan verdict, never the CSV engine columns, and lists ids not in the scan', () => {
+    const csv = [
+      'claim_id,engine_status,engine_bucket,reviewer_id,reviewer_label',
+      'a,supported,supported,alice,supported',
+      'zz,supported,supported,alice,supported',
+      'zz,supported,supported,bob,supported',
+      'yy,contradicted,contradicted,alice,supported',
+    ].join('\n');
+    const result = importReviewerLabels(csv, verdicts({ a: 'contradicted', b: 'supported' }));
+    expect(result.scored).toBe(1);
+    expect(result.scanClaims).toBe(2);
+    expect(result.errors).toBe(1);
+    expect(result.confusion.contradicted.supported).toBe(1);
+    expect(result.engineColumnMismatches).toBe(1);
+    expect(result.rowsNotInScan).toBe(3);
+    expect(result.notInScanClaimIds).toEqual(['yy', 'zz']);
+    expect(result.excludedNotInCsv).toBe(1);
+    expect(result.reviewers).toEqual(['alice']);
+    const md = formatAgreementMarkdown(result);
+    expect(md).toContain("Rows whose claim id is not in the scan: 3, 2 distinct claim ids: yy, zz");
+    expect(md).toContain('Excluded, no row in the CSV: 1');
+    expect(md).toContain('Scored claims: 1 of 2');
+  });
+
+  it('accounts for every scan claim exactly once', () => {
+    const csv = [
+      'claim_id,reviewer_id,reviewer_label',
+      'ok,alice,supported',
+      'unc,alice,supported',
+      'dup,alice,supported',
+      'dup,alice,contradicted',
+      'unk,alice,maybe',
+      'none,alice,skip',
+      'tie,alice,supported',
+      'tie,bob,contradicted',
+      ',alice,supported',
+      'ghost,alice,supported',
+    ].join('\n');
+    const result = importReviewerLabels(csv, verdicts({
+      ok: 'supported', unc: 'unchecked', dup: 'supported', unk: 'supported', none: 'supported', tie: 'supported', absent: 'mixed',
+    }));
+    const excluded = result.excludedUnchecked + result.excludedNotInCsv + result.excludedConflict +
+      result.excludedUnknownLabel + result.excludedNoLabel + result.excludedNoMajority;
+    expect(result.scanClaims).toBe(7);
+    expect(result.scored + excluded).toBe(result.scanClaims);
+    expect([result.scored, result.excludedUnchecked, result.excludedNotInCsv, result.excludedConflict,
+      result.excludedUnknownLabel, result.excludedNoLabel, result.excludedNoMajority]).toEqual([1, 1, 1, 1, 1, 1, 1]);
+    expect(result.rowsNoClaimId).toBe(1);
+    expect(result.rowsNotInScan).toBe(1);
+  });
+
+  it('escapes reviewer ids in the agreement markdown', () => {
+    const csv = [
+      'claim_id,engine_status,reviewer_id,reviewer_label',
+      'c1,supported,<img src=x onerror=alert(1)>,supported',
+      'c1,supported,[a](javascript:alert(1)),supported',
+    ].join('\n');
+    const md = formatAgreementMarkdown(importReviewerLabels(csv, verdicts({ c1: 'supported' })));
+    expect(md).not.toContain('<img');
+    expect(md).not.toContain('](javascript:');
+    expect(md).toContain('&lt;img src=x onerror=alert\\(1\\)&gt;');
+    expect(md).toContain('\\[a\\]\\(javascript:alert\\(1\\)\\)');
   });
 });
 
@@ -460,7 +593,7 @@ describe('synthetic example sample', () => {
     expect(markdown).toContain('Synthetic example data.');
     expect(markdown).toContain('https://example.test/northwind/payments');
     expect(markdown).toContain('Unchecked: no allowed source found');
-    expect(markdown).not.toContain('gemini-2.5-flash');
+    expect(scopeSection(markdown)).not.toContain('gemini-2.5-flash');
     expect(markdown).not.toContain('ba11345');
     const findings = markdown.slice(
       markdown.indexOf('## Unsupported and contradicted claims'),
@@ -491,7 +624,7 @@ describe('judge model and engine commit come from the scan', () => {
     const text = renderAuditMarkdown(model);
     expect(text).toContain('The judge model recorded on this scan is unknown.');
     expect(text).toContain('The engine commit recorded on this scan is unknown.');
-    expect(text).not.toContain('gemini-2.5-flash');
+    expect(scopeSection(text)).not.toContain('gemini-2.5-flash');
     expect(text).not.toContain('ba11345');
   });
 
@@ -639,7 +772,7 @@ describe('audit-report command', () => {
     expect(readFileSync(csv, 'utf8').split('\n')[0]).toContain('reviewer_label');
   });
 
-  it('rejects a missing scan, a bad extension and an import mixed with --scan', async () => {
+  it('rejects a missing scan, a bad extension and an import without --scan', async () => {
     expect((await runAuditReport({})).exitCode).toBe(1);
     expect((await runAuditReport({ scan: demoPath })).output).toMatch(/--out/);
     expect((await runAuditReport({ scan: join(repoRoot, 'no-such.json'), out: 'r.md' })).output).toMatch(/not found/);
@@ -648,20 +781,34 @@ describe('audit-report command', () => {
     writeFileSync(bad, 'not json');
     expect((await runAuditReport({ scan: bad, out: join(dir, 'r.md') })).output).toMatch(/could not parse/);
     expect((await runAuditReport({ scan: demoPath, out: join(dir, 'r.csv') })).output).toMatch(/--labels-out/);
-    expect((await runAuditReport({ 'import-labels': bad, scan: demoPath })).output).toMatch(/does not take --scan/);
+    const noScan = await runAuditReport({ 'import-labels': bad });
+    expect(noScan.exitCode).toBe(1);
+    expect(noScan.output).toMatch(/--import-labels needs --scan/);
   });
 
   it('imports labels through the command and writes JSON', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'faultline-audit-'));
     const csvPath = join(dir, 'labels.csv');
     const jsonPath = join(dir, 'agreement.json');
+    const scanPath = join(dir, 'scan.json');
+    writeFileSync(scanPath, JSON.stringify({
+      claims: [
+        { id: 'a', text: 'A.', type: 'fact', importance: 1 },
+        { id: 'b', text: 'B.', type: 'fact', importance: 1 },
+        { id: 'c', text: 'C.', type: 'fact', importance: 1 },
+      ],
+      verifications: {
+        a: { claimId: 'a', status: 'supported', explanation: 'y', sources: [] },
+        b: { claimId: 'b', status: 'supported', explanation: 'y', sources: [] },
+      },
+    }));
     writeFileSync(csvPath, [
       'claim_id,engine_status,engine_bucket,reviewer_label',
       'a,supported,supported,supported',
       'b,supported,supported,contradicted',
       'c,,unchecked,supported',
     ].join('\n'));
-    const { exitCode, output } = await main(['audit-report', '--import-labels', csvPath, '--out', jsonPath]);
+    const { exitCode, output } = await main(['audit-report', '--scan', scanPath, '--import-labels', csvPath, '--out', jsonPath]);
     expect(exitCode).toBe(0);
     expect(output).toContain(jsonPath);
     const body = JSON.parse(readFileSync(jsonPath, 'utf8'));
@@ -670,6 +817,8 @@ describe('audit-report command', () => {
     expect(body.errorRate).toBe(0.5);
     expect(body.excludedUnchecked).toBe(1);
     expect(body.method).toContain('Not the published balanced accuracy');
+    expect(body.scanClaims).toBe(3);
+    expect(output).toContain('Scored 2 of 3 claims in the scan.');
     expect(body.errorRateCi95[0]).toBeLessThanOrEqual(0.5);
     expect(body.errorRateCi95[1]).toBeGreaterThanOrEqual(0.5);
   });
@@ -677,10 +826,145 @@ describe('audit-report command', () => {
   it('prints the agreement on stdout when --out is omitted, and refuses a zero rate it did not measure', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'faultline-audit-'));
     const csvPath = join(dir, 'blank.csv');
+    const scanPath = join(dir, 'scan.json');
+    writeFileSync(scanPath, JSON.stringify({ claims: [{ id: 'z', text: 'Z.', type: 'fact', importance: 1 }], verifications: {} }));
     writeFileSync(csvPath, 'claim_id,engine_bucket,reviewer_label\nz,unchecked,\n');
-    const { exitCode, output } = await main(['audit-report', '--import-labels', csvPath]);
+    const { exitCode, output } = await main(['audit-report', '--scan', scanPath, '--import-labels', csvPath]);
     expect(exitCode).toBe(0);
     expect(output).toContain('was not computed');
     expect(output).not.toMatch(/Error rate: 0/);
+  });
+});
+
+describe('untrusted scan text in markdown', () => {
+  it('escapes raw HTML and link, emphasis and code syntax in table cells', () => {
+    const model = buildAuditReport({
+      provider: '<b>prov</b>',
+      claims: [{ id: 'm', text: '<img src=x onerror=alert(1)> [x](javascript:alert(1)) *b* _i_ `c` & ok', type: 'fact', importance: 1 }],
+      verifications: {
+        m: {
+          claimId: 'm',
+          status: 'contradicted',
+          explanation: '<script>x</script>',
+          sources: [{ title: '[t](javascript:alert(2))', uri: 'https://example.test/a_b' }],
+        },
+      },
+    });
+    const md = renderAuditMarkdown(model);
+    const row = md.split('\n').find((line) => line.startsWith('| m '));
+    expect(row).toBeDefined();
+    expect(md).not.toContain('<img');
+    expect(md).not.toContain('<script>');
+    expect(md).not.toContain('<b>');
+    expect(md).not.toContain('](javascript:');
+    expect(row).toContain('&lt;img src=x onerror=alert\\(1\\)&gt;');
+    expect(row).toContain('\\[x\\]\\(javascript:alert\\(1\\)\\)');
+    expect(row).toContain('\\*b\\* \\_i\\_ \\`c\\` &amp; ok');
+    expect(row).toContain('\\[t\\]\\(javascript:alert\\(2\\)\\)');
+    expect(row).toContain('https://example.test/a\\_b');
+    expect(md).toContain('| Provider recorded | &lt;b&gt;prov&lt;/b&gt; |');
+  });
+
+  it('escapes the recorded judge model and commit in the limitations paragraph', () => {
+    const md = renderAuditMarkdown(buildAuditReport({
+      judgeModel: '<img src=x>',
+      engineCommit: '[c](javascript:1)',
+      claims: [],
+      verifications: {},
+    }));
+    const limits = md.slice(md.indexOf('## Limitations'));
+    expect(limits).toContain('The judge model recorded on this scan is &lt;img src=x&gt;.');
+    expect(limits).toContain('The engine commit recorded on this scan is \\[c\\]\\(javascript:1\\).');
+  });
+
+  it('quotes the input in a tilde fence longer than any tilde run in it, with the text unchanged', () => {
+    const input = 'first\n~~~~\n<b>not html</b>\n~~~~~~\n```\nlast';
+    const md = renderAuditMarkdown(buildAuditReport({ input, claims: [], verifications: {} }));
+    expect(md).toContain('\n~~~~~~~\n' + input + '\n~~~~~~~\n');
+    const plain = renderAuditMarkdown(buildAuditReport({ input: 'no tildes', claims: [], verifications: {} }));
+    expect(plain).toContain('\n~~~~\nno tildes\n~~~~\n');
+  });
+});
+
+describe('a claim with no id', () => {
+  it('is unchecked, and its label neither takes nor hides a real verification', () => {
+    const model = buildAuditReport({
+      claims: [
+        { text: 'A claim the scan saved without an id.', type: 'fact', importance: 1 },
+        { id: 'c2', text: 'A claim with an id.', type: 'fact', importance: 1 },
+      ],
+      verifications: {
+        'missing-id-1': { claimId: 'missing-id-1', status: 'contradicted', explanation: 'A real record.', sources: [] },
+        c2: { claimId: 'c2', status: 'supported', explanation: 'y', sources: [] },
+      },
+    });
+    expect(model.claims).toHaveLength(3);
+    const noId = model.claims[0];
+    expect(noId.text).toBe('A claim the scan saved without an id.');
+    expect(noId.bucket).toBe('unchecked');
+    expect(noId.status).toBeNull();
+    expect(noId.id).not.toBe('missing-id-1');
+    expect(noId.explanation).toContain('no id in the scan file');
+    const real = model.claims.find((c) => c.id === 'missing-id-1');
+    expect(real?.bucket).toBe('contradicted');
+    expect(real?.text).toBe('not recorded');
+    expect(new Set(model.claims.map((c) => c.id)).size).toBe(3);
+    expect(model.byBucket.contradicted).toBe(1);
+    expect(model.byBucket.unchecked).toBe(1);
+    expect(scanVerdicts(model).get(noId.id)).toBe('unchecked');
+  });
+});
+
+describe('the headline accuracy states its judge model and date', () => {
+  const model = buildAuditReport({ claims: [], verifications: {} });
+
+  it('names the measurement judge model and date, and says the production judge changed since', async () => {
+    const pdf = pdfText(await renderAuditPdf(model));
+    for (const body of [renderAuditMarkdown(model), renderAuditHtml(model), limitationParagraphs(model).join('\n'), pdf]) {
+      expect(body).toContain(
+        `It was measured on 2026-11-06 with the judge model gemini-2.5-flash (${ACCURACY_READINGS[0].writeup}).`,
+      );
+      expect(body).toContain(
+        'The production judge model changed on 2026-11-14, to gemini-3.1-pro-preview. This hosted figure has not been re-measured since that change.',
+      );
+      expect(body).toContain(ACCURACY_READINGS[0].value);
+    }
+    expect(scopeSection(renderAuditMarkdown(model))).toContain('| Judge model recorded | unknown |');
+  });
+
+  it('takes the judge model and date from the headline write-up and run file', () => {
+    expect(HEADLINE_MEASUREMENT.judgeModel).toBe('gemini-2.5-flash');
+    expect(PRODUCTION_JUDGE_CHANGE.on).toBe('2026-11-14');
+    const writeup = readFileSync(join(repoRoot, ACCURACY_READINGS[0].writeup), 'utf8');
+    expect(writeup).toContain(HEADLINE_MEASUREMENT.writeupJudgeWords);
+    const score = JSON.parse(readFileSync(join(repoRoot, ACCURACY_READINGS[0].scoreFile), 'utf8'));
+    const rows = readFileSync(join(repoRoot, score.arms.parallel.run), 'utf8').trim().split('\n');
+    expect(rows.length).toBeGreaterThan(0);
+    const days = new Set(rows.map((line) => String(JSON.parse(line).ts).slice(0, 10)));
+    expect([...days]).toEqual([HEADLINE_MEASUREMENT.measuredOn]);
+  });
+});
+
+describe('audit-report --import-labels needs the scan', () => {
+  it('scores imported labels against the scan file and reports invented ids', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'faultline-audit-'));
+    const scanPath = join(dir, 'scan.json');
+    const csvPath = join(dir, 'labels.csv');
+    writeFileSync(scanPath, JSON.stringify({
+      claims: [{ id: 'a', text: 'A.', type: 'fact', importance: 1 }],
+      verifications: { a: { claimId: 'a', status: 'contradicted', explanation: 'n', sources: [] } },
+    }));
+    writeFileSync(csvPath, [
+      'claim_id,engine_status,engine_bucket,reviewer_label',
+      'a,supported,supported,supported',
+      'invented,supported,supported,contradicted',
+    ].join('\n'));
+    const { exitCode, output } = await runAuditReport({ scan: scanPath, 'import-labels': csvPath });
+    expect(exitCode).toBe(0);
+    expect(output).toContain('Scored claims: 1 of 1');
+    expect(output).toContain('Errors: 1');
+    expect(output).toContain('Rows whose claim id is not in the scan: 1, 1 distinct claim ids: invented');
+    expect(output).toContain("Rows whose engine columns differ from the scan (the scan's verdict was used): 1");
+    expect(output).toContain('Error rate: 1/1 = 1');
   });
 });

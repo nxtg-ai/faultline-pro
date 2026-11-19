@@ -212,7 +212,7 @@ Usage:
   faultline report --input <results.json> [--output-format json|markdown|html|sarif]
   faultline audit-report --scan <result.json> --out <report.html|md|pdf>   AI output audit from a scan file
   faultline audit-report --scan <result.json> --labels-out <claims.csv>     CSV for a reviewer to label
-  faultline audit-report --import-labels <reviewed.csv> [--out <agreement.md|json>]   Agreement and error rate
+  faultline audit-report --scan <result.json> --import-labels <reviewed.csv> [--out <agreement.md|json>]   Agreement and error rate against the scan
   faultline watch --dir <path> [--provider gemini] [--output-format json]   Watch for changes
   faultline scan --templates injection,bias                         Red-team scan with template categories
   faultline scan --template compliance-check                        Use named template from .faultlinerc.json

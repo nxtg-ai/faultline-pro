@@ -244,20 +244,40 @@ export interface ReviewerPair {
   cohensKappa: number | null;
 }
 
+/** The scan's verdict for one claim id, as the audit report classified it. */
+export type ScanVerdict = EngineWord | 'unchecked';
+
 export interface AgreementResult {
+  /** Distinct claim ids in the scan. Every one lands in exactly one of the buckets below. */
+  scanClaims: number;
   scored: number;
   agreements: number;
   errors: number;
   agreementRate: number | null;
   errorRate: number | null;
   errorRateCi95: [number, number] | null;
+  /** Scan claims with no row in the CSV. */
+  excludedNotInCsv: number;
   excludedUnchecked: number;
-  excludedNoLabel: number;
-  excludedNoMajority: number;
-  excludedUnreadable: number;
   /** Unchecked claims a reviewer still labelled. They stay out of the error rate. */
   uncheckedButLabelled: number;
-  duplicateRows: number;
+  /** One reviewer gave the claim more than one labelled row. */
+  excludedConflict: number;
+  /** A reviewer label is not one of the accepted words. */
+  excludedUnknownLabel: number;
+  excludedNoLabel: number;
+  excludedNoMajority: number;
+  /** Non-empty data rows in the CSV. */
+  csvRows: number;
+  /** Rows with an empty claim_id. Not scored. */
+  rowsNoClaimId: number;
+  /** Rows whose claim_id is not a claim in the scan. Not scored. */
+  rowsNotInScan: number;
+  notInScanClaimIds: string[];
+  /** Extra rows with a blank label for a claim and reviewer that already had a row. Ignored. */
+  blankDuplicateRows: number;
+  /** Rows whose engine_status or engine_bucket differs from the scan. The scan's verdict was used. */
+  engineColumnMismatches: number;
   reviewers: string[];
   pairs: ReviewerPair[];
   confusion: Record<EngineWord, Record<EngineWord, number>>;
@@ -268,15 +288,9 @@ export interface AgreementResult {
     percentile: 'linear';
     unit: 'claim id, sorted';
   };
-  unreadableClaimIds: string[];
+  conflictClaimIds: string[];
+  unknownLabelClaimIds: string[];
   noMajorityClaimIds: string[];
-}
-
-interface LabelRow {
-  claimId: string;
-  reviewerId: string;
-  engine: EngineWord | 'unchecked' | 'unknown';
-  label: ParsedReviewerLabel;
 }
 
 function emptyConfusion(): Record<EngineWord, Record<EngineWord, number>> {
@@ -302,7 +316,21 @@ function majority(labels: EngineWord[]): EngineWord | null {
   return tied ? null : best;
 }
 
-export function importReviewerLabels(csvText: string): AgreementResult {
+function isEngineWord(l: ParsedReviewerLabel): l is EngineWord {
+  return l !== 'blank' && l !== 'skip' && l !== 'invalid';
+}
+
+function byCodeUnit(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/**
+ * Score a labelled CSV against the scan it was exported from. The scan's
+ * verdict for each claim comes from `scanVerdicts`; the CSV's engine columns
+ * are never used for scoring. A CSV row whose claim id is not in the scan is
+ * not scored.
+ */
+export function importReviewerLabels(csvText: string, scanVerdicts: ReadonlyMap<string, ScanVerdict>): AgreementResult {
   const table = parseCsv(csvText);
   if (table.length === 0) throw new AuditLabelError('The CSV has no header row.');
   const header = table[0].map((h) => h.trim());
@@ -313,79 +341,94 @@ export function importReviewerLabels(csvText: string): AgreementResult {
   if (labelCol < 0) throw new AuditLabelError('The CSV is missing the reviewer_label column.');
   const statusCol = col('engine_status');
   const bucketCol = col('engine_bucket');
-  if (statusCol < 0 && bucketCol < 0) {
-    throw new AuditLabelError('The CSV needs an engine_status or engine_bucket column.');
-  }
   const reviewerCol = col('reviewer_id');
 
-  const rows: LabelRow[] = [];
-  let duplicateRows = 0;
-  const seen = new Set<string>();
+  let csvRows = 0;
+  let rowsNoClaimId = 0;
+  let rowsNotInScan = 0;
+  let engineColumnMismatches = 0;
+  const notInScan = new Set<string>();
+  // claim id -> reviewer id -> every label that reviewer gave the claim, in row order.
+  const byClaim = new Map<string, Map<string, ParsedReviewerLabel[]>>();
   for (const cells of table.slice(1)) {
+    csvRows++;
     const claimId = (cells[idCol] ?? '').trim();
-    if (!claimId) continue;
-    const reviewerId = (reviewerCol >= 0 ? cells[reviewerCol] ?? '' : '').trim() || 'reviewer';
-    const key = `${claimId}\0${reviewerId}`;
-    if (seen.has(key)) duplicateRows++;
-    seen.add(key);
-    // Last row for a claim and reviewer wins; drop the earlier one.
-    const without = rows.filter((r) => !(r.claimId === claimId && r.reviewerId === reviewerId));
-    if (without.length !== rows.length) {
-      rows.length = 0;
-      rows.push(...without);
+    if (!claimId) {
+      rowsNoClaimId++;
+      continue;
     }
-    rows.push({
-      claimId,
-      reviewerId,
-      engine: engineWordFromCells(statusCol >= 0 ? cells[statusCol] ?? '' : '', bucketCol >= 0 ? cells[bucketCol] ?? '' : ''),
-      label: parseReviewerLabel(cells[labelCol] ?? ''),
-    });
+    const verdict = scanVerdicts.get(claimId);
+    if (verdict === undefined) {
+      rowsNotInScan++;
+      notInScan.add(claimId);
+      continue;
+    }
+    const csvEngine = engineWordFromCells(
+      statusCol >= 0 ? cells[statusCol] ?? '' : '',
+      bucketCol >= 0 ? cells[bucketCol] ?? '' : '',
+    );
+    if (csvEngine !== 'unknown' && csvEngine !== verdict) engineColumnMismatches++;
+    const reviewerId = (reviewerCol >= 0 ? cells[reviewerCol] ?? '' : '').trim() || 'reviewer';
+    const reviewers = byClaim.get(claimId) ?? new Map<string, ParsedReviewerLabel[]>();
+    const labels = reviewers.get(reviewerId) ?? [];
+    labels.push(parseReviewerLabel(cells[labelCol] ?? ''));
+    reviewers.set(reviewerId, labels);
+    byClaim.set(claimId, reviewers);
   }
-  if (rows.length === 0) throw new AuditLabelError('The CSV has no claim rows.');
+  if (csvRows === 0) throw new AuditLabelError('The CSV has no claim rows.');
 
-  const byClaim = new Map<string, LabelRow[]>();
-  for (const r of rows) {
-    const list = byClaim.get(r.claimId) ?? [];
-    list.push(r);
-    byClaim.set(r.claimId, list);
+  // One label per claim and reviewer. Two or more non-blank rows from one reviewer are a conflict.
+  let blankDuplicateRows = 0;
+  const finalLabels = new Map<string, Map<string, ParsedReviewerLabel>>();
+  const conflicted = new Set<string>();
+  for (const [claimId, reviewers] of byClaim) {
+    const final = new Map<string, ParsedReviewerLabel>();
+    for (const [reviewerId, labels] of reviewers) {
+      const labelled = labels.filter((l) => l !== 'blank');
+      if (labelled.length > 1) {
+        conflicted.add(claimId);
+        continue;
+      }
+      blankDuplicateRows += labels.length - 1;
+      final.set(reviewerId, labelled[0] ?? 'blank');
+    }
+    finalLabels.set(claimId, final);
   }
-  const claimIds = [...byClaim.keys()].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 
+  const claimIds = [...scanVerdicts.keys()].sort(byCodeUnit);
+
+  let excludedNotInCsv = 0;
   let excludedUnchecked = 0;
+  let uncheckedButLabelled = 0;
   let excludedNoLabel = 0;
   let excludedNoMajority = 0;
-  let excludedUnreadable = 0;
-  let uncheckedButLabelled = 0;
-  const unreadableClaimIds: string[] = [];
+  const conflictClaimIds: string[] = [];
+  const unknownLabelClaimIds: string[] = [];
   const noMajorityClaimIds: string[] = [];
   const scored: Array<{ id: string; engine: EngineWord; label: EngineWord; error: boolean }> = [];
 
   for (const id of claimIds) {
-    const group = byClaim.get(id)!;
-    const realEngines = new Set(group.map((g) => g.engine).filter((e) => e !== 'unknown'));
-    if (realEngines.size > 1) {
-      excludedUnreadable++;
-      unreadableClaimIds.push(id);
+    const engine = scanVerdicts.get(id)!;
+    const final = finalLabels.get(id);
+    if (!final) {
+      excludedNotInCsv++;
       continue;
     }
-    const engine = realEngines.size === 1 ? [...realEngines][0] : 'unknown';
-    const readable = group.map((g) => g.label).filter((l): l is EngineWord => l !== 'blank' && l !== 'skip' && l !== 'invalid');
-    const invalid = group.some((g) => g.label === 'invalid');
+    const labels = [...final.values()];
     if (engine === 'unchecked') {
       excludedUnchecked++;
-      if (readable.length > 0 || invalid) uncheckedButLabelled++;
+      if (conflicted.has(id) || labels.some((l) => l !== 'blank' && l !== 'skip')) uncheckedButLabelled++;
       continue;
     }
-    if (engine === 'unknown') {
-      excludedUnreadable++;
-      unreadableClaimIds.push(id);
+    if (conflicted.has(id)) {
+      conflictClaimIds.push(id);
       continue;
     }
-    if (invalid && readable.length === 0) {
-      excludedUnreadable++;
-      unreadableClaimIds.push(id);
+    if (labels.some((l) => l === 'invalid')) {
+      unknownLabelClaimIds.push(id);
       continue;
     }
+    const readable = labels.filter(isEngineWord);
     if (readable.length === 0) {
       excludedNoLabel++;
       continue;
@@ -415,8 +458,8 @@ export function importReviewerLabels(csvText: string): AgreementResult {
   }
 
   const reviewerSet = new Set<string>();
-  for (const r of rows) reviewerSet.add(r.reviewerId);
-  const reviewers = [...reviewerSet].sort();
+  for (const reviewers of byClaim.values()) for (const r of reviewers.keys()) reviewerSet.add(r);
+  const reviewers = [...reviewerSet].sort(byCodeUnit);
 
   const pairs: ReviewerPair[] = [];
   for (let i = 0; i < reviewers.length; i++) {
@@ -426,14 +469,13 @@ export function importReviewerLabels(csvText: string): AgreementResult {
       const left: string[] = [];
       const right: string[] = [];
       for (const id of claimIds) {
-        const group = byClaim.get(id)!;
-        const la = group.find((g) => g.reviewerId === a);
-        const lb = group.find((g) => g.reviewerId === b);
-        if (!la || !lb) continue;
-        if (la.label === 'blank' || la.label === 'skip' || la.label === 'invalid') continue;
-        if (lb.label === 'blank' || lb.label === 'skip' || lb.label === 'invalid') continue;
-        left.push(la.label);
-        right.push(lb.label);
+        if (conflicted.has(id)) continue;
+        const final = finalLabels.get(id);
+        const la = final?.get(a);
+        const lb = final?.get(b);
+        if (!la || !lb || !isEngineWord(la) || !isEngineWord(lb)) continue;
+        left.push(la);
+        right.push(lb);
       }
       const n = left.length;
       const agreeN = left.filter((l, k) => l === right[k]).length;
@@ -449,18 +491,26 @@ export function importReviewerLabels(csvText: string): AgreementResult {
   }
 
   return {
+    scanClaims: claimIds.length,
     scored: scored.length,
     agreements,
     errors,
     agreementRate,
     errorRate,
     errorRateCi95,
+    excludedNotInCsv,
     excludedUnchecked,
+    uncheckedButLabelled,
+    excludedConflict: conflictClaimIds.length,
+    excludedUnknownLabel: unknownLabelClaimIds.length,
     excludedNoLabel,
     excludedNoMajority,
-    excludedUnreadable,
-    uncheckedButLabelled,
-    duplicateRows,
+    csvRows,
+    rowsNoClaimId,
+    rowsNotInScan,
+    notInScanClaimIds: [...notInScan].sort(byCodeUnit),
+    blankDuplicateRows,
+    engineColumnMismatches,
     reviewers,
     pairs,
     confusion,
@@ -471,9 +521,38 @@ export function importReviewerLabels(csvText: string): AgreementResult {
       percentile: 'linear',
       unit: 'claim id, sorted',
     },
-    unreadableClaimIds,
+    conflictClaimIds,
+    unknownLabelClaimIds,
     noMajorityClaimIds,
   };
+}
+
+/** Characters that start Markdown links, emphasis or code, plus the table pipe. */
+const MARKDOWN_PUNCTUATION = '\\|[]()*_`';
+
+/**
+ * One line of untrusted text for a Markdown table cell or paragraph.
+ * Whitespace is collapsed, `&`, `<` and `>` become character references (so
+ * raw HTML stays text), and the characters that start a link, emphasis, code
+ * span or a table column are backslash-escaped. The backslash itself is
+ * escaped too, so a backslash in the text cannot undo the escape after it.
+ */
+export function markdownCell(raw: string): string {
+  const s = raw.replace(/\s+/g, ' ').trim();
+  let out = '';
+  for (let i = 0; i < s.length; i++) {
+    const code = s.charCodeAt(i);
+    if (code === 38) out += '&' + 'amp;';
+    else if (code === 60) out += '&' + 'lt;';
+    else if (code === 62) out += '&' + 'gt;';
+    else if (MARKDOWN_PUNCTUATION.includes(s[i])) out += '\\' + s[i];
+    else out += s[i];
+  }
+  return out;
+}
+
+function idList(ids: readonly string[]): string {
+  return ids.map(markdownCell).join(', ');
 }
 
 export function formatQuotient(numer: number, denom: number): string {
@@ -485,17 +564,42 @@ export function formatAgreementMarkdown(result: AgreementResult): string {
   const lines: string[] = [];
   lines.push('# Reviewer labels');
   lines.push('');
-  lines.push(`Scored claims: ${result.scored}`);
+  lines.push(`Claims in the scan: ${result.scanClaims}`);
+  lines.push(`Data rows in the CSV: ${result.csvRows}`);
+  lines.push(`Scored claims: ${result.scored} of ${result.scanClaims}`);
   lines.push(`Agreements with the scan: ${result.scored === 0 ? 'not computed' : String(result.agreements)}`);
   lines.push(`Errors: ${result.scored === 0 ? 'not computed' : String(result.errors)}`);
-  lines.push(`Excluded, the scan did not check the claim: ${result.excludedUnchecked}`);
+  lines.push('');
+  lines.push('Each claim in the scan is scored or excluded for one reason:');
+  lines.push('');
+  lines.push(`- Excluded, the scan did not check the claim: ${result.excludedUnchecked}`);
   if (result.uncheckedButLabelled > 0) {
-    lines.push(`Of those, ${result.uncheckedButLabelled} had a reviewer label and were still excluded.`);
+    lines.push(`  Of those, ${result.uncheckedButLabelled} had a reviewer label and were still excluded.`);
   }
-  lines.push(`Excluded, no reviewer label: ${result.excludedNoLabel}`);
-  lines.push(`Excluded, reviewers tied with no majority: ${result.excludedNoMajority}`);
-  lines.push(`Excluded, unreadable label or verdict: ${result.excludedUnreadable}`);
-  if (result.duplicateRows > 0) lines.push(`Duplicate claim and reviewer rows, last row kept: ${result.duplicateRows}`);
+  lines.push(`- Excluded, no row in the CSV: ${result.excludedNotInCsv}`);
+  lines.push(
+    `- Excluded, conflict (one reviewer gave the claim more than one labelled row): ${result.excludedConflict}` +
+      (result.conflictClaimIds.length > 0 ? `. Claim ids: ${idList(result.conflictClaimIds)}` : ''),
+  );
+  lines.push(
+    `- Excluded, unknown label: ${result.excludedUnknownLabel}` +
+      (result.unknownLabelClaimIds.length > 0 ? `. Claim ids: ${idList(result.unknownLabelClaimIds)}` : ''),
+  );
+  lines.push(`- Excluded, no reviewer label (blank or skip): ${result.excludedNoLabel}`);
+  lines.push(
+    `- Excluded, reviewers tied with no majority: ${result.excludedNoMajority}` +
+      (result.noMajorityClaimIds.length > 0 ? `. Claim ids: ${idList(result.noMajorityClaimIds)}` : ''),
+  );
+  lines.push('');
+  lines.push('CSV rows that are not a claim in the scan are not scored:');
+  lines.push('');
+  lines.push(`- Rows with no claim id: ${result.rowsNoClaimId}`);
+  lines.push(
+    `- Rows whose claim id is not in the scan: ${result.rowsNotInScan}, ${result.notInScanClaimIds.length} distinct claim ids` +
+      (result.notInScanClaimIds.length > 0 ? `: ${idList(result.notInScanClaimIds)}` : ''),
+  );
+  lines.push(`- Extra rows with a blank label for a claim and reviewer that already had a row, ignored: ${result.blankDuplicateRows}`);
+  lines.push(`- Rows whose engine columns differ from the scan (the scan's verdict was used): ${result.engineColumnMismatches}`);
   lines.push('');
   lines.push('## Agreement with the scan');
   lines.push('');
@@ -510,6 +614,7 @@ export function formatAgreementMarkdown(result: AgreementResult): string {
   lines.push(
     'The error rate is the share of scored claims whose reviewer label differs from the scan\'s verdict. ' +
       'When more than one reviewer labelled a claim, the label is their majority; a tie is excluded. ' +
+      'The scan\'s verdict for each claim is read from the scan file; the CSV\'s engine columns are not used for scoring. ' +
       'The four words are supported, contradicted, mixed and unverified. A reviewer\'s "unsupported" is read as unverified, and "refuted" as contradicted. ' +
       'A claim the scan did not check is excluded, including when a reviewer labelled it.',
   );
@@ -524,7 +629,7 @@ export function formatAgreementMarkdown(result: AgreementResult): string {
   lines.push('');
   if (result.reviewers.length < 2) {
     lines.push(
-      `Reviewers in the file: ${result.reviewers.join(', ') || 'none'}. Inter-reviewer agreement was not computed.`,
+      `Reviewers in the file: ${idList(result.reviewers) || 'none'}. Inter-reviewer agreement was not computed.`,
     );
   } else {
     lines.push('| Reviewers | Claims both labelled | Agreement | Cohen\'s kappa |');
@@ -532,7 +637,7 @@ export function formatAgreementMarkdown(result: AgreementResult): string {
     for (const p of result.pairs) {
       const rate = p.agreementRate === null ? 'not computed' : formatQuotient(p.agreements, p.n);
       const kappa = p.cohensKappa === null ? 'undefined (chance agreement is 1)' : String(p.cohensKappa);
-      lines.push(`| ${p.a} vs ${p.b} | ${p.n} | ${rate} | ${kappa} |`);
+      lines.push(`| ${markdownCell(p.a)} vs ${markdownCell(p.b)} | ${p.n} | ${rate} | ${kappa} |`);
     }
   }
   lines.push('');
@@ -554,7 +659,7 @@ export function formatAgreementJson(result: AgreementResult): string {
   return JSON.stringify({
     ...result,
     method:
-      'Exact-match error rate of the scan verdict against reviewer labels on checked claims. ' +
+      'Exact-match error rate of the scan verdict, read from the scan file, against reviewer labels on checked claims. ' +
       'Not the published balanced accuracy. Bootstrap is mulberry32, seed 20260929, 2000 resamples, linear percentile, claims sorted by id.',
   }, null, 2) + '\n';
 }

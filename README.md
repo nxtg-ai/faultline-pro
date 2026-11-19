@@ -349,7 +349,7 @@ faultline compare --before "old text" --after "new text" --output-format json
 # AI output audit from a saved scan (no provider call)
 faultline audit-report --scan result.json --out report.md          # also .html, .pdf
 faultline audit-report --scan result.json --labels-out claims.csv  # rows for a reviewer to label
-faultline audit-report --import-labels claims.csv                  # agreement and error rate
+faultline audit-report --scan result.json --import-labels claims.csv  # agreement and error rate against the scan
 # Method, the quoted accuracy, and the label columns: docs/audit-report.md
 
 # Forensics

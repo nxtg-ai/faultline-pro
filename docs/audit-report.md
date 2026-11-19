@@ -7,11 +7,11 @@ faultline audit-report --scan result.json --out report.md
 faultline audit-report --scan result.json --out report.html
 faultline audit-report --scan result.json --out report.pdf
 faultline audit-report --scan result.json --labels-out claims.csv
-faultline audit-report --import-labels claims.csv
-faultline audit-report --import-labels claims.csv --out agreement.json
+faultline audit-report --scan result.json --import-labels claims.csv
+faultline audit-report --scan result.json --import-labels claims.csv --out agreement.json
 ```
 
-`--out` and `--labels-out` can be used together. `--import-labels` does not take `--scan`. A sample rendered from the synthetic scan `docs/demo/audit-scan.json` is committed as `docs/demo/audit-report.md`, `docs/demo/audit-report.html` and `docs/demo/audit-report.pdf`. The report says it is synthetic example data. It is not a client audit. `docs/demo/scan-result.json` is a separate, older file of provider errors and is not that sample.
+`--out` and `--labels-out` can be used together. `--import-labels` needs `--scan`, the scan the CSV was exported from, and does not take `--labels-out`. A sample rendered from the synthetic scan `docs/demo/audit-scan.json` is committed as `docs/demo/audit-report.md`, `docs/demo/audit-report.html` and `docs/demo/audit-report.pdf`. The report says it is synthetic example data. It is not a client audit. `docs/demo/scan-result.json` is a separate, older file of provider errors and is not that sample.
 
 The compliance renderers (`faultline report`, `faultline compliance-report`) are a different command. This report does not use them, and its header is not a regulatory frame.
 
@@ -23,13 +23,15 @@ The compliance renderers (`faultline report`, `faultline compliance-report`) are
 - **Unsupported and contradicted claims.** One row per claim: the claim text, the explanation the scan stored, sources (title and URL), retrieval time, model, and passage SHA-256. Retrieval time is `provenance.retrievedAt`. When the scan did not store that and did store a page-fetch time, the cell says "page fetched" and the timestamp. The passage hash is `evidence.contentSha256`. A fallback judge is labelled "(fallback model)". Anything the scan did not record stays "not recorded".
 - **Mixed claims,** in their own table, with the same provenance columns.
 - **Unchecked claims,** listed apart from the findings. A claim is unchecked when it has no verification record, its status is `skipped` or `loading`, the record has `apiError` or `notCheckable`, or the explanation begins with `Verify failed` (the engine's older wording for a provider error, including `docs/demo/scan-result.json`, which was saved before `apiError` was set). The wording is the customer-safe sentence from `sanitizeVerifyError`. The raw provider payload is not copied into the report. A claim with no source inside the configured source policy is labelled `Unchecked: no allowed source found` and is not counted as a provider error. The report treats `apiErrorReason: "source_policy_no_match"`, a provenance flag `sourcePolicyNoMatch`, `sourcePolicyMiss` or `noAllowedSource`, or (when those fields are absent) `apiError: true` whose explanation says no source was on the source-policy allowlist. A provider error without that reason, flag or sentence stays a provider error.
-- **Limitations.** The hosted engine's measured balanced accuracy, quoted from the score file rather than from the three-decimal rounding in the README.
+- **Limitations.** The hosted engine's measured balanced accuracy, quoted from the score file rather than from the three-decimal rounding in the README, with the judge model and date it was measured with.
+
+Text from the scan file (claim text, explanations, source titles and URLs, provider, judge model, commit) is untrusted. In the Markdown report each value is one line: `&`, `<` and `>` become character references, so raw HTML stays text, and `\`, `|`, `[`, `]`, `(`, `)`, `*`, `_` and backticks are backslash-escaped, so the text cannot open a link, emphasis, a code span or a new table column. The input is quoted in a tilde fence longer than any run of tildes in it (at least four), so no line of the input can close the fence; the input itself is quoted unchanged. The HTML report escapes the same values as HTML. A claim saved with no `id` is listed as unchecked under a label such as `missing-id-1`. No verification is matched to it, and the label never equals a real claim id or verification key.
 
 Unsupported means the check ran and the status is `unverified`. A provider failure that left the status `unverified` is unchecked, not unsupported.
 
 ## Measured accuracy, as the score files record it
 
-The figure the report quotes for the hosted path (Parallel search, advanced mode, then a Gemini judge with no Google search tool) is balanced accuracy **0.7546546546546546**, 95% CI **[0.6778109736738769, 0.8294247419247419]**, on the 193 binary-labelled claims in a 200-claim Factcheck-Bench sample. Source: `docs/research/data/parallel-fast-2026-11-06.parallel.summary.json`. The report does not print a model name or a commit for that measurement. It prints the judge model and engine commit recorded on the scan being reported, or `unknown`. The measurement was not pre-registered. Balanced accuracy is the mean of recall on true claims and recall on false claims. Supported counts as true and contradicted as false. Mixed, unverified and a failed check count as wrong. The interval is 2,000 bootstrap resamples, seed 20260929, from `scripts/accuracy-g0-score.py`.
+The figure the report quotes for the hosted path (Parallel search, advanced mode, then a Gemini judge with no Google search tool) is balanced accuracy **0.7546546546546546**, 95% CI **[0.6778109736738769, 0.8294247419247419]**, on the 193 binary-labelled claims in a 200-claim Factcheck-Bench sample. Source: `docs/research/data/parallel-fast-2026-11-06.parallel.summary.json`. It was measured on 2026-11-06 with the judge model `gemini-2.5-flash` (the write-up, `docs/research/2026-11-06-parallel-fast-vs-advanced.md`, names the Gemini 2.5 Flash judge; the score file does not record the judge). The production judge model changed on 2026-11-14, to `gemini-3.1-pro-preview`, and this hosted figure has not been re-measured since that change. The report states both beside the figure. It does not print a commit for that measurement, and it does not put the measurement's model on the scan: the Scope table prints the judge model and engine commit recorded on the scan being reported, or `unknown`. The measurement was not pre-registered. Balanced accuracy is the mean of recall on true claims and recall on false claims. Supported counts as true and contradicted as false. Mixed, unverified and a failed check count as wrong. The interval is 2,000 bootstrap resamples, seed 20260929, from `scripts/accuracy-g0-score.py`.
 
 `README.md` and the changelog print that reading as 0.755 [0.678, 0.829]. The point estimate and the lower bound are higher in that rounding than in the score file, and the upper bound is lower. The report quotes the score file, and it says so.
 
@@ -39,9 +41,9 @@ A test reads each score file and fails if a quoted digit string drifts.
 
 ## Reviewer CSV
 
-`--labels-out` writes one row per claim. The reviewer fills `reviewer_id` (blank means `reviewer`), `reviewer_label` and `reviewer_notes`. A second reviewer adds another row for the same `claim_id` and keeps the engine columns.
+`--labels-out` writes one row per claim. The reviewer fills `reviewer_id` (blank means `reviewer`), `reviewer_label` and `reviewer_notes`. A second reviewer adds another row for the same `claim_id` with their own `reviewer_id`.
 
-Accepted labels, case-insensitive: `supported` (also `verified`, `true`), `contradicted` (also `refuted`, `false`), `mixed`, `unverified` (also `unsupported`). `skip`, `abstain` and `n/a` leave the claim out. Any other word is unreadable and the claim is left out of the rate.
+Accepted labels, case-insensitive: `supported` (also `verified`, `true`), `contradicted` (also `refuted`, `false`), `mixed`, `unverified` (also `unsupported`). `skip`, `abstain` and `n/a` leave the claim out. Any other word is an unknown label: the claim is left out of the rate and counted under that reason.
 
 Empty provenance cells mean the scan did not record that field.
 
@@ -49,11 +51,22 @@ Cells whose text starts with `=`, `+`, `-`, `@`, a tab or a carriage return are 
 
 ## Importer
 
-`--import-labels` scores the filled CSV.
+`--import-labels` scores the filled CSV against the scan given with `--scan`. The scan's verdict for each claim is read from the scan file, the same way the report classifies it. The CSV's `engine_status` and `engine_bucket` columns are never used for scoring; a row whose engine columns differ from the scan is counted and reported, and the scan's verdict is used.
 
-**Error rate.** Among claims the scan checked and a reviewer labelled, the share whose label differs from the scan's verdict. The four words above are compared exactly. `unsupported` from a reviewer matches a scan status of `unverified`. When several reviewers labelled a claim, the label is their majority. A tie is excluded and listed. Unchecked claims are excluded even if a reviewer labelled them. Duplicate rows for the same claim and reviewer keep the last row. A blank engine cell on one row does not wipe a verdict another row recorded. Two different engine verdicts on the same claim exclude it.
+**Error rate.** Among claims the scan checked and a reviewer labelled, the share whose label differs from the scan's verdict. The four words above are compared exactly. `unsupported` from a reviewer matches a scan status of `unverified`. When several reviewers labelled a claim, the label is their majority. A tie is excluded and listed.
 
-The rate is printed as a fraction and as the quotient. When no claim qualifies, the rate is not computed. It is not reported as zero.
+Every claim in the scan is scored or excluded for exactly one reason, and the output states each count, with the claim ids where a reviewer can act on them:
+
+- the scan did not check the claim (excluded even if a reviewer labelled it);
+- the claim has no row in the CSV;
+- conflict: one reviewer (one `claim_id` and `reviewer_id`) gave the claim more than one labelled row. The claim is left out of the error rate and of reviewer agreement. An extra row with a blank label is ignored and counted, so a later blank does not hide an earlier label;
+- unknown label: a reviewer label that is not one of the accepted words, even when another reviewer's label is readable;
+- no reviewer label (blank, `skip`, `abstain` or `n/a`);
+- reviewers tied with no majority.
+
+CSV rows that are not a claim in the scan are not scored and are counted apart: rows with an empty `claim_id`, and rows whose `claim_id` is not in the scan (listed by id).
+
+The output states the number of claims in the scan and the number of data rows in the CSV, and the rate is printed as a fraction over the scored claims and as the quotient. When no claim qualifies, the rate is not computed. It is not reported as zero.
 
 **Confidence interval.** 2,000 resamples of the scored claims, sorted by claim id, seed 20260929, mulberry32, index `floor(u * n)`, 95% interval by linear percentile (the numpy default). This is not the numpy generator used for the published balanced-accuracy interval, and this rate is not balanced accuracy.
 

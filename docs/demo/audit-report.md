@@ -65,14 +65,14 @@ Sources, retrieval time, model and passage hash are copied from the verification
 
 | Claim | Status | Sources | Retrieved | Model | Passage SHA-256 |
 |-------|--------|---------|-----------|-------|-----------------|
-| n2 — The plan paid $400 for each of those visits. Recorded explanation: The example payment file shows $125 per visit, not $400. | contradicted | Example payment file (https://example.test/northwind/payments) | 2026-11-17T12:00:02.000Z | example-judge | bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb |
+| n2 — The plan paid $400 for each of those visits. Recorded explanation: The example payment file shows $125 per visit, not $400. | contradicted | Example payment file \(https://example.test/northwind/payments\) | 2026-11-17T12:00:02.000Z | example-judge | bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb |
 | n3 — The clinic is in Portland. Recorded explanation: No example source states the city. | unsupported | not recorded | 2026-11-17T12:00:03.500Z | example-judge | not recorded |
 
 ## Mixed claims
 
 | Claim | Sources | Retrieved | Model | Passage SHA-256 |
 |-------|---------|-----------|-------|-----------------|
-| n4 — Volume rose while the payment per visit fell. Recorded explanation: Visit counts rose in the example ledger. The payment per visit did not fall. | Example visit ledger (https://example.test/northwind/visits) | 2026-11-17T12:00:00.000Z | example-judge | aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa |
+| n4 — Volume rose while the payment per visit fell. Recorded explanation: Visit counts rose in the example ledger. The payment per visit did not fall. | Example visit ledger \(https://example.test/northwind/visits\) | 2026-11-17T12:00:00.000Z | example-judge | aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa |
 
 ## Unchecked claims
 
@@ -84,11 +84,11 @@ These claims were not checked. They are listed apart from unsupported and contra
 
 ## Limitations
 
-Faultline's verdict accuracy was measured on a labelled set. The measurement was not pre-registered. The figure this report quotes for the hosted path is balanced accuracy on the 193 Factcheck-Bench claims, in a 200-claim sample, that have a true or false gold label. The hosted path in that measurement was Parallel search in advanced mode, then a Gemini judge with no Google search tool. This report does not copy that measurement's model name or commit onto this scan. The judge model recorded on this scan is example-judge. The engine commit recorded on this scan is unknown. A value the scan file did not record is unknown.
+Faultline's verdict accuracy was measured on a labelled set. The measurement was not pre-registered. The figure this report quotes for the hosted path is balanced accuracy on the 193 Factcheck-Bench claims, in a 200-claim sample, that have a true or false gold label. The hosted path in that measurement was Parallel search in advanced mode, then a Gemini judge with no Google search tool. The measurement's judge model and date are stated with the figure below. They describe that measurement, not this scan. The judge model recorded on this scan is example-judge. The engine commit recorded on this scan is unknown. A value the scan file did not record is unknown.
 
 Balanced accuracy is the mean of recall on true claims and recall on false claims. Supported counts as true and contradicted as false. Mixed, unverified and a failed check count as wrong. The interval is a 2,000-resample bootstrap, seed 20260929, from scripts/accuracy-g0-score.py.
 
-The score file docs/research/data/parallel-fast-2026-11-06.parallel.summary.json records balanced accuracy 0.7546546546546546, 95% CI [0.6778109736738769, 0.8294247419247419]. README.md and the changelog print this as 0.755 [0.678, 0.829]. That three-decimal form rounds the point estimate and the lower bound up, and rounds the upper bound down. This report quotes the score file.
+The score file docs/research/data/parallel-fast-2026-11-06.parallel.summary.json records balanced accuracy 0.7546546546546546, 95% CI [0.6778109736738769, 0.8294247419247419]. It was measured on 2026-11-06 with the judge model gemini-2.5-flash (docs/research/2026-11-06-parallel-fast-vs-advanced.md). The production judge model changed on 2026-11-14, to gemini-3.1-pro-preview. This hosted figure has not been re-measured since that change. README.md and the changelog print this as 0.755 [0.678, 0.829]. That three-decimal form rounds the point estimate and the lower bound up, and rounds the upper bound down. This report quotes the score file.
 
 Four readings of the same 200-claim sample are in the repo from 2026-11-05 and 2026-11-06. README.md describes them as 0.755 to 0.802. That range rounds the lowest of the four up and the highest up. The score-file values are in the table. They are not pooled into one interval. Two of the four were local API servers, not the hosted engine.
 
