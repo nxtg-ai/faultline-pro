@@ -1,7 +1,7 @@
 # Faultline — We check the receipts on AI output.
 # https://github.com/nxtg-ai/faultline-pro
 # npm: @nxtg/faultline (0.11.1 on 2026-10-02). @nxtg/faultline-api is not published to npm.
-# Release stage: alpha (usable today, with sharp edges; verdict accuracy not yet measured; anything may change before 1.0)
+# Release stage: alpha (usable today, with sharp edges; verdict accuracy measured on a labelled set, not pre-registered, see the README; anything may change before 1.0)
 # Last updated: 2026-10-02
 
 > **The only AI safety CLI not owned by an AI lab.** Forensic verification for AI-generated text. Decomposes AI output into atomic claims, verifies each against live evidence, and maps findings to EU AI Act risk tiers. Provider-agnostic: Gemini, OpenAI, Claude, Perplexity — runtime switching, no code changes.
