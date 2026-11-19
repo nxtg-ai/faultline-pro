@@ -37,6 +37,7 @@ import { listKeys, getDormantKeys, getExpiringSoonKeys, rotateKey, getRotationSt
 import { getStaleScans, getScanUsage, getScansPrunePreview, pruneScans, formatStaleList, formatScanUsage, formatScansPrunePreview, formatScansPruneResult } from './scans-client.js';
 import { streamScan, formatStreamResult } from './stream-client.js';
 import { buildEuComplianceReport, renderComplianceReportJson, renderComplianceReportPdf, renderComplianceReportMarkdown, renderComplianceReportSarif, renderComplianceReportHtml, evaluateComplianceGate, renderCiGateOutput, diffComplianceReports, renderComplianceDiffOutput, loadComplianceConfig } from './compliance-report.js';
+import { runAuditReport } from './audit-report.js';
 import { statsCommand } from './stats.js';
 import { sendTelemetry, classifyError } from './telemetry.js';
 import { printConversionNudge } from './nudge.js';
@@ -209,6 +210,9 @@ Usage:
   faultline scan --dir <path> [--glob "*.txt"] [--provider gemini] [--output-format sarif] [--fail-on high]
   faultline aggregate --dir <path> [--output-format json|markdown|html|sarif]  Aggregate scan results
   faultline report --input <results.json> [--output-format json|markdown|html|sarif]
+  faultline audit-report --scan <result.json> --out <report.html|md|pdf>   AI output audit from a scan file
+  faultline audit-report --scan <result.json> --labels-out <claims.csv>     CSV for a reviewer to label
+  faultline audit-report --scan <result.json> --import-labels <reviewed.csv> [--out <agreement.md|json>]   Agreement and error rate against the scan
   faultline watch --dir <path> [--provider gemini] [--output-format json]   Watch for changes
   faultline scan --templates injection,bias                         Red-team scan with template categories
   faultline scan --template compliance-check                        Use named template from .faultlinerc.json
@@ -1209,6 +1213,9 @@ Scientists have proven that eating chocolate improves cognitive function by 40%.
       const compareResult = compareScanResults(scanBefore, scanAfter);
       return { exitCode: 0, output: renderCompare(compareResult, outputFormat) };
     }
+
+    case 'audit-report':
+      return runAuditReport(flags);
 
     case 'report': {
       const inputPath = flags['input'];

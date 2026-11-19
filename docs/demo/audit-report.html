@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AI output audit</title>
+<style>
+  body { font: 15px/1.45 Georgia, "Times New Roman", serif; color: #1a1a1a; max-width: 960px; margin: 2rem auto; padding: 0 1.25rem; }
+  h1 { font-size: 1.6rem; font-weight: 600; margin-bottom: 0.25rem; }
+  h2 { font-size: 1.15rem; margin-top: 1.75rem; border-bottom: 1px solid #ccc; padding-bottom: 0.2rem; }
+  table { border-collapse: collapse; width: 100%; margin: 0.75rem 0 1rem; word-break: break-word; }
+  th, td { border: 1px solid #ccc; padding: 0.35rem 0.5rem; vertical-align: top; text-align: left; }
+  th { background: #f4f4f4; }
+  .banner { background: #f7f3e8; border: 1px solid #e0d2a8; padding: 0.6rem 0.8rem; }
+  pre { white-space: pre-wrap; font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; background: #f6f6f6; padding: 0.75rem; }
+</style>
+</head>
+<body>
+<h1>AI output audit</h1>
+<p>Claim-level record of one Faultline scan. Prepared from the scan file alone.</p>
+<p class="banner">Synthetic example data. This report was rendered from an example scan, not from a client document.</p>
+
+<h2>Scope</h2>
+<table>
+<tbody>
+<tr><th>Renderer</th><td>Faultline 0.12.2</td></tr>
+<tr><th>Provider recorded</th><td>Example</td></tr>
+<tr><th>Judge model recorded</th><td>example-judge</td></tr>
+<tr><th>Engine commit recorded</th><td>unknown</td></tr>
+<tr><th>Risk band recorded by the scan</th><td>medium</td></tr>
+<tr><th>Scan timestamp recorded</th><td>2026-11-17T15:00:00.000Z</td></tr>
+<tr><th>Input characters (Unicode code points)</th><td>189</td></tr>
+<tr><th>Input SHA-256</th><td>3f51ef1a784a4a9b73661ee6ac74e3fdaafd30e4b05a1633d3d11ef212ebfc9d</td></tr>
+<tr><th>Claims</th><td>5</td></tr>
+<tr><th>Unchecked after a provider error</th><td>0</td></tr>
+<tr><th>Unchecked: no allowed source found</th><td>1</td></tr>
+<tr><th>Unchecked for another reason</th><td>0</td></tr>
+<tr><th>Scan file degraded flag</th><td>false</td></tr>
+</tbody>
+</table>
+<p>Input text, as stored on the scan:</p>
+<pre>Northwind Clinic outpatient note, March 2024. Synthetic example, not a patient record.
+
+The clinic billed 12 outpatient visits. The plan paid $400 for each visit. The clinic is in Portland.</pre>
+<h2>Method</h2>
+<p>This report was rendered from the scan file only. It did not call a model or a search service.</p>
+<p>Claims are the scan's claims, in file order. A verification id with no claim is listed after those.</p>
+<p>A checked verdict is supported, contradicted, mixed, or unverified. Unverified means the check ran and the scan recorded no support; this report calls that unsupported.</p>
+<p>A claim is unchecked when it has no verification record, its status is skipped or loading, the record has apiError, the record has notCheckable, or the explanation begins with &quot;Verify failed&quot; (the engine's wording for a provider error, including files saved before apiError was set). An unchecked claim is not a verdict. A claim left unchecked because no source was inside the configured source policy is labelled &quot;Unchecked: no allowed source found&quot;. That is not a provider error. The scan may record it as apiErrorReason &quot;source_policy_no_match&quot;, as a provenance flag, or, when neither field is present, as apiError with an explanation that says no source was on the source-policy allowlist.</p>
+<p>Sources, retrieval time, model and passage hash are copied from the verification. Retrieval time is provenance.retrievedAt when the scan recorded it, otherwise the time a cited page was fetched. The passage hash is the SHA-256 of the page bytes the scan fetched (evidence.contentSha256). A field the scan did not record is written as &quot;not recorded&quot;. Nothing in those columns is inferred.</p>
+<h2>Counts by verdict</h2>
+<table>
+<thead><tr><th>Verdict</th><th>Count</th></tr></thead>
+<tbody>
+<tr><td>supported</td><td>1</td></tr>
+<tr><td>contradicted</td><td>1</td></tr>
+<tr><td>mixed</td><td>1</td></tr>
+<tr><td>unsupported (checked, no support recorded)</td><td>1</td></tr>
+<tr><td>unchecked (not a verdict)</td><td>1</td></tr>
+<tr><td>total claims</td><td>5</td></tr>
+</tbody>
+</table>
+<h2>Counts by claim type</h2>
+<table>
+<thead><tr><th>Type</th><th>Claims</th><th>supported</th><th>contradicted</th><th>mixed</th><th>unsupported</th><th>unchecked</th></tr></thead>
+<tbody>
+<tr><td>fact</td><td>4</td><td>1</td><td>1</td><td>0</td><td>1</td><td>1</td></tr>
+<tr><td>opinion</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td>interpretation</td><td>1</td><td>0</td><td>0</td><td>1</td><td>0</td><td>0</td></tr>
+</tbody>
+</table>
+<h2>Unsupported and contradicted claims</h2>
+<table>
+<thead><tr><th>Claim</th><th>Status</th><th>Sources</th><th>Retrieved</th><th>Model</th><th>Passage SHA-256</th></tr></thead>
+<tbody>
+<tr><td><strong>n2</strong> The plan paid $400 for each of those visits.<br>Recorded explanation: The example payment file shows $125 per visit, not $400.</td><td>contradicted</td><td>Example payment file (https://example.test/northwind/payments)</td><td>2026-11-17T12:00:02.000Z</td><td>example-judge</td><td>bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb</td></tr>
+<tr><td><strong>n3</strong> The clinic is in Portland.<br>Recorded explanation: No example source states the city.</td><td>unsupported</td><td>not recorded</td><td>2026-11-17T12:00:03.500Z</td><td>example-judge</td><td>not recorded</td></tr>
+</tbody></table>
+<h2>Mixed claims</h2>
+<table>
+<thead><tr><th>Claim</th><th>Sources</th><th>Retrieved</th><th>Model</th><th>Passage SHA-256</th></tr></thead>
+<tbody>
+<tr><td><strong>n4</strong> Volume rose while the payment per visit fell.<br>Recorded explanation: Visit counts rose in the example ledger. The payment per visit did not fall.</td><td>Example visit ledger (https://example.test/northwind/visits)</td><td>2026-11-17T12:00:00.000Z</td><td>example-judge</td><td>aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</td></tr>
+</tbody></table>
+<h2>Unchecked claims</h2>
+<p>These claims were not checked. They are listed apart from unsupported and contradicted claims.</p>
+<table>
+<thead><tr><th>Claim</th><th>Why it was not checked</th></tr></thead>
+<tbody>
+<tr><td><strong>n5</strong> The 2024 physician fee schedule lists this code at $90.</td><td>Unchecked: no allowed source found</td></tr>
+</tbody></table>
+<h2>Limitations</h2>
+<p>Faultline's verdict accuracy was measured on a labelled set. The measurement was not pre-registered. The figure this report quotes for the hosted path is balanced accuracy on the 193 Factcheck-Bench claims, in a 200-claim sample, that have a true or false gold label. The hosted path in that measurement was Parallel search in advanced mode, then a Gemini judge with no Google search tool. The measurement's judge model and date are stated with the figure below. They describe that measurement, not this scan. The judge model recorded on this scan is example-judge. The engine commit recorded on this scan is unknown. A value the scan file did not record is unknown.</p>
+<p>Balanced accuracy is the mean of recall on true claims and recall on false claims. Supported counts as true and contradicted as false. Mixed, unverified and a failed check count as wrong. The interval is a 2,000-resample bootstrap, seed 20260929, from scripts/accuracy-g0-score.py.</p>
+<p>The score file docs/research/data/parallel-fast-2026-11-06.parallel.summary.json records balanced accuracy 0.7546546546546546, 95% CI [0.6778109736738769, 0.8294247419247419]. It was measured on 2026-11-06 with the judge model gemini-2.5-flash (docs/research/2026-11-06-parallel-fast-vs-advanced.md). The production judge model changed on 2026-11-14, to gemini-3.1-pro-preview. This hosted figure has not been re-measured since that change. On the same 193 claims, a pre-registered comparison on 2026-11-14, run on a local API and not the hosted engine, measured gemini-3.1-pro-preview at balanced accuracy 0.7822072072072072, 95% CI [0.7091077288175319, 0.8512971989705367] (docs/research/data/judge-ab-2026-11-14.summary.json). In that run it was not shown better than gemini-2.5-flash: paired difference +0.0309309309309308 [-0.01083119383825415, 0.07636544483803065]. A second pre-registered run that day on the same model is invalid under its pre-registration, because 179 of 193 claims returned a status. README.md and the changelog print this as 0.755 [0.678, 0.829]. That three-decimal form rounds the point estimate and the lower bound up, and rounds the upper bound down. This report quotes the score file.</p>
+<p>Four readings of the same 200-claim sample are in the repo from 2026-11-05 and 2026-11-06. README.md describes them as 0.755 to 0.802. That range rounds the lowest of the four up and the highest up. The score-file values are in the table. They are not pooled into one interval. Two of the four were local API servers, not the hosted engine.</p>
+<p>On 2026-11-06 a fast-mode arm, which is not the production setting, scored 0.7189189189189189, 95% CI [0.6413061865228092, 0.7992254408947487] (docs/research/data/parallel-fast-2026-11-06.parallel-fast.summary.json). The write-up kept advanced mode.</p>
+<p>This scan is not that measurement. The interval does not apply to a different provider, a different model, a local key, or to the claims in this file. An unchecked claim has no verdict, so it sits outside the figure. Rule findings stored on the scan are not part of this report. This document does not assess regulatory obligations.</p>
+<table>
+<thead><tr><th>Reading</th><th>Balanced accuracy</th><th>95% CI</th><th>Where</th><th>Score file</th></tr></thead>
+<tbody>
+<tr><td>2026-11-06 Parallel advanced</td><td>0.7546546546546546</td><td>[0.6778109736738769, 0.8294247419247419]</td><td>hosted</td><td>docs/research/data/parallel-fast-2026-11-06.parallel.summary.json</td></tr>
+<tr><td>2026-11-05 Parallel advanced</td><td>0.8015015015015015</td><td>[0.7292065619572604, 0.8705773562023562]</td><td>hosted</td><td>docs/research/data/grounding-arms-2026-11-05.summary.json</td></tr>
+<tr><td>2026-11-05 not-checkable, before</td><td>0.7590090090090089</td><td>[0.6806986920348674, 0.833567789968652]</td><td>local</td><td>docs/research/data/judge-not-checkable-2026-11-05.before.summary.json</td></tr>
+<tr><td>2026-11-05 not-checkable, after</td><td>0.7734984984984985</td><td>[0.6976315351315352, 0.8486166126713577]</td><td>local</td><td>docs/research/data/judge-not-checkable-2026-11-05.after.summary.json</td></tr>
+</tbody>
+</table>
+</body>
+</html>

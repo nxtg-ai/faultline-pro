@@ -1,0 +1,136 @@
+{
+  "syntheticExample": true,
+  "input": "Northwind Clinic outpatient note, March 2024. Synthetic example, not a patient record.\n\nThe clinic billed 12 outpatient visits. The plan paid $400 for each visit. The clinic is in Portland.",
+  "provider": "Example",
+  "overallRisk": "medium",
+  "degraded": false,
+  "claims": [
+    {
+      "id": "n1",
+      "text": "Northwind Clinic billed 12 outpatient visits in March 2024.",
+      "type": "fact",
+      "importance": 3
+    },
+    {
+      "id": "n2",
+      "text": "The plan paid $400 for each of those visits.",
+      "type": "fact",
+      "importance": 3
+    },
+    {
+      "id": "n3",
+      "text": "The clinic is in Portland.",
+      "type": "fact",
+      "importance": 2
+    },
+    {
+      "id": "n4",
+      "text": "Volume rose while the payment per visit fell.",
+      "type": "interpretation",
+      "importance": 1
+    },
+    {
+      "id": "n5",
+      "text": "The 2024 physician fee schedule lists this code at $90.",
+      "type": "fact",
+      "importance": 3
+    }
+  ],
+  "verifications": {
+    "n1": {
+      "claimId": "n1",
+      "status": "supported",
+      "explanation": "The example ledger lists 12 outpatient visits for March 2024.",
+      "sources": [
+        {
+          "title": "Example visit ledger",
+          "uri": "https://example.test/northwind/visits",
+          "evidence": {
+            "status": "ok",
+            "passage": "March 2024 outpatient visits: 12",
+            "fetchedAt": "2026-11-17T12:00:00.000Z",
+            "contentSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      ],
+      "provenance": {
+        "provider": "example",
+        "model": "example-judge",
+        "verifiedAt": "2026-11-17T12:00:01.000Z",
+        "retriever": "example-search",
+        "retrievedAt": "2026-11-17T12:00:00.000Z"
+      }
+    },
+    "n2": {
+      "claimId": "n2",
+      "status": "contradicted",
+      "explanation": "The example payment file shows $125 per visit, not $400.",
+      "sources": [
+        {
+          "title": "Example payment file",
+          "uri": "https://example.test/northwind/payments",
+          "evidence": {
+            "status": "ok",
+            "passage": "paid 125 per outpatient visit",
+            "fetchedAt": "2026-11-17T12:00:02.000Z",
+            "contentSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        }
+      ],
+      "provenance": {
+        "provider": "example",
+        "model": "example-judge",
+        "verifiedAt": "2026-11-17T12:00:03.000Z",
+        "retriever": "example-search",
+        "retrievedAt": "2026-11-17T12:00:02.000Z"
+      }
+    },
+    "n3": {
+      "claimId": "n3",
+      "status": "unverified",
+      "explanation": "No example source states the city.",
+      "sources": [],
+      "provenance": {
+        "provider": "example",
+        "model": "example-judge",
+        "verifiedAt": "2026-11-17T12:00:04.000Z",
+        "retrievedAt": "2026-11-17T12:00:03.500Z"
+      }
+    },
+    "n4": {
+      "claimId": "n4",
+      "status": "mixed",
+      "explanation": "Visit counts rose in the example ledger. The payment per visit did not fall.",
+      "sources": [
+        {
+          "title": "Example visit ledger",
+          "uri": "https://example.test/northwind/visits",
+          "evidence": {
+            "status": "ok",
+            "passage": "visits rose from 9 to 12",
+            "fetchedAt": "2026-11-17T12:00:00.000Z",
+            "contentSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      ],
+      "provenance": {
+        "provider": "example",
+        "model": "example-judge",
+        "verifiedAt": "2026-11-17T12:00:05.000Z",
+        "retrievedAt": "2026-11-17T12:00:00.000Z"
+      }
+    },
+    "n5": {
+      "claimId": "n5",
+      "status": "unverified",
+      "apiError": true,
+      "apiErrorReason": "source_policy_no_match",
+      "explanation": "No source on the configured source-policy allowlist was found, so this claim was not checked.",
+      "sources": []
+    }
+  },
+  "complianceReport": {
+    "generatedAt": "2026-11-17T15:00:00.000Z"
+  },
+  "ruleFindings": []
+}
