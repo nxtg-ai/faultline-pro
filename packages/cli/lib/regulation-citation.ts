@@ -171,27 +171,47 @@ export function isIdentityClaim(text: string, spans: Array<{ start: number; end:
   return wordsBeside(text, spans).every((w) => BOILERPLATE.has(w));
 }
 
-/** Words that, with boilerplate, say the cited item is gone or was never there. */
-const ABSENCE_SIGNAL: ReadonlySet<string> = new Set([
-  'no', 'not', 'never', 'none', 'repealed', 'repeal', 'removed', 'removal', 'rescinded', 'withdrawn',
-  'deleted', 'nonexistent', 'abolished', 'vacated', 'sunset', 'longer', 'existed',
+/** Words that, with boilerplate, say the cited item was repealed or removed. */
+const REPEAL_WORD: ReadonlySet<string> = new Set([
+  'repealed', 'repeal', 'removed', 'removal', 'rescinded', 'withdrawn', 'deleted', 'abolished',
 ]);
 
-/** Filler around an absence claim. Not itself an assertion that something else is true. */
+/** Filler around a repeal sentence. An extra word outside this set makes the reading unsure. */
 const ABSENCE_FILLER: ReadonlySet<string> = new Set([
   'was', 'were', 'been', 'had', 'has', 'have', 'does', 'did', 'do', 'it', 'since', 'there', 'such',
-  'now', 'currently', 'today', 'effect', 'force', 'code', 'federal',
+  'now', 'currently', 'today', 'effect', 'force', 'code', 'federal', 'from', 'its',
 ]);
 
+const NEGATED_ABSENCE = [
+  /\b(?:has|have|had)\s+not\s+been\b/i,
+  /\b(?:is|are|was|were)\s+not\s+(?:repealed|repeal|removed|removal|rescinded|withdrawn|deleted|abolished)\b/i,
+  /\bnever\s+(?:been\s+)?(?:repealed|repeal|removed|removal|rescinded|withdrawn|deleted|abolished)\b/i,
+  /\bnot\s+(?:been\s+)?(?:repealed|repeal|removed|removal|rescinded|withdrawn|deleted|abolished)\b/i,
+  /\bstill\s+in\s+(?:effect|force)\b/i,
+  /\bremains?\s+in\s+(?:effect|force)\b/i,
+];
+
+const NONEXISTENCE = /\b(?:never\s+existed|did\s+not\s+exist|does\s+not\s+exist|do\s+not\s+exist|doesn't\s+exist|there\s+is\s+no|there's\s+no|no\s+such|nonexistent|non-existent)\b/i;
+
 /**
- * True when, apart from the citation, the claim only says the cited item does
- * not exist, was removed, or was repealed. A further assertion ("requires
- * plans to cover emergency care") is not an absence claim.
+ * How a claim talks about a citation that the current record does not list.
+ * `repeal`: it says the item was repealed or removed, with no extra assertion.
+ * `negation`: it denies that absence (not repealed, never removed, still in effect).
+ * `unsure`: it talks about absence, including "never existed" or extra words
+ * ("does not exist, so plans cannot cite it"). That is not a repeal verdict.
+ * `none`: it does not talk about absence.
  */
-export function claimAssertsAbsence(text: string, spans: Array<{ start: number; end: number }>): boolean {
+export type AbsenceStance = 'repeal' | 'negation' | 'unsure' | 'none';
+
+export function absenceStance(text: string, spans: Array<{ start: number; end: number }>): AbsenceStance {
+  if (NEGATED_ABSENCE.some((re) => re.test(text))) return 'negation';
   const words = wordsBeside(text, spans);
-  if (!words.some((w) => ABSENCE_SIGNAL.has(w))) return false;
-  return words.every((w) => BOILERPLATE.has(w) || ABSENCE_FILLER.has(w) || ABSENCE_SIGNAL.has(w));
+  const repeal = words.some((w) => REPEAL_WORD.has(w));
+  const nonexistent = NONEXISTENCE.test(text);
+  if (!repeal && !nonexistent) return 'none';
+  const allowed = new Set<string>([...BOILERPLATE, ...ABSENCE_FILLER, ...REPEAL_WORD, 'no', 'not', 'never', 'none', 'existed', 'exist', 'exists']);
+  if (nonexistent || words.some((w) => !allowed.has(w))) return 'unsure';
+  return repeal ? 'repeal' : 'unsure';
 }
 
 /**

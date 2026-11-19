@@ -65,6 +65,22 @@ describe('calculateRisk — unverified is never low', () => {
     expect(calculateRisk(withSupported)).toBe('low');
   });
 
+  it.each([
+    'historical_not_checked',
+    'paragraph_parse_uncertain',
+    'lcd_license_not_accepted',
+    'absent_from_current_record',
+  ])('citationCheckReason %s does not raise the band', (reason) => {
+    const only = verdicts('unverified');
+    only.c1!.citationCheck = 'not_found';
+    only.c1!.citationCheckReason = reason;
+    expect(calculateRisk(only)).toBe('low');
+    const beside = verdicts('unverified', 'supported');
+    beside.c1!.citationCheck = 'not_found';
+    beside.c1!.citationCheckReason = reason;
+    expect(calculateRisk(beside)).toBe('low');
+  });
+
   it('an unverified provider error counts as unverified', () => {
     const v = verdicts('unverified', 'supported', 'supported', 'supported');
     v.c1.apiError = true;

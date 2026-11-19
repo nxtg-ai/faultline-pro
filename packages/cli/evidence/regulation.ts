@@ -32,11 +32,18 @@
  *     is true, and it does not raise the scan's risk band.
  *   - the claim asserts more than the citation, and the citation is real
  *     with no title mismatch → null (the normal verify judges the assertion)
- *   - the record has no such item, and the claim says it was repealed,
- *     removed, or never existed → `supported` (the current record agrees)
- *   - the record has no such item, and the claim cites a past date or a
- *     former text → `unverified` (`historical_not_checked`). Absence from
- *     the current record does not contradict that claim.
+ *   - the latest eCFR version is `removed: true`, and the claim only says
+ *     the section was repealed or removed → `supported`
+ *   - an empty version list, a 404, or any other "not listed" result is not
+ *     that flag. An absence or repeal claim then stays `unverified`
+ *     (`absent_from_current_record`). "Never existed" is never `supported`.
+ *   - a claim that denies the absence (not repealed, never removed, still
+ *     in effect) is `contradicted` only when `removed: true`; otherwise
+ *     `unverified`. Extra words ("does not exist, so plans cannot cite it")
+ *     stay `unverified`.
+ *   - the claim cites a past date or a former text → `unverified`
+ *     (`historical_not_checked`), unless it denies the absence and the
+ *     latest version is `removed: true`.
  *   - an LCD is cited and FAULTLINE_LCD_LICENSE_ACCEPTED is not `true` →
  *     `unverified` (`lcd_license_not_accepted`). The license endpoint is
  *     not called.
@@ -58,7 +65,7 @@ import {
   MAX_REGULATION_CITATIONS,
   cfrHeading,
   cfrParagraphPaths,
-  claimAssertsAbsence,
+  absenceStance,
   claimCitesPast,
   findRegulationCitations,
   isIdentityClaim,
@@ -297,10 +304,12 @@ type Hit = {
   kind: 'not_found' | 'mismatch' | 'ok' | 'failed' | 'unsure' | 'uncertain' | 'license';
   explanation: string;
   sources: Source[];
+  /** True only when the latest eCFR version for this section has removed: true. */
+  removed?: boolean;
 };
 
-function notFound(explanation: string, source: Source): Hit {
-  return { kind: 'not_found', explanation, sources: [source] };
+function notFound(explanation: string, source: Source, removed = false): Hit {
+  return { kind: 'not_found', explanation, sources: [source], removed };
 }
 
 function failed(): Hit {
@@ -356,7 +365,7 @@ async function lookupCfr(cite: RegulationCitation, opts: RegulationCheckOptions)
     return notFound(`${cite.label} is not in the Code of Federal Regulations. The eCFR has no section ${section} in title ${title}.`, source);
   }
   if (versions.current.removed) {
-    return notFound(`${cite.label} is not in the Code of Federal Regulations. Section ${section} of title ${title} has been removed.`, source);
+    return notFound(`${cite.label} is not in the Code of Federal Regulations. Section ${section} of title ${title} has been removed.`, source, true);
   }
   const heading = versions.current.name ? cfrHeading(versions.current.name) : null;
   const paragraphs = cite.paragraphs ?? [];
@@ -501,7 +510,7 @@ function verdict(
   status: 'supported' | 'contradicted' | 'mixed' | 'unverified',
   explanation: string,
   sources: Source[],
-  citation?: { citationCheck: NonNullable<VerificationResult['citationCheck']>; citationCheckReason: string },
+  citation?: { citationCheck: NonNullable<VerificationResult['citationCheck']>; citationCheckReason?: string },
 ): VerificationResult {
   const at = new Date().toISOString();
   return {
@@ -549,8 +558,20 @@ export async function checkRegulationCitation(claim: Claim, opts: RegulationChec
   const hits: Hit[] = [];
   for (const cite of cites) hits.push(await lookupOne(cite, opts));
 
-  const missing = hits.find((h) => h.kind === 'not_found');
-  if (missing) {
+  const missingHits = hits.filter((h) => h.kind === 'not_found');
+  if (missingHits.length > 0) {
+    const missing = missingHits[0]!;
+    const allRemoved = missingHits.every((h) => h.removed === true);
+    const stance = absenceStance(text, spans);
+    if (stance === 'negation') {
+      if (allRemoved) return verdict(claim, 'contradicted', missing.explanation, missing.sources);
+      return verdict(
+        claim, 'unverified',
+        `${missing.explanation} The current record does not show that this section was removed, so the claim that it remains is not settled.`,
+        missing.sources,
+        { citationCheck: 'not_found', citationCheckReason: 'absent_from_current_record' },
+      );
+    }
     if (claimCitesPast(text)) {
       return verdict(
         claim, 'unverified',
@@ -559,11 +580,27 @@ export async function checkRegulationCitation(claim: Claim, opts: RegulationChec
         { citationCheck: 'not_found', citationCheckReason: 'historical_not_checked' },
       );
     }
-    if (claimAssertsAbsence(text, spans)) {
+    if (stance === 'repeal' && allRemoved) {
       return verdict(
         claim, 'supported',
-        `${missing.explanation} That matches the claim that the cited item does not exist, was removed, or was repealed.`,
+        `${missing.explanation} The latest eCFR version is marked removed, which matches the claim that it was repealed or removed.`,
         missing.sources,
+      );
+    }
+    if ((stance === 'repeal' || stance === 'unsure') && allRemoved) {
+      return verdict(
+        claim, 'unverified',
+        `${missing.explanation} That removal does not support a claim that the section never existed, or a claim this check cannot read as a repeal.`,
+        missing.sources,
+        { citationCheck: 'not_found' },
+      );
+    }
+    if (stance === 'repeal' || stance === 'unsure') {
+      return verdict(
+        claim, 'unverified',
+        `${missing.explanation} The current record does not show an explicit removal, so this claim is not settled. An empty version list is not proof the section was repealed or that it never existed.`,
+        missing.sources,
+        { citationCheck: 'not_found', citationCheckReason: 'absent_from_current_record' },
       );
     }
     return verdict(claim, 'contradicted', missing.explanation, missing.sources);

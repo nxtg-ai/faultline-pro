@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import {
   cfrHeading,
   cfrParagraphPaths,
-  claimAssertsAbsence,
+  absenceStance,
   claimCitesPast,
   findRegulationCitations,
   isIdentityClaim,
@@ -77,9 +77,15 @@ describe('findRegulationCitations', () => {
 
   it('an absence claim is only the citation plus repeal or nonexistence, and a past date is marked', () => {
     const spansOf = (text: string) => findRegulationCitations(text).map((c) => ({ start: c.start, end: c.spanEnd }));
-    expect(claimAssertsAbsence('There is no 42 CFR 422.9999.', spansOf('There is no 42 CFR 422.9999.'))).toBe(true);
-    expect(claimAssertsAbsence('42 CFR 422.9999 was repealed.', spansOf('42 CFR 422.9999 was repealed.'))).toBe(true);
-    expect(claimAssertsAbsence('42 CFR 422.9999 requires a secret benefit.', spansOf('42 CFR 422.9999 requires a secret benefit.'))).toBe(false);
+    expect(absenceStance('42 CFR 422.9999 was repealed.', spansOf('42 CFR 422.9999 was repealed.'))).toBe('repeal');
+    expect(absenceStance('42 CFR 422.101 has not been repealed.', spansOf('42 CFR 422.101 has not been repealed.'))).toBe('negation');
+    expect(absenceStance('42 CFR 422.101 was never repealed.', spansOf('42 CFR 422.101 was never repealed.'))).toBe('negation');
+    expect(absenceStance('42 CFR 422.101 is not removed.', spansOf('42 CFR 422.101 is not removed.'))).toBe('negation');
+    expect(absenceStance('No, 42 CFR 422.101 is not repealed.', spansOf('No, 42 CFR 422.101 is not repealed.'))).toBe('negation');
+    expect(absenceStance('42 CFR 422.9999 never existed.', spansOf('42 CFR 422.9999 never existed.'))).toBe('unsure');
+    expect(absenceStance('42 CFR 422.9999 does not exist, so plans cannot cite it.', spansOf('42 CFR 422.9999 does not exist, so plans cannot cite it.'))).toBe('unsure');
+    expect(absenceStance('There is no 42 CFR 422.9999.', spansOf('There is no 42 CFR 422.9999.'))).toBe('unsure');
+    expect(absenceStance('42 CFR 422.9999 requires a secret benefit.', spansOf('42 CFR 422.9999 requires a secret benefit.'))).toBe('none');
     expect(claimCitesPast('As of January 1, 2019, 42 CFR 422.9999 required daily coverage.')).toBe(true);
     expect(claimCitesPast('Formerly 42 CFR 422.9999, since removed.')).toBe(true);
     expect(claimCitesPast('42 CFR 422.9999 was repealed.')).toBe(false);

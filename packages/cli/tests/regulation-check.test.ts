@@ -292,22 +292,64 @@ describe('checkRegulationCitation', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('a missing section the claim says was repealed or never existed is not contradicted', async () => {
-    const gone = await checkRegulationCitation(claim('There is no 42 CFR 422.9999.'), fakeFetch(recorded).opts);
-    expect(gone?.status).toBe('supported');
-    expect(gone?.explanation).toContain('matches the claim');
-    expect(isBillableVerdict(gone)).toBe(true);
-    const repealed = await checkRegulationCitation(claim('42 CFR 422.9999 was repealed.'), fakeFetch(recorded).opts);
-    expect(repealed?.status).toBe('supported');
+  it('an empty version list never supports an absence claim, and a past date stays historical', async () => {
+    const empty = [
+      '42 CFR 422.9999 has not been repealed.',
+      '42 CFR 422.9999 was never repealed.',
+      '42 CFR 422.9999 is not removed.',
+      'No, 42 CFR 422.9999 is not repealed.',
+      '42 CFR 422.9999 never existed.',
+      '42 CFR 422.9999 does not exist, so plans cannot cite it.',
+      '42 CFR 422.9999 was repealed.',
+      'There is no 42 CFR 422.9999.',
+    ];
+    for (const text of empty) {
+      const result = await checkRegulationCitation(claim(text), fakeFetch(recorded).opts);
+      expect({ text, status: result?.status, reason: result?.citationCheckReason }).toEqual({
+        text, status: 'unverified', reason: 'absent_from_current_record',
+      });
+    }
     const past = await checkRegulationCitation(
       claim('As of January 1, 2019, 42 CFR 422.9999 required daily coverage.'), fakeFetch(recorded).opts);
     expect(past?.status).toBe('unverified');
     expect(past?.citationCheck).toBe('not_found');
     expect(past?.citationCheckReason).toBe('historical_not_checked');
-    expect(past?.status).not.toBe('contradicted');
     const former = await checkRegulationCitation(claim('Formerly 42 CFR 422.9999, since removed.'), fakeFetch(recorded).opts);
     expect(former?.citationCheckReason).toBe('historical_not_checked');
     expect(former?.status).toBe('unverified');
+  });
+
+  it('removed: true supports only a repeal claim, and contradicts a denial of that removal', async () => {
+    const removedBody = (): string => {
+      const body = JSON.parse(fixture('ecfr-42-422.101-versions.json')) as { content_versions: Array<{ removed: boolean }> };
+      for (const row of body.content_versions) row.removed = true;
+      return JSON.stringify(body);
+    };
+    const opts = () => fakeFetch({ [VERSIONS_422]: () => jsonResponse(200, removedBody()) }).opts;
+    const denied = [
+      '42 CFR 422.101 has not been repealed.',
+      '42 CFR 422.101 was never repealed.',
+      '42 CFR 422.101 is not removed.',
+      'No, 42 CFR 422.101 is not repealed.',
+    ];
+    for (const text of denied) {
+      const result = await checkRegulationCitation(claim(text), opts());
+      expect({ text, status: result?.status }).toEqual({ text, status: 'contradicted' });
+    }
+    const unsettled = [
+      '42 CFR 422.101 never existed.',
+      '42 CFR 422.101 does not exist, so plans cannot cite it.',
+    ];
+    for (const text of unsettled) {
+      const result = await checkRegulationCitation(claim(text), opts());
+      expect({ text, status: result?.status, reason: result?.citationCheckReason }).toEqual({
+        text, status: 'unverified', reason: undefined,
+      });
+    }
+    const repealed = await checkRegulationCitation(claim('42 CFR 422.101 was repealed.'), opts());
+    expect(repealed?.status).toBe('supported');
+    expect(isBillableVerdict(repealed)).toBe(true);
+    expect(repealed?.explanation).toContain('marked removed');
   });
 
   it('an uncertain paragraph reading is unverified, not contradicted', async () => {
