@@ -33,8 +33,14 @@
 <tr><th>Claims</th><td>5</td></tr>
 <tr><th>Unchecked after a provider error</th><td>0</td></tr>
 <tr><th>Unchecked: no allowed source found</th><td>1</td></tr>
+<tr><th>Unchecked: source policy could not be applied</th><td>0</td></tr>
+<tr><th>Citation exists (claim not verified)</th><td>0</td></tr>
+<tr><th>Unchecked: historical citation not checked</th><td>0</td></tr>
+<tr><th>Unchecked: paragraph parse uncertain</th><td>0</td></tr>
+<tr><th>Unchecked: LCD license not accepted</th><td>0</td></tr>
 <tr><th>Unchecked for another reason</th><td>0</td></tr>
 <tr><th>Scan file degraded flag</th><td>false</td></tr>
+<tr><th>Warnings recorded on the scan</th><td>none</td></tr>
 </tbody>
 </table>
 <p>Input text, as stored on the scan:</p>
@@ -45,7 +51,9 @@ The clinic billed 12 outpatient visits. The plan paid $400 for each visit. The c
 <p>This report was rendered from the scan file only. It did not call a model or a search service.</p>
 <p>Claims are the scan's claims, in file order. A verification id with no claim is listed after those.</p>
 <p>A checked verdict is supported, contradicted, mixed, or unverified. Unverified means the check ran and the scan recorded no support; this report calls that unsupported.</p>
-<p>A claim is unchecked when it has no verification record, its status is skipped or loading, the record has apiError, the record has notCheckable, or the explanation begins with &quot;Verify failed&quot; (the engine's wording for a provider error, including files saved before apiError was set). An unchecked claim is not a verdict. A claim left unchecked because no source was inside the configured source policy is labelled &quot;Unchecked: no allowed source found&quot;. That is not a provider error. The scan may record it as apiErrorReason &quot;source_policy_no_match&quot;, as a provenance flag, or, when neither field is present, as apiError with an explanation that says no source was on the source-policy allowlist.</p>
+<p>A claim is unchecked when it has no verification record, its status is skipped or loading, the record has apiError, the record has notCheckable, or the explanation begins with &quot;Verify failed&quot; (the engine's wording for a provider error, including files saved before apiError was set). An unchecked claim is not a verdict.</p>
+<p>Two source-policy reasons are unchecked and are not provider errors. apiErrorReason &quot;source_policy_no_match&quot; is labelled &quot;Unchecked: no allowed source found&quot;. apiErrorReason &quot;source_policy_not_applied&quot; is labelled &quot;Unchecked: source policy could not be applied&quot;. When the scan file has a warnings array, those sentences are copied into the header. A missing reason is not treated as either of these.</p>
+<p>A regulation citation check that left the claim unverified is unchecked, not unsupported. citationCheck &quot;exists&quot;, or citationCheckReason &quot;citation_exists&quot;, is labelled &quot;Citation exists (claim not verified)&quot;. citationCheckReason &quot;historical_not_checked&quot; is &quot;Unchecked: historical citation not checked&quot;. &quot;paragraph_parse_uncertain&quot; is &quot;Unchecked: paragraph parse uncertain&quot;. &quot;lcd_license_not_accepted&quot; is &quot;Unchecked: LCD license not accepted&quot;. The same four codes are read from citationCheck when that is where the file stored them. A supported, contradicted or mixed status is left as that verdict.</p>
 <p>Sources, retrieval time, model and passage hash are copied from the verification. Retrieval time is provenance.retrievedAt when the scan recorded it, otherwise the time a cited page was fetched. The passage hash is the SHA-256 of the page bytes the scan fetched (evidence.contentSha256). A field the scan did not record is written as &quot;not recorded&quot;. Nothing in those columns is inferred.</p>
 <h2>Counts by verdict</h2>
 <table>

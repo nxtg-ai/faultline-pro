@@ -7,6 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`faultline export` CSV is plain RFC 4180 again.** A history cell that starts with `=`, `+`, `-`, `@`, a tab or a carriage return is not prefixed with a quote, so `-1` and `-5% growth` are written unchanged. The quote prefix stays on the audit reviewer CSV (`--labels-out`) only. Importing that file drops a leading quote only when this exporter added it: a formula-looking cell, or a quote already in front of one, so `'=x` round-trips and `'hello` is left as written.
+- **An audit report reads the source-policy and citation-check reason codes, and does not read provenance flags.** `apiErrorReason` `source_policy_no_match` is `Unchecked: no allowed source found`. `source_policy_not_applied` is `Unchecked: source policy could not be applied`, and a scan-level `warnings` array is copied into the header. A regulation citation left `unverified` is unchecked, not unsupported: `citationCheck` `exists` (or `citationCheckReason` `citation_exists`) is `Citation exists (claim not verified)`; `historical_not_checked`, `paragraph_parse_uncertain` and `lcd_license_not_accepted` each have their own `Unchecked:` label, read from `citationCheck` or `citationCheckReason`. A missing field is not treated as one of these. A `supported`, `contradicted` or `mixed` status stays that verdict.
+
 ## [v0.12.3] — 2026-11-19
 
 `@nxtg/faultline` 0.12.3 adds `faultline audit-report`. The `faultline-mcp` bin is unchanged: `npx -y -p @nxtg/faultline faultline-mcp`, with `FAULTLINE_API_KEY` for the hosted API.

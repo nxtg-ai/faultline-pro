@@ -173,6 +173,13 @@ export interface AuditReportModel {
   byType: TypeCount[];
   providerErrors: number;
   sourcePolicyMisses: number;
+  sourcePolicyNotApplied: number;
+  citationExists: number;
+  citationHistorical: number;
+  citationParagraph: number;
+  citationLicense: number;
+  /** Scan-level `warnings` strings, whitespace collapsed. Empty when the file has none. */
+  warnings: string[];
   otherUnchecked: number;
   /** Judge model names copied from the scan. "unknown" when the file recorded none. */
   judgeModel: string;
@@ -211,21 +218,49 @@ function legacyCode(explanation: string): string {
   return 'provider_error';
 }
 
-function sourcePolicyMiss(v: Record<string, unknown>, explanation: string): boolean {
+/**
+ * Reason codes written by the source-policy and regulation-citation scans.
+ * A missing field is not one of these. Provenance booleans are not read:
+ * those scans record the code on `apiErrorReason` or on `citationCheck` /
+ * `citationCheckReason`.
+ */
+const REASON_LABELS: Record<string, string> = {
+  source_policy_no_match: 'Unchecked: no allowed source found',
+  source_policy_not_applied: 'Unchecked: source policy could not be applied',
+  citation_exists: 'Citation exists (claim not verified)',
+  historical_not_checked: 'Unchecked: historical citation not checked',
+  paragraph_parse_uncertain: 'Unchecked: paragraph parse uncertain',
+  lcd_license_not_accepted: 'Unchecked: LCD license not accepted',
+};
+
+function policyReasonCode(v: Record<string, unknown>): string | null {
   const reason = typeof v.apiErrorReason === 'string' ? v.apiErrorReason : '';
-  if (reason === 'source_policy_no_match') return true;
-  const provenance = asRecord(v.provenance);
-  if (provenance?.sourcePolicyNoMatch === true || provenance?.sourcePolicyMiss === true || provenance?.noAllowedSource === true) {
-    return true;
+  if (reason === 'source_policy_no_match' || reason === 'source_policy_not_applied') return reason;
+  return null;
+}
+
+/**
+ * PR #148 stores `exists` on `citationCheck` and the other three codes on
+ * `citationCheckReason`. Either field is accepted, so a file that puts the
+ * code on only one of them still classifies. `citation_exists` is the reason
+ * paired with `citationCheck: 'exists'`.
+ */
+function citationReasonCode(v: Record<string, unknown>): string | null {
+  const check = typeof v.citationCheck === 'string' ? v.citationCheck : '';
+  const reason = typeof v.citationCheckReason === 'string' ? v.citationCheckReason : '';
+  if (reason === 'historical_not_checked' || reason === 'paragraph_parse_uncertain' || reason === 'lcd_license_not_accepted') {
+    return reason;
   }
-  // An allowlist miss may be stored as a provider error plus this sentence, with no separate field.
-  // A provider error whose text does not say that stays a provider error.
-  return v.apiError === true && /source-policy allowlist|no source within the configured source policy/i.test(explanation);
+  if (reason === 'citation_exists' || check === 'exists' || check === 'citation_exists') return 'citation_exists';
+  if (check === 'historical_not_checked' || check === 'paragraph_parse_uncertain' || check === 'lcd_license_not_accepted') {
+    return check;
+  }
+  return null;
 }
 
 function uncheckedCopy(code: string, explanation: string, raw: boolean): string {
   if (code === 'not_verifiable') return NOT_CHECKABLE_EXPLANATION;
-  if (code === 'source_policy_no_match') return 'Unchecked: no allowed source found';
+  if (REASON_LABELS[code]) return REASON_LABELS[code];
   if (code === 'no_record') return 'No verification record for this claim. This is not a verdict.';
   if (code === 'no_claim_id') return NO_CLAIM_ID_EXPLANATION;
   if (code === 'skipped' || code === 'loading') return 'This claim was not sent to verification. This is not a verdict.';
@@ -260,13 +295,16 @@ function classify(v: Record<string, unknown> | undefined): Classified {
   if (status === 'skipped' || status === 'loading') {
     return { bucket: 'unchecked', status: null, code: status, explanation: uncheckedCopy(status, '', true) };
   }
-  if (sourcePolicyMiss(v, explanation)) {
-    return {
-      bucket: 'unchecked',
-      status: null,
-      code: 'source_policy_no_match',
-      explanation: uncheckedCopy('source_policy_no_match', '', false),
-    };
+  const policy = policyReasonCode(v);
+  if (policy) {
+    return { bucket: 'unchecked', status: null, code: policy, explanation: uncheckedCopy(policy, '', false) };
+  }
+  // A real supported, contradicted or mixed verdict is left as that verdict.
+  // These codes are the unverified citation-check outcomes, which are not
+  // "checked and found unsupported".
+  const citation = citationReasonCode(v);
+  if (citation && status !== 'supported' && status !== 'contradicted' && status !== 'mixed') {
+    return { bucket: 'unchecked', status: null, code: citation, explanation: uncheckedCopy(citation, '', false) };
   }
   if (v.apiError === true || legacy) {
     const reason = typeof v.apiErrorReason === 'string' ? v.apiErrorReason : '';
@@ -397,10 +435,20 @@ export function buildAuditReport(scan: unknown): AuditReportModel {
 
   let providerErrors = 0;
   let sourcePolicyMisses = 0;
+  let sourcePolicyNotApplied = 0;
+  let citationExists = 0;
+  let citationHistorical = 0;
+  let citationParagraph = 0;
+  let citationLicense = 0;
   let otherUnchecked = 0;
   for (const c of claims) {
     if (c.bucket !== 'unchecked') continue;
     if (c.uncheckedCode === 'source_policy_no_match') sourcePolicyMisses++;
+    else if (c.uncheckedCode === 'source_policy_not_applied') sourcePolicyNotApplied++;
+    else if (c.uncheckedCode === 'citation_exists') citationExists++;
+    else if (c.uncheckedCode === 'historical_not_checked') citationHistorical++;
+    else if (c.uncheckedCode === 'paragraph_parse_uncertain') citationParagraph++;
+    else if (c.uncheckedCode === 'lcd_license_not_accepted') citationLicense++;
     else if (c.uncheckedCode && PROVIDER_CODES.has(c.uncheckedCode)) providerErrors++;
     else otherUnchecked++;
   }
@@ -425,11 +473,29 @@ export function buildAuditReport(scan: unknown): AuditReportModel {
     byType,
     providerErrors,
     sourcePolicyMisses,
+    sourcePolicyNotApplied,
+    citationExists,
+    citationHistorical,
+    citationParagraph,
+    citationLicense,
+    warnings: recordedWarnings(root),
     otherUnchecked,
     judgeModel: recordedJudgeModel(root),
     engineCommit: recordedEngineCommit(root),
     syntheticExample: root.syntheticExample === true,
   };
+}
+
+/** Scan-level `warnings`. Non-strings are skipped. Absent or empty is an empty list. */
+function recordedWarnings(root: Record<string, unknown>): string[] {
+  if (!Array.isArray(root.warnings)) return [];
+  const out: string[] = [];
+  for (const item of root.warnings) {
+    if (typeof item !== 'string') continue;
+    const text = item.replace(/\s+/g, ' ').trim();
+    if (text) out.push(text);
+  }
+  return out;
 }
 
 function trimmedString(value: unknown): string | null {
@@ -488,7 +554,9 @@ export function methodParagraphs(): string[] {
     'This report was rendered from the scan file only. It did not call a model or a search service.',
     'Claims are the scan\'s claims, in file order. A verification id with no claim is listed after those.',
     'A checked verdict is supported, contradicted, mixed, or unverified. Unverified means the check ran and the scan recorded no support; this report calls that unsupported.',
-    'A claim is unchecked when it has no verification record, its status is skipped or loading, the record has apiError, the record has notCheckable, or the explanation begins with "Verify failed" (the engine\'s wording for a provider error, including files saved before apiError was set). An unchecked claim is not a verdict. A claim left unchecked because no source was inside the configured source policy is labelled "Unchecked: no allowed source found". That is not a provider error. The scan may record it as apiErrorReason "source_policy_no_match", as a provenance flag, or, when neither field is present, as apiError with an explanation that says no source was on the source-policy allowlist.',
+    'A claim is unchecked when it has no verification record, its status is skipped or loading, the record has apiError, the record has notCheckable, or the explanation begins with "Verify failed" (the engine\'s wording for a provider error, including files saved before apiError was set). An unchecked claim is not a verdict.',
+    'Two source-policy reasons are unchecked and are not provider errors. apiErrorReason "source_policy_no_match" is labelled "Unchecked: no allowed source found". apiErrorReason "source_policy_not_applied" is labelled "Unchecked: source policy could not be applied". When the scan file has a warnings array, those sentences are copied into the header. A missing reason is not treated as either of these.',
+    'A regulation citation check that left the claim unverified is unchecked, not unsupported. citationCheck "exists", or citationCheckReason "citation_exists", is labelled "Citation exists (claim not verified)". citationCheckReason "historical_not_checked" is "Unchecked: historical citation not checked". "paragraph_parse_uncertain" is "Unchecked: paragraph parse uncertain". "lcd_license_not_accepted" is "Unchecked: LCD license not accepted". The same four codes are read from citationCheck when that is where the file stored them. A supported, contradicted or mixed status is left as that verdict.',
     'Sources, retrieval time, model and passage hash are copied from the verification. Retrieval time is provenance.retrievedAt when the scan recorded it, otherwise the time a cited page was fetched. The passage hash is the SHA-256 of the page bytes the scan fetched (evidence.contentSha256). A field the scan did not record is written as "not recorded". Nothing in those columns is inferred.',
   ];
 }
@@ -583,6 +651,37 @@ function findings(model: AuditReportModel, buckets: AuditBucket[]): AuditClaim[]
   return model.claims.filter((c) => buckets.includes(c.bucket));
 }
 
+/** Scope table, including scan-level warnings. Values are unescaped; each renderer escapes them. */
+function scopeEntries(model: AuditReportModel): Array<[string, string]> {
+  const warnings: Array<[string, string]> = model.warnings.length === 0
+    ? [['Warnings recorded on the scan', 'none']]
+    : model.warnings.map((warning, index) => [
+        model.warnings.length === 1 ? 'Warning recorded on the scan' : `Warning recorded on the scan (${index + 1})`,
+        warning,
+      ]);
+  return [
+    ['Renderer', `Faultline ${model.version}`],
+    ['Provider recorded', model.provider],
+    ['Judge model recorded', model.judgeModel],
+    ['Engine commit recorded', model.engineCommit],
+    ['Risk band recorded by the scan', model.overallRisk ?? 'not recorded'],
+    ['Scan timestamp recorded', model.generatedAt ?? 'not recorded'],
+    ['Input characters (Unicode code points)', model.inputChars === null ? 'not recorded' : String(model.inputChars)],
+    ['Input SHA-256', model.inputSha256 ?? 'not recorded'],
+    ['Claims', String(model.claims.length)],
+    ['Unchecked after a provider error', String(model.providerErrors)],
+    ['Unchecked: no allowed source found', String(model.sourcePolicyMisses)],
+    ['Unchecked: source policy could not be applied', String(model.sourcePolicyNotApplied)],
+    ['Citation exists (claim not verified)', String(model.citationExists)],
+    ['Unchecked: historical citation not checked', String(model.citationHistorical)],
+    ['Unchecked: paragraph parse uncertain', String(model.citationParagraph)],
+    ['Unchecked: LCD license not accepted', String(model.citationLicense)],
+    ['Unchecked for another reason', String(model.otherUnchecked)],
+    ['Scan file degraded flag', model.degradedFlag === null ? 'not recorded' : model.degradedFlag ? 'true' : 'false'],
+    ...warnings,
+  ];
+}
+
 export function renderAuditMarkdown(model: AuditReportModel): string {
   const lines: string[] = [];
   lines.push('# AI output audit');
@@ -602,19 +701,9 @@ export function renderAuditMarkdown(model: AuditReportModel): string {
   lines.push('');
   lines.push('| | |');
   lines.push('|---|---|');
-  lines.push(`| Renderer | Faultline ${model.version} |`);
-  lines.push(`| Provider recorded | ${mdCell(model.provider)} |`);
-  lines.push(`| Judge model recorded | ${mdCell(model.judgeModel)} |`);
-  lines.push(`| Engine commit recorded | ${mdCell(model.engineCommit)} |`);
-  lines.push(`| Risk band recorded by the scan | ${model.overallRisk ? mdCell(model.overallRisk) : 'not recorded'} |`);
-  lines.push(`| Scan timestamp recorded | ${model.generatedAt ? mdCell(model.generatedAt) : 'not recorded'} |`);
-  lines.push(`| Input characters (Unicode code points) | ${model.inputChars === null ? 'not recorded' : String(model.inputChars)} |`);
-  lines.push(`| Input SHA-256 | ${model.inputSha256 ?? 'not recorded'} |`);
-  lines.push(`| Claims | ${model.claims.length} |`);
-  lines.push(`| Unchecked after a provider error | ${model.providerErrors} |`);
-  lines.push(`| Unchecked: no allowed source found | ${model.sourcePolicyMisses} |`);
-  lines.push(`| Unchecked for another reason | ${model.otherUnchecked} |`);
-  lines.push(`| Scan file degraded flag | ${model.degradedFlag === null ? 'not recorded' : model.degradedFlag ? 'true' : 'false'} |`);
+  for (const [label, value] of scopeEntries(model)) {
+    lines.push(`| ${label} | ${mdCell(value)} |`);
+  }
   lines.push('');
   if (model.inputQuote === null) {
     lines.push('The scan file has no input text.');
@@ -804,19 +893,7 @@ ${banner}
 <h2>Scope</h2>
 <table>
 <tbody>
-<tr><th>Renderer</th><td>Faultline ${escapeHtml(model.version)}</td></tr>
-<tr><th>Provider recorded</th><td>${escapeHtml(model.provider)}</td></tr>
-<tr><th>Judge model recorded</th><td>${escapeHtml(model.judgeModel)}</td></tr>
-<tr><th>Engine commit recorded</th><td>${escapeHtml(model.engineCommit)}</td></tr>
-<tr><th>Risk band recorded by the scan</th><td>${escapeHtml(model.overallRisk ?? 'not recorded')}</td></tr>
-<tr><th>Scan timestamp recorded</th><td>${escapeHtml(model.generatedAt ?? 'not recorded')}</td></tr>
-<tr><th>Input characters (Unicode code points)</th><td>${model.inputChars === null ? 'not recorded' : String(model.inputChars)}</td></tr>
-<tr><th>Input SHA-256</th><td>${escapeHtml(model.inputSha256 ?? 'not recorded')}</td></tr>
-<tr><th>Claims</th><td>${model.claims.length}</td></tr>
-<tr><th>Unchecked after a provider error</th><td>${model.providerErrors}</td></tr>
-<tr><th>Unchecked: no allowed source found</th><td>${model.sourcePolicyMisses}</td></tr>
-<tr><th>Unchecked for another reason</th><td>${model.otherUnchecked}</td></tr>
-<tr><th>Scan file degraded flag</th><td>${model.degradedFlag === null ? 'not recorded' : model.degradedFlag ? 'true' : 'false'}</td></tr>
+${scopeEntries(model).map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`).join('\n')}
 </tbody>
 </table>
 ${inputBlock}
@@ -923,22 +1000,7 @@ export async function renderAuditPdf(model: AuditReportModel): Promise<Buffer> {
     }
 
     write('Scope', { size: 13, bold: true, gap: 0.3 });
-    const scope: Array<[string, string]> = [
-      ['Renderer', `Faultline ${model.version}`],
-      ['Provider recorded', model.provider],
-      ['Judge model recorded', model.judgeModel],
-      ['Engine commit recorded', model.engineCommit],
-      ['Risk band recorded by the scan', model.overallRisk ?? 'not recorded'],
-      ['Scan timestamp recorded', model.generatedAt ?? 'not recorded'],
-      ['Input characters (Unicode code points)', model.inputChars === null ? 'not recorded' : String(model.inputChars)],
-      ['Input SHA-256', model.inputSha256 ?? 'not recorded'],
-      ['Claims', String(model.claims.length)],
-      ['Unchecked after a provider error', String(model.providerErrors)],
-      ['Unchecked: no allowed source found', String(model.sourcePolicyMisses)],
-      ['Unchecked for another reason', String(model.otherUnchecked)],
-      ['Scan file degraded flag', model.degradedFlag === null ? 'not recorded' : String(model.degradedFlag)],
-    ];
-    for (const [k, v] of scope) write(`${k}: ${v}`);
+    for (const [k, v] of scopeEntries(model)) write(`${k}: ${v}`);
     doc.moveDown(0.4);
     if (model.inputQuote === null) write('The scan file has no input text.', { gap: 0.4 });
     else {

@@ -31,7 +31,6 @@ import {
   parseReviewerLabel,
   type ScanVerdict,
 } from '../cli/audit-labels';
-import { renderCsv } from '../cli/export';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const demoPath = join(repoRoot, 'docs/demo/scan-result.json');
@@ -670,43 +669,83 @@ describe('judge model and engine commit come from the scan', () => {
 });
 
 describe('source policy misses are not provider errors', () => {
-  function one(verification: Record<string, unknown>) {
+  function one(verification: Record<string, unknown>, warnings?: string[]) {
     return buildAuditReport({
+      warnings,
       claims: [{ id: 'p', text: 'A fee schedule line.', type: 'fact', importance: 1 }],
       verifications: { p: verification },
     });
   }
 
-  it('labels a distinct reason, a provenance flag, and the allowlist sentence', () => {
+  it('labels source_policy_no_match from the reason code, including apiError false', () => {
     const reason = one({
-      claimId: 'p', status: 'unverified', apiError: true, apiErrorReason: 'source_policy_no_match',
-      explanation: 'not checked', sources: [],
+      claimId: 'p',
+      status: 'unverified',
+      apiError: false,
+      apiErrorReason: 'source_policy_no_match',
+      explanation: 'No source on the configured source-policy allowlist was found, so this claim was not checked.',
+      sources: [],
     });
+    expect(reason.claims[0].bucket).toBe('unchecked');
+    expect(reason.claims[0].uncheckedCode).toBe('source_policy_no_match');
     expect(reason.claims[0].explanation).toBe('Unchecked: no allowed source found');
     expect(reason.providerErrors).toBe(0);
     expect(reason.sourcePolicyMisses).toBe(1);
+    expect(reason.byBucket.unsupported).toBe(0);
+  });
 
+  it('labels source_policy_not_applied and copies scan warnings into the header', async () => {
+    const warning = 'A source policy is set, but this scan is not using Parallel search, so no claim was checked. The open web was not searched.';
+    const blocked = one({
+      claimId: 'p',
+      status: 'unverified',
+      apiError: false,
+      apiErrorReason: 'source_policy_not_applied',
+      explanation: warning,
+      sources: [],
+    }, [warning]);
+    expect(blocked.claims[0].bucket).toBe('unchecked');
+    expect(blocked.claims[0].explanation).toBe('Unchecked: source policy could not be applied');
+    expect(blocked.sourcePolicyNotApplied).toBe(1);
+    expect(blocked.sourcePolicyMisses).toBe(0);
+    expect(blocked.providerErrors).toBe(0);
+    expect(blocked.byBucket.unsupported).toBe(0);
+    expect(blocked.warnings).toEqual([warning]);
+    const markdown = renderAuditMarkdown(blocked);
+    const html = renderAuditHtml(blocked);
+    expect(scopeSection(markdown)).toContain('Unchecked: source policy could not be applied | 1 |');
+    expect(scopeSection(markdown)).toContain(`| Warning recorded on the scan | ${warning} |`);
+    expect(html).toContain('Unchecked: source policy could not be applied');
+    expect(html).toContain(warning);
+    expect(pdfText(await renderAuditPdf(blocked))).toContain(warning);
+    const findings = markdown.slice(
+      markdown.indexOf('## Unsupported and contradicted claims'),
+      markdown.indexOf('## Mixed claims'),
+    );
+    expect(findings).not.toContain('| p —');
+    expect(markdown.slice(markdown.indexOf('## Unchecked claims'))).toContain('Unchecked: source policy could not be applied');
+  });
+
+  it('does not treat a provenance flag or the allowlist sentence as a reason code', () => {
     const flag = one({
-      claimId: 'p', status: 'unverified', apiError: true, apiErrorReason: 'provider_error',
+      claimId: 'p', status: 'unverified', apiError: false,
       explanation: 'not checked', sources: [],
-      provenance: { sourcePolicyNoMatch: true },
+      provenance: { sourcePolicyNoMatch: true, sourcePolicyMiss: true, noAllowedSource: true },
     });
-    expect(flag.claims[0].explanation).toBe('Unchecked: no allowed source found');
-    expect(flag.providerErrors).toBe(0);
+    expect(flag.claims[0].bucket).toBe('unsupported');
+    expect(flag.sourcePolicyMisses).toBe(0);
 
     const sentence = one({
       claimId: 'p', status: 'unverified', apiError: true, apiErrorReason: 'provider_error',
       explanation: 'No source on the configured source-policy allowlist was found, so this claim was not checked.',
       sources: [],
     });
-    expect(sentence.claims[0].bucket).toBe('unchecked');
-    expect(sentence.claims[0].explanation).toBe('Unchecked: no allowed source found');
-    expect(sentence.providerErrors).toBe(0);
-    expect(renderAuditMarkdown(sentence)).toContain('Unchecked: no allowed source found');
-    expect(renderAuditMarkdown(sentence)).not.toContain('provider error. An unchecked');
+    expect(sentence.claims[0].uncheckedCode).toBe('provider_error');
+    expect(sentence.providerErrors).toBe(1);
+    expect(sentence.sourcePolicyMisses).toBe(0);
   });
 
-  it('keeps a provider error a provider error when no policy field or sentence is present', () => {
+  it('keeps a provider error a provider error when no policy reason is present', () => {
     const plain = one({
       claimId: 'p', status: 'unverified', apiError: true, apiErrorReason: 'provider_error',
       explanation: 'The provider failed.', sources: [],
@@ -715,21 +754,170 @@ describe('source policy misses are not provider errors', () => {
     expect(plain.providerErrors).toBe(1);
     expect(plain.sourcePolicyMisses).toBe(0);
     expect(plain.claims[0].explanation).not.toContain('no allowed source');
+    expect(plain.warnings).toEqual([]);
+    expect(scopeSection(renderAuditMarkdown(plain))).toContain('| Warnings recorded on the scan | none |');
+  });
+});
+
+describe('regulation citation checks are unchecked, not unsupported', () => {
+  const scan = {
+    claims: [
+      { id: 'exists', text: '42 CFR 422.101 is the current section.', type: 'fact', importance: 2 },
+      { id: 'hist', text: '42 CFR 422.101 as of January 1, 2019 said otherwise.', type: 'fact', importance: 2 },
+      { id: 'para', text: '42 CFR 422.101(i) requires the item.', type: 'fact', importance: 2 },
+      { id: 'lcd', text: 'LCD L33797 covers the item.', type: 'fact', importance: 2 },
+      { id: 'plain', text: 'No source states the year.', type: 'fact', importance: 1 },
+      { id: 'kept', text: 'The cited item was repealed.', type: 'fact', importance: 2 },
+    ],
+    verifications: {
+      exists: {
+        claimId: 'exists',
+        status: 'unverified',
+        explanation: 'This check establishes only that the citation is in the current official record. It is not a verdict on the claim.',
+        sources: [{ title: 'eCFR', uri: 'https://www.ecfr.gov/current/title-42/section-422.101' }],
+        citationCheck: 'exists',
+        citationCheckReason: 'citation_exists',
+      },
+      hist: {
+        claimId: 'hist',
+        status: 'unverified',
+        explanation: 'The claim refers to a past date, and this check only reads the current record.',
+        sources: [],
+        citationCheck: 'not_found',
+        citationCheckReason: 'historical_not_checked',
+      },
+      para: {
+        claimId: 'para',
+        status: 'unverified',
+        explanation: 'The section XML did not parse confidently.',
+        sources: [],
+        citationCheck: 'uncertain',
+        citationCheckReason: 'paragraph_parse_uncertain',
+      },
+      lcd: {
+        claimId: 'lcd',
+        status: 'unverified',
+        explanation: 'The LCD license was not accepted.',
+        sources: [],
+        citationCheck: 'license_required',
+        citationCheckReason: 'lcd_license_not_accepted',
+      },
+      plain: {
+        claimId: 'plain',
+        status: 'unverified',
+        explanation: 'No source states the year.',
+        sources: [],
+      },
+      kept: {
+        claimId: 'kept',
+        status: 'supported',
+        explanation: 'The current record agrees the item was removed.',
+        sources: [{ title: 'eCFR', uri: 'https://www.ecfr.gov/current/title-42/section-422.101' }],
+        citationCheck: 'exists',
+      },
+    },
+  };
+
+  const model = buildAuditReport(scan);
+  const markdown = renderAuditMarkdown(model);
+
+  it('gives each citation code its own unchecked label and leaves a real verdict alone', () => {
+    const byId = new Map(model.claims.map((c) => [c.id, c]));
+    expect(byId.get('exists')).toMatchObject({
+      bucket: 'unchecked',
+      uncheckedCode: 'citation_exists',
+      explanation: 'Citation exists (claim not verified)',
+    });
+    expect(byId.get('hist')).toMatchObject({
+      bucket: 'unchecked',
+      uncheckedCode: 'historical_not_checked',
+      explanation: 'Unchecked: historical citation not checked',
+    });
+    expect(byId.get('para')).toMatchObject({
+      bucket: 'unchecked',
+      uncheckedCode: 'paragraph_parse_uncertain',
+      explanation: 'Unchecked: paragraph parse uncertain',
+    });
+    expect(byId.get('lcd')).toMatchObject({
+      bucket: 'unchecked',
+      uncheckedCode: 'lcd_license_not_accepted',
+      explanation: 'Unchecked: LCD license not accepted',
+    });
+    expect(byId.get('plain')?.bucket).toBe('unsupported');
+    expect(byId.get('kept')?.bucket).toBe('supported');
+    expect(model.byBucket).toMatchObject({ unsupported: 1, unchecked: 4, supported: 1 });
+    expect(model.citationExists).toBe(1);
+    expect(model.citationHistorical).toBe(1);
+    expect(model.citationParagraph).toBe(1);
+    expect(model.citationLicense).toBe(1);
+
+    const findings = markdown.slice(
+      markdown.indexOf('## Unsupported and contradicted claims'),
+      markdown.indexOf('## Mixed claims'),
+    );
+    expect(findings).toContain('plain');
+    expect(findings).not.toContain('exists');
+    expect(findings).not.toContain('hist');
+    expect(findings).not.toContain('para');
+    expect(findings).not.toContain('lcd');
+    const unchecked = markdown.slice(markdown.indexOf('## Unchecked claims'), markdown.indexOf('## Limitations'));
+    expect(unchecked).toContain('Citation exists \\(claim not verified\\)');
+    expect(unchecked).toContain('Unchecked: historical citation not checked');
+    expect(unchecked).toContain('Unchecked: paragraph parse uncertain');
+    expect(unchecked).toContain('Unchecked: LCD license not accepted');
+    expect(scopeSection(markdown)).toContain('| Citation exists (claim not verified) | 1 |');
+    expect(scopeSection(markdown)).toContain('| Unchecked: LCD license not accepted | 1 |');
+  });
+
+  it('reads the same codes when the file stores them only on citationCheck', () => {
+    const onlyCheck = buildAuditReport({
+      claims: [
+        { id: 'h', text: 'past', type: 'fact', importance: 1 },
+        { id: 'u', text: 'parse', type: 'fact', importance: 1 },
+        { id: 'l', text: 'lcd', type: 'fact', importance: 1 },
+        { id: 'e', text: 'exists', type: 'fact', importance: 1 },
+      ],
+      verifications: {
+        h: { claimId: 'h', status: 'unverified', explanation: 'past', sources: [], citationCheck: 'historical_not_checked' },
+        u: { claimId: 'u', status: 'unverified', explanation: 'parse', sources: [], citationCheck: 'paragraph_parse_uncertain' },
+        l: { claimId: 'l', status: 'unverified', explanation: 'lcd', sources: [], citationCheck: 'lcd_license_not_accepted' },
+        e: { claimId: 'e', status: 'unverified', explanation: 'exists', sources: [], citationCheck: 'exists' },
+      },
+    });
+    expect(onlyCheck.claims.map((c) => c.uncheckedCode)).toEqual([
+      'historical_not_checked',
+      'paragraph_parse_uncertain',
+      'lcd_license_not_accepted',
+      'citation_exists',
+    ]);
+    expect(onlyCheck.byBucket.unsupported).toBe(0);
+  });
+
+  it('leaves an unverified claim with no citation field unsupported', () => {
+    const absent = buildAuditReport({
+      claims: [{ id: 'a', text: 'No field.', type: 'fact', importance: 1 }],
+      verifications: { a: { claimId: 'a', status: 'unverified', explanation: 'No source.', sources: [] } },
+    });
+    expect(absent.claims[0].bucket).toBe('unsupported');
+    expect(absent.citationExists).toBe(0);
+    expect(absent.warnings).toEqual([]);
   });
 });
 
 describe('spreadsheet formula cells', () => {
   it('prefixes = + - @ tab and CR with one quote, and a round-trip restores the text', () => {
-    for (const cell of ['=1+1', '+1', '-1', '@SUM(A1)', '\tcmd', '\rcmd', '=1,2', '=say "hi"']) {
+    for (const cell of ['=1+1', '+1', '-1', '@SUM(A1)', '\tcmd', '\rcmd', '=1,2', '=say "hi"', "'=x", "''=x", "'hello"]) {
       const escaped = csvEscape(cell);
-      expect(escaped.startsWith("'") || escaped.startsWith("\"'")).toBe(true);
       expect(parseCsv(escaped + '\n')[0][0]).toBe(cell);
     }
+    expect(csvEscape('=1+1').startsWith("'")).toBe(true);
+    expect(csvEscape("'=x")).toBe("''=x");
+    expect(csvEscape("'hello")).toBe("'hello");
     expect(csvEscape('supported')).toBe('supported');
     expect(csvEscape('She said "no"')).toBe('"She said ""no"""');
   });
 
-  it('neutralizes a claim that starts with = in the reviewer CSV and the history CSV', () => {
+  it('neutralizes a claim that starts with = in the reviewer CSV only', () => {
     const model = buildAuditReport({
       claims: [{ id: 'f', text: '=HYPERLINK("https://example.test")', type: 'fact', importance: 1 }],
       verifications: {
@@ -741,28 +929,6 @@ describe('spreadsheet formula cells', () => {
     expect(labels).toContain("'+cmd");
     expect(labels).toContain("'@title");
     expect(parseCsv(labels)[1][1]).toBe('=HYPERLINK("https://example.test")');
-
-    const history = renderCsv([{
-      timestamp: '2026-11-17T00:00:00.000Z',
-      file: 'note.txt',
-      provider: 'example',
-      overallRisk: 'low',
-      findingCount: 0,
-      claimCount: 1,
-      verificationCount: 1,
-      ruleFindings: [],
-      scanResult: {
-        input: '=1',
-        provider: 'example',
-        claims: [{ id: 'f', text: '=HYPERLINK("https://example.test")', type: 'fact', importance: 1 }],
-        verifications: { f: { claimId: 'f', status: 'contradicted', explanation: '-2+2', sources: [] } },
-        overallRisk: 'low',
-        complianceReport: { generatedAt: '2026-11-17T00:00:00.000Z' },
-        ruleFindings: [],
-      },
-    } as never]);
-    expect(history).toContain("'=HYPERLINK");
-    expect(history).toContain("'-2+2");
   });
 });
 

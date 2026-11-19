@@ -138,14 +138,26 @@ export function cohensKappa(a: readonly string[], b: readonly string[]): number 
 /** Characters a spreadsheet treats as the start of a formula (OWASP CSV injection). */
 const SPREADSHEET_FORMULA_START = '=+-@\t\r';
 
-function spreadsheetPrefix(s: string): string {
-  if (s.length > 0 && SPREADSHEET_FORMULA_START.includes(s[0])) return "'" + s;
-  return s;
+/**
+ * True when the audit-label exporter adds one leading quote.
+ * That is a formula trigger (`=`, `+`, `-`, `@`, tab, CR), or a quote already
+ * sitting in front of such a value. The second case is how a genuine `'=x`
+ * stays `'=x` after a round-trip: the file holds `''=x`, and import strips
+ * only the quote this exporter added.
+ */
+function spreadsheetPrefixed(s: string): boolean {
+  let i = 0;
+  while (i < s.length && s[i] === "'") i++;
+  return i < s.length && SPREADSHEET_FORMULA_START.includes(s[i]);
 }
 
-/** Drop the one quote this exporter added so a round-trip keeps the original text. */
+function spreadsheetPrefix(s: string): string {
+  return spreadsheetPrefixed(s) ? "'" + s : s;
+}
+
+/** Drop the one quote this exporter added. A leading quote in front of ordinary text stays. */
 function undoSpreadsheetPrefix(s: string): string {
-  if (s.length > 1 && s[0] === "'" && SPREADSHEET_FORMULA_START.includes(s[1])) return s.slice(1);
+  if (s.length > 1 && s[0] === "'" && spreadsheetPrefixed(s.slice(1))) return s.slice(1);
   return s;
 }
 
