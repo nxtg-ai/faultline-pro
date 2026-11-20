@@ -400,6 +400,14 @@
     },
     {
       "tool": "bearer",
+      "ruleId": "javascript_lang_logger_leak",
+      "uri": "packages/cli/services/geminiService.ts",
+      "fp": "550bb744ee3e4d762b6d880be9c180b4_4",
+      "disposition": "false-positive",
+      "reason": "Added 2026-11-20 by #156 (GoPMO 1.18.11.1.68): the rate-limited-extraction warning in callExtraction logs only the model id, the attempt count and rateLimitQuotaOf(error), which returns a quotaId matched by /[A-Za-z0-9_-]{1,120}/ and a numeric quotaValue, else 'quota not named'. No claim text, no prompt, no key. Proof: tests/gemini-extraction-retry.test.ts 'the warning names the model and the quota, never the key'. Bearer fingerprints are path+rule+index, so this new log line became index _4 of the file's group."
+    },
+    {
+      "tool": "bearer",
       "ruleId": "go_lang_logger_leak",
       "uri": "packages/terraform-provider/main.go",
       "fp": "405b3f6b0ddde3de821dd15452659b2e_0",
