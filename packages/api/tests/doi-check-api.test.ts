@@ -166,11 +166,12 @@ describe('the default DOI check buildServer installs', () => {
 });
 
 describe('spend: a DOI verdict ran no search', () => {
-  it('searchedVerdictCount leaves out DOI verdicts only', () => {
+  it('searchedVerdictCount leaves out DOI and regulation verdicts only', () => {
     expect(searchedVerdictCount({
       a: { provenance: { retriever: 'doi-resolver' } },
       b: { provenance: { retriever: 'gemini-grounding' } },
       c: { status: 'unverified' },
+      d: { provenance: { retriever: 'regulation-resolver' } },
     })).toBe(2);
   });
 });

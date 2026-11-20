@@ -1,0 +1,19 @@
+{
+  "meta": {
+    "status": {
+      "id": 200,
+      "message": "OK"
+    },
+    "notes": "",
+    "next_token": ""
+  },
+  "data": [
+    {
+      "lcd_id": 33797,
+      "lcd_version": 50,
+      "display_id": null,
+      "title": "Oxygen and Oxygen Equipment",
+      "status": "A"
+    }
+  ]
+}

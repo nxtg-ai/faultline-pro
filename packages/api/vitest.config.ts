@@ -12,10 +12,12 @@ export default defineConfig({
     // verdict citing a URL never reaches the network; tests/evidence-routes.test.ts
     // turns it on with a stubbed fetch. The DOI lookup for citation claims
     // (N-237) is off for the same reason; tests/doi-check-api.test.ts turns it on.
+    // The regulation lookup (eCFR and the CMS Coverage API) is off for the same
+    // reason; tests/regulation-check-api.test.ts turns it on.
     // The keystore is memory-only for the suite (FAULTLINE_KEYSTORE_FILE=off), so
     // parallel test files never share a keystore file; the keystore persistence
     // tests point it at a temp file of their own.
-    env: { FAULTLINE_OUTBOUND_ALLOW_PRIVATE: '1', FAULTLINE_EVIDENCE_FETCH: 'off', FAULTLINE_DOI_CHECK: 'off', FAULTLINE_KEYSTORE_FILE: 'off' },
+    env: { FAULTLINE_OUTBOUND_ALLOW_PRIVATE: '1', FAULTLINE_EVIDENCE_FETCH: 'off', FAULTLINE_DOI_CHECK: 'off', FAULTLINE_REGULATION_CHECK: 'off', FAULTLINE_KEYSTORE_FILE: 'off' },
     coverage: {
       provider: 'v8',
       include: ['src/**'],

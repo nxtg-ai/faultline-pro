@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "status": {
+      "id": 200,
+      "message": "OK"
+    },
+    "notes": "",
+    "next_token": ""
+  },
+  "data": [
+    {
+      "document_id": 331,
+      "document_version": 4,
+      "document_display_id": "220.6.17",
+      "last_updated": "11/04/2026",
+      "last_updated_sort": "20261104113824",
+      "document_type": "NCD",
+      "title": "Positron Emission Tomography (FDG) for Oncologic Conditions",
+      "chapter": "220",
+      "is_lab": 0,
+      "url": "/data/ncd?ncdid=331&ncdver=4"
+    }
+  ]
+}

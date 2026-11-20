@@ -1,0 +1,18 @@
+{
+  "meta": {
+    "status": {
+      "id": 200,
+      "message": "OK"
+    },
+    "notes": "",
+    "fields": [
+      "Token"
+    ],
+    "next_token": ""
+  },
+  "data": [
+    {
+      "Token": "00000000-0000-4000-8000-000000000001"
+    }
+  ]
+}

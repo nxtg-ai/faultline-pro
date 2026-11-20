@@ -28,10 +28,29 @@ function atLeast(band: OverallRisk, floor: OverallRisk): OverallRisk {
  * address it, GoPMO 1.18.11.7.19) adds no risk: it is left out of every count
  * above, the total included, so the band is the band of the other claims.
  *
+ * A regulation citation check that did not judge the claim is the same. These
+ * `citationCheckReason` values, and `citationCheck: 'exists'`, are left out of
+ * every count: `citation_exists`, `historical_not_checked`,
+ * `paragraph_parse_uncertain`, `lcd_license_not_accepted`,
+ * `absent_from_current_record`.
+ *
  * A scan with no verdicts reads low, as before.
  */
+const CITATION_ONLY_REASONS: ReadonlySet<string> = new Set([
+  'citation_exists',
+  'historical_not_checked',
+  'paragraph_parse_uncertain',
+  'lcd_license_not_accepted',
+  'absent_from_current_record',
+]);
+
+function citationFindingOnly(v: VerificationResult): boolean {
+  return v.citationCheck === 'exists'
+    || (typeof v.citationCheckReason === 'string' && CITATION_ONLY_REASONS.has(v.citationCheckReason));
+}
+
 export function calculateRisk(verifications: Record<string, VerificationResult>): OverallRisk {
-  const values = Object.values(verifications).filter((v) => !isNotCheckable(v));
+  const values = Object.values(verifications).filter((v) => !isNotCheckable(v) && !citationFindingOnly(v));
   const total = values.length;
   const contradicted = values.filter((v) => v.status === 'contradicted').length;
   const mixed = values.filter((v) => v.status === 'mixed').length;

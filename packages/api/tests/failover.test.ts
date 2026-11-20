@@ -9,7 +9,7 @@ import { resetWebhookStore } from '../src/store/webhooks.js';
 import { resetCircuitBreaker, getCircuitBreaker, PROVIDER_CHAIN } from '../src/store/circuit-breaker.js';
 import type { Provider } from '../src/store/circuit-breaker.js';
 import { resetCache } from '../src/store/cache.js';
-import { API_DOI_CHECK } from '../src/lib/evidence.js';
+import { API_DOI_CHECK, API_REGULATION_CHECK } from '../src/lib/evidence.js';
 import type { FastifyInstance } from 'fastify';
 
 const { mockScan } = vi.hoisted(() => ({ mockScan: vi.fn() }));
@@ -275,7 +275,7 @@ describe('Failover — integration', () => {
 
     expect(res.statusCode).toBe(200);
     expect(mockScan).toHaveBeenCalledTimes(1);
-    expect(mockScan).toHaveBeenCalledWith('test', 'claude', undefined, undefined, undefined, undefined, undefined, { verifyCap: 8, doi: API_DOI_CHECK });
+    expect(mockScan).toHaveBeenCalledWith('test', 'claude', undefined, undefined, undefined, undefined, undefined, { verifyCap: 8, doi: API_DOI_CHECK, regulation: API_REGULATION_CHECK });
   });
 
   it('POST /scan/batch with working scan → 200', async () => {

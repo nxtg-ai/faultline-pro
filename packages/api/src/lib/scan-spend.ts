@@ -1,6 +1,7 @@
 import { captureUsage, type UsageLeg } from '@nxtg/faultline/lib/usage-sink.js';
 import { billableVerdictCount } from '@nxtg/faultline/lib/verdict-guard.js';
 import { DOI_RETRIEVER } from '@nxtg/faultline/evidence/doi.js';
+import { REGULATION_RETRIEVER } from '@nxtg/faultline/evidence/regulation.js';
 import { resolveStageProviders, type PipelineConfig } from '@nxtg/faultline/cli/verify-runner.js';
 import { getCostStore, emitScanCostEvent, appendScanCostLog, resolveTier, buildManagedCostEvent, type ManagedScanCostEvent } from '../store/costs.js';
 import { recordProviderSpend } from '../store/provider-spend.js';
@@ -82,17 +83,20 @@ export async function scanWithSpend<T extends ScanLike>(ctx: ScanSpendContext, r
   return result;
 }
 
+/** Retrievers that settle a claim with no model call and no search. */
+const NO_SEARCH_RETRIEVERS: ReadonlySet<string> = new Set([DOI_RETRIEVER, REGULATION_RETRIEVER]);
+
 /**
- * Verdicts that ran a search: every verdict except one the DOI registry
- * settled (provenance.retriever 'doi-resolver', N-237), which made no model or
- * search call. Prices the scan only when no provider reported usage; such a
- * verdict still counts as delivered in `verified` when it is billable. Accepts
- * verdicts keyed by claim id or a positional list; an empty slot (a claim never
- * started) counts as nothing.
+ * Verdicts that ran a search: every verdict except one a registry settled
+ * (provenance.retriever 'doi-resolver' or 'regulation-resolver'), which made
+ * no model or search call. Prices the scan only when no provider reported
+ * usage; such a verdict still counts as delivered in `verified` when it is
+ * billable. Accepts verdicts keyed by claim id or a positional list; an empty
+ * slot (a claim never started) counts as nothing.
  */
 export function searchedVerdictCount(verifications: Record<string, unknown> | ReadonlyArray<unknown>): number {
   return Object.values(verifications).filter((v) => v !== null && typeof v === 'object'
-    && (v as { provenance?: { retriever?: unknown } }).provenance?.retriever !== DOI_RETRIEVER).length;
+    && !NO_SEARCH_RETRIEVERS.has(String((v as { provenance?: { retriever?: unknown } }).provenance?.retriever ?? ''))).length;
 }
 
 /** The search service name a leg of this provider family is labelled with in a spend row. */

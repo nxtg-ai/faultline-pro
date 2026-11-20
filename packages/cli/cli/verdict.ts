@@ -137,7 +137,13 @@ export function toClaimVerdict(
   }
 
   // A claim the sources do not address was not checked, and is not a provider failure.
-  const verdict = isNotCheckable(verification) ? 'UNCHECKED' : toVerdict(verification.status, verification.apiError);
+  // A regulation citation check that did not settle the claim (the item exists,
+  // the claim is historical, the paragraph did not parse, or the LCD license
+  // was not accepted) is not "unsupported": the claim was not judged.
+  const citationNoted = verification.status === 'unverified' && typeof verification.citationCheck === 'string';
+  const verdict = isNotCheckable(verification) || citationNoted
+    ? 'UNCHECKED'
+    : toVerdict(verification.status, verification.apiError);
   const sources = Array.isArray(verification.sources) ? verification.sources : [];
   const evidence_urls = sources
     .map((s) => s?.uri)
@@ -153,7 +159,7 @@ export function toClaimVerdict(
   const evidence_url = firstUri(sources);
   if (evidence_url) entry.evidence_url = evidence_url;
 
-  if (verdict === 'UNCHECKED') {
+  if (verdict === 'UNCHECKED' && !citationNoted) {
     entry.unchecked_reason = !verification.apiError ? 'not_verifiable' : providerUncheckedReason(verification.apiErrorReason);
   }
 

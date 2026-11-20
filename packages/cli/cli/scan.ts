@@ -1,6 +1,7 @@
 import type { EvidenceOptions } from '../evidence/passage.js';
 import type { IndependentEvidenceOptions } from '../evidence/independent.js';
 import type { DoiCheckOptions } from '../evidence/doi.js';
+import type { RegulationCheckOptions } from '../evidence/regulation.js';
 import { groundingFromEnv, type GroundingMode } from './grounding.js';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -84,6 +85,11 @@ export interface ScanOptions {
    * default; `false`: off. See RunVerificationOptions.doi.
    */
   doi?: DoiCheckOptions | false;
+  /**
+   * The CFR / NCD / LCD lookup (evidence/regulation.ts). Omitted: the engine
+   * default; `false`: off. See RunVerificationOptions.regulation.
+   */
+  regulation?: RegulationCheckOptions | false;
   /**
    * Which search grounds a non-consensus gemini verify (cli/grounding.ts).
    * Absent means google, today's behaviour. The engine never reads
@@ -200,6 +206,8 @@ export interface VerifyFullScanOptions {
   independentEvidence?: IndependentEvidenceOptions;
   /** See ScanOptions.doi. */
   doi?: DoiCheckOptions | false;
+  /** See ScanOptions.regulation. */
+  regulation?: RegulationCheckOptions | false;
   /** See ScanOptions.grounding. */
   grounding?: GroundingMode;
 }
@@ -371,13 +379,14 @@ export async function scan(
       evidence: options?.evidence,
       independentEvidence: options?.independentEvidence,
       doi: options?.doi,
+      regulation: options?.regulation,
     });
   }
 
   const verifyCap = resolveVerifyCap(options?.verifyCap);
   const rankedEligible = rankEligibleClaims(claims);
   const toVerify = rankedEligible.slice(0, verifyCap);
-  const { verifications } = await runVerification(toVerify, verifier, { onProgress, onClaimVerified, evidence: options?.evidence, independentEvidence: options?.independentEvidence, doi: options?.doi });
+  const { verifications } = await runVerification(toVerify, verifier, { onProgress, onClaimVerified, evidence: options?.evidence, independentEvidence: options?.independentEvidence, doi: options?.doi, regulation: options?.regulation });
 
   onProgress?.('Generating report...');
   const overallRisk = calculateRisk(verifications);
@@ -450,6 +459,7 @@ interface FullVerificationContext {
   evidence?: EvidenceOptions;
   independentEvidence?: IndependentEvidenceOptions;
   doi?: DoiCheckOptions | false;
+  regulation?: RegulationCheckOptions | false;
 }
 
 /** The full-scan core shared by scan(mode 'full') and verifyFullScan. */
@@ -468,6 +478,7 @@ async function runFullVerification(
     evidence: context.evidence,
     independentEvidence: context.independentEvidence,
     doi: context.doi,
+    regulation: context.regulation,
   });
 
   context.onProgress?.('Generating report...');
