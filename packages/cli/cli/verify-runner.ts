@@ -13,7 +13,15 @@ import { DEFAULT_SCAN_PROVIDER, resolveApiKey } from './provider-keys.js';
 import { GeminiGroundingRetriever } from '../providers/gemini_provider.js';
 import { OpenAIWebSearchRetriever } from '../providers/openai_web_search_retriever.js';
 import { ParallelSearchRetriever } from '../providers/parallel_search_retriever.js';
-import { RetrievalError } from '../providers/retrieval-error.js';
+import {
+  provenanceSourcePolicy,
+  sourcePolicyNoMatchResult,
+  sourcePolicyNotAppliedResult,
+  SOURCE_POLICY_NOT_PARALLEL_WARNING,
+  SOURCE_POLICY_OPENAI_CONSENSUS_WARNING,
+  type SourcePolicy,
+} from './source-policy.js';
+import { isSourcePolicyMiss, RetrievalError } from '../providers/retrieval-error.js';
 import { sanitizeVerifyError } from '../services/verify-error.js';
 import type { GroundingMode } from './grounding.js';
 import { consensusVerify, type NamedProvider } from '../consensus/consensus_engine.js';
@@ -215,6 +223,12 @@ export interface GroundedRig {
 export interface VerifierOptions {
   /** The grounding mode, decided by the caller per request. Absent means google (today's behaviour). */
   grounding?: GroundingMode;
+  /**
+   * Allowlist for the Parallel retriever (cli/source-policy.ts). Absent means
+   * no restriction. When it is set and this request would not search with
+   * Parallel, the scan checks nothing and says so (`sourcePolicyRefusal`).
+   */
+  sourcePolicy?: SourcePolicy | null;
 }
 
 /** Everything the verify stage needs: the single provider, a retrieve-then-judge rig, or a consensus rig. */
@@ -229,6 +243,13 @@ export interface Verifier {
   groundedRig?: GroundedRig | null;
   /** The provider id the verify stage resolved to (e.g. 'gemini'); names the verdict's provenance and selects its retriever. */
   providerName: string;
+  /**
+   * Set when a source policy was configured but this verify would not search
+   * with Parallel. The text is also `ScanResult.warnings`. No web search runs.
+   */
+  sourcePolicyRefusal?: string;
+  /** The policy behind `sourcePolicyRefusal`, copied onto each claim's provenance. */
+  refusedSourcePolicy?: SourcePolicy | null;
 }
 
 /** The provider names each stage resolves to. */
@@ -293,13 +314,18 @@ export function resolveStageProviders(providerName?: string, pipelineConfig?: Pi
  * @throws ConsensusUnavailableError when no voter is left, before any provider
  * call, so a consensus scan never runs with nobody to vote.
  */
-function buildConsensusRig(names: ProviderName[], offline: boolean, grounding: GroundingMode): ConsensusRig {
+function buildConsensusRig(
+  names: ProviderName[],
+  offline: boolean,
+  grounding: GroundingMode,
+  sourcePolicy?: SourcePolicy | null,
+): ConsensusRig {
   // Missing key → not a participant. Not fatal: consensus still runs with
   // whatever providers ARE configured.
   const namedProviders: NamedProvider[] = participatingConsensusVoters(names)
     .map((name) => ({ name, provider: getProvider(resolveApiKey(name), name) }));
   if (namedProviders.length === 0) throw new ConsensusUnavailableError();
-  return { retriever: offline ? OFFLINE_RETRIEVER : buildRetriever(grounding), namedProviders };
+  return { retriever: offline ? OFFLINE_RETRIEVER : buildRetriever(grounding, sourcePolicy), namedProviders };
 }
 
 /** Retrieves nothing, so a fully offline run makes no web-search call. */
@@ -319,7 +345,51 @@ function parallelApiKey(): string {
  * grounding mode the fallback is Parallel's search instead, so no Google
  * search runs; with no Parallel key it rejects the same way.
  */
-function buildRetriever(grounding: GroundingMode = 'google'): Retriever {
+/** Parallel with a policy only when the caller passed one; otherwise the same constructor as before. */
+function parallelRetriever(sourcePolicy?: SourcePolicy | null): Retriever {
+  if (sourcePolicy) return new ParallelSearchRetriever(parallelApiKey(), { sourcePolicy });
+  return new ParallelSearchRetriever(parallelApiKey());
+}
+
+function openAiConfigured(): boolean {
+  try {
+    return resolveApiKey('openai').length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The warning when `opts.sourcePolicy` is set and the retriever this verify
+ * would use is not Parallel. Undefined when there is no policy, or when
+ * Parallel will run (non-consensus gemini in the parallel mode, or consensus
+ * in that mode with no OpenAI key). An all-mock consensus does not search, so
+ * it is not refused.
+ */
+export function sourcePolicyRefusalMessage(
+  names: StageNames,
+  opts: VerifierOptions,
+  pipelineConfig?: PipelineConfig,
+): string | undefined {
+  if (!opts.sourcePolicy) return undefined;
+  const grounding = opts.grounding ?? 'google';
+  if (names.consensusEnabled) {
+    const voters = pipelineConfig?.consensusProviders ?? DEFAULT_CONSENSUS_PROVIDERS;
+    if (isOfflineRun(names, voters)) return undefined;
+    if (openAiConfigured()) return SOURCE_POLICY_OPENAI_CONSENSUS_WARNING;
+    if (grounding === 'parallel') return undefined;
+    return SOURCE_POLICY_NOT_PARALLEL_WARNING;
+  }
+  if (grounding === 'parallel' && names.verificationName === 'gemini') return undefined;
+  return SOURCE_POLICY_NOT_PARALLEL_WARNING;
+}
+
+function withSourcePolicyRefusal(verifier: Verifier, names: StageNames, opts: VerifierOptions, pipelineConfig?: PipelineConfig): Verifier {
+  const sourcePolicyRefusal = sourcePolicyRefusalMessage(names, opts, pipelineConfig);
+  return sourcePolicyRefusal ? { ...verifier, sourcePolicyRefusal, refusedSourcePolicy: opts.sourcePolicy } : verifier;
+}
+
+function buildRetriever(grounding: GroundingMode = 'google', sourcePolicy?: SourcePolicy | null): Retriever {
   let openaiKey = '';
   try {
     openaiKey = resolveApiKey('openai');
@@ -327,7 +397,7 @@ function buildRetriever(grounding: GroundingMode = 'google'): Retriever {
     openaiKey = '';
   }
   if (openaiKey) return new OpenAIWebSearchRetriever(openaiKey);
-  if (grounding === 'parallel') return new ParallelSearchRetriever(parallelApiKey());
+  if (grounding === 'parallel') return parallelRetriever(sourcePolicy);
 
   let geminiKey = '';
   try {
@@ -343,12 +413,17 @@ function buildRetriever(grounding: GroundingMode = 'google'): Retriever {
  * consensusVoterRefusal), before any provider is built, so a caller that skips
  * the API's check is refused too.
  */
-function buildConsensusRigIfEnabled(names: StageNames, pipelineConfig?: PipelineConfig, grounding: GroundingMode = 'google'): ConsensusRig | null {
+function buildConsensusRigIfEnabled(
+  names: StageNames,
+  pipelineConfig?: PipelineConfig,
+  grounding: GroundingMode = 'google',
+  sourcePolicy?: SourcePolicy | null,
+): ConsensusRig | null {
   if (!names.consensusEnabled) return null;
   const voters = pipelineConfig?.consensusProviders ?? DEFAULT_CONSENSUS_PROVIDERS;
   const refusal = voterRefusalForStages(names, voters);
   if (refusal) throw new InvalidConsensusVotersError(refusal);
-  return buildConsensusRig(voters, isOfflineRun(names, voters), grounding);
+  return buildConsensusRig(voters, isOfflineRun(names, voters), grounding, sourcePolicy);
 }
 
 /**
@@ -359,9 +434,13 @@ function buildConsensusRigIfEnabled(names: StageNames, pipelineConfig?: Pipeline
  * as they are. The Parallel key is read here; with none, every claim's search
  * fails as not checked (ParallelSearchRetriever), never a Google search.
  */
-function buildGroundedRigIfEnabled(names: StageNames, grounding: GroundingMode = 'google'): GroundedRig | null {
+function buildGroundedRigIfEnabled(
+  names: StageNames,
+  grounding: GroundingMode = 'google',
+  sourcePolicy?: SourcePolicy | null,
+): GroundedRig | null {
   if (grounding !== 'parallel' || names.consensusEnabled || names.verificationName !== 'gemini') return null;
-  return { retriever: new ParallelSearchRetriever(parallelApiKey()) };
+  return { retriever: parallelRetriever(sourcePolicy) };
 }
 
 /** True when the verify stage these options resolve to runs the parallel retrieve-then-judge. */
@@ -390,12 +469,12 @@ export function resolveScanProviders(
     : getProvider(verificationApiKey, names.verificationName);
   return {
     extractionProvider,
-    verifier: {
+    verifier: withSourcePolicyRefusal({
       provider,
-      consensusRig: buildConsensusRigIfEnabled(names, pipelineConfig, opts.grounding),
-      groundedRig: buildGroundedRigIfEnabled(names, opts.grounding),
+      consensusRig: buildConsensusRigIfEnabled(names, pipelineConfig, opts.grounding, opts.sourcePolicy),
+      groundedRig: buildGroundedRigIfEnabled(names, opts.grounding, opts.sourcePolicy),
       providerName: names.verificationName,
-    },
+    }, names, opts, pipelineConfig),
   };
 }
 
@@ -421,12 +500,12 @@ export function resolveExtractionProvider(
 export function resolveVerifier(providerName?: string, pipelineConfig?: PipelineConfig, opts: VerifierOptions = {}): Verifier {
   const names = resolveStageNames(providerName, pipelineConfig);
   const provider = getProvider(resolveApiKey(names.verificationName), names.verificationName);
-  return {
+  return withSourcePolicyRefusal({
     provider,
-    consensusRig: buildConsensusRigIfEnabled(names, pipelineConfig, opts.grounding),
-    groundedRig: buildGroundedRigIfEnabled(names, opts.grounding),
+    consensusRig: buildConsensusRigIfEnabled(names, pipelineConfig, opts.grounding, opts.sourcePolicy),
+    groundedRig: buildGroundedRigIfEnabled(names, opts.grounding, opts.sourcePolicy),
     providerName: names.verificationName,
-  };
+  }, names, opts, pipelineConfig);
 }
 
 /** Options for one verify-stage run. */
@@ -563,7 +642,8 @@ function notCheckedResult(claim: Claim, explanation: string, reason: Verificatio
  * checked with the classified reason; nothing else is searched instead. A
  * judge that throws makes it not checked too. Provenance is bound here:
  * provider and model of the judge, `retriever` the retriever's name (never
- * gemini-grounding), `retrieverModel` its mode label, and both timestamps.
+ * gemini-grounding), `retrieverModel` its mode label, `sourcePolicy` when the
+ * retriever carried one, and both timestamps.
  * The judge may retry once on its rate-limit fallback model
  * (`rateLimitFallback`, Gemini only); the verdict then names that model and
  * carries `judgeFallback: true`.
@@ -579,6 +659,20 @@ export async function retrieveThenVerify(
     sources = await retriever.retrieve(claim.text);
   } catch (err) {
     const failure = RetrievalError.fromError(err);
+    if (isSourcePolicyMiss(failure)) {
+      const now = new Date().toISOString();
+      const retrieverModel = (retriever as { model?: unknown }).model;
+      const sourcePolicy = provenanceSourcePolicy(retriever as { sourcePolicy?: SourcePolicy | null });
+      return sourcePolicyNoMatchResult(claim.id, {
+        provider: providerName,
+        model: provider.modelId,
+        verifiedAt: now,
+        retriever: retriever.name,
+        retrievedAt: now,
+        ...(typeof retrieverModel === 'string' && retrieverModel.length > 0 ? { retrieverModel } : {}),
+        ...(sourcePolicy ? { sourcePolicy } : {}),
+      });
+    }
     return notCheckedResult(claim, failure.message, failure.reason);
   }
   const retrievedAt = new Date().toISOString();
@@ -600,6 +694,7 @@ export async function retrieveThenVerify(
   if (judged.apiError === true) return { ...judged, claimId: claim.id, provenance: undefined };
   const own = judged.provenance;
   const retrieverModel = (retriever as { model?: unknown }).model;
+  const sourcePolicy = provenanceSourcePolicy(retriever as { sourcePolicy?: SourcePolicy | null });
   return {
     ...judged,
     claimId: claim.id,
@@ -615,6 +710,7 @@ export async function retrieveThenVerify(
       ...(typeof retrieverModel === 'string' && retrieverModel.length > 0 ? { retrieverModel } : {}),
       // A verdict from the judge's rate-limit fallback model keeps saying so (`model` names it).
       ...(own?.judgeFallback === true ? { judgeFallback: true as const } : {}),
+      ...(sourcePolicy ? { sourcePolicy } : {}),
     },
   };
 }
@@ -649,6 +745,16 @@ async function verifyOneClaimByMode(
   flagExhaustedRetries: boolean,
   doi: DoiCheckOptions | null,
 ): Promise<VerificationResult> {
+  if (verifier.sourcePolicyRefusal) {
+    const now = new Date().toISOString();
+    const sourcePolicy = provenanceSourcePolicy({ sourcePolicy: verifier.refusedSourcePolicy });
+    return sourcePolicyNotAppliedResult(claim.id, verifier.sourcePolicyRefusal, {
+      provider: verifier.providerName,
+      model: verifier.provider.modelId,
+      verifiedAt: now,
+      ...(sourcePolicy ? { sourcePolicy } : {}),
+    });
+  }
   if (doi && claim.citation?.doi) {
     // Privacy rule: the DOI lookup sends only the normalized DOI, in the URL path (evidence/doi.ts).
     const settled = await checkCitationDoi(claim, doi);
@@ -676,6 +782,20 @@ async function verifyOneClaimByMode(
 }
 
 /**
+ * Log which fixed refusal applied. The argument is only compared to the two
+ * known sentences; the log line is a literal, so a policy value is never written out.
+ */
+function logSourcePolicyRefusal(warning: string | undefined): void {
+  if (warning === SOURCE_POLICY_OPENAI_CONSENSUS_WARNING) {
+    console.error('[faultline] A source policy is set, but consensus would use OpenAI web search, which a source policy does not cover, so no claim was checked. The open web was not searched.');
+    return;
+  }
+  if (warning === SOURCE_POLICY_NOT_PARALLEL_WARNING) {
+    console.error('[faultline] A source policy is set, but this scan is not using Parallel search, so no claim was checked. The open web was not searched.');
+  }
+}
+
+/**
  * Verify `claims` in order with `options.concurrency` workers (default
  * VERIFY_CONCURRENCY). Every claim is
  * attempted unless `signal` aborts, in which case the rest are reported in
@@ -686,6 +806,7 @@ export async function runVerification(
   verifier: Verifier,
   options: RunVerificationOptions = {},
 ): Promise<VerificationRun> {
+  logSourcePolicyRefusal(verifier.sourcePolicyRefusal);
   const { onProgress, onClaimVerified, signal, flagExhaustedRetries = true } = options;
   const concurrency = resolveVerifyConcurrency(options.concurrency ?? VERIFY_CONCURRENCY);
   const doi = resolveDoiCheck(options.doi);

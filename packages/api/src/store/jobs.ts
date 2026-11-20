@@ -187,7 +187,7 @@ class JobScheduler {
       // Each run is metered against the creator's key; over its cap the run fails unscanned.
       const meterKeyId = owner !== null && owner !== 'public' ? owner.keyId : undefined;
       const result = await meteredScan(meterKeyId, ENGINE_VERIFY_CAP, randomUUID(), job.provider,
-        () => scanWithSpend({ text: job.text, provider: job.provider, keyId: ownerKeyId }, () => scanInRequestMode(job.text, job.provider)));
+        () => scanWithSpend({ text: job.text, provider: job.provider, keyId: ownerKeyId }, () => scanInRequestMode(job.text, job.provider, undefined, ownerKeyId)));
       const nextRunAt = new Date(Date.now() + job.intervalMs).toISOString();
       getJobStore().update(job.id, {
         lastRunAt: now,

@@ -1,6 +1,7 @@
 // Validates: GoPMO 1.18.11.7.127 (judge model A/B pre-registration section 4: shared sources,
 // later arms make no Parallel call; the cache is off in production).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,6 +13,7 @@ import {
   retrievalCacheFromEnv,
 } from '../providers/parallel_search_cache';
 import { ParallelSearchRetriever } from '../providers/parallel_search_retriever';
+import { parseSourcePolicy } from '../cli/source-policy';
 
 const PAYLOAD = { search_id: 's1', results: [{ url: 'https://example.org/a', title: 'A', excerpts: ['alpha'] }] };
 
@@ -58,6 +60,16 @@ describe('parallelRetrieverFromEnv', () => {
 });
 
 describe('CachedParallelSearchRetriever', () => {
+  it('with no policy the cache file is the mode and the claim text, as before', () => {
+    const claim = 'The Eiffel Tower is in Paris.';
+    const writer = new CachedParallelSearchRetriever('k', { dir, mode: 'write' });
+    const expected = createHash('sha256').update(`advanced\n${claim}`).digest('hex');
+    expect(writer.cacheFile(claim)).toBe(join(dir, `${expected}.json`));
+    const policy = parseSourcePolicy('healthcare-authority');
+    const restricted = new CachedParallelSearchRetriever('k', { dir, mode: 'write' }, { sourcePolicy: policy });
+    expect(restricted.cacheFile(claim)).not.toBe(writer.cacheFile(claim));
+  });
+
   it('write mode: searches once per claim, stores the reply 0600, and reuses it with no second call', async () => {
     const writer = new CachedParallelSearchRetriever('k', { dir, mode: 'write' });
     const first = await writer.retrieve('The Eiffel Tower is in Paris.');

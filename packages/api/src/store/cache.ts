@@ -20,11 +20,33 @@ const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
  * The verify cap is part of the key: a result verified under one plan's cap
  * must never be served to a plan with a different cap. The cap is normalised
  * the way the engine normalises it, so 8 and an invalid value share an entry.
+ * A source policy is part of the key only when one is set. With none, the
+ * hash input is the same string as before.
  */
-function cacheKey(caller: string, text: string, provider: string, verifyCap: number): string {
+function cacheKey(caller: string, text: string, provider: string, verifyCap: number, sourcePolicy?: string): string {
+  const base = `${caller}\0${text}\0${provider}\0cap=${resolveVerifyCap(verifyCap)}`;
   return createHash('sha256')
-    .update(`${caller}\0${text}\0${provider}\0cap=${resolveVerifyCap(verifyCap)}`)
+    .update(sourcePolicy ? `${base}\0policy=${sourcePolicy}` : base)
     .digest('hex');
+}
+
+/**
+ * True when a verdict was produced under a source policy. Such a result is
+ * stored only under that policy's cache key, never under the no-policy key.
+ * A consensus verdict (`provenance.provider` of `consensus`) is included:
+ * that name is not treated as Gemini grounding, so it can otherwise be cached.
+ */
+function resultCarriesSourcePolicy(result: ScanResult): boolean {
+  const verifications = (result as { verifications?: Record<string, unknown> }).verifications;
+  if (!verifications || typeof verifications !== 'object') return false;
+  for (const verdict of Object.values(verifications)) {
+    if (!verdict || typeof verdict !== 'object') continue;
+    const reason = (verdict as { apiErrorReason?: unknown }).apiErrorReason;
+    if (reason === 'source_policy_no_match' || reason === 'source_policy_not_applied') return true;
+    const policy = (verdict as { provenance?: { sourcePolicy?: unknown } }).provenance?.sourcePolicy;
+    if (policy && typeof policy === 'object') return true;
+  }
+  return false;
 }
 
 /**
@@ -110,9 +132,12 @@ class ScanCache {
     this.ttlMs = ttlMs;
   }
 
-  /** `verifyCap` defaults to the engine default, the cap a scan() without options runs at. */
-  get(caller: string, text: string, provider: string, verifyCap: number = DEFAULT_VERIFY_CAP): CacheHit | null {
-    const key = cacheKey(caller, text, provider, verifyCap);
+  /**
+   * `verifyCap` defaults to the engine default, the cap a scan() without options runs at.
+   * `sourcePolicy` is the canonical policy material. Omit it when the caller has no policy.
+   */
+  get(caller: string, text: string, provider: string, verifyCap: number = DEFAULT_VERIFY_CAP, sourcePolicy?: string): CacheHit | null {
+    const key = cacheKey(caller, text, provider, verifyCap, sourcePolicy);
     const entry = this.store.get(key);
     if (!entry) { this._misses++; return null; }
     if (Date.now() > entry.expiresAt) {
@@ -125,8 +150,11 @@ class ScanCache {
     return { result: abstainScanWithoutSource(entry.result), checkedAt: new Date(entry.cachedAt).toISOString() };
   }
 
-  /** Store a result for `caller`. Returns false when the result may not be cached. */
-  set(caller: string, text: string, provider: string, result: ScanResult, verifyCap: number = DEFAULT_VERIFY_CAP): boolean {
+  /**
+   * Store a result for `caller`. Returns false when the result may not be cached.
+   * A result that carries a source policy is stored only when `sourcePolicy` is passed.
+   */
+  set(caller: string, text: string, provider: string, result: ScanResult, verifyCap: number = DEFAULT_VERIFY_CAP, sourcePolicy?: string): boolean {
     // Never cache a scan whose verification did not run (provider quota/auth/5xx).
     // A cached error report is a served defect that survives the key/config fix —
     // it re-serves the raw failure for the full TTL. Origin: 2026-07-13 prod
@@ -135,7 +163,8 @@ class ScanCache {
     if (hasUncheckedClaim(result)) return false;
     assertValidScanResult(result);
     if (holdsGroundedResults(result)) return false;
-    const key = cacheKey(caller, text, provider, verifyCap);
+    if (resultCarriesSourcePolicy(result) && !sourcePolicy) return false;
+    const key = cacheKey(caller, text, provider, verifyCap, sourcePolicy);
     const now = Date.now();
     this.store.set(key, { result, cachedAt: now, expiresAt: now + this.ttlMs });
     return true;

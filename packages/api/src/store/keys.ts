@@ -4,6 +4,7 @@ import {
   readFileSync, renameSync, statSync, unlinkSync, writeSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { isStorableSourcePolicy, type StoredSourcePolicy } from '@nxtg/faultline/cli/source-policy.js';
 
 export type Permission = 'scan' | 'report' | 'upload' | 'admin' | 'pro';
 
@@ -93,6 +94,11 @@ export interface ApiKey {
   metered?: boolean;
   /** Scopes this key holds (see KEY_SCOPES). */
   scopes?: KeyScope[];
+  /**
+   * Allowlist for this key's Parallel searches (cli/source-policy.ts). Absent
+   * means this key is unrestricted. Not read from the request body of a scan.
+   */
+  sourcePolicy?: StoredSourcePolicy;
 }
 
 /** What `create()` returns: the new entry plus its plaintext `key`, shown once. */
@@ -137,7 +143,8 @@ function isStorableRecord(k: Record<string, unknown>): boolean {
     && optional(k.claimCap, (v) => typeof v === 'number' && Number.isFinite(v))
     && optional(k.stripeCustomerId, isString)
     && optional(k.metered, (v) => typeof v === 'boolean')
-    && optional(k.scopes, (v) => Array.isArray(v) && v.every((s) => (KEY_SCOPES as readonly unknown[]).includes(s)));
+    && optional(k.scopes, (v) => Array.isArray(v) && v.every((s) => (KEY_SCOPES as readonly unknown[]).includes(s)))
+    && optional(k.sourcePolicy, isStorableSourcePolicy);
 }
 
 /** A key field the keystore cannot store (an unknown permission, an unparsable date). Nothing was changed. */
@@ -190,7 +197,7 @@ function parseKeystoreFile(raw: string): StoredKey[] {
 const STORED_FIELDS = [
   'id', 'keyHash', 'previousKeyHash', 'keyPrefix', 'name', 'permissions', 'createdAt', 'disabled',
   'previousKeyExpiresAt', 'lastRotatedAt', 'lastUsedAt', 'expiresAt', 'claimCap', 'stripeCustomerId',
-  'metered', 'scopes',
+  'metered', 'scopes', 'sourcePolicy',
 ] as const;
 
 /** Billing fields set at issuance or with PATCH /keys/:id. */
@@ -199,6 +206,8 @@ export interface KeyBillingFields {
   stripeCustomerId?: string;
   metered?: boolean;
   scopes?: KeyScope[];
+  /** Operator-set Parallel allowlist. Not a billing field. */
+  sourcePolicy?: StoredSourcePolicy;
 }
 
 export interface KeyUsageStat {
@@ -492,6 +501,7 @@ export class KeyStore {
       ...(billing.stripeCustomerId !== undefined ? { stripeCustomerId: billing.stripeCustomerId } : {}),
       ...(billing.metered !== undefined ? { metered: billing.metered } : {}),
       ...(billing.scopes !== undefined ? { scopes: billing.scopes } : {}),
+      ...(billing.sourcePolicy !== undefined ? { sourcePolicy: billing.sourcePolicy } : {}),
     };
     const hashes = { keyHash: hashApiKey(key) };
     const stored = storableCopy(entry, hashes);
@@ -676,6 +686,7 @@ export class KeyStore {
     stripeCustomerId?: string | null;
     metered?: boolean;
     scopes?: KeyScope[];
+    sourcePolicy?: StoredSourcePolicy | null;
   }): ApiKey | null {
     const current = this.keys.find((k) => k.id === id);
     if (!current) return null;
@@ -698,6 +709,8 @@ export class KeyStore {
     else if (patch.stripeCustomerId !== undefined) entry.stripeCustomerId = patch.stripeCustomerId;
     if (patch.metered !== undefined) entry.metered = patch.metered;
     if (patch.scopes !== undefined) entry.scopes = patch.scopes;
+    if (patch.sourcePolicy === null) delete entry.sourcePolicy;
+    else if (patch.sourcePolicy !== undefined) entry.sourcePolicy = patch.sourcePolicy;
     const stored = storableCopy(entry, this.hashes.get(id));
     // Commit onto the live object: other holders keep their reference.
     for (const f of Object.keys(current) as (keyof ApiKey)[]) delete current[f];

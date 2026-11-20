@@ -28,10 +28,19 @@ function atLeast(band: OverallRisk, floor: OverallRisk): OverallRisk {
  * address it, GoPMO 1.18.11.7.19) adds no risk: it is left out of every count
  * above, the total included, so the band is the band of the other claims.
  *
+ * A source-policy miss (`source_policy_no_match`) and a source-policy refusal
+ * (`source_policy_not_applied`) are the same: the claim was not checked, so it
+ * is left out of every count. The scan reports those on `sourcePolicyCounts`
+ * (and `degraded` for a refusal). They do not raise this band.
+ *
  * A scan with no verdicts reads low, as before.
  */
+function isSourcePolicyUnchecked(v: VerificationResult): boolean {
+  return v.apiErrorReason === 'source_policy_no_match' || v.apiErrorReason === 'source_policy_not_applied';
+}
+
 export function calculateRisk(verifications: Record<string, VerificationResult>): OverallRisk {
-  const values = Object.values(verifications).filter((v) => !isNotCheckable(v));
+  const values = Object.values(verifications).filter((v) => !isNotCheckable(v) && !isSourcePolicyUnchecked(v));
   const total = values.length;
   const contradicted = values.filter((v) => v.status === 'contradicted').length;
   const mixed = values.filter((v) => v.status === 'mixed').length;

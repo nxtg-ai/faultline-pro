@@ -176,6 +176,15 @@ export type ApiErrorReason =
   | 'rate_limited' | 'provider_out_of_credits' | 'provider_unavailable' | 'timeout' | 'provider_error' | 'provider_unparseable' | 'output_truncated';
 
 /**
+ * A source-policy outcome that is not a provider outage. Recorded on
+ * `apiErrorReason` with `apiError: false`. `source_policy_no_match` is the
+ * allowlist miss (PR #146 displays it as "no allowed source found").
+ * `source_policy_not_applied` means a policy was set but this scan would not
+ * have searched with Parallel, so nothing was checked.
+ */
+export type SourcePolicyVerdictReason = 'source_policy_no_match' | 'source_policy_not_applied';
+
+/**
  * Who produced a verdict and when, bound at the provider call itself (Honor
  * System point #2, GoPMO 1.18.11.3 P1a). Absent on a verdict whose check never
  * ran (`apiError`).
@@ -212,6 +221,22 @@ export interface VerdictProvenance {
    * names the fallback model. Absent on every other verdict (GoPMO 1.18.11.7.127).
    */
   judgeFallback?: true;
+  /**
+   * The Parallel source policy this verdict was judged under, when one was
+   * configured (cli/source-policy.ts). `includeDomains` is the allowlist that
+   * was sent. `profile` is `healthcare-authority` when that profile supplied
+   * the allowlist. `excludeDomains` and `afterDate` are present only when they
+   * were sent. Present on a verdict judged under the policy and on an allowlist
+   * miss (`apiErrorReason: 'source_policy_no_match'`). Also present when a
+   * policy was set but could not be applied (`source_policy_not_applied`).
+   * Absent when no policy was set.
+   */
+  sourcePolicy?: {
+    profile?: 'healthcare-authority';
+    includeDomains: string[];
+    excludeDomains?: string[];
+    afterDate?: string;
+  };
 }
 
 export interface VerificationResult {
@@ -229,14 +254,17 @@ export interface VerificationResult {
    */
   apiError?: boolean;
   /**
-   * Why a claim got no verdict: set only together with `apiError: true`, by the
-   * engine's retry ladder after its final attempt. A full scan reports it per
-   * unserved claim so a refund can say what was lost (emma-soul refund ruling,
-   * GoPMO 1.18.11.3.12). A provider also sets it on a reply it could not use
-   * ('provider_unparseable', 'output_truncated'). Absent on a real verdict; on a
-   * consensus result only when every failed vote carried the same reply reason.
+   * Why a claim got no verdict. Set together with `apiError: true` by the
+   * engine's retry ladder after its final attempt. A full scan reports that
+   * case per unserved claim so a refund can say what was lost (emma-soul refund
+   * ruling, GoPMO 1.18.11.3.12). A provider also sets it on a reply it could not
+   * use ('provider_unparseable', 'output_truncated'). A source-policy outcome
+   * (`source_policy_no_match`, `source_policy_not_applied`) is the exception:
+   * it is set with `apiError: false`, so it is not an outage, a refund, or a
+   * degraded scan. Absent on a real verdict; on a consensus result only when
+   * every failed vote carried the same reply reason.
    */
-  apiErrorReason?: ApiErrorReason;
+  apiErrorReason?: ApiErrorReason | SourcePolicyVerdictReason;
   /**
    * True when the provider's reply carried no readable verdict (not JSON, or no
    * status from the prompt's list). Since 2026-10-16 such a claim is unchecked:

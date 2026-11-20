@@ -1,4 +1,4 @@
-import { groundingOption } from '../lib/grounding.js';
+import { groundingOption, sourcePolicyOption } from '../lib/grounding.js';
 import { API_DOI_CHECK, apiEvidenceOptions, apiIndependentEvidenceOptions } from '../lib/evidence.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { extractForFullScan, verifyFullScan, type FullScanResult } from '@nxtg/faultline/cli/scan.js';
@@ -227,6 +227,7 @@ async function runFullScanJob(store: FullScanJobStore, job: FullScanJob): Promis
     independentEvidence: apiIndependentEvidenceOptions(),
     // Read when the job runs: the mode is passed to the engine, never set in process.env.
     ...groundingOption(),
+    ...sourcePolicyOption(job.keyId),
     onClaim: (_claim, verdict, index) => store.recordVerdict(job, index, verdict),
   }));
   // A DOI-settled verdict made no model or search call (N-237): it is left out of

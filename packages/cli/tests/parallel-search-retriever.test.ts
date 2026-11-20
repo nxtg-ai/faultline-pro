@@ -5,9 +5,11 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
-  ParallelSearchRetriever, parseParallelResults, keywordQueries, parseParallelMode, parallelSearchModel,
+  ParallelSearchRetriever, parseParallelResults, keywordQueries, searchObjective, parseParallelMode, parallelSearchModel,
   PARALLEL_SEARCH_URL, PARALLEL_SEARCH_CEILING,
 } from '../providers/parallel_search_retriever';
+import { HEALTHCARE_AUTHORITY_DOMAINS, parseSourcePolicy } from '../cli/source-policy';
+import { SOURCE_POLICY_INVALID_EXPLANATION, SOURCE_POLICY_MISS_EXPLANATION } from '../providers/retrieval-error';
 import { isRetrievalError, type RetrievalError } from '../providers/retrieval-error';
 import { captureUsage } from '../lib/usage-sink';
 
@@ -35,16 +37,21 @@ async function failure(p: Promise<unknown>): Promise<RetrievalError> {
 }
 
 let savedMode: string | undefined;
+let savedPolicy: string | undefined;
 beforeEach(() => {
   mockFetch.mockReset();
   vi.stubGlobal('fetch', mockFetch);
   savedMode = process.env.FAULTLINE_PARALLEL_MODE;
+  savedPolicy = process.env.FAULTLINE_SOURCE_POLICY;
   delete process.env.FAULTLINE_PARALLEL_MODE;
+  delete process.env.FAULTLINE_SOURCE_POLICY;
 });
 afterEach(() => {
   vi.unstubAllGlobals();
   if (savedMode === undefined) delete process.env.FAULTLINE_PARALLEL_MODE;
   else process.env.FAULTLINE_PARALLEL_MODE = savedMode;
+  if (savedPolicy === undefined) delete process.env.FAULTLINE_SOURCE_POLICY;
+  else process.env.FAULTLINE_SOURCE_POLICY = savedPolicy;
 });
 
 describe('the request', () => {
@@ -67,6 +74,27 @@ describe('the request', () => {
       advanced_settings: { max_results: 8, excerpt_settings: { max_chars_per_result: 1500 } },
     });
     expect(body.objective).toMatch(/confirms it, and evidence that refutes/);
+    // No policy: the serialized body is the historical one, byte for byte.
+    const historical = JSON.stringify({
+      objective: searchObjective(CLAIM),
+      search_queries: ['Eiffel Tower completed 1889'],
+      mode: 'advanced',
+      max_chars_total: 12000,
+      advanced_settings: { max_results: 8, excerpt_settings: { max_chars_per_result: 1500 } },
+    });
+    expect(String(init.body)).toBe(historical);
+    expect(historical).not.toContain('source_policy');
+    expect(historical).not.toContain('fetch_policy');
+    expect(historical).not.toContain('include_domains');
+  });
+
+  it('ignores FAULTLINE_SOURCE_POLICY: the retriever sends a policy only when one is passed in', async () => {
+    process.env.FAULTLINE_SOURCE_POLICY = 'healthcare-authority';
+    mockFetch.mockResolvedValueOnce(json(RESULTS));
+    await new ParallelSearchRetriever('k').retrieve(CLAIM);
+    const body = JSON.parse(String(mockFetch.mock.calls[0][1].body));
+    expect(body.advanced_settings).toEqual({ max_results: 8, excerpt_settings: { max_chars_per_result: 1500 } });
+    expect(new ParallelSearchRetriever('k').sourcePolicy).toBeNull();
   });
 
   it('takes the mode from FAULTLINE_PARALLEL_MODE, an option over it, and an unknown value as advanced', async () => {
@@ -230,6 +258,89 @@ describe('retrieveWithStatus: how the search ended, never a throw', () => {
       mockFetch.mockResolvedValueOnce(json(body));
       expect(await r.retrieveWithStatus(CLAIM)).toEqual({ status: 'parse_error', sources: [], detail: 'unexpected shape' });
     }
+  });
+});
+
+describe('source policy', () => {
+  const policy = parseSourcePolicy('healthcare-authority');
+  const onList = {
+    search_id: 's',
+    results: [
+      { url: 'https://www.cms.gov/medicare/fees', title: 'Fees', publish_date: '2024-06-01', excerpts: ['The fee schedule.'] },
+      { url: 'https://www.nytimes.com/health', title: 'News', publish_date: '2024-06-01', excerpts: ['A report.'] },
+      { url: 'https://pubmed.ncbi.nlm.nih.gov/1', title: 'PubMed', publish_date: '2024-06-01', excerpts: ['A trial.'] },
+    ],
+  };
+
+  it('sends source_policy after the existing advanced_settings fields and drops pages outside the allowlist', async () => {
+    expect(policy && !policy.invalid).toBe(true);
+    mockFetch.mockResolvedValueOnce(json(onList));
+    const retriever = new ParallelSearchRetriever('k', { sourcePolicy: policy });
+    const sources = await retriever.retrieve(CLAIM);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const sent = String(mockFetch.mock.calls[0][1].body);
+    const plain = JSON.stringify(new ParallelSearchRetriever('k').requestBody(CLAIM));
+    // source_policy is the last key of advanced_settings, so it sits before the two closing braces.
+    expect(sent.startsWith(`${plain.slice(0, -2)},"source_policy":`)).toBe(true);
+    expect(sent.endsWith('}}')).toBe(true);
+    const body = JSON.parse(sent);
+    expect(body.advanced_settings.source_policy).toEqual({ include_domains: [...HEALTHCARE_AUTHORITY_DOMAINS] });
+    expect(body.advanced_settings.fetch_policy).toBeUndefined();
+    expect(sources.map((s) => s.uri)).toEqual([
+      'https://www.cms.gov/medicare/fees',
+      'https://pubmed.ncbi.nlm.nih.gov/1',
+    ]);
+  });
+
+  it('an allowlist miss is unverified at the retriever and does not search again', async () => {
+    mockFetch.mockImplementation(async () => json({ search_id: 's', results: [{ url: 'https://news.example/a', title: 'N', excerpts: ['x'] }] }));
+    const retriever = new ParallelSearchRetriever('k', { sourcePolicy: policy });
+    const err = await failure(retriever.retrieve(CLAIM));
+    expect(err.reason).toBe('provider_error');
+    expect(err.message).toBe(SOURCE_POLICY_MISS_EXPLANATION);
+    expect(err.message).not.toContain(CLAIM);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const sent = JSON.parse(String(mockFetch.mock.calls[0][1].body));
+    expect(sent.advanced_settings.source_policy.include_domains).toEqual([...HEALTHCARE_AUTHORITY_DOMAINS]);
+    expect(await retriever.retrieveWithStatus(CLAIM)).toEqual({ status: 'zero', sources: [] });
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    const again = JSON.parse(String(mockFetch.mock.calls[1][1].body));
+    expect(again.advanced_settings.source_policy.include_domains).toEqual([...HEALTHCARE_AUTHORITY_DOMAINS]);
+  });
+
+  it('an unusable policy searches nothing', async () => {
+    const retriever = new ParallelSearchRetriever('k', { sourcePolicy: { includeDomains: [], excludeDomains: [], invalid: true } });
+    const err = await failure(retriever.retrieve(CLAIM));
+    expect(err.message).toBe(SOURCE_POLICY_INVALID_EXPLANATION);
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(await retriever.retrieveWithStatus(CLAIM)).toEqual({ status: 'provider_error', sources: [], detail: 'invalid source policy' });
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('exclude and after_date are sent and applied, and an undated page does not pass an after-date', async () => {
+    const custom = parseSourcePolicy({
+      include_domains: ['cms.gov', 'fda.gov'],
+      exclude_domains: ['cms.gov/archive'],
+      after_date: '2024-01-01',
+    });
+    mockFetch.mockResolvedValueOnce(json({
+      search_id: 's',
+      results: [
+        { url: 'https://www.cms.gov/medicare', title: 'Now', publish_date: '2024-01-01', excerpts: ['current'] },
+        { url: 'https://www.cms.gov/archive/old', title: 'Old path', publish_date: '2024-06-01', excerpts: ['archived'] },
+        { url: 'https://www.fda.gov/drugs', title: 'Old date', publish_date: '2023-12-31', excerpts: ['stale'] },
+        { url: 'https://www.fda.gov/food', title: 'Undated', publish_date: null, excerpts: ['no date'] },
+      ],
+    }));
+    const sources = await new ParallelSearchRetriever('k', { sourcePolicy: custom }).retrieve(CLAIM);
+    const body = JSON.parse(String(mockFetch.mock.calls[0][1].body));
+    expect(body.advanced_settings.source_policy).toEqual({
+      include_domains: ['cms.gov', 'fda.gov'],
+      exclude_domains: ['cms.gov/archive'],
+      after_date: '2024-01-01',
+    });
+    expect(sources.map((s) => s.uri)).toEqual(['https://www.cms.gov/medicare']);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });
 

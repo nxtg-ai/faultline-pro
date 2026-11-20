@@ -10,7 +10,8 @@ import type {
 import type { LLMProvider, Retriever } from '../providers/base_provider.js';
 import { sanitizeVerifyError } from '../services/verify-error.js';
 import { classifyApiError } from '../providers/extraction-error.js';
-import { RetrievalError } from '../providers/retrieval-error.js';
+import { isSourcePolicyMiss, RetrievalError } from '../providers/retrieval-error.js';
+import { provenanceSourcePolicy, sourcePolicyNoMatchResult, type SourcePolicy } from '../cli/source-policy.js';
 
 /**
  * Grounded multi-model consensus engine — "ground every claim by construction".
@@ -84,7 +85,7 @@ async function runProviderVote(
       // Propagate a provider that self-reported a non-run (e.g. grounded gemini
       // caught its own 429 and returned apiError) so fusion can flag it.
       apiError: result.apiError,
-      ...(result.apiError && result.apiErrorReason ? { apiErrorReason: result.apiErrorReason } : {}),
+      ...(result.apiError && isProviderFailureReason(result.apiErrorReason) ? { apiErrorReason: result.apiErrorReason } : {}),
     };
   } catch (err) {
     // Provider's grounded verify threw (quota/auth/5xx). Sanitize — never leak
@@ -107,6 +108,11 @@ async function runProviderVote(
  * Failure reasons a fused result carries when every failed vote shares one: the
  * two reply reasons, and an empty provider account, which no re-run can fix.
  */
+function isProviderFailureReason(reason: VerificationResult['apiErrorReason']): reason is ApiErrorReason {
+  return reason === 'rate_limited' || reason === 'provider_out_of_credits' || reason === 'provider_unavailable'
+    || reason === 'timeout' || reason === 'provider_error' || reason === 'provider_unparseable' || reason === 'output_truncated';
+}
+
 const SHARED_REASONS: ReadonlySet<ApiErrorReason> = new Set<ApiErrorReason>([
   'provider_unparseable',
   'output_truncated',
@@ -279,6 +285,21 @@ export async function consensusVerify(
     sources = await retriever.retrieve(claim.text);
   } catch (err) {
     const failure = RetrievalError.fromError(err);
+    if (isSourcePolicyMiss(failure)) {
+      const now = new Date().toISOString();
+      const retrieverModel = (retriever as { model?: unknown }).model;
+      const sourcePolicy = provenanceSourcePolicy(retriever as { sourcePolicy?: SourcePolicy | null });
+      const model = typeof retrieverModel === 'string' && retrieverModel.length > 0 ? retrieverModel : retriever.name;
+      return sourcePolicyNoMatchResult(claim.id, {
+        provider: 'consensus',
+        model,
+        verifiedAt: now,
+        retriever: retriever.name,
+        retrievedAt: now,
+        ...(typeof retrieverModel === 'string' && retrieverModel.length > 0 ? { retrieverModel } : {}),
+        ...(sourcePolicy ? { sourcePolicy } : {}),
+      });
+    }
     return { ...noVoteResult(claim, failure.message), apiError: true, apiErrorReason: failure.reason };
   }
   const retrievedAt = new Date().toISOString();
@@ -301,6 +322,7 @@ export async function consensusVerify(
   // there is no producer to name, so there is no provenance.
   const voters = providers.filter((p, i) => isRealVerdict(votes[i]));
   if (voters.length === 0) return fused;
+  const sourcePolicy = provenanceSourcePolicy(retriever as { sourcePolicy?: SourcePolicy | null });
   return {
     ...fused,
     provenance: {
@@ -309,6 +331,7 @@ export async function consensusVerify(
       verifiedAt: new Date().toISOString(),
       retriever: retriever.name,
       retrievedAt,
+      ...(sourcePolicy ? { sourcePolicy } : {}),
     },
   };
 }

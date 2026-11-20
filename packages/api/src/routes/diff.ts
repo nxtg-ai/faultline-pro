@@ -79,8 +79,8 @@ export async function diffRoutes(fastify: FastifyInstance): Promise<void> {
 
       const keyId = request.keyId ?? 'unknown';
       const [scanBefore, scanAfter] = await Promise.all([
-        scanWithSpend({ text: before, provider: effectiveProvider, keyId }, () => scanInRequestMode(before, effectiveProvider)),
-        scanWithSpend({ text: after, provider: effectiveProvider, keyId }, () => scanInRequestMode(after, effectiveProvider)),
+        scanWithSpend({ text: before, provider: effectiveProvider, keyId }, () => scanInRequestMode(before, effectiveProvider, undefined, keyId)),
+        scanWithSpend({ text: after, provider: effectiveProvider, keyId }, () => scanInRequestMode(after, effectiveProvider, undefined, keyId)),
       ]) as unknown as [ScanResult, ScanResult];
       // Both scans' verdicts reach the caller (claims and changed verdicts).
       commitClaims(request, randomUUID(), scanBefore, effectiveProvider);

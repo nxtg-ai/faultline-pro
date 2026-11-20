@@ -1,7 +1,9 @@
 import type { Source } from '../types';
 import type { RetrievalOutcome, StatusRetriever } from './base_provider';
+import type { SourcePolicy } from '../cli/source-policy';
+import { isActiveSourcePolicy, sourceSatisfiesPolicy, wireSourcePolicy } from '../cli/source-policy';
 import { recordUsage } from '../lib/usage-sink';
-import { RetrievalError } from './retrieval-error';
+import { RetrievalError, SOURCE_POLICY_INVALID_EXPLANATION, SOURCE_POLICY_MISS_EXPLANATION } from './retrieval-error';
 import { outOfCreditsTag, readErrorBody } from './out-of-credits';
 import { CALL_CEILINGS } from './call-ceilings';
 
@@ -20,8 +22,13 @@ import { CALL_CEILINGS } from './call-ceilings';
  *               excerpt_settings: { max_chars_per_result } } }
  *   response  { search_id, results: [{ url, title, publish_date, excerpts: [string] }], warnings, usage }
  * The request schema refuses unlisted fields, so nothing else is sent.
- * advanced_settings.source_policy and fetch_policy are left unset: no domain
- * is preferred or excluded, and Parallel's default page cache applies.
+ * With no source policy, advanced_settings.source_policy and fetch_policy are
+ * left unset: no domain is preferred or excluded, and Parallel's default page
+ * cache applies. The body is then the same bytes as before a policy existed.
+ * A policy (cli/source-policy.ts), passed in by the caller and never read from
+ * the environment here, adds advanced_settings.source_policy only. A result
+ * outside that policy is dropped. If none remain, the claim is not checked
+ * and this retriever does not search again without the policy.
  *
  * Mode: FAULTLINE_PARALLEL_MODE, default `advanced` (Parallel's own default and
  * its highest-quality mode, about 3 s). Priced per request in the API's rate
@@ -127,15 +134,26 @@ export class ParallelSearchRetriever implements StatusRetriever {
   readonly mode: ParallelSearchMode;
   /** The mode label recorded in provenance and usage. */
   readonly model: string;
+  /**
+   * The allowlist this retriever sends, when the caller passed a usable one.
+   * Null when no policy was passed. Provenance copies it. This is not read
+   * from the environment: an API process with FAULTLINE_SOURCE_POLICY set
+   * does not restrict every key.
+   */
+  readonly sourcePolicy: SourcePolicy | null;
   private readonly apiKey: string;
   private readonly timeoutMs: number;
+  /** A policy was passed but cannot be sent. retrieve() searches nothing. */
+  private readonly policyUnusable: boolean;
 
   /** `opts.mode` overrides FAULTLINE_PARALLEL_MODE; an unknown value is the default. */
-  constructor(apiKey: string, opts: { mode?: string; timeoutMs?: number } = {}) {
+  constructor(apiKey: string, opts: { mode?: string; timeoutMs?: number; sourcePolicy?: SourcePolicy | null } = {}) {
     this.apiKey = apiKey;
     this.mode = parseParallelMode(opts.mode ?? process.env.FAULTLINE_PARALLEL_MODE);
     this.model = parallelSearchModel(this.mode);
     this.timeoutMs = opts.timeoutMs ?? PARALLEL_SEARCH_TIMEOUT_MS;
+    this.policyUnusable = !!opts.sourcePolicy && !isActiveSourcePolicy(opts.sourcePolicy);
+    this.sourcePolicy = isActiveSourcePolicy(opts.sourcePolicy) ? opts.sourcePolicy : null;
   }
 
   /**
@@ -146,10 +164,17 @@ export class ParallelSearchRetriever implements StatusRetriever {
    */
   async retrieve(claimText: string): Promise<Source[]> {
     if (!this.apiKey) throw new RetrievalError('provider_error', new Error('no Parallel API key for the source search'));
+    if (this.policyUnusable) {
+      throw new RetrievalError('provider_error', new Error('invalid source policy'), SOURCE_POLICY_INVALID_EXPLANATION);
+    }
     try {
       const payload = await this.callAPI(claimText);
-      const sources = parseParallelResults(payload);
-      if (sources.length === 0) throw new RetrievalError('provider_error', new Error('Parallel search returned no usable result'));
+      const sources = this.sourcesFrom(payload);
+      if (sources.length === 0) {
+        throw this.sourcePolicy
+          ? new RetrievalError('provider_error', new Error('no source on the source-policy allowlist'), SOURCE_POLICY_MISS_EXPLANATION)
+          : new RetrievalError('provider_error', new Error('Parallel search returned no usable result'));
+      }
       return sources;
     } catch (err) {
       const failure = RetrievalError.fromError(err);
@@ -170,6 +195,7 @@ export class ParallelSearchRetriever implements StatusRetriever {
    */
   async retrieveWithStatus(claimText: string): Promise<RetrievalOutcome> {
     if (!this.apiKey) return { status: 'provider_error', sources: [], detail: 'missing api key' };
+    if (this.policyUnusable) return { status: 'provider_error', sources: [], detail: 'invalid source policy' };
     let payload: unknown;
     try {
       payload = await this.callAPI(claimText);
@@ -186,21 +212,35 @@ export class ParallelSearchRetriever implements StatusRetriever {
     if (!((payload as ParallelPayload).results as unknown[]).every(isWellFormedResult)) {
       return { status: 'parse_error', sources: [], detail: 'unexpected shape' };
     }
-    const sources = parseParallelResults(payload as ParallelPayload);
+    const sources = this.sourcesFrom(payload as ParallelPayload);
     return sources.length > 0 ? { status: 'hits', sources } : { status: 'zero', sources: [] };
+  }
+
+  /**
+   * Pages the judge may see. With no policy this is parseParallelResults as
+   * before. With a policy, a page outside it is dropped and not replaced.
+   */
+  private sourcesFrom(payload: ParallelPayload): Source[] {
+    const sources = parseParallelResults(payload);
+    if (!this.sourcePolicy) return sources;
+    const policy = this.sourcePolicy;
+    return sources.filter((source) => sourceSatisfiesPolicy(source.uri, source.publishDate, policy));
   }
 
   /** The request body for one claim. Exported shape for tests; only fields the reference lists. */
   requestBody(claimText: string): Record<string, unknown> {
+    const advancedSettings: Record<string, unknown> = {
+      max_results: PARALLEL_SEARCH_CEILING.maxResults,
+      excerpt_settings: { max_chars_per_result: PARALLEL_SEARCH_CEILING.maxCharsPerResult },
+    };
+    // Appended only when a policy is set, so the no-policy object keeps today's key order.
+    if (this.sourcePolicy) advancedSettings.source_policy = wireSourcePolicy(this.sourcePolicy);
     return {
       objective: searchObjective(claimText),
       search_queries: keywordQueries(claimText),
       mode: this.mode,
       max_chars_total: PARALLEL_SEARCH_CEILING.maxCharsTotal,
-      advanced_settings: {
-        max_results: PARALLEL_SEARCH_CEILING.maxResults,
-        excerpt_settings: { max_chars_per_result: PARALLEL_SEARCH_CEILING.maxCharsPerResult },
-      },
+      advanced_settings: advancedSettings,
     };
   }
 

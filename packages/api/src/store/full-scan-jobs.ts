@@ -296,7 +296,14 @@ export function jobIdCreatedAt(jobId: string, now: number = Date.now()): number 
 const isTerminal = (status: FullScanJobStatus): status is TerminalStatus =>
   status === 'done' || status === 'stopped' || status === 'failed';
 
-const reasonOf = (verdict: VerificationResult): UnservedReason => verdict.apiErrorReason ?? 'provider_error';
+const reasonOf = (verdict: VerificationResult): UnservedReason => {
+  const reason = verdict.apiErrorReason;
+  if (
+    reason === 'rate_limited' || reason === 'provider_out_of_credits' || reason === 'provider_unavailable'
+    || reason === 'timeout' || reason === 'provider_error' || reason === 'provider_unparseable' || reason === 'output_truncated'
+  ) return reason;
+  return 'provider_error';
+};
 
 /**
  * A failed job served nothing (no result reached the caller), so every fact claim

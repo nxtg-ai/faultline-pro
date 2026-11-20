@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import type { SourcePolicy } from '../cli/source-policy';
+import { wireSourcePolicy } from '../cli/source-policy';
 import { ParallelSearchRetriever, isWellFormedResult, parseParallelResults } from './parallel_search_retriever';
 
 /**
@@ -78,15 +80,22 @@ function readCached(file: string): ParallelReply | null {
 export class CachedParallelSearchRetriever extends ParallelSearchRetriever {
   readonly cache: RetrievalCacheConfig;
 
-  constructor(apiKey: string, cache: RetrievalCacheConfig, opts: { mode?: string; timeoutMs?: number } = {}) {
+  constructor(apiKey: string, cache: RetrievalCacheConfig, opts: { mode?: string; timeoutMs?: number; sourcePolicy?: SourcePolicy | null } = {}) {
     super(apiKey, opts);
     this.cache = cache;
     mkdirSync(cache.dir, { recursive: true, mode: 0o700 });
   }
 
-  /** The cache file for one claim in this search mode. */
+  /**
+   * The cache file for one claim in this search mode. With no source policy the
+   * hash input is `${mode}\n${claimText}`, as before. A policy is part of the
+   * input, so a restricted reply is never reused as an open-web reply.
+   */
   cacheFile(claimText: string): string {
-    const key = createHash('sha256').update(`${this.mode}\n${claimText}`).digest('hex');
+    const prefix = this.sourcePolicy
+      ? `${this.mode}\n${JSON.stringify(wireSourcePolicy(this.sourcePolicy))}\n`
+      : `${this.mode}\n`;
+    const key = createHash('sha256').update(`${prefix}${claimText}`).digest('hex');
     return path.join(this.cache.dir, `${key}.json`);
   }
 
@@ -127,7 +136,7 @@ export class CachedParallelSearchRetriever extends ParallelSearchRetriever {
 /** A Parallel retriever for this process: the cached one when the environment turns it on. */
 export function parallelRetrieverFromEnv(
   apiKey: string,
-  opts: { mode?: string; timeoutMs?: number } = {},
+  opts: { mode?: string; timeoutMs?: number; sourcePolicy?: SourcePolicy | null } = {},
   env: NodeJS.ProcessEnv = process.env,
 ): ParallelSearchRetriever {
   const cache = retrievalCacheFromEnv(env);

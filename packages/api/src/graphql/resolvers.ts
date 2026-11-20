@@ -82,7 +82,7 @@ export const resolvers = {
       requireAdmin(ctx);
       requireProviderBudget(ctx);
       const provider = providerForPlan(args.provider ?? 'mock', ctx.mayChooseProvider === true) as Provider;
-      const result = await scanWithSpend({ text: args.text, provider, keyId: ctx.keyId }, () => scanInRequestMode(args.text, provider));
+      const result = await scanWithSpend({ text: args.text, provider, keyId: ctx.keyId }, () => scanInRequestMode(args.text, provider, undefined, ctx.keyId));
       const stored = getScanStore().record(ctx.keyId, args.text, result as unknown as Record<string, unknown>);
       return toScanResult(stored.id, result as unknown as Record<string, unknown>, stored.scannedAt);
     },
@@ -152,7 +152,7 @@ export const resolvers = {
       const texts = args.texts.slice(0, 20);
       const results = await Promise.all(
         texts.map(async (text) => {
-          const result = await scanWithSpend({ text, provider, keyId: ctx.keyId }, () => scanInRequestMode(text, provider));
+          const result = await scanWithSpend({ text, provider, keyId: ctx.keyId }, () => scanInRequestMode(text, provider, undefined, ctx.keyId));
           const stored = getScanStore().record(ctx.keyId, text, result as unknown as Record<string, unknown>);
           return toScanResult(stored.id, result as unknown as Record<string, unknown>, stored.scannedAt);
         }),

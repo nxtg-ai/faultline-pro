@@ -164,6 +164,33 @@ describe('--fail-on gate — fail closed on degraded verification', () => {
     expect(JSON.parse(output).degraded).toBe(true); // degradation is still surfaced in the output
   });
 
+  it('single-file: a source policy that was not applied fails CLOSED without calling it a provider error', async () => {
+    process.env.FAULTLINE_SOURCE_POLICY = 'healthcare-authority';
+    mockExtractClaims.mockResolvedValue(makeClaims(2));
+    mockVerifyClaim.mockImplementation(healthyVerify);
+    const f = join(tmpDir, 'draft.txt');
+    writeFileSync(f, 'Acme reported record revenue in Q3. The merger closed last year.');
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    try {
+      const { exitCode, output } = await main([
+        'scan', '--input', f, '--provider', 'mock', '--fail-on', 'high', '--history-dir', tmpDir,
+      ]);
+      expect(exitCode).toBe(1);
+      const parsed = JSON.parse(output);
+      expect(parsed.degraded).toBe(true);
+      expect(parsed.overallRisk).toBe('low');
+      expect(parsed.sourcePolicyCounts.notApplied).toBeGreaterThan(0);
+      expect(parsed.sourcePolicyCounts.noMatch).toBe(0);
+      const diagnostic = stderrSpy.mock.calls.map((c) => String(c[0])).find((s) => s.includes('gate FAILED'));
+      expect(diagnostic).toContain('source policy');
+      expect(diagnostic).not.toContain('transient');
+      expect(mockVerifyClaim).not.toHaveBeenCalled();
+    } finally {
+      delete process.env.FAULTLINE_SOURCE_POLICY;
+    }
+  });
+
   it('single-file: a healthy scan below threshold still PASSES the gate (exit 0)', async () => {
     mockExtractClaims.mockResolvedValue(makeClaims(2));
     mockVerifyClaim.mockImplementation(healthyVerify); // real verdicts, no apiError

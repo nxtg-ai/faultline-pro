@@ -51,6 +51,19 @@ describe('billingSummary', () => {
     });
   });
 
+  it('a source-policy outcome is its own unbilled reason, and it is not billed', () => {
+    const miss = {
+      status: 'unverified', explanation: 'none', sources: [], apiError: false, apiErrorReason: 'source_policy_no_match',
+      provenance: { ...RETRIEVED, retriever: 'parallel-search', sourcePolicy: { profile: 'healthcare-authority', includeDomains: ['cms.gov'] } },
+    };
+    const blocked = { status: 'unverified', explanation: 'blocked', sources: [], apiError: false, apiErrorReason: 'source_policy_not_applied' };
+    expect(isBillableVerdict(miss)).toBe(false);
+    expect(billingSummary({ m: miss, b: blocked }).unbilled).toEqual([
+      { claimId: 'm', reason: 'source_policy_no_match' },
+      { claimId: 'b', reason: 'source_policy_not_applied' },
+    ]);
+  });
+
   it('a provider error wins over every other reason, and noSourceAbstain over the status', () => {
     const both = { status: 'unverified', sources: [], apiError: true, apiErrorReason: 'output_truncated', noSourceAbstain: true };
     expect(billingSummary({ x: both }).unbilled).toEqual([{ claimId: 'x', reason: 'output_truncated' }]);

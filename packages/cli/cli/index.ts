@@ -174,13 +174,19 @@ function degradedGateFailure(
   if (degraded.length === 0) return null;
   const unchecked = degraded.flatMap((r) => Object.values(r.verifications ?? {}).filter((v) => v.apiError === true));
   const outOfCredits = unchecked.length > 0 && unchecked.every((v) => v.apiErrorReason === 'provider_out_of_credits');
+  const policyNotApplied = unchecked.length === 0 && degraded.some((r) =>
+    Object.values(r.verifications ?? {}).some((v) => v.apiErrorReason === 'source_policy_not_applied'),
+  );
   process.stderr.write(outOfCredits
     ? '✗ Faultline gate FAILED: verification was degraded — the verification provider account is out of ' +
       'credits, so claims were not checked and the result cannot be trusted. Re-running will not help until ' +
       'the provider account has credits again. (--fail-on fails closed on degraded scans.)\n'
-    : '✗ Faultline gate FAILED: verification was degraded — transient provider errors ' +
-      'left claims unverified, so the result cannot be trusted. Re-run when the provider ' +
-      'is healthy. (--fail-on fails closed on degraded scans.)\n',
+    : policyNotApplied
+      ? '✗ Faultline gate FAILED: verification was degraded — a source policy is set, but this scan did not apply it, ' +
+        'so claims were not checked. The open web was not searched. (--fail-on fails closed on degraded scans.)\n'
+      : '✗ Faultline gate FAILED: verification was degraded — transient provider errors ' +
+        'left claims unverified, so the result cannot be trusted. Re-run when the provider ' +
+        'is healthy. (--fail-on fails closed on degraded scans.)\n',
   );
   return { exitCode: 1, output };
 }

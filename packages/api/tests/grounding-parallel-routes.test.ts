@@ -64,7 +64,8 @@ import { resetProviderSpendLedger } from '../src/store/provider-spend.js';
 import { resetGroundingAllowanceLedger, uninstallGroundingCounter } from '../src/store/grounding-allowance.js';
 import { resetRateLimiter } from '../src/store/ratelimit.js';
 import { resetCircuitBreaker } from '../src/store/circuit-breaker.js';
-import { requestGrounding, groundingOption } from '../src/lib/grounding.js';
+import { requestGrounding, groundingOption, sourcePolicyOption } from '../src/lib/grounding.js';
+import { assertSourcePolicy, storedSourcePolicy, HEALTHCARE_AUTHORITY_DOMAINS, SOURCE_POLICY_NOT_PARALLEL_WARNING } from '@nxtg/faultline/cli/source-policy.js';
 import { resetFullScanJobStore } from '../src/store/full-scan-jobs.js';
 
 const SERVER_KEY = 'grounding-parallel-server-key-0123456789';
@@ -78,8 +79,13 @@ const ENV_KEYS = [
 let saved: Record<string, string | undefined>;
 let dir: string;
 
-/** What Parallel answers: 'ok' (two results with excerpts), or an HTTP status to fail with. */
+/** What Parallel answers: 'ok' (the results below), or an HTTP status to fail with. */
 let parallelReply: 'ok' | number = 'ok';
+const DEFAULT_PARALLEL_RESULTS = [
+  { url: 'https://history.example/eiffel', title: 'Eiffel history', publish_date: '2020-01-02', excerpts: ['Completed in March 1889.', 'Opened for the World Fair.'] },
+  { url: 'https://geo.example/everest', title: 'Everest', publish_date: null, excerpts: ['8,849 m above sea level.'] },
+];
+let parallelResults = DEFAULT_PARALLEL_RESULTS;
 const parallelBodies: Array<Record<string, any>> = [];
 const parallelHeaders: Array<Record<string, string>> = [];
 
@@ -91,10 +97,7 @@ const fetchStub = vi.fn(async (input: string | URL | Request, init?: RequestInit
   if (parallelReply !== 'ok') return new Response('{"error":"failure"}', { status: parallelReply, statusText: 'Failure' });
   return new Response(JSON.stringify({
     search_id: 'search_1',
-    results: [
-      { url: 'https://history.example/eiffel', title: 'Eiffel history', publish_date: '2020-01-02', excerpts: ['Completed in March 1889.', 'Opened for the World Fair.'] },
-      { url: 'https://geo.example/everest', title: 'Everest', publish_date: null, excerpts: ['8,849 m above sea level.'] },
-    ],
+    results: parallelResults,
     usage: [{ name: 'sku_search', count: 1 }],
   }), { status: 200, headers: { 'content-type': 'application/json' } });
 });
@@ -119,6 +122,7 @@ beforeEach(() => {
   parallelBodies.length = 0;
   parallelHeaders.length = 0;
   parallelReply = 'ok';
+  parallelResults = DEFAULT_PARALLEL_RESULTS;
   fetchStub.mockClear();
   vi.stubGlobal('fetch', fetchStub);
   vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -246,6 +250,66 @@ describe('FAULTLINE_GROUNDING=parallel: Parallel then Gemini, no googleSearch, o
       expect(body.search_queries[0]).toBe('Eiffel Tower completed 1889');
       expect(body.advanced_settings).toEqual({ max_results: 8, excerpt_settings: { max_chars_per_result: 1500 } });
       expect(parallelHeaders[0]['x-api-key']).toBe('test-parallel');
+    });
+  }, 30_000);
+
+  it('a key with healthcare-authority sends that allowlist, records it, and does not keep an off-list page', async () => {
+    parallelResults = [
+      { url: 'https://www.cms.gov/medicare/fees', title: 'CMS fees', publish_date: '2024-05-01', excerpts: ['The fee schedule.'] },
+      { url: 'https://news.example/story', title: 'News', publish_date: '2024-05-01', excerpts: ['A newspaper.'] },
+    ];
+    await withServer(async (server) => {
+      expect(sourcePolicyOption(undefined)).toEqual({});
+      const plain = getKeyStore().create('plain', ['scan']);
+      expect(sourcePolicyOption(plain.id)).toEqual({});
+      const payer = getKeyStore().create('payer', ['scan'], undefined, {
+        sourcePolicy: storedSourcePolicy(assertSourcePolicy('healthcare-authority')),
+      });
+      expect(sourcePolicyOption(payer.id).sourcePolicy?.profile).toBe('healthcare-authority');
+      const res = await postScan(server, payer.key);
+      expect(res.statusCode).toBe(200);
+      expect(parallelBodies.length).toBeGreaterThan(0);
+      for (const body of parallelBodies) {
+        expect(body.advanced_settings.source_policy).toEqual({ include_domains: [...HEALTHCARE_AUTHORITY_DOMAINS] });
+        expect(body.advanced_settings.fetch_policy).toBeUndefined();
+      }
+      const verifications = Object.values(res.json().verifications as Record<string, any>);
+      expect(verifications.length).toBeGreaterThan(0);
+      for (const v of verifications) {
+        expect(v.apiError).not.toBe(true);
+        expect(v.provenance.sourcePolicy.profile).toBe('healthcare-authority');
+        expect(v.provenance.sourcePolicy.includeDomains).toEqual([...HEALTHCARE_AUTHORITY_DOMAINS]);
+        expect(v.sources.map((s: { uri: string }) => s.uri)).toEqual(['https://www.cms.gov/medicare/fees']);
+      }
+      expect(googleSearchCalls()).toBe(0);
+    });
+  }, 30_000);
+
+  it('an allowlist miss is source_policy_no_match, not a provider outage, and keeps the policy', async () => {
+    parallelResults = [
+      { url: 'https://news.example/story', title: 'News', publish_date: '2024-05-01', excerpts: ['A newspaper.'] },
+    ];
+    await withServer(async (server) => {
+      const payer = getKeyStore().create('payer-miss', ['scan'], undefined, {
+        sourcePolicy: storedSourcePolicy(assertSourcePolicy('healthcare-authority')),
+      });
+      const res = await postScan(server, payer.key);
+      expect(res.statusCode).toBe(200);
+      expect(res.json().degraded).toBe(false);
+      expect(res.json().overallRisk).toBe('low');
+      expect(res.json().warnings).toBeUndefined();
+      expect(res.json().sourcePolicyCounts.noMatch).toBeGreaterThan(0);
+      expect(res.json().sourcePolicyCounts.notApplied).toBe(0);
+      const verifications = Object.values(res.json().verifications as Record<string, any>);
+      expect(verifications.length).toBeGreaterThan(0);
+      for (const v of verifications) {
+        expect(v).toMatchObject({ status: 'unverified', apiError: false, apiErrorReason: 'source_policy_no_match', sources: [] });
+        expect(v.provenance.sourcePolicy.profile).toBe('healthcare-authority');
+        expect(v.provenance.retriever).toBe('parallel-search');
+      }
+      expect(parallelBodies.length).toBe(verifications.length);
+      expect(googleSearchCalls()).toBe(0);
+      expect(sdk.prompts.filter((p) => p.includes('Retrieved sources'))).toHaveLength(0);
     });
   }, 30_000);
 
@@ -450,6 +514,80 @@ describe('FAULTLINE_GROUNDING=parallel: Parallel then Gemini, no googleSearch, o
 });
 
 describe('FAULTLINE_GROUNDING unset: Google grounding everywhere, as before', () => {
+  it('a key with a source policy is not searched on Google', async () => {
+    await withServer(async (server) => {
+      const payer = getKeyStore().create('payer-google', ['scan'], undefined, {
+        sourcePolicy: storedSourcePolicy(assertSourcePolicy('healthcare-authority')),
+      });
+      const res = await postScan(server, payer.key);
+      expect(res.statusCode).toBe(200);
+      expect(res.json().degraded).toBe(true);
+      expect(res.json().overallRisk).toBe('low');
+      expect(res.json().warnings).toEqual([SOURCE_POLICY_NOT_PARALLEL_WARNING]);
+      const refused = Object.keys(res.json().verifications as Record<string, unknown>).length;
+      expect(res.json().sourcePolicyCounts).toEqual({ notApplied: refused, noMatch: 0 });
+      const verifications = Object.values(res.json().verifications as Record<string, any>);
+      expect(verifications.length).toBeGreaterThan(0);
+      for (const v of verifications) {
+        expect(v).toMatchObject({ status: 'unverified', apiError: false, apiErrorReason: 'source_policy_not_applied', sources: [] });
+        expect(v.provenance.sourcePolicy.profile).toBe('healthcare-authority');
+        expect(v.provenance.retriever).toBeUndefined();
+      }
+      expect(googleSearchCalls()).toBe(0);
+      expect(parallelBodies).toHaveLength(0);
+      expect(console.error).toHaveBeenCalledWith(`[faultline] ${SOURCE_POLICY_NOT_PARALLEL_WARNING}`);
+    });
+  }, 30_000);
+
+  it('warnings reach POST /scan, POST /scan/stream and a full-scan result when the policy cannot be applied', async () => {
+    await withServer(async (server) => {
+      const payer = getKeyStore().create('payer-warnings', ['scan'], undefined, {
+        sourcePolicy: storedSourcePolicy(assertSourcePolicy('healthcare-authority')),
+      });
+      const headers = { 'x-api-key': payer.key, 'content-type': 'application/json' };
+
+      const scanRes = await postScan(server, payer.key);
+      expect(scanRes.statusCode).toBe(200);
+      expect(scanRes.json().warnings).toEqual([SOURCE_POLICY_NOT_PARALLEL_WARNING]);
+
+      const stream = await server.inject({
+        method: 'POST',
+        url: '/scan/stream',
+        headers,
+        payload: { text: TEXT, provider: 'gemini' },
+      });
+      expect(stream.statusCode).toBe(200);
+      const events = stream.body.split('\n\n').filter((c) => c.startsWith('data: ')).map((c) => JSON.parse(c.slice(6)));
+      const complete = events.find((e) => e.type === 'complete');
+      expect(complete.warnings).toEqual([SOURCE_POLICY_NOT_PARALLEL_WARNING]);
+      expect(complete.degraded).toBe(true);
+      expect(complete.sourcePolicyCounts.notApplied).toBeGreaterThan(0);
+
+      const est = await server.inject({ method: 'POST', url: '/scan/full/estimate', headers, payload: { text: TEXT, provider: 'gemini' } });
+      expect(est.statusCode).toBe(200);
+      const started = await server.inject({
+        method: 'POST',
+        url: '/scan/full',
+        headers: { ...headers, 'idempotency-key': 'idem-policy-warnings' },
+        payload: { estimateId: est.json().estimateId },
+      });
+      expect(started.statusCode).toBe(202);
+      const jobId = started.json().jobId as string;
+      const deadline = Date.now() + 10_000;
+      let job: Record<string, any> = {};
+      while (job.status !== 'done') {
+        if (Date.now() > deadline) throw new Error('job did not finish');
+        job = (await server.inject({ method: 'GET', url: `/scan/full/${jobId}`, headers: { 'x-api-key': payer.key } })).json();
+        if (job.status !== 'done') await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      expect(job.result.warnings).toEqual([SOURCE_POLICY_NOT_PARALLEL_WARNING]);
+      expect(job.result.degraded).toBe(true);
+      expect(job.result.sourcePolicyCounts.notApplied).toBeGreaterThan(0);
+      expect(googleSearchCalls()).toBe(0);
+      expect(parallelBodies).toHaveLength(0);
+    });
+  }, 30_000);
+
   it.each([['a customer key', 'customer'], ['the server key', 'server']] as const)('%s POST /scan uses googleSearch and never calls Parallel', async (_label, who) => {
     await withServer(async (server, key) => {
       const res = await postScan(server, who === 'server' ? SERVER_KEY : key);

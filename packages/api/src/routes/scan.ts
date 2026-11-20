@@ -1,7 +1,7 @@
 import { entitledProvider } from '../plugins/provider-entitlement.js';
 import { randomUUID } from 'node:crypto';
 import { API_DOI_CHECK, apiEvidenceOptions, apiIndependentEvidenceOptions } from '../lib/evidence.js';
-import { groundingOption } from '../lib/grounding.js';
+import { groundingOption, sourcePolicyCacheMaterial, sourcePolicyOption } from '../lib/grounding.js';
 import { assertValidScanResult, isInvalidVerdictError } from '@nxtg/faultline/lib/verdict-guard.js';
 import type { FastifyInstance } from 'fastify';
 import { requireApiKey, resolveRequestTenantId } from '../plugins/auth.js';
@@ -118,7 +118,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
       // Server-side only: the cap comes from the entitled plan, never the body
       // (ScanOptions is not PipelineConfig, so no body field reaches it).
       const verifyPolicy = resolveVerifyPolicy(keyId, request.headers['x-user-tier']);
-      const scanOptions = { verifyCap: verifyPolicy.cap, evidence: apiEvidenceOptions(), doi: API_DOI_CHECK, independentEvidence: apiIndependentEvidenceOptions(), ...groundingOption() };
+      const scanOptions = { verifyCap: verifyPolicy.cap, evidence: apiEvidenceOptions(), doi: API_DOI_CHECK, independentEvidence: apiIndependentEvidenceOptions(), ...groundingOption(), ...sourcePolicyOption(keyId) };
 
       // FR-3: pipelineConfig path — bypass cache and circuit breaker, use explicit providers
       if (pipelineConfig) {
@@ -187,7 +187,8 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       const caller = cacheCaller(request);
-      const hit = caller === null ? null : getScanCache().get(caller, text, effectiveProvider, verifyPolicy.cap);
+      const policyKey = sourcePolicyCacheMaterial(keyId);
+      const hit = caller === null ? null : getScanCache().get(caller, text, effectiveProvider, verifyPolicy.cap, policyKey);
       const cached = hit?.result;
       if (hit && cached) {
         reply.header('X-Cache', 'HIT');
@@ -264,7 +265,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
           });
 
 
-          if (caller !== null) getScanCache().set(caller, text, effectiveProvider, result as unknown as Record<string, unknown>, verifyPolicy.cap);
+          if (caller !== null) getScanCache().set(caller, text, effectiveProvider, result as unknown as Record<string, unknown>, verifyPolicy.cap, policyKey);
           const scanId = `scan-${randomUUID()}`;
           getClaimIndex().ingest(
             Array.isArray(result.claims) ? (result.claims as Array<{ id: string; text: string; type?: string }>) : [],
@@ -364,7 +365,7 @@ export async function scanRoutes(fastify: FastifyInstance): Promise<void> {
       const verifyPolicy = resolveVerifyPolicy(keyId, request.headers['x-user-tier']);
       const scanned = await scanWithSpend({ text, provider: effectiveProvider, keyId }, () => scan(
         text, effectiveProvider, undefined, undefined, undefined, undefined, undefined,
-        { verifyCap: verifyPolicy.cap, evidence: apiEvidenceOptions(), doi: API_DOI_CHECK, independentEvidence: apiIndependentEvidenceOptions(), ...groundingOption() },
+        { verifyCap: verifyPolicy.cap, evidence: apiEvidenceOptions(), doi: API_DOI_CHECK, independentEvidence: apiIndependentEvidenceOptions(), ...groundingOption(), ...sourcePolicyOption(keyId) },
       ));
       const result = withVerificationTier(scanned, verifyPolicy.tier);
 

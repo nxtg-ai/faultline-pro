@@ -181,7 +181,7 @@ export async function complianceRoutes(fastify: FastifyInstance): Promise<void> 
       const { text, provider } = request.body;
 
       try {
-        const scanResult = await scanWithSpend({ text, provider, keyId: request.keyId ?? 'unknown' }, () => scanInRequestMode(text, provider));
+        const scanResult = await scanWithSpend({ text, provider, keyId: request.keyId ?? 'unknown' }, () => scanInRequestMode(text, provider, undefined, request.keyId));
         commitClaims(request, randomUUID(), scanResult, provider ?? 'gemini');
         const complianceAnalysis = store.applyTemplate(
           template,

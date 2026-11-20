@@ -63,7 +63,7 @@ async function scanWithProvider(
   let lastError: unknown;
   for (const p of chain) {
     try {
-      const result = await scanWithSpend({ text, provider: p, keyId }, () => scanInRequestMode(text, p));
+      const result = await scanWithSpend({ text, provider: p, keyId }, () => scanInRequestMode(text, p, undefined, keyId));
       cb.recordSuccess(p);
       return result;
     } catch (err) {
