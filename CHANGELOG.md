@@ -7,6 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Docs
+
+- `examples/ci-integration.yml` now uses the maintained action `nxtg-ai/faultline-action@v1` with a hosted `FAULTLINE_API_KEY` (scan and guard modes). It pinned `nxtg-ai/faultline-pro@v0.2.0`, which has no action, with inputs that action never took.
+- README status table re-checked 2026-11-20 (versions, plans and the API key price, the hosted MCP endpoint, models, the enforced provider-spend cap); the MCP section names the hosted endpoint and the `faultline-mcp` bin; the Python SDK example points at the hosted API.
+
 ### Fixed
 
 - Claim extraction no longer fails a scan on a single Google rate limit. A rate-limited extraction is retried once, then run once on `FAULTLINE_GEMINI_EXTRACTION_FALLBACK_MODEL` (default: the judge model). Each rate-limited attempt logs the quota Google names. Before this, one 429 on extraction ended the scan as `extraction_failed`.
