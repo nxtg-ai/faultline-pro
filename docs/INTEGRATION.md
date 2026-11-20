@@ -390,10 +390,8 @@ data: {"type":"claim_verified","index":1,"claim":{...},"verdict":{...}}
 
 data: {"type":"claim_verified","index":2,"claim":{...},"verdict":{...}}
 
-data: {"type":"complete","overallRisk":"medium","claimCount":3,"billing":{"billedClaims":2,"unbilledClaims":1,"unbilled":[{"claimId":"c3","reason":"unverified"}]},"complianceReport":{...},"ruleFindings":[...]}
+data: {"type":"complete","overallRisk":"medium","claimCount":3,"billing":{"billedClaims":2,"unbilledClaims":1,"unbilled":[{"claimId":"c3","reason":"unverified"}]}}
 ```
-
-The `complete` event of `GET` and `POST /scan/stream` carries `complianceReport` (the EU AI Act mapping) and `ruleFindings` (PII, shell-injection, bias and toxicity rule hits on the scanned text). Both have the same shape as the fields of the same name on the `POST /scan` result.
 
 **On error**:
 
