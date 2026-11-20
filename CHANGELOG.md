@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `GET` and `POST /scan/stream`: the `complete` event now carries `complianceReport` and `ruleFindings`, the same fields `POST /scan` returns. Before this, a streamed scan had no compliance mapping or rule findings.
+
 ## [v0.12.3] — 2026-11-19
 
 `@nxtg/faultline` 0.12.3 adds `faultline audit-report`. The `faultline-mcp` bin is unchanged: `npx -y -p @nxtg/faultline faultline-mcp`, with `FAULTLINE_API_KEY` for the hosted API.
