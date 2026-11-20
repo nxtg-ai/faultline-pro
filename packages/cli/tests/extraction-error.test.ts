@@ -37,6 +37,8 @@ const RAW_QUOTA_BLOB = '[429 Too Many Requests] {"error":{"status":"RESOURCE_EXH
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // A rate-limited extraction is retried once (GoPMO 1.18.11.1.68); no wait in tests.
+  process.env.FAULTLINE_EXTRACTION_RETRY_MS = '0';
 });
 
 describe('ExtractionError', () => {
@@ -227,8 +229,10 @@ describe('Gemini extractClaims (services/geminiService.ts)', () => {
 
   it('throws rate_limited on a 429 / RESOURCE_EXHAUSTED rejection, with the raw error only on cause', async () => {
     const raw = new Error(RAW_QUOTA_BLOB);
-    mockGenerateContent.mockRejectedValueOnce(raw);
+    // Rate-limited on the first call and on the one retry (1.18.11.1.68); no fallback model here.
+    mockGenerateContent.mockRejectedValueOnce(raw).mockRejectedValueOnce(raw);
     const err = await extractClaims('Some text here.', 'test-key').catch((e: unknown) => e);
+    expect(mockGenerateContent).toHaveBeenCalledTimes(2);
     expect(err).toBeInstanceOf(ExtractionError);
     expect((err as ExtractionError).reason).toBe('rate_limited');
     expect((err as ExtractionError).cause).toBe(raw);
@@ -273,7 +277,7 @@ describe('Gemini extractClaims (services/geminiService.ts)', () => {
   });
 
   it('the Gemini provider adapter propagates the ExtractionError', async () => {
-    mockGenerateContent.mockRejectedValueOnce(new Error('429 Too Many Requests'));
+    mockGenerateContent.mockRejectedValueOnce(new Error('429 Too Many Requests')).mockRejectedValueOnce(new Error('429 Too Many Requests'));
     await expect(createGeminiProvider('test-key').extractClaims('Some text here.'))
       .rejects.toMatchObject({ name: 'ExtractionError', reason: 'rate_limited' });
   });

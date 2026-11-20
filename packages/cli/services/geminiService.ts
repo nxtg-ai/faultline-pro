@@ -29,12 +29,69 @@ export const GEMINI_EXTRACTION_MODEL: string =
   (typeof process !== 'undefined' ? process.env?.FAULTLINE_GEMINI_EXTRACTION_MODEL?.trim() : undefined) || GEMINI_MODEL;
 
 /**
+ * The model claim extraction falls back to, once, when Google still rate-limits
+ * extraction after one retry: FAULTLINE_GEMINI_EXTRACTION_FALLBACK_MODEL, else
+ * GEMINI_MODEL (the judge model, which the 2026-11-14 extraction check measured).
+ * Null when it would be the extraction model itself; extraction then retries only.
+ * A 429 on extraction used to fail the whole scan (GoPMO 1.18.11.1.68: fw saw
+ * three signed-in Free scans fail in a three-minute Google-side 429 window).
+ */
+export const GEMINI_EXTRACTION_FALLBACK_MODEL: string | null = (() => {
+  const raw = typeof process !== 'undefined' ? process.env?.FAULTLINE_GEMINI_EXTRACTION_FALLBACK_MODEL?.trim() : undefined;
+  const model = raw || GEMINI_MODEL;
+  return model && model !== GEMINI_EXTRACTION_MODEL ? model : null;
+})();
+
+/** Wait before the one extraction retry after a rate limit (ms). FAULTLINE_EXTRACTION_RETRY_MS overrides it (tests set 0). */
+function extractionRetryDelayMs(): number {
+  const raw = typeof process !== 'undefined' ? process.env?.FAULTLINE_EXTRACTION_RETRY_MS : undefined;
+  const n = raw === undefined || raw.trim() === '' ? NaN : Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : 2000;
+}
+
+/** The quota Google names in a rate-limit error (quotaId and quotaValue only, never the key or the request). */
+export function rateLimitQuotaOf(error: unknown): string {
+  const text = String((error as { message?: unknown })?.message ?? error ?? '');
+  const id = /"quotaId"\s*:\s*"([A-Za-z0-9_-]{1,120})"/.exec(text)?.[1];
+  const value = /"quotaValue"\s*:\s*"(\d{1,12})"/.exec(text)?.[1];
+  return id ? `quotaId=${id}${value ? ` quotaValue=${value}` : ''}` : 'quota not named';
+}
+
+/**
+ * One extraction call with rate-limit handling: on a rate limit, wait and retry
+ * once on the extraction model, then run once on GEMINI_EXTRACTION_FALLBACK_MODEL.
+ * Any other error, and a rate limit with nothing left to try, is thrown. Returns
+ * the reply and the model that produced it, so usage is recorded on that model.
+ */
+async function callExtraction(
+  ai: ReturnType<typeof getClient>,
+  request: (model: string) => Parameters<ReturnType<typeof getClient>['models']['generateContent']>[0],
+): Promise<{ response: any; model: string }> {
+  const attempts: string[] = [GEMINI_EXTRACTION_MODEL, GEMINI_EXTRACTION_MODEL];
+  if (GEMINI_EXTRACTION_FALLBACK_MODEL !== null) attempts.push(GEMINI_EXTRACTION_FALLBACK_MODEL);
+  let lastError: unknown;
+  for (let i = 0; i < attempts.length; i += 1) {
+    const model = attempts[i];
+    if (i === 1) await new Promise((resolve) => setTimeout(resolve, extractionRetryDelayMs()));
+    try {
+      return { response: await ai.models.generateContent(request(model)), model };
+    } catch (error) {
+      lastError = error;
+      if (!isRateLimitError(error)) throw error;
+      console.warn(`claim extraction rate-limited on ${model} (attempt ${i + 1} of ${attempts.length}): ${rateLimitQuotaOf(error)}`);
+    }
+  }
+  throw lastError;
+}
+
+/**
  * The model a verdict judge call is retried on, once, when Google rate-limits
  * the call on GEMINI_MODEL: FAULTLINE_GEMINI_FALLBACK_MODEL. Null when unset,
  * blank or the same as GEMINI_MODEL; the judge then runs exactly as before,
  * with no second call. Only the judge falls back (verifyClaim, and
- * verifyClaimGrounded when its caller asks); extraction, retrieval and the
- * critique never do (GoPMO 1.18.11.7.127).
+ * verifyClaimGrounded when its caller asks). Extraction has its own retry and
+ * fallback (callExtraction, GEMINI_EXTRACTION_FALLBACK_MODEL); retrieval and the
+ * critique never fall back (GoPMO 1.18.11.7.127, 1.18.11.1.68).
  */
 export const GEMINI_FALLBACK_MODEL: string | null = (() => {
   const raw = typeof process !== 'undefined' ? process.env?.FAULTLINE_GEMINI_FALLBACK_MODEL?.trim() : undefined;
@@ -175,10 +232,11 @@ export const extractClaims = async (text: string, apiKey: string, image?: { data
   }
 
   let response: any;
+  let answeredBy = model;
   try {
     const ai = getClient(apiKey);
-    response = await ai.models.generateContent({
-      model,
+    ({ response, model: answeredBy } = await callExtraction(ai, (m) => ({
+      model: m,
       contents: { parts },
       config: {
         ...geminiCeilingConfig('extract'),
@@ -198,12 +256,12 @@ export const extractClaims = async (text: string, apiKey: string, image?: { data
           }
         }
       }
-    });
+    })));
   } catch (error) {
     throw ExtractionError.fromProviderError(error);
   }
 
-  recordGeminiUsage(response, false, 'extraction', GEMINI_EXTRACTION_MODEL);
+  recordGeminiUsage(response, false, 'extraction', answeredBy);
   // Checked before the empty-reply test: a reply cut at its ceiling is a truncated
   // extraction, never fewer claims and never "unreadable" (GoPMO 1.18.11.7.18).
   if (isGeminiTruncated(response)) throw new ExtractionError('output_truncated', new OutputTruncatedError('gemini', 'extract'));

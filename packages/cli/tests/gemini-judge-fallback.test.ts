@@ -276,11 +276,16 @@ describe('Google-grounded judge (verifyClaim): the same fallback', () => {
   });
 });
 
-describe('extraction never falls back', () => {
-  it('a rate-limited extraction fails with no second call', async () => {
+describe('extraction never uses the judge fallback model', () => {
+  // Extraction has its own retry (GoPMO 1.18.11.1.68, tests/gemini-extraction-retry.test.ts):
+  // one retry on the extraction model, then its own fallback, never FAULTLINE_GEMINI_FALLBACK_MODEL.
+  it('a rate-limited extraction on the judge model retries once there and never calls the judge fallback', async () => {
+    process.env.FAULTLINE_EXTRACTION_RETRY_MS = '0';
     sdk.byModel[PRIMARY] = rateLimited();
     const { service } = await load();
     await expect(service.extractClaims('The Eiffel Tower is in Paris.', 'test-key')).rejects.toMatchObject({ reason: 'rate_limited' });
-    expect(sdk.calls.map((c) => c.model)).toEqual([PRIMARY]);
+    expect(sdk.calls.map((c) => c.model)).toEqual([PRIMARY, PRIMARY]);
+    expect(sdk.calls.map((c) => c.model)).not.toContain(FALLBACK);
+    delete process.env.FAULTLINE_EXTRACTION_RETRY_MS;
   });
 });
