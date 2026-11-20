@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Claim extraction no longer fails a scan on a single Google rate limit. A rate-limited extraction is retried once, then run once on `FAULTLINE_GEMINI_EXTRACTION_FALLBACK_MODEL` (default: the judge model). Each rate-limited attempt logs the quota Google names. Before this, one 429 on extraction ended the scan as `extraction_failed`.
+
 ## [v0.12.3] — 2026-11-19
 
 `@nxtg/faultline` 0.12.3 adds `faultline audit-report`. The `faultline-mcp` bin is unchanged: `npx -y -p @nxtg/faultline faultline-mcp`, with `FAULTLINE_API_KEY` for the hosted API.
