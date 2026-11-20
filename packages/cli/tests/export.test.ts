@@ -185,6 +185,35 @@ describe('renderCsv', () => {
   it('ends with a trailing newline', () => {
     expect(renderCsv(ENTRIES).endsWith('\n')).toBe(true);
   });
+
+  it('writes numeric negatives and a leading quote unchanged (RFC 4180, no formula prefix)', () => {
+    const entry = makeEntry({
+      scanResult: makeScanResult({
+        claims: [
+          { id: 'n', text: '-1', type: 'fact', importance: 1 },
+          { id: 'g', text: '-5% growth', type: 'fact', importance: 1 },
+          { id: 'q', text: "'=x", type: 'fact', importance: 1 },
+          { id: 'f', text: '=HYPERLINK("https://example.test")', type: 'fact', importance: 1 },
+        ],
+        verifications: {
+          n: { claimId: 'n', status: 'contradicted', explanation: '-1', sources: [] },
+          g: { claimId: 'g', status: 'unverified', explanation: '-5% growth', sources: [] },
+          q: { claimId: 'q', status: 'supported', explanation: 'kept', sources: [] },
+          f: { claimId: 'f', status: 'contradicted', explanation: '-2+2', sources: [] },
+        },
+      }),
+    });
+    const out = renderCsv([entry]);
+    expect(out).toContain(',-1,');
+    expect(out).toContain(',-5% growth,');
+    expect(out).toContain(",'=x,");
+    expect(out).not.toContain("'-1");
+    expect(out).not.toContain("'-5% growth");
+    expect(out).not.toContain("''=x");
+    expect(out).not.toContain("'=HYPERLINK");
+    expect(out).toContain('=HYPERLINK(""https://example.test"")');
+    expect(out).toContain(',-2+2,');
+  });
 });
 
 // ── renderJson ────────────────────────────────────────────────────────────────

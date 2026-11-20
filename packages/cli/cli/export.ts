@@ -13,7 +13,6 @@
 import type { HistoryEntry } from '../history/store.js';
 import type { Claim, VerificationResult } from '../types.js';
 import { auditTrail } from './audit-trail.js';
-import { csvEscape } from './audit-labels.js';
 
 export type ExportFormat = 'csv' | 'json' | 'ndjson';
 
@@ -65,6 +64,20 @@ const CSV_HEADERS = [
   'evidence_json',
   'independent_evidence_json',
 ] as const;
+
+/**
+ * RFC 4180 only. History export does not prefix a leading quote onto `=`,
+ * `+`, `-`, `@`, tab or CR. A numeric negative such as `-1` or `-5% growth`
+ * is written unchanged. Formula neutralization belongs to the audit-label
+ * CSV (`audit-labels.ts`), not to this history file.
+ */
+function csvEscape(val: unknown): string {
+  const s = val === null || val === undefined ? '' : String(val);
+  if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
 
 function csvRow(fields: unknown[]): string {
   return fields.map(csvEscape).join(',');

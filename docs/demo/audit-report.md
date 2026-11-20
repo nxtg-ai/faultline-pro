@@ -19,8 +19,14 @@ Synthetic example data. This report was rendered from an example scan, not from 
 | Claims | 5 |
 | Unchecked after a provider error | 0 |
 | Unchecked: no allowed source found | 1 |
+| Unchecked: source policy could not be applied | 0 |
+| Citation exists (claim not verified) | 0 |
+| Unchecked: historical citation not checked | 0 |
+| Unchecked: paragraph parse uncertain | 0 |
+| Unchecked: LCD license not accepted | 0 |
 | Unchecked for another reason | 0 |
 | Scan file degraded flag | false |
+| Warnings recorded on the scan | none |
 
 Input text, as stored on the scan:
 
@@ -38,7 +44,11 @@ Claims are the scan's claims, in file order. A verification id with no claim is 
 
 A checked verdict is supported, contradicted, mixed, or unverified. Unverified means the check ran and the scan recorded no support; this report calls that unsupported.
 
-A claim is unchecked when it has no verification record, its status is skipped or loading, the record has apiError, the record has notCheckable, or the explanation begins with "Verify failed" (the engine's wording for a provider error, including files saved before apiError was set). An unchecked claim is not a verdict. A claim left unchecked because no source was inside the configured source policy is labelled "Unchecked: no allowed source found". That is not a provider error. The scan may record it as apiErrorReason "source_policy_no_match", as a provenance flag, or, when neither field is present, as apiError with an explanation that says no source was on the source-policy allowlist.
+A claim is unchecked when it has no verification record, its status is skipped or loading, the record has apiError, the record has notCheckable, or the explanation begins with "Verify failed" (the engine's wording for a provider error, including files saved before apiError was set). An unchecked claim is not a verdict.
+
+Two source-policy reasons are unchecked and are not provider errors. apiErrorReason "source_policy_no_match" is labelled "Unchecked: no allowed source found". apiErrorReason "source_policy_not_applied" is labelled "Unchecked: source policy could not be applied". When the scan file has a warnings array, those sentences are copied into the header. A missing reason is not treated as either of these.
+
+A regulation citation check that left the claim unverified is unchecked, not unsupported. citationCheck "exists", or citationCheckReason "citation_exists", is labelled "Citation exists (claim not verified)". citationCheckReason "historical_not_checked" is "Unchecked: historical citation not checked". "paragraph_parse_uncertain" is "Unchecked: paragraph parse uncertain". "lcd_license_not_accepted" is "Unchecked: LCD license not accepted". The same four codes are read from citationCheck when that is where the file stored them. A supported, contradicted or mixed status is left as that verdict.
 
 Sources, retrieval time, model and passage hash are copied from the verification. Retrieval time is provenance.retrievedAt when the scan recorded it, otherwise the time a cited page was fetched. The passage hash is the SHA-256 of the page bytes the scan fetched (evidence.contentSha256). A field the scan did not record is written as "not recorded". Nothing in those columns is inferred.
 
