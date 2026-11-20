@@ -55,6 +55,13 @@ export function getMonthlyCap(tier: Tier): MonthlyCap {
 }
 
 /**
+ * DO NOT TURN FAULTLINE_USAGE_CAP ON until (1) metered keys are exempt and (2) the
+ * monthly counter is durable (GoPMO 1.18.11.1.10, ruling 2026-11-20). Today a paid
+ * API key carries permissions ['scan'], so resolveTier gives it 'free' and a cap of
+ * 5 scans, while its plan promises up to 1,000 billed claims; and UsageMeter is in
+ * memory, so the count resets on every deploy. The published plan limits are
+ * enforced by faultline-web per user, and a metered key by its claimCap.
+ *
  * Whether the usage-cap gate is ACTIVE. Dormant by default — the gate is a no-op
  * until Asif confirms the numbers and sets FAULTLINE_USAGE_CAP=on (the go-live is
  * the irreversible pricing decision, not the mechanism). Accepts on/1/true/enabled.
