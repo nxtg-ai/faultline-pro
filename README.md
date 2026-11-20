@@ -19,18 +19,22 @@ The hosted API ships three governance records as code: a risk register export (`
 
 ---
 
-## Current Status (checked 2026-10-01)
+## Current Status (checked 2026-11-20)
 
 | Item | State | How checked |
 |---|---|---|
-| CLI on npm | `@nxtg/faultline` 0.11.1 | `npm view @nxtg/faultline version` |
-| Hosted API | `https://faultline-api.fly.dev`, version 0.11.1 | `curl https://faultline-api.fly.dev/health` |
-| Web app | https://faultline.nxtg.ai (separate repo, `faultline-web`, on Vercel) | live pricing page read 2026-10-01 |
-| Plans | Free 5 scans/month. Personal $19/mo, 100 scans. Pro $49/mo, 500 scans. Enterprise: custom, scan allowance set in the contract | https://faultline.nxtg.ai/pricing |
-| Multi-model consensus | **Enterprise only.** The API returns `403 consensus_not_in_plan` to any caller below Enterprise, before the stream opens | `packages/api/src/plugins/consensus-entitlement.ts`; live check by fp 2026-10-01 (pro, personal and free 403, enterprise 200, mock provider) |
+| Release stage | **Alpha.** Limits and features may change; no SLA | `GET /health` reports `stage: alpha` |
+| CLI on npm | `@nxtg/faultline` 0.12.3 | `npm view @nxtg/faultline version` |
+| Hosted API | `https://faultline-api.fly.dev`, version 0.12.3 | `curl https://faultline-api.fly.dev/health` |
+| Hosted MCP endpoint | `https://faultline-api.fly.dev/mcp` (streamable HTTP, header `X-API-Key`, tool `verify_claims`); listed in the official MCP Registry as `io.github.nxtg-ai/faultline`. A request without a key gets `401` | `server.json`; live `initialize` 2026-11-20 |
+| Web app | https://faultline.nxtg.ai (separate repo, `faultline-web`, on Vercel) | live pricing page read 2026-11-20 |
+| Plans | Free 5 scans/month (3 without an account). Personal $19/mo, 100 scans. Pro $49/mo, 500 scans, with an API key that includes 100 billed claims a month. Enterprise: custom, scan allowance set in the contract | https://faultline.nxtg.ai/pricing |
+| API key | $10 a month with 100 billed claims included, then $0.10 per billed claim; a key stops at 1,000 billed claims a month. A claim is billed only when it gets a verdict backed by a source | https://faultline.nxtg.ai/pricing; live claim-cap check 2026-11-20 (402 `claim_cap_reached` at the cap) |
+| Judge and extraction models | Judge `gemini-3.1-pro-preview` (rate-limit fallback `gemini-4-argon`), extraction `gemini-3.5-flash-lite` | `GET /health` `models` |
+| Multi-model consensus | **Enterprise only.** The API returns `403 consensus_not_in_plan` to any caller below Enterprise, before the stream opens | `packages/api/src/plugins/consensus-entitlement.ts`; live Enterprise consensus scan 2026-11-20: OpenAI, Gemini and Claude voted |
 | `POST /critique` | Needs an API key. Rate limited. Covered by the provider-spend cap and written to the spend ledger | `packages/api/src/routes/critique.ts` |
-| Provider-spend cap | $100/month. The ledger records every managed scan and critique. **Enforcement ships dormant** (`FAULTLINE_PROVIDER_SPEND_CAP=on` turns it on) and is off in production | `docs/provider-spend-cap.md`; `GET /usage` showed `providerBudget.enforced=false` on 2026-10-01 |
-| Per-key monthly scan cap (API side) | Dormant (`FAULTLINE_USAGE_CAP`). Plan limits above are enforced by faultline-web | `docs/usage-cap.md` |
+| Provider-spend cap | $300/month, **enforced** for free and anonymous traffic (`503` when exhausted). The ledger records every managed scan and critique | `docs/provider-spend-cap.md`; admin `GET /usage` `providerBudget` on 2026-11-20 |
+| Per-key monthly scan cap (API side) | Dormant (`FAULTLINE_USAGE_CAP`), and not to be turned on as is (see `docs/usage-cap.md`). Plan limits above are enforced by faultline-web | `docs/usage-cap.md` |
 
 ---
 
@@ -286,7 +290,7 @@ Input: AI-generated text / PDF / image
 
 ```
 packages/
-├── cli/                  # @nxtg/faultline (npm 0.11.1): CLI + scan engine
+├── cli/                  # @nxtg/faultline (npm 0.12.3): CLI + scan engine
 │   ├── cli/              # Commands: scan, guard, report, watch, critique, graph, weakest, compare…
 │   ├── providers/        # Gemini, Claude, OpenAI, Perplexity, Mock adapters
 │   ├── compliance/       # EU AI Act risk categories
@@ -300,7 +304,7 @@ packages/
 │   ├── src/store/        # KeyStore, AuditLogger, CircuitBreaker, ScanCache, provider-spend ledger…
 │   ├── src/plugins/      # Auth, rate limit, usage cap, provider-spend cap, consensus entitlement
 │   └── docs/             # openapi.yaml (partial, version 0.7.0)
-├── mcp/                  # @nxtg/faultline-mcp 0.12.3: MCP server (not on npm as of 2026-10-01)
+├── mcp/                  # MCP server; ships in @nxtg/faultline as the faultline-mcp bin
 ├── terraform-provider/   # Go Terraform provider
 └── web/                  # @nxtg/faultline-web: original React/Vite visualization app (Kaggle origin)
 sdks/
@@ -408,14 +412,19 @@ Do not run `pip install faultline-sdk`. On 2026-10-01 that name on PyPI (version
 ```python
 from faultline_sdk import FaultlineClient
 
-client = FaultlineClient(api_key="your-key", base_url="http://localhost:3010")
+client = FaultlineClient(api_key="your-key", base_url="https://faultline-api.fly.dev")  # base_url is required for the hosted API; the default is a local server
 result = client.scan("GPT-4 has 1 trillion parameters.")
 print(result.overall_risk)  # 'low' | 'medium' | 'high' | 'critical'
 ```
 
 ### MCP server
 
-`packages/mcp` (`@nxtg/faultline-mcp` 0.12.3) exposes a `verify_claims` tool to Claude Code, Cursor and other MCP clients. It was not published to npm as of 2026-10-01 (`npm view` returned 404), so run it from a checkout. See [`packages/mcp/README.md`](packages/mcp/README.md).
+`packages/mcp` exposes a `verify_claims` tool to Claude Code, Cursor and other MCP clients. Two ways to use it:
+
+- **Hosted:** connect to `https://faultline-api.fly.dev/mcp` (streamable HTTP) with your Faultline API key in the `X-API-Key` header. Nothing to install.
+- **Local:** `npx -y -p @nxtg/faultline faultline-mcp` runs the same server from the npm package; with `FAULTLINE_API_KEY` set it checks claims on the hosted API.
+
+See [`packages/mcp/README.md`](packages/mcp/README.md).
 
 Hosted, with nothing to install: the API serves the same tool at `POST /mcp` (Streamable HTTP, header `x-api-key`), once deployed at `https://faultline-api.fly.dev/mcp`; every scan gate applies. See [docs/INTEGRATION.md §13](docs/INTEGRATION.md#13-hosted-mcp).
 
