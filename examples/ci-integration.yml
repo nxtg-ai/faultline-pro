@@ -7,7 +7,9 @@
 # action runs on your own provider key instead, for example GEMINI_API_KEY.)
 #
 # Uses the maintained action, nxtg-ai/faultline-action. Each scan step checks
-# one file; repeat the step for each file you want gated.
+# one file; repeat the step for each file you want gated. Actions are pinned to
+# a full commit SHA (the version is in the comment) so a moved tag cannot change
+# what runs in your pipeline.
 
 name: Faultline claim check
 
@@ -26,12 +28,12 @@ jobs:
       security-events: write   # only needed for upload-sarif
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       # Fails the build when a claim in the file is rated high risk or worse,
       # and uploads the findings to GitHub code scanning.
       - name: Check the claims in a content file
-        uses: nxtg-ai/faultline-action@v1
+        uses: nxtg-ai/faultline-action@550d338a7f1a6acef2816ba544ccae45478ae9ce  # v1.1.4
         env:
           FAULTLINE_API_KEY: ${{ secrets.FAULTLINE_API_KEY }}
         with:
@@ -44,7 +46,7 @@ jobs:
       # never as shell input. With guard-fail-on the step fails on a refuted
       # claim and also when verification was degraded; without it, it only reports.
       - name: Check the pull request description
-        uses: nxtg-ai/faultline-action@v1
+        uses: nxtg-ai/faultline-action@550d338a7f1a6acef2816ba544ccae45478ae9ce  # v1.1.4
         env:
           FAULTLINE_API_KEY: ${{ secrets.FAULTLINE_API_KEY }}
         with:
