@@ -274,22 +274,22 @@ describe('accuracy-g0 runner: a complete run', () => {
 describe('accuracy-g0 runner: pacing (GoPMO 1.18.11.7.138)', () => {
   it('--batch-size sends smaller batches and --pause-ms waits between them, never after the last', async () => {
     const out = join(dir, 'sub.jsonl');
-    const r = await run(['--set', 'verify-subsample', '--out', out, '--batch-size', '10', '--pause-ms', '400']);
+    const r = await run(['--set', 'verify-subsample', '--out', out, '--batch-size', '20', '--pause-ms', '1500']);
     const ended = Date.now();
     expect(r.code).toBe(0);
     expect(rows(out)).toHaveLength(100);
-    // 10 batches of 10 instead of 4 of 25.
-    expect(state.verifyCalls).toBe(10);
-    expect(state.verifyAt).toHaveLength(10);
-    // A pause of at least 400 ms before each of batches 2 to 10.
-    for (let i = 1; i < state.verifyAt.length; i += 1) expect(state.verifyAt[i] - state.verifyAt[i - 1]).toBeGreaterThanOrEqual(400);
-    // No pause after the last batch: the run ends well inside one pause of the last request
-    // (the runner still scores and exits, which takes far less than 400 ms against the fake API).
-    expect(ended - state.verifyAt[9]).toBeLessThan(400);
-  });
+    // 5 batches of 20 instead of 4 of 25.
+    expect(state.verifyCalls).toBe(5);
+    expect(state.verifyAt).toHaveLength(5);
+    // A pause of at least 1,500 ms before each of batches 2 to 5.
+    for (let i = 1; i < state.verifyAt.length; i += 1) expect(state.verifyAt[i] - state.verifyAt[i - 1]).toBeGreaterThanOrEqual(1500);
+    // No pause after the last batch: the run ends inside one pause of the last request.
+    // The pause is long so that scoring and process exit under a loaded suite stay well inside it.
+    expect(ended - state.verifyAt[4]).toBeLessThan(1500);
+  }, 20_000);
 
   it('refuses a batch size outside 1 to 25 and a negative pause, before anything is sent', async () => {
-    for (const args of [['--batch-size', '0'], ['--batch-size', '26'], ['--batch-size', '2.5'], ['--pause-ms', '-1']]) {
+    for (const args of [['--batch-size', '0'], ['--batch-size', '26'], ['--batch-size', '2.5'], ['--pause-ms', '-1'], ['--pause-ms', '2147483648'], ['--pause-ms', '1.5']]) {
       const r = await run(['--set', 'verify-subsample', '--out', join(dir, `bad-${args.join('')}.jsonl`), ...args]);
       expect(r.code).not.toBe(0);
       expect(r.out).toMatch(/--batch-size must be|--pause-ms must be/);

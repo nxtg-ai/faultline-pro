@@ -189,7 +189,8 @@ export function parseArgs(argv) {
   options.batchSize = options.batchSize === undefined ? BATCH_SIZE : Number(options.batchSize);
   if (!Number.isInteger(options.batchSize) || options.batchSize < 1 || options.batchSize > BATCH_SIZE) throw new Error(`--batch-size must be a whole number from 1 to ${BATCH_SIZE}`);
   options.pauseMs = options.pauseMs === undefined ? 0 : Number(options.pauseMs);
-  if (!Number.isFinite(options.pauseMs) || options.pauseMs < 0) throw new Error('--pause-ms must be >= 0');
+  // Node clamps a timer above 2^31 - 1 ms to 1 ms, which would turn pacing off.
+  if (!Number.isInteger(options.pauseMs) || options.pauseMs < 0 || options.pauseMs > 2147483647) throw new Error('--pause-ms must be a whole number from 0 to 2147483647');
   options.retryBaseMs = Number(options.retryBaseMs);
   if (!Number.isFinite(options.retryBaseMs) || options.retryBaseMs < 0) throw new Error('--retry-base-ms must be >= 0');
   options.api = options.api.replace(/\/+$/, '');
