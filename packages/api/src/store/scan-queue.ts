@@ -13,6 +13,7 @@
  * Max concurrency: FAULTLINE_QUEUE_CONCURRENCY env var (default: 3).
  */
 
+import { withEngineCommit } from '../lib/scan-access.js';
 import { randomUUID } from 'node:crypto';
 import { abstainScanWithoutSource } from '@nxtg/faultline/lib/verdict-guard.js';
 import { scan } from '@nxtg/faultline/cli/scan.js';
@@ -182,7 +183,8 @@ class ScanQueue {
       const result = await meteredScan(item.keyId, ENGINE_VERIFY_CAP, randomUUID(), item.provider,
         () => scanWithSpend({ text: item.text, provider: item.provider, keyId: item.keyId }, () => scanInRequestMode(item.text, item.provider as Parameters<typeof scan>[1])));
       item.status = 'completed';
-      item.result = result;
+      // Stamped like every delivered scan, so the queued result names the engine commit too.
+      item.result = withEngineCommit(result);
     } catch (err) {
       item.status = 'failed';
       item.error = err instanceof Error ? err.message : String(err);

@@ -1,0 +1,7 @@
+arm-proof 2026-11-23T11:19:12Z
+engine cwd: <worktree>/packages/api
+require.resolve: <worktree>/packages/cli/providers/verdict-reply.ts
+package dir: <worktree>/packages/cli (repo <worktree>, path packages/cli)
+arm commit: 8909f0a4ee840bcfda6fff5d3bbd32d1b7bf5c2e
+files in arm tree: 257, mismatched: 0, missing: 0, untracked: 0
+RESULT: MATCH

@@ -57,6 +57,8 @@ interface FakeState {
   /** When set, the parallel arm answers every even id as not checkable (GoPMO 1.18.11.7.19). */
   notCheckableEvenOnParallel?: boolean;
   verifyCalls: number;
+  /** Date.now() when each verify batch arrived (pacing tests). */
+  verifyAt: number[];
   requests: number;
   /** x-api-key values on every request except GET /health. */
   seenKeys: Set<string>;
@@ -92,6 +94,7 @@ function freshState(): FakeState {
     model: () => 'gemini-2.5-flash',
     failFirst: new Map(),
     verifyCalls: 0,
+    verifyAt: [],
     requests: 0,
     seenKeys: new Set(),
     healthKeyHeaders: [],
@@ -130,6 +133,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   }
   if (req.method === 'POST' && req.url === '/admin/verify-claims') {
     state.verifyCalls += 1;
+    state.verifyAt.push(Date.now());
     if (state.dropVerifyOnce) { state.dropVerifyOnce = false; req.socket.destroy(); return; }
     if (state.verifyStatus !== 200) return send(res, state.verifyStatus, state.verifyBody ?? {});
     const { claims, grounding, parallelMode } = JSON.parse(await readBody(req)) as { claims: Array<{ id: string; text: string }>; grounding?: string; parallelMode?: string };
@@ -264,6 +268,33 @@ describe('accuracy-g0 runner: a complete run', () => {
     const r = await run(['--set', 'verify-subsample', '--out', out, '--engine-sha', '0707F24']);
     expect(r.code).toBe(0);
     expect(rows(out).every((row) => row.engineSha === '0707f24')).toBe(true);
+  });
+});
+
+describe('accuracy-g0 runner: pacing (GoPMO 1.18.11.7.138)', () => {
+  it('--batch-size sends smaller batches and --pause-ms waits between them, never after the last', async () => {
+    const out = join(dir, 'sub.jsonl');
+    const r = await run(['--set', 'verify-subsample', '--out', out, '--batch-size', '20', '--pause-ms', '1500']);
+    const ended = Date.now();
+    expect(r.code).toBe(0);
+    expect(rows(out)).toHaveLength(100);
+    // 5 batches of 20 instead of 4 of 25.
+    expect(state.verifyCalls).toBe(5);
+    expect(state.verifyAt).toHaveLength(5);
+    // A pause of at least 1,500 ms before each of batches 2 to 5.
+    for (let i = 1; i < state.verifyAt.length; i += 1) expect(state.verifyAt[i] - state.verifyAt[i - 1]).toBeGreaterThanOrEqual(1500);
+    // No pause after the last batch: the run ends inside one pause of the last request.
+    // The pause is long so that scoring and process exit under a loaded suite stay well inside it.
+    expect(ended - state.verifyAt[4]).toBeLessThan(1500);
+  }, 20_000);
+
+  it('refuses a batch size outside 1 to 25 and a negative pause, before anything is sent', async () => {
+    for (const args of [['--batch-size', '0'], ['--batch-size', '26'], ['--batch-size', '2.5'], ['--pause-ms', '-1'], ['--pause-ms', '2147483648'], ['--pause-ms', '1.5']]) {
+      const r = await run(['--set', 'verify-subsample', '--out', join(dir, `bad-${args.join('')}.jsonl`), ...args]);
+      expect(r.code).not.toBe(0);
+      expect(r.out).toMatch(/--batch-size must be|--pause-ms must be/);
+    }
+    expect(state.verifyCalls).toBe(0);
   });
 });
 

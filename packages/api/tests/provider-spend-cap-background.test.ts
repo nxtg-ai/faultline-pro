@@ -173,6 +173,21 @@ describe('scan queue worker', () => {
     expect(scanMock).toHaveBeenCalledTimes(1);
   });
 
+  it('a completed queued scan names the engine commit, as GET /queue/scans/:id returns it', async () => {
+    const saved = process.env.FAULTLINE_GIT_SHA;
+    process.env.FAULTLINE_GIT_SHA = 'FE1A5BC0000000000000000000000000000000AB';
+    try {
+      const item = getScanQueue().enqueue('key-1', 1, 'The sky is blue.', 'mock', 'pro');
+      await drainQueue(item);
+      const done = getScanQueue().get(item.id)!;
+      expect(done.status).toBe('completed');
+      expect((done.result as Record<string, unknown>).engineCommit).toBe('fe1a5bc0000000000000000000000000000000ab');
+    } finally {
+      if (saved === undefined) delete process.env.FAULTLINE_GIT_SHA;
+      else process.env.FAULTLINE_GIT_SHA = saved;
+    }
+  });
+
   it('with enforcement off a free item runs', async () => {
     const item = getScanQueue().enqueue('key-1', 2, 'The sky is blue.', 'mock', 'free');
     process.env.FAULTLINE_PROVIDER_SPEND_CAP_USD = '1';

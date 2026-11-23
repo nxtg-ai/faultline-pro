@@ -1,4 +1,5 @@
 import { API_DOI_CHECK, apiEvidenceOptions, apiIndependentEvidenceOptions } from '../lib/evidence.js';
+import { withEngineCommit } from '../lib/scan-access.js';
 import { groundingOption } from '../lib/grounding.js';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { requireApiKey } from '../plugins/auth.js';
@@ -209,14 +210,14 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
           emit({ type: 'start', claimCount, provider: effectiveProvider });
         }
 
-        emit({
+        emit(withEngineCommit({
           type: 'complete',
           overallRisk: result.overallRisk,
           claimCount,
           verification: withVerificationTier(result, verifyPolicy.tier).verification,
           billing: billingSummary(result.verifications, claimOrderOf(result)),
           ...(result.evidenceCoverage ? { evidenceCoverage: result.evidenceCoverage } : {}),
-        });
+        }));
 
         // Counted toward the monthly quota only when the result holds a billable verdict.
         meterScan(keyId, result.verifications);
@@ -330,14 +331,14 @@ export async function streamRoutes(fastify: FastifyInstance): Promise<void> {
           return;
         }
 
-        emit({
+        emit(withEngineCommit({
           type: 'complete',
           overallRisk: result.overallRisk,
           claimCount,
           verification: withVerificationTier(result, verifyPolicy.tier).verification,
           billing: billingSummary(result.verifications, claimOrderOf(result)),
           ...(result.evidenceCoverage ? { evidenceCoverage: result.evidenceCoverage } : {}),
-        });
+        }));
 
         // Counted toward the monthly quota only when the result holds a billable verdict.
         meterScan(keyId, result.verifications);

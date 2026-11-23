@@ -151,6 +151,7 @@ export function parseArgs(argv) {
     '--gold': 'gold', '--subsample': 'subsample', '--retry-base-ms': 'retryBaseMs', '--allowance-api': 'allowanceApi',
     '--arm': 'arm', '--sample': 'sample', '--seed': 'seed',
     '--label': 'label', '--judge-model': 'judgeModel', '--price-in': 'priceIn', '--price-out': 'priceOut', '--cap-usd': 'capUsd',
+    '--batch-size': 'batchSize', '--pause-ms': 'pauseMs',
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -183,6 +184,13 @@ export function parseArgs(argv) {
     options[key] = Number(options[key]);
     if (!Number.isFinite(options[key]) || options[key] < 0) throw new Error(`--${key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)} must be a number >= 0`);
   }
+  // Pacing (GoPMO 1.18.11.7.138): a run against the hosted engine shares its judge model's
+  // per-minute limit with customer scans, so it can send smaller batches with a pause between.
+  options.batchSize = options.batchSize === undefined ? BATCH_SIZE : Number(options.batchSize);
+  if (!Number.isInteger(options.batchSize) || options.batchSize < 1 || options.batchSize > BATCH_SIZE) throw new Error(`--batch-size must be a whole number from 1 to ${BATCH_SIZE}`);
+  options.pauseMs = options.pauseMs === undefined ? 0 : Number(options.pauseMs);
+  // Node clamps a timer above 2^31 - 1 ms to 1 ms, which would turn pacing off.
+  if (!Number.isInteger(options.pauseMs) || options.pauseMs < 0 || options.pauseMs > 2147483647) throw new Error('--pause-ms must be a whole number from 0 to 2147483647');
   options.retryBaseMs = Number(options.retryBaseMs);
   if (!Number.isFinite(options.retryBaseMs) || options.retryBaseMs < 0) throw new Error('--retry-base-ms must be >= 0');
   options.api = options.api.replace(/\/+$/, '');
@@ -666,7 +674,7 @@ async function runBatches({ request, allowance, options, pending, engine, done, 
   const ledger = ledgerPath(options.out);
   let retryRound = 0;
   while (queue.length > 0) {
-    const batch = queue.splice(0, BATCH_SIZE);
+    const batch = queue.splice(0, options.batchSize ?? BATCH_SIZE);
     guardListPrice(options, spent, done, [], total, log);
     await guardAllowance(allowance, batch.length, log);
     await guardEngine(request, engine);
@@ -722,6 +730,8 @@ async function runBatches({ request, allowance, options, pending, engine, done, 
       }
       model ??= current;
     }
+    // The pause comes before the next batch, never after the last one.
+    if ((options.pauseMs ?? 0) > 0 && (queue.length > 0 || retry.length > 0)) await sleep(options.pauseMs);
     if (retry.length > 0) {
       retryRound += 1;
       await sleep(options.retryBaseMs * 2 ** Math.min(retryRound - 1, 5));

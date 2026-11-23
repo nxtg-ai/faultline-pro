@@ -1,0 +1,8 @@
+arm X proof, written 2026-11-23T11:17:49Z while the run is in progress (run started 11:15Z)
+engine cwd: <worktree>/packages/api
+require.resolve('@nxtg/faultline/providers/verdict-reply.ts'): <worktree>/packages/cli/providers/verdict-reply.ts
+providers/verdict-reply.ts resolved=0a6959391bb8 arm(8909f0a)=0a6959391bb8 main(6b2f410)=f77eaf828749 MATCH-ARM
+services/geminiService.ts resolved=57cf9266f2d3 arm(8909f0a)=57cf9266f2d3 main(6b2f410)=73b2dcef65a8 MATCH-ARM
+cli/scan.ts resolved=d30cefeb50e0 arm(8909f0a)=d30cefeb50e0 main(6b2f410)=fd49a3daa04b MATCH-ARM
+cli/verify-runner.ts resolved=1d56ba38fd39 arm(8909f0a)=1d56ba38fd39 main(6b2f410)=1d56ba38fd39 MATCH-ARM
+lib/verdict-guard.ts resolved=5d5650a96b4e arm(8909f0a)=5d5650a96b4e main(6b2f410)=5d5650a96b4e MATCH-ARM

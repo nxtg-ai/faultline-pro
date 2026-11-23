@@ -260,6 +260,27 @@ describe('billing on every scan or verify result', () => {
     expectBilling(completeEvent(res.body).billing as Billing);
   });
 
+  it('GET and POST /scan/stream: the complete event names the engine commit', async () => {
+    const saved = process.env.FAULTLINE_GIT_SHA;
+    process.env.FAULTLINE_GIT_SHA = 'fe1a5bc0000000000000000000000000000000ab';
+    try {
+      const key = customer();
+      const get = await app.inject({
+        method: 'GET',
+        url: `/scan/stream?provider=${ENGINE_PROVIDER}&text=${encodeURIComponent(TEXT)}`,
+        headers: { 'x-api-key': key.key },
+      });
+      expect(get.statusCode).toBe(200);
+      expect(completeEvent(get.body).engineCommit).toBe('fe1a5bc0000000000000000000000000000000ab');
+      const posted = await post('/scan/stream', key.key, { text: TEXT, provider: ENGINE_PROVIDER });
+      expect(posted.statusCode).toBe(200);
+      expect(completeEvent(posted.body).engineCommit).toBe('fe1a5bc0000000000000000000000000000000ab');
+    } finally {
+      if (saved === undefined) delete process.env.FAULTLINE_GIT_SHA;
+      else process.env.FAULTLINE_GIT_SHA = saved;
+    }
+  });
+
   it('GET /scan/full/:jobId: a finished job with verifications carries billing, matching its checked count', async () => {
     const key = customer();
     const est = await post('/scan/full/estimate', key.key, { text: TEXT, provider: ENGINE_PROVIDER });

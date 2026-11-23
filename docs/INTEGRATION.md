@@ -572,6 +572,10 @@ This applies to a Gemini verify in both grounding modes (`google` and `parallel`
 
 ```typescript
 interface ScanResult {
+  input: string;                   // the first 200 characters of the scanned text: a preview
+  inputSha256?: string;            // SHA-256 (hex) of the whole scanned text as UTF-8
+  inputChars?: number;             // length of the whole scanned text in Unicode code points
+  engineCommit?: string;           // hosted API: the commit the engine was built from (as GET /health reports)
   claims: Claim[];
   verifications: Record<string, VerificationResult>;  // keyed by claim id
   overallRisk: 'low' | 'medium' | 'high' | 'critical';
