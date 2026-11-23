@@ -116,15 +116,19 @@ describe('Property: guaranteeClaimPerSentence', () => {
     ), { numRuns: 100 });
   });
 
-  it('single-sentence input never adds synthetic claims', () => {
+  it('single-sentence input adds at most one claim, and only an unbilled coverage re-check of that sentence', () => {
     fc.assert(fc.property(
       // Single sentence: 3–10 alpha words joined by spaces, ending in period — no interior punctuation
       fc.array(wordArb, { minLength: 3, maxLength: 10 }).map(ws => ws.join(' ') + '.'),
       fc.array(claimArb, { minLength: 1, maxLength: 5 }),
       (text, claims) => {
         const result = guaranteeClaimPerSentence(text, claims);
-        // Single sentence → splitSentences returns < 2 items → function returns claims unchanged
-        expect(result.length).toBe(claims.length);
+        // Since 2026-11-23 (never drop a sentence): a one-sentence input that a claim only
+        // begins like is re-checked as written; it never gets an ordinary (billed) claim.
+        expect(result.slice(0, claims.length)).toEqual(claims);
+        const added = result.slice(claims.length);
+        expect(added.length).toBeLessThanOrEqual(1);
+        for (const c of added) expect(c).toMatchObject({ text: text.trim(), coverageRecheck: true });
       },
     ), { numRuns: 150 });
   });

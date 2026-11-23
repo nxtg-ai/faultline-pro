@@ -14,6 +14,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **No input sentence is dropped from checking.** A sentence counted as covered when any extracted claim began like it (its first 40 normalised characters), so a claim that changed a detail later in the sentence ("within 90 hours" extracted as "within 90 days") left the sentence as written unchecked. A sentence is now covered only when a claim holds all of it; otherwise it is also checked as written, as a coverage re-check (`coverageRecheck: true`) that is never billed (`billing.unbilled` reason `coverage_recheck`), does not raise a full scan's units, and is ranked after every extracted claim under the verify cap.
 - Claim extraction no longer fails a scan on a single Google rate limit. A rate-limited extraction is retried once, then run once on `FAULTLINE_GEMINI_EXTRACTION_FALLBACK_MODEL` (default: the judge model). Each rate-limited attempt logs the quota Google names. Before this, one 429 on extraction ended the scan as `extraction_failed`.
 
 ## [v0.12.3] — 2026-11-19

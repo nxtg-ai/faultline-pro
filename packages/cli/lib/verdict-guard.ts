@@ -174,7 +174,8 @@ export function isBillableVerdict(value: unknown): boolean {
   return typeof v.status === 'string' && BILLABLE_STATUSES.has(v.status)
     && Array.isArray(v.sources) && v.sources.length > 0
     && typeof retriever === 'string' && retriever.length > 0
-    && v.apiError !== true;
+    && v.apiError !== true
+    && (value as { coverageRecheck?: unknown }).coverageRecheck !== true;
 }
 
 /** How many entries of a scan's `verifications` (object or array) are billable verdicts. */
@@ -199,6 +200,7 @@ export interface BillingSummary {
 
 /**
  * Why `value` is not billable under isBillableVerdict. The first match wins:
+ * 0. a coverage re-check (`coverageRecheck`): `coverage_recheck`, whatever its status;
  * 1. an API error: its `apiErrorReason` when set, else `provider_error`;
  * 2. `noSourceAbstain`: `no_source` (a definite verdict downgraded for having
  *    no source a reader can open);
@@ -217,6 +219,7 @@ function unbilledReason(value: unknown): string {
     status?: unknown; sources?: unknown; provenance?: unknown;
     apiError?: unknown; apiErrorReason?: unknown; noSourceAbstain?: unknown;
   };
+  if ((v as { coverageRecheck?: unknown }).coverageRecheck === true) return 'coverage_recheck';
   if (v.apiError === true) {
     return typeof v.apiErrorReason === 'string' && v.apiErrorReason.length > 0 ? v.apiErrorReason : 'provider_error';
   }

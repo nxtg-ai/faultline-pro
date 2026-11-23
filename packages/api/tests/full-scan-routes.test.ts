@@ -661,6 +661,35 @@ describe('monthly scan quota admission', () => {
     expect(getUsageMeter().getMonthlyCount(id)).toBe(1);
   });
 
+  it('a job quoted at 0 units (its only facts are coverage re-checks) uses no scan of the quota (codex P2 on df6c239)', async () => {
+    const verifyClaim = vi.fn(async (c: Claim) => supported(c));
+    control.provider = () => ({
+      name: 'Fixture Provider',
+      modelId: 'fixture-v1',
+      // Extraction rewrites the detail and types the claim an opinion, so the only fact
+      // claim left is the sentence's coverage re-check, which is never billed.
+      extractClaims: async (text: string): Promise<Claim[]> =>
+        text.split(/[.!?]+/).map((x) => x.trim()).filter(Boolean).map((x, i) => ({
+          id: `c${i + 1}`, text: x.replace(/hours/g, 'days'), type: 'opinion' as const, importance: 3,
+        })),
+      verifyClaim,
+      generateCritiqueAndPrompt: vi.fn(),
+    });
+    const { key, id } = capOne();
+    const est = await estimate('Example Air allows refunds for all customers within 90 hours.', { key });
+    expect(est.statusCode).toBe(200);
+    expect(est.json).toMatchObject({ factClaims: 1, units: 0 });
+    const started = await start(est.json.estimateId, 'idem-zero-units', { key });
+    expect(started.statusCode).toBe(202);
+    await untilTerminal(started.json.jobId, { key });
+    expect(verifyClaim).toHaveBeenCalledTimes(1);
+    expect(getUsageMeter().getMonthlyCount(id)).toBe(0);
+    // The key's one scan of quota is still there for a job that bills.
+    useFixtureProvider(async (c) => supported(c));
+    const paid = await estimate(sentences(2), { key });
+    expect((await start(paid.json.estimateId, 'idem-zero-units-2', { key })).statusCode).toBe(202);
+  });
+
   it('a new job from a key at its cap is 402 before it is queued; nothing runs or is counted', async () => {
     const verifyClaim = useFixtureProvider(async (c) => supported(c));
     const { key, id } = capOne();

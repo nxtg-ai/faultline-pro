@@ -269,6 +269,36 @@ function normalizeSentence(s: string): string {
 }
 
 /**
+ * Normalisation for the whole-sentence coverage test. Like normalizeSentence, but
+ * a decimal point or thousands mark between digits and a percent sign are kept,
+ * so "1.5 mg" and "15 mg", or "90%" and "90", are different sentences.
+ */
+function coverageText(s: string): string {
+  return s.toLowerCase()
+    .replace(/(\d)[.,](?=\d)/g, '$1\u2024')
+    .replace(/[^a-z0-9%\u2024 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const NEGATION_WORDS: ReadonlySet<string> = new Set(['not', 'no', 'never', 'none', 'nor', 'neither', 'nothing', 'nobody', 'cannot', 'false', 'untrue']);
+
+/** How many negating words `s` holds (a word ending in n't counts as one). */
+function negationCount(s: string): number {
+  return s.toLowerCase().replace(/\u2019/g, "'").split(/[^a-z']+/).filter((w) => NEGATION_WORDS.has(w) || w.endsWith("n't")).length;
+}
+
+/**
+ * True when `claim` holds the whole of `sentence` and says nothing more against
+ * it: the sentence's text is inside the claim's (numbers kept exactly), and the
+ * claim has no more negating words than the sentence ("It is not true that X"
+ * holds X but denies it).
+ */
+function holdsWholeSentence(claim: string, sentence: string): boolean {
+  return coverageText(claim).includes(coverageText(sentence)) && negationCount(claim) <= negationCount(sentence);
+}
+
+/**
  * Guarantee that every independently verifiable sentence in the input text
  * is represented by at least one claim.
  *
@@ -286,8 +316,13 @@ function normalizeSentence(s: string): string {
  * citation, not a separate assertion (N-237).
  */
 export function guaranteeClaimPerSentence(text: string, claims: Claim[]): Claim[] {
+  // A one-sentence input gets the re-check too: before 2026-11-23 it returned the
+  // claims as they were, so a claim that changed a detail left the sentence
+  // unchecked. It is not given an ordinary added claim when no claim relates to it,
+  // which is how it was billed before; only the unbilled re-check is new.
   const sentences = splitSentences(text);
-  if (sentences.length < 2) return claims;
+  if (sentences.length === 0) return claims;
+  const single = sentences.length === 1;
 
   const result = [...claims];
   // A synthetic id never reuses one already in the scan (a model may itself
@@ -310,12 +345,21 @@ export function guaranteeClaimPerSentence(text: string, claims: Claim[]): Claim[
     // Use the first 40 normalised chars as a fingerprint to detect coverage.
     const fingerprint = normSentence.slice(0, 40);
     if (isInsideReferences(sentence, references)) continue;
-    const covered = result.some(c => {
+    // Covered only when a claim holds the whole sentence. A claim that merely
+    // begins like it (the 40-character match this function used alone before
+    // 2026-11-23) may have changed a detail later in the sentence ("within 90
+    // hours" checked as "within 90 days"), so the sentence is checked again as
+    // written: a coverage re-check, never billed. Never drop a sentence from
+    // checking: a duplicate costs a little, a dropped sentence hides an error.
+    if (result.some(c => holdsWholeSentence(c.text, sentence))) continue;
+    const startsLike = result.find(c => {
       const nc = normalizeSentence(c.text);
       return nc.includes(fingerprint) || normSentence.includes(nc.slice(0, 40));
     });
 
-    if (!covered) {
+    if (startsLike) {
+      result.push({ id: nextSyntheticId(), text: sentence, type: 'fact', importance: Math.max(2, startsLike.importance), coverageRecheck: true });
+    } else if (!single) {
       result.push({ id: nextSyntheticId(), text: sentence, type: 'fact', importance: 3 });
     }
   }
@@ -407,7 +451,10 @@ export async function scan(
  *
  * @example
  *   const est = await extractForFullScan(text, 'gemini');
- *   // est.units === Math.ceil(est.factClaims / 8)
+ *   // est.units === Math.ceil(factClaimsThatAreNotCoverageRechecks / 8)
+ *
+ * A coverage re-check (Claim.coverageRecheck) is verified with the other fact
+ * claims but is never billed, so it does not count toward the units quoted.
  */
 export async function extractForFullScan(
   text: string,
@@ -421,7 +468,7 @@ export async function extractForFullScan(
     claims,
     factClaims: facts.length,
     notCheckable: notCheckable.length,
-    units: unitsForFullScan(facts.length),
+    units: unitsForFullScan(facts.filter((c) => c.coverageRecheck !== true).length),
   };
 }
 

@@ -14,6 +14,7 @@ import { enforceProviderSpendCap, resolveSpendCapTier } from '../plugins/provide
 import { admitMonthlyScans, enforceMonthlyCap } from '../plugins/usage-cap.js';
 import { isServerKeyId, resolveEntitledTier } from '../plugins/consensus-entitlement.js';
 import { recordProviderSpend } from '../store/provider-spend.js';
+import type { Claim } from '@nxtg/faultline/types.js';
 import { committedClaim, jobRecordScanId, meterCheck, reserveClaimsFor } from '../lib/claim-meter.js';
 import { getClaimMeter, isClaimMeterEnabled, type ClaimReservation } from '../store/claim-meter.js';
 import { getUsageMeter } from '../store/usage.js';
@@ -261,6 +262,16 @@ function ownerRevoked(keyId: string): boolean {
  * Commit a finished job's served claims (a verdict, `unverified` included) and
  * release the rest of its reservation. A failed job served nothing.
  */
+/**
+ * The estimate's fact claims that can be billed: every fact claim except a coverage
+ * re-check (Claim.coverageRecheck), whose verdict isBillableVerdict always refuses.
+ * Falls back to the estimate's fact count when its claims were already released.
+ */
+export function billableFactClaims(estimate: { factClaims: number; claims?: Claim[] }): number {
+  if (!Array.isArray(estimate.claims)) return estimate.factClaims;
+  return estimate.claims.filter((c) => c.type === 'fact' && c.coverageRecheck !== true).length;
+}
+
 function settleJobClaims(reservation: ClaimReservation, job: FullScanJob, progress: ClaimProgress[]): void {
   const served = progress.flatMap((p) => {
     if (p.status !== 'served') return [];
@@ -421,9 +432,13 @@ export async function fullScanRoutes(fastify: FastifyInstance): Promise<void> {
       if (!store.ledgerWritable()) return reply.status(503).send({ error: 'ledger_unavailable' });
       // The monthly-cap check again, in this synchronous step, so the check and the
       // count below cannot be split by another start (the prehandler refuses earlier).
-      if (!admitMonthlyScans(request, reply, 1)) return reply;
-      // The claim meter reserves the estimate's fact claims (an estimate reserves nothing).
-      const metered = reserveClaimsFor(request.keyId, estimate.factClaims);
+      // A job quoted at zero units (every fact claim a coverage re-check, which is never
+      // billed) uses no scan of the monthly quota; any other job is counted as before.
+      const quoted = estimate.units > 0;
+      if (quoted && !admitMonthlyScans(request, reply, 1)) return reply;
+      // The claim meter reserves the estimate's billable fact claims (an estimate reserves
+      // nothing). A coverage re-check is never billed, so it reserves nothing either.
+      const metered = reserveClaimsFor(request.keyId, billableFactClaims(estimate));
       if (metered.ok === false) return reply.status(metered.statusCode).send(metered.body);
 
       const job = store.startJob(estimate, {
@@ -439,7 +454,7 @@ export async function fullScanRoutes(fastify: FastifyInstance): Promise<void> {
       // Counted here, once per job, when it is admitted, whatever its outcome: the
       // server.ts onResponse hook counts only /scan and /scan/upload. Settling only
       // served work needs the allowance reserved at admission, which is not built yet.
-      getUsageMeter().increment(keyId);
+      if (quoted) getUsageMeter().increment(keyId);
       store.enqueue(job, (queued) => runFullScanJob(store, queued));
       return reply.status(202).send(accepted({ jobId: job.jobId, estimateId, units: job.charged, factClaims: job.factClaims }));
     },

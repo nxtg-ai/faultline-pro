@@ -14,6 +14,14 @@ export interface Claim {
    * one claim per reference, never one per field. See lib/citation.ts.
    */
   citation?: CitationRef;
+  /**
+   * Set on a claim guaranteeClaimPerSentence added because no extracted claim
+   * held the whole input sentence, though one began like it (the old 40-character
+   * match). The sentence is checked again as written, so a detail an extracted
+   * claim changed after character 40 is not lost; the check is never billed and
+   * is ranked after every extracted claim under the verify cap.
+   */
+  coverageRecheck?: boolean;
   // P-08b NOTE (TQ-003): Add `dependencies?: string[]` — array of claim IDs that this
   // claim logically depends on being true. Required for true weakest-chain traversal and
   // full claim-graph visualization. Deferred from Kaggle branch to avoid complicating
@@ -253,6 +261,11 @@ export interface VerificationResult {
    * against which gold labels.
    */
   noSourceAbstain?: boolean;
+  /**
+   * The verdict of a coverage re-check claim (Claim.coverageRecheck): never
+   * billed (unbilled reason `coverage_recheck`), never counted as served.
+   */
+  coverageRecheck?: boolean;
   /**
    * True when the judge said the sources do not address the claim at all
    * (`sourcesAddressClaim: false` in its reply, GoPMO 1.18.11.7.19): for

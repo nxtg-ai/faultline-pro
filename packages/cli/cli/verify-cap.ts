@@ -42,9 +42,13 @@ export function isEligibleForVerification(claim: Claim): boolean {
  */
 export function rankEligibleClaims(claims: Claim[]): Claim[] {
   const citationRank = (c: Claim): number => (isCitationClaim(c) ? 1 : 0);
+  // A coverage re-check (guaranteeClaimPerSentence) is ranked after every
+  // extracted claim, so under the cap it never displaces one; past the cap it
+  // is listed with the other unchecked claims, not dropped silently.
+  const recheckRank = (c: Claim): number => (c.coverageRecheck === true ? 1 : 0);
   return claims
     .filter(isEligibleForVerification)
-    .sort((a, b) => citationRank(b) - citationRank(a) || b.importance - a.importance);
+    .sort((a, b) => citationRank(b) - citationRank(a) || recheckRank(a) - recheckRank(b) || b.importance - a.importance);
 }
 
 /**
