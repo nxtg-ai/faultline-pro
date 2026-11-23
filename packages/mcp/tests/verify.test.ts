@@ -160,8 +160,9 @@ describe('verifyClaims — degradation signal', () => {
         degraded: true,
       }) },
     );
-    expect(out.claims).toHaveLength(1);
-    expect(out.claims[0].verdict).toBe('VERIFIED');
+    // The unchecked claim is returned too, beyond max_claims (GoPMO 1.18.11.7.144):
+    // a capped reply must show WHICH claim went unchecked, not only how many.
+    expect(out.claims.map((c) => [c.claim, c.verdict])).toEqual([['Claim one', 'VERIFIED'], ['Claim two', 'UNCHECKED']]);
     expect(out.unchecked_count).toBe(1);
     expect(out.degraded).toBe(true);
   });
@@ -544,5 +545,65 @@ describe('verifyClaims — not-checkable claims give no risk reading', () => {
     expect(out.claims).toHaveLength(2);
     expect(out.risk_score).toBe(15);
     expect(out.summary).toMatch(/risk LOW/);
+  });
+});
+
+// Validates: GoPMO 1.18.11.7.144 (a capped MCP reply never hides an unchecked or re-checked claim)
+describe('verifyClaims — max_claims never hides an unchecked or re-checked claim', () => {
+  const four = (verifications: ScanResult['verifications'], extra: Partial<ScanResult> = {}): ScanResult => scanResult({
+    claims: [
+      { id: 'c1', text: 'Top claim', type: 'fact', importance: 9 },
+      { id: 'c2', text: 'Second claim', type: 'fact', importance: 7 },
+      { id: 'c3', text: 'Low claim that errored', type: 'fact', importance: 2 },
+      { id: 's4', text: 'Re-checked sentence', type: 'fact', importance: 2, coverageRecheck: true },
+    ],
+    verifications,
+    ...extra,
+  });
+  const ok = (id: string) => ({ claimId: id, status: 'supported' as const, explanation: 'ok', sources: [{ uri: `https://src.example/${id}`, title: id }] });
+
+  it('returns an errored claim and a re-check past the limit, and still caps the verdicts', async () => {
+    const out = await verifyClaims({ text: 'x', max_claims: 1 }, { scanFn: async () => four({
+      c1: ok('c1'),
+      c2: ok('c2'),
+      c3: { claimId: 'c3', status: 'unverified', explanation: 'provider error', sources: [], apiError: true },
+      s4: { ...ok('s4'), coverageRecheck: true },
+    }, { degraded: true }) });
+    expect(out.claims.map((c) => c.claim)).toEqual(['Top claim', 'Low claim that errored', 'Re-checked sentence']);
+    expect(out.claims[1].verdict).toBe('UNCHECKED');
+    expect(out.claims[2]).toMatchObject({ verdict: 'VERIFIED', coverage_recheck: true });
+    expect(out.claims[0]).not.toHaveProperty('coverage_recheck');
+    // Second claim got a verdict and was left out by the limit.
+    expect(out.truncated).toBe(true);
+    expect(out.claims_total).toBe(4);
+    expect(out.unchecked_count).toBe(1);
+  });
+
+  it('returns a claim with no verification record past the limit', async () => {
+    const out = await verifyClaims({ text: 'x', max_claims: 2 }, { scanFn: async () => four({
+      c1: ok('c1'),
+      c2: ok('c2'),
+      s4: { ...ok('s4'), coverageRecheck: true },
+    }) });
+    expect(out.claims.map((c) => [c.claim, c.verdict])).toEqual([
+      ['Top claim', 'VERIFIED'], ['Second claim', 'VERIFIED'], ['Low claim that errored', 'UNCHECKED'], ['Re-checked sentence', 'VERIFIED'],
+    ]);
+    expect(out.truncated).toBe(false);
+  });
+
+  it('marks a re-check from the verdict flag alone', async () => {
+    const base = four({ c1: ok('c1'), c2: ok('c2'), c3: ok('c3'), s4: { ...ok('s4'), coverageRecheck: true } });
+    base.claims = base.claims.map((c) => ({ ...c, coverageRecheck: undefined }));
+    const out = await verifyClaims({ text: 'x', max_claims: 1 }, { scanFn: async () => base });
+    expect(out.claims.map((c) => c.claim)).toEqual(['Top claim', 'Re-checked sentence']);
+    expect(out.claims[1].coverage_recheck).toBe(true);
+    expect(out.truncated).toBe(true);
+  });
+
+  it('without max_claims every claim is returned once', async () => {
+    const out = await verifyClaims({ text: 'x' }, { scanFn: async () => four({ c1: ok('c1'), c2: ok('c2'), c3: ok('c3'), s4: { ...ok('s4'), coverageRecheck: true } }) });
+    expect(out.claims).toHaveLength(4);
+    expect(new Set(out.claims.map((c) => c.claim)).size).toBe(4);
+    expect(out.truncated).toBe(false);
   });
 });

@@ -196,7 +196,7 @@ The key picks where the check runs:
 - Otherwise it runs in-process on your own provider key. Precedence: `FAULTLINE_PROVIDER`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `PERPLEXITY_API_KEY`. Only Gemini retrieves live sources; the response says `grounded: false` for the others.
 - With neither, and no provider named, `verify_claims` refuses: it returns an MCP tool error, "no key: nothing was verified", and checks nothing. Name `provider: "mock"` or set `FAULTLINE_PROVIDER=mock` for a demo; the `mock` result says `SYNTHETIC` and verifies nothing.
 
-Input: `text` (required), `max_claims`, `provider` (`gemini`, `openai`, `claude`, `perplexity`, `mock`). Each claim comes back `VERIFIED`, `REFUTED`, `UNSUPPORTED`, `MIXED` or `UNCHECKED`. `UNCHECKED` is not a verdict. `degraded: true` means some claims could not be checked. Audit records go to `.faultline/history` (`FAULTLINE_HISTORY_DIR` to move them, `FAULTLINE_MCP_NO_HISTORY=1` to switch them off).
+Input: `text` (required), `max_claims` (a limit on claims with a verdict; `UNCHECKED` claims and coverage re-checks are always returned), `provider` (`gemini`, `openai`, `claude`, `perplexity`, `mock`). Each claim comes back `VERIFIED`, `REFUTED`, `UNSUPPORTED`, `MIXED` or `UNCHECKED`. `UNCHECKED` is not a verdict. `degraded: true` means some claims could not be checked. Audit records go to `.faultline/history` (`FAULTLINE_HISTORY_DIR` to move them, `FAULTLINE_MCP_NO_HISTORY=1` to switch them off).
 
 ---
 

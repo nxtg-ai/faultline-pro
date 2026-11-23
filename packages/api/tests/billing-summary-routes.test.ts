@@ -260,6 +260,29 @@ describe('billing on every scan or verify result', () => {
     expectBilling(completeEvent(res.body).billing as Billing);
   });
 
+  // Validates: GoPMO 1.18.11.7.144 (a capped MCP reply never hides an unchecked claim)
+  it('POST /mcp verify_claims with max_claims 1 still returns the claim the provider error left unchecked', async () => {
+    const key = customer();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/mcp',
+      headers: { 'x-api-key': key.key, 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' },
+      payload: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'verify_claims', arguments: { text: TEXT, max_claims: 1 } } }),
+    });
+    expect(res.statusCode).toBe(200);
+    const out = JSON.parse(res.body).result.structuredContent as {
+      claims: Array<{ claim: string; verdict: string; unchecked_reason?: string }>; claims_total: number; truncated: boolean; unchecked_count: number; degraded: boolean;
+    };
+    expect(out.claims_total).toBe(4);
+    expect(out.unchecked_count).toBe(1);
+    expect(out.degraded).toBe(true);
+    expect(out.truncated).toBe(true);
+    // One claim with a verdict, as max_claims asked, plus the unchecked one by text.
+    const unchecked = out.claims.filter((c) => c.verdict === 'UNCHECKED');
+    expect(unchecked.map((c) => c.claim)).toEqual(['Claim four is a fact']);
+    expect(out.claims.filter((c) => c.verdict !== 'UNCHECKED')).toHaveLength(1);
+  });
+
   it('GET and POST /scan/stream: the complete event names the engine commit', async () => {
     const saved = process.env.FAULTLINE_GIT_SHA;
     process.env.FAULTLINE_GIT_SHA = 'fe1a5bc0000000000000000000000000000000ab';

@@ -61,7 +61,7 @@ With no provider key and no `FAULTLINE_API_KEY`, and no provider named, `verify_
 | field | type | notes |
 |---|---|---|
 | `text` | string | required — the text whose claims should be checked |
-| `max_claims` | int | optional — return at most N claims, most-important first |
+| `max_claims` | int | optional — return at most N claims with a verdict, most-important first. A claim that could not be checked (`UNCHECKED`) and a coverage re-check (`coverage_recheck: true`, checked and never billed) are always returned on top, so a capped reply never hides what went unchecked |
 | `provider` | enum | optional — `gemini` \| `openai` \| `claude` \| `perplexity` \| `mock` |
 
 **Verdicts**

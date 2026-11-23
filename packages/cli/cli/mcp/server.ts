@@ -100,7 +100,7 @@ export function buildServer(deps: VerifyDeps = {}): McpServer {
           .positive()
           .optional()
           .describe(
-            'Return at most this many claims, most-important first. Extraction still covers the whole text; claims_total reports the true count.',
+            'Return at most this many claims with a verdict, most-important first. Claims that could not be checked (UNCHECKED) and coverage re-checks are always returned on top, so nothing unchecked is hidden. Extraction still covers the whole text; claims_total reports the true count.',
           ),
         provider: z
           .enum(['gemini', 'openai', 'claude', 'perplexity', 'mock'])
