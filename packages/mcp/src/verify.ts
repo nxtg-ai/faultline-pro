@@ -63,6 +63,12 @@ export interface VerifyClaimsInput {
   provider?: string;
 }
 
+/**
+ * A returned claim. `coverage_recheck` marks a claim the engine added because
+ * no extracted claim held a sentence in full; it is checked and never billed.
+ */
+export type ShownClaim = ClaimVerdict & { coverage_recheck?: true };
+
 export interface VerifyClaimsOutput {
   /**
    * 0-100, higher is riskier. NULL when not a single claim received a real
@@ -83,10 +89,16 @@ export interface VerifyClaimsOutput {
   mode: 'hosted' | 'local';
   /** Claims that got a real verdict but carry no supporting source URL. */
   unsourced_count: number;
-  claims: ClaimVerdict[];
+  /**
+   * The returned claims, most important first. max_claims limits the claims
+   * that got a verdict; a claim with no verdict (UNCHECKED) and a coverage
+   * re-check (`coverage_recheck: true`) are always returned, beyond the limit,
+   * so a capped reply never hides what went unchecked.
+   */
+  claims: ShownClaim[];
   /** Total claims extracted, before any max_claims truncation. */
   claims_total: number;
-  /** True when `claims` was truncated by max_claims. */
+  /** True when max_claims left any claim out of `claims`. */
   truncated: boolean;
   /**
    * True when one or more claims could not be verified due to provider errors.
@@ -212,8 +224,22 @@ export async function verifyClaims(
       ? Math.floor(input.max_claims)
       : allClaims.length;
 
-  const selected = allClaims.slice(0, limit);
-  const claims = selected.map((c) => toClaimVerdict(c.text, result.verifications?.[c.id]));
+  // max_claims limits the claims that got a verdict. A claim with no verdict
+  // (UNCHECKED) and a coverage re-check are always returned, so a capped reply
+  // never hides which sentence went unchecked (GoPMO 1.18.11.7.144).
+  const rendered = allClaims.map((c) => {
+    const v = result.verifications?.[c.id];
+    const entry: ShownClaim = toClaimVerdict(c.text, v);
+    if (c.coverageRecheck === true || v?.coverageRecheck === true) entry.coverage_recheck = true;
+    return entry;
+  });
+  const mustShow = (e: ShownClaim): boolean => e.verdict === 'UNCHECKED' || e.coverage_recheck === true;
+  let verdictsShown = 0;
+  const claims = rendered.filter((e) => {
+    if (mustShow(e)) return true;
+    verdictsShown += 1;
+    return verdictsShown <= limit;
+  });
 
   // Count unchecked across EVERY extracted claim, not just the returned page —
   // truncating the view must not shrink the degradation signal.
@@ -252,7 +278,7 @@ export async function verifyClaims(
     unsourced_count: unsourcedCount,
     claims,
     claims_total: allClaims.length,
-    truncated: selected.length < allClaims.length,
+    truncated: claims.length < allClaims.length,
     degraded: result.degraded === true || uncheckedAll > 0,
     unchecked_count: uncheckedAll,
     ...(billing !== undefined ? { billing } : {}),
