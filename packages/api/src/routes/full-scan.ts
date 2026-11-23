@@ -25,6 +25,7 @@ import {
   buildManagedCostEvent,
   type ManagedScanCostEvent,
 } from '../store/costs.js';
+import { withEngineCommit } from '../lib/scan-access.js';
 import {
   getFullScanJobStore,
   describeJob,
@@ -247,7 +248,8 @@ async function runFullScanJob(store: FullScanJobStore, job: FullScanJob): Promis
     store.finish(job, 'failed');
     return;
   }
-  store.finish(job, job.controller.signal.aborted ? 'stopped' : 'done', outcome.value);
+  // A full scan's result is stored here, not through issueScanId, so it is stamped here.
+  store.finish(job, job.controller.signal.aborted ? 'stopped' : 'done', withEngineCommit(outcome.value));
 }
 
 // ── Claim meter ─────────────────────────────────────────────────────────────

@@ -168,6 +168,8 @@ export interface AuditReportModel {
   inputChars: number | null;
   inputQuote: string | null;
   inputTruncated: boolean;
+  /** The sentence above the quoted input: what the quote is and what the fingerprint covers. */
+  inputNote: string;
   claims: AuditClaim[];
   byBucket: Record<AuditBucket, number>;
   byType: TypeCount[];
@@ -416,8 +418,7 @@ export function buildAuditReport(scan: unknown): AuditReportModel {
     overallRisk: typeof root.overallRisk === 'string' ? root.overallRisk : null,
     generatedAt,
     degradedFlag,
-    inputSha256: input === null ? null : createHash('sha256').update(input, 'utf8').digest('hex'),
-    inputChars: input === null ? null : [...input].length,
+    ...inputRecord(root, input),
     inputQuote: input === null ? null : input.slice(0, INPUT_QUOTE_CAP),
     inputTruncated: input !== null && input.length > INPUT_QUOTE_CAP,
     claims,
@@ -464,6 +465,48 @@ function recordedJudgeModel(root: Record<string, unknown>): string {
 }
 
 /** Commit on verdict provenance, then a scan-level or config value, else unknown. */
+/** Length of the input preview the scan engine stores (cli/scan.ts). */
+const ENGINE_INPUT_PREVIEW = 200;
+
+/**
+ * The input fingerprint and the note above the quote. A scan records
+ * `inputSha256` and `inputChars` over the whole scanned text; its `input` field
+ * is only the first 200 characters. A scan file without the fingerprint whose
+ * input is exactly 200 characters may be that preview, so no hash or count is
+ * shown for it: a hash of the preview would not prove what was checked.
+ */
+function inputRecord(root: Record<string, unknown>, input: string | null): { inputSha256: string | null; inputChars: number | null; inputNote: string } {
+  const sha = typeof root.inputSha256 === 'string' && /^[0-9a-f]{64}$/.test(root.inputSha256) ? root.inputSha256 : null;
+  const chars = typeof root.inputChars === 'number' && Number.isInteger(root.inputChars) && root.inputChars >= 0 ? root.inputChars : null;
+  if (input === null) return { inputSha256: sha, inputChars: chars, inputNote: 'The scan file has no input text.' };
+  const quoted = [...input].length;
+  if (sha !== null && chars !== null) {
+    const partial = chars > quoted || chars > INPUT_QUOTE_CAP;
+    const shown = Math.min(quoted, INPUT_QUOTE_CAP);
+    return {
+      inputSha256: sha,
+      inputChars: chars,
+      inputNote: partial
+        ? `The input is ${chars} characters. The first ${shown} are quoted. The SHA-256 and the character count cover the whole input.`
+        : 'Input text, as stored on the scan. The SHA-256 and the character count cover the whole input.',
+    };
+  }
+  if (input.length === ENGINE_INPUT_PREVIEW) {
+    return {
+      inputSha256: null,
+      inputChars: null,
+      inputNote: `The scan file keeps only the first ${ENGINE_INPUT_PREVIEW} characters of the input, quoted below, and no fingerprint of the whole text, so this report cannot show which text was checked.`,
+    };
+  }
+  return {
+    inputSha256: createHash('sha256').update(input, 'utf8').digest('hex'),
+    inputChars: quoted,
+    inputNote: input.length > INPUT_QUOTE_CAP
+      ? `The input is ${quoted} characters. The first ${INPUT_QUOTE_CAP} are quoted. The SHA-256 covers the whole input.`
+      : 'Input text, as stored on the scan:',
+  };
+}
+
 function recordedEngineCommit(root: Record<string, unknown>): string {
   const fromVerdicts = [...new Set([
     ...provenanceStrings(root, 'commit'),
@@ -619,9 +662,7 @@ export function renderAuditMarkdown(model: AuditReportModel): string {
   if (model.inputQuote === null) {
     lines.push('The scan file has no input text.');
   } else {
-    lines.push(model.inputTruncated
-      ? `The input is ${model.inputChars} characters. The first ${INPUT_QUOTE_CAP} are quoted. The SHA-256 covers the whole input.`
-      : 'Input text, as stored on the scan:');
+    lines.push(model.inputNote);
     lines.push('');
     lines.push(fence(model.inputQuote));
   }
@@ -769,9 +810,7 @@ ${unchecked.map((c) => `<tr><td><strong>${escapeHtml(c.id)}</strong> ${escapeHtm
 </tbody></table>`;
   const inputBlock = model.inputQuote === null
     ? '<p>The scan file has no input text.</p>'
-    : `<p>${model.inputTruncated
-      ? `The input is ${model.inputChars} characters. The first ${INPUT_QUOTE_CAP} are quoted. The SHA-256 covers the whole input.`
-      : 'Input text, as stored on the scan:'}</p>
+    : `<p>${escapeHtml(model.inputNote)}</p>
 <pre>${escapeHtml(model.inputQuote)}</pre>`;
   const synthetic = model.syntheticExample
     ? '<p class="banner">Synthetic example data. This report was rendered from an example scan, not from a client document.</p>'
@@ -942,9 +981,7 @@ export async function renderAuditPdf(model: AuditReportModel): Promise<Buffer> {
     doc.moveDown(0.4);
     if (model.inputQuote === null) write('The scan file has no input text.', { gap: 0.4 });
     else {
-      write(model.inputTruncated
-        ? `The input is ${model.inputChars} characters. The first ${INPUT_QUOTE_CAP} are quoted. The SHA-256 covers the whole input.`
-        : 'Input text, as stored on the scan:');
+      write(model.inputNote);
       write(model.inputQuote, { gap: 0.4 });
     }
 

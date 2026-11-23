@@ -132,10 +132,17 @@ describe('audit report from the demo scan', () => {
     }
   });
 
-  it('hashes the scan input and does not invent a degraded flag', () => {
+  it('does not hash a 200-character preview as the input, and does not invent a degraded flag', () => {
+    // This scan file was saved before scans recorded a whole-text fingerprint.
+    // Its input is the engine's 200-character preview of a longer document, so
+    // a hash of it would not prove which text was checked.
     const scan = demoScan() as { input: string };
-    expect(model.inputSha256).toBe(createHash('sha256').update(scan.input, 'utf8').digest('hex'));
-    expect(model.inputChars).toBe([...scan.input].length);
+    expect(scan.input.length).toBe(200);
+    expect(model.inputSha256).toBeNull();
+    expect(model.inputChars).toBeNull();
+    expect(model.inputNote).toContain('cannot show which text was checked');
+    expect(markdown).toContain(model.inputNote);
+    expect(markdown).toContain('| Input SHA-256 | not recorded |');
     expect(model.degradedFlag).toBeNull();
     expect(markdown).toContain('not recorded');
     expect(model.generatedAt).toBe('2026-06-03T00:02:45.974Z');
@@ -1077,5 +1084,44 @@ describe('audit-report links: sources clickable, untrusted text not', () => {
     ));
     expect(md).toContain('`https://reviewer.example`');
     expect(md.replace(/(`+)[\s\S]*?\1/g, '')).not.toContain('reviewer.example');
+  });
+});
+
+describe('input fingerprint', () => {
+  const base = { provider: 'gemini', claims: [], verifications: {} };
+  const full = `${'Synthetic report text. '.repeat(20)}End.`;
+  const sha = createHash('sha256').update(full, 'utf8').digest('hex');
+
+  it('uses the whole-text fingerprint the scan recorded, not a hash of the preview', () => {
+    const m = buildAuditReport({ ...base, input: full.substring(0, 200), inputSha256: sha, inputChars: [...full].length });
+    expect(m.inputSha256).toBe(sha);
+    expect(m.inputChars).toBe([...full].length);
+    expect(m.inputNote).toBe(`The input is ${[...full].length} characters. The first 200 are quoted. The SHA-256 and the character count cover the whole input.`);
+    expect(m.inputSha256).not.toBe(createHash('sha256').update(full.substring(0, 200), 'utf8').digest('hex'));
+    for (const body of [renderAuditMarkdown(m), renderAuditHtml(m)]) {
+      expect(body).toContain(sha);
+      expect(body).toContain('The SHA-256 and the character count cover the whole input.');
+    }
+  });
+
+  it('says the stored text is whole when the recorded count matches it', () => {
+    const short = 'A short synthetic input.';
+    const m = buildAuditReport({ ...base, input: short, inputSha256: createHash('sha256').update(short, 'utf8').digest('hex'), inputChars: short.length });
+    expect(m.inputNote).toBe('Input text, as stored on the scan. The SHA-256 and the character count cover the whole input.');
+  });
+
+  it('hashes an input shorter than the preview, which is the whole text', () => {
+    const short = 'A short synthetic input.';
+    const m = buildAuditReport({ ...base, input: short });
+    expect(m.inputSha256).toBe(createHash('sha256').update(short, 'utf8').digest('hex'));
+    expect(m.inputChars).toBe(short.length);
+  });
+
+  it('ignores a malformed recorded fingerprint', () => {
+    for (const bad of [{ inputSha256: 'abc', inputChars: 5 }, { inputSha256: sha.toUpperCase(), inputChars: 5 }, { inputSha256: sha, inputChars: -1 }, { inputSha256: sha, inputChars: 1.5 }]) {
+      const m = buildAuditReport({ ...base, input: full.substring(0, 200), ...bad });
+      expect(m.inputSha256).toBeNull();
+      expect(m.inputChars).toBeNull();
+    }
   });
 });

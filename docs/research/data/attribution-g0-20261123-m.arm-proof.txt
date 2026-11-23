@@ -1,0 +1,6 @@
+arm M proof, written 2026-11-23 ~11:19Z after the run (rows 01:45:32Z to 02:15:47Z, 200 rows).
+The engine ran from a scratch worktree whose node_modules linked to the main checkout, so @nxtg/faultline resolved to <main checkout>/packages/cli.
+The main checkout's HEAD (git reflog --date=iso-strict HEAD):
+  6b2f410 from 2026-11-21T00:30:15Z (pull --ff-only), unchanged until
+  fe1a5bc at 2026-11-23T03:02:00Z (merge origin/main fast-forward).
+So for the whole run the resolved engine code was 6b2f410, arm M's commit. fp made no edits in the main checkout's packages in that window.

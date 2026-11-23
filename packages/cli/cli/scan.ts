@@ -3,6 +3,7 @@ import type { IndependentEvidenceOptions } from '../evidence/independent.js';
 import type { DoiCheckOptions } from '../evidence/doi.js';
 import { groundingFromEnv, type GroundingMode } from './grounding.js';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join, relative } from 'node:path';
 import type { Claim, VerificationResult, AnalysisState, RetrievalStatus } from '../types.js';
 import { generateComplianceReport, type ComplianceReport } from '../compliance/report_generator.js';
@@ -95,7 +96,15 @@ export interface ScanOptions {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface ScanResult {
+  /** The first 200 UTF-16 code units of the scanned text: a preview, not the record. */
   input: string;
+  /**
+   * SHA-256 (hex) of the whole scanned text as UTF-8, and its length in Unicode
+   * code points. These fingerprint what was checked; `input` is only a preview,
+   * so an audit report built from it alone could not prove which text ran.
+   */
+  inputSha256?: string;
+  inputChars?: number;
   provider: string;
   claims: Claim[];
   verifications: Record<string, VerificationResult>;
@@ -130,6 +139,11 @@ export interface ScanResult {
    * carries `independentEvidence`.
    */
   evidenceCoverage?: EvidenceCoverage;
+}
+
+/** The whole-text fingerprint a scan result carries beside its 200-character preview. */
+export function inputFingerprint(text: string): { inputSha256: string; inputChars: number } {
+  return { inputSha256: createHash('sha256').update(text, 'utf8').digest('hex'), inputChars: [...text].length };
 }
 
 /** The scan-level summary of every verdict's independentEvidence status. */
@@ -430,6 +444,7 @@ export async function scan(
 
   return {
     input: text.substring(0, 200),
+    ...inputFingerprint(text),
     provider: extractionProvider.name,
     claims,
     verifications,
@@ -527,6 +542,7 @@ async function runFullVerification(
 
   return {
     input: context.text?.substring(0, 200) ?? '',
+    ...(context.text !== undefined ? inputFingerprint(context.text) : {}),
     provider: context.provider,
     claims,
     verifications: run.verifications,

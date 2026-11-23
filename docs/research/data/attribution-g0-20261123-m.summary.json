@@ -1,0 +1,28 @@
+{
+  "goldSha256": "b87f971ce324c87e0427f100fe24b50594b9d44e3a764490b1bef188917dbae1",
+  "seed": 20260929,
+  "resamples": 2000,
+  "arms": {
+    "m-main": {
+      "run": "docs/research/data/attribution-g0-20261123-m.jsonl",
+      "runSha256": "6793153b61963d03f41d576f38c894ebb7b133284c68006194ffee6fab98f243",
+      "n": 200,
+      "binary_n": 193,
+      "balanced_accuracy": {
+        "value": 0.8145645645645645,
+        "ci95": [
+          0.7445454409899313,
+          0.879813863928113
+        ],
+        "undefinedResamples": 0
+      },
+      "unverified_rate": 0.025,
+      "failure_rate": 0.005,
+      "not_checkable_rate": 0.015,
+      "mean_cost_usd_per_claim": 0.01624791,
+      "total_cost_usd": 3.249582,
+      "google_grounded_calls": 0,
+      "mean_sources_per_claim": 7.88
+    }
+  }
+}

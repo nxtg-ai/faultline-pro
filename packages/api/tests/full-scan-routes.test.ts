@@ -337,6 +337,21 @@ describe('full lifecycle on the real mock provider', () => {
     expect(Object.keys(done.result.verifications)).toHaveLength(10);
   });
 
+  it('a finished full scan names the engine commit, as /health does (codex review of d1e049b, P2)', async () => {
+    const saved = process.env.FAULTLINE_GIT_SHA;
+    try {
+      process.env.FAULTLINE_GIT_SHA = '88c4350db33d22d8479df94d1a91cf8df50bb5fc';
+      const jobId = await startJob(sentences(3), 'idem-engine-commit');
+      const done = await untilTerminal(jobId);
+      expect(done.status).toBe('done');
+      expect(Object.keys(done.result.verifications).length).toBeGreaterThan(0);
+      expect(done.result.engineCommit).toBe('88c4350db33d22d8479df94d1a91cf8df50bb5fc');
+    } finally {
+      if (saved === undefined) delete process.env.FAULTLINE_GIT_SHA;
+      else process.env.FAULTLINE_GIT_SHA = saved;
+    }
+  });
+
   it('verdicts appear in progress as they land, and units grow with them', async () => {
     const gate = gated();
     const jobId = await startJob(sentences(10), 'idem-progressive');

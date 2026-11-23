@@ -1,0 +1,64 @@
+{
+  "goldSha256": "b87f971ce324c87e0427f100fe24b50594b9d44e3a764490b1bef188917dbae1",
+  "seed": 20260929,
+  "resamples": 2000,
+  "arms": {
+    "m-main": {
+      "run": "docs/research/data/attribution-g0-20261123-m.jsonl",
+      "runSha256": "6793153b61963d03f41d576f38c894ebb7b133284c68006194ffee6fab98f243",
+      "n": 200,
+      "binary_n": 193,
+      "balanced_accuracy": {
+        "value": 0.8145645645645645,
+        "ci95": [
+          0.7445454409899313,
+          0.879813863928113
+        ],
+        "undefinedResamples": 0
+      },
+      "unverified_rate": 0.025,
+      "failure_rate": 0.005,
+      "not_checkable_rate": 0.015,
+      "mean_cost_usd_per_claim": 0.01624791,
+      "total_cost_usd": 3.249582,
+      "google_grounded_calls": 0,
+      "mean_sources_per_claim": 7.88
+    },
+    "x-fix": {
+      "run": "docs/research/data/attribution-g0-20261123-x.jsonl",
+      "runSha256": "6531bdf804eafc4655b231ae44bb72d7505bdef5eb324446303fbddcacfe2e12",
+      "n": 200,
+      "binary_n": 193,
+      "balanced_accuracy": {
+        "value": 0.7633633633633634,
+        "ci95": [
+          0.6919623276942356,
+          0.8376160844734336
+        ],
+        "undefinedResamples": 0
+      },
+      "unverified_rate": 0.04,
+      "failure_rate": 0.015,
+      "not_checkable_rate": 0.015,
+      "mean_cost_usd_per_claim": 0.012355499999999998,
+      "total_cost_usd": 2.4711,
+      "google_grounded_calls": 0,
+      "mean_sources_per_claim": 7.88
+    }
+  },
+  "ba_difference": {
+    "x-fix - m-main": {
+      "n": 193,
+      "value": -0.051201201201201085,
+      "ci95": [
+        -0.10850571921667004,
+        0.0
+      ],
+      "undefinedResamples": 0,
+      "resamples": 2000,
+      "seed": 20260929,
+      "status_agreement_rate": 0.927461139896373,
+      "ci_contains_zero": true
+    }
+  }
+}
