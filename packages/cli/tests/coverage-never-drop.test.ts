@@ -75,6 +75,39 @@ describe('a sentence is covered only by a claim that holds all of it', () => {
   });
 });
 
+describe('the holes the codex seat found in df6c239', () => {
+  it('a single-sentence input gets the same guarantee', () => {
+    const out = guaranteeClaimPerSentence(HOURS, [claim('c1', DAYS)]);
+    expect(out.filter((c) => c.coverageRecheck === true).map((c) => c.text)).toEqual([HOURS]);
+    expect(guaranteeClaimPerSentence(HOURS, [claim('c1', HOURS)]).map((c) => c.id)).toEqual(['c1']);
+  });
+
+  it('a decimal point is kept: "1.5 mg" is not covered by "15 mg"', () => {
+    const dose = 'The recommended starting dose for adults is 1.5 mg per day.';
+    const out = guaranteeClaimPerSentence(`${FIRST} ${dose}`, [claim('c1', FIRST), claim('c2', 'The recommended starting dose for adults is 15 mg per day.')]);
+    expect(out.filter((c) => c.coverageRecheck === true).map((c) => c.text)).toEqual([dose]);
+    // The same figure written the same way still covers it.
+    expect(guaranteeClaimPerSentence(`${FIRST} ${dose}`, [claim('c1', FIRST), claim('c2', dose)]).map((c) => c.id)).toEqual(['c1', 'c2']);
+  });
+
+  it('a percent sign is kept: "90%" is not covered by "90"', () => {
+    const pct = 'Customers who travel within the same week receive 90% of the fare back.';
+    const out = guaranteeClaimPerSentence(`${FIRST} ${pct}`, [claim('c1', FIRST), claim('c2', 'Customers who travel within the same week receive 90 of the fare back.')]);
+    expect(out.filter((c) => c.coverageRecheck === true).map((c) => c.text)).toEqual([pct]);
+  });
+
+  it('a claim that holds the sentence but denies it does not cover it', () => {
+    const dose = 'The recommended starting dose for adults is 1.5 mg per day.';
+    for (const denial of [`It is not true that ${dose}`, `It is false that ${dose}`, `Nobody says that ${dose}`]) {
+      const out = guaranteeClaimPerSentence(`${FIRST} ${dose}`, [claim('c1', FIRST), claim('c2', denial)]);
+      expect(out.filter((c) => c.text === dose)).toHaveLength(1);
+    }
+    // A sentence that is itself negative is covered by a claim that keeps the negation.
+    const neg = 'Refunds are not available after travel has been completed.';
+    expect(guaranteeClaimPerSentence(`${FIRST} ${neg}`, [claim('c1', FIRST), claim('c2', neg)]).map((c) => c.id)).toEqual(['c1', 'c2']);
+  });
+});
+
 describe('under the verify cap a re-check never displaces an extracted claim', () => {
   it('ranks every re-check after every extracted claim, whatever the importance', () => {
     const ranked = rankEligibleClaims([

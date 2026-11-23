@@ -48,6 +48,8 @@ const control = {
   verdicts: {} as Record<string, Verdict>,
   /** While set, every verify waits on it. */
   gate: null as Promise<void> | null,
+  /** While set, extraction rewrites "hours" as "days", so each sentence gets a coverage re-check. */
+  rewriteHours: false,
 };
 
 vi.mock('@nxtg/faultline/providers/registry.js', async (importOriginal) => {
@@ -59,7 +61,7 @@ vi.mock('@nxtg/faultline/providers/registry.js', async (importOriginal) => {
       control.extractCalls += 1;
       if (control.extractFails) throw new Error('extraction exploded');
       return text.split(/[.!?]+/).map((s) => s.trim()).filter(Boolean)
-        .map((s, i) => ({ id: `c${i + 1}`, text: s, type: 'fact' as const, importance: 5 }));
+        .map((s, i) => ({ id: `c${i + 1}`, text: control.rewriteHours ? s.replace(/hours/g, 'days') : s, type: 'fact' as const, importance: 5 }));
     },
     verifyClaim: async (claim: Claim): Promise<VerificationResult> => {
       control.verifyCalls += 1;
@@ -109,6 +111,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   control.gate = null;
+  control.rewriteHours = false;
   setFullScanLedgerAppendForTests(null);
   await app.close();
   resetFullScanJobStore();
@@ -503,6 +506,24 @@ describe('full scan: the estimate reserves nothing, the job reserves its fact cl
     const rows = ledgerRows();
     expect(rows.length).toBe(3);
     expect(rows.every((r) => r.scanId === jobRecordScanId(jobId))).toBe(true);
+  });
+
+  it('coverage re-checks reserve nothing: a key with 8 claims left starts a job of 8 billable claims and 8 re-checks, and is billed 8 (codex P1 on df6c239)', async () => {
+    control.rewriteHours = true;
+    const key = customer(8);
+    const text = Array.from({ length: 8 }, (_, i) => `Sentence ${i + 1} allows refunds for all customers within ${i + 1}0 hours.`).join(' ');
+    const res = await post('/scan/full/estimate', key.key, { text, provider: ENGINE_PROVIDER });
+    expect(res.statusCode).toBe(200);
+    const est = res.json() as { estimateId: string; factClaims: number; units: number };
+    expect(est.factClaims).toBe(16);
+    expect(est.units).toBe(1);
+    const start = await post('/scan/full', key.key, { estimateId: est.estimateId }, { 'idempotency-key': 'idem-meter-recheck' });
+    expect(start.statusCode).toBe(202);
+    const jobId = start.json().jobId as string;
+    await until(() => usage(key.id).reserved === 0 && control.verifyCalls >= 16, 'the job to settle');
+    expect(usage(key.id)).toEqual({ used: 8, reserved: 0 });
+    expect(ledgerRows().every((r) => r.scanId === jobRecordScanId(jobId))).toBe(true);
+    expect(ledgerRows()).toHaveLength(8);
   });
 
   it('a job over the cap is refused with 402 and verifies nothing', async () => {
