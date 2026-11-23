@@ -310,12 +310,21 @@ export function guaranteeClaimPerSentence(text: string, claims: Claim[]): Claim[
     // Use the first 40 normalised chars as a fingerprint to detect coverage.
     const fingerprint = normSentence.slice(0, 40);
     if (isInsideReferences(sentence, references)) continue;
-    const covered = result.some(c => {
+    // Covered only when a claim holds the whole sentence. A claim that merely
+    // begins like it (the 40-character match this function used alone before
+    // 2026-11-23) may have changed a detail later in the sentence ("within 90
+    // hours" checked as "within 90 days"), so the sentence is checked again as
+    // written: a coverage re-check, never billed. Never drop a sentence from
+    // checking: a duplicate costs a little, a dropped sentence hides an error.
+    if (result.some(c => normalizeSentence(c.text).includes(normSentence))) continue;
+    const startsLike = result.find(c => {
       const nc = normalizeSentence(c.text);
       return nc.includes(fingerprint) || normSentence.includes(nc.slice(0, 40));
     });
 
-    if (!covered) {
+    if (startsLike) {
+      result.push({ id: nextSyntheticId(), text: sentence, type: 'fact', importance: Math.max(2, startsLike.importance), coverageRecheck: true });
+    } else {
       result.push({ id: nextSyntheticId(), text: sentence, type: 'fact', importance: 3 });
     }
   }
@@ -407,7 +416,10 @@ export async function scan(
  *
  * @example
  *   const est = await extractForFullScan(text, 'gemini');
- *   // est.units === Math.ceil(est.factClaims / 8)
+ *   // est.units === Math.ceil(factClaimsThatAreNotCoverageRechecks / 8)
+ *
+ * A coverage re-check (Claim.coverageRecheck) is verified with the other fact
+ * claims but is never billed, so it does not count toward the units quoted.
  */
 export async function extractForFullScan(
   text: string,
@@ -421,7 +433,7 @@ export async function extractForFullScan(
     claims,
     factClaims: facts.length,
     notCheckable: notCheckable.length,
-    units: unitsForFullScan(facts.length),
+    units: unitsForFullScan(facts.filter((c) => c.coverageRecheck !== true).length),
   };
 }
 

@@ -707,9 +707,11 @@ export async function runVerification(
       const result = options.independentEvidence && !fromDoi
         ? await attachIndependentEvidence(withSources, claims[i].text, options.independentEvidence)
         : withSources;
-      verifications[claims[i].id] = result;
-      results[i] = result;
-      onClaimVerified?.(claims[i], result, i, claims.length);
+      // A coverage re-check's verdict is marked, so no billing path counts it (isBillableVerdict).
+      const marked = claims[i].coverageRecheck === true ? { ...result, coverageRecheck: true } : result;
+      verifications[claims[i].id] = marked;
+      results[i] = marked;
+      onClaimVerified?.(claims[i], marked, i, claims.length);
     }
   };
   await Promise.all(Array.from({ length: Math.min(concurrency, claims.length) }, runSlot));
