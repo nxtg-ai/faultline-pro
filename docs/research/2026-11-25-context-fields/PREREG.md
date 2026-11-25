@@ -24,17 +24,17 @@ Siblings of the same failure: a pronoun with its antecedent in an earlier senten
 ## Sets
 
 1. Held-out context set: 3 cases for the siblings set 3 does not cover: the prompting case (the subject lost from "Their ... spend rose 7%"), an attribution split from its quote, and a negation or condition in the next sentence. Real public-source sentences in their paragraphs, each with an acceptable-verdict set and exact-substring context fields. Stored privately (the prompting case quotes an internal document); frozen by hash here. SHA-256: `TBD before the first run`.
-2. Air Canada sets 1 to 3 (`docs/research/2026-11-23-attribution-judge/`), unchanged.
+2. Air Canada sets 1 to 3 (`docs/research/2026-11-23-attribution-judge/`), unchanged. In addition, the regression case from that study (the policy sentence in the second person, "... by completing our Ticket Refund Application form", whose cause was traced to extraction keeping "our" and "you") is run through extraction and judged on both arms, and counts toward the cure rate like a set-1 case, with acceptable verdicts contradicted or unverified.
 3. Gap-2 gold set from the content-engine lane, private, file `06-context-gold-set.jsonl` at the content-engine commit 80cb3b5, SHA-256 `765b17e0758cf9553ff98a25345a7647d1d43c709c842eebe152adfc0eb45360`. 16 rows, 12 scored: 2 OBSERVED (a true line judged contradicted from off-subject evidence in a real scan, with the run ids, the judge message and the misleading URL copied from the scan output) and 10 CANDIDATE (context-dependent sentences covering a pronoun, a carried survey scope, a time frame and a baseline, with truth re-checked on the source page). Two candidate rows rest on a secondary report because the primary page renders no text; they are reported apart. One row overlaps set 1 and is not scored twice. The misleading URL and the red-on-main field of each CANDIDATE row are filled by the red-first run below, never by hand.
 4. G0: the 200-claim Factcheck-Bench sample, seed 20261105 (`docs/research/accuracy-g0-harness.md`).
 
 Each case carries an acceptable-verdict set (for example supported or unverified for a true line; unverified only for a fact that only an internal source holds). A verdict is right when it is in that set, and, where the case lists `supported_only_from_hosts`, a supported verdict counts only when its supporting evidence comes from one of those hosts: support drawn from an off-subject host scores as red, which is the failure under test.
 
-Red first: every case in sets 1 and 3 is run on arm M before the change is measured, and only cases where M gives a verdict outside the acceptable set count toward the cure rate. The count of red cases is reported, by set and by tier.
+Red first: every case in sets 1 and 3, and the set-2 regression case, is run on arm M before the change is measured, and only cases where M gives a verdict outside the acceptable set count toward the cure rate. The count of red cases is reported, by set and by tier.
 
 ## Success bar (all must hold)
 
-1. Cure: on the red cases of sets 1 and 3 together, C's verdict is in the acceptable set on at least 60% (M is 0 by construction). OBSERVED and CANDIDATE cures are reported apart. If fewer than 5 cases are red, the cure rate is reported but cannot pass the bar alone, and the program owner rules.
+1. Cure: on the red cases of sets 1 and 3 and the set-2 regression case together, C's verdict is in the acceptable set on at least 60% (M is 0 by construction). OBSERVED and CANDIDATE cures are reported apart. If fewer than 5 cases are red, the cure rate is reported but cannot pass the bar alone, and the program owner rules.
 2. No harm on G0: paired balanced accuracy C minus M has a point estimate at or above -0.02 and a 95% CI that does not lie entirely below 0 (paired bootstrap, 2,000 resamples, seed 20260929), with at least 190 of 193 binary claims returned in each arm.
 3. Unreadable judge replies on G0: C at most 1 percentage point above M.
 4. Verdicts moved to mixed on G0: C's share of mixed at most 2 percentage points above M's.
